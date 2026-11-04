@@ -252,6 +252,14 @@ fn reproducible(lane: &Lane) -> Result<(), Failed> {
     let out = tempfile::tempdir()?;
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../scripts/toolbox/build.sh");
     let built = Command::new("bash").arg(script).arg(out.path()).output()?;
+    expect(
+        built.status.success(),
+        format!(
+            "toolbox rebuild exited {}:\n{}",
+            built.status,
+            String::from_utf8_lossy(&built.stderr)
+        ),
+    )?;
     let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
     let second = crate::release::sha256_file(Path::new(&path))?;
     expect(

@@ -966,3 +966,43 @@ Its annotation names hosted-runner acquisition failure and macOS capacity constr
 Neither upstream failure establishes a complete Rust coverage grade; all existing coverage floors remain unchanged.
 
 Subsequent local bounded downloads retrieved both failing packages; the next GitHub job must still confirm availability from its host.
+
+## Decision HTTP lifecycle and current CI diagnosis
+
+The new HTTP scenario uses native runner registration, admission, lease issuance, platform Secrets and original-owner billing through the assembled router.
+It checks the first credential-bearing response, key deletion, credential-free retry, foreign-runner refusal, canonical receipt replay and model revocation.
+Response bodies, retained call counts, the original wallet and the complete decision billing line must agree throughout the scenario.
+
+The scenario reuses the existing native model catalogue fixture and provider-receipt generator.
+Cleanup removes owned retained records and runners before the decision model, including unwind paths.
+Astra's source review found no remaining material issue; this is component review, not whole-M236 approval or live provider evidence.
+
+The first clean storage run passed the new scenario's response and financial assertions, then failed at cleanup with `23503`.
+The named constraint, `fk_decision_payloads_call_scope`, requires deleting private payloads before their retained call records.
+Cleanup now registers that owned child deletion first; `/tmp/m236-decision-http-integration.log` preserves the original failure.
+
+`make test-unit-rustd-daemon-libs` passed 3,412 tests in `/tmp/m236-decision-http-unit.log`.
+Only ignored integration cleanup and documentation changed afterwards; the following storage gate compiles and runs the corrected fixture.
+
+Clean `make test-integration-rustd` passed 1,533 regular and three exclusive tests in `/tmp/m236-decision-http-integration-final.log`.
+The new HTTP scenario, including explicit cleanup and native model deletion, passes in that complete run.
+This is native HTTP/storage proof, not a live provider request, R2 recovery or full DT runtime acceptance.
+
+Published `80fdd1b99` passed Greptile review with no new blocking finding; both earlier inline threads remain answered and resolved.
+All ordinary TypeScript and browser CI jobs passed, as did the three datastore coverage jobs and macOS build.
+Its daemon-library unit job exhausted hosted disk after clearing restored build files; the job annotation records the worker's disk-write failure.
+
+The four TypeScript CI logs for that exact head report 100% coverage in the app, CLI, website and design system.
+They pass 4,669, 1,996, 133 and 522 tests respectively; these counts remain separate from prior local observations.
+No TypeScript source changes in this HTTP-test component.
+
+The kernel job reached 69 tests: 68 passed, while the toolbox reproducibility case reported only a missing file.
+That case discarded the builder's failure status and stderr before attempting to hash its output path.
+It now checks successful exit and reports stderr before retaining the existing exact-digest comparison; the underlying build failure still needs fresh CI evidence.
+
+The three reports for `80fdd1b99` identify merge commit `ac251993369f39c0e2247d3d13d10b665a42349a`.
+Its parents and tree match main `27deff642` and the published feature head.
+Their partial union observes 191 uncovered changed Rust lines; the absent kernel report prevents a complete grade.
+
+The existing Rust patch floor remains 99.51%, with no new exclusions, suppressions or threshold changes.
+The proposed daemon-library resource settings are in `/tmp/m236-unit-worker-resources.diff` and await Indy's explicit workflow approval.

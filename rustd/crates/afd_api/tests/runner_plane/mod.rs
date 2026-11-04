@@ -23,6 +23,8 @@
 #![cfg(feature = "test-util")]
 
 use crate::harness;
+
+mod decision_lifecycle;
 use crate::harness::code_of;
 
 use afd_auth::directory::Liveness;
