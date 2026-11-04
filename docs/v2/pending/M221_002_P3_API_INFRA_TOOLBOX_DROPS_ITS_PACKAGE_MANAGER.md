@@ -33,7 +33,7 @@ SPEC AUTHORING RULES:
 
 ## Overview
 
-**Goal (testable):** A smaller toolbox has no Debian package manager or account-management commands, while Git and every M221 tool retain their first-use budgets.
+**Goal (testable):** A smaller toolbox has no apt, dpkg or commands from the passwd package, while Git and every M221 tool retain their first-use budgets.
 
 **Problem:** The read-only toolbox carries programs for installing packages and managing accounts. Leases cannot use them to change the image.
 
@@ -66,7 +66,8 @@ The scanner reads a temporary filesystem view containing the remaining package r
 | `scripts/toolbox/build.sh` | EDIT | Run final package removal and publish retained inventory |
 | `scripts/toolbox/manifest.txt` | EDIT | Pin removal set and retained Perl packages |
 | `scripts/toolbox/finalize.py` | CREATE | Remove packages, preserve notices and collect final records |
-| `scripts/toolbox/test_finalize.py` | CREATE | Test final payload, failure handling and inventory reconciliation |
+| `scripts/toolbox/test_finalize.py` | CREATE | Test finalization input validation and reconciliation rules |
+| `scripts/toolbox/test_finalize.sh` | CREATE | Prove real package operations and refusal before publication |
 | `scripts/toolbox/scan.sh` | CREATE | Give Syft a temporary view containing package records |
 | `scripts/toolbox/scan_inventory.py` | CREATE | Validate and materialize remaining package records |
 | `scripts/toolbox/test_scan_inventory.py` | CREATE | Reject mismatched, oversized and malformed records |
@@ -75,7 +76,8 @@ The scanner reads a temporary filesystem view containing the remaining package r
 | `scripts/toolbox/measure_first_use.sh` | EDIT | Import shared commands and comparison rules |
 | `scripts/toolbox/test_measure_first_use.sh` | EDIT | Preserve sampler cancellation and publication proofs after extraction |
 | `scripts/toolbox/test_compare_first_use.py` | CREATE | Reject missing steps, bad samples and incompatible comparisons |
-| `.github/actions/build-toolbox/action.yml` | EDIT | Call the scanner helper on cache misses |
+| `.github/actions/build-toolbox/action.yml` | EDIT | Call the scanner helper and its fixture/cleanup suite |
+| `.github/workflows/test-integration-rustd.yml` | EDIT | Qualify matched images in the existing hosted Linux kernel job and retain evidence |
 | `make/test-unit.mk` | EDIT | Run Python suites in the runner unit shard and finalization proofs in the kernel target |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox_size.rs` | EDIT | Check licences without dpkg and tighten the size cap |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox_runtime.rs` | CREATE | Prove absent management tools and working Git dependencies |
@@ -159,8 +161,9 @@ Compare the unchanged and finalized trees: their Debian identities differ by exa
 Compare the finalized tree with original records against its reconstructed view: all package records, file evidence and relationships agree.
 Normalize only the scan-directory source identifier and relationship ordering; with one Grype database, vulnerability identities, severities, package identities and fixed versions must match.
 
-The build action runs the Python suites and real scanner/cleanup suite after its existing scanner-install step, on cache hits too.
-The runner unit shard runs the Python suites without privileges; the kernel target runs real finalization proofs with its existing builder prerequisites.
+The build action runs Python suites and the scanner fixture/cleanup suite after its existing scanner-install step, on cache hits too.
+The runner unit shard runs Python suites without privileges; the kernel target runs `test_finalize.sh` with its existing builder prerequisites.
+The explicit hosted qualification run uses the real baseline and candidate for full scanner equivalence, with the same pinned scanner-install action.
 Scanner tests require Linux root, EROFS, OverlayFS, tmpfs, Syft and Grype; missing prerequisites fail explicitly.
 
 Reuse the sampler's signal-forwarding and child-reaping pattern. After success or interruption, unmount the view, temporary filesystem and image before deleting invocation-owned paths.
@@ -195,7 +198,12 @@ A Git dependency failure blocks qualification and requires restoring its depende
 
 ### §4 — Measure and publish the result
 
-Build the unchanged revision `11883fdaba2197adf8931d334396ba8b3bb9eb5b` and candidate on one Linux architecture with identical builder versions.
+Use the existing GitHub-hosted Linux kernel job. Add an optional manual-dispatch input, `toolbox_baseline_sha`, accepting only a full 40-character repository commit identifier.
+For this work its value is `11883fdaba2197adf8931d334396ba8b3bb9eb5b`. An empty input preserves the ordinary job's complete existing checks.
+
+An explicit qualification run builds that unchanged revision in a disposable detached checkout and builds the candidate on the same runner with identical builder versions.
+Set `AFR_TOOLBOX_IMAGE` to that candidate for the full kernel/coverage target. Run scanner equivalence and matched first-use measurement on the same artifacts.
+Retain both images, adjacent manifests, raw samples, comparison results, revision and host/builder identity, including failure evidence; no first-use sampling overlaps compilation.
 Two candidate builds must have identical image digests. The grader reads both actual images and adjacent manifests, verifies hashes/lengths, and requires candidate bytes below baseline bytes.
 The kernel size trial retains an architecture ceiling; tighten each ceiling only after measuring that architecture, preserving an explicit unmeasured status elsewhere.
 
@@ -212,7 +220,8 @@ Incompatible history is explicitly `NOT_COMPARABLE`, with the architecture/kerne
 Incompatible fresh baseline/candidate metadata always fails qualification.
 
 Run `make test-runner-kernel` in full. Preserve four-lease observations and every existing asserted limit; observational percentiles do not imply an enforced threshold.
-Document reduced Perl support. Close only with green Continuous Integration (CI), resolved Greptile findings and the authorized merge.
+Document reduced Perl support. Close only with green Continuous Integration (CI), a successful explicit qualification run, resolved Greptile findings and the authorized merge.
+Record the qualification run URL and tested image digest. Download its raw report into the acceptance baseline; verify later documentation-only commits leave the image digest unchanged.
 
 - **Dimension 4.1** — Preserve latency → `first_use_report_preserves_m221_budgets` (integration): all eight fresh p99 ratios are at most 1.10; compatible historical ratios also pass, or history states its incompatibility.
 - **Dimension 4.2** — Reject false evidence → `test_first_use_refuses_incomplete_or_mismatched_evidence` (unit): reject missing blocks/commands, nonfinite or nonpositive samples, false summaries, differing fresh hosts and wrong image identities.
@@ -244,6 +253,8 @@ Admission still verifies the existing signed manifest fields and byte limit; it 
 The first-use envelope contains `baseline_revision`, artifact digests/lengths, and `attempts[]` with predeclared `order`, completed `blocks[]` and failure details.
 Each block holds its role and the sampler's unmodified report; attempts are append-only. The current candidate must have exactly one complete qualifying attempt, with no failed attempt for that same digest hidden by selection.
 The shared module exposes `measure BASELINE_IMAGE CANDIDATE_IMAGE REPORT HISTORICAL` and `grade REPORT HISTORICAL BASELINE_IMAGE CANDIDATE_IMAGE`.
+`test_scan.sh fixtures` runs the bounded scanner and cleanup cases; `test_scan.sh images BASELINE_IMAGE CANDIDATE_IMAGE` additionally proves full image equivalence.
+The hosted kernel workflow's explicit qualification input selects the second mode and retains its outputs with the measurement artifacts.
 
 ## Failure Modes
 
@@ -277,7 +288,7 @@ N/A: no product event or metric changes. Release length, digest and existing ker
 | R1 | Management payload absent; tools, Git and licences work | `make test-runner-kernel` | All trials pass; no skips | P0 | |
 | R2 | Candidate smaller and reproducible | R3 grader plus `make test-runner-kernel` | Actual candidate smaller than fresh baseline; cap and reproducibility trials pass | P0 | |
 | R3 | First-use budget preserved | `python3 scripts/toolbox/compare_first_use.py grade REPORT HISTORICAL BASELINE_IMAGE CANDIDATE_IMAGE` | Eight passing ratios, exact artifact identities and explicit historical status | P0 | |
-| R4 | Scan preserves retained evidence | `sudo -E bash scripts/toolbox/test_scan.sh` with pinned scanners | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | |
+| R4 | Scan preserves retained evidence | `sudo -E bash scripts/toolbox/test_scan.sh images BASELINE_IMAGE CANDIDATE_IMAGE` with pinned scanners | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | |
 | R5 | Signed admission unchanged | `make test-unit-rustd-runner` | Runner and Python unit suites pass | P0 | |
 | R6 | Rust patch coverage | `make test-coverage-runner-kernel` and existing coverage merge job | Same revision; Rust patch at least 99%; no TypeScript source diff | P0 | |
 | S1 | Repository lint | `make lint-all` | exit 0 | P0 | |
@@ -339,5 +350,6 @@ Repeat repository-wide word-boundary searches for apt, dpkg, useradd and chpassw
 - **Evidence:** [M221_002-measurements.md](../../../playbooks/operations/acceptance/baselines/M221_002-measurements.md) records package sizes, the unchanged build, full scanner equivalence, Perl experiments and the classified reference sweep.
 - **Remaining proof:** The final implementation still needs image, Git, latency, reproducibility, full kernel and coverage qualification.
 - **Model reviews:** Six brainstorm lenses and nine formal reviewers completed. Formal review produced eight Major actions and five Nits; all were accepted and incorporated into interfaces, proofs and wiring.
-- **Open blockers:** This cloud kernel lacks Landlock and process-child introspection. Full kernel proof needs a suitable Linux host; no failed prerequisite is skipped or recorded as passing.
+- **Qualification host decision:** Indy selected "GitHub-hosted Linux runner (Recommended)" after the cloud host failed kernel prerequisites. The existing kernel workflow will supply full qualification; OrbStack access is unnecessary for this route.
+- **Open blockers:** Complete the hosted qualification and all remaining proofs. No failed prerequisite is skipped or recorded as passing.
 - **Deferrals and transfers:** None.
