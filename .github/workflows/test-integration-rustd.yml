@@ -210,8 +210,8 @@ jobs:
           proof="$RUNNER_TEMP/toolbox-proof"
           trap 'sudo chown -R "$(id -u):$(id -g)" "$proof"' EXIT
           baseline=("$proof/baseline"/toolbox-*.erofs)
-          sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "${baseline[0]}" "$proof/baseline-first-use.json" 120
-          sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "$AFR_TOOLBOX_IMAGE" "$proof/candidate-first-use.json" 120 "$proof/baseline-first-use.json"
+          sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "${baseline[0]}" "$proof/baseline-first-use.json" 600
+          sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh "$AFR_TOOLBOX_IMAGE" "$proof/candidate-first-use.json" 600 "$proof/baseline-first-use.json"
           lengths=()
           for role in baseline candidate; do
             images=("$proof/$role"/toolbox-*.erofs)

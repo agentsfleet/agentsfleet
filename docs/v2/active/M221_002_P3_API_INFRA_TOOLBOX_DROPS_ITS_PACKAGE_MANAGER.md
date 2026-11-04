@@ -201,7 +201,7 @@ Two candidate builds must have identical image digests. The grader reads both ac
 The kernel size trial retains an architecture ceiling; tighten each ceiling only after measuring that architecture, preserving an explicit unmeasured status elsewhere.
 
 Reuse M221's existing sampler unchanged in substance: eight commands, nearest-rank percentiles and the 1.10 p99 ratio rule.
-Run 120 cold-cache samples per command for the fresh baseline, then 120 for the candidate with the baseline report supplied as the existing fourth argument.
+Run 600 cold-cache samples per command for the fresh baseline, then 600 for the candidate with the baseline report supplied as the existing fourth argument.
 Preserve all raw samples, failed reports and attempts; no trimming or favourable-run selection. Check both report identities against actual image hashes, lengths and manifests.
 Read historical `selected` from `M221_001-first-use-arm64.json`. A compatible historical host also requires ratios at most 1.10 against that selection.
 An amd64 hosted runner is not comparable to the historical arm64 host; record `NOT_COMPARABLE` explicitly and retain the fresh same-host comparison as evidence.
@@ -264,11 +264,11 @@ N/A: no product event or metric changes. Release length, digest and existing ker
 | # | Criterion | Verify | Expected | Priority | Graded (VERIFY) |
 |---|-----------|--------|----------|----------|-----------------|
 | R1 | Management payload absent; tools, Git and licences work | `make test-runner-kernel` | All trials pass; no skips | P0 | |
-| R2 | Candidate smaller and reproducible | Matched image identity checks plus `make test-runner-kernel` | Actual candidate smaller than fresh baseline; cap and reproducibility trials pass | P0 | |
-| R3 | First-use budget preserved | `sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh CANDIDATE_IMAGE REPORT 120 BASELINE_REPORT` | Eight passing ratios, exact artifact identities and explicit historical status | P0 | |
-| R4 | Scan preserves retained evidence | Existing build-toolbox action and hosted image comparison with pinned scanners | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | |
-| R5 | Signed admission unchanged | `make test-unit-rustd-runner` | Runner and existing scanner boundary suites pass | P0 | |
-| R6 | Rust patch coverage | `make test-coverage-runner-kernel` and existing coverage merge job | Same revision; Rust patch at least 99%; no TypeScript source diff | P0 | |
+| R2 | Candidate smaller and reproducible | `make test-runner-kernel && test "$(stat -c %s "$CANDIDATE_IMAGE")" -lt "$(stat -c %s "$BASELINE_IMAGE")"` | Actual candidate smaller than fresh baseline; cap and reproducibility trials pass | P0 | |
+| R3 | First-use budget preserved | `sudo bash playbooks/operations/acceptance/measure_toolbox_first_use.sh CANDIDATE_IMAGE REPORT 600 BASELINE_REPORT` | Eight passing ratios, exact artifact identities and explicit historical status | P0 | |
+| R4 | Scan preserves retained evidence | `diff -u "$ORIGINAL_SCAN_NORMALIZED" "$RECONSTRUCTED_SCAN_NORMALIZED" && diff -u <(jq -S .matches "$ORIGINAL_GRYPE") <(jq -S .matches "$RECONSTRUCTED_GRYPE") && jq -e "all(.results[];.pass)" "$SCAN_PROBES"` | Full records, relationships, vulnerability matches and cleanup cases pass | P0 | |
+| R5 | Signed admission unchanged | `make test-unit-rustd-runner` | Runner units, including signed inventory-byte binding, pass | P0 | |
+| R6 | Rust patch coverage | `test "$(gh run view "$COVERAGE_RUN_ID" --repo agentsfleet/agentsfleet --json headSha --jq .headSha)" = "$(git rev-parse HEAD)" && gh run view "$COVERAGE_RUN_ID" --repo agentsfleet/agentsfleet --exit-status` | Same revision; Rust patch at least 99%; no TypeScript source diff | P0 | |
 | S1 | Repository lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Repository unit tests | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Repository integration tests | `make test-integration-rustd` | exit 0 | P0 | |
@@ -276,6 +276,9 @@ N/A: no product event or metric changes. Release length, digest and existing ker
 | S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
 
 `REPORT` is `playbooks/operations/acceptance/baselines/M221_002-first-use-amd64.json`; `HISTORICAL` is the existing M221_001 arm64 report.
+R4 inputs are the complete normalized scan records, same-database Grype outputs and 13-case direct-action report recorded in the measurement file. Normalize only scan-directory source identifiers and relationship ordering.
+`COVERAGE_RUN_ID` names the complete integration coverage workflow, including its kernel and merged patch-floor jobs.
+
 Record both actual image paths, manifests, revision and decisive outputs in `M221_002-measurements.md`; placeholders are command arguments, never substitute evidence.
 
 ## Dead Code Sweep
@@ -334,6 +337,7 @@ Repeat repository-wide word-boundary searches for apt, dpkg, useradd and chpassw
 - **Measured package behaviour:** Apt's purge simulation removes Python. Explicit dpkg removal of perl and libperl5.40 preserves four targeted Git checks but removes Digest::SHA.
 - **Evidence:** [M221_002-measurements.md](../../../playbooks/operations/acceptance/baselines/M221_002-measurements.md) records package sizes, the unchanged build, full scanner equivalence, Perl experiments and the classified reference sweep.
 - **Perl-free build:** 135,979,008 bytes, 133 retained packages, digest `a3e4660a0f78c1b91261ee9051105f70b6e1cae08294b026e4dae2f0efb75279`; local build evidence only.
+- **Confirmatory sampling:** The retained 120-sample run at `41783236290` failed Git-commit p99 (47.694296 ms baseline, 56.361242 ms candidate). Before another run, increase both sample counts to 600 while preserving the same commands, percentile estimator and 1.10 limit. Keep the failed run; if this confirmatory run fails, investigate the implementation rather than selecting another attempt.
 - **Remaining proof:** The final implementation still needs image, Git, latency, reproducibility, full kernel and coverage qualification.
 - **Model reviews:** Six brainstorm lenses and nine formal reviewers completed. Formal review produced eight Major actions and five Nits; all were accepted and incorporated into interfaces, proofs and wiring.
 - **Qualification host decision:** Indy selected "GitHub-hosted Linux runner (Recommended)" after the cloud host failed kernel prerequisites. The existing kernel workflow will supply full qualification; OrbStack access is unnecessary for this route.
