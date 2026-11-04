@@ -215,7 +215,9 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
    sweeper:billing settles any line left unsettled and releases holds of leases that ended
 ```
 
-The decision range is reserved; physical-call allocation and receipt accounting remain pending under the [native decision billing design](goal_evaluation.md#native-billing-integration).
+The native decision allocator assigns this range before dispatch in `rustd/crates/afd_fleet/src/task/decision/intent.rs`.
+Lease-scoped reservation and PATCH routes fund one send and record its receipt under the original payer and frozen prices.
+Automatic runner intent and goal integration remains incomplete; the [native decision billing design](goal_evaluation.md#native-billing-integration) records that boundary.
 
 | Step | What moves | Where |
 |---|---|---|
@@ -256,7 +258,9 @@ Its recovery counters count settlement groups, so one lease can contribute sever
 
 `afd_billing::ledger::unsettled` sorts borrowed keys in place and moves owned headers into the resulting groups.
 This avoids cloned map keys; no measured latency or allocation result follows from that source change.
-The [decision design](goal_evaluation.md#native-billing-integration) covers remaining call reservations, frozen rates and hold release.
+The [decision design](goal_evaluation.md#native-billing-integration) describes native call reservations, frozen rates and receipt accounting.
+
+Renew/report receipt integration remains incomplete.
 
 ## 4. The run charge
 

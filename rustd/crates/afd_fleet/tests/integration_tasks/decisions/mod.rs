@@ -13,3 +13,4 @@ mod maintenance_races;
 mod ordering;
 mod recovery;
 mod timeouts;
+mod unpriced;

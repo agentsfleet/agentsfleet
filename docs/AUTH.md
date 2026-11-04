@@ -723,11 +723,16 @@ Each read opens that admin workspace's current envelope without a key cache, ten
 Missing, empty and malformed keys refuse resolution; damaged envelopes and unavailable storage retain their causes.
 
 Recovered plaintext and parsed key allocations use `SecretBytes` and `SecretString`.
-Parsing failures keep value-free diagnostics; prompts, tools, model configuration, checkpoints and public responses must never carry these keys.
+Parsing failures keep value-free diagnostics; prompts, tools, model configuration, checkpoints and customer-facing responses exclude these keys.
+The native reservation response delivers a key to its trusted runner once; retries return saved state without another credential.
+
 Parser scratch/error buffers, HTTP headers and transport buffers remain outside those owned-buffer wiping guarantees.
 
-The resolver is implemented; physical-call reservation and lease-handler integration remain pending.
-The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and the proposed dispatch sequence.
+`POST /v1/runners/me/leases/{lease_id}/tasks/decisions` reserves and funds a physical call before resolving its current key.
+`PATCH /v1/runners/me/leases/{lease_id}/tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
+Handlers live in `rustd/crates/afd_api_runner/src/handler/runner/decisions.rs`; automatic runner intent and goal integration remains incomplete.
+
+The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and the remaining runner integration.
 
 ### The token never enters the sandboxed child
 
