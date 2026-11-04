@@ -443,7 +443,9 @@ Both purposes share the [provider reader and browser chat implementation](shared
 
 The CLI displays `Fleet created: installing`, each missing check and its action, the fleet ID, and a copyable resume command that reads the fresh tag then PATCHes active. It exits nonzero, preserving the creation replay key for explicit retry. An active fleet with a blocked initial run, or any schedule not `synced` (`failed`, `syncing`, or a status the CLI does not know), prints the partial outcome and actionable retry and exits nonzero, rather than claiming all requested work succeeded.
 
-### B. TRIGGER  (six producers, ONE ingress)
+### B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)
+
+The heading keeps its old words because other pages cite it by text. Six producers enter here, not three.
 
 Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: platform setup to fleet execution".
 
