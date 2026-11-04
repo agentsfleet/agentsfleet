@@ -36,8 +36,9 @@ install_collector() {
   esac
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   expected="$(collector_archive_sha "$arch")"
-  work="$(mktemp -d)"
-  trap 'rm -rf "$work"' RETURN
+  COLLECTOR_INSTALL_WORK_DIR="$(mktemp -d)"
+  trap 'rm -rf -- "$COLLECTOR_INSTALL_WORK_DIR"' EXIT
+  work="$COLLECTOR_INSTALL_WORK_DIR"
   archive="$work/collector.tar.gz"
   curl --fail --silent --show-error --location --max-time 180 \
     "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$COLLECTOR_VERSION/otelcol-contrib_${COLLECTOR_VERSION}_linux_${arch}.tar.gz" \
@@ -59,7 +60,8 @@ install_collector() {
     install -m 0600 "$credentials" /etc/agentsfleet/otelcol-runner.env
   fi
   systemctl daemon-reload
-  systemctl enable --now otelcol-runner.service
+  systemctl enable otelcol-runner.service
+  systemctl restart otelcol-runner.service
   curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-connrefused \
     --max-time 5 http://127.0.0.1:13133/ >/dev/null
   install -d -m 0755 /etc/systemd/system/agentsfleet-runner.service.d

@@ -281,6 +281,8 @@ impl StreamTurn {
         let inner = self.inner.take().expect("finish consumes its stream once");
         let mut trace = self.trace.take().expect("finish consumes its trace once");
         let mut partial = inner.partial();
+        // Preserve known usage even if cancellation drops finish during an await.
+        trace.usage(&partial.usage);
         let result = if let Some(failure) = self.failure.take() {
             self.recovery.usage(&mut partial).await;
             trace.usage(&partial.usage);
