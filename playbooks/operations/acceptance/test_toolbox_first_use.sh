@@ -3,7 +3,7 @@
 # Optional argument selects the pre-fix sampler for the red-green proof.
 # A second argument selects one failure case for its isolated red proof.
 set -euo pipefail
-readonly SAMPLER="${1:-scripts/toolbox/measure_first_use.sh}"
+readonly SAMPLER="${1:-playbooks/operations/acceptance/measure_toolbox_first_use.sh}"
 if [ "$(uname -s)" != Linux ] || [ "$(id -u)" -ne 0 ]; then
   echo "test_measure_first_use.sh: needs Linux root" >&2
   exit 1

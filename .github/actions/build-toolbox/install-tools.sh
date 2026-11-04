@@ -10,7 +10,7 @@
 # for bubblewrap.
 set -euo pipefail
 
-readonly BUILDER_TOOLS=(mmdebstrap erofs-utils debian-archive-keyring uidmap python3 curl)
+readonly BUILDER_TOOLS=(mmdebstrap erofs-utils debian-archive-keyring uidmap python3 curl jq)
 
 sudo apt-get update -qq
 sudo apt-get install -y -qq --no-install-recommends "${BUILDER_TOOLS[@]}" "$@"
