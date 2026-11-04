@@ -589,6 +589,40 @@ These checks use controlled data and do not establish live DT acceptance.
 | Native lifecycle scenarios, HTTP refusal matrix, provider limits and SQL inventories | Prove complete flows and residual state together; retain negative controls and use actual native implementations and API-role databases. |
 | Owning architecture pages, metrics census, active spec and this ledger | Record actual boundaries, bounded funding diagnostics and operation cardinality, measured evidence and remaining work. |
 
+## Checkpoint encryption component
+
+`afd_crypto::checkpoint` defines borrowed native object scope, wrapped key metadata, temporary key ownership and encrypted chunks.
+The daemon wraps each new object key with the existing envelope; transfer code consumes that temporary key during object encryption or decryption.
+The code moves the existing object allocation and checks scope through authenticated associated data.
+
+The byte format separately binds wrapping purpose/version/nonce and data purpose; `sandbox_evaluation.md` records its exact fields.
+The AES-GCM `zeroize` feature clears AES and authentication state on drop.
+The shared envelope now guards its entropy destination before filling it, preserving its stored format.
+
+The final scoped command `make test-unit-rustd-runner _RUSTD_UNIT_RUNNER=afd_crypto` passed 68 tests after the key-consumption correction.
+`/tmp/m236-checkpoint-crypto-final-unit.log` records the result; this is component evidence, not a repository-wide verification result.
+Four new scenarios combine an independent format vector, allocation checks, empty/small/8-MiB chunks, ownership changes, corruption, entropy failure and malformed keys.
+
+Node 24.19.0 with OpenSSL 3.5.7 independently produced the fixed ciphertext/tag vector.
+The scenario also checks a reused buffer's previously initialized tail, then decrypts the same allocation.
+A documented test-only observation reads that initialized range; production crypto adds no unsafe block or mutex.
+
+Astra's requested extra-high source review found the spare-capacity retention issue and the envelope's inherited unguarded entropy buffer.
+Both corrections were verified closed against the actual worktree; no material component finding remained.
+The reviewer ran no builds or tests.
+
+An inner-loop mutation changed the full spare-capacity wipe to an empty slice.
+The complete vector/allocation scenario failed at its retained-plaintext assertion, then passed after byte-exact source restoration.
+Logs are `/tmp/m236-checkpoint-crypto-mutant.log` and `/tmp/m236-checkpoint-crypto-restored.log`.
+
+Conformance identified explicit key consumption and two mechanical test-helper findings; their corrections add no lint suppression.
+The source now drops the transferred key immediately after constructing the guarded cipher.
+`make lint-rustd` passed, including formatting and workspace Clippy over all targets/features; `/tmp/m236-checkpoint-crypto-lint-3.log` retains its results.
+
+No R2 SDK dependency or live transfer is claimed by this component.
+Native registration, quotas, manifests, transfer, restore and the live private-bucket proof remain pending.
+No complete recovery Dimension is marked done.
+
 ## Owner work-item status
 
 | Requested work | Current state and evidence |
@@ -598,7 +632,7 @@ These checks use controlled data and do not establish live DT acceptance.
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Align unfinished setup actions | `components/layout/DraftSidebarItem.tsx` uses shared grid columns: title, reachable Delete, then Resume. Desktop/mobile measurements, app lint and 100% coverage pass; the same geometry assertion fails against the previous component. Logs: `/tmp/m236-ui-polish-browser.log`, `/tmp/m236-resume-parent-red.log`. |
 | Shorten fleet chat guidance | `SteerComposer.tsx` now reads “Change fleet defaults in Edit setup.” The existing action, hint and theme remain; controlled browser cases, app lint and 100% coverage pass. |
-| Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. SDK transfer, encryption, recovery and live bucket checks remain pending. |
+| Private R2 bucket and secure keys | Non-secret bucket metadata resolves to `agentsfleet-checkpoints-dev` in the accessible `ZMB_CD_DEV/cloudflare-r2` item. No key value is recorded here. The scoped encryption component passes 68 tests and Astra review; native storage, transfer, recovery and live bucket checks remain pending. |
 | Performance, concurrency and Grafana | Task reads are bounded and observable; cursor paging avoids per-task queries. No benchmark result or complete DT performance trace is claimed. |
 | Architecture and companion docs | Astra reviewed all 39 architecture Markdown pages and 39 public Markdown/MDX pages. Owning corrections and setup/Current work guides are applied; pushed merge `d97b373` adds latest docs main `920933d`. Site validation, prose, work gate and branch secret scanning passed. The companion PR remains pending; new API pages follow the lead merge. |
 | Orly lifecycle and PR merge | Local Orly 0.28.0 matches the pin. No feature PR exists; all required gates, actual-head Continuous Integration and Greptile resolution must precede the authorized merge. |
