@@ -11,9 +11,14 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::validate;
+use crate::Result;
 
-pub(super) fn encode(profile: &Valid<DecisionProfile>, request: &Valid<DecisionRequest>) -> Value {
-    let questions: Vec<_> = request.questions.iter().map(|named| match &named.question {
+pub(super) fn encode(
+    profile: &Valid<DecisionProfile>,
+    request: &Valid<DecisionRequest>,
+) -> Result<Value> {
+    let questions: Vec<_> = request.questions.iter().map(|named| {
+        let question = match &named.question {
         DecisionQuestion::Noul { instructions, criteria } => json!({
             "type":"predicate", "name":named.name,
             "instructions":format!("{instructions}\nTrue: {}\nFalse: {}", criteria.yes, criteria.no),
@@ -25,13 +30,15 @@ pub(super) fn encode(profile: &Valid<DecisionProfile>, request: &Valid<DecisionR
             let levels: Vec<_> = levels.iter().enumerate().map(|(index, description)| json!({"label":index.to_string(), "description":description})).collect();
             json!({"type":"score", "name":named.name, "instructions":instructions, "levels":levels})
         }
-    }).collect();
+        };
+        super::bounded_question(question)
+    }).collect::<Result<_>>()?;
     let input = if request.state.is_string() {
         request.state.clone()
     } else {
         json!([{"role":"user", "content":[{"type":"input_json", "data":request.state}]}])
     };
-    json!({"model":profile.model, "input":input, "questions":questions})
+    Ok(json!({"model":profile.model, "input":input, "questions":questions}))
 }
 
 #[derive(Deserialize)]

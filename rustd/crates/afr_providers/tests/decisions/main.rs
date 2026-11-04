@@ -14,6 +14,7 @@ mod fixture;
 mod limits;
 mod preflight_failures;
 mod protocol;
+mod responses;
 #[path = "../support/tls.rs"]
 mod tls;
 mod trace_fixture;
