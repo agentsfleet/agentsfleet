@@ -357,3 +357,13 @@ SDK provider registry, with standard aliases when defined. Share it across
 runner metrics and daemon/runner traces. Keep arbitrary private provider names
 and endpoint URLs out of labels. MiniMax through Fireworks must retain Fireworks
 as provider and MiniMax as model; model names never determine the provider.
+
+The provider regression fails on the previous normalizer: `fireworks` returns
+no attribution. The shared registry now derives public identities from the
+existing curated catalogue and the SDK, with canonical standard aliases and
+no new authored provider inventory. The first combined producer/export run
+passes 195 tests, including Fireworks attribution in delivery spans and runner
+turn/call/token exports. Public aliases are deduplicated before counting label
+products; existing runner cardinality ceilings still pass unchanged. Private
+names and endpoint URLs remain absent or `_other`. Historical omissions remain
+historical; the daemon and runner binaries must be deployed for new attribution.
