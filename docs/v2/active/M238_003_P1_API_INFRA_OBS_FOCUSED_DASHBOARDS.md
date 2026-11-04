@@ -5,6 +5,7 @@
 **Branch:** chore/m238-dev-round-trip
 **Pull request:** #801
 **Baseline:** ffde2699b39cca1463542c53782ebec52044c838
+**Open acceptance:** Final repository and coverage gates; live samples from the new producers; Tempo zero-value display. Indy accepted the real-sandbox admission witness as pending.
 
 ## Overview
 
@@ -47,7 +48,7 @@ views; new measurements begin when their producers are deployed.
 | `rustd/crates/afd_db/` | EDIT | Actual pool occupancy, capacity, acquisition wait and outcomes |
 | `rustd/crates/afd_cron/` | EDIT | Accepted/replayed fires, dispatch lag and failed/stale targets |
 | `rustd/crates/afd_inference/` | EDIT | First-token and terminal timing for individual provider attempts |
-| `rustd/crates/afr_telemetry/` | EDIT if needed | Model attribution and missing runner measurements |
+| `rustd/crates/afr_telemetry/` | EDIT | Shared provider attribution and missing runner measurements |
 | `rustd/crates/agentsfleetd/` | EDIT | Connect boot-owned readings without blocking collection callbacks |
 | `rustd/crates/afd_fleet/tests/support/fleet_report_reads.rs` | EDIT | Isolate proposed catalogue keys after the full integration run exposed a duplicate primary key |
 | `playbooks/operations/acceptance/baselines/M238_001-20261104/` | CONSOLIDATE | One compact receipt, native screenshot and rejection log; raw history retained |
@@ -180,12 +181,12 @@ Named proofs for the new mechanisms:
 
 | ID | Criterion | Verify | Expected | Priority | Graded |
 |---|---|---|---|---|---|
-| R1 | Pool and schedule observations are real and replay-safe | `make test-integration-rustd` | 0 failed | P0 | |
-| R2 | Model timing and metadata preserve source semantics | `make test-unit-all` | 0 failed | P0 | |
-| R3 | Runner signals arrive through the isolated collector | `make check-collector-temporality check-runner-collector-admission`, then live probe | 4 pipeline + 2 admission tests pass; live export verified | P0 | |
-| R4 | Six dashboards apply, render and pass drift checks | `bash playbooks/operations/observability/01_assets_check.sh`; `OBS_ENV=dev ALLOW_VAULT_READS=1 bash playbooks/operations/observability/04_verify.sh`, native review | 6 dashboards match; 0 query errors; live samples verified | P0 | |
-| R5 | Changed Rust files exceed 99%; TypeScript stays 100% | `make test-coverage-rustd`; `make test-coverage-all`; GitHub CI | changed Rust >99%, TypeScript 100% | P0 | |
-| R6 | Repository gates and secrets checks | `orly gate pr`, gitleaks | 0 failures and 0 leaks | P0 | |
+| R1 | Pool and schedule observations are real and replay-safe | `make test-integration-rustd` | 0 failed | P0 | PASS on `93bb96acf`; recheck after merging #802 |
+| R2 | Model timing and metadata preserve source semantics | `make test-unit-all` | 0 failed | P0 | PENDING — full unit gate |
+| R3 | Runner signals arrive through the isolated collector | `make check-collector-temporality check-runner-collector-admission`, then live probe | 4 pipeline + 2 admission tests pass; live export verified | P0 | PARTIAL — collector proofs and real runner export pass; actual sandbox witness pending with Indy’s acceptance |
+| R4 | Six dashboards apply, render and pass drift checks | `bash playbooks/operations/observability/01_assets_check.sh`; `OBS_ENV=dev ALLOW_VAULT_READS=1 bash playbooks/operations/observability/04_verify.sh`, native review | 6 dashboards match; 0 query errors; live samples verified | P0 | PARTIAL — six dashboards apply/render/match; new producer samples await deployment |
+| R5 | Changed Rust files exceed 99%; TypeScript stays 100% | `make test-coverage-rustd`; `make test-coverage-all`; GitHub CI | changed Rust >99%, TypeScript 100% | P0 | PENDING — coverage for the final revision |
+| R6 | Repository gates and secrets checks | `orly gate pr`, gitleaks | 0 failures and 0 leaks | P0 | PENDING — final repository gate |
 
 ## Dead Code Sweep
 
@@ -335,3 +336,24 @@ queue failure after the database opens flushes its buffered pool record before
 boot returns. The isolated model-seed regression reproduces the old primary-key
 collision and passes with fresh proposed keys. These are focused checks;
 repository integration and exact-revision coverage remain pending.
+
+Latest review: replace the raw provider-omission legend with Provider name
+omitted using a display override. Its underlying metric labels remain useful
+for investigation. Update acceptance grades explicitly rather than treating
+finished dashboard presentation as completed live instrumentation acceptance.
+The final gate on `93bb96acf` passed integration, then was stopped during unit
+checks when #802 introduced merge conflicts. Resolve the conflicts, retain
+retry-budget behavior and outcome measurements, and rerun on the merged head.
+
+Provider-attribution correction: Indy asked, "Okay will there a fix to support
+our providers?" The pinned OpenTelemetry attribute reference explicitly says
+custom provider values MAY be used when no well-known value applies:
+https://github.com/open-telemetry/semantic-conventions-genai/blob/2e994c6d59a93bb4fc1752c5378eedb9b8e14d6b/docs/registry/attributes/gen-ai.md#gen-ai-provider-name
+Our normalizer incorrectly treated its well-known list as closed. A live runner
+trace records `accounts/fireworks/models/minimax-m3p1-flash`, while provider-turn
+metrics aggregate under `_other` and the daemon counts the omitted provider key.
+Use one bounded naming registry derived from the compiled model catalogue and
+SDK provider registry, with standard aliases when defined. Share it across
+runner metrics and daemon/runner traces. Keep arbitrary private provider names
+and endpoint URLs out of labels. MiniMax through Fireworks must retain Fireworks
+as provider and MiniMax as model; model names never determine the provider.

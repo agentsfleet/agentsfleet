@@ -42,9 +42,9 @@ actual_queries="$work_dir/actual-queries"
 # text panel — carries an empty array in the asset, and Grafana drops the field
 # entirely on the way back. Iterating the absent field is what turned a
 # faithfully applied dashboard into "queries drifted".
-jq -S '[.panels[] | {id,title,description,type,gridPos,unit:.fieldConfig.defaults.unit,noValue:(.fieldConfig.defaults.noValue // null),displayName:(.fieldConfig.defaults.displayName // null),datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,legendFormat:(.legendFormat // ""),instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
+jq -S '[.panels[] | {id,title,description,type,gridPos,unit:.fieldConfig.defaults.unit,noValue:(.fieldConfig.defaults.noValue // null),displayName:(.fieldConfig.defaults.displayName // null),overrides:(.fieldConfig.overrides // []),datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,legendFormat:(.legendFormat // ""),instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
   "$expected_dashboard" >"$expected_queries"
-jq -S '[.spec.panels[] | {id,title,description,type,gridPos,unit:.fieldConfig.defaults.unit,noValue:(.fieldConfig.defaults.noValue // null),displayName:(.fieldConfig.defaults.displayName // null),datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,legendFormat:(.legendFormat // ""),instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
+jq -S '[.spec.panels[] | {id,title,description,type,gridPos,unit:.fieldConfig.defaults.unit,noValue:(.fieldConfig.defaults.noValue // null),displayName:(.fieldConfig.defaults.displayName // null),overrides:(.fieldConfig.overrides // []),datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss,legendFormat:(.legendFormat // ""),instant:(.instant // false),range:(.range // false),format:(.format // "time_series")}], transformations:(.transformations // [])}] | sort_by(.id)' \
   <<<"$dashboard" >"$actual_queries"
 
 if ! jq -e \

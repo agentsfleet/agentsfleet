@@ -438,7 +438,20 @@
         "defaults": {
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "attribute omitted: gen_ai.provider.name/unmapped_provider"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Provider name omitted"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "x": 12,
@@ -470,7 +483,7 @@
       ],
       "title": "Missing telemetry labels",
       "type": "timeseries",
-      "description": "Attributes omitted during normalization; not whole spans or failed exports."
+      "description": "Provider name omitted means telemetry could not attribute the provider. This is an instrumentation gap; the model call and the remaining telemetry may still succeed."
     },
     {
       "datasource": {
