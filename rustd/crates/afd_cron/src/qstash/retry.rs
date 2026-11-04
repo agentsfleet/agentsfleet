@@ -34,7 +34,7 @@ use crate::store::SYNC_LEASE;
 const ATTEMPTS: usize = 3;
 
 /// The first wait, and the base the second doubles from.
-const FIRST_DELAY: Duration = Duration::from_millis(200);
+pub(super) const FIRST_DELAY: Duration = Duration::from_millis(200);
 
 /// The ceiling one wait may reach before jitter.
 const MAX_DELAY: Duration = Duration::from_millis(800);
