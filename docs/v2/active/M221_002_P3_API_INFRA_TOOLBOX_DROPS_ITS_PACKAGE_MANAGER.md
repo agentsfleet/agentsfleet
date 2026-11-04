@@ -122,7 +122,9 @@ Reject duplicate names, a missing removal package, or overlap with required pack
 
 Run finalization after provenance capture and existing documentation pruning, inside mmdebstrap's disposable root, before its tar export.
 Capture installed records, realized retained-owned files and copyright bytes before removal. The realized tree accounts for existing installation exclusions.
-For existing regular files capture content hashes and modes; for links capture targets and resolved content where required by retained tools.
+
+Shell functions use dpkg for removal, GNU tar for retained payload comparison, and jq for JSON.
+Capture retained regular files, modes and links in a temporary tar snapshot. Capture copyright bytes separately; compare those bytes after restoring any notice alias.
 
 Shared paths stay when any retained package owns them. Preserve generated passwd/group identity files, live alternatives and shared licence texts.
 Materialize a retained package's copyright bytes when removing its documentation owner would break an alias.
@@ -130,7 +132,9 @@ Capture these expectations before purge, independently of final status records.
 
 Use dpkg's explicit dependency and essential-package overrides only in the disposable root. Purge the other packages first and dpkg last.
 Read final status without invoking the removed manager; require the original installed set minus exactly the approved removal set.
-Capture status and retained package info records, including file lists, checksums and control files for export, then remove only `/var/lib/dpkg`, `/var/lib/apt`, `/var/cache/apt` and `/var/lib/perl` state. Disable mmdebstrap's later apt cleanup because it recreates the removed state.
+Capture status and retained package info records, including file lists, checksums and control files for export.
+
+Remove only `/var/lib/dpkg`, `/var/lib/apt`, `/var/cache/apt` and `/var/lib/perl` state. Disable mmdebstrap's later apt cleanup because it recreates the removed state.
 
 Keep retained-owned configuration under `/etc/apt` and `/etc/dpkg`. Reconcile the realized retained payload again after cleanup, allowing only preserved-notice materialization and the named state removal.
 Verify required tools and identities before writing the inventory commitment and exporting metadata. Any failure prevents both image and release-manifest publication.
@@ -212,11 +216,11 @@ An amd64 hosted runner is not comparable to the historical arm64 host; record `N
 The release manifest keeps every existing identity field and filters `packages[]` to the final installed set, retaining each package's archive SHA-256 meaning.
 Each package entry adds `copyright: {path, sha256}`, naming its retained notice's absolute path and byte digest.
 
-`package_metadata` is base64 of deterministic gzip over UTF-8 JSON: `{"status":"Debian status text", "info":{"git.list":"file paths", "git.md5sums":"checksums"}}`.
+`package_metadata` is base64 of a deterministic gzip-compressed tar archive containing final `status`, retained `info/` records and `packages.json`. The latter must exactly equal the release JSON package list.
 Include complete final status and each retained package's existing info records, including file lists, checksums and control files. Status retains Debian source names and versions; absent Source means the binary identity.
 Require exact package/version/architecture agreement with `packages[]`, unique identities, installed status and one file list per retained package.
 
-Canonical JSON uses Python's standard encoder with sorted keys, compact separators, ASCII escaping and no trailing newline. Gzip uses timestamp zero and no filename.
+The tar archive fixes entry ordering, timestamps and numeric ownership. Gzip uses timestamp zero and no filename.
 The encoded release stays at most 1,048,576 bytes; decoded metadata stays at most 4,194,304 bytes, 512 packages and 1,024 info entries.
 Reject overflow while decompressing, duplicate keys/records, invalid text, unsupported names or paths before creating files.
 
@@ -224,8 +228,8 @@ Info keys must be retained package basenames, optionally architecture-qualified,
 Materialize only `var/lib/dpkg/status` and `var/lib/dpkg/info/<validated basename>` in a new empty upper directory.
 Notice paths must identify `/usr/share/doc/<package>/copyright`; hashes describe resolved bytes, including materialized notices.
 
-The finalizer writes `/etc/toolbox-inventory.sha256`: lowercase SHA-256 plus newline over canonical JSON containing only `packages` and `package_metadata`.
-The scanner checks that file from the read-only image before injecting records. A coherent omission from both external representations therefore fails with the original image.
+The builder writes `/etc/toolbox-inventory.sha256`: lowercase SHA-256 plus newline over the compressed metadata archive. That archive binds both package records and the retained package list.
+The scanner checks that file from the read-only image and requires the archived package list to equal the release list before injecting records. A coherent omission from both external representations therefore fails with the original image.
 Admission still verifies the existing signed manifest fields and byte limit; it need not parse compressed metadata.
 
 The existing sampler report format and comparison validation remain authoritative. No new measurement framework or comparator module is introduced.
@@ -320,6 +324,7 @@ Repeat repository-wide word-boundary searches for apt, dpkg, useradd and chpassw
 - **Database rationale:** M221 rejected deleting installed files while retaining records naming them. This work removes the manager and database together, retaining remaining-package records beside the image.
 - **Initial Perl decision:** Indy: "Qualify a smaller Perl runtime for Git; allow reduced general Perl support (Recommended)".
 - **Superseding Perl direction:** Indy: "since i donot see a point to use perl, as its only for git", then supplied Git's official `NO_PERL=YesPlease` build documentation. Qualify the packaged Git executable without Perl before considering a custom build.
+- **Builder shape:** Indy: "well build.sh simple have bunch of function that gets called, and assembles the image. manifest.txt is the feeder to it?", followed by "nothing else" and "Donot  complicate other". Use named shell functions and declarative manifest data.
 - **File scope:** Indy: "I feel manifest.txt and build.sh in toolbox/ folder are sufficient" and "I dont want those gazillion scripts/toolbox/*.py? what can we do better here?". Keep that folder to those two files and reuse existing proof locations.
 - **Delivery:** Indy: "Yes update and push the PR"; update existing PR #800 with code and keep it in draft until qualification finishes.
 - **Source revision:** `11883fdab`; fresh origin/main fetch found M221_002 unused.

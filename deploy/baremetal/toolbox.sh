@@ -82,7 +82,7 @@ install_toolbox() {
 # The image commits to its external records; decode nothing beyond the bounds.
 toolbox_decode_scan_inventory() {
   python3 -I - "$1" "$2" <<'PY'
-import base64, hashlib, json, re, sys, zlib
+import base64, hashlib, io, json, re, sys, tarfile, zlib
 from pathlib import Path
 def unique(pairs):
     value = {}
@@ -102,17 +102,23 @@ assert image.name == f"toolbox-{sha}.erofs", "image filename differs from releas
 with image.open("rb") as handle:
     assert hashlib.file_digest(handle, "sha256").hexdigest() == sha, "image digest mismatch"
 payload = {key: release[key] for key in ("packages", "package_metadata")}
-canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+compressed = base64.b64decode(payload["package_metadata"], validate=True)
 marker = lower / "etc/toolbox-inventory.sha256"
 assert marker.is_file() and not marker.is_symlink(), "inventory commitment must be a regular file"
 with marker.open("rb") as handle:
-    assert handle.read(66) == hashlib.sha256(canonical).hexdigest().encode() + b"\n", "inventory commitment mismatch"
+    assert handle.read(66) == hashlib.sha256(compressed).hexdigest().encode() + b"\n", "inventory commitment mismatch"
 assert isinstance(payload["package_metadata"], str), "metadata must be base64 text"
 decoder = zlib.decompressobj(31)
-decoded = decoder.decompress(base64.b64decode(payload["package_metadata"], validate=True), 4_194_305)
+decoded = decoder.decompress(compressed, 4_194_305)
 assert len(decoded) <= 4_194_304 and decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail, "invalid or oversized metadata"
-metadata = json.loads(decoded.decode("utf-8"), object_pairs_hook=unique)
-assert isinstance(metadata, dict) and set(metadata) == {"status", "info"}, "invalid metadata fields"
+with tarfile.open(fileobj=io.BytesIO(decoded)) as archive:
+    members = archive.getmembers()
+    assert len(members) <= 1027 and len({member.name for member in members}) == len(members)
+    assert all(member.isfile() or (member.isdir() and member.name == "info") for member in members)
+    files = {member.name: archive.extractfile(member).read().decode("utf-8") for member in members if member.isfile()}
+assert set(files) >= {"status", "packages.json"} and all(name in ("status", "packages.json") or name.startswith("info/") for name in files)
+assert json.loads(files.pop("packages.json"), object_pairs_hook=unique) == payload["packages"], "package commitment mismatch"
+metadata = {"status": files.pop("status"), "info": {name[5:]: value for name, value in files.items()}}
 assert isinstance(payload["packages"], list) and 0 < len(payload["packages"]) <= 512
 assert isinstance(metadata["status"], str) and metadata["status"].strip() and "\0" not in metadata["status"]
 metadata["status"].encode("utf-8")

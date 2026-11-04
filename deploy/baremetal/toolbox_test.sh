@@ -136,7 +136,7 @@ test_toolbox_storage_home_follows_the_env_file
 
 # Exercise the public reconstruction boundary without mounting or modifying an image.
 if python3 -I - "$SCRIPT_DIR/toolbox.sh" "$WORK_DIR" <<'PYTEST'
-import base64, copy, gzip, hashlib, json, subprocess, sys
+import base64, copy, gzip, hashlib, io, json, subprocess, sys, tarfile
 from pathlib import Path
 library, scratch = sys.argv[1], Path(sys.argv[2])
 root = scratch / "inventory"
@@ -159,7 +159,17 @@ for name in ("python3", "git"):
     info[f"{name}.postinst"] = "#!/bin/sh\nprintf 'scanner data only'\n"
 metadata = {"status": "\n".join(blocks), "info": info}
 canonical = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
-encode = lambda value: base64.b64encode(gzip.compress(canonical(value), mtime=0)).decode()
+def encode(value, package_set=packages):
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w") as archive:
+        files = {"status": value["status"], "packages.json": canonical(package_set).decode(),
+                 **{f"info/{name}": text for name, text in value["info"].items()}}
+        for name, text in files.items():
+            member = tarfile.TarInfo(name)
+            data = text.encode()
+            member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
+    return base64.b64encode(gzip.compress(output.getvalue(), mtime=0)).decode()
 release = {"sha256": sha, "length": len(image_bytes), "packages": packages,
            "package_metadata": encode(metadata)}
 manifest = image.with_suffix(".json")
@@ -167,8 +177,11 @@ marker = lower / "etc/toolbox-inventory.sha256"
 def write(value, commit=True):
     manifest.write_bytes(canonical(value))
     if commit:
-        payload = {key: value[key] for key in ("packages", "package_metadata")}
-        marker.write_text(hashlib.sha256(canonical(payload)).hexdigest() + "\n")
+        try:
+            compressed = base64.b64decode(value["package_metadata"], validate=True)
+        except ValueError:
+            compressed = b""
+        marker.write_text(hashlib.sha256(compressed).hexdigest() + "\n")
 def run():
     return subprocess.run(["bash", "-euo", "pipefail", "-c",
                            'source "$1"; toolbox_restore_scan_inventory "$2" "$3" "$4"',
@@ -198,6 +211,8 @@ for label, change in (
     write(release)
     value = copy.deepcopy(release)
     change(value)
+    if label == "coherent package omission":
+        value["package_metadata"] = encode({"status": blocks[0], "info": {key: text for key, text in info.items() if key.startswith("python3.")}}, value["packages"])
     refuse(label, value, commit=False)
 for label, change in (
     ("duplicate package", lambda value: value["packages"].append(value["packages"][0])),
@@ -207,11 +222,13 @@ for label, change in (
     ("unsafe copyright", lambda value: value["packages"][0]["copyright"].update(path="../../escape")),
     ("wrong image length", lambda value: value.update(length=len(image_bytes) + 1)),
     ("invalid base64", lambda value: value.update(package_metadata="!")),
-    ("concatenated compressed records", lambda value: value.update(package_metadata=value["package_metadata"] * 2)),
+    ("concatenated compressed records", lambda value: value.update(package_metadata=base64.b64encode(base64.b64decode(value["package_metadata"]) * 2).decode())),
     ("expanded metadata above limit", lambda value: value.update(package_metadata=base64.b64encode(gzip.compress(b"x" * 4_194_305)).decode())),
 ):
     value = copy.deepcopy(release)
     change(value)
+    if value["packages"] != release["packages"]:
+        value["package_metadata"] = encode(metadata, value["packages"])
     refuse(label, value)
 for label, value in (
     ("path traversal", {**metadata, "info": {**info, "../escape.list": "x"}}),
