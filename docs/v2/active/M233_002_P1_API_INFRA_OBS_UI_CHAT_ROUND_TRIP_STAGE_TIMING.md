@@ -17,6 +17,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Workstream:** 002
 **Date:** Nov 04, 2026
 **Status:** IN_PROGRESS
+**Open work:** Per-request daemon stages (§1), browser/edge timing (§3), and remaining sizing checks (§0.2–§0.3).
 **Priority:** P1 — operator-facing: the production daemon size (three `shared-cpu-4x` 4 GB machines at about $80 a month, or three `performance-2x` 4 GB at $198 a month; source in Discovery) is chosen without per-event evidence of where a chat's time goes
 **Categories:** API, INFRA, OBS, UI
 **Batch:** B1 — single workstream; Section prerequisites are stated in each Section
@@ -110,9 +111,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 | `playbooks/operations/observability/002_round_trip_percentiles.md` | EDIT | §4: extend M238's query page with the row, units and bounded-sample limits |
 | `docs/architecture/observability.md` | EDIT | §1–§4: span layer placement, runner collector built for traces and metrics (logs not yet), stage attributes, edge `Server-Timing` |
 | `playbooks/operations/observability/04_verify.sh` | EDIT | §4: compare queries, datasource identity, reducers and variables |
-| `playbooks/operations/observability/observability_assets_test.sh` | CREATE | §4: refuse foreign datasources, unscoped queries and unowned metrics |
-| `playbooks/operations/observability/observability_verify_test.sh` | EDIT | §4: detect query, reducer and variable drift |
-| `playbooks/operations/acceptance/baselines/M238_001-20261104/` | CREATE | §4: measured dev sample, raw datasource responses and stated manual limits |
+| `docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` | EDIT | §4: measured dev sample, historical evidence links and stated manual limits |
 | `docs/v2/done/M225_001_P1_API_OBS_LEASE_PICKUP_WAKE_HINT.md` | EDIT | Record the same chats' daemon pickup values and retrieval limitation |
 | `docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` | EDIT | Record Dimension 4.4's evidence and remaining manual witness |
 | `docs/v2/{done/M233_001,active/M233_002}_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md` | MOVE / CREATE / EDIT | Close predecessor shipped scope and track every remaining timing requirement |
@@ -219,9 +218,9 @@ The dashboard has a Tempo datasource variable (`tempo`, restricted to that datas
 
 Each panel requests a span table with at most 1,000 matches, keeps its numeric field and reduces it with p95 and p99. Percentiles describe the returned sample; the panel description discloses truncation. Missing attributes have no samples; they are not zero. Segments overlap and are not summed. Plain search works without metrics-generator local blocks. Future per-verb timelines remain in §1–§3; this row does not imply those spans exist.
 
-- **Dimension 4.1** — The asset check accepts only the declared Tempo variable beside the pinned Prometheus datasource and refuses foreign datasources or unscoped fleet queries → Test `observability_assets_test.sh`.
-- **Dimension 4.2** — The drift check compares Tempo queries, datasource identity, reducers and variable definitions → Test `test_should_reject_each_resource_drift` in `observability_verify_test.sh`.
-- **Dimension 4.3** — PARTIAL — Grafana's datasource API returns ten delivery spans with numeric segment fields; the Explore query screenshot is recorded and the rendered-row witness remains unavailable. Evidence: `playbooks/operations/acceptance/baselines/M238_001-20261104/README.md` and `receipt.json` beside it (raw frames retained in its linked historical archive). No deployment of the dashboard asset is claimed.
+- **Dimension 4.1** — The asset check accepts only the declared Tempo variable beside the pinned Prometheus datasource and refuses foreign datasources or unscoped fleet queries → Validation: `bash playbooks/operations/observability/01_assets_check.sh`.
+- **Dimension 4.2** — The drift check compares Tempo queries, datasource identity, reducers and variable definitions → Validation: `bash playbooks/operations/observability/04_verify.sh` with the approved dev credentials.
+- **Dimension 4.3** — PARTIAL — Grafana's datasource API returns ten delivery spans with numeric segment fields; the Explore query screenshot is recorded and the rendered-row witness remains unavailable. Evidence: M238_001’s Nov 04 Discovery and its Git archive links. M238_003 applies the six dashboards; Tempo’s zero-value rendered-row witness remains open.
 
 ### Shipped predecessor scope
 
@@ -309,8 +308,8 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 | 3.2 | unit | `server_timing_never_changes_the_answer` | Upstream refuses 409 or is unreachable → same status and body as without timing; `auth` present |
 | 3.3 | unit | `delivery_marks_send_accepted_first_frame_complete` | Simulated send → four marks for one send |
 | 3.4 | manual | `manual_probes_satisfy_coverage_and_edge_ordering` | N dev probes find all reached normal and fallback spans, with browser accepted-minus-send ≥ route auth-plus-upstream ≥ steer duration |
-| 4.1 | unit | `observability_assets_test.sh` | Panel with `${tempo}` passes; panel with any other datasource UID fails naming it |
-| 4.2 | unit | `test_should_reject_each_resource_drift` | Matching Tempo queries, reducers and variables pass; mutations to each fail closed |
+| 4.1 | asset validation | `bash playbooks/operations/observability/01_assets_check.sh` | Panel with `${tempo}` passes; panel with any other datasource UID fails naming it |
+| 4.2 | live drift validation | `bash playbooks/operations/observability/04_verify.sh` | Matching Tempo queries, reducers and variables pass; mutations to each fail closed |
 | 4.3 | manual | `manual_round_trip_row_renders` | Ten dev delivery spans yield p95/p99 with the declared units; absent segments remain empty rather than zero; screenshot retained |
 
 
@@ -451,3 +450,5 @@ No dead code is removed by the delivery-row change. Shipped authoring cleanup re
   histogram in Grafana. This session independently confirmed target_info,
   provider-turn count/sum and a runner.lease result. Real-sandbox admission
   remains pending; matching the sandbox uid is not the same witness.
+
+- **Owner-requested cleanup:** Indy removed the standalone dashboard regression suites and dev evidence folder after the dashboard work. The production asset validator and live drift check remain. Per-request daemon stages, browser/edge timing and sizing checks remain unimplemented or unverified; this successor stays active.

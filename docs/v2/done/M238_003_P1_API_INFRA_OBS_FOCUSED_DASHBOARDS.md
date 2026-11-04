@@ -398,3 +398,24 @@ Three coverage reports put all 38 measured changed Rust files above 99%; the mis
 At this checkpoint, the kernel reproducibility and toolbox checks failed.
 These results remain incomplete; this documentation move does not waive either gate.
 M233_002 stays active for its separate unfinished timing requirements.
+
+
+### Owner-requested fixture cleanup
+
+| Surface | Action | Reason |
+|---|---|---|
+| Dev evidence folder and four listed test/fixture files | DELETE | Owner-requested cleanup |
+| `make/quality.mk`, `make/check-safety-gates.mk` | EDIT | Remove the deleted test target and prerequisite |
+| Observability playbooks | EDIT | Remove commands and local evidence links that no longer exist |
+| M233_002, M238_001 and M225_001 | EDIT | Keep open requirements and measured results readable after cleanup |
+
+Indy requested: "remove these", naming the dev evidence folder, both dashboard regression suites, the collector conversion test and its Dockerfile.
+Remove their Make wiring and update live instructions that referred to those files.
+The six dashboard definitions, alert definitions, asset validator and live drift check remain.
+
+The measurement summaries stay in M238_001 and M225_001 Discovery.
+Their original screenshots and raw records remain in Git history.
+Historical test commands above describe earlier verification, not the current check inventory.
+
+M233_002 remains active because per-request daemon stages and browser/edge timing were never implemented.
+Its header now states the remaining work explicitly.
