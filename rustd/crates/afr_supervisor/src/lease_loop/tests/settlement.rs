@@ -91,11 +91,15 @@ async fn a_failed_memory_push_still_reports() {
     assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
 }
 
-/// A directory occupies this lease's report path, so its durable write fails.
-fn unspoolable(special: Special) -> Rig {
-    let rig = rig(special);
+/// `rig` with a directory where this lease's report goes, so its durable
+/// write fails.
+fn without_spool(rig: Rig) -> Rig {
     fs::create_dir(rig.home.spool().join(format!("{LEASE_ID}.json"))).unwrap();
     rig
+}
+
+fn unspoolable(special: Special) -> Rig {
+    without_spool(rig(special))
 }
 
 #[tokio::test(start_paused = true)]
@@ -218,3 +222,72 @@ async fn test_an_unspooled_report_lost_destroys_what_it_parked() {
         "a report that never arrived is logged lost"
     );
 }
+
+/// A lease carrying an empty memory window, as a daemon at this release
+/// issues every lease, an empty window included.
+fn window_lease() -> afd_wire::lease::LeasePayload<'static> {
+    let mut payload = lease(LEASE_ID, FLEET_ID);
+    payload.memory = Some(afd_wire::memory::MemoryHydrateResponse {
+        memory: Vec::new(),
+        shared: Vec::new(),
+        publish: false,
+    });
+    payload
+}
+
+/// The memory and report calls a lease made, in order.
+fn settle_verbs(calls: &[Call]) -> Vec<Verb> {
+    calls
+        .iter()
+        .map(|call| call.verb)
+        .filter(|verb| matches!(verb, Verb::Hydrate | Verb::Capture | Verb::Report))
+        .collect()
+}
+
+/// The fake agent's one memory entry, as the wire spells it.
+fn the_runs_memory() -> serde_json::Value {
+    serde_json::json!([{ "key": "k", "content": "v", "category": "core" }])
+}
+
+/// What one report body carried of the one-post fields.
+fn one_post_fields(body: &serde_json::Value) -> (Option<serde_json::Value>, bool) {
+    let segments = body["telemetry"].get("segments");
+    let timed = segments.is_some_and(|segments| segments["settle_ms"].is_u64());
+    (body.get("memory").cloned(), timed)
+}
+
+/// A lease that carried its window reads no memory and settles in one post
+/// carrying the run's memory and its segments.
+#[tokio::test(start_paused = true)]
+async fn test_settle_is_one_post_on_a_window_lease() {
+    let mut rig = rig(|_call| None);
+
+    rig.run(&window_lease()).await.unwrap();
+
+    let calls = rig.calls();
+    assert_eq!(
+        (settle_verbs(&calls), one_post_fields(&reported(&calls))),
+        (vec![Verb::Report], (Some(the_runs_memory()), true))
+    );
+}
+
+/// A lease without a window, from an older daemon, reads memory, pushes it,
+/// and sends a report without the fields that daemon would refuse.
+#[tokio::test(start_paused = true)]
+async fn test_settle_without_a_window_posts_as_before() {
+    let mut rig = rig(|_call| None);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
+
+    let calls = rig.calls();
+    assert_eq!(
+        (settle_verbs(&calls), one_post_fields(&reported(&calls))),
+        (
+            vec![Verb::Hydrate, Verb::Capture, Verb::Report],
+            (None, false)
+        )
+    );
+}
+
+#[path = "fallback.rs"]
+mod fallback;

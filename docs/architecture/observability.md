@@ -130,7 +130,7 @@ refusing work because a budget is spent, which is the system doing what its
 budgets say rather than failing to do it. Counting a deliberate refusal as an
 availability miss would make the indicator worse the better the budgets work.
 
-#### Why the runner objective excludes workload faults
+### Why the runner objective excludes workload faults
 
 An error budget is a promise about what this control plane controls. `FailureClass` carries eleven
 members and only five of them are ours: `startup_posture`, `runner_crash`, `transport_loss`,
@@ -431,6 +431,16 @@ own root trace carrying `agentsfleet.lease.id` and `agentsfleet.event.id`, so
 it joins `fleet.delivery` by attribute, and no W3C context crosses the runner
 protocol.
 
+**`fleet.delivery` is the chat round trip.** It starts at the event's creation and ends when `event_complete` publishes, both on this daemon's clock. The start is the lease row's `event_created_at`; the end is the publish instant `Plane::announce` reads.
+
+Beside its identity the span carries one attribute per segment. `agentsfleet.delivery.queue_wait_ms` (event creation to lease issue) and `complete_ms` (report receipt to publish) are measured here. `memory_ms`, `model_ms`, `tools_ms`, `sandbox_wait_ms` and `settle_ms` come from the runner's `telemetry.segments`.
+
+Every runner-reported figure is capped at `MAX_RUN`. For a reclaimed event, `queue_wait_ms` and `event_to_complete` include the earlier attempt, the round trip its owner waited. `runner_lease_issued`'s `queue_wait_ms` counts only fresh entries.
+
+The segments are not a partition: the sandbox wait runs beside the model's time. A start the span cannot place falls back to the end less the reported `wall_ms`. Per-fleet p95 and p99 come from Tempo on `gen_ai.agent.id` (`playbooks/operations/observability/002_round_trip_percentiles.md`).
+
+Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `lease_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
+
 **`fleet.delivery` is a custom control-plane span.** It is a root of its own,
 so it never claims to be half of a runner trace
 (`rustd/crates/afd_observability/src/delivery/mod.rs`). `DELIVERY_SPAN_KEYS` in
@@ -459,6 +469,26 @@ one is a matched request and therefore a span. Span volume grows with runner
 count until a route policy fills the declared `reason` set (`noisy_route`,
 `runner_rejection_budget`, `server_error_budget`, `sampled_success_budget`,
 `sample_miss`).
+
+### The chat path's signals
+
+What each step a chat crosses emits, on `fde585971` plus M238. A row's gap is a signal that does not exist yet, not one that is broken.
+
+| Step | Logs | Metrics | Trace |
+|---|---|---|---|
+| Steer admitted (`afd_api_tenant` steer handler, `afd_admission`) | admission refusals | `agentsfleet_admissions_total{outcome}` | request span only |
+| Doorbell ring (`afd_dragonfly/src/doorbell`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
+| Held heartbeat (`afd_api_runner` heartbeat, `wake.rs`) | `runner_wake_refused` | `agentsfleet_runner_wake_answers_total{reason}` | request span only |
+| Lease issued (`afd_fleet/src/lease/deliver`) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | `agentsfleet_lease_polls_total` and its per-poll ratios; `delivery_stage{event_to_lease}` | request span only |
+| Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease`, same condition |
+| Report settled (`afd_fleet/src/lease/report`) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.delivery` with segment attributes |
+| First chunk (`afd_fleet/src/lease/activity`) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, zombie_to_first_chunk}` | none |
+
+Gaps left by M238, each named in M233_001:
+
+- The steer and lease handlers carry no stage attributes on their request spans (§1).
+- The runner's own families and spans reach no backend on dev until its collector is built (§2).
+- The edge reports nothing of its own (§3).
 
 ## Library read stages are metrics, not spans
 

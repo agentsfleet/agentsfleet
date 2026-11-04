@@ -83,4 +83,10 @@ pub struct LeasePayload<'a> {
     /// Absent on older leases or hosts without an enabled reviewed selection.
     #[serde(default)]
     pub decision: Option<Box<crate::decision::DecisionAssignment>>,
+    /// The fleet's memory window, as `GET /v1/runners/me/memory/{fleet_id}`
+    /// returns it. A daemon that reads a report's `memory` sends it on every
+    /// lease, an empty window included. It is absent when the read failed; the
+    /// runner then reads memory itself.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<crate::memory::MemoryHydrateResponse<'a>>,
 }

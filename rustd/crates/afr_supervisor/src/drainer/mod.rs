@@ -14,9 +14,12 @@ use tokio::sync::Notify;
 use crate::client::{ControlPlane, endless};
 use crate::halt::Halt;
 use crate::holds::Holds;
-use crate::report_spool::{Delivery, ReportSpool, Spooled};
+use crate::report_spool::{Delivery, ReportSpool, Spooled, reshaped};
 
 const EVENT_REPLAY_FAILED: &str = "report_spool_replay_failed";
+const EVENT_MEMORY_DROPPED: &str = "report_memory_dropped";
+const EVENT_RESHAPE_UNSPOOLED: &str = "report_reshape_unspooled";
+const EVENT_REJECTED_KEPT: &str = "report_spool_rejected_kept";
 
 /// The drain, over one spool.
 #[derive(Debug)]
@@ -64,9 +67,15 @@ impl Drainer<'_> {
         };
         let mut still_held = false;
         for spooled in pending {
-            match spooled.deliver(self.plane).await {
+            // A reshaped report's own answer goes through the same branches,
+            // so one the daemon keeps is backed off and retried like any other.
+            let delivered = match spooled.deliver(self.plane).await {
+                Ok(Delivery::Rejected(refusal)) => self.reshape(&spooled, refusal).await,
+                delivered => delivered,
+            };
+            match delivered {
                 Ok(Delivery::Settled) => {}
-                Ok(Delivery::Superseded | Delivery::Rejected) => self.superseded(&spooled),
+                Ok(Delivery::Superseded | Delivery::Rejected(_)) => self.superseded(&spooled),
                 Ok(Delivery::Kept(failure)) => {
                     if self.halt.stops_on(&failure) {
                         return true;
@@ -80,6 +89,60 @@ impl Drainer<'_> {
             }
         }
         still_held
+    }
+
+    /// A one-post report an older replica refused for its shape, mid-deploy:
+    /// posted again without the run's memory and segments, so the answer is
+    /// kept though the memory is not. The settle that first posted it pushes
+    /// the memory itself; a report that reached the drain has no lease left
+    /// to push it under. Answers the reshaped report's delivery, or the
+    /// refusal itself when the report cannot be reshaped or spooled again.
+    ///
+    /// # Errors
+    /// A reshaped entry that cannot be removed or moved aside.
+    async fn reshape(&self, spooled: &Spooled, refusal: crate::Error) -> crate::Result<Delivery> {
+        let Some(plain) = reshaped(&refusal, spooled.bytes()) else {
+            return Ok(Delivery::Rejected(refusal));
+        };
+        let Ok(lease) = Uuid7::parse(spooled.lease_id()) else {
+            return Ok(Delivery::Rejected(refusal));
+        };
+        let lease_id = lease.as_str();
+        let cause_error_code = refusal.code().as_str();
+        let plain = match self.spool.hold(&lease, plain).await {
+            Ok(plain) => plain,
+            Err(failure) => {
+                let error_code = failure.code().as_str();
+                let event = EVENT_RESHAPE_UNSPOOLED;
+                tracing::warn!(
+                    error_code,
+                    cause_error_code,
+                    lease_id,
+                    event,
+                    "the reshaped report could not be spooled; the refused copy stays aside"
+                );
+                return Ok(Delivery::Rejected(refusal));
+            }
+        };
+        let event = EVENT_MEMORY_DROPPED;
+        tracing::warn!(
+            cause_error_code,
+            lease_id,
+            event,
+            "an older daemon refused the one-post report; it is posted again without the run's memory"
+        );
+        let delivered = plain.deliver(self.plane).await;
+        if let Err(failure) = self.spool.forget_rejected(&lease).await {
+            let error_code = failure.code().as_str();
+            let event = EVENT_REJECTED_KEPT;
+            tracing::warn!(
+                error_code,
+                lease_id,
+                event,
+                "the refused one-post copy stays in the spool for the boot sweep"
+            );
+        }
+        delivered
     }
 
     /// Ends the hold `spooled`'s lease parked, as the lease's own post does
@@ -114,3 +177,7 @@ fn replay_failed(failure: &crate::Error) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "reshape_tests.rs"]
+mod reshape_tests;

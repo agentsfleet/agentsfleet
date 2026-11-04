@@ -11,6 +11,8 @@ use afd_wire::memory::{
 use afr_agent::Checkpoint;
 use afr_telemetry::record;
 
+use zeroize::Zeroize;
+
 use crate::client::{Body, ControlPlane, retrying};
 use crate::error::Result;
 
@@ -34,9 +36,9 @@ pub(crate) async fn capture(
     plane: &ControlPlane,
     fleet_id: &Uuid7,
     lease: &LeasePayload<'_>,
-    memory: Vec<MemoryDelta<'static>>,
+    memory: &CapturedMemory,
 ) -> Result<()> {
-    let request = push_request(lease, memory);
+    let request = push_request(lease, memory.views());
     retrying(|| plane.capture(fleet_id, &request))
         .await
         .inspect_err(counted)
@@ -50,12 +52,74 @@ fn counted(failure: &crate::Error) {
 /// `memory`, fenced by `lease`'s token.
 fn push_request<'a>(
     lease: &'a LeasePayload<'_>,
-    memory: Vec<MemoryDelta<'static>>,
+    memory: Vec<MemoryDelta<'a>>,
 ) -> MemoryPushRequest<'a> {
     MemoryPushRequest {
         lease_id: Cow::Borrowed(&lease.lease_id),
         fencing_token: lease.fencing_token,
         memory,
+    }
+}
+
+/// What a run learned, held from the run's end until the settle hands it on,
+/// and zeroed when dropped.
+///
+/// The entries are the fleet's memory in clear. Every string the run owns is
+/// overwritten before its allocation is freed, in the derive-less shape
+/// `afd_crypto`'s `zero_on_drop!` uses; a `'static` borrow is no run's data.
+#[derive(Default)]
+pub(crate) struct CapturedMemory(Vec<MemoryDelta<'static>>);
+
+/// The count of entries and nothing of what they say: the entries are the
+/// fleet's memory in clear.
+impl std::fmt::Debug for CapturedMemory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CapturedMemory")
+            .field("entries", &self.0.len())
+            .finish()
+    }
+}
+
+impl CapturedMemory {
+    /// Borrowed views of the entries, for one request body.
+    pub(crate) fn views(&self) -> Vec<MemoryDelta<'_>> {
+        self.0.iter().map(MemoryDelta::view).collect()
+    }
+}
+
+impl From<Vec<MemoryDelta<'static>>> for CapturedMemory {
+    fn from(deltas: Vec<MemoryDelta<'static>>) -> Self {
+        Self(deltas)
+    }
+}
+
+impl CapturedMemory {
+    /// Overwrites every string the run owns in place and leaves each entry
+    /// empty, before any allocation is freed.
+    fn scrub(&mut self) {
+        for delta in &mut self.0 {
+            for text in [&mut delta.key, &mut delta.content, &mut delta.category] {
+                match text {
+                    // Zeroed in place: the allocation stays, emptied, until
+                    // the clear frees it.
+                    Cow::Owned(owned) => owned.zeroize(),
+                    Cow::Borrowed(_) => *text = Cow::Borrowed(""),
+                }
+            }
+        }
+    }
+}
+
+impl Zeroize for CapturedMemory {
+    fn zeroize(&mut self) {
+        self.scrub();
+        self.0.clear();
+    }
+}
+
+impl Drop for CapturedMemory {
+    fn drop(&mut self) {
+        self.zeroize();
     }
 }
 

@@ -16,7 +16,7 @@ use afd_wire::event::EventType;
 use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use serde_json::Value;
 
-use super::render;
+use super::{Context, render};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::{FRESH_CONTEXT, Installed};
 use crate::lease::test_dead;
@@ -92,8 +92,7 @@ fn rendered(resume_hold: bool) -> Value {
         EventType::Chat,
         &installed,
         policy(),
-        Vec::new(),
-        None,
+        Context::default(),
     )
     .expect("a lease renders");
     serde_json::from_str(&answer).expect("the answer is JSON")

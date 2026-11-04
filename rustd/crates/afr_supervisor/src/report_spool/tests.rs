@@ -160,7 +160,7 @@ async fn a_report_the_daemon_cannot_read_is_set_aside_not_retried() {
     })
     .await;
 
-    assert!(matches!(delivery, Delivery::Rejected));
+    assert!(matches!(delivery, Delivery::Rejected(_)));
     assert_eq!(left, 0, "no longer pending");
     let set_aside = home.spool().join(LEASE_ID).with_extension("rejected");
     assert!(set_aside.exists(), "kept for an operator");

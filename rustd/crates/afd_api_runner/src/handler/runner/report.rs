@@ -37,8 +37,8 @@ use afd_fleet::lease::report::Reconciled;
 use afd_observability::metrics::label::cost::ErrorType;
 use afd_observability::producers::cost::{self, Spend};
 use afd_observability::producers::fleet::runner;
-use afd_observability::{Delivery, Telemetry};
-use afd_wire::report::{Outcome, ReportRequest, ReportResponse};
+use afd_observability::{Delivery, Segments, Telemetry};
+use afd_wire::report::{Outcome, ReportRequest, ReportResponse, RunSegments};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -110,9 +110,10 @@ pub(crate) async fn handle<D: Services>(
         return malformed(usage::REPORT_LINES.pick(&report));
     }
 
+    let received = services.now();
     match services
         .leases()
-        .report(runner.id(), &request, services.now())
+        .report(runner.id(), &request, received)
         .await
     {
         // The drained amount is answered by the plane and deliberately not put
@@ -148,7 +149,13 @@ pub(crate) async fn handle<D: Services>(
                 clippy::disallowed_methods,
                 reason = "a span ends at a SystemTime at the host's full precision; afd_core::clock::now truncates to milliseconds"
             )]
-            delivery_of(&settled, &request).record(SystemTime::now());
+            let ended = settled
+                .completed_at
+                .map_or_else(SystemTime::now, SystemTime::from);
+            let complete = settled
+                .completed_at
+                .map(|completed| afd_core::clock::elapsed(received, completed));
+            delivery_of(&settled, &request, complete).record(ended);
             meter(&settled, &request, runner.id().as_str());
             Json(ReportResponse { ok: true }).into_response()
         }
@@ -207,7 +214,11 @@ fn spend_of<'a>(settled: &'a Reconciled, request: &ReportRequest<'_>) -> Spend<'
 /// Input is the whole prompt, cache reads and writes included, because the
 /// standard's `gen_ai.usage.input_tokens` counts every cached class: the lines
 /// store the three apart, so leaving any out would undercount the run.
-fn delivery_of<'a>(settled: &'a Reconciled, request: &'a ReportRequest<'a>) -> Delivery<'a> {
+fn delivery_of<'a>(
+    settled: &'a Reconciled,
+    request: &'a ReportRequest<'a>,
+    complete: Option<Duration>,
+) -> Delivery<'a> {
     Delivery {
         tenant_id: settled.tenant_id.as_str(),
         workspace_id: settled.workspace_id.as_str(),
@@ -219,6 +230,32 @@ fn delivery_of<'a>(settled: &'a Reconciled, request: &'a ReportRequest<'a>) -> D
         input_tokens: count(settled.tokens.prompt()),
         output_tokens: count(settled.tokens.output_tokens),
         wall: reported_wall(request),
+        opened_at: Some(SystemTime::from(settled.event_created_at)),
+        segments: segments_of(settled, request.telemetry.segments, complete),
+    }
+}
+
+/// The round trip's segments: the queue wait and `complete` (the report's
+/// receipt to its completion publish) measured on this daemon's clock, the
+/// rest as the runner reported them. The span caps every one.
+fn segments_of(
+    settled: &Reconciled,
+    runner: Option<RunSegments>,
+    complete: Option<Duration>,
+) -> Segments {
+    let runner = runner.unwrap_or_default();
+    let reported = |ms: Option<u64>| ms.map(Duration::from_millis);
+    Segments {
+        queue_wait: Some(afd_core::clock::elapsed(
+            settled.event_created_at,
+            settled.lease_created_at,
+        )),
+        memory: reported(runner.memory_ms),
+        model: reported(runner.model_ms),
+        tools: reported(runner.tools_ms),
+        sandbox_wait: reported(runner.sandbox_wait_ms),
+        settle: reported(runner.settle_ms),
+        complete,
     }
 }
 
@@ -244,7 +281,12 @@ mod tests {
 
     use afd_core::id::Uuid7;
     use afd_fleet::lease::report::{Reconciled, RunTokens};
-    use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
+    use std::time::{Duration, SystemTime};
+
+    use afd_observability::Segments;
+    use afd_wire::report::{
+        Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry, RunSegments,
+    };
 
     use super::{delivery_of, spend_of};
 
@@ -277,7 +319,27 @@ mod tests {
             model: "claude-opus-5".to_owned(),
             repeated: false,
             tokens,
+            event_created_at: afd_core::clock::instant_at(after(0)),
+            lease_created_at: afd_core::clock::instant_at(after(QUEUE_WAIT_MS)),
+            completed_at: Some(afd_core::clock::instant_at(after(COMPLETED_MS))),
         })
+    }
+
+    /// When the fixture event was created.
+    const CREATED_AT_SECONDS: u64 = 1_767_225_600;
+    /// Event creation to lease issue, in the fixture.
+    const QUEUE_WAIT_MS: u64 = 40;
+    /// Event creation to the completion publish, in the fixture.
+    const COMPLETED_MS: u64 = 900;
+
+    /// The fixture's moment `offset_ms` after the event was created.
+    fn after(offset_ms: u64) -> SystemTime {
+        created() + Duration::from_millis(offset_ms)
+    }
+
+    /// When the fixture event was created, as the span's start reads it.
+    fn created() -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(CREATED_AT_SECONDS)
     }
 
     /// A processed report; the totals under test come from the lines, not here.
@@ -295,6 +357,7 @@ mod tests {
             telemetry: ReportTelemetry {
                 time_to_first_token_ms: 0,
                 wall_ms: 1_250,
+                segments: None,
             },
             checkpoint: ReportCheckpoint {
                 last_event_id: Cow::Borrowed("event-fixture"),
@@ -302,6 +365,7 @@ mod tests {
             },
             tool_calls: None,
             held_until: None,
+            memory: Vec::new(),
         }
     }
 
@@ -318,12 +382,64 @@ mod tests {
         assert_eq!(spend.cached_input_tokens, 400, "the read subset alone");
         assert_eq!(spend.output_tokens, 90);
 
-        let delivery = delivery_of(&settled, &request);
+        let delivery = delivery_of(&settled, &request, None);
         assert_eq!(
-            delivery.input_tokens, PROMPT,
+            (delivery.input_tokens, delivery.output_tokens),
+            (PROMPT, 90),
             "the span agrees with the meter"
         );
-        assert_eq!(delivery.output_tokens, 90);
+        Ok(())
+    }
+
+    /// The span starts at the event's creation and carries the daemon's two
+    /// segments beside the runner's, each where it was measured.
+    #[test]
+    fn test_span_joins_daemon_and_runner_segments() -> Result<(), &'static str> {
+        let settled = settled(TOKENS)?;
+        let mut request = request();
+        request.telemetry.segments = Some(RunSegments {
+            memory_ms: None,
+            model_ms: Some(500),
+            tools_ms: Some(0),
+            sandbox_wait_ms: None,
+            settle_ms: Some(30),
+        });
+        let complete = Some(Duration::from_millis(120));
+
+        let delivery = delivery_of(&settled, &request, complete);
+
+        assert_eq!(
+            (delivery.opened_at, delivery.segments),
+            (
+                Some(created()),
+                Segments {
+                    queue_wait: Some(Duration::from_millis(QUEUE_WAIT_MS)),
+                    memory: None,
+                    model: Some(Duration::from_millis(500)),
+                    tools: Some(Duration::ZERO),
+                    sandbox_wait: None,
+                    settle: Some(Duration::from_millis(30)),
+                    complete,
+                },
+            )
+        );
+        Ok(())
+    }
+
+    /// A runner from before the segments rode the report leaves only what the
+    /// daemon measured itself.
+    #[test]
+    fn test_span_without_runner_segments_keeps_the_daemons() -> Result<(), &'static str> {
+        let settled = settled(TOKENS)?;
+        let request = request();
+        let delivery = delivery_of(&settled, &request, None);
+        assert_eq!(
+            delivery.segments,
+            Segments {
+                queue_wait: Some(Duration::from_millis(QUEUE_WAIT_MS)),
+                ..Segments::default()
+            }
+        );
         Ok(())
     }
 }

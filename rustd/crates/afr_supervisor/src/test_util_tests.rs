@@ -49,6 +49,7 @@ async fn test_each_route_answers_as_its_verb() {
         selftest: None,
         holds: afd_wire::runner::HeldFleets::default(),
         closing: false,
+        wake: false,
     };
     let push = MemoryPushRequest {
         lease_id: LEASE_ID.into(),

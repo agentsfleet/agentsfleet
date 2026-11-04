@@ -8,14 +8,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_core::id::Uuid7;
-use afd_wire::memory::MemoryHydrateResponse;
+use std::borrow::Cow;
+
+use afd_wire::memory::{MemoryDelta, MemoryHydrateResponse};
 
 use afr_agent::Checkpoint as _;
 use afr_memory::Recall as _;
 use afr_telemetry::labels::PushFailure;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
-use super::{LeaseCheckpoint, Recaller, capture, hydrate};
+use super::{CapturedMemory, LeaseCheckpoint, Recaller, capture, hydrate};
 use crate::client::Verb;
 use crate::error;
 use crate::test_support::{
@@ -72,7 +74,7 @@ async fn capture_carries_the_lease_and_its_fencing_token() {
         &plane,
         &Uuid7::parse(FLEET_ID).unwrap(),
         &lease,
-        answer().memory,
+        &CapturedMemory::from(answer().memory),
     )
     .await
     .unwrap();
@@ -185,7 +187,12 @@ async fn test_memory_push_failure_is_counted() {
 
     let pushed = scoped(
         Arc::<Tally>::clone(&tally),
-        capture(&plane, &fleet, &lease, answer().memory),
+        capture(
+            &plane,
+            &fleet,
+            &lease,
+            &CapturedMemory::from(answer().memory),
+        ),
     )
     .await;
     assert!(pushed.is_err(), "the push did not land");
@@ -235,4 +242,61 @@ async fn every_push_failure_names_its_reason() {
     ] {
         assert_eq!(failure.push_failure(), reason, "{failure}");
     }
+}
+
+/// Two entries whose every string the run owns.
+fn owned_memory() -> CapturedMemory {
+    let entry = |key: &str, content: &str| MemoryDelta {
+        key: key.to_owned().into(),
+        content: content.to_owned().into(),
+        category: "core".to_owned().into(),
+        visibility: afd_wire::memory::Visibility::Fleet,
+    };
+    CapturedMemory::from(vec![
+        entry("deploy-key", "the staging host is 10.0.0.7"),
+        entry("owner", "routes to the on-call"),
+    ])
+}
+
+/// The captured memory is a zeroing type, and its debug form names how many
+/// entries it holds and nothing they say.
+#[test]
+fn test_sensitive_buffers_zeroize() {
+    fn pins<T: zeroize::Zeroize>() {}
+    pins::<CapturedMemory>();
+    assert_eq!(
+        format!("{:?}", owned_memory()),
+        "CapturedMemory { entries: 2 }"
+    );
+}
+
+/// Each string the run owns is zeroed in place, its allocation kept until
+/// the clear frees it; zeroizing then drops the entries.
+#[test]
+fn test_captured_memory_zeroizes_its_strings() {
+    let lengths: Vec<usize> = owned_memory()
+        .views()
+        .iter()
+        .flat_map(|delta| [delta.key.len(), delta.content.len(), delta.category.len()])
+        .collect();
+    let mut scrubbed = owned_memory();
+    scrubbed.scrub();
+    let after: Vec<(bool, usize, bool)> = scrubbed
+        .0
+        .iter()
+        .flat_map(|delta| [&delta.key, &delta.content, &delta.category])
+        .zip(&lengths)
+        .map(|(text, length)| match text {
+            Cow::Owned(owned) => (true, owned.len(), owned.capacity() >= *length),
+            Cow::Borrowed(borrowed) => (false, borrowed.len(), false),
+        })
+        .collect();
+    let mut zeroized = owned_memory();
+    zeroize::Zeroize::zeroize(&mut zeroized);
+
+    assert_eq!(
+        (after, zeroized.views()),
+        (vec![(true, 0, true); 6], Vec::new()),
+        "owned, emptied in place with its allocation, then the entries dropped"
+    );
 }

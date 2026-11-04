@@ -78,6 +78,15 @@ impl Leasing for NoWork {
         std::future::ready(Ok(r#"{"lease":null,"retry_after_ms":1000}"#.to_owned()))
     }
 
+    /// Ends every hold at once, as a plane with no work to wake for would.
+    fn wait_for_work(
+        &self,
+        _deadline: std::time::Duration,
+        _max: usize,
+    ) -> impl Future<Output = afd_fleet::lease::Waited> + Send {
+        std::future::ready(afd_fleet::lease::Waited::Deadline)
+    }
+
     /// Accepts every report and charges nothing, which is what a plane with no
     /// work in it would do.
     ///
@@ -92,7 +101,7 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _request: &afd_wire::report::ReportRequest<'_>,
-        _now: Timestamp,
+        now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send {
         std::future::ready(Ok(Reconciled {
             charged: afd_billing::Nanos::ZERO,
@@ -109,6 +118,9 @@ impl Leasing for NoWork {
             // prove the loud one is reachable never.
             repeated: false,
             tokens: RunTokens::default(),
+            event_created_at: now,
+            lease_created_at: now,
+            completed_at: Some(now),
         }))
     }
 

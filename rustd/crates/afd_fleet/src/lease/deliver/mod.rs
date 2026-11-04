@@ -14,12 +14,13 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Access;
 use afd_wire::policy::ExecutionPolicy;
+use futures_util::future;
 use jiff::Timestamp;
 
 use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
-use crate::lease::answer::{EVENT_LEASED, no_work, render};
+use crate::lease::answer::{Context, EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
 use crate::lease::history;
 use crate::lease::issue::Billed;
@@ -181,10 +182,15 @@ impl Plane {
         afd_observability::producers::fleet::runner::lease_taken(runner_id.as_str());
         let issued_at = queue_wait::issued_at(now, began);
         log_issued(runner_id, &issued.lease_id, &admitted.acquired, issued_at);
-        let history = history::turns(
-            self.thread.as_ref(),
-            &admitted.acquired,
-            admitted.event_type,
+        // Two independent reads, overlapped: the thread's turns and the
+        // fleet's memory window.
+        let (history, memory) = future::join(
+            history::turns(
+                self.thread.as_ref(),
+                &admitted.acquired,
+                admitted.event_type,
+            ),
+            self.window_for(&admitted.acquired.fleet_id),
         )
         .await;
         render(
@@ -193,8 +199,11 @@ impl Plane {
             admitted.event_type,
             &admitted.installed,
             policy,
-            history,
-            issued.decision,
+            Context {
+                history,
+                memory,
+                decision: issued.decision,
+            },
         )
         .map(|answer| Step::Go(Leased(answer)))
     }
@@ -332,6 +341,7 @@ const fn answers(asked: Option<Requested>) -> Ungranted {
 }
 
 mod queue_wait;
+mod window;
 
 /// The `runner_lease_issued` line, with how long the event waited for a runner.
 fn log_issued(runner_id: &Uuid7, lease_id: &Uuid7, acquired: &Acquired, issued_at: Timestamp) {

@@ -77,3 +77,17 @@ fn call(verb: Verb, path: &str, body: Option<&'static [u8]>) -> Call {
         body: body.map(Bytes::from_static),
     }
 }
+
+/// A reply body is held in a zeroing buffer: reverting the field to a plain
+/// `Bytes` stops this compiling.
+#[test]
+fn test_reply_body_is_a_zeroing_buffer() {
+    fn bytes_of(body: &super::Body) -> &zeroize::Zeroizing<Vec<u8>> {
+        &body.bytes
+    }
+    let body = super::Body {
+        verb: super::Verb::Lease,
+        bytes: zeroize::Zeroizing::new(b"{}".to_vec()),
+    };
+    assert_eq!(bytes_of(&body).as_slice(), b"{}");
+}

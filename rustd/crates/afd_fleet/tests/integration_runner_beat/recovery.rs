@@ -79,6 +79,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     selftest: None,
                     holds: afd_wire::runner::HeldFleets::default(),
                     closing: false,
+                    wake: false,
                 },
                 None,
                 fixtures.after(offset),

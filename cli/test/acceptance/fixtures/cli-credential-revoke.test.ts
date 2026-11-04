@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
-import {
-  CliCredentialRevokeFailed,
-  MAX_REVOKE_ATTEMPTS,
-  revokeCliCredential,
-} from "./cli-credential-revoke.ts";
+import { CliCredentialRevokeFailed, revokeCliCredential } from "./cli-credential-revoke.ts";
+import { MAX_ATTEMPTS } from "./retryable.ts";
 
 // The one teardown check kept in the suite: a revoke that gives up must name
 // the credential's id and never print the minted secret into CI logs. The
@@ -77,15 +74,15 @@ describe("revoking a CLI credential the API cannot answer for yet", () => {
 
     const failure = await revokeFailure(clock);
 
-    expect(probe.attempts()).toBe(MAX_REVOKE_ATTEMPTS);
+    expect(probe.attempts()).toBe(MAX_ATTEMPTS);
     expect(clock.delays).toEqual([500, 1000, 2000, 4000]); // pin test: literal is the contract
     expect(failure.name).toBe("CliCredentialRevokeFailed"); // pin test: literal is the contract
     expect(failure.message).toContain(`answered ${HTTP_SERVICE_UNAVAILABLE}: ${ANSWER_DETAIL}`);
-    expect(failure.message).toContain(`gave up after ${MAX_REVOKE_ATTEMPTS} attempts`);
+    expect(failure.message).toContain(`gave up after ${MAX_ATTEMPTS} attempts`);
     expect(failure.message).toContain(CLI_CREDENTIAL_ID);
     expect(failure.message).not.toContain(CLI_CREDENTIAL);
     expect(failure.retryable).toBe(true);
     expect(failure.cause).toBeInstanceOf(AggregateError);
-    expect((failure.cause as AggregateError).errors).toHaveLength(MAX_REVOKE_ATTEMPTS);
+    expect((failure.cause as AggregateError).errors).toHaveLength(MAX_ATTEMPTS);
   });
 });
