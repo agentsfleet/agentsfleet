@@ -4,11 +4,37 @@ use rig_core::completion::CompletionRequest;
 
 use super::{Configured, Result, error::ErrorKind};
 
-/// Unknown tokenizers estimate one token per UTF-8 byte; billing uses actual usage.
+/// What a model without a local tokenizer is estimated at, in percent of its
+/// `o200k_base` count.
+///
+/// Claude, Gemini and the open-weight models publish no `tiktoken` vocabulary,
+/// and their own vocabularies cut text into more pieces than `o200k_base` on
+/// some content. Compaction fires at 90 percent of the estimate and the usable
+/// ceiling is 95 percent (`COMPACT_PERCENT`, `SAFE_PERCENT` in
+/// `afd_context/src/window.rs`), so a quarter of headroom keeps a model whose
+/// vocabulary makes up to about a third more tokens inside its window.
+/// Provisional: the `model_input_calibration` trace records this estimate
+/// beside the provider's reported input, and per-model ratios read from it
+/// replace the one number.
+const PROXY_HEADROOM_PERCENT: usize = 125;
+
+/// See [`PROXY_HEADROOM_PERCENT`].
+const PERCENT: usize = 100;
+
+/// Exact for a model `tiktoken-rs` resolves, otherwise the `o200k_base` count
+/// raised by [`PROXY_HEADROOM_PERCENT`]. Billing uses the provider's usage.
 #[must_use]
 pub fn input_tokens(model: &str, text: &str) -> usize {
-    tiktoken_rs::bpe_for_model(model)
-        .map_or(text.len(), |encoding| encoding.encode_ordinary(text).len())
+    tiktoken_rs::bpe_for_model(model).map_or_else(
+        |_unresolved| {
+            tiktoken_rs::o200k_base_singleton()
+                .encode_ordinary(text)
+                .len()
+                .saturating_mul(PROXY_HEADROOM_PERCENT)
+                .div_ceil(PERCENT)
+        },
+        |encoding| encoding.encode_ordinary(text).len(),
+    )
 }
 
 impl Configured<'_> {

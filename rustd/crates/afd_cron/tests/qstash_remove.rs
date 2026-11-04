@@ -12,6 +12,7 @@
 #[path = "support/stub_scheduler.rs"]
 mod stub_scheduler;
 
+use afd_cron::Attempts;
 use afd_cron::error::detail::UPSTREAM_UNAVAILABLE;
 
 use self::stub_scheduler::StubScheduler;
@@ -21,12 +22,14 @@ const REGISTERED: &str = "fleet-schedule-019329c5-0000-7000-8000-0000000000de";
 
 #[tokio::test]
 async fn a_scheduler_refusing_the_removal_is_an_error_that_waits_for_sync() {
+    // A refusal that repeating cannot heal: a 5xx is asked again first, which
+    // `qstash_retry.rs` covers.
     let mut scheduler = StubScheduler::start();
-    scheduler.answer(503);
+    scheduler.answer(401);
 
     let refused = scheduler
         .client()
-        .remove(REGISTERED)
+        .remove(REGISTERED, Attempts::Retried)
         .await
         .expect_err("a refused removal leaves the schedule registered");
 
@@ -48,7 +51,7 @@ async fn a_scheduler_without_the_schedule_has_already_removed_it() {
 
     scheduler
         .client()
-        .remove(REGISTERED)
+        .remove(REGISTERED, Attempts::Retried)
         .await
         .expect("a schedule already gone has met the caller's goal");
 }

@@ -55,6 +55,9 @@ sha2.workspace = true
 # The QStash JWT verifier. Pinned to an explicit `Validation` — see `verifier`
 # on why every default this crate does not want is turned off by name.
 jsonwebtoken.workspace = true
+# The retry loop and jittered schedule a transient scheduler failure is sent
+# again on, the same crate and curve `afd_outbound` delivers through.
+backon.workspace = true
 # The QStash management calls. Both published SDK crates are unmaintained and
 # force older transitive versions; a typed outcome classification is the
 # deliverable and this is the client the rest of the workspace already uses.
@@ -90,7 +93,9 @@ base64.workspace = true
 jsonwebtoken.workspace = true
 serde.workspace = true
 sha2.workspace = true
-tokio.workspace = true
+# `net` for the retry suite's hung-scheduler listener; `test-util` for its
+# paused clock.
+tokio = { workspace = true, features = ["net", "test-util"] }
 # The `tracing` capture `integration_fire.rs` reads the fire's log line back
 # through.
 afd_core = { workspace = true, features = ["test-util"] }

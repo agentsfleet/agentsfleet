@@ -1,0 +1,18 @@
+id: wf-builder-literal
+valid:
+  - |
+    jobs:
+      b:
+        steps:
+          - run: BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine"
+invalid:
+  - |
+    jobs:
+      b:
+        container: ghcr.io/agentsfleet/ci-rust-alpine:1.99.1-alpine3.22
+  - |
+    jobs:
+      b:
+        # image: ghcr.io/agentsfleet/ci-rust-alpine:1.99.1
+        steps:
+          - run: echo

@@ -24,7 +24,7 @@ extensions:
       username: ${env:GRAFANA_OTLP_INSTANCE_ID}
       password: ${env:GRAFANA_OTLP_API_KEY}
 exporters:
-  otlphttp/grafana:
+  otlp_http/grafana:
     endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
     auth:
       authenticator: basicauth/grafana
@@ -43,11 +43,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/grafana]
+      exporters: [otlp_http/grafana]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, delta_to_cumulative, batch]
-      exporters: [otlphttp/grafana]
+      exporters: [otlp_http/grafana]
   telemetry:
     logs:
       level: info

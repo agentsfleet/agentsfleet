@@ -61,8 +61,11 @@ fn native(api: InferenceApi) -> ModelInference {
     settings
 }
 
+/// A prompt whose estimate passes the 512-token windows below, so native
+/// counting fires on the routes that have it: about five `o200k_base` tokens a
+/// repetition, plus the proxy's quarter.
 fn body() -> CompletionRequest {
-    CompletionRequest::new(Message::user("private source 🌿".repeat(32)))
+    CompletionRequest::new(Message::user("private source 🌿".repeat(96)))
         .preamble("private pinned instructions")
         .max_tokens(37)
 }
@@ -149,7 +152,7 @@ async fn ordinary_turns_and_other_provider_routes_never_send_count_requests() {
             )
             .await
             .unwrap();
-        assert_eq!(count.method(), "utf8_estimate");
+        assert_eq!(count.method(), "o200k_proxy_estimate");
         assert!(physical.requests.lock().unwrap().is_empty());
     }
     let settings = native(InferenceApi::Responses);
@@ -165,7 +168,7 @@ async fn ordinary_turns_and_other_provider_routes_never_send_count_requests() {
         )
         .await
         .unwrap();
-    assert_eq!(count.method(), "utf8_estimate");
+    assert_eq!(count.method(), "o200k_proxy_estimate");
     assert!(physical.requests.lock().unwrap().is_empty());
 }
 

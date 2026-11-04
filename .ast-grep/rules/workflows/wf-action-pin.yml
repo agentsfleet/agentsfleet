@@ -1,0 +1,20 @@
+# Every third-party action runs at a full commit: a branch or a tag is a pointer
+# its publisher can move, changing what runs here with no commit here. The
+# repository's own actions (`./`) are files, not pins. Dependabot moves the
+# commits (.github/dependabot.yml).
+id: wf-action-pin
+language: Yaml
+severity: error
+message: this `uses:` can move under the repository; pin the release's full commit SHA, its tag in a comment
+files:
+  - .github/workflows/*.yml
+  - .github/actions/*/action.yml
+rule:
+  kind: block_mapping_pair
+  has:
+    field: key
+    regex: '^uses$'
+  not:
+    has:
+      field: value
+      regex: '^["'']?(\./\S*|[^\s@]+@[0-9a-f]{40})["'']?$'

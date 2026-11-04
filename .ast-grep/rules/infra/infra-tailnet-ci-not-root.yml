@@ -1,0 +1,38 @@
+# CI reaches the runner hosts over Tailscale SSH as a non-root user. An ssh
+# rule that lets tag:ci in as root turns a leaked CI credential into root on
+# every runner host.
+id: infra-tailnet-ci-not-root
+language: Json
+severity: error
+message: an ssh rule lets tag:ci log in as root; CI deploys as a non-root user
+files:
+  - playbooks/founding/02_preflight/tailnet-policy.hujson
+rule:
+  kind: string
+  regex: '^"root"$'
+  inside:
+    kind: array
+    inside:
+      kind: pair
+      has:
+        field: key
+        regex: '^"users"$'
+      inside:
+        kind: object
+        has:
+          kind: pair
+          all:
+            - has:
+                field: key
+                regex: '^"src"$'
+            - has:
+                field: value
+                has:
+                  kind: string
+                  regex: '^"tag:ci"$'
+        inside:
+          stopBy: end
+          kind: pair
+          has:
+            field: key
+            regex: '^"ssh"$'

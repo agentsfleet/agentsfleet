@@ -22,7 +22,7 @@ Chief Technology Officer (CTO) AIWA reviewers should assess one consistent desig
 
 | Order | Document | Review purpose |
 |---|---|---|
-|1|[Owner decisions](decisions.md)|Do not reopen L1–L21; one-PR packaging and L8 follow-up.|
+|1|[Owner decisions](decisions.md)|Do not reopen L1–L21; one-PR packaging.|
 |2|[Five source findings](source-findings.md)|Agree/rebut each remaining backend question with source.|
 |3|[Resolution ledger](codex-response.md)|Agreement, evidence, costs; dark/pessimistic/optimistic reasoning.|
 |4|[Overview](../../architecture/high_level.md#fleet-authoring-and-runtime)|User goal and selected architecture.|

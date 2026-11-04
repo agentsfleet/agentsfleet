@@ -1,0 +1,18 @@
+# A host joins the tailnet as a worker and nothing else: tag:ci is the
+# pipeline's identity, and a host holding it could SSH into every worker.
+# Judged per code fence: the fence that runs `tailscale up` must advertise
+# exactly tag:worker, once.
+id: infra-worker-tag
+language: Markdown
+severity: error
+message: a host joins with --advertise-tags=tag:worker only, never tag:ci or a list
+files:
+  - playbooks/**/*.md
+rule:
+  kind: code_fence_content
+  regex: 'tailscale up\b'
+  any:
+    - not:
+        regex: '--advertise-tags[= ]tag:worker(\s|$)'
+    - regex: '--advertise-tags[= ]\S*,'
+    - regex: '--advertise-tags[\s\S]*--advertise-tags'

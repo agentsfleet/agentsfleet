@@ -18,10 +18,6 @@ workspace = true
 
 [dependencies]
 serde.workspace = true
-# The families this crate produces. The dependency points this way and not the
-# other: telemetry knows nothing about the event log, and a readiness mark this crate
-# could not write is a fact only this crate holds.
-afd_observability.workspace = true
 # Where a steer is accepted before anything is queued. The ledger owns the
 # acceptance and the identity; this crate owns the table a runner then writes.
 afd_admission.workspace = true
@@ -76,15 +72,9 @@ afd_db = { workspace = true, features = ["test-util"] }
 # claim is about the two sets a client actually holds. Acyclic: `afd_sse` knows
 # `afd_dragonfly` and `afd_core`, and nothing about this crate.
 afd_sse.workspace = true
-# The steer suite reads the readiness index by exact field. `ReadyIndex`'s own
-# reader samples at random by design, and the index is shared by every suite in
-# the lane, so an exact `HGET` is the only assertion that cannot flake.
-redis.workspace = true
 # A delivered frame is the publisher's bytes forwarded unrewritten, and reading
 # the event id back out of them is precisely what a reconnecting client does.
 serde_json.workspace = true
-# So the event macros in the code under test evaluate their fields.
-tracing-subscriber.workspace = true
 
 [[test]]
 name = "events_suite"

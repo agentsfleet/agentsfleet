@@ -36,7 +36,7 @@ async fn clean_eof_without_a_provider_end_keeps_usage_but_refuses_completion() {
     assert_eq!(result.response.usage.output_tokens, Some(2));
     let calibration = captured.only("model_input_calibration");
     assert_eq!(calibration.field("actual_input_tokens"), Some("3"));
-    assert_eq!(calibration.field("method"), Some("utf8_estimate"));
+    assert_eq!(calibration.field("method"), Some("o200k_proxy_estimate"));
     assert!(
         !format!("{:?}", captured.events()).contains("private prompt"),
         "partial usage calibration contains no private request"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Self-tests for deploy.sh's version-skip equality and its deploy mutex. The
-# drain timeout's tie to the runner unit is a config rule in
-# scripts/check_infra_config.py.
+# drain timeout must equal TimeoutStopSec in agentsfleet-runner.service; no
+# check ties the two, so change them together.
 #
 #     bash deploy/baremetal/deploy_test.sh
 #

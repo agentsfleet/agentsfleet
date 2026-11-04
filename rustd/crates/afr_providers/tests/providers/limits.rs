@@ -7,6 +7,13 @@ use futures_util::StreamExt as _;
 use super::support::{Fake, lease, wires::Wire};
 
 const CONTEXT: u32 = 32_768;
+const MODEL: &str = "workspace/configured-model";
+
+/// What the runtime estimates a sent body at: window bounds hold in the
+/// estimator's tokens, which are not the body's bytes.
+fn estimated(raw: &[u8]) -> u64 {
+    afd_inference::input_tokens(MODEL, std::str::from_utf8(raw).unwrap()) as u64
+}
 
 fn provider(fake: &Fake, wire: Wire, budget: u32) -> Box<dyn Provider> {
     let mut lease = lease(&wire.provider(), &[], "hello");
@@ -33,7 +40,7 @@ fn provider(fake: &Fake, wire: Wire, budget: u32) -> Box<dyn Provider> {
 
 fn request(messages: &[Message]) -> Request<'_> {
     Request {
-        model: "workspace/configured-model",
+        model: MODEL,
         instructions: "Use the complete conversation.",
         messages,
         tools: &[],
@@ -61,7 +68,7 @@ async fn output_shares_the_saved_window_with_the_first_and_growing_prompts() {
             .iter()
             .map(|seen| {
                 let cap = output(&seen.body);
-                assert!(cap > 0 && cap + seen.raw.len() as u64 <= u64::from(CONTEXT));
+                assert!(cap > 0 && cap + estimated(&seen.raw) <= u64::from(CONTEXT));
                 cap
             })
             .collect();
@@ -74,7 +81,9 @@ async fn a_prompt_that_exhausts_context_never_reaches_the_provider() {
     for wire in Wire::ALL {
         let mut fake = Fake::serve(vec![wire.answer("unused")]).await;
         let provider = provider(&fake, wire, CONTEXT);
-        let messages = [Message::User("x".repeat(CONTEXT as usize))];
+        // One `o200k_base` token per "x ", so the estimate passes the window
+        // by a quarter; a run of bare "x" would compress far below it.
+        let messages = [Message::User("x ".repeat(CONTEXT as usize))];
         let chunks: Vec<_> = provider.stream(request(&messages)).collect().await;
         let [Err(failure)] = chunks.as_slice() else {
             panic!("{wire:?}: {chunks:?}")
@@ -124,9 +133,9 @@ async fn assert_operating_budget(budget: u32) {
         let output = output(&seen[0].body);
         assert!(output > 0, "{wire:?}");
         assert!(
-            output + seen[0].raw.len() as u64 <= u64::from(CONTEXT),
+            output + estimated(&seen[0].raw) <= u64::from(CONTEXT),
             "{wire:?}: output {output}, input {} exceeds the physical context",
-            seen[0].raw.len()
+            estimated(&seen[0].raw)
         );
         if budget < CONTEXT {
             assert!(

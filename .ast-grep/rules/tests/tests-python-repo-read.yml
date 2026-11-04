@@ -1,0 +1,32 @@
+# A test calls the code it proves; it never reads the repository's files. See
+# tests-js-repo-read for why.
+#
+# A read is `open`, `read_text`, `read_bytes`, `.open`, `glob`, `rglob`,
+# `iterdir` or an `os` walk, whose call (receiver included) anchors the path in
+# the repository: `__file__`, `ROOT`, `REPO_ROOT`, `git rev-parse` or a relative
+# path. A read spelled inside a string is data, never a call, so code samples a
+# test seeds stay quiet. A path reached through a variable is not followed.
+id: tests-python-repo-read
+language: Python
+severity: error
+message: a test reads a repository file; call the code, or move the check to a lint
+files:
+  - "**/*_test.py"
+  - "**/test_*.py"
+  - "**/{test,tests,__tests__}/**/*.py"
+ignores:
+  - "**/node_modules/**"
+  - "**/target/**"
+utils:
+  anchored:
+    regex: '__file__|\bROOT\b|\bREPO_ROOT\b|rev-parse|["''`](\.\.?/|/?(src|cli|ui|docs|rustd|schema|scripts|playbooks|deploy|make|public|\.github|bench|test|tests|app|components|lib)/)'
+  fixture:
+    regex: '(^|[/"''`\s(,])(fixtures|testdata|__fixtures__|__snapshots__|golden)([/"''`\s),]|$)'
+rule:
+  kind: call
+  all:
+    - has:
+        field: function
+        regex: '^open$|\.(open|read_text|read_bytes|glob|rglob|iterdir)$|^os\.(walk|listdir|scandir)$'
+    - matches: anchored
+    - not: { matches: fixture }

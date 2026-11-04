@@ -81,18 +81,19 @@ directory and files it wrote itself.
 - **SQL guarantees** are proven live: run the statement through its store
   against Postgres and assert on the rows. A substring match on statement text
   proves nothing about the rows.
-- **Rules about how source text reads** (a banned import, a retired word, a
-  table that must match a constant) are lints. Each lives in a repository-owned
-  host that `make lint-all` runs (an oxlint rule, `scripts/check_*.py`, a
-  make-run shell check), with a seeded violation in that host's own test.
+- **Rules about how source text reads** (a banned import, a retired word) are
+  lints. Each lives in a tool `make lint-all` runs (oxlint, clippy or an
+  ast-grep rule under `.ast-grep/rules/`), and that tool's own test seeds a
+  violation. A rule no single-file tool can state is not written.
 - **Pins** stay only on observable interface: error codes, wire spellings, exit
   codes, roles and accessible names. Copy, class strings and constants compared
   with themselves are not interface.
 
-`scripts/check_tests_call_code.py`, run by `make lint-all`, fails on a test
-that reads a repository file in TypeScript, Rust, shell or Python. It has no
-allowlist. A false positive is fixed in the matcher, with a negative case in
-its test.
+The `tests-*-repo-read` ast-grep rules (`.ast-grep/rules/tests/`, run by
+`make lint-source`) fail on a test that reads a repository file directly in
+TypeScript, Rust, shell or Python. A read routed through a variable or a
+helper function is review's to catch. There is no allowlist: a false positive
+is fixed in the rule, with a valid case in its test.
 
 ## Rust test naming — the filename declares the tier
 
