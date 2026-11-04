@@ -13,7 +13,7 @@ Status: D1 and an interim D2 decided; D3 and D4 open.
 Indy's decision on 2026-11-04 picked "o200k × 1.25" with the note “i just need an estimation for now”:
 
 - **D1:** keep `tiktoken-rs`.
-- **D2, interim:** every model without a local tokenizer is estimated as its `o200k_base` count plus a quarter (`PROXY_HEADROOM_PERCENT` in `rustd/crates/afd_inference/src/budget.rs`). This is Option A with one provisional multiplier in place of measured per-model values, and unlike Option A it also moves Ollama and configured models off the byte count.
+- **D2, interim:** every model without a local tokenizer is estimated as its `o200k_base` count plus a quarter (`PROXY_HEADROOM_PERCENT` in `rustd/crates/afd_inference/src/budget.rs`). This is Option A with one provisional multiplier in place of measured per-model values. Unlike Option A, it also moves Ollama and configured models off the byte count.
 - **Per-model values later** come from the existing `model_input_calibration` trace, which records `measured_input_tokens` beside `actual_input_tokens` for every call. Reading it may make the paid run in D4 unnecessary.
 
 ## What it is
@@ -24,6 +24,7 @@ It closes the two items M230_003 left open: live-provider count agreement and se
 ## Why it exists
 
 Before interim D2, nineteen of the 20 catalogue models had no local tokenizer, so they counted one token per input byte.
+
 `tiktoken_rs::tokenizer::get_tokenizer` resolves only `gpt-5.6-terra` (to `o200k_base`). Every Claude, GPT-6, Fireworks, OpenRouter, Groq, Mistral and Gemini entry returns `None`.
 The fallback lives in `rustd/crates/afd_inference/src/budget.rs` (`input_tokens`).
 
@@ -37,15 +38,17 @@ Measured against `o200k_base`, one token per byte overcounted typical input by 1
 | Request JSON with tool calls | 12,702 | 3,896 | 3.26 |
 | Logs with identifiers | 9,840 | 5,360 | 1.84 |
 
-Compaction fires at 90 percent of the window as estimated (`afd_context/src/window.rs`, `COMPACT_PERCENT`), so a fleet compacted after roughly a fifth to half of its real window.
-The three native routes (OpenAI Responses, Anthropic Messages, native Gemini) count natively only at dispatch, to size the output allowance, once the inflated estimate passes 80 percent (`afd_inference/src/count/mod.rs`, `CONFIRM_PERCENT`). The compaction planner never sees that count.
+Compaction fires at 90 percent of the estimated window (`afd_context/src/window.rs`, `COMPACT_PERCENT`), so a fleet compacted after a fifth to half of its real window.
+
+The three native routes (OpenAI Responses, Anthropic Messages, native Gemini) count natively only at dispatch, to size the output allowance. They do so once the inflated estimate passes 80 percent (`afd_inference/src/count/mod.rs`, `CONFIRM_PERCENT`). The compaction planner never sees that count.
 
 ## How it behaves
 
 ### Library evaluation: `riptoken` 0.3.0 against `tiktoken-rs` 0.12.1
 
 Both libraries read the same `.tiktoken` vocabularies and regex patterns. The harness fed `riptoken` the exact files `tiktoken-rs` bundles.
-The corpus has 1,201 deterministic synthetic cases (1,048,309 bytes): prose, source, JSON, logs, combining marks, non-Latin scripts, emoji, control characters, literal special-token strings, and long whitespace and repeated-character runs.
+
+The corpus has 1,201 deterministic synthetic cases (1,048,309 bytes). They cover prose, source, JSON, logs, combining marks, non-Latin scripts, emoji, control characters and literal special-token strings, plus long whitespace and repeated-character runs.
 OpenAI's Python `tiktoken` 0.12.0 is the reference.
 
 | Encoding | `tiktoken-rs` matches reference | `riptoken` matches reference | `riptoken` count differences |
@@ -55,6 +58,7 @@ OpenAI's Python `tiktoken` 0.12.0 is the reference.
 
 Every `riptoken` mismatch sits in a regex piece longer than 500 bytes, such as 3,000 spaces or 5,000 repeated letters.
 That is `riptoken`'s `LARGE_PIECE_THRESHOLD` heap merge path, which picks a different merge order.
+
 Long whitespace and repeated runs are ordinary in logs, indented source and minified data. This contradicts the crate's "byte-identical" claim.
 
 Performance in Rust, median of seven samples, on 300,493 bytes of fresh input:
@@ -80,7 +84,9 @@ This is evaluation evidence, not a repository verification result.
 
 ### Decisions requested
 
-**D1: library.** Keep `tiktoken-rs`; reject `riptoken`. Correctness is a mandatory gate, and `riptoken` fails it on 1.4 percent of cases. Speed cannot make up for that, and the gain is small anyway. Reconsider only if a release fixes the long-piece path and passes this harness.
+**D1: library.** Keep `tiktoken-rs`; reject `riptoken`. Correctness is a mandatory gate, and `riptoken` fails it on 1.4 percent of cases.
+
+Speed cannot make up for that, and the gain is small anyway. Reconsider only if a release fixes the long-piece path and passes this harness.
 
 **D2: coverage for models with no public tokenizer.** Claude, GPT-6 and Gemini publish no tokenizer files. Several open-weight files carry redistribution limits; the MiniMax Community license is one ([evaluation](pr784-tokenizer-evaluation.md)). Exact local counting is impossible for most of the catalogue.
 
@@ -91,11 +97,13 @@ This is evaluation evidence, not a repository verification result.
 | C. Keep one token per byte | Nothing changes: early compaction continues | None |
 
 Option A's multiplier for each model is the largest provider-to-proxy ratio across every corpus category, plus headroom. That keeps the estimate an upper bound on the measured corpus.
+
 Native counting stays the authority near the window on the three native routes.
 `openai/gpt-oss-120b` gains exact `o200k_harmony` resolution once the provider prefix is stripped. `tiktoken-rs` already knows `gpt-oss-120b`.
+
 Unknown and configured Ollama models keep one token per byte, which is a true upper bound for byte-level encodings apart from template framing.
 
-**D3: what "buffer wiping" claims.** A Rust process cannot prove that every copy of conversation text is erased: `rig-core`, `reqwest`, `hyper`, `serde`, the Postgres driver and the allocator all keep their own copies. The proposed claim is narrow:
+**D3: what "buffer wiping" claims.** A Rust process cannot prove that every copy of conversation text is erased. `rig-core`, `reqwest`, `hyper`, `serde`, the Postgres driver and the allocator all keep their own copies. The proposed claim is narrow:
 
 1. No prompt text is cached in the counting path. `tiktoken-rs` has no piece memoization; a test pins that, and any future tokenizer must disable its cache before first use.
 2. Serialized request bodies, token-identifier vectors, summary text and compaction strings that `agentsfleet` code allocates are wrapped in `Zeroizing` and erased on drop.
@@ -104,7 +112,9 @@ Unknown and configured Ollama models keep one token per byte, which is a true up
 5. `docs/architecture/context_lifecycle.md` lists what stays unclaimed: third-party and allocator buffers, and a compromised host.
 
 **D4: live calibration run.** This is a paid, opt-in run that never sits in the default lanes. The three native routes use their free counting endpoints. The twelve chat-route models need one generation per corpus case with `max_tokens: 1`, reading the reported input tokens.
+
 Before sending anything, the run prints the expected spend from catalogue prices, and you approve the run. Credentials come from the environment-selected vault, and a missing one stops the run by name.
+
 The corpus is synthetic only; no account conversation text is sent.
 After it lands, the existing content-free `model_input_calibration` trace becomes the production check on drift.
 
@@ -113,5 +123,6 @@ After it lands, the existing content-free `model_input_calibration` trace become
 ## After sign-off
 
 A spec turns the remaining options into Sections: per-model counting profiles, the calibration source, context-rejection recovery, and private-input lifetime. Each Dimension maps to one test.
+
 It takes the next free milestone number; M233_001 is already the chat round-trip stage-timing spec.
 The spec is reviewed for completeness before it leaves `pending/`.

@@ -82,9 +82,9 @@ directory and files it wrote itself.
   against Postgres and assert on the rows. A substring match on statement text
   proves nothing about the rows.
 - **Rules about how source text reads** (a banned import, a retired word) are
-  lints. Each lives in a tool `make lint-all` runs (an oxlint or clippy rule, an
-  ast-grep rule under `.ast-grep/rules/`), with a seeded violation in that
-  tool's own test. A rule no single-file tool can state is not written.
+  lints. Each lives in a tool `make lint-all` runs (oxlint, clippy or an
+  ast-grep rule under `.ast-grep/rules/`), and that tool's own test seeds a
+  violation. A rule no single-file tool can state is not written.
 - **Pins** stay only on observable interface: error codes, wire spellings, exit
   codes, roles and accessible names. Copy, class strings and constants compared
   with themselves are not interface.
