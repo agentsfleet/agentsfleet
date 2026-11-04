@@ -183,9 +183,19 @@ test("three current repairs share the fleet conversation and leave its composer 
   expect(await page.evaluate(async () => (await document.fonts.load('13px "Instrument Sans Variable"', "Current work")).length)).toBeGreaterThan(0);
   const repair = panel.getByRole("button", {name: /PR #123 repair/});
   await expect(repair).toHaveCSS("font-size", "13px");
+  expect(await repair.evaluate(node => node.closest(".ph-no-capture.ph-no-record") !== null)).toBe(true);
   await expect(panel.getByText("In progress", {exact: true})).toHaveCSS("color", "rgb(147, 197, 253)");
   await repair.focus(); await page.keyboard.press("Enter");
   await expect(panel.getByText("What counts as done?", {exact: true})).toBeVisible();
+  for (const text of [
+    "Repair the callback redirect without weakening the check.",
+    "1. Does the regression pass on the proposed head?",
+    "The exact proposed head passes the regression.",
+  ]) {
+    const content = panel.getByText(text, {exact: true});
+    await expect(content).toBeVisible();
+    expect(await content.evaluate(node => node.closest(".ph-no-capture.ph-no-record") !== null)).toBe(true);
+  }
   await expect(panel.getByText("Uses the success criteria saved in setup v2.")).toHaveCSS("font-size", "12px");
   expect(reads).toEqual([
     "/live/v1/workspaces/workspace/fleets/linkwarden/tasks",

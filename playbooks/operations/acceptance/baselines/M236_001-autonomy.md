@@ -851,7 +851,7 @@ Make and Codecov now enforce 99.51% for the patch; existing workspace/per-file f
 
 | Requested work | Current state and evidence |
 |---|---|
-| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; merge `0e31bc918` adds PR 802/main `1920ff345`. Local merge `e90db793e` adds PR 801/main `27deff642`; its full unit and clean storage gates pass after the corrections below. Repeat the freshness check before each push. |
+| Integrate merged main before shipping | PR 798/799 ancestry is retained. Merge `9641c3cb2` adds PR 800/main `bf3baa126`; merge `0e31bc918` adds PR 802/main `1920ff345`. Published merge `e90db793e` adds PR 801/main `27deff642`; its full unit and clean storage gates pass after the corrections below. Repeat the freshness check before each push. |
 | Complete DT runtime | Schema, decision adapters/catalogue/assignment, owner-controlled questions, task reads and mixed-model settlement recovery are foundations. Native physical-call accounting passes unit/integration gates; full agent/lease integration, waits, publication and recovery remain incomplete. |
 | Keep approved UI and communicate work | Inline task rows and saved criteria use native reads. Ten production-component browser checks passed, including the editable Review pull requests starter, typography, disclosure and short/mobile viewports; progress/controls and full runtime demonstration remain pending. |
 | Align unfinished setup actions | `components/layout/DraftSidebarItem.tsx` uses shared grid columns: title, reachable Delete, then Resume. Desktop/mobile measurements, app lint and 100% coverage pass; the same geometry assertion fails against the previous component. Logs: `/tmp/m236-ui-polish-browser.log`, `/tmp/m236-resume-parent-red.log`. |
@@ -893,8 +893,34 @@ The bundled unpriceable-usage scenario passes in that full storage lane.
 
 Greptile completed its review of `69b8b8da7` with one documentation finding.
 `docs/AUTH.md` and `billing_and_provider_keys.md` now distinguish the implemented reservation/receipt routes from unfinished runner integration.
-The thread has an acknowledgement; published correction and resolution remain pending the next push.
+Commit `f8fac4a14` publishes that correction; thread `PRRT_kwDOReIoss6zwAM0` is answered and resolved.
 
 All ordinary CI workflows passed on `69b8b8da7`; the kernel coverage job failed before tests during pinned toolbox package setup.
 Its single retry also failed during package setup, in job `126796864947` of run `41889908716`.
 The other three reports are diagnostic evidence only; no complete Rust grade or merge readiness is claimed.
+
+## Private task content and coverage diagnostics
+
+Greptile's review of `f8fac4a14` found task titles and expanded criteria outside the app's analytics exclusions.
+`TaskPanel` now uses both existing PostHog privacy classes on the containing section.
+The existing three-repair browser scenario checks collapsed titles and expanded objectives, questions and criteria on desktop and mobile.
+
+Before the correction, `make dry-app` passed 4,669 unit tests and 56 browser checks; the two intended privacy assertions failed.
+`/tmp/m236-task-privacy-parent-red.log` records those failures against the original panel.
+After the correction, all 58 browser checks passed in `/tmp/m236-task-privacy-browser-green.log`.
+
+`make lint-app` and `make lint-shell` passed in `/tmp/m236-task-privacy-{lint,shell}.log`.
+Astra's source review found no remaining issue with the containing privacy boundary or the bootstrap output change.
+The browser proof checks rendered exclusion boundaries; it does not send private text to a live analytics service.
+
+`make test-coverage-all` passed at 100% across the app, website, CLI and design system.
+Counts remain 4,669, 133, 1,997 and 522 tests respectively; the CLI retains 16 explicit live skips.
+`/tmp/m236-task-privacy-coverage.log` records every package's result without changing coverage exclusions or floors.
+
+The `f8fac4a14` kernel coverage job `126826577076` failed during package download before measuring Rust tests.
+The builder now requests native verbose bootstrap diagnostics on stderr, preserving its image-path-only stdout and original failure status.
+No package, signature, image policy, retry or gate threshold changes for this diagnostic correction.
+
+GitHub cancelled macOS job `126826581967` before assigning a runner, with no steps recorded.
+Its annotation reports hosted-runner acquisition failure and macOS capacity constraints.
+The other three Rust coverage shards passed; the absent kernel report still prevents a complete coverage grade.
