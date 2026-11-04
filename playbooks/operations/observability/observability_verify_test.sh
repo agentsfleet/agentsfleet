@@ -89,6 +89,9 @@ case "$url" in
     if [ "${MOCK_DRIFT:-}" = panel_description ]; then
       spec="$(jq '.panels[0].description = "drift"' <<<"$spec")"
     fi
+    if [ "${MOCK_DRIFT:-}" = panel_override ]; then
+      spec="$(jq '.panels[0].fieldConfig.overrides = [{matcher:{id:"byName",options:"value"},properties:[{id:"displayName",value:"drift"}]}]' <<<"$spec")"
+    fi
     if [ "${MOCK_DRIFT:-}" = panel_legend ]; then
       spec="$(jq '.panels[0].targets[0].legendFormat = "drift"' <<<"$spec")"
     fi
@@ -215,6 +218,7 @@ test_should_reject_each_resource_drift() {
     'null_to_zero|dashboard content drifted'
     'panel_title|dashboard content drifted'
     'panel_description|dashboard content drifted'
+    'panel_override|dashboard content drifted'
     'panel_legend|dashboard content drifted'
     'tempo_reducer|dashboard content drifted'
     'tempo_variable|dashboard variables drifted'

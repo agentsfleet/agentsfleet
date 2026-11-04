@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2–§0.3). §0.1 and §5 shipped in #786 and are excluded from this workstream; their evidence remains in M233_001. M238_001 changed the runtime path: memory arrives in the lease and capture travels in the report. Separate hydrate/capture spans therefore describe fallback paths only. The current round-trip row reads `fleet.delivery` and its seven `agentsfleet.delivery.*_ms` attributes from M238, with fleet identity in `gen_ai.agent.id`. Per-verb and edge instrumentation remain unstarted.
+This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2–§0.3). §0.1 and §5 shipped in #786 and are excluded from this workstream; their evidence remains in M233_001. M238_001 changed the runtime path: memory arrives in the lease and capture travels in the report. Separate hydrate/capture spans therefore describe fallback paths only. The current round-trip row reads `fleet.delivery` and its seven `agentsfleet.delivery.*_ms` attributes from M238, with fleet identity in `gen_ai.agent.id`. Per-verb and edge instrumentation remain unstarted. The runner collector is installed and real runner data reaches Grafana; its remaining live sandbox and segment witnesses are tracked below.
 
 **Goal (testable):** The current §4 row returns per-fleet p95/p99 over delivery duration and reached M238 segment attributes, using the declared units and bounded sample. Missing attributes remain absent. The independent §1–§3 follow-up will add reached daemon stages, runner spans and edge timing, prove stage residuals under max(10%, 5 ms), and verify browser accepted-minus-send ≥ route auth-plus-upstream ≥ daemon steer duration. Memory-in-lease and capture-in-report are the normal M238 path; standalone hydrate/capture spans are required only when those fallback calls occur.
 
@@ -57,7 +57,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 
 - **PR title (current scope):** Add fleet round-trip percentile panels from delivery spans
 - **Intent (one sentence):** Indy (project owner) can open one dashboard, pick a fleet and a chat event, and see where the time between Send and the reply went, so optimisations and production sizing are chosen from evidence.
-- **Handshake** — This pull request implements §4 using the M238 delivery span already exported on dev. Assumptions: §1–§3 remain unstarted; no fleet identity enters a metric; absent segments are not zero; the dashboard assets are prepared for review, with no claim of live application.
+- **Handshake** — This pull request implements §4 using the M238 delivery span already exported on dev. Current scope: §1 and §3 remain unstarted; §2 has an installed runner collector with real export verified, while its remaining witnesses stay open. The six dashboards are live and drift-verified. No fleet identity enters a metric; absent segments are not zero. The managed Tempo zero-value display still limits §4 acceptance.
 
 ## Implementing agent — read these first
 
