@@ -2,8 +2,8 @@
 
 **Status:** DONE
 **Priority:** P1
-**Branch:** chore/m238-dashboard-spec-closeout
-**Pull request:** #801 (implementation); separate documentation closeout
+**Branch:** chore/m238-dev-round-trip
+**Pull request:** #801
 **Baseline:** ffde2699b39cca1463542c53782ebec52044c838
 **Closeout:** Indy requested closure. His visual review and live acceptance remain pending in the closeout record below.
 
@@ -419,3 +419,10 @@ Historical test commands above describe earlier verification, not the current ch
 
 M233_002 remains active because per-request daemon stages and browser/edge timing were never implemented.
 Its header now states the remaining work explicitly.
+
+
+### Single-PR consolidation
+
+Indy requested: "push it in PR801 and close 804."
+Keep the closeout, wording fixes and requested fixture cleanup in #801.
+Close #804 without merging it; its commits are preserved in #801’s branch history.
