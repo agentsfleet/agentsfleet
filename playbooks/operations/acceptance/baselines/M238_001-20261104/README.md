@@ -59,7 +59,7 @@ The rejection also names lease-history, invocation-duration, token-usage, cache-
 
 The census declares these families delta; `deploy/fly/otelcol-dev/config.yml` forwards them unchanged.
 
-A separate fix pull request is required. Empty results do not mean zero latency.
+A collector fix is required; Indy later requested that it ship with this evidence and dashboard in one pull request. Empty results do not mean zero latency.
 
 `agentsfleet_runner_wake_answers_total`, instance `48ee32df500958`: before deadline 136 / ring 4; after deadline 145 / ring 15. Differences: deadline +9, ring +11. These are fleet-wide counters and cannot all be attributed to these chats.
 
@@ -134,8 +134,8 @@ separate dev/prod collector conversion fix.
 The count is corrected to four
 without changing the alert set.
 
-The collector repair ships in its own pull
-request; merging remains Indy's.
+Indy subsequently requested "i nee 1 PR". The collector repair, dashboard row,
+and recorded results therefore ship in one pull request; merging remains Indy's.
 
 After the approved count correction, the source-ownership check exposed two
 stale `agentsfleet_repair_dispatch_*` targets with no census entry or producer.
