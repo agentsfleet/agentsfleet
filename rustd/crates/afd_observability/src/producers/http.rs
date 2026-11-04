@@ -3,7 +3,7 @@
 use std::sync::{Arc, OnceLock};
 
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::Counter;
+use opentelemetry::metrics::{Counter, Histogram};
 
 use crate::error::Result;
 use crate::metrics::declared::http as declared;
@@ -22,6 +22,7 @@ const RUNNING: u64 = 1;
 /// The instruments the HTTP surface and the exporter record through.
 #[derive(Debug)]
 pub struct Handles {
+    request: Histogram<f64>,
     api_shed: Counter<u64>,
     stream_shed: Counter<u64>,
     frames_dropped: Counter<u64>,
@@ -38,6 +39,7 @@ impl Handles {
     /// Whatever [`Instruments`] refuses — see [`super::install`].
     pub(super) fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
         let handles = Self {
+            request: instruments.histogram_f64(&declared::API_REQUEST_DURATION)?,
             api_shed: instruments.counter_u64(&declared::API_BACKPRESSURE_REJECTIONS_TOTAL)?,
             stream_shed: instruments.counter_u64(&declared::SSE_BACKPRESSURE_REJECTIONS_TOTAL)?,
             frames_dropped: instruments.counter_u64(&declared::SSE_DROPPED_FRAMES_TOTAL)?,
@@ -143,5 +145,44 @@ pub fn attribute_omitted(attribute: OmittedAttribute, reason: OmissionReason) {
                 KeyValue::new(semconv::LABEL_REASON, reason.as_str()),
             ],
         );
+    }
+}
+
+/// Tracks a matched route, never a caller's raw URI.
+#[derive(Debug)]
+pub struct Request {
+    template: String,
+    method: crate::metrics::label::http::RequestMethod,
+    status: crate::metrics::label::http::ResponseClass,
+    started: std::time::Instant,
+}
+impl Request {
+    /// Begins at the router's matched-path middleware.
+    #[must_use]
+    pub fn begin(template: &str, method: &str) -> Self {
+        Self {
+            template: template.to_owned(),
+            method: crate::metrics::label::http::RequestMethod::of(method),
+            status: crate::metrics::label::http::ResponseClass::Cancelled,
+            started: std::time::Instant::now(),
+        }
+    }
+    /// Records headers; a dropped request remains cancelled.
+    pub fn response(&mut self, status: u16) {
+        self.status = crate::metrics::label::http::ResponseClass::of(status);
+    }
+}
+impl Drop for Request {
+    fn drop(&mut self) {
+        if let Some(producers) = installed() {
+            producers.http.request.record(
+                self.started.elapsed().as_secs_f64(),
+                &[
+                    KeyValue::new(semconv::ATTR_HTTP_ROUTE, self.template.clone()),
+                    KeyValue::new(semconv::ATTR_HTTP_REQUEST_METHOD, self.method.as_str()),
+                    KeyValue::new(crate::semconv::LABEL_STATUS_CLASS, self.status.as_str()),
+                ],
+            );
+        }
     }
 }

@@ -47,10 +47,45 @@ const _: () = assert!(
 /// The resident set is NOT here for exactly that reason — it comes from
 /// `/proc`, so the export task samples it and publishes it into a cell the
 /// callback loads.
-pub(super) fn gauge_sources(admission: &Admission, live: &afd_sse::Live) -> GaugeSources {
+pub(super) fn gauge_sources(
+    admission: &Admission,
+    live: &afd_sse::Live,
+    database: &afd_db::Db,
+) -> GaugeSources {
     let requests = admission.clone();
     let streams = live.clone();
+    let database = database.clone();
     GaugeSources {
+        database_pools: Arc::new(move || {
+            use afd_observability::metrics::instrument::Reading;
+            database
+                .snapshot()
+                .into_iter()
+                .flat_map(|pool| {
+                    [
+                        ("open", u64::from(pool.open)),
+                        ("idle", u64::from(pool.idle)),
+                        ("used", u64::from(pool.open.saturating_sub(pool.idle))),
+                        ("capacity", u64::from(pool.capacity)),
+                        ("waiting", pool.waiting),
+                    ]
+                    .into_iter()
+                    .map(move |(state, value)| Reading {
+                        attributes: vec![
+                            opentelemetry::KeyValue::new(
+                                afd_observability::semconv::LABEL_ROLE,
+                                pool.role.tag(),
+                            ),
+                            opentelemetry::KeyValue::new(
+                                afd_observability::semconv::LABEL_STATE,
+                                state,
+                            ),
+                        ],
+                        value,
+                    })
+                })
+                .collect()
+        }),
         requests_in_flight: Arc::new(move || u64::try_from(requests.in_flight()).ok()),
         streams_in_flight: Arc::new(move || u64::try_from(streams.carrying()).ok()),
     }
@@ -151,6 +186,7 @@ pub(crate) fn open_telemetry(
     prepared: Option<Prepared>,
     supervisor: &mut Supervisor,
     sources: &GaugeSources,
+    database: &afd_db::Db,
 ) -> Result<(), BootFailure> {
     let Some(Prepared {
         exports,
@@ -166,6 +202,7 @@ pub(crate) fn open_telemetry(
     let installed = afd_observability::producers::install(&instruments, sources)?;
     crate::telemetry::announce(&otlp, installed, &instruments);
 
+    let database = database.clone();
     supervisor.spawn(crate::OTLP_EXPORT, move |token| async move {
         // The resident-set sampler, on the reader's own cadence so the gauge
         // the callback loads is never older than one collection.
@@ -178,6 +215,10 @@ pub(crate) fn open_telemetry(
                     afd_observability::producers::memory::resident_observed(
                         crate::telemetry::resident_bytes(),
                     );
+                    tokio::select! {
+                        () = token.cancelled() => break,
+                        () = super::observations::refresh(&database) => {}
+                    }
                 }
             }
         }
@@ -191,4 +232,38 @@ pub(crate) fn open_telemetry(
         crate::telemetry::flush_within(exports, FLUSH_BUDGET).await;
     });
     Ok(())
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod snapshot_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pool_callback_reads_actual_capacity_and_withdraws_a_closed_pool() {
+        let database = afd_db::test_util::unreachable_db();
+        let admission = Admission::new(afd_api::DEFAULT_MAX_IN_FLIGHT);
+        let live = afd_sse::Live::detached(afd_sse::Ceiling::new(1));
+        let sources = gauge_sources(&admission, &live, &database);
+        let readings = (sources.database_pools)();
+        assert_eq!(readings.len(), 5);
+        let states: std::collections::BTreeMap<_, _> = readings
+            .iter()
+            .filter_map(|reading| {
+                reading
+                    .attributes
+                    .iter()
+                    .find(|pair| pair.key.as_str() == "state")
+                    .map(|pair| (pair.value.to_string(), reading.value))
+            })
+            .collect();
+        assert_eq!(states.get("open"), Some(&0));
+        assert_eq!(states.get("idle"), Some(&0));
+        assert_eq!(states.get("used"), Some(&0));
+        assert_eq!(states.get("waiting"), Some(&0));
+        assert!(states.get("capacity").is_some_and(|value| *value > 0));
+        assert_eq!((sources.requests_in_flight)(), Some(0));
+        assert_eq!((sources.streams_in_flight)(), Some(0));
+        database.close().await;
+        assert_eq!((sources.database_pools)().len(), 0);
+    }
 }

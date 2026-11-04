@@ -23,7 +23,7 @@ pub const READ_TIMEOUT: Duration = Duration::from_secs(300);
 const CAUSE_FIELD: &str = "cause";
 
 /// Caller-owned cancellation and total deadline; neither causes a second attempt.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TurnControl {
     /// Caller-owned dispatch identity; never a prompt, URL or credential.
     pub correlation_id: Arc<str>,
@@ -31,6 +31,32 @@ pub struct TurnControl {
     pub deadline: Option<Instant>,
     /// Cancels the physical response when the turn stops being polled.
     pub cancellation: CancellationToken,
+    /// Receives content-free timing once, including cancellation and failed streams.
+    pub observer: Option<TurnObserver>,
+}
+
+/// Timing for one provider stream request; usage recovery is excluded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TurnObservation {
+    /// Provider observations retain unknown usage instead of manufacturing zeros.
+    pub tokens: afd_wire::usage::ObservedTokens,
+    /// Request-to-terminal duration.
+    pub elapsed: Duration,
+    /// First nonempty text, absent for tool-only or failed-before-text calls.
+    pub first_text: Option<Duration>,
+    /// The stream's terminal failure, if any.
+    pub cause: Option<FailureCause>,
+}
+
+/// An observer owns attribution; the stream never sees credentials or model labels.
+pub type TurnObserver = Arc<dyn Fn(TurnObservation) + Send + Sync>;
+
+impl std::fmt::Debug for TurnControl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TurnControl")
+            .field("deadline", &self.deadline)
+            .finish_non_exhaustive()
+    }
 }
 
 #[cfg(test)]
@@ -81,9 +107,9 @@ impl TurnResult {
 
 /// Owns the SDK stream; provider codecs and event framing remain entirely in Rig.
 pub struct StreamTurn {
-    inner: CompletionStream,
+    inner: Option<CompletionStream>,
     recovery: Recovery,
-    trace: TurnTrace,
+    trace: Option<TurnTrace>,
     control: TurnControl,
     failure: Option<Box<ProviderError>>,
     cause: Option<FailureCause>,
@@ -109,6 +135,10 @@ impl std::fmt::Debug for TurnResult {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "only consuming finish takes the stream and trace, after its final next call"
+)]
 impl StreamTurn {
     /// Opens one SDK attempt. Retrying is an explicit caller policy outside this reader.
     ///
@@ -154,9 +184,12 @@ impl StreamTurn {
             .map_err(|error| Box::new(ProviderError::from(error)))?;
         let recovery = Recovery::new(configured, model_name);
         Ok(Self {
-            inner: model.stream(request)?,
+            inner: Some(model.stream(request)?),
             recovery,
-            trace: TurnTrace::start(Arc::clone(&control.correlation_id)),
+            trace: Some(TurnTrace::start(
+                Arc::clone(&control.correlation_id),
+                control.observer.clone(),
+            )),
             control,
             failure: None,
             cause: None,
@@ -170,6 +203,9 @@ impl StreamTurn {
     ///
     /// # Errors
     /// Yields one safe cause; `finish` retains the original error and any partial usage.
+    ///
+    /// # Panics
+    /// An internal ownership invariant is violated; public calls cannot consume the fields early.
     pub async fn next(&mut self) -> Option<Result<StreamEvent, FailureCause>> {
         while !self.ended {
             let inactivity = self.last_event + READ_TIMEOUT;
@@ -182,13 +218,16 @@ impl StreamTurn {
                 () = self.control.cancellation.cancelled() => {
                     return Some(Err(self.stop(FailureCause::Cancelled, ErrorKind::StreamCancelled)));
                 }
-                read = timeout_at(deadline, self.inner.next()) => read,
+                read = timeout_at(deadline, self.inner.as_mut().expect("unfinished turn owns its stream").next()) => read,
             };
             match read {
                 Ok(Some(Ok(Item::Event(event)))) => {
                     self.last_event = Instant::now();
                     if let StreamEvent::Text { text, .. } = &event {
-                        self.trace.text(text.len());
+                        self.trace
+                            .as_mut()
+                            .expect("unfinished turn owns its trace")
+                            .text(text.len());
                     }
                     return Some(Ok(event));
                 }
@@ -196,12 +235,22 @@ impl StreamTurn {
                     self.last_event = Instant::now();
                 }
                 Ok(Some(Err(error))) => {
+                    self.trace
+                        .as_mut()
+                        .expect("unfinished turn owns its trace")
+                        .terminal(Some(FailureCause::Provider));
                     self.failure = Some(Box::new(error));
                     self.cause = Some(FailureCause::Provider);
                     self.ended = true;
                     return Some(Err(FailureCause::Provider));
                 }
-                Ok(None) => self.ended = true,
+                Ok(None) => {
+                    self.trace
+                        .as_mut()
+                        .expect("unfinished turn owns its trace")
+                        .terminal(None);
+                    self.ended = true;
+                }
                 Err(_) => {
                     return Some(Err(
                         self.stop(FailureCause::Deadline, ErrorKind::StreamDeadline)
@@ -213,6 +262,10 @@ impl StreamTurn {
     }
 
     fn stop(&mut self, cause: FailureCause, kind: ErrorKind) -> FailureCause {
+        self.trace
+            .as_mut()
+            .expect("unfinished turn owns its trace")
+            .terminal(Some(cause));
         self.failure = Some(Box::new(Error::from(kind).into()));
         self.cause = Some(cause);
         self.ended = true;
@@ -220,25 +273,27 @@ impl StreamTurn {
     }
 
     /// Completes the fold, preserving partial usage even if reading or finalization failed.
+    ///
+    /// # Panics
+    /// An internal ownership invariant is violated; consuming `self` prevents a second finish.
     pub async fn finish(mut self) -> TurnResult {
         while self.next().await.is_some() {}
-        let mut partial = self.inner.partial();
-        let result = if let Some(failure) = self.failure {
+        let inner = self.inner.take().expect("finish consumes its stream once");
+        let mut trace = self.trace.take().expect("finish consumes its trace once");
+        let mut partial = inner.partial();
+        // Preserve known usage even if cancellation drops finish during an await.
+        trace.usage(&partial.usage);
+        let result = if let Some(failure) = self.failure.take() {
             self.recovery.usage(&mut partial).await;
-            self.trace.end(self.cause);
+            trace.usage(&partial.usage);
+            trace.end(self.cause);
             TurnResult {
                 response: partial,
                 failure: Some(failure),
                 cause: self.cause,
             }
         } else {
-            finish_response(
-                self.inner.finish().await,
-                partial,
-                self.recovery,
-                self.trace,
-            )
-            .await
+            finish_response(inner.finish().await, partial, &self.recovery, trace).await
         };
         self.measurement
             .observe(&result.response.usage, &self.control.correlation_id);
@@ -246,14 +301,25 @@ impl StreamTurn {
     }
 }
 
+impl Drop for StreamTurn {
+    fn drop(&mut self) {
+        // Read the SDK fold once on abandonment, without another provider call.
+        // Normal finish takes both fields, so recovery usage cannot be overwritten.
+        if let (Some(inner), Some(trace)) = (&self.inner, &mut self.trace) {
+            trace.usage(&inner.partial().usage);
+        }
+    }
+}
+
 async fn finish_response(
     finished: Result<CompletionResponse, ProviderError>,
     mut partial: CompletionResponse,
-    recovery: Recovery,
+    recovery: &Recovery,
     mut trace: TurnTrace,
 ) -> TurnResult {
     match finished {
         Ok(response) => {
+            trace.usage(&response.usage);
             trace.end(None);
             TurnResult {
                 response,
@@ -262,7 +328,9 @@ async fn finish_response(
             }
         }
         Err(failure) => {
+            trace.terminal(Some(FailureCause::Provider));
             recovery.usage(&mut partial).await;
+            trace.usage(&partial.usage);
             trace.end(Some(FailureCause::Provider));
             TurnResult {
                 response: partial,

@@ -10,11 +10,12 @@
 # fleet, lease, event or runner identifier: a label is a series that outlives
 # the lease, and those identities belong on spans.
 #
-# Label sets: provider = the provider registry's names
-# (`afr_providers/assets/providers.json`) plus `_other` (43); tool = the
+# Label sets: provider = canonical public names from the shared registry
+# (`afd_observability/src/semconv/provider.rs`) plus `_other`; tool = the
 # published tool catalog plus `_other` (40); signal and reason on the loss
 # family are the daemon's own closed sets (3 x 6); every outcome and reason is
-# a closed enum in `afr_telemetry::labels`.
+# a closed enum in `afr_telemetry::labels`. Model-call families additionally
+# use catalogue model names, with the SDK shared-cost cardinality ceiling.
 name	kind	number	unit	temporality	labels	bounds	policy	live_read	category	watch_for
 agentsfleet_runner_provider_turn_duration_seconds	histogram	f64	s	delta	provider,outcome	0.25,0.5,1,2,4,8,16,32,64,128	fixed:129	no	latency	model turn wall time by provider; one provider slow this hour stands out
 agentsfleet_runner_provider_retries_total	counter	u64	1	cumulative	provider,reason	-	fixed:172	no	errors	turn sends retried; growth means a provider is rate limiting or failing
@@ -29,3 +30,10 @@ agentsfleet_runner_tool_out_of_memory_total	counter	u64	{process}	cumulative	-	-
 agentsfleet_runner_sandbox_holds_total	counter	u64	{sandbox}	cumulative	outcome	-	fixed:10	no	saturation	sandboxes held frozen between a fleet's leases, by what became of each: a falling reused share against parked means follow-ups arrive after the window or land elsewhere
 agentsfleet_runner_spans_suppressed_total	counter	u64	{span}	cumulative	-	-	fixed:1	no	health	spans the runner's span budget shed; a storm stays visible
 agentsfleet_runner_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:18	no	errors	telemetry the runner lost before its collector took it, counted at the source; a down collector shows here and nowhere else
+
+agentsfleet_runner_model_call_duration_seconds	histogram	f64	s	delta	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120,300	shared:cost	no	latency	individual model stream duration, excluding usage recovery
+agentsfleet_runner_model_first_token_duration_seconds	histogram	f64	s	delta	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120	shared:cost	no	latency	first nonempty model text; calls with no text contribute no sample
+agentsfleet_runner_model_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name,gen_ai.token.type	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
+agentsfleet_runner_model_cache_read_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
+agentsfleet_runner_model_cache_write_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
+agentsfleet_runner_memory_sources_total	counter	u64	1	cumulative	source	-	fixed:2	no	traffic	inline windows versus separately requested hydration, including fallback attempts that later fail

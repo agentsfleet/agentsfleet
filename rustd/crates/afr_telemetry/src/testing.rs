@@ -22,8 +22,20 @@ use crate::labels::{
 use crate::record::Recorder;
 
 /// One measurement, as a test reads it back.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Recorded {
+    /// [`Recorder::memory_source`].
+    MemorySource(crate::labels::MemorySource),
+    /// The observed usage of one model request.
+    ModelTokens(String, Provider, afd_wire::usage::ObservedTokens),
+    /// One model request and its safe catalogue identity.
+    ModelCall(
+        String,
+        Provider,
+        crate::labels::CallOutcome,
+        Duration,
+        Option<Duration>,
+    ),
     /// [`Recorder::turn`].
     Turn(Provider, TurnOutcome, Duration),
     /// [`Recorder::retry`].
@@ -71,6 +83,36 @@ impl Tally {
 }
 
 impl Recorder for Tally {
+    fn memory_source(&self, source: crate::labels::MemorySource) {
+        self.send(Recorded::MemorySource(source));
+    }
+
+    fn model_tokens(
+        &self,
+        model: &str,
+        provider: Provider,
+        usage: afd_wire::usage::ObservedTokens,
+    ) {
+        self.send(Recorded::ModelTokens(model.to_owned(), provider, usage));
+    }
+
+    fn model_call(
+        &self,
+        model: &str,
+        provider: Provider,
+        outcome: crate::labels::CallOutcome,
+        elapsed: Duration,
+        first_text: Option<Duration>,
+    ) {
+        self.send(Recorded::ModelCall(
+            model.to_owned(),
+            provider,
+            outcome,
+            elapsed,
+            first_text,
+        ));
+    }
+
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
         self.send(Recorded::Turn(provider, outcome, elapsed));
     }

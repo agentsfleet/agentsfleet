@@ -181,6 +181,7 @@ obs_runner_offline_seconds() {
 obs_render_dashboard() {
   local out="$1"
   local dir="$2"
+  local asset="${3:-$dir/assets/dashboard.json}"
   local numeric="$out.numeric"
   local offline
   offline="$(obs_runner_offline_seconds)"
@@ -190,7 +191,7 @@ obs_render_dashboard() {
   # inside it — hence this text pass before the structural one.
   sed \
     -e "s/\"__RUNNER_OFFLINE_SECONDS_NUM__\"/$offline/g" \
-    "$dir/assets/dashboard.json" >"$numeric"
+    "$asset" >"$numeric"
   jq \
     --arg datasource "$OBS_PROMETHEUS_UID" \
     --arg environment "$OBS_ENVIRONMENT" \

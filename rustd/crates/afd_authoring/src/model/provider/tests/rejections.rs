@@ -44,6 +44,7 @@ impl Transport for Physical {
 fn outbound(api: InferenceApi) -> Outbound {
     let key = SecretString::new("fixture".into());
     Outbound {
+        provider: "openai".into(),
         measurement: None,
         dispatch_id: "fixture-dispatch".into(),
         progress: None,

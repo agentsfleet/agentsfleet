@@ -63,6 +63,7 @@ pub async fn record(request: Request, next: Next) -> Response {
         .map_or(UNMATCHED, MatchedPath::as_str)
         .to_owned();
     let method = request.method().to_string();
+    let mut observed = afd_observability::producers::http::Request::begin(&template, &method);
 
     let span = tracing::info_span!(
         "http.server.request",
@@ -79,6 +80,7 @@ pub async fn record(request: Request, next: Next) -> Response {
     // this span.
     let response = next.run(request).instrument(span.clone()).await;
 
+    observed.response(response.status().as_u16());
     span.record(
         semconv::ATTR_HTTP_RESPONSE_STATUS_CODE,
         response.status().as_u16(),
