@@ -258,8 +258,8 @@ The dashboard's round-trip row reads Tempo through a datasource variable (`tempo
 **PLAN spike, pass/fail:** one panel that, given an event ID, lists the spans with start offsets and computed gaps. If it fails, `002_round_trip_playbook.md` ships the TraceQL plus a small script that prints the tiled line, and the row shows the span list only.
 
 - **Dimension 4.1** — MOVED to M233_002 — The asset check accepts the Tempo datasource variable and still refuses any other datasource → Test `assets_check_accepts_tempo_variable_only`
-- **Dimension 4.2** — MOVED to M233_002 — For each verb span, duration minus the sum of its stage attributes is under the larger of 10% and 5 ms → Test `verb_stage_attributes_account_for_the_span`
-- **Dimension 4.3** — MOVED to M233_002 — On dev, for N consecutive probes, every span in the table is found, and `af:accepted − af:send` ≥ `auth + upstream` ≥ steer span → Test `manual_probes_satisfy_coverage_and_edge_ordering`
+- **Dimension 4.2** — MOVED to M233_002 Dimension 1.6 / R7 — For each verb span, duration minus the sum of its stage attributes is under the larger of 10% and 5 ms → Test `verb_stage_attributes_account_for_the_span`
+- **Dimension 4.3** — MOVED to M233_002 Dimension 3.4 — On dev, for N consecutive probes, every span in the table is found, and `af:accepted − af:send` ≥ `auth + upstream` ≥ steer span → Test `manual_probes_satisfy_coverage_and_edge_ordering`
 
 ### §5 — One authoring page — IN_PROGRESS
 
@@ -385,12 +385,12 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R0 | Dev unthrottled at rest and deploying at `info` (§0) | `make check-gh-actions-valid` | exit 0 | P0 | |
-| R1 | Daemon verbs write their reached stages and identity through the real subscriber (§1) | `cargo test -p afd_observability stage_clock` | exit 0 | P0 | | MOVED to M233_002 R1 |
-| R2 | Only root-owned host processes can deliver to the collector (§2) | `bash deploy/baremetal/service_test.sh` | exit 0 | P0 | | MOVED to M233_002 R2 |
-| R3 | Runner spans reach Tempo from the dev host, across a restart (§2) | `manual: TraceQL { span.agentsfleet.event.id = "<probe id>" } in Grafana Tempo` | ≥1 `runner.lease` span | P0 | | MOVED to M233_002 R3 |
-| R4 | Edge cost reaches the browser on one clock (§3) | `cd ui/packages/app && bun run test steer-route-timing` | exit 0 | P0 | | MOVED to M233_002 R4 |
-| R5 | Dashboard asset valid; verb stages account for their spans (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | | MOVED to M233_002 R5 |
+| R0 | Remaining dev sizing and throttle checks (§0.2–§0.3) | `manual_dev_sizes_match_live` and `manual_dev_machines_unthrottled_at_rest` | both pass | P0 | MOVED to M233_002 R0 |
+| R1 | Daemon verbs write their reached stages and identity through the real subscriber (§1) | `cargo test -p afd_observability stage_clock` | exit 0 | P0 | MOVED to M233_002 R1 |
+| R2 | Only root-owned host processes can deliver to the collector (§2) | `bash deploy/baremetal/service_test.sh` | exit 0 | P0 | MOVED to M233_002 R2 |
+| R3 | Runner spans reach Tempo from the dev host, across a restart (§2) | `manual: TraceQL { span.agentsfleet.event.id = "<probe id>" } in Grafana Tempo` | ≥1 `runner.lease` span | P0 | MOVED to M233_002 R3 |
+| R4 | Edge cost reaches the browser on one clock (§3) | `cd ui/packages/app && bun run test steer-route-timing` | exit 0 | P0 | MOVED to M233_002 R4 |
+| R5 | Dashboard asset valid; verb stages account for their spans (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | MOVED to M233_002 R5 and R7 |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -459,7 +459,7 @@ Remove the replaced embedded editor, duplicate save controls and runtime tab rou
 
 ## Discovery (consult log)
 
-- **Close and transfer, Nov 04, 2026:** Indy selected "Recommended: close M233_001 and move §1–§4 to M233_002". #786 shipped §0.1 and §5. Unstarted §1–§4 and rubric R1–R5 move to M233_002 under the same identifiers, rebased on M238_001 Discovery. Unfinished §0.2–§0.3 also remains tracked in that successor. No transferred Dimension is marked DONE.
+- **Close and transfer, Nov 04, 2026:** Indy selected "Recommended: close M233_001 and move §1–§4 to M233_002". #786 shipped §0.1 and §5. Unstarted §1–§4 and rubric R0–R5 move to M233_002, rebased on M238_001 Discovery. Old Dimension 4.2 moves to successor 1.6 / R7; old 4.3 moves to successor 3.4; old R5 splits into successor R5 (row assets) and R7 (verb accounting). Other identifiers keep their mapping. Unfinished §0.2–§0.3 also remains tracked in that successor. No transferred Dimension is marked DONE.
 - **Save finalization approved, Oct 27, 2026:** Indy: "The when i say save" and "You feed to the model wait for the model reply and `Saving setup...` and i see `Save done v3`", followed by "Yes correct lets go, signed off approved." The completed report's pinned candidate, including changes from this turn, is saved without another Save click; a cut response fails without saving. The existing fleet's conflicting app-selection guidance remains unsaved. > Indy (2026-10-27): "Okay whatz up, if we cant verify then lets move it up?" / "to a PR" / "undraft the PR, since i would like to merge and test" — context: publish current chat changes as a ready Pull Request with missing live proof disclosed; M233 stays active and unfinished timing work remains open.
 - **Review deferred by owner:** "And i think for now remove the `Review Setup`" followed by "we will deal with it later". Remove the action from this change.
 - **Incomplete fleet conversation:** Indy: "how do we make it better to even un configured fleets can receive chat". Reuse existing setup admission while required access is missing; do not admit a runtime job that cannot execute. Static credentials remain bound to an explicitly selected host.

@@ -74,6 +74,30 @@ case "$url" in
              .targets[0].expr) = "drift"' <<<"$spec"
       )"
     fi
+    if [ "${MOCK_DRIFT:-}" = tempo_query ]; then
+      spec="$(jq '(.panels[] | select(.datasource.type == "tempo") | .targets[0].query) = "drift"' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = tempo_reducer ]; then
+      spec="$(jq '(.panels[] | select(.datasource.type == "tempo") | .transformations[1].options.reducers) = ["mean"]' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = tempo_variable ]; then
+      spec="$(jq '(.templating.list[] | select(.name == "tempo") | .query) = "prometheus"' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = reordered_defaults ]; then
+      spec="$(jq '(.panels[].targets[] | .editorMode) = "code" | walk(if type == "object" then to_entries | reverse | from_entries else . end)' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = selected_variables ]; then
+      spec="$(jq '(.templating.list[] | select(.name == "tempo")) |= (.current={text:"Dev traces",value:"tempo-selected"} | .options=[{text:"Dev traces",value:"tempo-selected",selected:true}]) | (.templating.list[] | select(.name == "fleet_id") | .current) = {text:"fleet-selected",value:"fleet-selected"}' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = tempo_variable_type ]; then
+      spec="$(jq '(.templating.list[] | select(.name == "tempo") | .type) = "textbox"' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = tempo_variable_multi ]; then
+      spec="$(jq '(.templating.list[] | select(.name == "tempo") | .multi) = true' <<<"$spec")"
+    fi
+    if [ "${MOCK_DRIFT:-}" = tempo_variable_all ]; then
+      spec="$(jq '(.templating.list[] | select(.name == "tempo") | .includeAll) = true' <<<"$spec")"
+    fi
     folder=agentsfleet-dev
     [ "${MOCK_DRIFT:-}" != dashboard_metadata ] || folder=wrong
     jq -n \
@@ -158,6 +182,12 @@ test_should_reject_each_resource_drift() {
     'folder|folder drifted'
     'dashboard_metadata|dashboard metadata drifted'
     'dashboard_query|dashboard queries drifted'
+    'tempo_query|dashboard queries drifted'
+    'tempo_reducer|dashboard queries drifted'
+    'tempo_variable|dashboard variables drifted'
+    'tempo_variable_type|dashboard variables drifted'
+    'tempo_variable_multi|dashboard variables drifted'
+    'tempo_variable_all|dashboard variables drifted'
     'alert|Grafana alert drifted'
   )
 
@@ -174,7 +204,21 @@ test_should_reject_each_resource_drift() {
   ok "$name"
 }
 
+test_should_accept_reordered_objects_and_editor_defaults() {
+  local output mode status
+  for mode in reordered_defaults selected_variables; do
+    status=0
+    output="$(run_verify MOCK_DRIFT="$mode")" || status=$?
+    if [ "$status" -ne 0 ] || [[ "$output" != *"resources match the repository"* ]]; then
+      bad test_should_accept_reordered_objects_and_editor_defaults "$mode: $output"
+      return
+    fi
+  done
+  ok test_should_accept_reordered_objects_and_editor_defaults
+}
+
 test_should_accept_matching_resources
+test_should_accept_reordered_objects_and_editor_defaults
 test_should_reject_each_resource_drift
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"

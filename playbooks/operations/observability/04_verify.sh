@@ -40,9 +40,9 @@ actual_queries="$work_dir/actual-queries"
 # text panel — carries an empty array in the asset, and Grafana drops the field
 # entirely on the way back. Iterating the absent field is what turned a
 # faithfully applied dashboard into "queries drifted".
-jq -r '[.panels[] | (.targets // [])[].expr] | sort[]' \
+jq -S '[.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss}], transformations:(.transformations // [])}] | sort_by(.id)' \
   "$expected_dashboard" >"$expected_queries"
-jq -r '[.spec.panels[] | (.targets // [])[].expr] | sort[]' \
+jq -S '[.spec.panels[] | {id, datasource, targets:[(.targets // [])[] | {refId,expr,query,queryType,tableType,datasource,limit,spss}], transformations:(.transformations // [])}] | sort_by(.id)' \
   <<<"$dashboard" >"$actual_queries"
 
 if ! jq -e \
@@ -52,13 +52,20 @@ if ! jq -e \
   '
     .metadata.annotations["grafana.app/folder"] == $folder and
     .metadata.name == $uid and
-    ([.spec.panels[].datasource.uid] | all(. == $datasource))
+    ([.spec.panels[].datasource.uid] | all(. == $datasource or . == "${tempo}"))
   ' <<<"$dashboard" >/dev/null; then
   echo "ERROR: $OBS_ENVIRONMENT Grafana dashboard metadata drifted" >&2
   exit 1
 fi
 if ! cmp -s "$expected_queries" "$actual_queries"; then
   echo "ERROR: $OBS_ENVIRONMENT Grafana dashboard queries drifted" >&2
+  exit 1
+fi
+
+if ! jq -e --slurpfile expected "$expected_dashboard" \
+  'def definitions: .list | map({name,type,query,regex,multi,includeAll}) | sort_by(.name);
+   (.spec.templating | definitions) == ($expected[0].templating | definitions)' <<<"$dashboard" >/dev/null; then
+  echo "ERROR: Grafana dashboard variables drifted" >&2
   exit 1
 fi
 
