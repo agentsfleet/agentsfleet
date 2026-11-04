@@ -1,6 +1,6 @@
 # M238_003: Focused live dashboards
 
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1
 **Branch:** chore/m238-dev-round-trip
 **Pull request:** #801
@@ -427,3 +427,17 @@ Indy requested: "push it in PR801 and close 804."
 Keep the closeout, wording fixes and requested fixture cleanup in #801.
 GitHub marked #804 merged when its commits landed in its base branch, the branch for #801.
 The main branch was not merged; #801 remains the single open implementation PR.
+
+
+### Greptile review repairs
+
+The merge waits for both review findings to be fixed and verified.
+
+- **Dimension 5.1** — IN_PROGRESS — Daemon counters and histograms accumulate in the source process before the shared collector endpoint.
+  Real exported frames keep cumulative counts and one start time when requests reach different collector receivers.
+- **Dimension 5.2** — IN_PROGRESS — Dashboard drift checks compare panel display options, including percentile reducer settings.
+  Matching resources pass; changing reducer values or calculations fails.
+
+Additional review scope: `docs/metrics.census.tsv`, the OTLP pipeline documentation and native-export regression in `rustd/crates/afd_otlp/`, and collector comments.
+The existing census-to-provider routing supplies cumulative export without a new setting or a second accumulation layer.
+Runner delta histograms keep their isolated host collector.
