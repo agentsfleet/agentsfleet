@@ -127,7 +127,9 @@ verification and publication remain blocked by the alert-count decision.
 
 Indy: "1. Okay go" and "2. Yes go" approved the alert-count correction and the
 separate dev/prod collector conversion fix. The count is corrected to four
-without changing the alert set. The collector repair ships in its own pull
+without changing the alert set.
+
+The collector repair ships in its own pull
 request; merging remains Indy's.
 
 After the approved count correction, the source-ownership check exposed two
