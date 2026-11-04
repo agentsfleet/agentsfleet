@@ -234,6 +234,10 @@ mod tests {
             clipped: false,
             at: Instant::now(),
         };
+        let debug = format!("{snapshot:?}");
+        assert!(debug.contains("models: 1"));
+        assert!(!debug.contains("fixture"));
+        assert!(!debug.contains("openai"));
         assert_eq!(readings(&snapshot, Field::Limits, snapshot.at).len(), 1);
         assert_eq!(
             readings(&snapshot, Field::Routes, snapshot.at)

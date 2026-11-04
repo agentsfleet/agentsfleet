@@ -114,6 +114,19 @@ pub(crate) async fn receive<D: Services>(
     let proven = prove(services.as_ref(), &headers, &body)?;
     let mut observed = afd_observability::producers::scheduler::Callback::begin();
 
+    let result = dispatch(services, headers, proven, &mut observed).await;
+    if result.is_err() {
+        observed.answered(FireOutcome::Failed);
+    }
+    result
+}
+
+async fn dispatch<D: Services>(
+    services: Arc<D>,
+    headers: HeaderMap,
+    proven: VerifiedFire,
+    observed: &mut afd_observability::producers::scheduler::Callback,
+) -> Result<Response, Refusal> {
     // The schedule that fell due, by the id this daemon registered it under:
     // a schedule the scheduler filed under an id of its own resolves to none.
     let named = text(&headers, afd_cron::HEADER_SCHEDULE_ID);
@@ -126,20 +139,12 @@ pub(crate) async fn receive<D: Services>(
         .schedules()
         .fire_target(&schedule)
         .await
-        .map_err(|error| {
-            observed.answered(FireOutcome::Failed);
-            Refusal::at(EVENT_DROPPED)(error)
-        })?
+        .map_err(Refusal::at(EVENT_DROPPED))?
     else {
         observed.answered(FireOutcome::Stale);
         return Ok(no_such_schedule(&schedule));
     };
-    if let Some(dropped) = held(services.as_ref(), &schedule, &target)
-        .await
-        .inspect_err(|_error| {
-            observed.answered(FireOutcome::Failed);
-        })?
-    {
+    if let Some(dropped) = held(services.as_ref(), &schedule, &target).await? {
         observed.answered(FireOutcome::Skipped);
         return Ok(dropped);
     }
@@ -148,10 +153,7 @@ pub(crate) async fn receive<D: Services>(
         .schedules()
         .fire(&schedule, &target, &proven.message_id, services.now())
         .await
-        .map_err(|error| {
-            observed.answered(FireOutcome::Failed);
-            Refusal::at(EVENT_APPEND)(error)
-        })?;
+        .map_err(Refusal::at(EVENT_APPEND))?;
 
     observed.answered(if fired.replayed {
         FireOutcome::Replayed

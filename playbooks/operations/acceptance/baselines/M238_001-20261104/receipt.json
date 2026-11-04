@@ -478,5 +478,27 @@
       }
     ]
   },
-  "raw_evidence_archive": "https://github.com/agentsfleet/agentsfleet/tree/ffde2699b39cca1463542c53782ebec52044c838/playbooks/operations/acceptance/baselines/M238_001-20261104"
+  "raw_evidence_archive": "https://github.com/agentsfleet/agentsfleet/tree/ffde2699b39cca1463542c53782ebec52044c838/playbooks/operations/acceptance/baselines/M238_001-20261104",
+  "runner_collector_arrival": {
+    "host_witness": "Indy forwarding the other session",
+    "source_revision": "9b12fe0d8",
+    "collector_active_since_utc": "2026-11-04T09:06:30Z",
+    "runner_restarted_at_utc": "2026-11-04T09:07:51Z",
+    "vault_reference": "ZMB_CD_DEV/grafana-dev",
+    "first_export_utc": "2026-11-04T09:18:27Z",
+    "accepted_spans": 3,
+    "accepted_metric_points": 1,
+    "refused": 0,
+    "errors": 0,
+    "host_session_grafana_checked_utc": "2026-11-04T09:18:52Z",
+    "lease_span_ms": 995,
+    "independent_grafana_check": {
+      "target_info": true,
+      "provider_turn_count": 1,
+      "provider_turn_sum_seconds": 0.687962662,
+      "runner_lease_rows": 1,
+      "sandbox_tool_series": []
+    },
+    "actual_sandbox_admission": "pending; non-root uid rejection was verified, not an actual sandbox submission"
+  }
 }

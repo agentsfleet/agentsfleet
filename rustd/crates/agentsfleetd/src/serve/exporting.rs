@@ -233,3 +233,37 @@ pub(crate) fn open_telemetry(
     });
     Ok(())
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod snapshot_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pool_callback_reads_actual_capacity_and_withdraws_a_closed_pool() {
+        let database = afd_db::test_util::unreachable_db();
+        let admission = Admission::new(afd_api::DEFAULT_MAX_IN_FLIGHT);
+        let live = afd_sse::Live::detached(afd_sse::Ceiling::new(1));
+        let sources = gauge_sources(&admission, &live, &database);
+        let readings = (sources.database_pools)();
+        assert_eq!(readings.len(), 5);
+        let states: std::collections::BTreeMap<_, _> = readings
+            .iter()
+            .filter_map(|reading| {
+                reading
+                    .attributes
+                    .iter()
+                    .find(|pair| pair.key.as_str() == "state")
+                    .map(|pair| (pair.value.to_string(), reading.value))
+            })
+            .collect();
+        assert_eq!(states.get("open"), Some(&0));
+        assert_eq!(states.get("idle"), Some(&0));
+        assert_eq!(states.get("used"), Some(&0));
+        assert_eq!(states.get("waiting"), Some(&0));
+        assert!(states.get("capacity").is_some_and(|value| *value > 0));
+        assert_eq!((sources.requests_in_flight)(), Some(0));
+        assert_eq!((sources.streams_in_flight)(), Some(0));
+        database.close().await;
+        assert_eq!((sources.database_pools)().len(), 0);
+    }
+}

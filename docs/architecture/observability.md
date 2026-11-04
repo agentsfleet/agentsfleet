@@ -3,11 +3,11 @@
 > Two decisions drive this file. **`agentsfleetd` owns backend-bound
 > telemetry**: product analytics, cost, and every fact a runner reports over
 > `/v1/runners`; its collectors, `otelcol-{dev,prod}`, serve the daemon only.
-> **Runners get a new OpenTelemetry collector on the bare-metal host**
-> (decided 2026-10-04; built later): the runner sends it spans and its own
-> metric families over OpenTelemetry Protocol (OTLP), the collector reads the runner's logs from the
-> host's log store, and it exports all three to the backends itself. The runner
-> holds no analytics or observability credential.
+> **The dev runner has its own OpenTelemetry collector on the bare-metal host**
+> (installed 2026-11-04): it exports runner spans and metric families over
+> OpenTelemetry Protocol (OTLP). Logs remain on the host; a separate allowlist
+> is required before forwarding them. The collector holds the backend key;
+> the runner holds no analytics or observability credential.
 
 Siblings: [`runner_fleet.md`](./runner_fleet.md) (plane structure),
 [`data_flow.md`](./data_flow.md) (an event traced through the runtime). This
@@ -21,7 +21,7 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Signal paths | 3 | OTLP push through the daemon's collector · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
 | Metric namespace | `agentsfleet_` runtime families; dotted semantic-convention cost families | `docs/metrics.census.tsv` declares every exported name; `test_metric_family_registry_parity` grades the registry against it both ways | §The three signal paths |
-| Runner telemetry | built: spans, eight runner families and export losses over OTLP when an endpoint is set · decided: a runner collector on the bare-metal host | logs stay on stderr and liveness rides `/v1/runners`; the collector will read logs from the host's log store and export all three itself, never through `otelcol-{env}` | §`agentsfleet-runner` — a collector of its own |
+| Runner telemetry | spans and families declared in `docs/metrics.runner.census.tsv`; dev collector installed and first real lease export verified Nov 04, 2026 | traces and metrics through the dedicated host collector; logs stay local; never through `otelcol-{env}` | §`agentsfleet-runner` — a collector of its own |
 | Library read series | 124 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
 | Trace budget | daemon: none yet, one span per matched request · runner: 256 per lease, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
 | OTLP loss | drop, never block; nothing retries | a full batch queue drops; OTLP carries no idempotency key, so a resent delta window would count twice | §"The Rust daemon's export path, as built" |
@@ -243,7 +243,7 @@ makes it much smaller than the three missing families above.
 
 ## `agentsfleet-runner` — a collector of its own
 
-**Built: the runner exports spans and metric families when configured.** Its dedicated collector remains unbuilt. `afr_telemetry` uses the shared `afd_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
+**Built: the runner exports spans and metric families when configured.** The dedicated dev collector was installed on Nov 04, 2026; production installation is not claimed. `afr_telemetry` uses the shared `afd_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
 
 Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
@@ -320,19 +320,19 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   prompts, replies, tool output, credentials, and no tenant, fleet, lease or
   event identifier on a metric.
 
-**Decided 2026-10-04; the collector is built later.** Indy: "we will run an
+**Decided 2026-10-04; traces and metrics installed in dev 2026-11-04.** Indy: "we will run an
 otel collector and collect the observability log, trace, metrics"; "we will
 have a new collector for the runner later on in the baremetal host"; and the
 current collectors "are for the agentsfleetd daemon only".
 
 - A new OpenTelemetry collector on the bare-metal host serves runners. It is
   separate from `otelcol-{dev,prod}` (§The export path), which stay the
-  daemon's alone, and it exports to the backends itself. How it is deployed,
-  and the credential it holds for its backends, are settled when it is built.
-- The runner keeps logging to stderr alone. The runner collector reads those
-  lines from the host's log store (journald on a systemd host), which also
-  catches a crash, a refusal before boot and a sandbox's stderr, and no line is
-  emitted twice.
+  daemon's alone, and it exports to the backends itself. The dev unit and
+  installer are in `deploy/baremetal/otelcol-runner.*` and `install-collector.sh`;
+  Indy chose the existing `ZMB_CD_DEV/grafana-dev` key for that installation.
+- The runner keeps logging to stderr alone. Journald forwarding is deferred
+  until its separate allowlist is implemented; the installed collector has
+  traces and metrics pipelines only.
 - The runner's families carry only what no verb does. Every fact that rides a
   verb stays `agentsfleetd`'s.
 
@@ -342,7 +342,7 @@ and no backend, so moving a vendor stays collector configuration.
 ## Signal routing
 
 ```text
-BARE-METAL HOST (the runner's export and the verbs are built; its collector is built later)
+BARE-METAL HOST (dev collector installed; log forwarding remains deferred)
   agentsfleet-runner
     ├─ structured stderr ──► journald ─────────► runner collector ──► backends
     ├─ spans + runner families ── OTLP ──────────►┘  (its own; never otelcol-{env})
@@ -395,7 +395,7 @@ the allowlist proof.
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); a family with no producer fails `every_census_family_has_a_producer` |
 | PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product/mod.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
 | runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime leases run inside a `runner.lease` span; authoring currently has no equivalent lease span |
-| runner collector | absent; decided, built later | `deploy/baremetal/` carries `agentsfleet-runner.service` and no collector; `deploy/fly/otelcol-{dev,prod}` serve the daemon only |
+| runner collector | installed in dev; real lease spans and provider histogram verified in Grafana Nov 04, 2026 | `deploy/baremetal/otelcol-runner.{yml,nft,service}` and `install-collector.sh`; localhost receiver behind root-only admission; traces and metrics only; actual-sandbox probe pending |
 
 ## Metrics stay semantic
 
@@ -763,3 +763,20 @@ conversion (the metric-family registry documents the temporality split). With
 the pull endpoint retired, this push is the one metrics egress — when the pipe
 itself dies, the store-side `metrics-exporter-dead` absence rule is the
 watchdog.
+
+## Focused operator dashboards
+
+The six native definitions in `playbooks/operations/observability/assets/`
+cover Overview, Chat latency, API & Database, Scheduler, Models and Sandbox.
+Apply and drift verification cover the whole suite. Attribute omissions are
+separate from exporter loss. Empty series mean unavailable samples, not zero.
+The dev runner collector accepted its first real lease on Nov 04, 2026;
+Tempo and Prometheus both received it. Sandbox/tool metrics need actual
+activity, and per-model call and database/scheduler additions require their
+new producers to be deployed. Fleet identifiers stay on spans.
+
+Pool gauges read the real boot-owned pool through a callback without I/O.
+Catalogue and schedule snapshots are sampled outside collection locks, with
+query budgets; failed reads withdraw data. Model metadata is limited to 256
+rows and expires after 120 seconds. Tools and image transport describe the
+configured route, not measured model quality or inferred reasoning ability.

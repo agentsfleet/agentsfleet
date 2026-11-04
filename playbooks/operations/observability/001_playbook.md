@@ -3,17 +3,15 @@
 **Owner:** 🦉 Orly, with 🤠 Indy for account access and alert routing
 **Applies to:** development and production independently
 
-This runbook installs one environment-scoped folder, one runtime dashboard,
+This runbook installs one environment-scoped folder, six focused dashboards,
 and four Grafana-managed alerts. It never guesses a Grafana Cloud namespace or
 Prometheus datasource.
 
 **Read before applying to production.** The two environments resolve to the
 same Grafana stack, namespace, datasource and ingest credential, and no series
 carries a `deployment.environment` attribute. Applying to production today
-produces a second dashboard reading the same mixed series as the first. The
-development apply is correct only because the production Fly application runs
-no machines. See `docs/architecture/observability.md` §Service Level
-Objectives.
+produces a second dashboard reading the same mixed series as the first. Confirm active producers before interpreting environment-specific pages. See
+`docs/architecture/observability.md` §Service Level Objectives.
 
 ## 🤠 Indy handoff
 
@@ -71,27 +69,39 @@ only `grafana`.
 
 ## Acceptance
 
-- The environment folder and `agentsfleet-runtime-<env>` dashboard exist.
-- Metric panels use the pinned Prometheus datasource; round-trip span panels use the declared Tempo datasource selector.
+- The environment folder contains Overview, Chat latency, API & Database,
+  Scheduler, Models and Sandbox; their navigation links work.
+- Queries use the pinned Prometheus datasource. Chat latency uses a selectable
+  Tempo datasource and fleet identifier; that selection does not filter the
+  aggregate metric pages.
 - All four alert rules match the repository expressions.
+- Native renders agree with the dashboard's queries, labels and units.
 - `agentsfleet_api_in_flight_requests` returns at least one series.
-- The Grafana token never appears in process arguments or logs.
-- The four Service Level Indicator panels render: admission availability,
-  runner success, work picked up inside the replay floor, and worst runner
-  heartbeat age.
-- Both error-budget burn panels carry their unproven marker.
-- The shared-tenant warning is NOT on the dashboard. It was a text panel until
-  Sep 18, 2026; the warning above this list is where an operator reads it. A
-  dashboard panel was a second copy. Every census family has a producer, so
-  there is no producer-gap list to show.
-- `runner-silent` is quiet while runners heartbeat. The family reports a Unix
-  epoch, so the rule subtracts it from evaluation time and takes the freshest
-  reading per runner; a rule missing either half alerts on a healthy fleet.
+- Empty samples remain absent. Measured zero remains zero. Neither proves that
+  the complete export path is healthy.
+- Check collector logs for downstream refusal as well as SDK export-loss
+  counters. An acknowledged batch can still fail after entering its collector.
+- Attribute omissions are separate from lost records. An unmapped provider
+  omits `gen_ai.provider.name`, not the complete span.
+- `runner-silent` subtracts last-seen epochs from evaluation time and uses the
+  freshest reading per runner.
+- No token appears in process arguments or logs.
 
-The dashboard reads runtime families the daemon pushes over the OpenTelemetry
-Protocol (OTLP) — its single metrics egress; there is no scrape path. The
-export credentials live in `grafana-dev` and `grafana-prod`, separate from the
-provisioning service-account items above.
+The Grafana stack is shared across environments. A page's deployment title
+selects its configured datasource; it does not manufacture a missing
+resource/environment label. Do not claim dev/prod isolation without one.
+
+The daemon pushes runtime families through its Fly collector. The runner uses
+its dedicated host collector for its own spans and metric families. A family
+with no activity can have no series; verify a real lease before diagnosing it.
+
+### Why the JSON stays in the repository
+
+Six `dashboard*.json` definitions and `alerts.json` are the reproducible source
+for apply, review and drift checks. Grafana stores the applied copies. Changes
+made in its editor must be reconciled back into these assets. Diagnostic raw
+responses are separate: the M238 acceptance evidence keeps a compact receipt,
+screenshot and rejection log rather than one JSON file per empty query.
 
 ## Collector metric conversion
 

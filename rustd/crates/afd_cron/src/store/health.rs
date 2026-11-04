@@ -36,11 +36,26 @@ impl Schedules {
             row.failed,
             row.overdue_once,
         ];
-        let mut counts = [0; 7];
-        for (value, count) in values.into_iter().zip(&mut counts) {
-            *count = u64::try_from(value)
-                .map_err(|_invalid_count| error::row_unreadable("schedule count"))?;
-        }
-        Ok(counts)
+        counts(values)
+    }
+}
+
+fn counts(values: [i64; 7]) -> Result<[u64; 7]> {
+    let mut counts = [0; 7];
+    for (value, count) in values.into_iter().zip(&mut counts) {
+        *count = u64::try_from(value)
+            .map_err(|_invalid_count| error::row_unreadable("schedule count"))?;
+    }
+    Ok(counts)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[expect(clippy::expect_used, reason = "invalid driver data must fail loudly")]
+    fn a_negative_driver_count_is_refused_instead_of_becoming_zero() {
+        let refused = super::counts([-1, 0, 0, 0, 0, 0, 0]);
+        let error = refused.expect_err("negative COUNT is not a reading");
+        assert!(error.to_string().contains("schedule count"));
     }
 }
