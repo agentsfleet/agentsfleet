@@ -49,6 +49,8 @@ readonly ENTRY_POINT="opt/agentsfleet/agentsfleet-runner"
 readonly VENDOR_BIN="usr/local/bin"
 # Where the package list is written inside the root before it is carried out.
 readonly PACKAGES_INSIDE="tmp/toolbox-packages.txt"
+readonly INVENTORY_INSIDE="tmp/toolbox-inventory.json"
+readonly FINALIZER_INSIDE="tmp/toolbox-finalizer"
 # mmdebstrap copies the builder's resolver configuration and hostname into the
 # root, so two builders would ship two images. Both files get fixed content
 # rather than being removed: the per-lease network allowlist binds rendered
@@ -69,7 +71,7 @@ fi
 readonly OUT="$1"
 
 arch="$(dpkg --print-architecture)"
-suite="" snapshot="" uuid="" erofs=() packages=() archives=() vendors=()
+suite="" snapshot="" uuid="" erofs=() packages=() purge=() archives=() vendors=()
 while read -r key values; do
   case "$key" in
     ''|'#'*) ;;
@@ -78,6 +80,7 @@ while read -r key values; do
     uuid) uuid="$values" ;;
     erofs) read -r -a erofs <<<"$values" ;;
     packages) read -r -a packages <<<"$values" ;;
+    purge) read -r -a purge <<<"$values" ;;
     archive) archives+=("$values") ;;
     vendor) vendors+=("$values") ;;
     *) echo "build.sh: unknown manifest key '$key' in $MANIFEST" >&2; exit 2 ;;
@@ -93,6 +96,16 @@ if [ "${#archives[@]}" -eq 0 ] || [ "${#erofs[@]}" -eq 0 ]; then
   echo "build.sh: $MANIFEST names no archive or no erofs options" >&2
   exit 2
 fi
+if [ "${#packages[@]}" -eq 0 ] || [ "${#purge[@]}" -eq 0 ]; then
+  echo "build.sh: $MANIFEST needs packages and purge inputs" >&2
+  exit 2
+fi
+for package in "${packages[@]}" "${purge[@]}"; do
+  if [[ ! "$package" =~ ^[a-z0-9][a-z0-9+.-]+$ ]]; then
+    echo "build.sh: invalid Debian package name '$package'" >&2
+    exit 2
+  fi
+done
 
 # 20260901T000000Z -> 2026-09-01T00:00:00Z -> seconds since the epoch.
 stamp="${snapshot:0:4}-${snapshot:4:2}-${snapshot:6:2}T${snapshot:9:2}:${snapshot:11:2}:${snapshot:13:2}Z"
@@ -141,8 +154,6 @@ hooks+=("${installs[@]}")
 # Every installed package, its version and the SHA-256 apt verified it by,
 # read while the archive indexes are still in the root.
 hooks+=("--customize-hook=chroot \"\$1\" sh -c 'dpkg-query -W -f \"\\\${binary:Package}=\\\${Version}\\n\" | xargs apt-cache show --no-all-versions >/$PACKAGES_INSIDE'")
-hooks+=("--customize-hook=download /$PACKAGES_INSIDE $work/packages.txt")
-hooks+=("--customize-hook=rm \"\$1/$PACKAGES_INSIDE\"")
 # dpkg's path filters retain symlinks, including aliases for excluded files.
 # Prune those aliases and install-info's regenerated index inside the root;
 # copyright files and shared licence directories stay. Regular documentation
@@ -156,6 +167,18 @@ for root in (doc, Path(\"/usr/share/man\"), Path(\"/usr/share/locale\"), info):
             path.unlink()
 (info / \"dir\").unlink(missing_ok=True)
 '")
+
+# Copy helpers through mmdebstrap's hooks: an unshared root cannot read the
+# builder's checkout. The root identity refuses an accidental host invocation.
+hooks+=("--customize-hook=mkdir \"\$1/$FINALIZER_INSIDE\"")
+for helper in finalize.py finalize_payload.py package_records.py scan_inventory.py; do
+  cp "$HERE/$helper" "$work/$helper"
+  hooks+=("--customize-hook=copy-in $work/$helper /$FINALIZER_INSIDE")
+done
+purge_names="${purge[*]}" required_names="${packages[*]}"
+hooks+=("--customize-hook=root_id=\$(stat -c %d:%i \"\$1\") && test \"\$root_id\" != \"\$(stat -c %d:%i /)\" && chroot \"\$1\" python3 /$FINALIZER_INSIDE/finalize.py \"\$root_id\" /$PACKAGES_INSIDE /$INVENTORY_INSIDE '$purge_names' '$required_names'")
+hooks+=("--customize-hook=download /$INVENTORY_INSIDE $work/inventory.json")
+hooks+=("--customize-hook=rm \"\$1/$PACKAGES_INSIDE\" \"\$1/$INVENTORY_INSIDE\" && rm -rf \"\$1/$FINALIZER_INSIDE\"")
 
 sources=()
 for entry in "${archives[@]}"; do
@@ -177,6 +200,7 @@ mmdebstrap \
   --quiet \
   --mode="$mode" \
   --variant=minbase \
+  --skip=cleanup/apt \
   --include="$include" \
   --aptopt='Acquire::Check-Valid-Until "false"' \
   --dpkgopt='path-exclude=/usr/share/doc/*' \
@@ -199,23 +223,16 @@ features="$(dump.erofs -s "$work/toolbox.erofs" | sed -n 's/^Filesystem features
 dpkg-query -W -f="\${Package}\t\${Version}\n" "${BUILDER_PACKAGES[@]}" >"$work/builder.tsv"
 printf '%s\n' "${archives[@]}" >"$work/archives.txt"
 
-python3 - "$work/release.json" "$arch" "$length" "$digest" "$features" "$RUNNER_VERSIONS" \
-  "$work/packages.txt" "$work/vendored.tsv" "$snapshot" "$work/archives.txt" \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$HERE" python3 - "$work/release.json" "$arch" "$length" "$digest" "$features" "$RUNNER_VERSIONS" \
+  "$work/inventory.json" "$work/vendored.tsv" "$snapshot" "$work/archives.txt" \
   "$work/builder.tsv" <<'PY'
 import json, sys
+from scan_inventory import MANIFEST_LIMIT
 
-(out, arch, length, digest, features, versions, packages_path, vendored_path, snapshot,
+(out, arch, length, digest, features, versions, inventory_path, vendored_path, snapshot,
  archives_path, builder_path) = sys.argv[1:]
-packages, record = [], {}
-for line in open(packages_path, encoding="utf-8").read().splitlines() + [""]:
-    if not line.strip():
-        if record:
-            packages.append(record)
-        record = {}
-        continue
-    key, _, value = line.partition(":")
-    if key in ("Package", "Version", "Architecture", "SHA256"):
-        record[key.lower()] = value.strip()
+with open(inventory_path, encoding="utf-8") as handle:
+    inventory = json.load(handle)
 vendored = []
 for line in open(vendored_path, encoding="utf-8").read().splitlines():
     url, sha256 = line.split("\t")
@@ -230,15 +247,18 @@ manifest = {
     "sha256": digest,
     "erofs_features": features.split(),
     "runner_versions": versions.split(","),
-    "packages": sorted(packages, key=lambda p: (p["package"], p.get("architecture", ""))),
+    "packages": inventory["packages"],
+    "package_metadata": inventory["package_metadata"],
     "vendored": vendored,
     "snapshot": snapshot,
     "archives": open(archives_path, encoding="utf-8").read().splitlines(),
     "builder": builder,
 }
-with open(out, "w", encoding="utf-8") as handle:
-    json.dump(manifest, handle, indent=2, sort_keys=True)
-    handle.write("\n")
+encoded = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+if len(encoded) > MANIFEST_LIMIT:
+    raise SystemExit("build.sh: release manifest exceeds admission byte limit")
+with open(out, "wb") as handle:
+    handle.write(encoded)
 PY
 
 mkdir -p "$OUT"
