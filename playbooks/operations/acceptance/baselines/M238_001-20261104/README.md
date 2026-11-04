@@ -122,3 +122,16 @@ The narrow rerun `AGENTSFLEET_UI_ENV_FILE=/tmp/m238-ui-runtime.env make lint-app
 passed, using an empty task-owned file and the already supplied runtime
 variables. The original environment file selector was not modified. Full
 verification and publication remain blocked by the alert-count decision.
+
+## Owner approval — Nov 04, 2026
+
+Indy: "1. Okay go" and "2. Yes go" approved the alert-count correction and the
+separate dev/prod collector conversion fix. The count is corrected to four
+without changing the alert set. The collector repair ships in its own pull
+request; merging remains Indy's.
+
+After the approved count correction, the source-ownership check exposed two
+stale `agentsfleet_repair_dispatch_*` targets with no census entry or producer.
+Those targets were removed; their panels retain their supported queries.
+Asset checks now pass, including 9 positive/negative cases; drift checks pass
+3 cases, including saved variable selections.
