@@ -72,7 +72,7 @@ only `grafana`.
 ## Acceptance
 
 - The environment folder and `agentsfleet-runtime-<env>` dashboard exist.
-- Every panel uses the pinned Prometheus datasource.
+- Metric panels use the pinned Prometheus datasource; round-trip span panels use the declared Tempo datasource selector.
 - All four alert rules match the repository expressions.
 - `agentsfleet_api_in_flight_requests` returns at least one series.
 - The Grafana token never appears in process arguments or logs.
