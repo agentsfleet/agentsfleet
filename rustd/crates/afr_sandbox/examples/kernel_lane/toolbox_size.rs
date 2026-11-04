@@ -9,22 +9,20 @@ use crate::run::expect;
 use crate::tools::{answers, shell, shell_calls};
 use crate::trials::Body;
 
-/// Eighty percent of the pinned baseline build on each architecture, rounded down.
-/// ARM64: 244,531,200 bytes; AMD64: 248,217,600 bytes (baseline deploy build).
+/// ARM64 retains its previously qualified limit until this change is measured there.
+/// AMD64 is bounded by the fresh 162,004,992-byte package-manager baseline.
 #[cfg(target_arch = "aarch64")]
 const IMAGE_CAP_BYTES: u64 = 195_624_960;
 #[cfg(target_arch = "x86_64")]
-const IMAGE_CAP_BYTES: u64 = 198_574_080;
+const IMAGE_CAP_BYTES: u64 = 162_004_991;
 /// An architecture without a measured baseline cannot pass this proof.
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 const IMAGE_CAP_BYTES: u64 = 0;
-/// Copyright files and aliases in the baseline; shared doc directories are not followed.
-const COPYRIGHT_FILES: &str = "156";
 /// The installed tree must retain licences while excluding the other payloads.
 const LICENCES: &str = r"
-python3 - <<'PY'
+python3 -I - EXPECTED_PACKAGES <<'PY'
 from pathlib import Path
-import subprocess
+import errno, hashlib, json, os, shutil, sys
 roots = [Path('/usr/share') / name for name in ('doc', 'man', 'locale', 'info')]
 copyrights = []
 for root in roots:
@@ -37,11 +35,27 @@ for root in roots:
             assert root.name == 'doc' and path.name == 'copyright', f'unstripped: {path}'
             assert path.stat().st_size > 0, f'empty licence: {path}'
             copyrights.append(path)
-packages = subprocess.check_output(['dpkg-query', '-W', '-f', '${binary:Package}\n'], text=True)
-for package in packages.splitlines():
-    notice = roots[0] / package.split(':')[0] / 'copyright'
-    assert notice.is_file() and notice.stat().st_size > 0, f'missing licence: {package}'
-print(len(copyrights))
+packages = json.loads(sys.argv[1])
+assert packages and copyrights
+for package in packages:
+    notice = Path(package['copyright']['path'])
+    assert notice == roots[0] / package['package'] / 'copyright'
+    assert notice.is_file() and notice.stat().st_size > 0, f'missing licence: {notice}'
+    assert hashlib.sha256(notice.read_bytes()).hexdigest() == package['copyright']['sha256'], notice
+for state in ('/var/lib/dpkg', '/var/lib/apt', '/var/cache/apt', '/var/lib/perl'):
+    assert not Path(state).exists(), f'removed package state remains: {state}'
+assert os.statvfs('/').f_flag & os.ST_RDONLY
+try:
+    Path('/toolbox-root-write').write_text('must fail')
+except OSError as error:
+    assert error.errno in (errno.EROFS, errno.EACCES, errno.EPERM), error
+else:
+    raise AssertionError('root write succeeded')
+workspace = Path('/workspace/toolbox-write')
+workspace.write_text('writable workspace')
+assert workspace.read_text() == 'writable workspace'
+workspace.unlink()
+print(f'{len(packages)} verified package notices; read-only root; writable workspace')
 PY
 ";
 
@@ -63,13 +77,20 @@ fn fits_size_cap(lane: &Lane) -> Result<(), Failed> {
 }
 
 fn keeps_copyright_and_drops_docs(lane: &Lane) -> Result<(), Failed> {
-    let calls = [shell(LICENCES, None)];
+    let release: serde_json::Value =
+        serde_json::from_slice(&fs::read(lane.image.path().with_extension("json"))?)?;
+    let packages = release.get("packages").ok_or("release has no packages")?;
+    let expected = serde_json::to_string(packages)?.replace('\'', "'\\''");
+    let command = LICENCES.replace("EXPECTED_PACKAGES", &format!("'{expected}'"));
+    let calls = [shell(&command, None)];
     let output = shell_calls(lane, "toolbox-licences", &calls)?;
     let [licences] = answers(&output)?;
     expect(
         licences.exit_code == Some(0)
             && licences.error_code.is_none()
-            && licences.text.trim() == COPYRIGHT_FILES,
-        format!("{COPYRIGHT_FILES} licences and no other docs, got {licences:?}"),
+            && licences
+                .text
+                .contains("verified package notices; read-only root; writable workspace"),
+        format!("all retained notices, stripped docs and read-only root, got {licences:?}"),
     )
 }
