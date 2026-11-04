@@ -188,6 +188,7 @@ async fn a_body_past_the_cap_is_refused_before_the_token_is_read() {
 /// without that check a captured token would authorise any substituted payload.
 #[tokio::test]
 async fn a_fire_that_does_not_prove_itself_is_refused() {
+    let captured = afd_core::test_util::trace::Capture::install();
     let good = mint(&FireClaims::good(BODY), CURRENT_KEY);
     let forged = mint(&FireClaims::good(BODY), FOREIGN_KEY);
     let substituted = r#"{"schedule_id":"01J0000000000000000000000B"}"#;
@@ -222,6 +223,13 @@ async fn a_fire_that_does_not_prove_itself_is_refused() {
             "{case}"
         );
     }
+    assert!(
+        captured
+            .events()
+            .iter()
+            .any(|event| event.field("error_code")
+                == Some(error_code::WEBHOOK_SIGNATURE_INVALID.as_str()))
+    );
 }
 
 #[tokio::test]

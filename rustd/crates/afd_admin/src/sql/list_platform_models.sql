@@ -7,3 +7,4 @@ FROM model.platform_models m
 LEFT JOIN model.decision_revisions d
        ON d.platform_model_id = m.id AND d.id = m.decision_revision_id
 ORDER BY m.provider, m.model_name
+LIMIT $1

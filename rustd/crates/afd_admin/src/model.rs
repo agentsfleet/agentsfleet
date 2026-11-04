@@ -114,6 +114,21 @@ impl Models {
     /// # Errors
     /// Reports a query or malformed-row failure.
     pub async fn list(&self) -> Result<Vec<Model>> {
+        self.read(None).await
+    }
+
+    /// Reads at most `limit` catalogue entries and reports a clipped snapshot.
+    ///
+    /// # Errors
+    /// As [`Self::list`].
+    pub async fn bounded(&self, limit: u32) -> Result<(Vec<Model>, bool)> {
+        let mut rows = self.read(Some(i64::from(limit) + 1)).await?;
+        let clipped = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        Ok((rows, clipped))
+    }
+
+    async fn read(&self, limit: Option<i64>) -> Result<Vec<Model>> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection
             .as_mut()
@@ -121,6 +136,7 @@ impl Models {
             .await
             .map_err(query(CONTEXT_LIST))?;
         let rows: Vec<ModelRow> = sqlx::query_as(sql::LIST_PLATFORM_MODELS)
+            .bind(limit)
             .fetch_all(&mut *transaction)
             .await
             .map_err(query(CONTEXT_LIST))?;

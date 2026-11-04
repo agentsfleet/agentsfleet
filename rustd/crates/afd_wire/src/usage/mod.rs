@@ -210,3 +210,17 @@ impl UsageLine {
 
 #[cfg(test)]
 mod tests;
+
+/// Provider-reported observations; absent usage is not a measured zero.
+/// This internal value is not serialized into a renewal or report.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ObservedTokens {
+    /// Whole prompt, cache reads and writes included.
+    pub input: Option<u64>,
+    /// Completion, reasoning included once.
+    pub output: Option<u64>,
+    /// Cache-read subset of input.
+    pub cache_read: Option<u64>,
+    /// Cache-write subset of input, across lifetimes.
+    pub cache_write: Option<u64>,
+}

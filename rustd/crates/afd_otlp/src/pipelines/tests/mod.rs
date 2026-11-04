@@ -231,3 +231,5 @@ fn a_ceiling_the_sdk_refuses_refuses_the_install() {
 /// A census of one counter whose ceiling is zero.
 const ZERO_CEILING: &str = "name\tkind\tnumber\tunit\ttemporality\tlabels\tbounds\tpolicy\tlive_read\tcategory\twatch_for\n\
                             a.family\tcounter\tu64\t1\tcumulative\t-\t-\tfixed:0\tno\ttraffic\tnothing\n";
+
+mod cumulative;

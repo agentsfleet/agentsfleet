@@ -23,6 +23,7 @@ fn schedule_payloads_preserve_complete_messages_and_resolved_display_facts() {
         "Support triage — 東京 🦉",
     ] {
         let target = FireTarget {
+            scheduled_at: None,
             fleet: fleet.clone(),
             workspace: workspace.clone(),
             message: message.to_owned(),

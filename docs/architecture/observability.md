@@ -3,11 +3,13 @@
 > Two decisions drive this file. **`agentsfleetd` owns backend-bound
 > telemetry**: product analytics, cost, and every fact a runner reports over
 > `/v1/runners`; its collectors, `otelcol-{dev,prod}`, serve the daemon only.
-> **Runners get a new OpenTelemetry collector on the bare-metal host**
-> (decided 2026-10-04; built later): the runner sends it spans and its own
-> metric families over OpenTelemetry Protocol (OTLP), the collector reads the runner's logs from the
-> host's log store, and it exports all three to the backends itself. The runner
-> holds no analytics or observability credential.
+
+> **The dev runner has its own OpenTelemetry collector on the bare-metal host**
+> (installed 2026-11-04). It exports runner spans and metric families over
+> OpenTelemetry Protocol (OTLP). Logs remain on the host; forwarding requires a separate allowlist.
+
+> The collector holds the backend key;
+> the runner holds no analytics or observability credential.
 
 Siblings: [`runner_fleet.md`](./runner_fleet.md) (plane structure),
 [`data_flow.md`](./data_flow.md) (an event traced through the runtime). This
@@ -21,10 +23,10 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Signal paths | 3 | OTLP push through the daemon's collector · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
 | Metric namespace | `agentsfleet_` runtime families; dotted semantic-convention cost families | `docs/metrics.census.tsv` declares every exported name; `test_metric_family_registry_parity` grades the registry against it both ways | §The three signal paths |
-| Runner telemetry | built: spans, eight runner families and export losses over OTLP when an endpoint is set · decided: a runner collector on the bare-metal host | logs stay on stderr and liveness rides `/v1/runners`; the collector will read logs from the host's log store and export all three itself, never through `otelcol-{env}` | §`agentsfleet-runner` — a collector of its own |
+| Runner telemetry | spans and families declared in `docs/metrics.runner.census.tsv`; dev collector installed and first real lease export verified Nov 04, 2026 | traces and metrics through the dedicated host collector; logs stay local; never through `otelcol-{env}` | §`agentsfleet-runner` — a collector of its own |
 | Library read series | 124 total, the sum of the census ceilings | closed enums; a member that outgrows its family's ceiling fails `every_declared_ceiling_admits_its_label_product` | §Library read stages are metrics, not spans |
 | Trace budget | daemon: none yet, one span per matched request · runner: 256 per lease, 128 per second | the daemon has no sampler, so it sheds nothing and counts nothing | §Traces |
-| OTLP loss | drop, never block; nothing retries | a full batch queue drops; OTLP carries no idempotency key, so a resent delta window would count twice | §"The Rust daemon's export path, as built" |
+| OTLP loss | drop, never block; no exporter retry | bounded queues; later cumulative metric collections can recover totals while the source process survives | §"The Rust daemon's export path, as built" |
 | PostHog events | 11 captured, 2 declared-uncaptured | `FleetCompleted` fires only on a report's first settle; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
 | Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
 | Tenant identity on metrics | never | exact per-workspace cost is a Postgres ledger query, which is exact rather than bounded | §Label registry |
@@ -247,7 +249,7 @@ makes it much smaller than the three missing families above.
 
 ## `agentsfleet-runner` — a collector of its own
 
-**Built: the runner exports spans and metric families when configured.** Its dedicated collector remains unbuilt. `afr_telemetry` uses the shared `afd_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
+**Built: the runner exports spans and metric families when configured.** The dedicated dev collector was installed on Nov 04, 2026; production installation is not claimed. `afr_telemetry` uses the shared `afd_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
 
 Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
@@ -300,16 +302,19 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   exports themselves are counted (below).
 - **Eight metric families of its own**, declared in
   `docs/metrics.runner.census.tsv` and graded both ways against their
-  producers: provider turn duration and retries (by provider and outcome or
-  reason), sandbox start duration, live-tail frames dropped (backpressure, a
-  failed post, or abandoned when a lease stopped waiting for a slow daemon),
-  failed memory pushes, tool call duration (by tool and outcome), tenant
-  processes killed for memory inside a sandbox, and sandboxes held between a
-  fleet's leases. A
-  provider label is a vendor name from rig's bounded provider list, or `_other`
-  for any other configured name (`afr_telemetry/src/labels/mod.rs`).
+  producers. Provider metrics cover turn duration and retries, by provider and outcome or reason.
+  Sandbox metrics cover start duration, processes killed for memory, and sandboxes held between a fleet's leases.
+
+  Other families cover failed memory pushes, tool-call duration by tool and outcome, and dropped live-tail frames.
+  Frames drop through backpressure, a failed post, or abandonment when a lease stops waiting for a slow daemon.
+
+  A provider label uses the shared, bounded public naming registry: compiled
+  model-catalogue providers, SDK providers and OpenTelemetry names, with aliases
+  deduplicated. Other configured names use `_other`
+  (`afd_observability/src/semconv/provider.rs`, `afr_telemetry/src/labels/mod.rs`).
   These labels describe telemetry only; saved model settings choose the route.
-  The `invoke_agent` span keeps the well-known `gen_ai.provider.name`. A tool
+
+  The `invoke_agent` span uses the same canonical `gen_ai.provider.name`. A tool
   label is a published catalog name or `_other`; every outcome and reason is a
   closed enum.
 - **Its own losses:** spans suppressed by the budget, and
@@ -324,19 +329,20 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   prompts, replies, tool output, credentials, and no tenant, fleet, lease or
   event identifier on a metric.
 
-**Decided 2026-10-04; the collector is built later.** Indy: "we will run an
-otel collector and collect the observability log, trace, metrics"; "we will
-have a new collector for the runner later on in the baremetal host"; and the
-current collectors "are for the agentsfleetd daemon only".
+**Decided 2026-10-04; traces and metrics installed in dev 2026-11-04.**
+
+Indy: "we will run an otel collector and collect the observability log, trace, metrics".
+He added: "we will have a new collector for the runner later on in the baremetal host".
+The current collectors "are for the agentsfleetd daemon only".
 
 - A new OpenTelemetry collector on the bare-metal host serves runners. It is
   separate from `otelcol-{dev,prod}` (§The export path), which stay the
-  daemon's alone, and it exports to the backends itself. How it is deployed,
-  and the credential it holds for its backends, are settled when it is built.
-- The runner keeps logging to stderr alone. The runner collector reads those
-  lines from the host's log store (journald on a systemd host), which also
-  catches a crash, a refusal before boot and a sandbox's stderr, and no line is
-  emitted twice.
+  daemon's alone, and it exports to the backends itself. The dev unit and
+  installer are in `deploy/baremetal/otelcol-runner.*` and `install-collector.sh`;
+  Indy chose the existing `ZMB_CD_DEV/grafana-dev` key for that installation.
+- The runner keeps logging to stderr alone. Journald forwarding is deferred
+  until its separate allowlist is implemented; the installed collector has
+  traces and metrics pipelines only.
 - The runner's families carry only what no verb does. Every fact that rides a
   verb stays `agentsfleetd`'s.
 
@@ -346,7 +352,7 @@ and no backend, so moving a vendor stays collector configuration.
 ## Signal routing
 
 ```text
-BARE-METAL HOST (the runner's export and the verbs are built; its collector is built later)
+BARE-METAL HOST (dev collector installed; log forwarding remains deferred)
   agentsfleet-runner
     ├─ structured stderr ──► journald ─────────► runner collector ──► backends
     ├─ spans + runner families ── OTLP ──────────►┘  (its own; never otelcol-{env})
@@ -399,7 +405,7 @@ the allowlist proof.
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); a family with no producer fails `every_census_family_has_a_producer` |
 | PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product/mod.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
 | runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime leases run inside a `runner.lease` span; authoring currently has no equivalent lease span |
-| runner collector | absent; decided, built later | `deploy/baremetal/` carries `agentsfleet-runner.service` and no collector; `deploy/fly/otelcol-{dev,prod}` serve the daemon only |
+| runner collector | installed in dev; real lease spans and provider histogram verified in Grafana Nov 04, 2026 | `deploy/baremetal/otelcol-runner.{yml,nft,service}` and `install-collector.sh`; localhost receiver behind root-only admission; traces and metrics only; actual-sandbox probe pending |
 
 ## Metrics stay semantic
 
@@ -441,20 +447,26 @@ The segments are not a partition: the sandbox wait runs beside the model's time.
 
 Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `lease_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
 
-**`fleet.delivery` is a custom control-plane span.** It is a root of its own,
-so it never claims to be half of a runner trace
+**`fleet.delivery` is a custom control-plane span.** It has its own root
 (`rustd/crates/afd_observability/src/delivery/mod.rs`). `DELIVERY_SPAN_KEYS` in
-`rustd/crates/afd_observability/src/semconv/mod.rs` declares its attributes. The
+`rustd/crates/afd_observability/src/semconv/mod.rs` declares its attributes.
+
+The
 Generative Artificial Intelligence (GenAI) keys appear where the source fact
 matches: `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id` (the fleet),
 `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`
 and `gen_ai.usage.output_tokens`. Product-namespaced keys carry the rest:
 `agentsfleet.execution.posture` and the correlation identifiers
 `agentsfleet.event.id`, `agentsfleet.workspace.id` and
-`agentsfleet.tenant.id`. A provider with no well-known name omits its key and
-counts the omission. Correlation identity is allowed on a span because it is
-not allowed on a metric: a span is a bounded per-event record, and a metric
-label creates a series that outlives the process. Prompt and response content
+`agentsfleet.tenant.id`.
+
+Public providers without a well-known spelling keep their own canonical
+name, as the pinned OpenTelemetry reference permits. A private identifier
+outside the compiled registry omits its key and counts the omission.
+
+Correlation identity is allowed on a span because each span is a bounded per-event record.
+A metric label creates a series that outlives the process, so metrics exclude correlation identity.
+Prompt and response content
 never becomes a span attribute.
 
 **Route policy.** None yet. The daemon traces every matched request: it has no
@@ -672,33 +684,31 @@ client awaited there would have no driver.
   read, with an empty reload slot; boot fills the slot with two bridges, one
   for spans and one for events, over the SAME emits stderr already writes.
   Stderr stays logfmt with the exporter present, absent or failed.
-- **Metrics** ride TWO meter providers, because the SDK asks the exporter for
-  its temporality and the census declares it per family. The cost families
-  report windows (delta) and the runtime families report running totals
-  (cumulative); one provider would silently rewrite half of them. Each
-  provider's periodic reader collects every 5 s (`COLLECT_INTERVAL` in
-  `rustd/crates/afd_otlp/src/pipelines/mod.rs`). The reader posts through a counting wrapper whose number is collection CYCLES
-  the exporter failed to send. Every census family is claimed from the
-  registry at boot under its declared kind and series ceiling, and a family
-  with no producer fails the census test: a mechanism this daemon does not
-  run has no census row, so nothing is fed zeros.
+- **Metrics** use source-owned cumulative totals for every daemon counter and histogram.
+  The census routes them to the existing cumulative provider before the shared collector endpoint.
+  Collector selection cannot split a daemon's accumulation.
 
-Nothing retries: OTLP carries no idempotency key, and a resent delta window
-counts twice. A collector that is down costs dropped batches and a climbing
-counter, never latency on a request. That is the property `export/mod.rs` states
-and `an_unreachable_collector_costs_spans_and_not_requests` grades on a real
-socket. The supervised `otlp_export` task does no exporting. It samples this
-process's resident set on the metric reader's own 5 s cadence and publishes it
-into the cell the gauge callback loads — a reading taken from `/proc` inside
-that callback would run under the SDK's pipeline lock, where a stalling
-syscall takes every family silent at once. On cancellation it force-flushes
-every provider before the pools they describe are dropped, the
-`analytics_flush` ordering for the same reason. The flush runs on the blocking
-pool, because `PeriodicReader::force_flush` parks the thread that calls it and
-has no timeout at all, and a task parked in a synchronous call has no await
-point for the supervisor's join deadline to cancel at. The endpoint
-is logged as its SOURCE, the knob's name, never its value, because the header
-beside it carries a credential.
+  The common builder also retains a delta provider for runner families declared as windows.
+  Both readers collect every 5 s (`COLLECT_INTERVAL` in `rustd/crates/afd_otlp/src/pipelines/mod.rs`).
+  Their counting wrappers record failed collection cycles.
+
+  Boot claims each census family under its declared kind and series ceiling.
+  The parity test rejects families without producers.
+  Families without measurements receive no invented zero points.
+
+Exporters make one attempt; a failed batch increments its counter without blocking requests.
+Later cumulative exports include earlier measurements while the process survives.
+`an_unreachable_collector_costs_spans_and_not_requests` checks the request-path property on a real socket.
+
+The supervised `otlp_export` task samples the resident set every 5 s; the SDK readers own exporting.
+Gauge callbacks load its cell rather than reading `/proc` under the pipeline lock.
+A stalled callback would silence every family's collection.
+
+Cancellation force-flushes every provider before dropping the pools, matching the `analytics_flush` ordering.
+Flush runs on the blocking pool because the SDK call parks its thread without a timeout.
+A blocked asynchronous task has no await point for the supervisor's join deadline to cancel.
+
+Endpoint logging records only the source knob's name, never its value or the accompanying credential.
 
 ## Label registry — money stays in Postgres
 
@@ -711,7 +721,7 @@ Labels are bounded at the source:
 | `gen_ai.token.type` | `input`, `output` | closed set; no overflow value |
 | `agentsfleet.execution.posture` | `platform`, `self_managed` | closed set; no overflow value |
 | `agentsfleet.billing.charge.type` | `receive`, `renewal`, `settle` | closed set; no overflow value |
-| `gen_ai.provider.name` | exact OpenTelemetry well-known names only | unmapped provider omits the attribute and counts the omission |
+| `gen_ai.provider.name` | canonical standard names plus public provider identities from the compiled catalogue and SDK; aliases share one emitted value | private/unrecognized names omit the attribute and count the omission |
 | `gen_ai.request.model` | the saved runtime model's catalogue identity carried by the lease; catalogue updates can add identities, and the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
 | `surface` (library) | `tenant_models`, `global_models`, `fleet_summary`, `workspace_entries` | closed enum; no overflow value — a fifth surface is a code change, not a label |
 | `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
@@ -727,16 +737,29 @@ The cost families copy the run's model name into `gen_ai.request.model`
 (`rustd/crates/afd_observability/src/producers/cost.rs`). Runtime dispatch resolves
 the saved model reference through `model.platform_models` for both owner and
 platform models (`rustd/crates/afd_credential/src/provider/registered/sql/mod.rs`).
-Catalogue updates can add model identities over time. The families declare no
-ceiling (`shared:cost` in `docs/metrics.census.tsv`), so the
-only bound is the SDK's default of 2,000 series per stream: past it, new
-`(model, …)` combinations are folded into one `otel.metric.overflow` series, and
-their spend is no longer told apart in the export. Exact per-model cost stays a
-Postgres query against `billing.usage_lines`. A provider with no
-well-known name **omits the attribute and keeps the measurement** on the
-`fleet.delivery` span, and the omission increments
+Catalogue updates can add model identities over time.
+
+The families declare no ceiling (`shared:cost` in `docs/metrics.census.tsv`).
+The SDK's default limits each stream to 2,000 series.
+Past that limit, new `(model, …)` combinations fold into one `otel.metric.overflow` series, losing their separate exported spend.
+
+Exact per-model cost stays a Postgres query against `billing.usage_lines`.
+A provider outside the compiled public naming registry **omits its attribute and keeps the measurement** on the `fleet.delivery` span.
+The omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`
-(`rustd/crates/afd_observability/src/delivery/mod.rs`). The `budget_exhausted` and
+(`rustd/crates/afd_observability/src/delivery/mod.rs`).
+
+The pinned
+[OpenTelemetry provider reference](https://github.com/open-telemetry/semantic-conventions-genai/blob/2e994c6d59a93bb4fc1752c5378eedb9b8e14d6b/docs/registry/attributes/gen-ai.md#gen-ai-provider-name)
+permits custom values when no well-known value applies. The shared registry
+therefore retains Fireworks, OpenRouter, MiniMax and other compiled public
+providers. A Fireworks-hosted MiniMax model keeps Fireworks as its serving
+provider and the exact MiniMax model identifier.
+
+No model-name or protocol
+heuristic chooses a provider. Historical `_other` or omitted attributes cannot
+be reconstructed; corrected attribution starts after deploying the new binaries.
+The `budget_exhausted` and
 `value_too_long` reasons are declared and have no producer yet.
 
 All three OTLP signals share one resource (`service.name`,
@@ -759,11 +782,33 @@ the GenAI conventions, because each divergence was chosen, not accidental:
 - `agentsfleet.billing.credit.consumed` counts nanocredits by charge class;
   nanocredits are money, not time.
 
-Every committed debit emits once; uncommitted, stale-fenced, or replayed
-operations emit nothing. Flush coalesces the evented cost families into one
-**delta** dataPoint per (metric, labelset), converted to cumulative
-downstream; the runtime snapshot counters are natively cumulative and need no
-conversion (the metric-family registry documents the temporality split). With
-the pull endpoint retired, this push is the one metrics egress — when the pipe
-itself dies, the store-side `metrics-exporter-dead` absence rule is the
-watchdog.
+Every committed debit emits once; uncommitted, stale-fenced, or replayed operations emit nothing.
+The daemon accumulates cost counters and histograms into cumulative points per metric and label set.
+The collector forwards those totals without owning their accumulation.
+
+A process restart starts a new cumulative interval.
+The SDK carries each interval's start timestamp, and the trusted service instance identifies its source.
+The store-side `metrics-exporter-dead` absence rule watches this sole metrics export path.
+
+## Focused operator dashboards
+
+The six native definitions in `playbooks/operations/observability/assets/`
+cover Overview, Chat latency, API & Database, Scheduler, Models and Sandbox.
+Apply and drift verification cover the whole suite. Attribute omissions are
+separate from exporter loss.
+
+Empty series mean unavailable samples, not zero.
+The dev runner collector accepted its first real lease on Nov 04, 2026;
+Tempo and Prometheus both received it. Sandbox/tool metrics need actual
+activity, and per-model call and database/scheduler additions require their
+new producers to be deployed.
+
+Fleet identifiers stay on spans.
+
+Pool gauges read the real boot-owned pool through a callback without I/O.
+Catalogue and schedule snapshots are sampled outside collection locks, with
+query budgets; failed reads withdraw data.
+
+Model metadata is limited to 256
+rows and expires after 120 seconds. Tools and image transport describe the
+configured route, not measured model quality or inferred reasoning ability.

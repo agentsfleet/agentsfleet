@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M233
 **Workstream:** 001
 **Date:** Oct 26, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing: the production daemon size (three `shared-cpu-4x` 4 GB machines at about $80 a month, or three `performance-2x` 4 GB at $198 a month; source in Discovery) is chosen without per-event evidence of where a chat's time goes
 **Categories:** API, INFRA, OBS, UI
 **Batch:** B1 — single workstream; Section prerequisites are stated in each Section
@@ -31,6 +31,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ---
 
 ## Overview
+
+**Closed scope:** #786 shipped Dimension 0.1 and §5. The unfinished §1–§4 and sizing checks §0.2–§0.3 move to M233_002; they are not completed by this close. See the successor for the M238 attribute names and runtime path.
 
 **Goal (testable):** For N consecutive dev chat probes, (1) the steer, lease, hydrate, capture and report spans and the runner's `runner.lease` span are all found for each event; (2) in every verb span, span duration minus the sum of its stage attributes is under the larger of 10% and 5 ms; and (3) browser `af:accepted − af:send` ≥ route `auth + upstream` ≥ daemon steer span duration. Edge out (the `event_complete` frame's trip to the browser) is shown as a labelled remainder and is not checked.
 
@@ -182,8 +184,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 Every measurement this spec enables is meaningless on a machine frozen in 80 ms slices. A shared vCPU's baseline is 5 ms per 80 ms; the dev daemon rests at about 7–8% of a core, so on `shared-cpu-1x` its burst balance stayed empty and every request was throttled. Dev moves to `shared-cpu-2x` 1 GB (12.5% baseline) and logs at `info`. The Dragonfly downsizing and the rule edit are owner-requested cost and hygiene changes. An earlier Oct 26 session reported resizing the live machines, but the later live recheck above found the daemon on one shared CPU and 512 MB. The desired deploy configuration remains unchanged; live agreement must be proved again.
 
 - **Dimension 0.1** — DONE — Dev deploys set `AGENTSFLEET_LOG_LEVEL="info"`, the rule pins it, and the dead `LOG_LEVEL` spelling stays refused → Test `test_moved_rules_reject_seeded_violations`
-- **Dimension 0.2** — IN_PROGRESS — Both dev `fly.toml` sizes match the live machines; the later daemon recheck fails this condition → Test `manual_dev_sizes_match_live`
-- **Dimension 0.3** — After an hour at rest, neither `agentsfleetd-dev` nor `dragonfly-dev` shows throttle time, and both keep a burst balance above zero → Test `manual_dev_machines_unthrottled_at_rest`
+- **Dimension 0.2** — MOVED to M233_002 — Both dev `fly.toml` sizes match the live machines; the later daemon recheck fails this condition → Test `manual_dev_sizes_match_live`
+- **Dimension 0.3** — MOVED to M233_002 — After an hour at rest, neither `agentsfleetd-dev` nor `dragonfly-dev` shows throttle time, and both keep a burst balance above zero → Test `manual_dev_machines_unthrottled_at_rest`
 
 ### §1 — The daemon names every stage a chat crosses
 
@@ -195,11 +197,11 @@ The chat's five daemon calls are steer (`POST …/fleets/{fleet_id}/messages`), 
 
 **Implementation default:** `logs.rs` installs the `tracing_opentelemetry` span layer permanently, outside the reload slot, over a tracer obtained from the OpenTelemetry global provider. `attach` sets that provider instead of filling the slot with the span bridge; the log bridge stays in the slot. Reason: `set_attribute` locates the bridge by downcasting the subscriber, and the `reload` layer refuses every downcast (`tracing-subscriber-0.3.23/src/reload.rs:188-204`), so attributes set through it are dropped. **Fallback**, if the PLAN check below fails: declare a fixed set of `Empty` fields from `semconv` on the request span in `trace.rs`, and fill them with `Span::record`. **PLAN check:** an attribute set inside a handler reaches an in-memory exporter through `logs::install` plus `attach` (the real subscriber).
 
-- **Dimension 1.1** — Each verb writes each stage it reached exactly once, and nothing for stages it did not reach → Test `stage_clock_writes_each_reached_stage_once`
-- **Dimension 1.2** — A refused or empty lease poll writes `claim` only and no event identity → Test `empty_poll_writes_claim_without_identity`
-- **Dimension 1.3** — A real chat cycle against live Postgres yields steer, lease and report spans with one `agentsfleet.event.id`, and hydrate and capture spans joinable by fleet and time window → Test `event_identity_joins_the_five_verb_spans`
-- **Dimension 1.4** — `trace.rs`'s span still carries the route template, never a raw path → Test `request_span_carries_template_not_path`
-- **Dimension 1.5** — An attribute set inside a handler reaches the exporter through the production subscriber → Test `handler_attribute_reaches_exporter_through_real_subscriber`
+- **Dimension 1.1** — MOVED to M233_002 — Each verb writes each stage it reached exactly once, and nothing for stages it did not reach → Test `stage_clock_writes_each_reached_stage_once`
+- **Dimension 1.2** — MOVED to M233_002 — A refused or empty lease poll writes `claim` only and no event identity → Test `empty_poll_writes_claim_without_identity`
+- **Dimension 1.3** — MOVED to M233_002 — A real chat cycle against live Postgres yields steer, lease and report spans with one `agentsfleet.event.id`, and hydrate and capture spans joinable by fleet and time window → Test `event_identity_joins_the_five_verb_spans`
+- **Dimension 1.4** — MOVED to M233_002 — `trace.rs`'s span still carries the route template, never a raw path → Test `request_span_carries_template_not_path`
+- **Dimension 1.5** — MOVED to M233_002 — An attribute set inside a handler reaches the exporter through the production subscriber → Test `handler_attribute_reaches_exporter_through_real_subscriber`
 
 ### §2 — The runner's spans reach Grafana, and only root-owned host processes can send them
 
@@ -214,13 +216,13 @@ The runner already exports `runner.lease`, `invoke_agent`, `chat` and `execute_t
 
 **PLAN check:** on the dev host the runner runs as root and `sandbox_ids` is not 0. If either fails, stop and surface it.
 
-- **Dimension 2.1** — The runner unit's endpoint is loopback, the collector unit reads its credential from a root-only file, and the runner unit carries no Grafana variable → Test `runner_unit_targets_loopback_collector`
-- **Dimension 2.2** — The rule admits uid 0 and refuses any other uid on loopback 4318, and `service.sh` refuses to start the collector without it → Test `collector_rule_admits_only_root_sockets`
-- **Dimension 2.3** — On the dev host, a sandbox under `allow_all` cannot deliver to `127.0.0.1:4318` → Test `manual_sandbox_cannot_post_to_collector`
-- **Dimension 2.4** — After a runner restart, the runner's spans still reach the collector → Test `manual_runner_restart_keeps_export`
-- **Dimension 2.5** — `runner.lease` carries the segments the lease reached, written once at conclusion → Test `lease_span_records_existing_segments`
-- **Dimension 2.6** — `deploy.sh` refuses an `otelcol-contrib` download whose SHA-256 differs from the pin → Test `collector_download_refused_on_checksum_mismatch`
-- **Dimension 2.7** — On the dev host, a chat event's `runner.lease` span is queryable in Tempo by `agentsfleet.event.id` → Test `manual_runner_span_reaches_tempo`
+- **Dimension 2.1** — MOVED to M233_002 — The runner unit's endpoint is loopback, the collector unit reads its credential from a root-only file, and the runner unit carries no Grafana variable → Test `runner_unit_targets_loopback_collector`
+- **Dimension 2.2** — MOVED to M233_002 — The rule admits uid 0 and refuses any other uid on loopback 4318, and `service.sh` refuses to start the collector without it → Test `collector_rule_admits_only_root_sockets`
+- **Dimension 2.3** — MOVED to M233_002 — On the dev host, a sandbox under `allow_all` cannot deliver to `127.0.0.1:4318` → Test `manual_sandbox_cannot_post_to_collector`
+- **Dimension 2.4** — MOVED to M233_002 — After a runner restart, the runner's spans still reach the collector → Test `manual_runner_restart_keeps_export`
+- **Dimension 2.5** — MOVED to M233_002 — `runner.lease` carries the segments the lease reached, written once at conclusion → Test `lease_span_records_existing_segments`
+- **Dimension 2.6** — MOVED to M233_002 — `deploy.sh` refuses an `otelcol-contrib` download whose SHA-256 differs from the pin → Test `collector_download_refused_on_checksum_mismatch`
+- **Dimension 2.7** — MOVED to M233_002 — On the dev host, a chat event's `runner.lease` span is queryable in Tempo by `agentsfleet.event.id` → Test `manual_runner_span_reaches_tempo`
 
 ### §3 — The edge reports its own cost on one clock
 
@@ -228,9 +230,9 @@ The runner already exports `runner.lease`, `invoke_agent`, `chat` and `execute_t
 
 In the throttled measurement, 584 ms passed between the browser's Send and the daemon's first byte. The steer route times `credential()` and the upstream call and answers `Server-Timing: auth;dur=…, upstream;dur=…`, in every environment; it is same-origin, authenticated, and carries durations only. The browser sets `performance` marks `af:send`, `af:accepted`, `af:first-frame` and `af:complete`; their keying and order rules are fixed at Stage 9. Nothing is added to the daemon's public request surface.
 
-- **Dimension 3.1** — The steer route answers with `Server-Timing` naming `auth` and `upstream` → Test `steer_route_answers_server_timing`
-- **Dimension 3.2** — A refused or failed upstream still answers with `auth` timing and an unchanged status and body → Test `server_timing_never_changes_the_answer`
-- **Dimension 3.3** — The browser leaves the four marks for one send → Test `delivery_marks_send_accepted_first_frame_complete`
+- **Dimension 3.1** — MOVED to M233_002 — The steer route answers with `Server-Timing` naming `auth` and `upstream` → Test `steer_route_answers_server_timing`
+- **Dimension 3.2** — MOVED to M233_002 — A refused or failed upstream still answers with `auth` timing and an unchanged status and body → Test `server_timing_never_changes_the_answer`
+- **Dimension 3.3** — MOVED to M233_002 — The browser leaves the four marks for one send → Test `delivery_marks_send_accepted_first_frame_complete`
 
 ### §4 — One timeline, one row, one procedure
 
@@ -255,9 +257,9 @@ The dashboard's round-trip row reads Tempo through a datasource variable (`tempo
 
 **PLAN spike, pass/fail:** one panel that, given an event ID, lists the spans with start offsets and computed gaps. If it fails, `002_round_trip_playbook.md` ships the TraceQL plus a small script that prints the tiled line, and the row shows the span list only.
 
-- **Dimension 4.1** — The asset check accepts the Tempo datasource variable and still refuses any other datasource → Test `assets_check_accepts_tempo_variable_only`
-- **Dimension 4.2** — For each verb span, duration minus the sum of its stage attributes is under the larger of 10% and 5 ms → Test `verb_stage_attributes_account_for_the_span`
-- **Dimension 4.3** — On dev, for N consecutive probes, every span in the table is found, and `af:accepted − af:send` ≥ `auth + upstream` ≥ steer span → Test `manual_probes_satisfy_coverage_and_edge_ordering`
+- **Dimension 4.1** — MOVED to M233_002 — The asset check accepts the Tempo datasource variable and still refuses any other datasource → Test `assets_check_accepts_tempo_variable_only`
+- **Dimension 4.2** — MOVED to M233_002 Dimension 1.6 / R7 — For each verb span, duration minus the sum of its stage attributes is under the larger of 10% and 5 ms → Test `verb_stage_attributes_account_for_the_span`
+- **Dimension 4.3** — MOVED to M233_002 Dimension 3.4 — On dev, for N consecutive probes, every span in the table is found, and `af:accepted − af:send` ≥ `auth + upstream` ≥ steer span → Test `manual_probes_satisfy_coverage_and_edge_ordering`
 
 ### §5 — One authoring page — IN_PROGRESS
 
@@ -383,12 +385,12 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R0 | Dev unthrottled at rest and deploying at `info` (§0) | `make check-gh-actions-valid` | exit 0 | P0 | |
-| R1 | Daemon verbs write their reached stages and identity through the real subscriber (§1) | `cargo test -p afd_observability stage_clock` | exit 0 | P0 | |
-| R2 | Only root-owned host processes can deliver to the collector (§2) | `bash deploy/baremetal/service_test.sh` | exit 0 | P0 | |
-| R3 | Runner spans reach Tempo from the dev host, across a restart (§2) | `manual: TraceQL { span.agentsfleet.event.id = "<probe id>" } in Grafana Tempo` | ≥1 `runner.lease` span | P0 | |
-| R4 | Edge cost reaches the browser on one clock (§3) | `cd ui/packages/app && bun run test steer-route-timing` | exit 0 | P0 | |
-| R5 | Dashboard asset valid; verb stages account for their spans (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | |
+| R0 | Remaining dev sizing and throttle checks (§0.2–§0.3) | `manual_dev_sizes_match_live` and `manual_dev_machines_unthrottled_at_rest` | both pass | P0 | MOVED to M233_002 R0 |
+| R1 | Daemon verbs write their reached stages and identity through the real subscriber (§1) | `cargo test -p afd_observability stage_clock` | exit 0 | P0 | MOVED to M233_002 R1 |
+| R2 | Only root-owned host processes can deliver to the collector (§2) | `bash deploy/baremetal/service_test.sh` | exit 0 | P0 | MOVED to M233_002 R2 |
+| R3 | Runner spans reach Tempo from the dev host, across a restart (§2) | `manual: TraceQL { span.agentsfleet.event.id = "<probe id>" } in Grafana Tempo` | ≥1 `runner.lease` span | P0 | MOVED to M233_002 R3 |
+| R4 | Edge cost reaches the browser on one clock (§3) | `cd ui/packages/app && bun run test steer-route-timing` | exit 0 | P0 | MOVED to M233_002 R4 |
+| R5 | Dashboard asset valid; verb stages account for their spans (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | MOVED to M233_002 R5 and R7 |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -456,6 +458,8 @@ Remove the replaced embedded editor, duplicate save controls and runtime tab rou
 - **Patch-vs-refactor verdict:** patch for §1, §3 and §4; §2 is new infrastructure.
 
 ## Discovery (consult log)
+
+- **Close and transfer, Nov 04, 2026:** Indy selected "Recommended: close M233_001 and move §1–§4 to M233_002". #786 shipped §0.1 and §5. Unstarted §1–§4 and rubric R0–R5 move to M233_002, rebased on M238_001 Discovery. Old Dimension 4.2 moves to successor 1.6 / R7; old 4.3 moves to successor 3.4; old R5 splits into successor R5 (row assets) and R7 (verb accounting). Other identifiers keep their mapping. Unfinished §0.2–§0.3 also remains tracked in that successor. No transferred Dimension is marked DONE.
 - **Save finalization approved, Oct 27, 2026:** Indy: "The when i say save" and "You feed to the model wait for the model reply and `Saving setup...` and i see `Save done v3`", followed by "Yes correct lets go, signed off approved." The completed report's pinned candidate, including changes from this turn, is saved without another Save click; a cut response fails without saving. The existing fleet's conflicting app-selection guidance remains unsaved. > Indy (2026-10-27): "Okay whatz up, if we cant verify then lets move it up?" / "to a PR" / "undraft the PR, since i would like to merge and test" — context: publish current chat changes as a ready Pull Request with missing live proof disclosed; M233 stays active and unfinished timing work remains open.
 - **Review deferred by owner:** "And i think for now remove the `Review Setup`" followed by "we will deal with it later". Remove the action from this change.
 - **Incomplete fleet conversation:** Indy: "how do we make it better to even un configured fleets can receive chat". Reuse existing setup admission while required access is missing; do not admit a runtime job that cannot execute. Static credentials remain bound to an explicitly selected host.

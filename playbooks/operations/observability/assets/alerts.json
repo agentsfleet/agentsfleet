@@ -8,7 +8,8 @@
     "execErrState": "Alerting",
     "expr": "absent_over_time(agentsfleet_api_in_flight_requests[3m])",
     "summary": "The daemon's OTLP metrics exporter has stopped delivering runtime series; this store-side absence check is deliberately independent of the exporter it watches.",
-    "panelId": 1
+    "panelId": 1,
+    "dashboardSuffix": "-api-db"
   },
   {
     "name": "api-backpressure",
@@ -19,7 +20,8 @@
     "execErrState": "Error",
     "expr": "sum(increase(agentsfleet_api_backpressure_rejections_total[5m])) > 0",
     "summary": "The control plane rejected API requests at its in-flight ceiling.",
-    "panelId": 2
+    "panelId": 2,
+    "dashboardSuffix": "-api-db"
   },
   {
     "name": "runner-silent",
@@ -30,7 +32,8 @@
     "execErrState": "Error",
     "expr": "min by (runner_id) (clamp_min(time() - agentsfleet_runner_last_seen_seconds, 0)) > __RUNNER_OFFLINE_SECONDS__",
     "summary": "A runner has not been heard from by ANY daemon replica for longer than the source-derived offline threshold. Two repairs live in this expression: the family reports a Unix epoch, so the age is computed here rather than compared raw; and the per-replica table is never evicted, so the freshest observation per runner is taken before the worst runner is. Either omission makes this rule fire for a healthy fleet.",
-    "panelId": 6
+    "panelId": 6,
+    "dashboardSuffix": ""
   },
   {
     "name": "runner-failure",
@@ -41,6 +44,7 @@
     "execErrState": "Error",
     "expr": "sum by (reason) (increase(agentsfleet_runner_failures_total[10m])) > 0",
     "summary": "A runner reported an execution failure.",
-    "panelId": 7
+    "panelId": 7,
+    "dashboardSuffix": ""
   }
 ]

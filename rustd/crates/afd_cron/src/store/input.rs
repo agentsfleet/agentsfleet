@@ -51,6 +51,8 @@ pub struct Change<'a> {
 /// Where a fire is going, once a signed callback resolved to it.
 #[derive(Debug, Clone)]
 pub struct FireTarget {
+    /// Known instant of a one-shot; recurring callbacks carry no invented instant.
+    pub scheduled_at: Option<jiff::Timestamp>,
     /// The fleet to wake.
     pub fleet: Uuid7,
     /// The workspace the event is stamped with.

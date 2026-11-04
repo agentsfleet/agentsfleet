@@ -182,3 +182,13 @@ closed_set! {
         Gap => "gap",
     }
 }
+
+closed_set! {
+    /// A successful report response either settled new work or acknowledged its retry.
+    ReportAnswer {
+        /// The report first settled its lease.
+        Settled => "settled",
+        /// The lease's existing report was acknowledged again.
+        Repeated => "repeated"
+    }
+}

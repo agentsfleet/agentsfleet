@@ -65,10 +65,10 @@ impl Fixtures {
     /// test naming the credits refusal seeds past it.
     pub(crate) async fn seed_model_rate(&self, provider: &str, model: &str) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        // Independent candidate identifiers let the provider/model arbiter
-        // select an existing row even when another seed inserts it first.
-        let candidate = mint_id();
-        ModelSeed::new(&candidate, provider, model, FIXTURE_CONTEXT_CAP_TOKENS)
+        // Concurrent inserts may check the primary key before resolving the
+        // provider/model conflict. Each attempt needs its own proposed key.
+        let row = mint_id();
+        ModelSeed::new(&row, provider, model, FIXTURE_CONTEXT_CAP_TOKENS)
             .rates(
                 FIXTURE_INPUT_NANOS_PER_MTOK,
                 FIXTURE_CACHED_INPUT_NANOS_PER_MTOK,
@@ -133,4 +133,35 @@ impl Fixtures {
         .await
         .expect("the event write must run");
     }
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn model_rate_seeds_keep_distinct_models_and_concurrent_retries() {
+    let fixtures = Fixtures::create_isolated().await;
+    let first = "fixture-priced-first";
+    let second = "fixture-priced-second";
+    tokio::join!(
+        fixtures.seed_model_rate("anthropic", first),
+        fixtures.seed_model_rate("anthropic", first),
+        fixtures.seed_model_rate("anthropic", second),
+    );
+    let mut connection = fixtures.database.acquire().await.expect("fixture read");
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT m.model_name, p.input_nanos_per_mtok, p.cached_input_nanos_per_mtok, \
+         p.output_nanos_per_mtok FROM model.platform_models m \
+         JOIN model.platform_model_prices p ON p.platform_model_id = m.id \
+         WHERE m.provider = $1 ORDER BY m.model_name",
+    )
+    .bind("anthropic")
+    .fetch_all(&mut *connection)
+    .await
+    .expect("priced rows");
+    assert_eq!(
+        rows,
+        vec![
+            (first.into(), 3_000_000_000, 300_000_000, 15_000_000_000),
+            (second.into(), 3_000_000_000, 300_000_000, 15_000_000_000),
+        ]
+    );
 }

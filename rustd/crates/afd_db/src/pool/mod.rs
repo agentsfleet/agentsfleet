@@ -23,6 +23,7 @@
 //! built. `test_pool_error_classes` is the proof, and it failed against a dead
 //! port until this existed.
 
+use std::sync::{Arc, atomic::AtomicU64};
 use std::time::Duration;
 
 use sqlx::postgres::PgPool;
@@ -31,6 +32,8 @@ use crate::config::{DbRole, PoolConfig};
 use crate::error::Result;
 
 mod acquire;
+mod observed;
+pub use observed::PoolSnapshot;
 mod open;
 mod roles;
 
@@ -70,6 +73,7 @@ pub struct Db {
     /// Kept because [`Self::warm`] establishes this floor itself; sqlx cannot
     /// bootstrap it on a lazy pool, and does not report it back either.
     min_connections: u32,
+    waiting: Arc<AtomicU64>,
 }
 
 impl Db {
@@ -123,6 +127,7 @@ impl Db {
             acquire_timeout,
             max_connections,
             min_connections,
+            waiting: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -151,6 +156,7 @@ impl Db {
             acquire_timeout: config.acquire_timeout(),
             max_connections: config.max_connections(),
             min_connections: config.min_connections(),
+            waiting: Arc::new(AtomicU64::new(0)),
         }
     }
 

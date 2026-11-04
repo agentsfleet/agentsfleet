@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
+env -u OBS_ASSETS_DIR bash "$SCRIPT_DIR/01_assets_check.sh"
+
 obs_select_environment
 obs_require_write_approval
 obs_open_session
@@ -63,12 +65,14 @@ case "$folder_status" in
     ;;
 esac
 
+for dashboard_asset in "$SCRIPT_DIR"/assets/dashboard*.json; do
 dashboard_spec="$work_dir/dashboard-spec.json"
 dashboard_payload="$work_dir/dashboard.json"
 dashboard_response="$work_dir/dashboard-response.json"
-obs_render_dashboard "$dashboard_spec" "$SCRIPT_DIR"
+obs_render_dashboard "$dashboard_spec" "$SCRIPT_DIR" "$dashboard_asset"
+dashboard_name="$(jq -r .uid "$dashboard_spec")"
 jq -n \
-  --arg name "$OBS_DASHBOARD_NAME" \
+  --arg name "$dashboard_name" \
   --arg folder "$OBS_FOLDER_NAME" \
   --slurpfile spec "$dashboard_spec" \
   '{
@@ -80,7 +84,7 @@ jq -n \
 
 dashboard_path="/apis/dashboard.grafana.app/v1/namespaces/$OBS_NAMESPACE/dashboards"
 dashboard_status="$(
-  obs_get_status "$dashboard_path/$OBS_DASHBOARD_NAME" "$dashboard_response"
+  obs_get_status "$dashboard_path/$dashboard_name" "$dashboard_response"
 )"
 case "$dashboard_status" in
   200)
@@ -93,7 +97,7 @@ case "$dashboard_status" in
       mv "$work_dir/dashboard-versioned.json" "$dashboard_payload"
     fi
     dashboard_status="$(
-      obs_write_json PUT "$dashboard_path/$OBS_DASHBOARD_NAME" \
+      obs_write_json PUT "$dashboard_path/$dashboard_name" \
         "$dashboard_payload" "$dashboard_response"
     )"
     require_status "Grafana dashboard update" "$dashboard_status" 200
@@ -110,7 +114,9 @@ case "$dashboard_status" in
     ;;
 esac
 
-echo "PASS: $OBS_ENVIRONMENT Grafana folder and dashboard are current"
+echo "PASS: $OBS_ENVIRONMENT Grafana dashboard $dashboard_name is current"
+
+done
 
 # ---------------------------------------------------------------------------
 # Alert rules. Same session, same environment, same approval — a dashboard
@@ -166,7 +172,7 @@ while IFS= read -r alert; do
         noDataState:$alert.noDataState,
         execErrState:$alert.execErrState,
         panelRef:{
-          dashboardUID:$dashboard,
+          dashboardUID:($dashboard + ($alert.dashboardSuffix // "")),
           panelID:$alert.panelId
         },
         expressions:{

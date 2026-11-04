@@ -5,11 +5,13 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use crate::metrics::declared::{billing, fleet, http, library, task};
+use crate::metrics::declared::{billing, database, fleet, http, library, scheduler, task};
 use crate::metrics::label::billing as billing_labels;
+use crate::metrics::label::database as database_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
+use crate::metrics::label::scheduler as scheduler_labels;
 use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
@@ -20,7 +22,8 @@ use crate::metrics::registry::{Policy, Registry};
 /// derived it from the census would only be checking the census against
 /// itself.
 fn label_products() -> Vec<(&'static str, usize)> {
-    vec![
+    let mut products = pool_schedule_products();
+    products.extend([
         (
             task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
             task_labels::DecisionRecoveryOutcome::ALL.len(),
@@ -78,6 +81,10 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::DeliveryStage::ALL.len(),
         ),
         (
+            fleet::RUNNER_REPORT_ANSWERS_TOTAL.wire_name(),
+            fleet_labels::ReportAnswer::ALL.len(),
+        ),
+        (
             fleet::RUNNER_WAKE_ANSWERS_TOTAL.wire_name(),
             fleet_labels::WakeAnswer::ALL.len(),
         ),
@@ -108,6 +115,41 @@ fn label_products() -> Vec<(&'static str, usize)> {
         (
             library::LIBRARY_RESULTS_TOTAL.wire_name(),
             library_labels::Surface::ALL.len(),
+        ),
+    ]);
+    products
+}
+
+fn pool_schedule_products() -> Vec<(&'static str, usize)> {
+    vec![
+        (
+            scheduler::CALLBACKS.wire_name(),
+            scheduler_labels::FireOutcome::ALL.len(),
+        ),
+        (
+            scheduler::FIRES.wire_name(),
+            scheduler_labels::FireOutcome::ALL.len(),
+        ),
+        (
+            scheduler::CALLBACK_DURATION.wire_name(),
+            scheduler_labels::FireOutcome::ALL.len(),
+        ),
+        (scheduler::DISPATCH_LAG.wire_name(), 1),
+        (
+            scheduler::SYNCS.wire_name(),
+            scheduler_labels::SyncOutcome::ALL.len(),
+        ),
+        (
+            scheduler::SCHEDULES.wire_name(),
+            scheduler_labels::ScheduleState::ALL.len(),
+        ),
+        (
+            database::POOL_CONNECTIONS.wire_name(),
+            database_labels::PoolRole::ALL.len() * database_labels::PoolState::ALL.len(),
+        ),
+        (
+            database::POOL_ACQUIRE_DURATION.wire_name(),
+            database_labels::PoolRole::ALL.len() * database_labels::AcquireOutcome::ALL.len(),
         ),
     ]
 }
@@ -156,6 +198,15 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
     vec![
         set!(crate::metrics::label::task::TaskOperation),
         set!(crate::metrics::label::task::TaskOutcome),
+        set!(crate::metrics::label::database::PoolRole),
+        set!(crate::metrics::label::database::PoolState),
+        set!(crate::metrics::label::database::AcquireOutcome),
+        set!(crate::metrics::label::models::CallOutcome),
+        set!(crate::metrics::label::scheduler::FireOutcome),
+        set!(crate::metrics::label::scheduler::SyncOutcome),
+        set!(crate::metrics::label::scheduler::ScheduleState),
+        set!(crate::metrics::label::http::RequestMethod),
+        set!(crate::metrics::label::http::ResponseClass),
         set!(crate::metrics::label::cost::TokenType),
         set!(crate::metrics::label::cost::ChargeClass),
         set!(crate::metrics::label::cost::ErrorType),
