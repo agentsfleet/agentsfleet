@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M222
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** PENDING
+**Status:** DEFERRED
 **Priority:** P2 — operator-facing egress posture; nothing is broken today, but the proxy a vendor call takes is inherited from the process environment
 **Categories:** API, DOCS
 **Batch:** B1 — single workstream; starts after M218_001 merges
@@ -287,5 +287,8 @@ N/A — no files deleted; the M218 `schedule_proxy` suite is rewritten in place.
 - **Consults** — Indy (Oct 11, 2026, M218 review, recorded in the M218 checkpoint): "Proxy — test, then add": tests proving the QStash scheduler and GitHub fetch honour `HTTPS_PROXY` land in M218; an explicit proxy (`proxy.rs` with a passthrough-host list) is a new follow-up spec. Agent choices made at authoring, open to Indy at PLAN: knob name `OUTBOUND_PROXY_URL`; the passthrough list means the hosts that **may** use the proxy, all others direct; userinfo refused rather than redacted; `HTTPS_PROXY` ignored once this lands, which is a behaviour change for deployments that relied on it. Architecture consult: `docs/architecture/runner_fleet.md` §Traps forbids a forward proxy for runner egress; this spec is daemon-side and adds a line saying so.
 - **Rescope (Oct 19, 2026, issue #755)** — PR #752 (M227) deleted `afd_library`, so the GitHub-fetch half of this spec targeted code that no longer exists; dropped. The scheduler proxy work and the `OUTBOUND_PROXY_URL` knob are unchanged. The grep for a successor outbound caller found `afd_connector`'s GitHub probe, which rides `vendor_exchange_client` — an `afd_identity::direct` client that ignores environment proxies — so no caller took over the fetch role and the proxy rule has nothing to repoint to. `preflight.rs` is now `preflight/mod.rs`; the Files Changed row is repointed.
 - **Metrics review** — two boot log lines added (`outbound_proxy_configured`, `outbound_proxy_refused`); no analytics/funnel playbook update required, no product event exists for boot configuration.
-- **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Skill-chain outcomes** — none; the spec was deferred before CHORE(open).
+- **Deferrals** — the whole workstream, recorded under `done/` with no code written. The daemon keeps today's behaviour: the scheduler client honours the environment proxy variables, and every `afd_identity::direct` client ignores them.
+  > Indy (Nov 05, 2026: 10:51 PM): "Also can you park the @docs/v2/pending/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md and move it to done? saying we wont implement this now." — context: raised while opening M240_001; the record lands in the M240_001 Pull Request.
+
+  Reopen when a deployment needs a proxy for a vendor call it cannot get from the environment, or when a proxy variable exported for another tool is seen rerouting the scheduler. The design above stands as the starting draft; recheck its client facts against `main` first, since they were read in October.

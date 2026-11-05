@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 05, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, every lease poll scans every active fleet and one admission wakes every idle host, so chat pickup cost grows with the size of the estate rather than with the work waiting
 
@@ -126,6 +126,7 @@ The admission insert is the one writer that reaches the slot after an admission 
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M240_001_P1_API_DOCS_INFRA_OBS_LEASE_QUEUE_ONE_STATEMENT_CLAIM.md` | CREATE then MOVE to `active/`, then `done/` | this spec |
+| `docs/v2/pending/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md` | MOVE to `done/` as DEFERRED | owner's request at CHORE(open), quoted in Discovery; one Pull Request carries both |
 | `schema/2190_runner_fleet_slots_ready.sql` | CREATE | §1: `ready_at`, the partial index, the trigger and its function on `fleet.admissions`, and the backfill of slot rows and `ready_at` |
 | `schema/2200_runner_leases_poll_key.sql` | CREATE | §5: `poll_key` on `runner.leases`, unique per runner |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | registers both slots |
@@ -476,4 +477,5 @@ Prerequisite: §1 to §6.
 
     The majors are applied: initial slot values, the writer list replaced by the trigger, fleet status in the pick, the `redelivered` and `delivered_at` rules, the terminal ending, the refusal's fence and `Now`/`Already` reading, the fault path, the key's unique index and its ended-lease answer, replay without re-rendering, the `Ok(None)` split with slot release, and the lock-order scope. The rest were made moot by the scope cuts. Nits are applied.
 - **Open blockers** — none.
-- **Deferrals and transfers** — none.
+- **Deferrals and transfers** — none for this spec. M222_001 is deferred to `done/` in this Pull Request:
+  > Indy (Nov 05, 2026: 10:51 PM): "Also can you park the @docs/v2/pending/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md and move it to done? saying we wont implement this now." then "make sure it goes in your PR" and "i need 1 PR".
