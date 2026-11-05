@@ -4,6 +4,7 @@ mod accounting;
 mod authority;
 mod boundaries;
 mod budgets;
+mod checkpoint;
 mod concurrency;
 mod diagnostics;
 mod fixture;

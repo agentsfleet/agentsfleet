@@ -41,13 +41,12 @@ struct Objective<'a> {
 pub(super) fn compile(
     call: &Uuid7,
     input: &garde::Valid<DecisionReservationInput>,
-    source: &str,
+    message: &str,
     context: &AssessedContext,
     task: Option<&TaskSnapshot>,
     candidates: &[Candidate],
     questions: Vec<NamedQuestion>,
 ) -> Result<DecisionRequest> {
-    let message = afd_wire::event::message_of(source);
     let assessed_message = match &input.assessment {
         afd_wire::task::DecisionAssessment::Item {
             source_start,
@@ -62,7 +61,7 @@ pub(super) fn compile(
     };
     let state = State {
         source_admission_id: &input.source_admission_id,
-        message: &message,
+        message,
         assessed_message,
         assessment: &input.assessment,
         current_work: candidates,

@@ -39,7 +39,7 @@ backon.workspace = true
 # A turn's request body, shared by every retry without a copy.
 # A tool result's image rides the wire as base64.
 base64.workspace = true
-bytes.workspace = true
+bytes = { workspace = true, features = ["serde"] }
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
 # The request and response types rig's HTTP seam speaks.

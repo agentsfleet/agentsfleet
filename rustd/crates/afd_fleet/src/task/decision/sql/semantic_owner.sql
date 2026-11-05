@@ -17,3 +17,5 @@ WHERE c.id = $1::uuid AND l.fleet_id = f.id AND l.workspace_id = f.workspace_id
   AND l.lease_expires_at > clock_timestamp() AND s.lease_expires_at > clock_timestamp()
   AND (e.event_id = c.source_admission_id::text
        OR (a.input_claim_lease_id = l.id AND a.input_claim_fence = c.fencing_token))
+  AND (a.producer <> 'slack_mention' OR connector.slack_person_allowed(a.workspace_id, a.actor))
+  AND (l.task_id IS NULL OR fleet.task_person_allowed(l.task_id))

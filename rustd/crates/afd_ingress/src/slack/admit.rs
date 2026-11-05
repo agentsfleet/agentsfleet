@@ -57,7 +57,7 @@ impl Ingress {
             address,
         } = mention;
         let key = format!("{team_id}:{event_id}");
-        let actor = format!("{connector}:{user}");
+        let actor = format!("{connector}:{team_id}:{user}");
         Ok(self
             .admissions
             .admit(Admission {

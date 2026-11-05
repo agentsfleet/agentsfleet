@@ -150,7 +150,10 @@ async function walkPages(req: BackfillWalkRequest, fetched: EventRow[]): Promise
   return { ok: true, watermark };
 }
 
-type EntryWalk = Pick<BackfillRequest, "stillCurrent" | "onPage">;
+type EntryWalk = Pick<BackfillRequest, "stillCurrent" | "onPage"> & {
+  /** Runs inside the same coalesced recovery, including an empty/failed list. */
+  onComplete?: () => Promise<void>;
+};
 
 /**
  * The gap-recovery walk for one registry entry — after a reconnect, or when
@@ -195,6 +198,8 @@ async function walkEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promis
     if (outcome.ok) entry.serverSinceMs = outcome.watermark;
   } catch (err) {
     warnBackfillFailure(err);
+  } finally {
+    if (walk.stillCurrent()) await walk.onComplete?.();
   }
 }
 

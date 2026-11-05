@@ -22,7 +22,7 @@ SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id,
 
 /// The bodies the detail and thread reads append after the row.
 const BODY_COLUMNS: &str = ",
-       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls
+       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls, task_activity
 FROM fleet.events";
 
 /// The texts outside the listing grid.

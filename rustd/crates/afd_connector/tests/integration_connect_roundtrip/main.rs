@@ -40,6 +40,7 @@ mod cases;
 mod disconnect;
 mod handle_shapes;
 mod routing;
+mod person;
 mod vendor;
 
 use std::sync::Arc;

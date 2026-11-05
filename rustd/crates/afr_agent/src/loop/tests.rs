@@ -37,6 +37,8 @@ pub(crate) async fn drive(
     let frames = Frames::default();
     let sink = frames.sink();
     let run = AgentRun {
+            recovered_task: None,
+            prepared_task: None,
         lease,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
@@ -273,6 +275,8 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let context_checkpoints = crate::testing::ContextMemory::default();
     let executor = afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox);
     let run = engine.run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
         lease: &lease,
         memory: afr_memory::Seed::default(),
         executor: &executor,

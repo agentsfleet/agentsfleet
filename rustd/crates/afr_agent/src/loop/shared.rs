@@ -26,6 +26,11 @@ use crate::nested::Registry;
 
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {
+    pub(crate) payload: &'run afd_wire::lease::LeasePayload<'run>,
+    pub(crate) recovered_task: Option<&'run crate::TaskRecovery>,
+    pub(crate) prepared_task: Option<&'run crate::PreparedTask>,
+    pub(crate) decision: Option<&'run afd_wire::decision::DecisionAssignment>,
+    pub(crate) fencing_token: u64,
     pub(crate) lease_id: &'run str,
     /// The fleet the lease runs, which keys the provider's prompt cache.
     pub(crate) fleet_id: &'run str,
@@ -74,6 +79,11 @@ impl<'run> Shared<'run> {
         let policy = &run.lease.policy;
         let started = Instant::now();
         Self {
+            payload: run.lease,
+            recovered_task: run.recovered_task,
+            prepared_task: run.prepared_task,
+            decision: run.lease.decision.as_deref(),
+            fencing_token: run.lease.fencing_token,
             lease_id: &run.lease.lease_id,
             fleet_id: &run.lease.event.fleet_id,
             model: &policy.context.model,

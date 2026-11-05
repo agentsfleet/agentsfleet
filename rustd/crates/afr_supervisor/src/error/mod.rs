@@ -31,7 +31,7 @@ mod raise;
 #[cfg(test)]
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
-    client, config, egress, egress_blocked, egress_no_ipv4, egress_unresolved, encode, git,
+    checkpoint_transfer, client, config, egress, egress_blocked, egress_no_ipv4, egress_unresolved, encode, git,
     malformed, refused_with_body, token_refused, transport, unavailable,
 };
 
@@ -88,6 +88,15 @@ pub(crate) enum ErrorKind {
     #[error("the HTTP client could not be built")]
     Client {
         /// The client builder's reason.
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// A physical checkpoint transfer failed; a PUT still requires native readback.
+    #[error("checkpoint {operation} did not complete")]
+    CheckpointTransfer {
+        operation: &'static str,
+        /// Presigned URL credentials are removed before retaining the cause.
         #[source]
         source: reqwest::Error,
     },

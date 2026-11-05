@@ -34,6 +34,7 @@ pub(crate) struct Live<'run> {
     next_seq: u64,
     answer: Carry,
     reasoning: Carry,
+    private_reasoning: bool,
 }
 
 impl<'run> Live<'run> {
@@ -46,6 +47,7 @@ impl<'run> Live<'run> {
             next_seq: 0,
             answer: Carry::default(),
             reasoning: Carry::default(),
+            private_reasoning: false,
         }
     }
 
@@ -54,9 +56,12 @@ impl<'run> Live<'run> {
         Self::new(&SILENT, scrub, started)
     }
 
+    pub(crate) fn hide_reasoning(&mut self) { self.private_reasoning = true; }
+
     /// Streams `text` of `kind`, holding back any tail that could still be a
     /// secret's start.
     pub(crate) fn text(&mut self, kind: StreamTextKind, text: &str) {
+        if self.private_reasoning && kind == StreamTextKind::Reasoning { return; }
         let carry = match kind {
             StreamTextKind::Answer => &mut self.answer,
             StreamTextKind::Reasoning => &mut self.reasoning,

@@ -33,12 +33,18 @@ afd_observability.workspace = true
 afd_core.workspace = true
 # Per-report content keys, authenticated metadata and encrypted private spool bytes.
 afd_crypto.workspace = true
+# No-follow, nonblocking opens keep private spool reads on regular files.
+libc.workspace = true
+cap-std.workspace = true
+rustix.workspace = true
 # The one wire: every verb's request and reply, spelled once.
 afd_wire.workspace = true
 # The instants a lease, a renewal and a held sandbox carry; the runner reads
 # them off the injected clock and waits on the span left until each.
 jiff.workspace = true
 afr_agent.workspace = true
+# Physical decisions reuse the existing guarded provider protocols.
+afr_providers.workspace = true
 afr_executor.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.
 afr_memory.workspace = true
@@ -90,9 +96,6 @@ afr_telemetry = { workspace = true, features = ["test-util"] }
 # `FakeResolver`: the egress suites resolve through the one fake the guarded
 # client's suites use.
 afr_egress = { workspace = true, features = ["test-util"] }
-# The production connector the fake agent admits through, so a lease naming a
-# provider no wire speaks is refused by the real check.
-afr_providers.workspace = true
 # Stub handlers, so the lease suites admit through a real catalog: a
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }

@@ -57,6 +57,13 @@ pub struct TaskInputCandidate {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskInputsResponse<'a> {
+    /// Native admission owned by this lease, including signed continuation events.
+    pub source_admission_id: String,
+    /// Installed revision under which a new human interpretation may bind.
+    pub accepted_revision_id: Option<String>,
+    /// Complete current human message, absent for native machine continuations.
+    /// Its presence is established from native admission authority.
+    pub current_message: Option<String>,
     /// Ascending native message order.
     pub inputs: Vec<TaskHumanInput>,
     /// Accepted meaning not yet incorporated by the current native task cursor.
@@ -77,6 +84,9 @@ impl TaskInputsResponse<'_> {
     #[must_use]
     pub fn into_owned(self) -> TaskInputsResponse<'static> {
         TaskInputsResponse {
+            source_admission_id: self.source_admission_id,
+            accepted_revision_id: self.accepted_revision_id,
+            current_message: self.current_message,
             inputs: self.inputs,
             accepted_inputs: self.accepted_inputs,
             current_task: self.current_task.map(super::TaskContext::into_owned),

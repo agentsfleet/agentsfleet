@@ -230,6 +230,8 @@ pub(crate) const SPENT: Usage = Usage {
 /// The result a successful fake run answers with.
 pub(crate) fn answer() -> RunOutput {
     RunOutput {
+        recovery: None,
+        task: None,
         result: ExecutionResult {
             outcome: ResultOutcome::Completed(Completed),
             content: "done".into(),

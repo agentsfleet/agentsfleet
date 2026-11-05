@@ -52,6 +52,7 @@ mod refusal;
 mod segments;
 mod settle;
 mod workspace;
+mod recovery;
 
 use self::hold::{Fate, Kept, Worked};
 pub(crate) use self::lessee::Lessee;
@@ -218,7 +219,7 @@ impl LeaseRun<'_> {
         let reporting = self.timeline.start(Segment::Report);
         let fate: Fate = {
             let settle = async {
-                let fate = self.keep(kept, &ending).await;
+                let fate = self.keep(kept, &mut ending).await;
                 let superseded = self.settle(&mut ending, &fate, &reporting).await;
                 if superseded && fate.held_until().is_some() {
                     self.lessee.holds.supersede(self.ids.lease.clone());
@@ -280,6 +281,13 @@ impl LeaseRun<'_> {
         let Some(_turn) = claimed else {
             return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
         };
+        let verbs = crate::verbs::FencedVerbs::new(&lessee.plane, &self.ids.lease,
+            self.lease.fencing_token, &lessee.spool, &lessee.held, &self.interrupt);
+        let prepared = match lessee.agent.prepare_task(self.lease, &verbs, &self.meter, &self.interrupt).await {
+            Ok(prepared) => prepared,
+            Err(failure) => return self.fail(&failure, FailureClass::StartupPosture,
+                "task_preparation_failed", "native task intent could not be established").into(),
+        };
         // The window rides the lease from a daemon at this release; only a
         // lease without one costs the memory read, and only that read is timed.
         let read;
@@ -316,11 +324,15 @@ impl LeaseRun<'_> {
             publish: memory.publish,
             recall: Some(&recaller),
         };
-        if needs.sandbox {
-            self.sandboxed(seed, sink).await
+        if needs.sandbox && prepared.as_ref().is_none_or(|prepared| prepared.allow_actions) {
+            self.sandboxed(seed, sink, prepared.as_ref()).await
         } else {
             let none = ExecutorSlot::unavailable(Unavailable::NoSandbox);
-            self.drive(seed, &none, sink).await.into()
+            let recovered = match self.recover_without_sandbox(prepared.as_ref()).await {
+                Ok(recovered) => recovered,
+                Err(failure) => return self.refuse(&failure, "task_restore_failed", "durable task recovery could not be established").into(),
+            };
+            self.drive(seed, &none, sink, prepared.as_ref(), recovered.as_ref()).await.into()
         }
     }
 }

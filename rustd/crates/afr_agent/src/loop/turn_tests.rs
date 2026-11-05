@@ -263,6 +263,8 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
 
     let output = engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &leased,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

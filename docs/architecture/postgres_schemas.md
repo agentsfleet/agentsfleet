@@ -223,7 +223,7 @@ connection or transaction; there is no generic repository trait.
 | `task_storage_purges` | Durable remote-delete custody and quota-release receipt | opaque object/location plus charged bytes/disposition; no owner foreign key |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler |  |
 | `sessions` | Resume bookmark `{last_event_id, last_response}` |  |
-| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)` |
+| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` retains at most 128 public stages and 128 KiB, with explicit truncation |
 | `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | optional task/item association; single-use active-loop input claim |
 | `approval_gates` | A risky action waiting for a person |  |
 | `obligations` | An answer owed to a destination until delivered or abandoned |  |
@@ -270,6 +270,7 @@ leaves the index once metering reaches its expiry, so the index holds only the b
 | Table | Purpose |
 |---|---|
 | `installs` | Outside account (Slack team, GitHub installation) → workspace; credentials stay in the vault |
+| `person_links` | OAuth-proved Slack person → current workspace member; installation deletion cascades the link |
 | `channels` | Slack channel → resident fleet; rebinds when a team moves workspace |
 | `integration_grants` | Whether a fleet may use a service; deny is stored as revoked |
 

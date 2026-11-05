@@ -90,6 +90,7 @@ pub(super) fn grant(account: &str) -> Grant {
         Value::from(format!("xoxb-{account}")),
     );
     Grant {
+        external_person_id: None,
         handle,
         install: Some(Install {
             external_account_id: account.to_owned(),

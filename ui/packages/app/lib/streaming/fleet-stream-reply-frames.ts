@@ -1,3 +1,4 @@
+import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
 import type { EventDetail } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "./fleet-stream-frames";
@@ -65,7 +66,9 @@ export function applyFinalReply(prev: FleetEvent[], detail: EventDetail, nowMs: 
   const index = prev.findIndex((event) => event.id === detail.event_id);
   const event = prev[index];
   if (event === undefined) return [...prev, rowToEvent(detail)];
-  return applyFinalReplyText(prev, detail.event_id, detail.response_text ?? "", nowMs);
+  const activity = readTaskActivityHistory(detail.task_activity);
+  const next = applyFinalReplyText(prev, detail.event_id, detail.response_text ?? "", nowMs);
+  return activity ? next.map(row => row.id === detail.event_id ? {...row, taskActivity: mergeTaskActivity(row.taskActivity, activity)} : row) : next;
 }
 
 /** The completion frame carries the same saved answer as the detail route. */

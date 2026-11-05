@@ -40,6 +40,11 @@ pub(crate) fn client(source: reqwest::Error) -> Error {
     ErrorKind::Client { source }.into()
 }
 
+/// Preserve the transport cause without logging temporary storage credentials.
+pub(crate) fn checkpoint_transfer(operation: &'static str) -> impl FnOnce(reqwest::Error) -> Error {
+    move |source| ErrorKind::CheckpointTransfer { operation, source: source.without_url() }.into()
+}
+
 /// Reports a call that never completed a round trip.
 pub(crate) fn transport(verb: Verb) -> impl Fn(reqwest::Error) -> Error {
     move |source| ErrorKind::Transport { verb, source }.into()

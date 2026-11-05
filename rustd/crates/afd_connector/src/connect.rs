@@ -81,10 +81,17 @@ pub struct Starting<'s> {
 /// The receipt [`Connectors::finish`] requires — see the module note on why the
 /// ordering is a type rather than a convention. Carries the workspace it was
 /// minted for, parsed, so the completion cannot be pointed at another one.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Spent {
+    pub(crate) authenticated_subject: String,
     /// The workspace this connect lands in.
     workspace: Uuid7,
+}
+
+impl std::fmt::Debug for Spent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Spent").field("workspace", &self.workspace).finish_non_exhaustive()
+    }
 }
 
 impl Spent {
@@ -234,8 +241,9 @@ impl Connectors {
         now: Timestamp,
     ) -> core::result::Result<Verified, Rejected> {
         let binding = provider.state_binding();
-        let verified = state::verify(binding, secret, presented, now)?;
+        let mut verified = state::verify(binding, secret, presented, now)?;
         if verified.subject_matches(binding, secret, subject) {
+            verified.authenticated_subject = Some(subject.to_owned());
             Ok(verified)
         } else {
             Err(Rejected::ForeignSubject)
@@ -253,10 +261,11 @@ impl Connectors {
     /// deployment SIGNED carrying an unparseable id, so it is this daemon's
     /// fault rather than the caller's.
     pub async fn spend(&self, provider: Provider, verified: &Verified) -> Result<Option<Spent>> {
+        let Some(subject) = verified.authenticated_subject.as_ref() else { return Ok(None); };
         let workspace = Uuid7::parse(verified.workspace())?;
         let binding = provider.state_binding();
         Ok(nonce::consume(&self.queue, binding, verified.nonce())
             .await?
-            .then_some(Spent { workspace }))
+            .then_some(Spent { workspace, authenticated_subject: subject.clone() }))
     }
 }

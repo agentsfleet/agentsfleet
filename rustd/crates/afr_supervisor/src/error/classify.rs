@@ -91,6 +91,7 @@ impl Error {
             | ErrorKind::Config { .. }
             | ErrorKind::Address { .. }
             | ErrorKind::Client { .. }
+            | ErrorKind::CheckpointTransfer { .. }
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }

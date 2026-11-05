@@ -19,7 +19,7 @@ use std::time::Duration;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_wire::lease::SandboxLimits;
 use afd_wire::report::FailureClass;
-use afr_executor::ExecutorSlot;
+use afr_executor::{ExecutorSlot, ExecutorSource as _};
 use afr_memory::Seed;
 use afr_sandbox::Limits;
 use tokio_util::sync::CancellationToken;
@@ -70,16 +70,20 @@ impl LeaseRun<'_> {
     /// Admits the lease's sandbox, then runs its build and its turn together
     /// and hands the sandbox back with the turn's ending. A held sandbox keeps
     /// the repositories as its last lease left them.
-    pub(super) async fn sandboxed(&self, memory: Seed<'_>, sink: ActivitySink) -> Worked {
+    pub(super) async fn sandboxed(&self, memory: Seed<'_>, sink: ActivitySink,
+        prepared_task: Option<&afr_agent::PreparedTask>) -> Worked {
         // Timed from here to the build's end, whichever way it ends.
         let setup = self.timeline.start(Segment::Sandbox);
-        let admitted = match self.admitted().await {
+        let admitted = match self.admitted(prepared_task).await {
             Ok(admitted) => admitted,
             Err(refused) => return (*refused).into(),
         };
         let key = self.hold_key(admitted.limits, &admitted.bound);
         let stop = self.interrupt.child_token();
+        let recovery = OnceLock::new();
         let build = Build {
+            prepared_task,
+            recovery: &recovery,
             key: &key,
             limits: admitted.limits,
             bound: &admitted.bound,
@@ -98,14 +102,24 @@ impl LeaseRun<'_> {
                 self.build(&build, &cell, &slot).await;
                 setup.stop();
             });
-            let driving = Box::pin(self.drive(memory, &slot, sink));
+            let driving = Box::pin(async {
+                if prepared_task.is_some_and(|prepared| prepared.allow_actions) {
+                    let ready = tokio::select! {
+                        ready = slot.get() => ready.is_ok(),
+                        () = self.interrupt.cancelled() => false,
+                    };
+                    if !ready { return failed(FailureClass::StartupPosture, "durable task workspace was not recovered"); }
+                }
+                self.drive(memory, &slot, sink, prepared_task,
+                    recovery.get().and_then(|state: &super::recovery::State| state.history.as_ref())).await
+            });
             let ending = self.beside(building, driving, &stop).await;
             (ending, slot.held())
         };
         self.timeline.waited(held);
         Worked {
             ending,
-            kept: cell.into_inner().map(|sandbox| Kept { sandbox, key }),
+            kept: cell.into_inner().map(|sandbox| Kept { sandbox, key, recovery: recovery.into_inner() }),
         }
     }
 
@@ -156,7 +170,7 @@ impl LeaseRun<'_> {
     /// Every check whose failure would repeat on each lease, made before any
     /// model request: the size, the egress and the checkout plan. A refusal
     /// ends the lease at startup and releases the fleet's hold.
-    async fn admitted(&self) -> Result<Admitted<'_>, Box<Ending>> {
+    async fn admitted<'p>(&'p self, prepared: Option<&'p afr_agent::PreparedTask>) -> Result<Admitted<'p>, Box<Ending>> {
         let refused = |ending: Box<Ending>| {
             self.release_hold();
             ending
@@ -172,7 +186,7 @@ impl LeaseRun<'_> {
         let bound = self.bind().await;
         resolving.stop();
         let bound = bound.map_err(refused)?;
-        let plan = self.plan().map_err(refused)?;
+        let plan = self.plan(prepared).map_err(refused)?;
         Ok(Admitted {
             limits,
             bound,

@@ -42,8 +42,9 @@ pub(super) async fn bind(
         decision::authorize::binding(&mut tx, lease, authorization).await?;
         sqlx::query(include_str!("sql/interpretation.sql")).bind(plan.source_admission_id.as_str())
             .bind(&current.fleet_id).bind(&current.workspace_id).bind(&current.tenant_id).bind(&plan.digest)
-            .bind(afd_wire::event::message_of(&source.request_json).as_ref()).bind(Json(authorization))
-            .bind(lease.lease_id.as_str()).bind(current.fence).execute(&mut *tx).await.map_err(query(CONTEXT))?;
+            .bind(source.message()?.as_ref()).bind(Json(authorization))
+            .bind(lease.lease_id.as_str()).bind(current.fence).bind(&source.actor).bind(&source.producer)
+            .execute(&mut *tx).await.map_err(query(CONTEXT))?;
     }
     let mut queued = Vec::new();
     let mut bound = current.task_id.clone();

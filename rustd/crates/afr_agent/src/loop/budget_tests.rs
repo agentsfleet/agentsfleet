@@ -85,6 +85,8 @@ async fn test_meter_holds_what_the_report_sums() {
 
     let output = engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

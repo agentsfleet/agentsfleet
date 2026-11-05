@@ -57,6 +57,8 @@ export type Entry = {
    * server read showed it. Only for these does a 404 mean the row is gone; an
    * event still queued behind its admission has no row yet. */
   replyExists: Set<string>;
+  /** Current detail reads shared by gap recovery and the silence sweep. */
+  runningReads: Map<string, Promise<void>>;
   /** Settled events a backfill brought in without a body, whose saved row has
    * been read once for it. */
   bodyReads: Set<string>;
@@ -107,6 +109,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     replyRecoveries: new Set(),
     replyHeard: new Map(),
     replyExists: new Set(),
+    runningReads: new Map(),
     bodyReads: new Set(),
     traceReads: new Set(),
     listeners: new Set(),

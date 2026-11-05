@@ -33,7 +33,7 @@ pub struct CheckpointPlanInput {
     #[garde(skip)] pub mode: CheckpointMode,
     /// An already verified base; omitted for repository-free tasks.
     #[garde(inner(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")))] pub base_id: Option<String>,
-    /// Native repository head used by this base; no checkout for API-only work.
+    /// Captured repository head; an incremental plan can use an older retained base.
     #[garde(inner(length(bytes, min = 40, max = 40), pattern(r"^[0-9a-f]{40}$")))] pub commit_oid: Option<String>,
     /// Restore format, independently checked by the daemon.
     #[garde(range(min = 1, max = 1))] pub format_version: u32,

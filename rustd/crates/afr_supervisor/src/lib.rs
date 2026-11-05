@@ -49,6 +49,7 @@ mod records;
 mod renew;
 mod report;
 mod report_spool;
+mod recovery;
 mod storage_home;
 mod turns;
 mod verbs;
@@ -193,12 +194,14 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         clock,
     } = runner;
     let authoring_spool = open_authoring_spool(&home, &clock).await?;
+    let spool = ReportSpool::new(&home);
+    spool.recover_decisions().await?;
     let lessee = Arc::new(Lessee {
         plane,
         engine,
         resolver: Box::new(SystemResolver),
         agent,
-        spool: ReportSpool::new(&home),
+        spool,
         authoring_spool,
         mirrors: Mirrors::new(home.mirrors(), origin),
         limits,

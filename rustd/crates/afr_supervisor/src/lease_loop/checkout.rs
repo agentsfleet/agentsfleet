@@ -44,8 +44,18 @@ impl LeaseRun<'_> {
     /// can serve, or a workspace id that is not one, ends the lease at
     /// startup. The ending is boxed: it is large, and only a refusal
     /// allocates one.
-    pub(super) fn plan(&self) -> Result<Option<Plan<'_>>, Box<Ending>> {
-        let wanted = checkouts(&self.lease.policy).map_err(|refusal| self.unready(&refusal))?;
+    pub(super) fn plan<'p>(&'p self, prepared: Option<&'p afr_agent::PreparedTask>) -> Result<Option<Plan<'p>>, Box<Ending>> {
+        let mut wanted = checkouts(&self.lease.policy).map_err(|refusal| self.unready(&refusal))?;
+        if let Some(task) = prepared.and_then(|prepared| prepared.inputs.current_task.as_ref()) {
+            match &task.target {
+                afd_wire::task::TaskTarget::ApiOnly => wanted.clear(),
+                afd_wire::task::TaskTarget::ExistingPr { repository, branch, .. } => {
+                    wanted.retain(|checkout| checkout.repository == repository);
+                    if wanted.len() != 1 { return Err(self.unready(&error::config("native task repository is outside checkout policy"))); }
+                    wanted[0].base = branch;
+                }
+            }
+        }
         if wanted.is_empty() {
             return Ok(None);
         }

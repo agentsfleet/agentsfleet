@@ -9,8 +9,9 @@ use crate::error::{Result, query};
 
 #[derive(sqlx::FromRow)]
 pub(in crate::task) struct Source {
-    actor: String,
-    producer: String,
+    pub(super) actor: String,
+    pub(super) producer: String,
+    slack_person_allowed: bool,
     pub(in crate::task) request_json: String,
     pub(super) reply_provider: Option<String>,
     pub(super) reply_address: Option<String>,
@@ -60,8 +61,9 @@ pub(in crate::task) fn check_claim(
 }
 
 pub(in crate::task) fn check_human(source: &Source) -> Result<()> {
-    // The Slack person-link adapter is added at the input boundary; no machine
-    // actor is allowed to stand in for a person while that adapter is absent.
+    if source.producer == Producer::SlackMention.as_str() {
+        return if source.slack_person_allowed { Ok(()) } else { Err(TaskRefusal::InvalidTarget.into()) };
+    }
     if source.producer != Producer::Steer.as_str()
         || !afd_events::is_steer_actor(&source.actor)
         || source.actor == afd_events::ACTOR_MACHINE
@@ -76,7 +78,7 @@ pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) ->
     if current.revision_id.as_deref() != Some(plan.accepted_revision_id.as_str()) {
         return Err(TaskRefusal::StaleState.into());
     }
-    let message = afd_wire::event::message_of(&source.request_json);
+    let message = source.message()?;
     for item in &plan.items {
         let start = usize::try_from(item.span().start).map_err(|source| {
             crate::error::Error::from(crate::error::ErrorKind::TaskCounter {
@@ -96,6 +98,20 @@ pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) ->
         if let super::super::PreparedItem::New { task, .. } = item { check_limits(task.limits)?; }
     }
     Ok(())
+}
+
+impl Source {
+    pub(in crate::task) fn message(&self) -> Result<std::borrow::Cow<'_, str>> {
+        message_for(&self.producer, &self.request_json)
+    }
+}
+
+pub(in crate::task) fn message_for<'a>(producer: &str, body: &'a str) -> Result<std::borrow::Cow<'a, str>> {
+    if producer != Producer::SlackMention.as_str() { return Ok(afd_wire::event::message_of(body)); }
+    #[derive(serde::Deserialize)]
+    struct Human<'a> { #[serde(borrow)] human_message: std::borrow::Cow<'a, str> }
+    let human: Human<'_> = serde_json::from_str(body).map_err(afd_core::json::Unreadable::from)?;
+    Ok(human.human_message)
 }
 
 fn check_limits(limits: TaskLimits) -> Result<()> {

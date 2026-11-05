@@ -143,6 +143,8 @@ garde.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+# Checkpoint scenarios construct the same bounded client as daemon wiring.
+afd_identity.workspace = true
 # Price-change scenarios and their shared fixtures use the native catalogue owner.
 afd_admin.workspace = true
 # The `tracing` capture the suites read their log lines back through

@@ -52,6 +52,8 @@ export type EventDetail = EventRow & {
    * shows the same rows the live tail did. `null` when none were recorded.
    */
   tool_calls: SavedToolTrace | null;
+  /** Bounded public stages retained independently of private recovery state. */
+  task_activity?: unknown;
 };
 
 /** `afd_wire::tool_trace::ToolTrace`: the calls in order, and how many the
@@ -216,6 +218,7 @@ export type ActivityLiveFrame =
     }
 
   | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
+  | {kind: typeof FRAME_KIND.TASK_DECISION_STARTED | typeof FRAME_KIND.TASK_DECISION_COMPLETED | typeof FRAME_KIND.TASK_TRANSFER_PROGRESS; event_id: string; progress: unknown}
   | ({ kind: typeof FRAME_KIND.CONTEXT_PROGRESS; event_id: string } & ContextProgress)
 
   // Status is required; output edges and exit codes depend on the tool.
