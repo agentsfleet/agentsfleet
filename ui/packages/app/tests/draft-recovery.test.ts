@@ -5,36 +5,34 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { DRAFT, MESSAGE } from "./helpers/draft-fixtures";
 
 const UNKNOWN = {...MESSAGE, state: "failed" as const,
-  failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}};
+  failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}};
 const VIEW: DraftView = {...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [UNKNOWN]};
 
-it("draft_recovery_uses_current_watermark even when cached actions still say await accounting", () => {
-  expect(chatRecovery(VIEW)).toEqual({pending: false, blocked: true, canStop: true});
-  expect(chatRecovery({...VIEW, draft: {...DRAFT, cancelled_through: MESSAGE.sequence}}))
-    .toEqual({pending: false, blocked: false, canStop: false});
-  expect(chatRecovery({...VIEW, draft: {...DRAFT, cancelled_through: MESSAGE.sequence},
-    messages: [UNKNOWN, {...UNKNOWN, sequence: "2"}]}))
-    .toEqual({pending: false, blocked: true, canStop: true});
+it("an unknown-usage failure neither holds the chat nor offers Stop", () => {
+  expect(chatRecovery(VIEW)).toEqual({pending: false, canStop: false});
+  expect(chatRecovery({...VIEW, messages: [UNKNOWN, {...MESSAGE, sequence: "2", state: "queued" as const}]}))
+    .toEqual({pending: true, canStop: true});
 });
 
 it.each(["queued", "running"] as const)("keeps %s work stoppable until its watermark", (state) => {
   const view = {...VIEW, messages: [{...MESSAGE, state}]};
-  expect(chatRecovery(view)).toEqual({pending: true, blocked: false, canStop: true});
+  expect(chatRecovery(view)).toEqual({pending: true, canStop: true});
   expect(chatRecovery({...view, draft: {...DRAFT, cancelled_through: MESSAGE.sequence}}))
-    .toEqual({pending: false, blocked: false, canStop: false});
+    .toEqual({pending: false, canStop: false});
 });
 
 it.each(["completed", "cancelled", "failed", "timed_out"] as const)("does not treat an ordinary %s row as live work", (state) => {
   expect(chatRecovery({...VIEW, messages: [{...MESSAGE, state}]}))
-    .toEqual({pending: false, blocked: false, canStop: false});
+    .toEqual({pending: false, canStop: false});
 });
 
 it("requires an accessible editing draft for Stop", () => {
-  for (const view of [{...VIEW, draft: null}, {...VIEW, inaccessible: true},
-    {...VIEW, draft: {...DRAFT, state: "closed" as const}}]) {
-    expect(chatRecovery(view)).toEqual({pending: false, blocked: true, canStop: false});
+  const running = {...VIEW, messages: [{...MESSAGE, state: "running" as const}]};
+  for (const view of [{...running, draft: null}, {...running, inaccessible: true},
+    {...running, draft: {...DRAFT, state: "closed" as const}}]) {
+    expect(chatRecovery(view)).toEqual({pending: true, canStop: false});
   }
-  expect(chatRecovery(EMPTY_DRAFT_VIEW)).toEqual({pending: false, blocked: false, canStop: false});
+  expect(chatRecovery(EMPTY_DRAFT_VIEW)).toEqual({pending: false, canStop: false});
 });
 
 it("compares full decimal sequences above JavaScript's safe integer range", () => {

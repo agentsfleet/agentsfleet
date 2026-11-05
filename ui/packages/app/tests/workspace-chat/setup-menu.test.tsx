@@ -50,8 +50,6 @@ it.each([
   {busy: true}, {pending: true},
   {messages: [{...MESSAGE, state: "queued" as const}]},
   {messages: [{...MESSAGE, state: "running" as const}]},
-  {messages: [{...MESSAGE, role: "assistant" as const, state: "failed" as const,
-    failure: {reason: "provider_usage_unknown", error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}]},
   {draft: {...DRAFT, state: "saving" as const}},
 ])("blocks mutations while the setup cannot be edited (%j)", async (change: Partial<DraftView>) => {
   render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), ...change}} />);

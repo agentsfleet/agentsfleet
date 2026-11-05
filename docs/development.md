@@ -335,7 +335,7 @@ follows is the repo-workflow half that page does not carry.
   lifecycle). CI runs the same suite against the dev deployment on PR and prod
   post-deploy.
 
-- **Soak = the long chat runs**, kept out of the default ladder.
+- **Soak = the long chat runs**, part of the `full` ladder and runnable alone.
   `tests/e2e/acceptance/fleet-soak.spec.ts` sends 181 real-model messages to one
   fleet through four saved setups.
   - `make acceptance-e2e ACCEPTANCE_SCOPE=soak-mini` runs it on two fleets at

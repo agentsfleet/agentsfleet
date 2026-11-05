@@ -30,7 +30,7 @@ function HeadingContent({client, view, workspace, fleetPage, menuItems, onDirtyC
   const state = useHeadingState(client, view, onDirtyChange);
   const draft = view.draft;
   const recovery = chatRecovery(view);
-  const locked = view.busy || view.pending || recovery.pending || recovery.blocked
+  const locked = view.busy || view.pending || recovery.pending
     || Boolean(draft && draft.state !== DRAFT_STATE.editing && !savedDraft(view));
   const label = view.fleet?.name ?? view.preview?.instanceName ?? (draft ? chatTitle(draft.title, draft.id, firstChatRequest(view.messages) || draft.candidate?.definition.description) : "New fleet");
   const canEdit = Boolean(draft?.candidate || view.preview || view.fleet?.definition);

@@ -8,16 +8,10 @@ export function isStopped(message: Message, cancelledThrough: string): boolean {
   return BigInt(message.sequence) <= BigInt(cancelledThrough);
 }
 
-/** Cached failure actions can predate Stop; the current draft watermark wins. */
-export function chatRecovery(view: DraftView): {pending: boolean; blocked: boolean; canStop: boolean} {
+/** A turn still running holds the chat; a failure, including unaccounted usage, does not. */
+export function chatRecovery(view: DraftView): {pending: boolean; canStop: boolean} {
   const cutoff = view.draft?.cancelled_through ?? "0";
-  let pending = false;
-  let blocked = false;
-  for (const message of view.messages) {
-    if (isStopped(message, cutoff)) continue;
-    pending ||= isRunning(message);
-    blocked ||= message.failure?.reason === UNKNOWN_USAGE_REASON;
-  }
+  const pending = view.messages.some((message) => !isStopped(message, cutoff) && isRunning(message));
   const editing = view.draft?.state === DRAFT_STATE.editing && !view.inaccessible;
-  return {pending, blocked, canStop: editing && (pending || blocked)};
+  return {pending, canStop: editing && pending};
 }

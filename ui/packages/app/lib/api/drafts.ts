@@ -318,7 +318,6 @@ export class DraftClient {
     if (!id || (!chatRecovery(this.#snapshot).canStop && !this.#snapshot.optimistic)) return;
     this.#watching.follow({id, path: `${this.#base}/drafts/${id}`, owner: this.#owner.signal, view: this.#view.signal,
       reconcile: async signal => { await this.#read(id, signal); return chatRecovery(this.#snapshot).canStop || Boolean(this.#snapshot.optimistic); },
-      needsPolling: () => chatRecovery(this.#snapshot).blocked,
       progress: {gap: () => this.#replies.gap(), delta: data => this.#snapshot.draft?.id === id
         && this.#replies.accept(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages),
         context: data => this.#snapshot.draft?.id === id && this.#replies.context(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages)},
