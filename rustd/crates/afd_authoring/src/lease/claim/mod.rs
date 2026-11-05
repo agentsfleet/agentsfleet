@@ -133,8 +133,7 @@ impl Drafts {
     /// fund it.
     async fn hold_claimed(&self, hold: &Reservation) {
         let work_id = hold.work.id().as_str();
-        // Detached: the gate already admitted this bound, so nobody waits on the ledger.
-        match self.biller.reserve_detached(hold).await {
+        match self.biller.reserve(hold).await {
             Ok(Hold::Held { .. } | Hold::Unconfirmed) => {}
             Ok(answer) => tracing::warn!(
                 work_id,
