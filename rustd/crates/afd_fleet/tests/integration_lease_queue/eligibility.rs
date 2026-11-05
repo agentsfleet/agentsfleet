@@ -4,7 +4,7 @@ use afd_fleet::lease::Delivery;
 
 use super::admit_at;
 use crate::rows::Row;
-use crate::seed::{claim_fleet, seeded_parts};
+use crate::seed::{carry_tag, claim_fleet, seeded_parts};
 use crate::support::Fixtures;
 
 /// A fleet status the claim must pass over.
@@ -121,6 +121,46 @@ async fn test_reclaim_reports_repeat_and_terminal_correctly() {
         ),
         (Some(true), delivered, true),
         "settled with no lease, its first delivery instant kept, the slot free"
+    );
+    fixtures.cleanup().await;
+}
+
+/// The walks run in claim order: a fleet whose sandbox the runner holds,
+/// then a fleet it ran last, each beats an older ready fleet it may take.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_held_then_last_run_fleets_come_before_an_older_one() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let (older, older_ws, _, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let (held, held_ws, _, []) = seeded_parts::<0>(&fixtures).await;
+    let (last, last_ws, _, []) = seeded_parts::<0>(&fixtures).await;
+    for fleet in [&held, &last] {
+        carry_tag(&fixtures, &runner, fleet).await;
+    }
+    let _oldest = admit_at(&fixtures, &older, &older_ws, 0).await;
+    let _held_work = admit_at(&fixtures, &held, &held_ws, 10).await;
+    let _last_work = admit_at(&fixtures, &last, &last_ws, 20).await;
+    let id = |fleet: &str| afd_core::id::Uuid7::parse(fleet).expect("a seeded fleet id");
+    let leases = fixtures.leases();
+    leases
+        .prefer(&id(&last), &runner)
+        .await
+        .expect("the runner ran the last fleet");
+
+    let mut taken = Vec::new();
+    for held_ids in [vec![id(&held)], Vec::new(), Vec::new()] {
+        let acquired = leases
+            .select(&runner, &held_ids)
+            .await
+            .expect("the claim runs")
+            .expect("a fleet is ready for this runner");
+        taken.push(acquired.fleet_id.as_str().to_owned());
+    }
+
+    assert_eq!(
+        taken,
+        vec![held, last, older],
+        "held first, then the fleet it ran last, then the oldest"
     );
     fixtures.cleanup().await;
 }

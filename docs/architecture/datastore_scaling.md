@@ -208,7 +208,7 @@ A missing cached gate reference falls back to the durable event association, so 
 The claim locks the slot with `SKIP LOCKED`, then the exact head by primary key, and in the same statement advances both fences and opens the event row.
 A held or moved head returns no work, and the statement writes nothing.
 
-Claims retain held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
+Claims take held fleets first, then the runner's last fleets, then the oldest ready fleet by `ready_at`; within a fleet, admissions run in `sequence` order.
 
 `delivered_at` records admission into runtime history. `settled_at` removes a row from the queue.
 A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.

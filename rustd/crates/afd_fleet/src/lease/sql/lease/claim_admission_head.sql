@@ -53,7 +53,7 @@ WITH replay AS MATERIALIZED (
            WHERE rr.id = s.last_runner_id
              AND rr.last_seen_at > statement_timestamp() - $4::interval
              AND rr.status = $5 AND rr.degraded_reason IS NULL))
-  ORDER BY s.ready_at
+  ORDER BY (s.last_runner_id = $1::uuid) DESC NULLS LAST, s.ready_at
   LIMIT 1
   FOR UPDATE OF s SKIP LOCKED
 ), affine_pick AS MATERIALIZED (

@@ -7,20 +7,23 @@
 /// sandboxes the runner holds, then the fleets it ran last, then every fleet.
 /// Each walks its ready slots oldest first through an index ordered on
 /// `ready_at` and stops at the first it may take and can lock with
-/// `SKIP LOCKED`, so a poll reads one ready slot however many wait. A walk runs
-/// only when the one before it took nothing. Each slot's fleet and head are a
-/// keyed lateral lookup. Only then is the head locked, by primary key alone,
-/// and the parked and settled marks are read from the locked row, which is the
-/// latest version. A head joined into the slot's lock could be reached through
-/// the unsettled index, and on stale statistics the planner read every
-/// unsettled admission in the ledger to find one. A head held elsewhere, or
-/// moved since the statement began, leaves this poll empty. Every write joins
-/// the pick, so a claim that finds nothing changes no row. The clock is read
-/// once, after the locks. `$1` runner, `$2` the fleets whose sandboxes it
-/// holds, `$3` the lease lifetime, `$4` how long a silent runner stays live,
-/// `$5` the runner status that may lease, `$6` and `$7` the active and expired
-/// lease statuses, `$8` the fleet status that may run, `$9` the received event
-/// status, `$10` the steer producer, `$11` the poll's key or NULL.
+/// `SKIP LOCKED`, so a poll reads one ready slot when the oldest it may take is
+/// free; older slots it may not take (a paused fleet, tags it lacks, a live
+/// hold) are each read and passed over. A walk runs only when the one before it
+/// took nothing. The held walk prefers the fleet this runner ran last. Each
+/// slot's fleet and head are a keyed lateral lookup. Only then is the head
+/// locked, by primary key alone, and the parked and settled marks are read from
+/// the locked row, which is the latest version. A head joined into the slot's
+/// lock could be reached through the unsettled index, and on stale statistics
+/// the planner read every unsettled admission in the ledger to find one. A head
+/// held elsewhere, or moved since the statement began, leaves this poll empty.
+/// Every write joins the pick, so a claim that finds nothing changes no row.
+/// The clock is read once, after the locks. `$1` runner, `$2` the fleets whose
+/// sandboxes it holds, `$3` the lease lifetime, `$4` how long a silent runner
+/// stays live, `$5` the runner status that may lease, `$6` and `$7` the active
+/// and expired lease statuses, `$8` the fleet status that may run, `$9` the
+/// received event status, `$10` the steer producer, `$11` the poll's key or
+/// NULL.
 pub const CLAIM_HEAD: &str = include_str!("lease/claim_admission_head.sql");
 
 /// Lock the current slot before its admission; false means the claim was superseded.

@@ -11,6 +11,8 @@ use crate::{
 use afd_core::id::Uuid7;
 use sqlx::Connection as _;
 const CONTEXT: &str = "admission queue transition";
+/// A park that found no pending card, so it parked nothing.
+const EVENT_PARK_FOUND_NO_CARD: &str = "lease_park_found_no_card";
 /// Statement name for the lapsed-park sweep's failures.
 const CONTEXT_LAPSED: &str = "lapsed park sweep";
 /// How long the sweep's unpark waits on an admission row lock: its slots are
@@ -54,6 +56,15 @@ impl Leases {
             // is let go behind the retry backoff, as any pass that could not
             // finish is, or the oldest-first claim would hand it straight back.
             let backoff = if parked == 0 {
+                let fleet_id = fleet.as_str();
+                let fencing_token = fence.as_i64();
+                tracing::info!(
+                    event = EVENT_PARK_FOUND_NO_CARD,
+                    fleet_id,
+                    agentsfleet_event_id = event,
+                    fencing_token,
+                    "no pending card to park on; the fleet goes back behind the retry backoff"
+                );
                 Backoff::Retry
             } else {
                 Backoff::None

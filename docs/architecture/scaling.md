@@ -153,7 +153,7 @@ For each slot it considers, one lookup through the partial `(fleet_id, sequence)
 A pass that ends on a retry frees its slot `CLAIM_RETRY_BACKOFF` (5 s) in the future: the oldest-first order would otherwise hand a failing fleet to every poll and starve the fleets behind it.
 A parked head clears its fleet's `ready_at`, so parked work costs the claim nothing until a person answers or, once every event card on the head has lapsed, the park sweep re-arms it (every 5 s; it expires no card, and standing access still waits for an answer).
 
-The plan tests seed 10,000 active fleets, 2,000 running and either 3 or 5,000 ready, run `ANALYZE`, and require the ready index, no sequential scan of `fleet.fleets` or `runner.fleet_slots`, and one ready slot read however many wait, in `EXPLAIN (ANALYZE, BUFFERS)` (`afd_fleet/tests/integration_lease_plan/ready.rs`).
+Two plan tests run `ANALYZE` and read `EXPLAIN (ANALYZE, BUFFERS)` (`afd_fleet/tests/integration_lease_plan/ready.rs`). One seeds 10,000 fleets (2,000 running, 3 ready) and requires the ready index with no sequential scan of `fleet.fleets` or `runner.fleet_slots`. The other seeds 5,001 fleets with 5,000 waiting, the oldest 2,000 leased, and requires one ready slot read, the leased ones passed inside the index.
 
 The same statement stamps the head admission's fence and `delivered_at` and opens its event row; an uncontended successful claim is that one statement in autocommit.
 

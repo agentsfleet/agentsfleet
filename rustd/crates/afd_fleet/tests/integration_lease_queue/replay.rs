@@ -36,6 +36,13 @@ pub(super) struct Keyed {
     pub(super) key: Uuid7,
 }
 
+/// Whether a lease answer carries a lease, and the wait it asks for.
+fn wait_of(answer: &str) -> (bool, Option<u32>) {
+    let response: afd_wire::lease::LeaseResponse<'_> =
+        serde_json::from_str(answer).expect("the plane answers a lease response");
+    (response.lease.is_some(), response.retry_after_ms)
+}
+
 /// Counted each time a repeated key lets a lease go.
 const REPLAYED: &str = "agentsfleet_lease_poll_replayed_total";
 
@@ -134,8 +141,10 @@ async fn test_lost_lease_reply_is_freed_by_the_repeated_key() {
         .await
         .expect("the admission is claimable at once");
 
-    assert!(
-        answer.contains("\"lease\":null") && answer.contains("\"retry_after_ms\":0"),
+    let (lease, retry_after_ms) = wait_of(&answer);
+    assert_eq!(
+        (lease, retry_after_ms),
+        (false, Some(0)),
         "no work, poll again now, through the route's claim: {answer}"
     );
     assert_eq!(replayed, 1, "the freed lease is counted once");
@@ -249,8 +258,9 @@ async fn test_another_runners_key_frees_nothing() {
         .expect("the other runner is answered")
         .into_body();
 
-    assert!(
-        !answer.contains("\"retry_after_ms\":0"),
+    assert_ne!(
+        wait_of(&answer).1,
+        Some(0),
         "the key is not the other runner's to replay: {answer}"
     );
     assert_eq!(

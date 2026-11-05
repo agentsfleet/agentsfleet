@@ -23,6 +23,8 @@ const CONTEXT: &str = "admissions ledger claim";
 const LEDGER: &str = "fleet.admissions";
 /// A poll repeated the key of a poll whose reply was lost.
 const EVENT_POLL_REPLAYED: &str = "lease_poll_replayed";
+/// A committed claim whose fleet id this daemon cannot read, left to lapse.
+const EVENT_RELEASE_SKIPPED: &str = "claim_release_skipped";
 
 /// What both arms of the statement answer: which arm, and the slot it names.
 ///
@@ -103,15 +105,7 @@ impl Leases {
             }
         };
         let held = affinity::held_claim(admission.held, admission.holder.as_deref(), runner);
-        // The same committed claim, unreadable one field later: freed the same
-        // way, or the fleet would wait out a lease nobody holds.
-        let acquired = match admission.acquired(runner) {
-            Ok(acquired) => acquired,
-            Err(malformed) => {
-                self.let_go_undecoded(&arm).await;
-                return Err(malformed);
-            }
-        };
+        let acquired = admission.acquired(runner)?;
         if held == Some(HeldClaim::OtherAfterLapse) {
             producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);
         }
@@ -124,10 +118,17 @@ impl Leases {
     /// behind the retry backoff, so the fleet does not wait out a whole lease
     /// and does not sit at the head of every poll either.
     async fn let_go_undecoded(&self, arm: &Arm) {
-        if let Ok(fleet) = Uuid7::parse(&arm.fleet_id) {
-            self.let_go(&fleet, Fence::from_i64(arm.fencing_token), Backoff::Retry)
-                .await;
-        }
+        let Ok(fleet) = Uuid7::parse(&arm.fleet_id) else {
+            let fleet_id = arm.fleet_id.as_str();
+            tracing::warn!(
+                event = EVENT_RELEASE_SKIPPED,
+                fleet_id,
+                "the claim names no readable fleet, so its slot waits out the lease"
+            );
+            return;
+        };
+        self.let_go(&fleet, Fence::from_i64(arm.fencing_token), Backoff::Retry)
+            .await;
     }
 }
 

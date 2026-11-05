@@ -575,7 +575,7 @@ The lease call prepares work for the runner. The report call commits its termina
 
 1. Refuse placement when the runner's isolation verdict is degraded or unreadable.
 2. Claim in one statement: the oldest ready, free slot this runner may run, held fleets first, then its last fleets. Readiness is the slot's `ready_at`, which a trigger on `fleet.admissions` keeps.
-3. Lock that slot and its exact oldest admission with `SKIP LOCKED`; a slot or head held elsewhere is passed over. A parked head has no readiness, so it is never picked.
+3. Lock that slot with `SKIP LOCKED`, then its exact oldest admission by primary key. A slot held elsewhere is passed over; a head held elsewhere, or one that settled or parked since the statement began, leaves this poll empty. A parked head has no readiness, so it is never picked.
 4. In the same statement advance the slot and admission fences, stamp delivery and open `fleet.events`. Every write joins the pick, so an empty claim writes nothing. A claim whose row this daemon cannot decode frees the slot behind the retry backoff.
 5. A redelivery of an event that already ended settles in one fenced statement without issuing a lease. A repeated `Idempotency-Key` frees the lease its lost reply carried and answers `retry_after_ms` 0.
 6. Every refusal ends the event, settles the admission and frees the slot in one statement under the claim's fence.

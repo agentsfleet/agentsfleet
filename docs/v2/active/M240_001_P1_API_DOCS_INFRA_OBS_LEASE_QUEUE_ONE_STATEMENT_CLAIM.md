@@ -127,9 +127,9 @@ The admission insert is the one writer that reaches the slot after an admission 
 |------|--------|-----|
 | `docs/v2/pending/M240_001_P1_API_DOCS_INFRA_OBS_LEASE_QUEUE_ONE_STATEMENT_CLAIM.md` | CREATE then MOVE to `active/`, then `done/` | this spec |
 | `docs/v2/pending/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md` | MOVE to `done/` as DEFERRED | owner's request at CHORE(open), quoted in Discovery; one Pull Request carries both |
-| `schema/2190_runner_fleet_slots_ready.sql` | CREATE | §1: `ready_at`, the partial index, the trigger and its function on `fleet.admissions`, the parked-head index the park sweep reads, and the backfill of slot rows and `ready_at` |
-| `schema/2200_runner_leases_poll_key.sql` | CREATE | §5: `poll_key` on `runner.leases`, unique per runner |
-| `rustd/crates/afd_db/src/migration.rs` | EDIT | registers both slots |
+| `schema/2190_runner_fleet_slots_ready.sql` | CREATE | §1: `ready_at`, the partial indexes `(ready_at, lease_expires_at)` and `(last_runner_id, ready_at)`, the trigger and its function on `fleet.admissions`, and the backfill of slot rows and `ready_at` |
+| `schema/2200_runner_leases_poll_key.sql`, `schema/2230_fleet_admissions_parked.sql` | CREATE | §5: `poll_key` on `runner.leases`, unique per runner; §1: the parked-head index the park sweep reads |
+| `rustd/crates/afd_db/src/migration.rs` | EDIT | registers the three slots |
 | `rustd/crates/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | EDIT | §2, §5: the one-statement claim with its replay arm |
 | `rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`, `stamp_delivery.sql`, `claim_fleet_slot.sql` | DELETE | §2: the scan, the separate stamp and the slot claim with no production caller |
 | `rustd/crates/afd_fleet/src/lease/sql/lease/settle_terminal.sql`, `sql/lease/end_refused.sql` | EDIT, CREATE | §4: the one-statement endings; `end_refused.sql` replaces `afd_events`'s `update_fleet_event_failure.sql` |
@@ -198,7 +198,7 @@ The admission insert is the one writer that reaches the slot after an admission 
 
 ### §1 — A trigger keeps each fleet's readiness on its slot
 
-Prerequisite: none. Slot 2190 adds `ready_at TIMESTAMPTZ(3)` to `runner.fleet_slots` and a partial index on `(lease_expires_at, ready_at) WHERE ready_at IS NOT NULL`.
+Prerequisite: none. Slot 2190 adds `ready_at TIMESTAMPTZ(3)` to `runner.fleet_slots` and partial indexes on `(ready_at, lease_expires_at)` and `(last_runner_id, ready_at)`, both `WHERE ready_at IS NOT NULL`.
 
 It adds an `AFTER INSERT OR UPDATE OF settled_at, parked_at` row trigger on `fleet.admissions`. The trigger upserts the fleet's slot row:
 - **On insert,** `fencing_token = 0` and `lease_expires_at = now() − 1 ms`, so the first claim carries fence 1 as today. `last_runner_id` and `hold_expires_at` start `NULL`.
