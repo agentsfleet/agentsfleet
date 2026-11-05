@@ -24,7 +24,11 @@ async fn owners(case: &Case) {
     let task = fixture.bind_goal().await;
     source_routing(&fixture, &task).await;
     goal_overage(&fixture, task).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn source_routing(fixture: &Decisions<'_>, task: &DecisionTaskVersion) {

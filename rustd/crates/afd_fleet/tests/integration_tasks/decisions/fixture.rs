@@ -1,5 +1,6 @@
 //! Well-formed frozen lease data; native freeze itself has its own scenario.
 
+use afd_admin::test_util::DecisionModelFixture;
 use std::sync::Arc;
 
 use afd_core::{clock, etag::sha256_hex, id::Uuid7};
@@ -19,8 +20,8 @@ use sqlx::types::Json;
 
 use super::super::fixture::{Case, GOALS, id};
 pub(super) use super::reply::known;
+use crate::report_seed::FIXTURE_KEK_HEX;
 use crate::seed::{MODEL, PROVIDER};
-use crate::{decision_model_fixture::DecisionModelFixture, report_seed::FIXTURE_KEK_HEX};
 
 pub(super) struct Decisions<'a> {
     pub case: &'a Case,
@@ -39,7 +40,9 @@ impl<'a> Decisions<'a> {
 
     pub(super) async fn with_daily_budget(case: &'a Case, daily: i64) -> Self {
         case.held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
-        let model = DecisionModelFixture::create(&case.held.fixtures.database).await;
+        let model = DecisionModelFixture::create(&case.held.fixtures.database)
+            .await
+            .expect("reviewed decision model fixture");
         let assignment = assignment(case, &model).await;
         let config = json!({"name":"pull-request-repair", "x-agentsfleet":{"tools":[], "triggers":[],
             "budget":{"daily_nanos":daily.to_string()}, "decision_policy": policy()}});

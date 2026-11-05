@@ -1,5 +1,6 @@
 //! Lease delivery and stored history retain one coherent reviewed selection.
 
+use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
 use afd_core::{clock, id::Uuid7};
@@ -15,7 +16,7 @@ use sqlx::{Connection as _, types::Json};
 use super::{
     READ_BOUND_CONFIG, Ready, claim, drive, ready, seed::seed_provider_resolution, set_config,
 };
-use crate::{decision_model_fixture::DecisionModelFixture, support::Fixtures};
+use crate::support::Fixtures;
 
 /// Bound a real lock-order regression instead of hanging the test process.
 const ISSUE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -29,7 +30,9 @@ struct Issued {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn issued_selection_survives_edits_revocation_and_catalogue_removal() {
     let fixtures = Fixtures::create_with_queue().await;
-    let mut model = DecisionModelFixture::create(&fixtures.database).await;
+    let mut model = DecisionModelFixture::create(&fixtures.database)
+        .await
+        .expect("reviewed decision model fixture");
     let first = ready(&fixtures).await;
     let second = ready(&fixtures).await;
     let third = ready(&fixtures).await;
@@ -52,7 +55,10 @@ async fn issued_selection_survives_edits_revocation_and_catalogue_removal() {
 
     let revised = revise_and_check(&fixtures, &mut model, &second, &initial).await;
 
-    model.disable().await;
+    model
+        .disable()
+        .await
+        .expect("decision model fixture lifecycle");
     let disabled = issue(&fixtures, &third).await;
     assert!(
         disabled.decision.is_none(),
@@ -62,7 +68,10 @@ async fn issued_selection_survives_edits_revocation_and_catalogue_removal() {
     for case in [&first, &second, &third] {
         select(&fixtures, &case.runner, None).await;
     }
-    model.finish().await;
+    model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     assert_stored(&fixtures.database, &initial).await;
     assert_stored(&fixtures.database, &revised).await;
     fixtures.cleanup().await;
@@ -72,7 +81,9 @@ async fn issued_selection_survives_edits_revocation_and_catalogue_removal() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn profile_snapshot_does_not_reverse_model_then_runner_lock_order() {
     let fixtures = Fixtures::create_with_queue().await;
-    let model = DecisionModelFixture::create(&fixtures.database).await;
+    let model = DecisionModelFixture::create(&fixtures.database)
+        .await
+        .expect("reviewed decision model fixture");
     let case = ready(&fixtures).await;
     select(&fixtures, &case.runner, Some(&model.model.id)).await;
     let _default = prepare(&fixtures, &case).await;
@@ -103,7 +114,10 @@ async fn profile_snapshot_does_not_reverse_model_then_runner_lock_order() {
     );
     assert_stored(&fixtures.database, &issued).await;
     select(&fixtures, &case.runner, None).await;
-    model.finish().await;
+    model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     fixtures.cleanup().await;
 }
 

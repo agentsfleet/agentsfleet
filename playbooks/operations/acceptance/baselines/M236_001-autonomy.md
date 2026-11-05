@@ -2,6 +2,39 @@
 
 ## Current continuation point
 
+### Latest verification update — Nov 05, 2026
+
+This table supersedes older pending results below. The current pushed source is
+`cc4c460a74e2cfc06ec529843b672d5a51436203`; subsequent fixture and typed-error
+corrections are being verified before the next push. Main was fetched again and
+remains `66059667bb8d2b12b9f6fb3a63a65a660789dca7`, already integrated.
+
+| Work / evidence | Result | Limits and next action |
+| --- | --- | --- |
+| Implementation | Dedicated chat/CLI evidence, deduplicated byte accounting, ownership-safe reconnect history and bounded native handoff are implemented | Feature remains disabled; original approved HTML visuals unverified |
+| Native deadline | Persisted lease ceiling reaches issuance, replay and recovery; stop new action groups at 180 seconds, bound drive and reply drain to reserve handoff time | Large capture can still fail truthfully; no guarantee of successful publication |
+| Reuse / abstraction | Moved shared decision fixture into existing afd_admin test-util feature, replacing cross-crate test-file imports; typed error sources preserved | No new runtime crate or second execution path |
+| Target validation | External wait-target integer overflow retains TASK_INVALID_TARGET; corrupt stored counters remain INTERNAL_DB_QUERY | Regression asserts error code, detail and source |
+| Live decision fixture | Runner now reports required durable_tasks_v1 capability before leasing decision work | Test runner capability only; production feature stays false |
+| Full local lint | make lint-all passed after shared-fixture, API wording, target-error and publication corrections | Full source rules, format, Clippy, dependencies, TypeScript, scripts and deploy checks; no suppression or threshold edits |
+| App coverage | 483 suites, 4,702 tests; 100% statements, branches, functions and lines | Working-tree result, not browser acceptance |
+| Website coverage | 20 suites, 133 tests; 100% in all four categories | Working-tree result |
+| CLI coverage | 2,025 passed, 16 existing live-target skips, zero failures; 100% lines and functions | Skips are missing acceptance evidence, not passes |
+| Full local unit | Runner shard passed 1,632 tests and daemon shard passed 143 under tini and command-local umask 0022; stopped during library build for publication correction | Initial failures were unreaped zombies under PID 1 tail and unchanged toolbox permission expectations under inherited umask 0077; no test edits for those failures |
+| Exact cc4 CI | Rust runner/daemon/library unit jobs, runner and daemon coverage, app/CLI/website/design-system tests, dry lanes, bundles and governance passed | Aggregate CI red; not mergeable |
+| CI source failures | API wording lint, hidden fixture dependency and decision fixture capability corrected locally | New pushed head must verify corrections |
+| CI toolbox / kernel | Pinned Debian snapshot package downloads returned 404 repeatedly; later independent HTTP/HTTPS probes returned identical 200 content | Transient upstream failure suspected, not proven; no pin/transport/gate edits; kernel coverage missing |
+| Greptile at cc4 | Six threads, all resolved; review status SUCCESS | Recheck every new pushed head |
+| Gate integrity | Independent focused configuration review found no weakened checks, new production exclusions or test suppressions | Rust patch floor 99.51%; TypeScript floors remain 100%; formal full gstack workflow is incomplete |
+| Adversarial publication review | Fixed unchanged empty base gitlink blocking unrelated edits; preserve exact base gitlink/executable and refuse populated/deleted/replaced/staged-changed submodules or executable edits | Independently reread; 11 real-Git regression cases pending execution; production and tests share the actual embedded capture program |
+| Formal review boundary | gstack checklist/preamble and source subsets reviewed; audit records mark completed:false | Full 1,196-file diff, all specialists and runtime probes were not completed; no whole-diff certification claimed |
+| Companion docs | 437f9c1952dd5203ab2e48cdcec5249786038676 pushed; docs make lint passed | Existing docs PR 241 predates continuation; no new PR created |
+| Merge / milestone | No merge; M236 IN_PROGRESS | Requires green exact-head CI and all Greptile threads resolved; full Rust patch coverage still unproven |
+
+Historical acceptance on main remains separate: dev acceptance-e2e and
+acceptance-cli passed on 66059667; production acceptance failed before scenarios
+with api.agentsfleet.net DNS resolution. Neither verifies this branch.
+
 ### Active continuation — Nov 05, 2026 (supersedes execution restrictions below)
 
 Kishore explicitly authorized gates after implementation, updating from main before

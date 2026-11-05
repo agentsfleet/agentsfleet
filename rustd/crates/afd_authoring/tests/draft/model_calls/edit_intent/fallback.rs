@@ -68,7 +68,10 @@ async fn a_revoked_profile_makes_the_inflight_answer_stale_but_retains_usage() {
     );
     let observe = async {
         server.received().await;
-        case.model.disable().await;
+        case.model
+            .disable()
+            .await
+            .expect("decision model fixture lifecycle");
         server.finish().await;
     };
     let (response, ()) = tokio::join!(response, observe);

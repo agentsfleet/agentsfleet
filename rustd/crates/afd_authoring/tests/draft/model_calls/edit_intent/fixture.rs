@@ -1,5 +1,6 @@
 //! Real setup, catalogue, vault, billing and candidate persistence around two provider boundaries.
 
+use afd_admin::test_util::DecisionModelFixture;
 use afd_authoring::{ModelCalls, types::Source};
 use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
@@ -10,7 +11,7 @@ use super::super::{
     super::{attempt::Attempt, definition, fixture::Fixture},
     fixture::{self, Provider},
 };
-use super::{decision_model_fixture::DecisionModelFixture, server::Server};
+use super::server::Server;
 
 pub(super) const SOAK: &str = "Two implementations are equally fast. How should we choose between them? Explain in at most thirty words without changing the setup.";
 
@@ -39,7 +40,9 @@ impl Case {
             .execute(&mut *f.connection().await)
             .await
             .expect("accepted newest message");
-        let mut model = DecisionModelFixture::create(&f.db).await;
+        let mut model = DecisionModelFixture::create(&f.db)
+            .await
+            .expect("reviewed decision model fixture");
         let mut details = model.model.details.clone();
         let decision = details.decision.as_mut().expect("reviewed decision");
         decision
@@ -103,7 +106,10 @@ impl Case {
             .execute(&mut *self.f.connection().await)
             .await
             .expect("remove fixture assignment");
-        self.model.finish().await;
+        self.model
+            .finish()
+            .await
+            .expect("decision model fixture lifecycle");
         self.f.cleanup().await;
     }
 }

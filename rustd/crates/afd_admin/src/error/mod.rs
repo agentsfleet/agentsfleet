@@ -17,6 +17,15 @@ afd_core::error_shell!(
 
 #[derive(Debug, thiserror::Error)]
 enum ErrorKind {
+    #[cfg(feature = "test-util")]
+    #[error("catalogue fixture invariant failed: {reason}")]
+    Fixture { reason: &'static str },
+    #[cfg(feature = "test-util")]
+    #[error("catalogue fixture definition is invalid")]
+    FixtureDefinition {
+        #[source]
+        source: serde_json::Error,
+    },
     #[error("changed decision settings require a new profile revision")]
     DecisionRevision,
     #[error("coding models require a nonempty coding price schedule")]
@@ -67,7 +76,12 @@ impl Error {
             | ErrorKind::CodingPrices => error_code::INVALID_REQUEST,
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } | ErrorKind::Row { .. } => error_code::INTERNAL_DB_QUERY,
+            #[cfg(not(feature = "test-util"))]
             ErrorKind::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            #[cfg(feature = "test-util")]
+            ErrorKind::Entropy { .. }
+            | ErrorKind::Fixture { .. }
+            | ErrorKind::FixtureDefinition { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -90,6 +104,10 @@ impl Error {
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             ErrorKind::Query { .. } | ErrorKind::Row { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::Entropy { .. } => "Internal operation failed",
+            #[cfg(feature = "test-util")]
+            ErrorKind::Fixture { .. } | ErrorKind::FixtureDefinition { .. } => {
+                "Catalogue fixture failed"
+            }
         }
     }
 
@@ -137,3 +155,13 @@ pub(super) fn row(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "test-util")]
+pub(super) fn fixture(reason: &'static str) -> Error {
+    ErrorKind::Fixture { reason }.into()
+}
+
+#[cfg(feature = "test-util")]
+pub(super) fn fixture_definition(source: serde_json::Error) -> Error {
+    ErrorKind::FixtureDefinition { source }.into()
+}

@@ -32,8 +32,16 @@ async fn wrapped(case: &Case) {
     calls.extend(arrivals);
     recovered(&oldest, &later, &first, &calls, &mut cursor).await;
     assert_eq!((oldest.wallet().await, later.wallet().await), balances);
-    oldest.model.finish().await;
-    later.model.finish().await;
+    oldest
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
+    later
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     other.held.fixtures.cleanup().await;
 }
 

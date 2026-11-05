@@ -69,6 +69,12 @@ pub(crate) enum ErrorKind {
         #[source]
         source: std::num::TryFromIntError,
     },
+    #[error("native task target field {column} cannot be represented")]
+    TaskTargetCounter {
+        column: &'static str,
+        #[source]
+        source: std::num::TryFromIntError,
+    },
     #[error("the task continuation could not be admitted")]
     TaskControlAdmission {
         state: afd_wire::task::TaskState,

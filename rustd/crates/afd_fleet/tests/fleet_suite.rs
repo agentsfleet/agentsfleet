@@ -16,13 +16,6 @@ mod integration_model_seed;
 mod integration_tasks;
 mod lease_renewal;
 
-#[path = "../../afd_runner/tests/integration_runner_plane/decision_fixture.rs"]
-#[expect(
-    clippy::expect_used,
-    reason = "shared catalogue fixture fails on unmet prerequisites"
-)]
-mod decision_model_fixture;
-
 #[path = "support/fleet_setup.rs"]
 mod setup;
 

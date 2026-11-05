@@ -201,6 +201,7 @@ impl Error {
             ErrorKind::TaskMutation { ref source, .. } => source.code(),
             ErrorKind::TaskControlConflict { .. } => error_code::TASK_STALE_STATE,
             ErrorKind::TaskRefused { reason } => reason.code(),
+            ErrorKind::TaskTargetCounter { .. } => error_code::TASK_INVALID_TARGET,
             ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
@@ -254,6 +255,7 @@ impl Error {
             ErrorKind::TaskPrecondition { .. } => "the task resource version changed",
             ErrorKind::TaskControlConflict { .. } => crate::task::TaskRefusal::StaleState.detail(),
             ErrorKind::TaskRefused { reason } => reason.detail(),
+            ErrorKind::TaskTargetCounter { .. } => crate::task::TaskRefusal::InvalidTarget.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Authoring { ref source } => source.detail(),

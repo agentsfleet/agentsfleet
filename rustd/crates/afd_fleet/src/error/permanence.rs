@@ -83,6 +83,7 @@ impl Error {
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
             | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskRemote { .. }

@@ -60,7 +60,11 @@ async fn ordered(case: &Case) {
     );
     assert_eq!(fixture.counts().await, (1, 1, 1));
     next_physical_call_is_blocked(&fixture).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn waiting_on_slot(fixture: &Decisions<'_>, pid: i32) {

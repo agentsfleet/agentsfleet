@@ -7,11 +7,12 @@ use serde_json::{Value, json};
 
 use super::{Fixture, MODEL_CREATE, a_deleted_model_is_gone, json_body, send};
 
-#[path = "../../../afd_runner/tests/integration_runner_plane/decision_fixture.rs"]
-mod decision_fixture;
+use afd_admin::test_util::DecisionModelFixture;
 
 pub(super) async fn lifecycle(router: &Router, fixture: &Fixture) {
-    let mut seed = decision_fixture::DecisionModelFixture::create(&fixture.database).await;
+    let mut seed = DecisionModelFixture::create(&fixture.database)
+        .await
+        .expect("reviewed decision model fixture");
     let token = fixture.token.as_str();
     let mut peer = listed(router, token, &seed.model.model_name)
         .await
@@ -53,10 +54,12 @@ pub(super) async fn lifecycle(router: &Router, fixture: &Fixture) {
         None
     );
     assert_saved(router, token, &peer).await;
-    seed.disable().await;
+    seed.disable()
+        .await
+        .expect("disable decision model fixture");
     replace(&mut peer, "/decision/enabled", json!(false));
     assert_saved(router, token, &peer).await;
-    seed.finish().await;
+    seed.finish().await.expect("remove decision model fixture");
 }
 
 fn initial_body(model: &afd_admin::Model) -> Value {

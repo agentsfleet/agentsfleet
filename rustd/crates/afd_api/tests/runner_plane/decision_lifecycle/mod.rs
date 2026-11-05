@@ -43,7 +43,11 @@ async fn decision_http_replays_never_resend_credentials_or_charge_another_owner(
         &receipt,
         DecisionRecordDisposition::Current,
     );
-    fixture.model.disable().await;
+    fixture
+        .model
+        .disable()
+        .await
+        .expect("disable decision model fixture");
     let revoked = success(
         &fixture,
         Method::POST,

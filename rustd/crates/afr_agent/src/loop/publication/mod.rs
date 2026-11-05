@@ -11,6 +11,8 @@ use serde::Deserialize;
 use std::{sync::LazyLock, time::Duration};
 
 pub(super) const NAME: &str = "propose_change";
+/// The sandbox program used for both pre-validation and post-validation capture.
+const CANDIDATE_SCRIPT: &str = include_str!("candidate.py");
 static SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
     Schema::of::<Invocation>(
         "Validate and publish the current local changes to this task's already authorized existing pull request. Supply the validation command as argv. The runner snapshots the complete candidate tree before and after validation, refuses changed/unsupported trees, and publishes with the native expected-head comparison. No merge or new PR. Wait for child agents and commands to finish first.",
@@ -268,7 +270,7 @@ impl Harness<'_, '_> {
         tree: &str,
     ) -> Result<Candidate, ToolOutput> {
         let spawn = Spawn::program("python3")
-            .args(["-I", "-S", "-c", include_str!("candidate.py"), tree])
+            .args(["-I", "-S", "-c", CANDIDATE_SCRIPT, tree])
             .cwd(repository);
         let bytes = process::run(
             executor,
@@ -288,3 +290,6 @@ impl Harness<'_, '_> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

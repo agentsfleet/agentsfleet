@@ -215,7 +215,7 @@ The publisher owns credentials, branch, expected old head and allowed file chang
 An ordinary ref update with `force:false` does not provide this expected-head guarantee.
 
 Before publication, reproduce the candidate tree from its base and supported file changes.
-Compare that tree with the locally tested tree; unsupported modes, symlinks, submodules or size limits block publication until explicitly supported.
+Compare that tree with the locally tested tree. Changes and deletions support only ordinary `100644` files; unchanged base executable files retain their modes. An unchanged base gitlink is preserved only when its staged identity matches the base and its workspace directory is empty and opened without following symlinks. Populated, changed, deleted or traversed submodules remain unsupported. Unsupported changed-path modes, symlinks or size limits block publication until explicitly supported.
 After publication, bind remote CI evidence to the returned commit and verified candidate tree.
 
 Record validation expectations before the remote request.

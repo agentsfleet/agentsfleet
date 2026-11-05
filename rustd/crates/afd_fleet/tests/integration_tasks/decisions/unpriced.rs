@@ -76,7 +76,11 @@ async fn retained(case: &Case, rate: Option<i64>, usage: DecisionUsage, capture:
     if rate.is_some() {
         overflow_diagnostics(capture, call);
     }
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn set_rate(fixture: &Decisions<'_>, rate: Option<i64>) {

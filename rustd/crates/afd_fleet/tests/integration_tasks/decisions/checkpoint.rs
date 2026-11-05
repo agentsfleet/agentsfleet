@@ -75,7 +75,11 @@ async fn capture(case: &Case) {
     assert_eq!(replay.manifest_root, committed.manifest_root);
     report_head(case, &task, &committed, &head).await;
     refusals(&tasks, case, request).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 fn storage(fixture: &Decisions<'_>) -> Tasks {

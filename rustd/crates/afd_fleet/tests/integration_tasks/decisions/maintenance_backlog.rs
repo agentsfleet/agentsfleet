@@ -34,8 +34,16 @@ async fn backlog(case: &Case) {
         );
     }
     assert_eq!(later.counts().await, (3, 3, 0));
-    oldest.model.finish().await;
-    later.model.finish().await;
+    oldest
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
+    later
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     other.held.fixtures.cleanup().await;
 }
 

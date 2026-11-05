@@ -1,5 +1,6 @@
 //! A profile read that outlives the claim cannot create issuance side effects.
 
+use afd_admin::test_util::DecisionModelFixture;
 use std::time::Duration;
 
 use afd_core::{clock, id::Uuid7};
@@ -8,7 +9,7 @@ use afd_fleet::lease::{Billed, Delivery};
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 
 use super::{claim, decision::select, ready};
-use crate::{decision_model_fixture::DecisionModelFixture, seed, support::Fixtures};
+use crate::{seed, support::Fixtures};
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 const EXPIRY_GRACE: Duration = Duration::from_millis(10);
@@ -24,7 +25,9 @@ struct Issuance {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_profile_read_past_claim_expiry_creates_no_lease_audit_or_tally() {
     let fixtures = Fixtures::create_isolated_with_queue().await;
-    let model = DecisionModelFixture::create(&fixtures.database).await;
+    let model = DecisionModelFixture::create(&fixtures.database)
+        .await
+        .expect("reviewed decision model fixture");
     let case = ready(&fixtures).await;
     select(&fixtures, &case.runner, Some(&model.model.id)).await;
     let leases = fixtures.leases();
@@ -62,7 +65,10 @@ async fn a_profile_read_past_claim_expiry_creates_no_lease_audit_or_tally() {
     );
     assert_no_issuance(&fixtures, &case.runner).await;
     select(&fixtures, &case.runner, None).await;
-    model.finish().await;
+    model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     drop(connection);
     migrator.close().await;
     drop(leases);

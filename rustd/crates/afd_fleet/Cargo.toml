@@ -148,7 +148,7 @@ zeroize.workspace = true
 # Checkpoint scenarios construct the same bounded client as daemon wiring.
 afd_identity.workspace = true
 # Price-change scenarios and their shared fixtures use the native catalogue owner.
-afd_admin.workspace = true
+afd_admin = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }

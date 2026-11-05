@@ -64,7 +64,11 @@ async fn issuance_wins(case: &Case) {
     assert!(!key);
     assert_eq!(replay.get("state"), Some(&serde_json::json!("issued")));
     account_late(&fixture, &call).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 #[tokio::test]
@@ -104,7 +108,11 @@ async fn competing(case: &Case) {
     let (key, replay) = fixture.reserve(&input).await;
     assert!(!key);
     assert_eq!(replay.get("state"), Some(&serde_json::json!("not_sent")));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn account_late(fixture: &Decisions<'_>, call: &str) {
