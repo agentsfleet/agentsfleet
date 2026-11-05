@@ -172,7 +172,7 @@ async fn select_message(
     connection: &mut PgConnection,
     draft: read::Locked,
 ) -> Result<Option<Selected>> {
-    let outstanding = pending::current(connection, &draft).await?.is_some();
+    let outstanding = pending::running(connection, &draft).await?;
     if draft.status != DraftState::Editing || outstanding {
         return Ok(None);
     }
