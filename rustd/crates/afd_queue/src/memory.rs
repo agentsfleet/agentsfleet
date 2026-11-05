@@ -91,6 +91,7 @@ impl<M: Send + Sync + 'static> Sink<M> for Memory<M> {
 }
 
 const EVENT_REFUSED: &str = "queue_offer_refused";
+const EVENT_RETRY: &str = "queue_message_retried";
 
 async fn work<M: Send + Sync + 'static>(
     consumer: Arc<dyn Consumer<M>>,
@@ -109,11 +110,18 @@ async fn deliver<M: Send + Sync + 'static>(
     retry: &'static [Duration],
 ) {
     let mut pauses = retry.iter();
+    let mut attempt: usize = 1;
     while consumer.consume(message).await == Outcome::Retry {
         let Some(pause) = pauses.next() else {
             consumer.abandoned(message);
             return;
         };
+        tracing::debug!(
+            attempt,
+            event = EVENT_RETRY,
+            "the consumer asked to retry this message"
+        );
+        attempt += 1;
         tokio::time::sleep(*pause).await;
     }
 }

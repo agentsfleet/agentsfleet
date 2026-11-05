@@ -202,9 +202,9 @@ pub(crate) async fn line_output_tokens(run: &Scenario) -> i64 {
 
 /// How many of those lines the biller has not yet settled.
 ///
-/// Zero once a report has answered: the lease path settles its lines after
-/// commit and before it replies, and only a failed settle leaves one for the
-/// billing sweeper.
+/// Zero shortly after a report answers: the billing queue settles its lines
+/// after the reply, and [`queue_settled`] waits for that; only a failed settle
+/// leaves one for the billing sweeper.
 pub(crate) async fn unsettled_lines(run: &Scenario) -> i64 {
     count_lines(
         run,
