@@ -73,11 +73,7 @@ pub(crate) async fn gate(
 ) -> Result<()> {
     match afd_billing::ledger::balance(&mut *connection, tenant).await {
         Ok(balance) => {
-            let available = balance
-                .balance
-                .as_i64()
-                .saturating_sub(balance.unsettled.as_i64());
-            if available < required {
+            if balance.left().as_i64() < required {
                 return Err(ErrorKind::Balance.into());
             }
             Ok(())

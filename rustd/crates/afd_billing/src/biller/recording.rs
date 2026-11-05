@@ -90,22 +90,8 @@ impl Biller for RecordingBiller {
             .tenant(&ask.payer.tenant)
             .ok_or_else(billing_wallet_missing)?;
         state.checks.push(ask.clone());
-        let available = Nanos::from_i64(
-            state
-                .balances
-                .get(index)
-                .copied()
-                .unwrap_or_default()
-                .max(0),
-        );
-        Ok(if available.covers(ask.next) {
-            Funds::Covered
-        } else {
-            Funds::Short {
-                available,
-                asked: ask.next,
-            }
-        })
+        let left = Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default());
+        Ok(Funds::of(left, ask.next))
     }
 
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {

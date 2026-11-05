@@ -150,7 +150,7 @@ impl Funding {
 
 use std::sync::Arc;
 
-/// The hold's input term: the measured input at the model's price when the
+/// The bound's input term: the measured input at the model's price when the
 /// platform pays the provider, and nothing when the tenant's own key does.
 fn input_hold(model: &RegisteredModel, tokens: u64) -> Result<i64> {
     if !model.platform_managed {

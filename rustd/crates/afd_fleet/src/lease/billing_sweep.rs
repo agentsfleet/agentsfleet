@@ -40,12 +40,13 @@ const CONTEXT_EXPIRED: &str = "billing sweep expired leases";
 /// The table a malformed expired-lease identifier is reported against.
 const TABLE_LEASES: &str = "runner.leases";
 
-/// How long an expired, unreported lease waits, from its deadline, before this
-/// pass bills its last slice, so a runner's late report still wins. A reported
-/// lease is never billed here: its report billed it.
+/// How long an expired, unreported lease waits before its last slice is billed.
+///
+/// Measured from its deadline, so a runner's late report still wins. A
+/// reported lease is never billed here: its report billed it.
 pub const GRACE: Duration = Duration::from_secs(120);
 
-/// Holds one pass reads; bounds the pass's work.
+/// Expired leases one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
 
 /// What one pass did.
@@ -85,10 +86,11 @@ impl BillingSwept {
     }
 }
 
-/// One pass: bill the last slice of every lease expired past [`GRACE`], then
-/// settle one batch of unsettled lines through
-/// [`afd_billing::ledger::resettle`]. `entropy` mints the lines' identifiers
-/// and `now` stamps them.
+/// One relay pass over fleet leases.
+///
+/// Bills the last slice of every lease expired past [`GRACE`], then settles one
+/// batch of unsettled lines through [`afd_billing::ledger::resettle`].
+/// `entropy` mints the lines' identifiers and `now` stamps them.
 ///
 /// # Errors
 /// Reports a datastore that would not answer a read. A biller that refuses one

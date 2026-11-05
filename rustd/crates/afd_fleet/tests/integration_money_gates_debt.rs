@@ -1,7 +1,7 @@
 //! The balance gate against a tenant in debt.
 //!
 //! A settlement takes its whole charge, so a balance can sit below zero; the
-//! gate reads the balance less every open hold, and a debt must refuse.
+//! gate reads the balance less every unsettled line, and a debt must refuse.
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
 #![cfg(feature = "test-util")]

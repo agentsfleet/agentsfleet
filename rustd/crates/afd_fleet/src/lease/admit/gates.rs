@@ -14,8 +14,8 @@ use jiff::Timestamp;
 
 use crate::lease::admit::fault::{BALANCE, BUDGET};
 use crate::lease::admit::{Declined, Refusal, Request};
+use afd_billing::Accounts;
 use afd_billing::budget::{self, Verdict};
-use afd_billing::{Accounts, Nanos};
 
 /// The credit pool cannot cover this run.
 ///
@@ -28,9 +28,10 @@ const EVENT_BUDGET_BREACH: &str = "lease_budget_breach";
 
 /// The tenant's credit pool against this run's floor cost.
 ///
-/// Answers the floor when the pool covers it. The pool is the biller's
-/// balance less every line the tenant has logged and the relay has not yet
-/// charged, so what runs already in flight spent counts against it.
+/// Answers a refusal when the pool cannot cover the run's floor. The pool is
+/// the biller's balance less every line the tenant has logged and the relay
+/// has not yet charged, so what runs already in flight spent counts against
+/// it.
 ///
 /// Two reads, and BOTH are taken even when the first answers that the run
 /// cannot be priced. An unpriceable model costs zero to admit against, but the
@@ -46,13 +47,13 @@ pub(super) async fn balance(
     request: &Request<'_>,
     tenant_id: &Uuid7,
     now: Timestamp,
-) -> Result<Nanos, Declined> {
+) -> Option<Declined> {
     let estimate = match accounts
         .estimate(request.posture, request.provider, request.model, now)
         .await
     {
         Ok(estimate) => estimate,
-        Err(fault) => return BALANCE.absorb(&fault).map_or(Ok(Nanos::ZERO), Err),
+        Err(fault) => return BALANCE.absorb(&fault),
     };
     let floor = estimate.floor();
     let payer = Account {
@@ -60,17 +61,12 @@ pub(super) async fn balance(
         workspace: request.workspace_id.clone(),
     };
     let available = match biller.balance(&payer).await {
-        Ok(funds) => Nanos::from_i64(
-            funds
-                .balance
-                .as_i64()
-                .saturating_sub(funds.unsettled.as_i64()),
-        ),
-        Err(fault) if fault.is_wallet_missing() => return Ok(floor),
-        Err(fault) => return BALANCE.absorb(&fault).map_or(Ok(floor), Err),
+        Ok(funds) => funds.left(),
+        Err(fault) if fault.is_wallet_missing() => return None,
+        Err(fault) => return BALANCE.absorb(&fault),
     };
     if available.covers(floor) {
-        return Ok(floor);
+        return None;
     }
 
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
@@ -85,7 +81,7 @@ pub(super) async fn balance(
         estimate_nanos = floor_nanos,
         "the tenant's credit pool cannot cover this run's floor cost"
     );
-    Err(Declined::Refuse(Refusal::labelled(
+    Some(Declined::Refuse(Refusal::labelled(
         afd_core::event::label::BALANCE_EXHAUSTED,
     )))
 }

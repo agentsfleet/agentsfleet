@@ -32,7 +32,7 @@ mod recording;
 #[cfg(feature = "test-util")]
 pub use self::recording::RecordingBiller;
 
-/// The piece of work money is held and charged for.
+/// The piece of work money is charged for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WorkKey {
     /// A fleet run's lease.
@@ -116,6 +116,21 @@ pub enum Funds {
 }
 
 impl Funds {
+    /// The answer for a payer with `left` once its unsettled lines are
+    /// charged: covered only when `left` reaches `asked`, so a payer in debt is
+    /// short even of nothing.
+    #[must_use]
+    pub fn of(left: Nanos, asked: Nanos) -> Self {
+        if left.as_i64() >= asked.as_i64() {
+            Self::Covered
+        } else {
+            Self::Short {
+                available: Nanos::from_i64(left.as_i64().max(0)),
+                asked,
+            }
+        }
+    }
+
     /// Whether the work may spend.
     #[must_use]
     pub const fn admits(self) -> bool {
@@ -169,6 +184,19 @@ pub struct Balance {
     /// When the balance last reached zero or went below it; `None` while it
     /// holds credit.
     pub exhausted_at: Option<Timestamp>,
+}
+
+impl Balance {
+    /// What the payer has left once its unsettled lines are charged: the one
+    /// number every funds check and gate reads, below zero while it owes.
+    #[must_use]
+    pub const fn left(&self) -> Nanos {
+        Nanos::from_i64(
+            self.balance
+                .as_i64()
+                .saturating_sub(self.unsettled.as_i64()),
+        )
+    }
 }
 
 /// Checks funds and charges money for work (billing §11).

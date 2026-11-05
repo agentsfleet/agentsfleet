@@ -181,5 +181,17 @@ pub async fn a_short_settlement_leaves_a_debt(biller: &dyn Biller, payer: Accoun
         },
         "a payer in debt is covered for nothing, not even one nano"
     );
+    let free = biller
+        .check(&ask(&work(), &payer, Nanos::ZERO))
+        .await
+        .expect(CHECKS);
+    assert_eq!(
+        free,
+        Funds::Short {
+            available: Nanos::ZERO,
+            asked: Nanos::ZERO
+        },
+        "a payer in debt is short even of an ask for nothing, as a self-managed run's"
+    );
     receipt
 }

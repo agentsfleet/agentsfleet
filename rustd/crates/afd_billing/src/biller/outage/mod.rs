@@ -36,11 +36,17 @@ impl<B: Biller> Biller for WithOutagePolicy<B> {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
         match (self.inner.check(ask).await, self.policy) {
             (Err(fault), OutagePolicy::Open) if fault.is_unanswered() => {
+                // Bound first: the macro repeats its field expressions.
+                let (error_code, work_type, work_id) = (
+                    fault.code().as_str(),
+                    ask.work.work_type(),
+                    ask.work.id().as_str(),
+                );
                 tracing::warn!(
                     error = %fault,
-                    error_code = fault.code().as_str(),
-                    work_type = ask.work.work_type(),
-                    work_id = ask.work.id().as_str(),
+                    error_code,
+                    work_type,
+                    work_id,
                     event = "billing_check_unconfirmed",
                     "the biller could not answer; the work runs and settles later"
                 );

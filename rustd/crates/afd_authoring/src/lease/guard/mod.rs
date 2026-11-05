@@ -255,7 +255,7 @@ async fn subject(connection: &mut PgConnection, attempt: &Attempt) -> Result<rea
 }
 
 /// The runner's attempt for `lease`, read without a lock: what a caller needs
-/// to ask the biller for its hold before any transaction opens. The guard
+/// to check its funds with the biller before any transaction opens. The guard
 /// inside that transaction re-reads it under the lock and decides.
 pub(crate) async fn peek(
     connection: &mut PgConnection,

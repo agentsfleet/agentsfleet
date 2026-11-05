@@ -148,7 +148,7 @@ mod tests {
         let next = Cell::new(0);
         let ran = drain(
             || {
-                let answer = answers[next.get()];
+                let answer = answers.get(next.get()).copied().unwrap_or(false);
                 next.set(next.get() + 1);
                 async move { answer }
             },
@@ -158,8 +158,8 @@ mod tests {
         assert_eq!(ran, 3);
     }
 
-    /// A backlog that never empties stops at the cap, so setup chat still gets
-    /// its pass every tick.
+    /// A backlog that never empties stops at the cap and yields to the next
+    /// tick.
     #[tokio::test]
     async fn a_tick_stops_at_the_drain_cap() {
         let ran = drain(|| async { true }, &CancellationToken::new()).await;
