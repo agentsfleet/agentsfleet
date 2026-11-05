@@ -21,14 +21,14 @@ pub(super) async fn resolve(
     prepared: &Prepared,
     saved: Reported,
     owed: &mut Owed,
-) -> Result<(Reported, Option<settle::Owing>)> {
+) -> Result<Reported> {
     if attempt.status == Status::Settled {
-        return Ok((settled(connection, attempt, saved).await?, None));
+        return settled(connection, attempt, saved).await;
     }
     // Accounting only: a retained replay never reopens private rows.
     let basis = Basis::measure(connection, attempt, prepared, None).await?;
     if basis.verified.usage.knowledge != Knowledge::Known {
-        return Ok((saved, None));
+        return Ok(saved);
     }
     basis
         .conclude(drafts, connection, settle::Acknowledgement::Retained, owed)

@@ -165,6 +165,7 @@ async fn the_draft_root_keeps_money(c: &Case) -> (Uuid7, (i64, i64, i64)) {
         .await
         .expect("the report settles");
     assert!(reported.settled, "known usage settles");
+    c.base.relay(a.id.as_str()).await;
     dispatch_with_output(c, &a.id).await;
     let money = attempt_money(c, &a.id).await;
     assert_eq!(money.0, 1, "the attempt carries its outcome");

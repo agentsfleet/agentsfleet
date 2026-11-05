@@ -1,13 +1,12 @@
-//! The billing sweeper's pass over fleet leases: settle what committed without
-//! a settlement, and release the holds of leases that ended.
+//! The billing relay's pass over fleet leases: settle every logged line, and
+//! release the holds of leases that ended.
 //!
-//! A lease logs its usage inside its own transaction and settles after commit
-//! (billing §11), so a crash, an outage or a lost response between the two
-//! leaves lines logged and unsettled, or a finished lease's hold open. Both
-//! keep the money honest — an unsettled line is still owed, and an open hold
-//! still counts against the tenant's balance — so this pass finishes what the
-//! request path could not. Every call it makes is idempotent: settling keys on
-//! `(work, seq)` and releasing on the work.
+//! A lease logs its usage inside its own transaction and returns; it never
+//! settles or releases (billing §11). This pass is the only thing that moves
+//! that money, through the [`Biller`] it is given, so the biller can live in
+//! another process without the lease path changing. Every call it makes is
+//! idempotent: settling keys on `(work, seq)` and releasing on the work, so a
+//! repeated pass or a second daemon's relay charges nothing twice.
 
 use std::time::Duration;
 
@@ -46,12 +45,12 @@ const CONTEXT_HOLDS: &str = "billing sweep finished holds";
 /// The table a malformed hold identifier is reported against.
 const TABLE_HOLDS: &str = "billing.holds";
 
-/// How long a lease must have been finished before its hold is released.
+/// How long an expired, unreported lease waits before this pass bills its last
+/// slice and releases its hold, so a runner's late report still wins.
 ///
-/// The same grace the line sweep gives the request path's own settle,
-/// measured from the lease's last change rather than the hold's: settling a
-/// line captures onto the hold and would otherwise restart the wait.
-pub const GRACE: Duration = afd_billing::ledger::GRACE;
+/// Measured from the lease's deadline for the slice and from its last change
+/// for the hold. A reported lease does not wait: its report billed it.
+pub const GRACE: Duration = Duration::from_secs(120);
 
 /// Holds one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
@@ -75,11 +74,14 @@ pub struct BillingSwept {
     /// Expired leases whose logged last slice did not settle; the line sweep
     /// settles it on a later pass.
     pub expired_settle_failures: u64,
+    /// Whether the line sweep read a whole batch, so more lines may wait.
+    pub lines_full: bool,
 }
 
-/// One pass: bill every expired lease's last slice, settle every unsettled
-/// line older than [`GRACE`] through [`afd_billing::ledger::resettle`], then
-/// release every finished lease's open hold.
+/// One pass: bill the last slice of every lease expired past [`GRACE`], settle
+/// one batch of unsettled lines through [`afd_billing::ledger::resettle`], then
+/// release the open hold of every reported lease and of every other finished
+/// lease past [`GRACE`].
 ///
 /// The last slice comes first, so the release that follows closes a hold
 /// whose run time is already logged (spec Dimension 9.5). `entropy` mints the
@@ -101,6 +103,7 @@ pub async fn sweep(
     let mut swept = BillingSwept {
         resettled: lines.settled,
         settle_failures: lines.failed,
+        lines_full: lines.full,
         expired_billed,
         expired_settle_failures,
         ..BillingSwept::default()
@@ -113,6 +116,7 @@ pub async fn sweep(
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(GRACE)
             .bind(BATCH_LIMIT)
+            .bind(sql::LEASE_STATUS_REPORTED)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_HOLDS))?

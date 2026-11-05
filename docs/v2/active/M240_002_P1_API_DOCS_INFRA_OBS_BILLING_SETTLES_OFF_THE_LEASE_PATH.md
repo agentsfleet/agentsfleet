@@ -93,7 +93,8 @@ RELAY (BILLING task, every 2 s; again at once after a full pass that made progre
 | `rustd/crates/afd_fleet/src/lease/billing_sweep.rs`, `lease/sql/select_finished_holds.sql` | EDIT | §2: the grace moves here and applies only to unreported leases |
 | `rustd/crates/afd_authoring/src/billing_sweep/mod.rs`, `finished_holds.sql` | EDIT | §2: settled attempts release with no wait |
 | `rustd/crates/agentsfleetd/src/sweepers/billing.rs` | EDIT | §2: 2 s interval, drain after a full pass |
-| `rustd/crates/afd_fleet/tests/**`, `afd_authoring/tests/**`, `afd_billing/tests/**`, `agentsfleetd/tests/**` | EDIT | tests that read the wallet after a report run one relay pass first |
+| `rustd/crates/afd_fleet/tests/integration_billing_relay.rs` | CREATE | §1, §2: the relay's Dimensions |
+| `rustd/crates/afd_fleet/tests/**`, `afd_authoring/tests/**`, `afd_billing/tests/**`, `agentsfleetd/tests/**` | EDIT | tests that read the wallet after a report run the relay for that work first, or wait one relay pass |
 | `docs/architecture/billing_and_provider_keys.md`, `docs/architecture/concurrency.md` | EDIT | §3: the relay is the only settler |
 
 ## Applicable Rules
@@ -125,25 +126,25 @@ RELAY (BILLING task, every 2 s; again at once after a full pass that made progre
 
 Renew, fleet report and setup chat report commit their usage lines and return. `settle_usage`, `release_usage` and `pay` are deleted with their deferred-settle log events. Issue's first hold (`hold_issued`) and the per-call reserves stay: they are spending checks.
 
-- **Dimension 1.1** — DONE when a report returns while its tenant's wallet row is locked → Test `report_returns_while_the_wallet_row_is_locked` (integration, `afd_fleet`).
-- **Dimension 1.2** — a renewal logs its slice and settles nothing → Test `a_renewal_logs_its_slice_and_leaves_it_unsettled` (integration, `afd_fleet`).
-- **Dimension 1.3** — a setup chat report moves no money → Test `a_report_logs_its_lines_and_leaves_them_to_the_relay` (integration, `afd_authoring`).
+- **Dimension 1.1** — DONE: a report returns while its tenant's wallet row is locked → Test `report_returns_while_the_wallet_row_is_locked` (integration, `afd_fleet`).
+- **Dimension 1.2** — DONE: a renewal logs its slice and settles nothing → Test `a_renewal_logs_its_slice_and_leaves_it_unsettled` (integration, `afd_fleet`).
+- **Dimension 1.3** — DONE: a setup chat report moves no money → Test `a_report_logs_its_lines_and_leaves_them_to_the_relay` (integration, `afd_authoring`).
 
 ### §2 — The billing sweeper is the relay
 
 Lines settle with no age filter. A reported lease's hold and a settled attempt's hold release on the next pass. An expired, unreported lease keeps `GRACE`, now owned by `afd_fleet`, for both its last slice and its hold. The sweeper task runs every 2 s and runs again at once after a pass that filled its batch and settled something.
 
-- **Dimension 2.1** — one pass settles a reported lease and releases its hold → Test `one_pass_settles_a_reported_lease_and_releases_its_hold` (integration, `afd_fleet`).
-- **Dimension 2.2** — an expired lease keeps its hold through the grace → Test `an_expired_lease_keeps_its_hold_until_the_grace_passes` (integration, `afd_fleet`).
-- **Dimension 2.3** — a settled attempt's hold releases on the next pass → Test `a_settled_attempt_is_released_on_the_next_pass` (integration, `afd_authoring`).
-- **Dimension 2.4** — two relays never charge a line twice → Test `two_concurrent_passes_charge_each_line_once` (integration, `afd_fleet`, TEST-CONTEND).
-- **Dimension 2.5** — a full pass that made progress runs again at once → Test `a_full_pass_that_settled_something_drains_again` (unit, `agentsfleetd`).
+- **Dimension 2.1** — DONE: one pass settles a reported lease and releases its hold → Test `one_pass_settles_a_reported_lease_and_releases_its_hold` (integration, `afd_fleet`).
+- **Dimension 2.2** — DONE: an expired lease keeps its hold through the grace → Test `an_expired_lease_keeps_its_hold_until_the_grace_passes` (integration, `afd_fleet`).
+- **Dimension 2.3** — DONE: a settled attempt's hold releases on the next pass → Test `a_settled_attempt_is_released_on_the_next_pass` (integration, `afd_authoring`).
+- **Dimension 2.4** — DONE: two relays never charge a line twice → Test `two_concurrent_passes_charge_each_line_once` (integration, `afd_fleet`, TEST-CONTEND).
+- **Dimension 2.5** — DONE: a full pass that made progress runs again at once → Test `a_full_pass_that_settled_something_drains_again` (unit, `agentsfleetd`).
 
 ### §3 — The pages say what the code does
 
 `billing_and_provider_keys.md` §11 names the relay as the only settler and states the lag. `concurrency.md` drops the wallet from the report's lock order.
 
-- **Dimension 3.1** — the pages agree with the code → `make lint-all` docs checks, and `git grep -n -e settle_usage -e release_usage -- docs rustd` prints nothing.
+- **Dimension 3.1** — DONE: the pages agree with the code → `make lint-all` docs checks, and `git grep -n -e settle_usage -e release_usage -- docs rustd` prints nothing.
 
 ## Interfaces
 
@@ -157,7 +158,7 @@ Lines settle with no age filter. A reported lease's hold and a settled attempt's
 | Mode | Class | Trigger | Behaviour | Test |
 |------|-------|---------|-----------|------|
 | Wallet row locked | contention | another transaction holds it | reports return; the relay's settle waits up to 2 s, counts a failure and retries next pass | `report_returns_while_the_wallet_row_is_locked` |
-| Biller refuses | failure | Postgres fault in the relay | counted, retried next pass; lines stay unsettled | `a_refused_settle_is_retried_on_the_next_pass` |
+| Biller refuses | failure | Postgres fault in the relay | counted, retried next pass; lines and holds stay open | `a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass`, `a_settled_attempt_is_released_on_the_next_pass` |
 | Daemon down | failure | process killed after a report commits | lines stay unsettled; the first pass after restart settles them | `one_pass_settles_a_reported_lease_and_releases_its_hold` (a pass with no prior request-path settle is this case) |
 | Two relays | contention | two daemon replicas | each line charged once | `two_concurrent_passes_charge_each_line_once` |
 | Biller down for a whole batch | failure | every settle refused | no drain loop: the pass made no progress, so it waits for the next tick | `a_full_pass_that_settled_nothing_waits_for_the_tick` |

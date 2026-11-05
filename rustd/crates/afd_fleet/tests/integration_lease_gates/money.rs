@@ -38,8 +38,6 @@ const ANSWERED: &str = "one file";
 
 /// The lines a miss is logged under.
 const HOLD_UNPLACED: &str = "lease_hold_unplaced";
-const SETTLE_DEFERRED: &str = "lease_settle_deferred";
-const RELEASE_DEFERRED: &str = "lease_release_deferred";
 
 /// One leasable chat fleet on a funded tenant, and the provider default its
 /// lease resolves against, held for the case's life.
@@ -190,12 +188,12 @@ async fn test_a_first_hold_the_biller_misses_leaves_the_lease_issued() {
     }
 }
 
-/// A report whose charge and release the biller cannot reach still settles:
-/// the line is logged for the sweeper, and both misses are said once each
-/// under the outage's code.
+/// A report settles while its biller cannot charge or release: the report
+/// never calls either, and its line waits, logged and unsettled, for the
+/// billing relay.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_report_the_biller_cannot_charge_or_release_still_settles() {
+async fn test_a_report_settles_while_the_biller_cannot_charge_or_release() {
     let funded = Funded::open().await;
     let issued = funded.lease(&funded.fixtures.plane()).await;
     funded
@@ -207,7 +205,6 @@ async fn test_a_report_the_biller_cannot_charge_or_release_still_settles() {
         release: true,
         ..Faults::NONE
     });
-    let capture = Capture::install();
 
     let reconciled = plane
         .report(
@@ -218,21 +215,9 @@ async fn test_a_report_the_biller_cannot_charge_or_release_still_settles() {
         .await
         .expect("a biller outage does not fail a settled report");
 
-    let (settle, release) = (
-        capture.only(SETTLE_DEFERRED),
-        capture.only(RELEASE_DEFERRED),
-    );
-    drop(capture);
-    for line in [&settle, &release] {
-        assert_eq!(line.field("work_id"), Some(issued.lease_id.as_str()));
-        assert_eq!(
-            line.field("error_code"),
-            Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
-        );
-    }
     assert!(
         reconciled.charged.as_i64() > 0,
-        "the slice was logged and is owed even though no charge landed"
+        "the slice was logged and is owed though no charge has landed"
     );
     drop(plane);
     funded.close().await;

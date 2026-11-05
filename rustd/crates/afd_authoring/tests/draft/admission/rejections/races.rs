@@ -105,6 +105,7 @@ async fn settle(f: &Fixture, lease: &Claimed) {
         .expect("replayed late accounting");
     assert!(duplicate.settled);
     assert!(duplicate.replayed);
+    f.relay(&lease.attempt_id).await;
     assert_eq!(state(f, lease).await, ("settled".into(), false, 1, false));
 }
 

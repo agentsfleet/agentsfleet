@@ -279,11 +279,7 @@ impl Plane {
                 expires_at,
                 settlement,
             } => {
-                let charged = usage::charged(settlement.as_deref());
-                if let Some(settled) = settlement.as_deref() {
-                    self.settle_usage(settled).await;
-                }
-                Ok((expires_at, charged))
+                Ok((expires_at, usage::charged(settlement.as_deref())))
             }
             Renewed::MaxRuntime => Err(lease_max_runtime()),
             Renewed::Lost => Err(lease_lost()),

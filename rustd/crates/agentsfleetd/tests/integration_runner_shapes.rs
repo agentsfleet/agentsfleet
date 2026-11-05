@@ -9,7 +9,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{MODEL, POSTURE, Scenario, scenario};
-use crate::reads::{assert_shape, lease_column, line_output_tokens};
+use crate::reads::{assert_shape, lease_column, line_output_tokens, relay_settled};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat,
     poll_for_seeded_lease, post, report_body,
@@ -156,6 +156,8 @@ async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
 }
 
 async fn assert_rows(run: &Scenario, lease_id: &str) {
+    // `settled_at` is part of the recorded line shape; the relay fills it.
+    relay_settled(run).await;
     assert_shape(run, "runner.leases", "id = $1::uuid", lease_id, LEASE_SHAPE).await;
     assert_shape(
         run,

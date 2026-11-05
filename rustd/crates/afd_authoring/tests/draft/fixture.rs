@@ -280,6 +280,22 @@ pub(super) fn now() -> jiff::Timestamp {
     clock::now()
 }
 
+impl Fixture {
+    /// What the billing relay does for one settled attempt: charge every line
+    /// it left unsettled and free its hold. Scoped to the attempt, so a test on
+    /// the shared database never settles another test's lines; the ledger biller
+    /// ignores the release reason.
+    pub(crate) async fn relay(&self, attempt: &str) {
+        let work = afd_billing::biller::WorkKey::AuthoringAttempt(
+            afd_core::id::Uuid7::parse(attempt).expect("an attempt id"),
+        );
+        ledger(&self.db)
+            .release(&work, afd_billing::biller::Release::Completed)
+            .await
+            .expect("the relay moves the attempt's money");
+    }
+}
+
 /// The built-in biller over the suite's database: setup chat reserves, logs and
 /// settles through it exactly as the daemon's does.
 pub(crate) fn ledger(db: &Db) -> Arc<dyn afd_billing::biller::Biller> {

@@ -26,6 +26,7 @@ async fn concurrent_terminal_retry_and_deleted_accounting_replay_charge_once() {
     let retry = retry.expect("serialized exact acknowledgement");
     assert!(first.settled && retry.settled);
     assert_ne!(first.replayed, retry.replayed);
+    f.relay(a.id.as_str()).await;
     assert_eq!(
         balance(&f).await,
         before - 100,
@@ -54,6 +55,7 @@ async fn concurrent_terminal_retry_and_deleted_accounting_replay_charge_once() {
         .await
         .expect("content-free replay after purge");
     assert!(replay.replayed && replay.settled);
+    f.relay(a.id.as_str()).await;
     assert_eq!(counts(&f, &a).await, (1, 1, 0));
     assert_eq!(balance(&f).await, before - 100);
     assert_eq!(provider.count(), 1);
@@ -78,6 +80,7 @@ async fn first_accounting_report_after_deletion_settles_without_creating_private
         .await
         .expect("first accounting-only settle");
     assert!(ack.settled && !ack.replayed);
+    f.relay(a.id.as_str()).await;
     assert_eq!(f.counts().await, (0, 0, 0));
     assert_eq!(counts(&f, &a).await, (1, 1, 0));
     assert_eq!(balance(&f).await, before - 100);
@@ -140,6 +143,7 @@ async fn first_accounting_report_after_private_expiry_charges_its_real_usage_onc
         .await
         .expect("the first report after expiry settles");
     assert!(first.settled && !first.replayed);
+    f.relay(a.id.as_str()).await;
     assert_eq!(balance(&f).await, before - RUNTIME_DEBIT);
     assert_eq!(
         counts(&f, &a).await,

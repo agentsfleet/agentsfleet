@@ -1,8 +1,11 @@
-//! A runtime renewal's settled slice and an authoring settlement debit one wallet.
+//! A runtime renewal's settled slice and a setup chat attempt the billing relay
+//! settles debit one wallet.
 //!
 //! Both kinds run on one two-worker host for one tenant. The wallet row is held
-//! while both requests queue behind it, in each order; on release both commit,
-//! neither debit is lost, and neither waits forever on the other's locks.
+//! while both settlements queue behind it, in each order; on release both
+//! commit, neither debit is lost, and neither waits forever on the other's
+//! locks. The setup chat's report itself never waits on the wallet: only the
+//! relay's release of the settled attempt does.
 
 use super::{
     fixture::Running,
@@ -14,7 +17,7 @@ use afd_authoring::Claimed;
 use std::sync::Arc;
 
 use afd_billing::Posture;
-use afd_billing::biller::{Biller as _, Receipt};
+use afd_billing::biller::{Biller as _, Receipt, Release, WorkKey};
 use afd_billing::ledger::LedgerBiller;
 use afd_core::{clock, id::Uuid7};
 use afd_crypto::entropy::Entropy;
@@ -124,7 +127,20 @@ async fn scenario(first: First) {
         (renewed, receipt)
     };
     let authoring = lease_id(&lease);
-    let settle = drafts.report(&running.runner, &authoring, accounting(&lease));
+    let attempt =
+        WorkKey::AuthoringAttempt(Uuid7::parse(&lease.attempt_id).expect("a v7 attempt"));
+    let settle = async {
+        let reported = drafts
+            .report(&running.runner, &authoring, accounting(&lease))
+            .await;
+        // The relay's pass over the settled attempt: the step that takes the
+        // tenant's wallet lock on the setup chat path.
+        biller
+            .release(&attempt, Release::Completed)
+            .await
+            .expect("the relay settles the attempt");
+        reported
+    };
     let (renewed, reported) = match first {
         First::Renewal => Box::pin(queued(&running, &seat.tenant, renew, settle)).await,
         First::Settlement => {

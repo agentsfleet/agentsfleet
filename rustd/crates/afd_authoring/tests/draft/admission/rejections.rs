@@ -117,6 +117,7 @@ async fn settled(f: &Fixture, lease: &Claimed, calls: u32) {
         assert_eq!(ack.state, Outcome::Failed);
         assert_eq!(ack.replayed, replayed);
     }
+    f.relay(&lease.attempt_id).await;
     assert_eq!(
         state(f, lease).await,
         ("settled".into(), false, i64::from(calls), false)

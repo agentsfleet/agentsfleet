@@ -274,3 +274,20 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
     .try_get(0)
     .expect("a count is a bigint")
 }
+
+/// How long the daemon's billing relay may take to move a report's money: a
+/// few of its 2 s passes.
+const RELAY_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+/// How often a wait reads again, and how long a repeated report is given to
+/// show a charge before its absence is asserted: one relay pass and a margin.
+pub(crate) const RELAY_PASS: std::time::Duration = std::time::Duration::from_secs(3);
+const RELAY_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Waits until the relay has settled every line the scenario's event logged,
+/// or the limit passes; the caller's assertion names what is left.
+pub(crate) async fn relay_settled(run: &Scenario) {
+    let deadline = tokio::time::Instant::now() + RELAY_LIMIT;
+    while unsettled_lines(run).await > 0 && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(RELAY_POLL).await;
+    }
+}
