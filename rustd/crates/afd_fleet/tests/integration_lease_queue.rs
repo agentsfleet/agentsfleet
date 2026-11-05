@@ -19,10 +19,16 @@ use crate::support::Fixtures;
 mod approvals;
 #[path = "integration_lease_queue/contention.rs"]
 mod contention;
+#[path = "integration_lease_queue/deadlock.rs"]
+mod deadlock;
+#[path = "integration_lease_queue/eligibility.rs"]
+mod eligibility;
 #[path = "integration_lease_queue/endings.rs"]
 mod endings;
 #[path = "integration_lease_queue/readiness.rs"]
 mod readiness;
+#[path = "integration_lease_queue/recovery.rs"]
+mod recovery;
 #[path = "integration_lease_queue/replay.rs"]
 mod replay;
 

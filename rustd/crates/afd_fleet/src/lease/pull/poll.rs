@@ -16,6 +16,10 @@ pub enum Polled {
     Lease(String),
     /// This fleet pass placed nothing, so another accepted kind may be tried.
     Empty(String),
+    /// The poll repeated the key of a lease whose reply was lost, and that
+    /// lease was let go. The answer stands: the worker polls again at once
+    /// under a fresh key, so no other kind is tried on this one.
+    Replayed(String),
 }
 
 impl Polled {
@@ -23,7 +27,7 @@ impl Polled {
     #[must_use]
     pub fn into_body(self) -> String {
         match self {
-            Self::Lease(body) | Self::Empty(body) => body,
+            Self::Lease(body) | Self::Empty(body) | Self::Replayed(body) => body,
         }
     }
 }
@@ -75,7 +79,7 @@ impl Plane {
             // The worker never read the reply its earlier poll was sent, and
             // the lease that poll issued is let go: its next poll, under a
             // fresh key, takes the same admission back at once.
-            Taken::Replayed => return replay_now(runner).map(Polled::Empty),
+            Taken::Replayed => return replay_now(runner).map(Polled::Replayed),
             Taken::Nothing => return no_work(runner, "no leasable work").map(Polled::Empty),
         };
         self.run_claimed(acquired, runner, now, began).await

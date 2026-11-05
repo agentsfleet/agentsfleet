@@ -5021,7 +5021,7 @@
           "Runners"
         ],
         "summary": "Request the next work assignment",
-        "description": "Returns the next work assignment, or how long to wait before polling again. Previously held fleet sandboxes are preferred. Required `accepted_kinds` selects fleet work, private setup work, or both. Budget, approval, and policy checks happen before assignment. An optional `Idempotency-Key` names one poll attempt: send the same key again only when the earlier reply never arrived. A repeated key frees the fleet assignment that reply carried and answers no work with `retry_after_ms` 0. The next poll, under a new key, receives it again.",
+        "description": "Returns the next work assignment, or how long to wait before polling again. Previously held fleet sandboxes are preferred. Required `accepted_kinds` selects fleet work, private setup work, or both. Budget, approval, and policy checks happen before assignment. An optional `Idempotency-Key` names one poll attempt: send the same key again only when the earlier reply never arrived. A repeated key frees the fleet assignment that reply carried and answers no work with `retry_after_ms` 0. The next poll, under a new key, receives it again. When setup work is placed first, that assignment is freed when its lease lapses.",
         "operationId": "runner_lease",
         "parameters": [
           {

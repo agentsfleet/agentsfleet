@@ -11,4 +11,5 @@ WHERE s.fleet_id IN (
       WHERE g.fleet_id = a.fleet_id AND g.resolved_at IS NULL
         AND g.event_id = a.id::text AND g.expires_at > statement_timestamp()))
 ORDER BY s.fleet_id
+LIMIT $1
 FOR UPDATE OF s SKIP LOCKED

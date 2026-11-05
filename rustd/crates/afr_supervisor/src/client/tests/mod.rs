@@ -20,6 +20,7 @@ struct Seen {
     path: String,
     authorization: Option<String>,
     content_type: Option<String>,
+    idempotency_key: Option<String>,
     body: AxumBytes,
 }
 
@@ -52,6 +53,7 @@ async fn daemon() -> (String, mpsc::UnboundedReceiver<Seen>) {
                     path,
                     authorization: header("authorization"),
                     content_type: header("content-type"),
+                    idempotency_key: header("idempotency-key"),
                     body,
                 })
                 .unwrap();

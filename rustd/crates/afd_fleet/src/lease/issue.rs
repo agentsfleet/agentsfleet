@@ -31,9 +31,9 @@ use crate::lease::store::Leases;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ISSUE: &str = "lease issue";
 
-/// What an issue that writes its row sends: begin, the host lock, the row, the
-/// choice record and the commit.
-const ISSUE_STATEMENTS: u64 = 5;
+/// What every issue sends around its work: the begin, and the commit or the
+/// rollback that ends it.
+const ISSUE_FRAME_STATEMENTS: u64 = 2;
 
 /// What the gates resolved, and what the row records about the money.
 ///
@@ -118,9 +118,11 @@ impl Leases {
         now: Timestamp,
     ) -> Result<Issue> {
         let mut connection = self.pool().acquire().await?;
-        // Begin, the host lock, the row, the choice record and the commit.
-        self.tally().statements(ISSUE_STATEMENTS);
+        // Each statement is counted as it is sent, so a refusal counts only
+        // the ones it reached.
+        self.tally().statements(ISSUE_FRAME_STATEMENTS);
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
+        self.tally().statements(1);
         let Some(capacity) = afd_runner::capacity::lock(&mut transaction, runner_id).await? else {
             return Ok(Issue::Denied(IssueDenied::HostMissing));
         };
@@ -137,6 +139,7 @@ impl Leases {
             return Ok(Issue::Lost);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
+        self.tally().statements(1);
         let written = sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
@@ -163,9 +166,11 @@ impl Leases {
         // exactly when the fenced lease did. The choice record cannot miss
         // here — the host row is locked since `capacity` read its version —
         // and is checked beside the fence the way the authoring claim checks it.
-        if written.rows_affected() == 0
-            || !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await?
-        {
+        if written.rows_affected() == 0 {
+            return Ok(Issue::Lost);
+        }
+        self.tally().statements(1);
+        if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {
             return Ok(Issue::Lost);
         }
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;

@@ -283,7 +283,7 @@ agentsfleetd replica
   SubscriptionHub async pump
     +-- dedicated pub/sub owner --> SSUBSCRIBE per watched fleet
          +-- bounded broadcast --> per-fleet or workspace SSE response bodies
-    +-- the same owner --> SSUBSCRIBE fleet:wake:{shard}, sixteen --> bounded fleet hints
+    +-- the same owner --> SSUBSCRIBE fleet:wake:{shard}, sixteen --> one held beat per ring
   connector:outbound worker
     +-- dedicated blocking owner --> XREADGROUP BLOCK (up to 5 seconds)
 ```

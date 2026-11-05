@@ -263,15 +263,21 @@ mod tests {
         );
     }
 
-    /// A host refusing its claim hands the fleet back with no backoff.
+    /// A host refusing its claim hands the fleet back with no backoff, and
+    /// the refusal is counted under its reason.
     #[cfg(feature = "test-util")]
     #[test]
     fn a_denied_claim_hands_the_fleet_back_at_once() {
         use afd_observability::metrics::label::fleet::IssueDenied;
+        use afd_observability::test_util::Capture as Metrics;
 
         use crate::lease::answer::no_work;
         use crate::lease::test_dead;
 
+        const DENIED: &str = "agentsfleet_lease_issue_denied_total";
+        let metrics = Metrics::install();
+        let labels = [("reason", IssueDenied::Capacity.as_str())];
+        let before = metrics.sum(DENIED, &labels);
         let runner = runner();
         let step =
             super::issue_denied::<()>(&runner, &test_dead::acquired(), IssueDenied::Capacity)
@@ -280,6 +286,11 @@ mod tests {
         assert_eq!(
             step,
             ControlFlow::Break(Ending::Stop(expected, Backoff::None))
+        );
+        assert_eq!(
+            metrics.sum(DENIED, &labels),
+            before + 1,
+            "the refusal is counted once, under its reason"
         );
     }
 

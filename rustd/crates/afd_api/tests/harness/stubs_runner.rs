@@ -16,8 +16,9 @@ use jiff::Timestamp;
 /// because a suite here cannot accidentally start asserting on lease
 /// behaviour that belongs to `afd_fleet`'s own integration lane.
 ///
-/// It remembers the holds each poll named, which is the one thing the lease
-/// handler decides before the plane: what the poll's body reads as.
+/// It remembers the holds and the key each poll named, which are what the
+/// lease handler decides before the plane: what the poll's body and its
+/// `Idempotency-Key` read as.
 ///
 /// [`NoWork::refusing`] makes the memory verbs and the mint answer one chosen
 /// refusal instead, for a suite that proves how a route RENDERS a refusal the
@@ -26,6 +27,7 @@ use jiff::Timestamp;
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NoWork {
     polled: Arc<Mutex<Vec<Vec<String>>>>,
+    keys: Arc<Mutex<Vec<Option<String>>>>,
     refusal: Option<fn() -> afd_fleet::Error>,
     minted: Option<(&'static str, Timestamp)>,
 }
@@ -53,6 +55,11 @@ impl NoWork {
         self.polled.lock().expect("the poll log is healthy").clone()
     }
 
+    /// The `Idempotency-Key` each poll handed the plane, oldest poll first.
+    pub(crate) fn polled_keys(&self) -> Vec<Option<String>> {
+        self.keys.lock().expect("the key log is healthy").clone()
+    }
+
     /// The chosen refusal, when there is one; `Ok` lets the verb answer as
     /// a plane with no work would.
     fn refused(&self) -> afd_fleet::Result<()> {
@@ -78,6 +85,10 @@ impl Leasing for NoWork {
             .lock()
             .expect("the poll log is healthy")
             .push(named);
+        self.keys
+            .lock()
+            .expect("the key log is healthy")
+            .push(asked.key.map(|key| key.as_str().to_owned()));
         std::future::ready(Ok(r#"{"lease":null,"retry_after_ms":1000}"#.to_owned()))
     }
 

@@ -23,7 +23,7 @@ use crate::lease::answer::{EVENT_REFUSED, no_work};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 
-/// The no-work reason for a fleet paused between selection and claim.
+/// The no-work reason for a fleet paused between the claim and its read.
 const FLEET_STOPPED: &str = "the fleet stopped between the claim and its read";
 
 /// A fleet whose unreadable config could not even be recorded as such.
@@ -162,24 +162,18 @@ impl Plane {
             .await
         {
             Ok(answer) => Ok(Ending::Ended(answer)),
-            // Logged, never propagated, and the reasoning is this module's
-            // already: the terminal-redelivery acknowledgement a few lines
-            // upstream is swallowed for the same reason, because "failing the
-            // lease would refuse a runner that has done nothing wrong". It
-            // applies with more force here. The rows being written belong to
-            // ANOTHER fleet — one this runner only met because a rotation
-            // sampled its partition — so a failure writing them is doubly not
-            // this runner's to answer for. The entry stays pending and a later
-            // poll runs this path again, which is the same answer one turn
-            // later.
+            // Logged, never propagated: failing the lease would refuse a
+            // runner that has done nothing wrong. The rows being ended belong
+            // to whichever fleet the oldest-first claim handed this runner, so
+            // a failure writing them is not this runner's to answer for. The
+            // admission stays unsettled, the slot is let go behind the retry
+            // backoff, and a later poll runs this path again.
             //
-            // This is not hypothetical tidying. The write races whatever else
+            // This is not hypothetical tidying. The ending races whatever else
             // holds the deployment: a fleet row removed between the claim and
-            // this insert takes its foreign keys with it, and the poll that
-            // happened to be ending that fleet's event answered `500 Database
-            // error` to a runner with no stake in any of it — which is the
-            // failure this whole path exists to stop, wearing a different
-            // error code.
+            // this ending takes its rows with it, and the poll that happened to
+            // be ending that fleet's event would answer `500 Database error`
+            // to a runner with no stake in any of it.
             Err(unrecorded) => {
                 let fleet_id_field = acquired.fleet_id.as_str();
                 let event_id_field = acquired.event_id.as_str();

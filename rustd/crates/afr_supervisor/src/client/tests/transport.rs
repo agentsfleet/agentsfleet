@@ -14,9 +14,13 @@ async fn the_http_client_sends_the_token_and_the_right_method() {
         .send(call(Verb::Hydrate, "/v1/memory", None))
         .await
         .unwrap();
-    api.send(call(Verb::Lease, "/v1/lease", None))
-        .await
-        .unwrap();
+    let key = afd_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").unwrap();
+    api.send(super::Call {
+        key: Some(key.clone()),
+        ..call(Verb::Lease, "/v1/lease", None)
+    })
+    .await
+    .unwrap();
 
     let first = seen.recv().await.unwrap();
     let second = seen.recv().await.unwrap();
@@ -33,6 +37,11 @@ async fn the_http_client_sends_the_token_and_the_right_method() {
     assert_eq!(second.method, Method::GET);
     assert_eq!(second.content_type, None);
     assert_eq!(third.method, Method::POST);
+    assert_eq!(
+        (first.idempotency_key, third.idempotency_key.as_deref()),
+        (None, Some(key.as_str())),
+        "only a call carrying a key sends the header, and it sends that key"
+    );
 }
 
 #[tokio::test]

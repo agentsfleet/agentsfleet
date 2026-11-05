@@ -262,6 +262,8 @@ mod authorization;
 
 mod memory;
 
+mod poll_key;
+
 mod satellites;
 
 mod usage;

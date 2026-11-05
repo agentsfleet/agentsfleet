@@ -195,20 +195,18 @@ report -> usage + terminal event + settlement + delivery obligation
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
 
-Every poll probes PostgreSQL. The notification only prioritizes a recent fleet.
+Every poll runs the claim statement against PostgreSQL. A ring names no fleet; it only ends a held heartbeat sooner.
 
-The candidate query first checks whether any unsettled admission exists. An empty ledger skips fleet scans.
-When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.
+The claim walks ready slots. The admission trigger sets `runner.fleet_slots.ready_at` only while a fleet's oldest unsettled admission is unparked, so an idle estate has no ready slot and the claim reads none.
+For each slot it considers, it reads that fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.
 Admission holds the fleet row lock before allocating its sequence and through commit. A transaction that inserts later therefore stays behind unfinished work.
 
-A parked head blocks later rows while standing access awaits an answer or an unresolved event approval has a future deadline.
-Both discovery and claim probe these two scopes through `idx_approval_gates_pending_scope_deadline`.
-One `NOT EXISTS` over `UNION ALL` keeps the probes correlated to the chosen head. Each branch limits its search to one blocker, including when many approvals match.
+A parked head clears its fleet's readiness while standing access awaits an answer or an unresolved event approval has a future deadline. An answer re-arms it, and so does the park sweep once every event card on the head has lapsed.
 Expired event approvals remain answerable; the resumed gate evaluation decides whether to proceed or refuse.
 A missing cached gate reference falls back to the durable event association, so a long polling outage cannot erase that decision.
 
-The claim locks the slot and exact head with `SKIP LOCKED`, then checks whether that head can run and advances both fences together.
-A blocked or unavailable head returns no work, and the caller rolls back the slot claim.
+The claim locks the slot with `SKIP LOCKED`, then the exact head by primary key, and in the same statement advances both fences and opens the event row.
+A held or moved head returns no work, and the statement writes nothing.
 
 Claims retain held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
 

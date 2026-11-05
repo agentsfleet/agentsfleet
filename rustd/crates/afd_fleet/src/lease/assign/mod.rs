@@ -73,13 +73,28 @@ impl Leases {
     /// Claim the oldest ready fleet this runner may take, in one statement
     /// that also stamps its head admission delivered and opens its event row.
     ///
+    /// A poll of its own: the claim is counted on a fresh tally and recorded
+    /// on the operator gauges, as a pass records its whole cost.
+    ///
     /// # Errors
     /// Preserves database failures and malformed stored identifiers.
     pub async fn select(&self, runner: &Uuid7, held: &[Uuid7]) -> Result<Option<Acquired>> {
-        Ok(match self.take(runner, held).await? {
+        self.select_recorded(runner, held).await.0
+    }
+
+    /// [`Leases::select`], answering the cost it recorded beside the claim.
+    pub(crate) async fn select_recorded(
+        &self,
+        runner: &Uuid7,
+        held: &[Uuid7],
+    ) -> (Result<Option<Acquired>>, PollCost) {
+        let poll = self.clone().with_fresh_tally();
+        let taken = poll.take(runner, held).await.map(|taken| match taken {
             Taken::Work(acquired) => Some(*acquired),
             Taken::Replayed | Taken::Nothing => None,
-        })
+        });
+        record_polled(poll.tally());
+        (taken, poll.tally().cost())
     }
 
     /// [`Leases::select`], keeping a replayed poll apart from an empty one.

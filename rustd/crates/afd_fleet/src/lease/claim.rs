@@ -57,21 +57,22 @@ impl Plane {
                         .map_err(|_shape| rejected(DETAIL_EVENT_MALFORMED));
                     }
                 }
-                LeaseKind::Fleet => {
-                    if let Polled::Lease(body) = self
-                        .poll(
-                            runner,
-                            asked.held,
-                            false,
-                            now,
-                            Some(ticket),
-                            asked.key.cloned(),
-                        )
-                        .await?
-                    {
-                        return Ok(body);
-                    }
-                }
+                LeaseKind::Fleet => match self
+                    .poll(
+                        runner,
+                        asked.held,
+                        false,
+                        now,
+                        Some(ticket),
+                        asked.key.cloned(),
+                    )
+                    .await?
+                {
+                    // A replay's "retry now" is the answer, not an empty pass:
+                    // trying another kind would bury it under a longer wait.
+                    Polled::Lease(body) | Polled::Replayed(body) => return Ok(body),
+                    Polled::Empty(_) => {}
+                },
             }
         }
         no_work(runner, "no eligible accepted work")

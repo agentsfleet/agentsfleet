@@ -99,7 +99,7 @@ pub(crate) enum Backoff {
 
 impl Backoff {
     /// The interval the release statement adds to its clock.
-    const fn delay(self) -> Duration {
+    pub(crate) const fn delay(self) -> Duration {
         match self {
             Self::None => Duration::ZERO,
             Self::Retry => CLAIM_RETRY_BACKOFF,

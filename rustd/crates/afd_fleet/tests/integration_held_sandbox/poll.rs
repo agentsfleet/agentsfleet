@@ -1,11 +1,10 @@
-//! Held affinity and notification loss both use the authoritative ledger.
+//! Held affinity reads the authoritative ledger, and an idle poll costs one statement.
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use super::{hold, id, live};
 use crate::seed::{Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 use afd_core::timing::SANDBOX_HOLD_IDLE;
-use afd_dragonfly::Doorbell;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -49,28 +48,5 @@ async fn test_an_idle_poll_costs_one_claim_statement_and_no_dragonfly_commands()
     assert!(polled.expect("poll").is_none());
     assert_eq!(cost.database_roundtrips, 1, "{cost:?}");
     assert_eq!(cost.dragonfly_commands, 0, "{cost:?}");
-    fixtures.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_stale_notification_does_not_hide_unnotified_work() {
-    let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners: [runner],
-        fleet,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    // A ring that names no work this runner can take wakes nobody's poll into
-    // a wrong answer: the claim reads the ledger, not the ring.
-    let bell = Doorbell::new();
-    bell.ring();
-    let leases = fixtures.leases().with_doorbell(bell);
-    let acquired = leases
-        .select(&runner, &[])
-        .await
-        .expect("fallback probe")
-        .expect("work found");
-    assert_eq!(acquired.fleet_id, id(&fleet));
     fixtures.cleanup().await;
 }

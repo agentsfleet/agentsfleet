@@ -36,7 +36,7 @@ impl From<PollCost> for PollMeasurement {
 }
 
 impl Leases {
-    /// [`Leases::select`], with the cost the same claim recorded.
+    /// [`Leases::select`], with the cost the same poll recorded.
     ///
     /// The outcome is returned whole rather than unwrapped, because the
     /// failing poll is the interesting one: a claim that reached Postgres and
@@ -46,9 +46,8 @@ impl Leases {
         runner_id: &Uuid7,
         held: &[Uuid7],
     ) -> (Result<Option<Acquired>>, PollMeasurement) {
-        let measured = self.clone().with_fresh_tally();
-        let selected = measured.select(runner_id, held).await;
-        (selected, measured.tally().cost().into())
+        let (selected, cost) = self.select_recorded(runner_id, held).await;
+        (selected, cost.into())
     }
 }
 

@@ -130,8 +130,11 @@ async fn test_the_stored_hold_is_capped_at_one_idle_window() {
         afd_core::clock::after(inside, SANDBOX_HOLD_IDLE),
         Timestamp::MAX,
     ] {
-        let (stored, window) =
-            window_around(&fixtures, released(&fixtures, &fleet, &runner, Some(asked))).await;
+        let (stored, window) = Box::pin(window_around(
+            &fixtures,
+            released(&fixtures, &fleet, &runner, Some(asked)),
+        ))
+        .await;
         let stored = stored.expect("a far ask still holds");
         assert!(
             window.contains(&stored),

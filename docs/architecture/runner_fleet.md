@@ -120,8 +120,8 @@ A runner's work becomes eligible when its slot expires. Another eligible runner 
 | Failure | Recovery | Durable guard |
 |---|---|---|
 | Runner dies mid-lease | A later poll claims the same unsettled admission after its 30-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
-| Wake notification lost | The next poll probes PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
-| Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
+| Wake notification lost | The held heartbeat ends at its deadline, and the next poll claims the admission from PostgreSQL. | Acceptance is already committed in `fleet.admissions`. |
+| Claim decoding fails | The claim already committed: the slot is let go behind `CLAIM_RETRY_BACKOFF`, and the next claim reads the admission as a `Repeat`. | The next claim carries a higher fence. |
 | Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |
 | Report fails before commit | Retry the report; lease, usage and settlement all roll back. | No charge or terminal admission without the report transaction. |
 | Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery obligation. |

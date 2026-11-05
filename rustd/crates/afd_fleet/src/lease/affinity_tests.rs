@@ -51,6 +51,19 @@ fn test_a_fence_round_trips_through_its_column_type() {
     assert_eq!(fence.as_i64(), 7, "the token reaches the column unchanged");
 }
 
+/// A negative token, edited out of band, has no wire spelling: neither zero
+/// (a slot no claim took) nor its magnitude (a token another holder may hold).
+#[test]
+fn test_a_negative_fence_has_no_wire_spelling() {
+    assert_eq!(Fence::from_i64(-1).as_u64(), None);
+    assert_eq!(Fence::from_i64(i64::MIN).as_u64(), None);
+    assert_eq!(Fence::from_i64(0).as_u64(), Some(0));
+    assert_eq!(
+        Fence::from_i64(i64::MAX).as_u64(),
+        Some(i64::MAX.unsigned_abs())
+    );
+}
+
 /// Fences order, because that ordering IS the staleness test.
 ///
 /// §3 rejects a report whose token is behind the slot's current one, so an

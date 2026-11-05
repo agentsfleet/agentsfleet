@@ -28,7 +28,7 @@ WITH replay AS MATERIALIZED (
   FROM jsonb_array_elements_text(
     (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
      FROM runner.runners WHERE id = $1::uuid)) AS e
-), chosen AS MATERIALIZED (
+), held_pick AS MATERIALIZED (
   SELECT s.fleet_id, head.id AS head_id
   FROM runner.fleet_slots s
   CROSS JOIN LATERAL (
@@ -39,7 +39,8 @@ WITH replay AS MATERIALIZED (
     WHERE h.fleet_id = s.fleet_id AND h.settled_at IS NULL
     ORDER BY h.sequence LIMIT 1
   ) head
-  WHERE NOT EXISTS (SELECT 1 FROM replay)
+  WHERE s.fleet_id = ANY((SELECT ($2::text[])::uuid[])::uuid[])
+    AND NOT EXISTS (SELECT 1 FROM replay)
     AND s.ready_at IS NOT NULL
     AND s.lease_expires_at < statement_timestamp()
     AND f.status = $8
@@ -52,11 +53,65 @@ WITH replay AS MATERIALIZED (
            WHERE rr.id = s.last_runner_id
              AND rr.last_seen_at > statement_timestamp() - $4::interval
              AND rr.status = $5 AND rr.degraded_reason IS NULL))
-  ORDER BY s.fleet_id = ANY((SELECT ($2::text[])::uuid[])::uuid[]) DESC,
-           (s.last_runner_id = $1::uuid) DESC NULLS LAST,
-           s.ready_at
+  ORDER BY s.ready_at
   LIMIT 1
   FOR UPDATE OF s SKIP LOCKED
+), affine_pick AS MATERIALIZED (
+  SELECT s.fleet_id, head.id AS head_id
+  FROM runner.fleet_slots s
+  CROSS JOIN LATERAL (
+    SELECT z.status, z.required_tags FROM fleet.fleets z WHERE z.id = s.fleet_id LIMIT 1
+  ) f
+  CROSS JOIN LATERAL (
+    SELECT h.id FROM fleet.admissions h
+    WHERE h.fleet_id = s.fleet_id AND h.settled_at IS NULL
+    ORDER BY h.sequence LIMIT 1
+  ) head
+  WHERE NOT EXISTS (SELECT 1 FROM held_pick)
+    AND s.last_runner_id = $1::uuid
+    AND NOT EXISTS (SELECT 1 FROM replay)
+    AND s.ready_at IS NOT NULL
+    AND s.lease_expires_at < statement_timestamp()
+    AND f.status = $8
+    AND f.required_tags <@ (SELECT tags FROM labels)
+  ORDER BY s.ready_at
+  LIMIT 1
+  FOR UPDATE OF s SKIP LOCKED
+), oldest_pick AS MATERIALIZED (
+  SELECT s.fleet_id, head.id AS head_id
+  FROM runner.fleet_slots s
+  CROSS JOIN LATERAL (
+    SELECT z.status, z.required_tags FROM fleet.fleets z WHERE z.id = s.fleet_id LIMIT 1
+  ) f
+  CROSS JOIN LATERAL (
+    SELECT h.id FROM fleet.admissions h
+    WHERE h.fleet_id = s.fleet_id AND h.settled_at IS NULL
+    ORDER BY h.sequence LIMIT 1
+  ) head
+  WHERE NOT EXISTS (SELECT 1 FROM held_pick)
+    AND NOT EXISTS (SELECT 1 FROM affine_pick)
+    AND NOT EXISTS (SELECT 1 FROM replay)
+    AND s.ready_at IS NOT NULL
+    AND s.lease_expires_at < statement_timestamp()
+    AND f.status = $8
+    AND f.required_tags <@ (SELECT tags FROM labels)
+    AND (s.hold_expires_at IS NULL
+         OR s.hold_expires_at <= statement_timestamp()
+         OR s.last_runner_id = $1::uuid
+         OR NOT EXISTS (
+           SELECT 1 FROM runner.runners rr
+           WHERE rr.id = s.last_runner_id
+             AND rr.last_seen_at > statement_timestamp() - $4::interval
+             AND rr.status = $5 AND rr.degraded_reason IS NULL))
+  ORDER BY s.ready_at
+  LIMIT 1
+  FOR UPDATE OF s SKIP LOCKED
+), chosen AS MATERIALIZED (
+  SELECT fleet_id, head_id FROM held_pick
+  UNION ALL
+  SELECT fleet_id, head_id FROM affine_pick
+  UNION ALL
+  SELECT fleet_id, head_id FROM oldest_pick
 ), head AS MATERIALIZED (
   SELECT a.id, a.workspace_id, a.actor, a.event_type, a.request_json,
          a.event_created_at, a.created_at, a.producer, a.delivered_at,

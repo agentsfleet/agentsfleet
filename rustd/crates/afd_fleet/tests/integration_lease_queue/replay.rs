@@ -1,16 +1,18 @@
 //! A poll repeating the key of a lease its worker never read frees that
-//! lease at once; a host refusing its claim hands the fleet straight back.
+//! lease at once, and only the runner whose poll it named can free it.
 
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::test_util::mint_uuid7;
-use afd_fleet::lease::{Billed, Committed, Delivery, Issue, Kind};
-use afd_observability::metrics::label::fleet::IssueDenied;
+use afd_fleet::lease::{Asked, Billed, Delivery, Kind};
+use afd_observability::test_util::Capture as Metrics;
+use afd_wire::lease::AcceptedKinds;
 
-use crate::report_commit::{RESPONSE_ACCEPTED, report};
-use crate::report_seed::held;
 use crate::rows::{LAPSE, Row};
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, claim_fleet, seeded};
 use crate::support::Fixtures;
+
+use super::fence;
 
 /// The runner's lifetime count of leases that lapsed.
 async fn expired_count(fixtures: &Fixtures, runner: &Uuid7) -> Option<i64> {
@@ -25,16 +27,19 @@ async fn expired_count(fixtures: &Fixtures, runner: &Uuid7) -> Option<i64> {
 
 /// One issued lease on a seeded fleet, written under `key` as a worker's poll
 /// carrying it would have.
-struct Keyed {
-    fixtures: Fixtures,
-    runner: Uuid7,
-    fleet: String,
-    event_id: String,
-    lease_id: String,
-    key: Uuid7,
+pub(super) struct Keyed {
+    pub(super) fixtures: Fixtures,
+    pub(super) runner: Uuid7,
+    pub(super) fleet: String,
+    pub(super) event_id: String,
+    pub(super) lease_id: String,
+    pub(super) key: Uuid7,
 }
 
-async fn keyed_lease() -> Keyed {
+/// Counted each time a repeated key lets a lease go.
+const REPLAYED: &str = "agentsfleet_lease_poll_replayed_total";
+
+pub(super) async fn keyed_lease() -> Keyed {
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded {
         runners: [runner],
@@ -42,6 +47,17 @@ async fn keyed_lease() -> Keyed {
         tenant,
         event_id,
     } = seeded::<1>(&fixtures).await;
+    keyed_on(fixtures, runner, fleet, tenant, event_id).await
+}
+
+/// [`keyed_lease`] for a fleet and runner already seeded.
+async fn keyed_on(
+    fixtures: Fixtures,
+    runner: Uuid7,
+    fleet: String,
+    tenant: String,
+    event_id: String,
+) -> Keyed {
     let key = mint_uuid7();
     let leases = fixtures.leases().with_poll_key(Some(key.clone()));
     let acquired = claim_fleet(&leases, &runner, &fleet)
@@ -75,28 +91,38 @@ async fn keyed_lease() -> Keyed {
 }
 
 /// The reply to an issued lease is lost; the worker repeats
-/// its key, the lease is let go with no expiry counted, and the next poll —
-/// under a fresh key — takes the same admission back at once.
+/// its key through the route's claim, the lease is let go with no expiry
+/// counted, the replay is counted, and the next poll — under a fresh key —
+/// takes the same admission back at once.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_lost_lease_reply_is_freed_by_the_repeated_key() {
     let lost = keyed_lease().await;
     let expired_before = expired_count(&lost.fixtures, &lost.runner).await;
+    let metrics = Metrics::install();
+    let replayed_before = metrics.sum(REPLAYED, &[]);
+    let plane = lost.fixtures.plane();
+    let drafts = afd_authoring::Drafts::new(
+        lost.fixtures.database.clone(),
+        Entropy::new(),
+        std::sync::Arc::clone(&plane.biller),
+    );
 
-    let answer = lost
-        .fixtures
-        .plane()
-        .poll(
+    let answer = plane
+        .claim(
+            &drafts,
             &lost.runner,
-            &[],
+            Asked {
+                held: &[],
+                accepted: AcceptedKinds::FLEET,
+                key: Some(&lost.key),
+            },
             false,
             lost.fixtures.enrolled_at(),
-            None,
-            Some(lost.key.clone()),
         )
         .await
-        .expect("the repeat is answered")
-        .into_body();
+        .expect("the repeat is answered");
+    let replayed = metrics.sum(REPLAYED, &[]) - replayed_before;
     let freed = (
         lost.fixtures
             .text(Row::Lease(&lost.lease_id), "status")
@@ -110,8 +136,9 @@ async fn test_lost_lease_reply_is_freed_by_the_repeated_key() {
 
     assert!(
         answer.contains("\"lease\":null") && answer.contains("\"retry_after_ms\":0"),
-        "no work, poll again now: {answer}"
+        "no work, poll again now, through the route's claim: {answer}"
     );
+    assert_eq!(replayed, 1, "the freed lease is counted once");
     assert_eq!(
         freed,
         (
@@ -192,114 +219,54 @@ async fn test_key_of_an_ended_lease_answers_no_work() {
     ended.fixtures.cleanup().await;
 }
 
-/// A host already running its one worker claims a second
-/// fleet; issue answers `Denied(Capacity)`, writes no lease, and the slot it
-/// hands back is claimed by another runner on its next poll.
+/// A key names one runner's poll: another runner sending it frees nothing,
+/// and the first runner's lease and fence stand.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_capacity_denial_releases_the_slot() {
-    let busy = keyed_lease().await;
+async fn test_another_runners_key_frees_nothing() {
+    let fixtures = Fixtures::create_with_queue().await;
     let Seeded {
-        runners: [other],
-        fleet: second,
+        runners: [holder, other],
+        fleet,
         tenant,
-        ..
-    } = seeded::<1>(&busy.fixtures).await;
-    let tag = crate::requests::placement_tag(&second);
-    sqlx::query(
-        "UPDATE runner.runners SET labels = labels || to_jsonb($2::text) WHERE id = $1::uuid",
-    )
-    .bind(busy.runner.as_str())
-    .bind(&tag)
-    .execute(
-        &mut *busy
-            .fixtures
-            .database
-            .acquire()
-            .await
-            .expect("a connection"),
-    )
-    .await
-    .expect("the busy runner may run the second fleet too");
-    let leases = busy.fixtures.leases();
-    let claimed = claim_fleet(&leases, &busy.runner, &second)
-        .await
-        .expect("claimed");
-    let tenant_id = Uuid7::parse(&tenant).expect("a seeded tenant");
+        event_id,
+    } = seeded::<2>(&fixtures).await;
+    let held = keyed_on(fixtures, holder, fleet, tenant, event_id).await;
+    let fence_before = fence(&held.fixtures, &held.fleet).await;
 
-    let issued = leases
-        .issue(
-            &busy.runner,
-            &claimed,
-            Billed {
-                tenant_id: &tenant_id,
-                posture: POSTURE,
-                provider: PROVIDER,
-                model: MODEL,
-            },
-            busy.fixtures.enrolled_at(),
+    let answer = held
+        .fixtures
+        .plane()
+        .poll(
+            &other,
+            &[],
+            false,
+            held.fixtures.enrolled_at(),
+            None,
+            Some(held.key.clone()),
         )
         .await
-        .expect("the issue runs");
-    leases
-        .release(&claimed.fleet_id, claimed.fence)
-        .await
-        .expect("the denied claim is handed back, as the pass does");
-    let taken = claim_fleet(&leases, &other, &second).await;
+        .expect("the other runner is answered")
+        .into_body();
 
-    assert_eq!(issued, Issue::Denied(IssueDenied::Capacity));
-    assert_eq!(
-        taken.map(|acquired| acquired.event_id),
-        Some(claimed.event_id),
-        "another runner takes the fleet on its next poll"
+    assert!(
+        !answer.contains("\"retry_after_ms\":0"),
+        "the key is not the other runner's to replay: {answer}"
     );
-    busy.fixtures.cleanup().await;
-}
-
-/// A runner killed after issue stops renewing; past its
-/// deadline another runner takes the admission back as a repeat, and the
-/// dead runner's late report is fenced out.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_sigkill_mid_lease_reclaims_once_and_refuses_the_late_report() {
-    let held = held().await;
-    let lease_id = held.issued.lease_id.as_str();
-    let leases = held.fixtures.leases_with_dead_queue();
-    let lease = leases
-        .load_for_report(lease_id, &held.runner)
-        .await
-        .expect("the lease load runs")
-        .expect("the lease is the runner's");
-    held.fixtures.lapse_holder(lease_id, &held.fleet).await;
-
-    let reclaimed = claim_fleet(&held.leases, &held.spare, &held.fleet)
-        .await
-        .expect("the lapsed admission is taken back");
-    let again = claim_fleet(&held.leases, &held.runner, &held.fleet).await;
-    let late = leases
-        .commit_report(report(
-            lease_id,
-            &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
-            RESPONSE_ACCEPTED,
-            held.now,
-        ))
-        .await
-        .expect("a fenced report is an answer");
-
     assert_eq!(
         (
-            reclaimed.event_id.as_str(),
-            reclaimed.delivery,
-            reclaimed.kind
+            held.fixtures
+                .text(Row::Lease(&held.lease_id), "status")
+                .await,
+            fence(&held.fixtures, &held.fleet).await,
+            held.fixtures.slot_is_free(&held.fleet).await,
         ),
-        (held.event_id.as_str(), Delivery::Repeat, Kind::Reclaim)
-    );
-    assert!(again.is_none(), "reclaimed once: the live holder keeps it");
-    assert!(
-        matches!(late, Committed::Fenced),
-        "the dead holder's report is refused"
+        (
+            Some(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE.to_owned()),
+            fence_before,
+            false,
+        ),
+        "the holder's lease, fence and slot stand"
     );
     held.fixtures.cleanup().await;
 }

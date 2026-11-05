@@ -4,14 +4,20 @@
 -- oldest unsettled admission while that admission is unparked, NULL otherwise.
 -- It restates the ledger's head (rule 5 exception), kept exact by the trigger
 -- below under the slot's row lock. Reader: the lease claim
--- (`afd_fleet` `claim_admission_head.sql`), which drives from the partial index
--- and takes the oldest ready, free slot. Readiness and occupancy stay apart:
--- a lease taking or lapsing the slot leaves `ready_at` alone, so a lapsed lease
--- is claimable at its deadline with no writer.
+-- (`afd_fleet` `claim_admission_head.sql`), which walks the ready slots oldest
+-- first and stops at the first one it may take. Readiness and occupancy stay
+-- apart: a lease taking or lapsing the slot leaves `ready_at` alone, so a
+-- lapsed lease is claimable at its deadline with no writer.
 ALTER TABLE runner.fleet_slots ADD COLUMN ready_at TIMESTAMPTZ(3);
 
-CREATE INDEX idx_fleet_slots_lease_expires_at_ready_at
-    ON runner.fleet_slots (lease_expires_at, ready_at) WHERE ready_at IS NOT NULL;
+-- The claim's oldest-first walk. `lease_expires_at` is a key so the walk passes
+-- over a leased slot inside the index, without reading its row.
+CREATE INDEX idx_fleet_slots_ready_at_lease_expires_at
+    ON runner.fleet_slots (ready_at, lease_expires_at) WHERE ready_at IS NOT NULL;
+
+-- The claim's affinity walk: the ready slots this runner held last, oldest first.
+CREATE INDEX idx_fleet_slots_last_runner_id_ready_at
+    ON runner.fleet_slots (last_runner_id, ready_at) WHERE ready_at IS NOT NULL;
 
 -- Recomputed, never incremented, so every writer of `fleet.admissions` keeps it
 -- exact. The slot is locked in a statement of its own before the head is read:
@@ -22,8 +28,12 @@ CREATE INDEX idx_fleet_slots_lease_expires_at_ready_at
 -- only a row no other transaction can see. A slot the trigger creates starts at
 -- fence 0 with its deadline at the epoch, never taken, so the first claim
 -- carries fence 1.
+--
+-- It runs as the writer: every role that writes `fleet.admissions` already
+-- holds `SELECT, INSERT, UPDATE` on `runner.fleet_slots`, so a definer would
+-- lend the owner's rights for nothing.
 CREATE FUNCTION fleet.admissions_mark_ready() RETURNS trigger
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql
     SET search_path TO pg_catalog, fleet, runner
 AS $$
 DECLARE

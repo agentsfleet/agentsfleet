@@ -146,15 +146,14 @@ Every admission, gate confirmation and approval resolution rings, and each ring 
 ### Candidate and claim bounds
 
 The claim is one statement ([assignment](../../rustd/crates/afd_fleet/src/lease/assign/mod.rs)).
-It drives from the partial index `idx_fleet_slots_lease_expires_at_ready_at` (slot 2190): only slots with work waiting, and of those only slots whose lease has passed, are read.
-A running fleet's slot holds a future `lease_expires_at`, and an idle fleet's slot has no `ready_at`, so neither is visited.
-For each slot it considers, one lookup through the partial `(fleet_id, sequence)` admission index finds the head.
-
-The claim orders held fleets first, then this runner's last fleets, then the oldest `ready_at`. It takes the first slot it can lock with `SKIP LOCKED`, then that slot's head by primary key, so a contended slot is passed over rather than waited on and no backlog is read.
+It walks the ready slots in three arms, each oldest `ready_at` first and each stopping at the first slot it can lock with `SKIP LOCKED`: the fleets whose sandboxes the runner holds (by primary key), then the fleets it ran last (`idx_fleet_slots_last_runner_id_ready_at`), then every fleet (`idx_fleet_slots_ready_at_lease_expires_at`, slot 2190).
+An idle fleet's slot has no `ready_at`, so it is not in either index, and a running fleet's future `lease_expires_at` is passed over inside the index without reading its row.
+A walk reads one slot when the oldest is free; it reads more only for slots it may not take (a paused fleet, tags the runner lacks, another runner's live hold), which it passes over.
+For each slot it considers, one lookup through the partial `(fleet_id, sequence)` admission index finds the head. The head is then locked by primary key, so a contended slot is passed over rather than waited on and no backlog is read.
 A pass that ends on a retry frees its slot `CLAIM_RETRY_BACKOFF` (5 s) in the future: the oldest-first order would otherwise hand a failing fleet to every poll and starve the fleets behind it.
 A parked head clears its fleet's `ready_at`, so parked work costs the claim nothing until a person answers or, once every event card on the head has lapsed, the park sweep re-arms it (every 5 s; it expires no card, and standing access still waits for an answer).
 
-The plan test seeds 10,000 active fleets, 2,000 running and 3 ready, runs `ANALYZE`, and requires the ready index and no sequential scan of `fleet.fleets` or `runner.fleet_slots` in `EXPLAIN (ANALYZE, BUFFERS)` (`afd_fleet/tests/integration_lease_plan/ready.rs`).
+The plan tests seed 10,000 active fleets, 2,000 running and either 3 or 5,000 ready, run `ANALYZE`, and require the ready index, no sequential scan of `fleet.fleets` or `runner.fleet_slots`, and one ready slot read however many wait, in `EXPLAIN (ANALYZE, BUFFERS)` (`afd_fleet/tests/integration_lease_plan/ready.rs`).
 
 The same statement stamps the head admission's fence and `delivered_at` and opens its event row; an uncontended successful claim is that one statement in autocommit.
 

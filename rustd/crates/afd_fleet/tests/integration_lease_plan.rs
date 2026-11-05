@@ -107,10 +107,18 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
         run(&mut tx, "SAVEPOINT head_probe").await;
         let plan = claim_plan(&mut tx, runner.as_str()).await;
         run(&mut tx, "ROLLBACK TO SAVEPOINT head_probe").await;
-        let head = relation_scans(&plan, "admissions")
+        // One head probe per walk; only the walks that ran count.
+        let probes: Vec<_> = relation_scans(&plan, "admissions")
             .into_iter()
-            .find(|scan| scan["Index Name"] == "idx_admissions_unsettled")
-            .unwrap_or_else(|| panic!("the head comes off the unsettled index: {plan}"));
+            .filter(|scan| scan["Index Name"] == "idx_admissions_unsettled")
+            .filter(|scan| scan["Actual Loops"].as_f64() != Some(0.0))
+            .collect();
+        let [head] = probes.as_slice() else {
+            panic!(
+                "one head probe ran, off the unsettled index:\n{}",
+                tree(&plan, 0)
+            );
+        };
         assert_eq!(
             head["Actual Rows"].as_f64(),
             Some(1.0),

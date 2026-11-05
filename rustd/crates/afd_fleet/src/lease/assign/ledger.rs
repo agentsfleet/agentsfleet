@@ -103,7 +103,15 @@ impl Leases {
             }
         };
         let held = affinity::held_claim(admission.held, admission.holder.as_deref(), runner);
-        let acquired = admission.acquired(runner)?;
+        // The same committed claim, unreadable one field later: freed the same
+        // way, or the fleet would wait out a lease nobody holds.
+        let acquired = match admission.acquired(runner) {
+            Ok(acquired) => acquired,
+            Err(malformed) => {
+                self.let_go_undecoded(&arm).await;
+                return Err(malformed);
+            }
+        };
         if held == Some(HeldClaim::OtherAfterLapse) {
             producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);
         }

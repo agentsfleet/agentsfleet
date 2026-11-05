@@ -3,7 +3,7 @@
 use crate::{
     error::{Result, query},
     lease::{
-        affinity::Fence,
+        affinity::{Backoff, Fence},
         sql::{self, queue},
         store::Leases,
     },
@@ -18,9 +18,12 @@ const CONTEXT_LAPSED: &str = "lapsed park sweep";
 const SWEEP_LOCK_TIMEOUT: &str = "2000ms";
 /// How long any one statement of the sweep may run.
 const SWEEP_STATEMENT_TIMEOUT: &str = "5000ms";
-/// What a park sends: its transaction's begin and commit around the lock, the
-/// park and the release.
-const PARK_STATEMENTS: u64 = 5;
+/// The statements a park sends around its lock: begin and commit.
+const PARK_FRAME_STATEMENTS: u64 = 2;
+/// Most slots one sweep pass re-arms. A pass runs every few seconds, and an
+/// unbounded one after a mass lapse could outrun its statement timeout and
+/// roll back every time.
+const SWEEP_BATCH: i64 = 256;
 
 impl Leases {
     /// Park and free the slot atomically. An answer that already committed is
@@ -31,24 +34,34 @@ impl Leases {
     /// Preserves database failures. A superseded claim changes nothing.
     pub async fn park(&self, fleet: &Uuid7, event: &str, fence: Fence) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
-        // Begin, lock, park, release, commit.
-        self.tally().statements(PARK_STATEMENTS);
+        self.tally().statements(PARK_FRAME_STATEMENTS);
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
+        self.tally().statements(1);
         if self
             .lock_admission_on(&mut transaction, fleet, event, fence)
             .await?
         {
-            sqlx::query(queue::PARK_WAITING)
+            self.tally().statements(2);
+            let parked = sqlx::query(queue::PARK_WAITING)
                 .bind(fleet.as_str())
                 .bind(event)
                 .bind(fence.as_i64())
                 .execute(&mut *transaction)
                 .await
-                .map_err(query(CONTEXT))?;
+                .map_err(query(CONTEXT))?
+                .rows_affected();
+            // No pending card to park on: the head stays ready, so the slot
+            // is let go behind the retry backoff, as any pass that could not
+            // finish is, or the oldest-first claim would hand it straight back.
+            let backoff = if parked == 0 {
+                Backoff::Retry
+            } else {
+                Backoff::None
+            };
             sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
                 .bind(fleet.as_str())
                 .bind(fence.as_i64())
-                .bind(std::time::Duration::ZERO)
+                .bind(backoff.delay())
                 .execute(&mut *transaction)
                 .await
                 .map_err(query(CONTEXT))?;
@@ -75,7 +88,8 @@ impl Leases {
 
     /// Re-arms every fleet whose parked head no card holds any more: no
     /// standing card is pending, and every pending card on the head is past its
-    /// deadline. Answers how many fleets it re-armed.
+    /// deadline, at most [`SWEEP_BATCH`] slots a pass. Answers how many fleets
+    /// it re-armed.
     ///
     /// The cards are left pending. A person may still answer an event card
     /// late, and only an answer resolves standing access, so this pass expires
@@ -96,6 +110,7 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_LAPSED))?;
         let fleets: Vec<String> = sqlx::query_scalar(queue::LOCK_LAPSED_PARK_SLOTS)
+            .bind(SWEEP_BATCH)
             .fetch_all(&mut *transaction)
             .await
             .map_err(query(CONTEXT_LAPSED))?;
