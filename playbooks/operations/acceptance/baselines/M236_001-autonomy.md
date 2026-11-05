@@ -1,5 +1,52 @@
 # M236 implementation evidence
 
+## Current continuation point
+
+Continue branch `feat/m236-durable-tasks` in `/workspace/agentsfleet-m236-design`, updating existing draft PR #803 only.
+The published production correction is `c8937f3692b7b3691fdd6e87e1858c94c9477871`; it contains current main `27deff642`.
+Subsequent recovery scenarios and their verified results are recorded below; read the branch's latest commit before restarting work.
+
+The implemented foundation includes native task binding/control, authenticated task reads, customer-owned question revisions, runner decision profiles and four provider adapters.
+Decision reservation, fresh platform-admin Secrets, original-owner accounting, fair financial maintenance, metrics and privacy corrections are also implemented.
+The approved runner deadline and schedule activity changes remain in the same PR.
+
+M236 remains `IN_PROGRESS`; the automatic intent/goal loop, production binding/input APIs and task-aware lease/report transitions remain unfinished.
+Native GitHub effects, signed completion matching, durable waits and incremental R2 capture/restore also remain unfinished.
+Checkpoint encryption exists; object registration, quotas, manifests, authorizations, pins, collection, supervisor recovery and live R2 acceptance do not.
+
+Public task controls/revision adoption, confirmed PR/file results and CLI/browser decision/transfer progress still need their runtime integration.
+
+Resume by checking exact-head CI and Greptile, then completing those runtime owners through the existing admission/lease path.
+Keep one Rust lane, finish each crate slice before gates, and repeat checks only after relevant source changes or concrete failures.
+Do not mark the spec done, make the PR ready or merge until its full scope and acceptance evidence pass.
+
+Final delivery includes Indy's detailed change report, verification results and observability coverage.
+
+Indy requires Rust diff coverage above 99.5% and TypeScript coverage of 100%, without reducing existing file/workspace floors.
+
+On `c8937f369`, Rust patch coverage is 97.9193%: 5,506/5,623 changed lines, with 117 unhit lines.
+Workspace coverage passes at 99.6225%; 32 of 194 touched files remain below their 99% whole-file floor.
+All four measurement jobs pass after retrying the upstream Debian HTTP 503 failure; the combined grade correctly remains red.
+
+The deciding coverage result is workflow `41945042540`, job `126984193594`; it supersedes the earlier 96.8894% patch result.
+All ordinary workflows pass on that head; the newer local recovery scenarios require their own hosted measurement after publication.
+
+The four matching reports and complete 117-line gap list are retained in `/tmp/m236-coverage-c8937f369/` for this workspace.
+Their recorded merge revision is `d12a443729916f22f8c667afca8062974a8c8f0b`; its tree matches `c8937f369` exactly.
+The native report parser reproduces 5,506/5,623 without substituting reports from another revision.
+
+All four TypeScript coverage jobs pass at 100% on `c8937f369`; app 4,669, website 133 and design-system 522 tests pass.
+The CLI log records actual function/line coverage of 100.00%; its count remains separate from earlier local results.
+Both existing Greptile threads are resolved; request and check review on every later pushed head.
+
+Indy explicitly approved the three daemon-library build-resource settings; only debug symbols and compilation concurrency changed.
+Docs PR #241 is merged; public API changes still require their matching documentation flow.
+The development R2 bucket is private `agentsfleet-checkpoints-dev`; use the supplied 1Password references securely and never print resolved credentials.
+
+Crates.io still reports `object_store` 0.14.2 as latest stable for this continuation.
+Its `Signer::signed_url_opts` and `SignedUrlOptions::with_signed_header` support binding create-only headers without another signing implementation.
+The native R2 rejection and readback proofs remain mandatory; inspecting that SDK is not a live storage result.
+
 ## Opening dependency verification
 
 Indy approved implementation and latest stable dependencies on November 3, 2026.
@@ -1113,3 +1160,28 @@ Only the failed storage gate was rerun; the already-passing source and unit evid
 
 `orly gate verify` passes all declared non-test checks, including `make lint-all` and `make check-version`.
 Log: `/tmp/m236-score-recovery-verify.log`; the pinned product versions match 0.73.0.
+
+## Full-page financial recovery and lease completion
+
+The full-page scenario creates 102 legally unissued calls through native reservation, with distinct admitted sources and real funding refusals.
+Its first 100-row scan recovers 99 calls while deferring a locked older owner.
+An empty seek then wraps to that owner and two later arrivals; every call becomes accounted `NotSent` without a charge or wallet change.
+
+The settlement scenario records a known receipt while the existing fault adapter's real ledger transport is unavailable.
+Canonical replay preserves the receipt and unpaid line; the normal billing sweep repairs settlement after the actual grace boundary.
+A second unknown call retains the original hold through a normal terminal report and eligible sweep, then late known usage settles once.
+
+The next sweep releases that hold once; later sweeps and receipt replay leave financial state unchanged.
+Assertions cover original payer/source/model attribution, distinct decision sequences, cumulative task usage, unchanged hold ownership/ceiling and safe diagnostic fields.
+The existing report fixture is shared through test-only visibility; no new production seam, mutex or billing implementation is added.
+
+Astra's requested extra-high source review finds no material issue in either composed scenario.
+`make lint-rustd` passes; log `/tmp/m236-recovery-bundles-lint.log`.
+`make test-integration-rustd` passes 1,540 regular scenarios and 3 exclusive scenarios; log `/tmp/m236-recovery-bundles-integration.log`.
+
+Both new scenarios pass within the existing fixture and maintenance bounds.
+The preceding full 5,161-test unit result remains recorded separately; this later batch changes ignored storage scenarios and documentation only.
+The continuation point above preserves unfinished scope for the fresh session Indy requested.
+
+Final `orly gate verify` passes the declared non-test checks, including lint and version validation.
+Log: `/tmp/m236-recovery-bundles-verify.log`; all pinned product versions match 0.73.0.

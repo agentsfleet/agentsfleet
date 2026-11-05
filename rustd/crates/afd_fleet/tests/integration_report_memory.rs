@@ -50,7 +50,11 @@ fn learned() -> Vec<MemoryDelta<'static>> {
 }
 
 /// A processed report on `held`'s lease presenting `token`, carrying `memory`.
-fn report<'a>(held: &'a Held, token: u64, memory: Vec<MemoryDelta<'a>>) -> ReportRequest<'a> {
+pub(crate) fn report<'a>(
+    held: &'a Held,
+    token: u64,
+    memory: Vec<MemoryDelta<'a>>,
+) -> ReportRequest<'a> {
     ReportRequest {
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),
