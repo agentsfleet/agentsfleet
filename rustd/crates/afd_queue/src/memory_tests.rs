@@ -248,3 +248,50 @@ fn without_a_runtime_every_offer_is_refused_so_the_producer_does_the_work() {
     assert_eq!(offered, Offer::Refused((0, 1)));
     assert_eq!(recorder.seen(), Vec::<Message>::new());
 }
+
+/// A consumer that keeps the trait's default `abandoned`.
+#[derive(Debug)]
+struct AlwaysRetry;
+
+#[async_trait::async_trait]
+impl Consumer<Message> for AlwaysRetry {
+    async fn consume(&self, _message: &Message) -> Outcome {
+        Outcome::Retry
+    }
+}
+
+#[tokio::test]
+async fn a_consumer_without_an_abandon_hook_lets_the_queue_move_on() {
+    let queue = Memory::start(
+        &(Arc::new(AlwaysRetry) as Arc<dyn Consumer<Message>>),
+        settings(8, NO_RETRY),
+        by_producer(),
+    );
+    let recorder = Arc::new(Recorder::default());
+    let after = Memory::start(
+        &(Arc::clone(&recorder) as Arc<dyn Consumer<Message>>),
+        settings(8, NO_RETRY),
+        by_producer(),
+    );
+
+    assert_eq!(queue.offer((0, 1)), Offer::Accepted);
+    assert_eq!(after.offer((0, 2)), Offer::Accepted);
+    until(&recorder, 1).await;
+    assert_eq!(recorder.seen(), [(0, 2)]);
+}
+
+#[tokio::test]
+async fn its_debug_form_names_the_worker_count() {
+    let recorder = Arc::new(Recorder::default());
+    let queue = Memory::start(
+        &(Arc::clone(&recorder) as Arc<dyn Consumer<Message>>),
+        Settings {
+            depth: 4,
+            workers: 3,
+            retry: NO_RETRY,
+        },
+        by_producer(),
+    );
+
+    assert_eq!(format!("{queue:?}"), "Memory { workers: 3, .. }");
+}

@@ -64,3 +64,14 @@ fn a_numbered_marker_and_trailing_spaces_are_kept_around_the_restored_span() {
 
     assert_eq!(restore(typed, Some(SAID)), format!("3. {RULE}  "));
 }
+
+#[test]
+fn a_retyped_curly_apostrophe_is_restored() {
+    let said = "Add: Don’t merge a release that hasn’t passed its own regression suite.";
+    let typed = "- Don't merge a release that hasn't passed its own regression suite.";
+
+    assert_eq!(
+        restore(typed, Some(said)),
+        "- Don’t merge a release that hasn’t passed its own regression suite."
+    );
+}
