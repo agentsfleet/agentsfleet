@@ -125,7 +125,7 @@ async fn sweep_leases(
 
 /// Whether tick `tick` sends the line read back to the oldest unsettled line.
 const fn restarts(tick: u64) -> bool {
-    tick % LAP_TICKS == 0
+    tick.is_multiple_of(LAP_TICKS)
 }
 
 /// A pass that read a whole batch runs again at once, resuming after it, so a
