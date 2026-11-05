@@ -46,7 +46,7 @@ async fn the_relay_settles_orphaned_lines() {
     );
     orphan(&held).await;
 
-    let swept = sweep(database, &biller, &Entropy::new(), held.now)
+    let swept = sweep(database, &biller, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
     assert_eq!(
@@ -61,7 +61,7 @@ async fn the_relay_settles_orphaned_lines() {
         Some(DEEP_POOL - LINE.as_i64()),
         "the orphaned line is charged once"
     );
-    let again = sweep(database, &biller, &Entropy::new(), held.now)
+    let again = sweep(database, &biller, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
     assert_eq!(
@@ -89,7 +89,7 @@ async fn test_fleet_expiry_bills_its_last_slice() {
     );
     let tail_ms = abandon(&held).await;
 
-    let swept = sweep(database, &biller, &Entropy::new(), held.now)
+    let swept = sweep(database, &biller, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
     assert_eq!(swept.expired_billed, 1, "{swept:?}");
@@ -104,7 +104,7 @@ async fn test_fleet_expiry_bills_its_last_slice() {
         "the last slice is charged once"
     );
 
-    let again = sweep(database, &biller, &Entropy::new(), held.now)
+    let again = sweep(database, &biller, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
     assert_eq!(again.expired_billed, 0, "the cursor reached the deadline");
@@ -128,7 +128,7 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
     let tail_ms = abandon(&held).await;
 
     let entropy = Entropy::new();
-    let swept = sweep(database, &biller, &entropy, held.now);
+    let swept = sweep(database, &biller, &entropy, held.now, None);
     let reported = held.fixtures.settle_alone(
         &held.leases,
         held.issued.lease_id.as_str(),

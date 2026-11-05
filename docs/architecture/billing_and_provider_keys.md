@@ -598,6 +598,8 @@ For each, one transaction moves the lease's cursor to its deadline and logs the 
 
 **The relay and metrics.** `sweeper:billing` runs every 2 seconds, and up to ten passes back to back while a pass fills its batch. It bills expired leases' last slices, then settles every unsettled line (`afd_billing::ledger::resettle`). A balance trails the charges a person reads by about one pass.
 
+Each pass resumes after the last line the previous one read, and laps back to the oldest. A work the biller keeps refusing never blocks newer charges.
+
 `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy. It records the `agentsfleet_billing_*` families and `agentsfleet.billing.credit.consumed` (`docs/metrics.census.tsv`). The relay publishes the unsettled gauges.
 
 **Removed from the fleet path:** `Accounts`' money statements, the receive charge, the pricing and debit inside the lease metering statement, the base-tier-only price read, `slice_charge` and its round-down rule. Fleet runs write only usage lines, and the event-history reads sum an event's cost from its usage lines through `idx_usage_lines_fleet_id_event_id`, a covering index (183 ms down to 5 ms in the design audit). The lease `metered_*` token cursors and the slot's runtime cursor are gone: runners report each request, and each lease meters its own run time. The fleet charges table, its trigger and schema slot 2010 are gone.

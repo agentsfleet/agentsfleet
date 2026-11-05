@@ -11,6 +11,7 @@
 use std::time::Duration;
 
 use afd_billing::biller::Biller;
+use afd_billing::ledger::Resume;
 use afd_billing::rates::Posture;
 use afd_core::error_code::ErrorCode;
 use afd_core::id::Uuid7;
@@ -50,7 +51,7 @@ pub const GRACE: Duration = Duration::from_secs(120);
 const BATCH_LIMIT: i64 = 500;
 
 /// What one pass did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BillingSwept {
     /// Works whose unsettled lines this pass settled.
     pub resettled: u64,
@@ -65,6 +66,8 @@ pub struct BillingSwept {
     pub lines_full: bool,
     /// The code of the first refusal, for the pass's one aggregate record.
     pub refused: Option<ErrorCode>,
+    /// Where the next pass's line read resumes.
+    pub resume: Option<Resume>,
 }
 
 /// A work whose settlement the biller refused this pass.
@@ -89,8 +92,9 @@ impl BillingSwept {
 /// One relay pass over fleet leases.
 ///
 /// Bills the last slice of every lease expired past [`GRACE`], then settles one
-/// batch of unsettled lines through [`afd_billing::ledger::resettle`].
-/// `entropy` mints the lines' identifiers and `now` stamps them.
+/// batch of unsettled lines after `after` through
+/// [`afd_billing::ledger::resettle`]. `entropy` mints the lines' identifiers
+/// and `now` stamps them.
 ///
 /// # Errors
 /// Reports a datastore that would not answer a read. A biller that refuses one
@@ -101,14 +105,16 @@ pub async fn sweep(
     biller: &dyn Biller,
     entropy: &Entropy,
     now: Timestamp,
+    after: Option<&Resume>,
 ) -> Result<BillingSwept> {
     let mut swept = BillingSwept::default();
     bill_expired(database, biller, entropy, now, &mut swept).await?;
-    let lines = afd_billing::ledger::resettle(database, biller).await?;
+    let lines = afd_billing::ledger::resettle(database, biller, after).await?;
     swept.resettled = lines.settled;
     swept.settle_failures = lines.failed;
     swept.lines_full = lines.full;
     swept.refused = swept.refused.or(lines.refused);
+    swept.resume = lines.resume;
 
     Ok(swept)
 }

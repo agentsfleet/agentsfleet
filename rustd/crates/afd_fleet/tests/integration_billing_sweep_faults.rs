@@ -73,10 +73,10 @@ async fn a_line_the_biller_cannot_settle_waits_for_the_next_pass() {
         .expect("the lease reported before the relay's next pass");
     let down = Faulty::over(database, Faults { settle: true });
 
-    let missed = sweep(database, down.as_ref(), &Entropy::new(), held.now)
+    let missed = sweep(database, down.as_ref(), &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
-    let recovered = sweep(database, &ledger, &Entropy::new(), held.now)
+    let recovered = sweep(database, &ledger, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
 
@@ -109,7 +109,7 @@ async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
     abandon(&held).await;
     let down = Faulty::over(database, Faults { settle: true });
 
-    let swept = sweep(database, down.as_ref(), &Entropy::new(), held.now)
+    let swept = sweep(database, down.as_ref(), &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
 
@@ -153,7 +153,7 @@ async fn a_lease_billed_while_the_pass_waited_is_skipped() {
     let biller = Arc::new(LedgerBiller::on_system_clock(database.clone()));
     let pass = tokio::spawn({
         let (database, biller, now) = (database.clone(), Arc::clone(&biller), held.now);
-        async move { sweep(&database, biller.as_ref(), &Entropy::new(), now).await }
+        async move { sweep(&database, biller.as_ref(), &Entropy::new(), now, None).await }
     });
     let deadline = tokio::time::Instant::now() + QUEUED_WITHIN;
     let mut queued = 0_i64;

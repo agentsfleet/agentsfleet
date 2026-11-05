@@ -121,10 +121,13 @@ async fn a_reported_attempt_is_settled_on_the_next_pass() {
         .await
         .expect("the report settles the attempt");
 
-    let refused =
-        afd_billing::ledger::resettle(&f.db, &LedgerBiller::on_system_clock(unreachable_db()))
-            .await
-            .expect("the line pass reads its batch");
+    let refused = afd_billing::ledger::resettle(
+        &f.db,
+        &LedgerBiller::on_system_clock(unreachable_db()),
+        None,
+    )
+    .await
+    .expect("the line pass reads its batch");
     assert_eq!(
         refused.settled, 0,
         "a biller that cannot answer charges nothing"
@@ -134,7 +137,7 @@ async fn a_reported_attempt_is_settled_on_the_next_pass() {
 
     let biller = crate::draft::fixture::ledger(&f.db);
     for pass in 0..2 {
-        afd_billing::ledger::resettle(&f.db, biller.as_ref())
+        afd_billing::ledger::resettle(&f.db, biller.as_ref(), None)
             .await
             .expect("the line pass runs");
         assert_eq!(ledger(&f, &a).await, (LINES, LINES), "pass {pass}");

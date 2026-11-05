@@ -79,7 +79,7 @@ async fn a_foreign_line_is_skipped_by_the_read_and_the_pass() {
     seed(&database, FOREIGN_WORK, None).await;
 
     let mut connection = database.acquire().await.expect("a private connection");
-    let read = unsettled(&mut *connection, READ_LIMIT)
+    let (read, _resume) = unsettled(&mut *connection, READ_LIMIT, None)
         .await
         .expect("the log reads");
     assert!(
@@ -89,7 +89,9 @@ async fn a_foreign_line_is_skipped_by_the_read_and_the_pass() {
     drop(connection);
 
     let biller = RecordingBiller::new();
-    let swept = resettle(&database, &biller).await.expect("the pass reads");
+    let swept = resettle(&database, &biller, None)
+        .await
+        .expect("the pass reads");
     assert_eq!(swept.settled, 0, "{swept:?}");
     assert!(biller.settlements().is_empty(), "nothing was settled");
 
@@ -111,7 +113,7 @@ async fn a_malformed_price_reference_refuses_the_read() {
     .await;
 
     let mut connection = database.acquire().await.expect("a private connection");
-    let refused = unsettled(&mut *connection, READ_LIMIT)
+    let refused = unsettled(&mut *connection, READ_LIMIT, None)
         .await
         .expect_err("a malformed price reference refuses");
     assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
@@ -121,6 +123,40 @@ async fn a_malformed_price_reference_refuses_the_read() {
             .contains("billing.usage_lines.platform_model_price_id"),
         "the refusal names the column: {refused}"
     );
+    drop(connection);
+
+    database.close().await;
+    lane.cleanup().await;
+}
+
+/// A full batch the relay cannot move does not hold newer lines behind it: the
+/// read resumes after the last line it returned, and a read that reaches the
+/// newest line answers no resume point, so the next read starts a new lap.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_read_resumes_after_a_full_batch_and_then_laps() {
+    const BATCH: i64 = 3;
+    let (lane, database) = private_log().await;
+    for _ in 0..=BATCH {
+        seed(&database, afd_billing::sql::work::FLEET_LEASE, None).await;
+    }
+
+    let mut connection = database.acquire().await.expect("a private connection");
+    let (first, resume) = unsettled(&mut *connection, BATCH, None)
+        .await
+        .expect("the first batch reads");
+    assert_eq!(first.len(), 3, "a full batch: {first:?}");
+    let resume = resume.expect("a full batch says where to resume");
+    let (rest, lap) = unsettled(&mut *connection, BATCH, Some(&resume))
+        .await
+        .expect("the next batch reads");
+    assert_eq!(rest.len(), 1, "the line past the stuck batch is reached");
+    let reached = rest.first().expect("one line past the batch");
+    assert!(
+        first.iter().all(|work| work.work != reached.work),
+        "the resumed read returns no line the first one did"
+    );
+    assert!(lap.is_none(), "reaching the newest line starts a new lap");
     drop(connection);
 
     database.close().await;

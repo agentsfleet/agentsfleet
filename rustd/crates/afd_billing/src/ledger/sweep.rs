@@ -35,8 +35,18 @@ const CONTEXT_OWED: &str = "read what is still owed";
 /// Lines one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
 
+/// Where the next pass resumes: just after the last line this one read.
+///
+/// The relay walks the unsettled lines oldest first in laps, so a work its
+/// biller keeps refusing never holds every newer line behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resume {
+    logged_at: Timestamp,
+    line_id: String,
+}
+
 /// What one resettling pass did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Resettled {
     /// Works whose unsettled lines this pass settled.
     pub settled: u64,
@@ -46,23 +56,29 @@ pub struct Resettled {
     pub full: bool,
     /// The code of the first refusal, for the pass's one aggregate record.
     pub refused: Option<ErrorCode>,
+    /// Where the next pass resumes; `None` once a lap reached the newest line.
+    pub resume: Option<Resume>,
 }
 
-/// Settles up to one batch of unsettled lines through `biller`, one call per
-/// work, and publishes what is still owed.
+/// Settles up to one batch of unsettled lines after `after` through `biller`,
+/// one call per work, and publishes what is still owed.
 ///
 /// # Errors
 /// The datastore would not answer a read. A biller refusing one settlement is
 /// counted, not raised: the rest of the batch still runs, and the next pass
 /// retries what failed.
-pub async fn resettle(database: &afd_db::Db, biller: &dyn Biller) -> Result<Resettled> {
-    let settlements = {
+pub async fn resettle(
+    database: &afd_db::Db,
+    biller: &dyn Biller,
+    after: Option<&Resume>,
+) -> Result<Resettled> {
+    let (settlements, resume) = {
         let mut connection = database.acquire().await?;
-        unsettled(&mut *connection, BATCH_LIMIT).await?
+        unsettled(&mut *connection, BATCH_LIMIT, after).await?
     };
-    let read: usize = settlements.iter().map(|work| work.lines.len()).sum();
     let mut done = Resettled {
-        full: i64::try_from(read).unwrap_or(i64::MAX) >= BATCH_LIMIT,
+        full: resume.is_some(),
+        resume,
         ..Resettled::default()
     };
     for settlement in &settlements {
@@ -129,17 +145,33 @@ const TABLE_LINES: &str = "billing.usage_lines";
 /// A work whose settlement the biller refused this pass; the next pass retries.
 const EVENT_REFUSED: &str = "billing_relay_refused";
 
-/// Up to `limit` unsettled lines, oldest first, grouped into one
-/// [`Settlement`] per work.
+/// Up to `limit` unsettled lines after `after`, oldest first, grouped into
+/// one [`Settlement`] per work.
+///
+/// Answers where the next read resumes when this one filled its limit, and
+/// `None` when it reached the newest line, so the next read starts a new lap.
 ///
 /// # Errors
 /// The statement would not run, or a stored identifier is not one.
-pub async fn unsettled<'e>(executor: impl PgExecutor<'e>, limit: i64) -> Result<Vec<Settlement>> {
+pub async fn unsettled<'e>(
+    executor: impl PgExecutor<'e>,
+    limit: i64,
+    after: Option<&Resume>,
+) -> Result<(Vec<Settlement>, Option<Resume>)> {
     let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED)
         .bind(limit)
+        .bind(after.map(|resume| jiff_sqlx::Timestamp::from(resume.logged_at)))
+        .bind(after.map(|resume| resume.line_id.as_str()))
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
+    let resume = (i64::try_from(rows.len()).unwrap_or(i64::MAX) >= limit)
+        .then(|| rows.last())
+        .flatten()
+        .map(|last| Resume {
+            logged_at: last.logged_at,
+            line_id: last.line_id.clone(),
+        });
     let mut works: BTreeMap<(String, String), Settlement> = BTreeMap::new();
     for row in rows {
         // A work type this build does not write, which no row it logged can
@@ -157,7 +189,7 @@ pub async fn unsettled<'e>(executor: impl PgExecutor<'e>, limit: i64) -> Result<
             works.insert(key, settlement);
         }
     }
-    Ok(works.into_values().collect())
+    Ok((works.into_values().collect(), resume))
 }
 
 /// `work`'s unsettled lines as one [`Settlement`], or `None` when it has none.
@@ -218,6 +250,9 @@ struct UnsettledRow {
     price_id: Option<String>,
     unpriced_token_count: i64,
     charged_nanos: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    logged_at: Timestamp,
+    line_id: String,
 }
 
 impl UnsettledRow {

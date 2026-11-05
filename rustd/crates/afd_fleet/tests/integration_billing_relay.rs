@@ -120,7 +120,7 @@ async fn report_returns_while_the_wallet_row_is_locked() {
 
     lock.rollback().await.expect("the lock is released");
     drop(locker);
-    let swept = sweep(database, &biller(&held), &Entropy::new(), held.now)
+    let swept = sweep(database, &biller(&held), &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
     assert_eq!(swept.resettled, 1, "{swept:?}");
@@ -187,7 +187,7 @@ async fn one_pass_settles_a_reported_lease() {
         .await
         .expect("the report settles the lease");
 
-    let swept = sweep(database, &biller(&held), &Entropy::new(), held.now)
+    let swept = sweep(database, &biller(&held), &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
     assert_eq!(swept.resettled, 1, "{swept:?}");
@@ -196,7 +196,7 @@ async fn one_pass_settles_a_reported_lease() {
         held.fixtures.balance(&held.tenant).await,
         Some(DEEP_POOL - charged)
     );
-    let again = sweep(database, &biller(&held), &Entropy::new(), held.now)
+    let again = sweep(database, &biller(&held), &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
     assert_eq!(again.resettled, 0, "{again:?}");
@@ -241,7 +241,7 @@ async fn race_passes(held: &Held, passes: usize) -> (u64, usize) {
                     in_flight.fetch_add(1, Ordering::SeqCst) + 1,
                     Ordering::SeqCst,
                 );
-                let swept = sweep(&database, &biller, &Entropy::new(), now).await;
+                let swept = sweep(&database, &biller, &Entropy::new(), now, None).await;
                 in_flight.fetch_sub(1, Ordering::SeqCst);
                 swept.expect("the pass reads").resettled
             })
