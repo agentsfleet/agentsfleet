@@ -281,18 +281,22 @@ pub(super) fn now() -> jiff::Timestamp {
 }
 
 impl Fixture {
-    /// What the billing relay does for one settled attempt: charge every line
-    /// it left unsettled and free its hold. Scoped to the attempt, so a test on
-    /// the shared database never settles another test's lines; the ledger biller
-    /// ignores the release reason.
+    /// What the billing relay does for one attempt: charge every line it left
+    /// unsettled. Scoped to the attempt, so a test on the shared database never
+    /// settles another test's lines.
     pub(crate) async fn relay(&self, attempt: &str) {
         let work = afd_billing::biller::WorkKey::AuthoringAttempt(
             afd_core::id::Uuid7::parse(attempt).expect("an attempt id"),
         );
-        ledger(&self.db)
-            .release(&work, afd_billing::biller::Release::Completed)
+        let unsettled = afd_billing::ledger::unsettled_work(&mut *self.connection().await, &work)
             .await
-            .expect("the relay moves the attempt's money");
+            .expect("the attempt's lines read");
+        if let Some(settlement) = unsettled {
+            ledger(&self.db)
+                .settle(&settlement)
+                .await
+                .expect("the relay charges the attempt's lines");
+        }
     }
 }
 

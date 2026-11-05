@@ -2,8 +2,7 @@
 //!
 //! The shared lane's sweep reads every unsettled line in it, so a foreign or
 //! corrupt row seeded there would reach every other suite's pass. These checks
-//! build a private database holding only the usage log's columns, and no
-//! `billing.holds`, so the owed read after a pass fails on its own.
+//! build a private database holding only the usage log's columns.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -30,7 +29,7 @@ const USAGE_LOG: &str = "CREATE SCHEMA billing; \
       unpriced_token_count bigint NOT NULL, charged_nanos bigint NOT NULL, \
       settled_at timestamptz, created_at timestamptz NOT NULL)";
 
-/// One unsettled line logged at the epoch, long past the grace.
+/// One unsettled line, logged at the epoch.
 const SEED_LINE: &str = "INSERT INTO billing.usage_lines \
     (work_type, work_id, seq, tenant_id, workspace_id, provider, model, posture, \
      requested_at, input_token_count, cached_input_token_count, cache_write_token_count, \
@@ -71,12 +70,11 @@ async fn seed(database: &Db, work_type: &str, price: Option<&str>) {
         .expect("the line seeds");
 }
 
-/// A line of a work type this build does not write is skipped, so the pass
-/// settles nothing; the owed read after it fails, and that failure is the
-/// pass's answer rather than a silent zero.
+/// A line of a work type this build does not write is skipped by the read, so
+/// the pass settles nothing and one foreign row cannot stall the relay.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_foreign_line_is_skipped_and_an_unread_debt_fails_the_pass() {
+async fn a_foreign_line_is_skipped_by_the_read_and_the_pass() {
     let (lane, database) = private_log().await;
     seed(&database, FOREIGN_WORK, None).await;
 
@@ -91,14 +89,8 @@ async fn a_foreign_line_is_skipped_and_an_unread_debt_fails_the_pass() {
     drop(connection);
 
     let biller = RecordingBiller::new();
-    let failed = resettle(&database, &biller)
-        .await
-        .expect_err("the owed read has no holds table to read");
-    assert_eq!(failed.code(), error_code::INTERNAL_OPERATION_FAILED);
-    assert!(
-        failed.to_string().contains("read what is still owed"),
-        "the failure names the owed read: {failed}"
-    );
+    let swept = resettle(&database, &biller).await.expect("the pass reads");
+    assert_eq!(swept.settled, 0, "{swept:?}");
     assert!(biller.settlements().is_empty(), "nothing was settled");
 
     database.close().await;

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use afd_billing::biller::conformance::{self, BALANCE};
 use afd_billing::biller::{
-    Account, Attribution, Biller, Hold, OutagePolicy, RecordingBiller, Reservation, Settlement,
+    Account, Ask, Attribution, Biller, Funds, OutagePolicy, RecordingBiller, Settlement,
     WithOutagePolicy, WorkKey,
 };
 use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
@@ -106,30 +106,65 @@ async fn the_recording_biller_passes_the_conformance_suite() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_concurrent_holds_cannot_exceed_balance() {
+async fn test_unsettled_lines_count_against_a_check() {
     let (lane, payer) = funded_lane().await;
-    conformance::racing_holds_never_exceed_the_balance(&ledger(&lane), payer).await;
+    let biller = ledger(&lane);
+    let work = WorkKey::FleetLease(mint_uuid7());
+    let mut connection = lane.pool.acquire().await.expect("the lane answers");
+    log_lines(
+        &mut *connection,
+        &Entropy::new(),
+        Timestamp::now(),
+        &settlement(&lane, &payer, &work, vec![rated(0)]),
+    )
+    .await
+    .expect("the work logs its line");
+    drop(connection);
+    let left = Nanos::from_i64(BALANCE.as_i64() - LINE.as_i64());
+    let check = |next: Nanos| {
+        let (biller, payer, work) = (biller.clone(), payer.clone(), work.clone());
+        async move {
+            biller
+                .check(&Ask { work, payer, next })
+                .await
+                .expect("the check answers")
+        }
+    };
+    assert_eq!(
+        check(left).await,
+        Funds::Covered,
+        "what the logged line leaves is covered"
+    );
+    let past = Nanos::from_i64(left.as_i64() + 1);
+    assert_eq!(
+        check(past).await,
+        Funds::Short {
+            available: left,
+            asked: past
+        },
+        "the uncharged line counts before the relay settles it"
+    );
 }
 
 #[tokio::test]
 async fn test_billing_outage_fails_open() {
-    let ask = Reservation {
+    let ask = Ask {
         work: WorkKey::FleetLease(mint_uuid7()),
         payer: Account {
             tenant: mint_uuid7(),
             workspace: mint_uuid7(),
         },
-        ceiling: LINE,
+        next: LINE,
     };
     let unreachable = || LedgerBiller::new(unreachable_db(), Entropy::new(), Arc::new(SystemClock));
     let open = WithOutagePolicy::new(unreachable(), OutagePolicy::Open);
     assert_eq!(
-        open.reserve(&ask).await.expect("an open policy answers"),
-        Hold::Unconfirmed
+        open.check(&ask).await.expect("an open policy answers"),
+        Funds::Unconfirmed
     );
     let closed = WithOutagePolicy::new(unreachable(), OutagePolicy::Closed);
     let refused = closed
-        .reserve(&ask)
+        .check(&ask)
         .await
         .expect_err("a closed policy refuses");
     assert!(
@@ -169,7 +204,13 @@ async fn test_usage_lines_deduplicate_on_sequence() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_unsettled_lines_are_resettled() {
-    let (lane, payer) = funded_lane().await;
+    // Its own database: the pass reads the oldest unsettled lines it can see.
+    let lane = Lane::isolated().await;
+    lane.wallet(BALANCE.as_i64(), None, Timestamp::now()).await;
+    let payer = Account {
+        tenant: lane.tenant.clone(),
+        workspace: lane.workspace.clone(),
+    };
     let biller = ledger(&lane);
     let work = WorkKey::FleetLease(mint_uuid7());
     let lines = settlement(&lane, &payer, &work, vec![rated(0)]);
@@ -204,8 +245,7 @@ async fn test_unsettled_lines_are_resettled() {
         "nothing charged yet"
     );
 
-    // The sweeper's own pass, not a hand-rolled retry. The lane is shared, so
-    // the pass may settle other suites' works too: assert on this one.
+    // The relay's own pass, not a hand-rolled retry.
     let swept = resettle(&lane.pool, &biller).await.expect("the pass reads");
     assert!(swept.settled >= 1, "{swept:?}");
     let stamped = settled_at(&lane, &work).await;

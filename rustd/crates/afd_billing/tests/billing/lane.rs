@@ -62,6 +62,8 @@ pub(crate) struct Line {
 }
 
 pub(crate) struct Lane {
+    /// Kept so a private database outlives the lane that seeded it.
+    _database: TestDatabase,
     pub(crate) pool: Db,
     pub(crate) accounts: Accounts,
     pub(crate) billing: Billing,
@@ -74,9 +76,26 @@ impl Lane {
     /// Seeds a tenant, one workspace and one fleet inside the lane's shared
     /// database. No wallet: a suite that wants one calls [`Self::wallet`].
     pub(crate) async fn create() -> Self {
-        let database = TestDatabase::shared();
+        Self::seeded(TestDatabase::shared()).await
+    }
+
+    /// [`Self::create`] in a private, migrated database: for a test whose pass
+    /// reads every row it can see.
+    pub(crate) async fn isolated() -> Self {
+        let database = TestDatabase::create().await;
+        let migrator = database.open(DbRole::Migrator, &[]).await;
+        afd_db::Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("the private schema migrates");
+        migrator.close().await;
+        Self::seeded(database).await
+    }
+
+    async fn seeded(database: TestDatabase) -> Self {
         let pool = database.open(DbRole::Api, &[]).await;
         let lane = Self {
+            _database: database,
             accounts: Accounts::new(pool.clone()),
             billing: Billing::new(pool.clone()),
             tenant: mint_uuid7(),

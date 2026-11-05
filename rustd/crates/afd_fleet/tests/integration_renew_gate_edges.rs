@@ -1,11 +1,10 @@
-//! The renewal's money gates at their edges: a hold already released, a fleet
-//! with no installed revision, and a ceiling or a spend that cannot be read.
+//! The renewal's money gates at their edges: a fleet with no installed
+//! revision, and a ceiling or a spend that cannot be read.
 //!
-//! `integration_renew_coverage.rs` proves the refusals. These prove the two
-//! answers either side of them: a released hold means the run is over, so the
-//! renewal is lost; a gate that cannot be read admits the run for one more
-//! slice and says which gate it was, because failing closed on an outage would
-//! stop every run in the deployment at once.
+//! `integration_renew_coverage.rs` proves the refusals. These prove that a
+//! gate with nothing to read, or that cannot be read, admits the run for one
+//! more slice and says which gate it was, because failing closed on an outage
+//! would stop every run in the deployment at once.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs them.
 #![cfg(feature = "test-util")]
@@ -14,8 +13,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_billing::biller::{Release, WorkKey};
-use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_db::config::DbRole;
 use afd_wire::report::RenewRequest;
@@ -80,30 +77,16 @@ async fn close(held: Held) {
 }
 
 /// A fleet with no installed revision has no ceiling left to read, so it
-/// renews; once its hold is released the run is over and the renewal is lost.
+/// renews.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_an_uninstalled_fleet_renews_and_a_released_hold_is_lost() {
+async fn test_an_uninstalled_fleet_renews() {
     let held = held().await;
     run(&held, UNINSTALL, &[&held.fleet]).await;
 
     let uninstalled = renew(&held).await;
-    held.fixtures
-        .plane()
-        .biller
-        .release(
-            &WorkKey::FleetLease(held.lease_key.clone()),
-            Release::Completed,
-        )
-        .await
-        .expect("the hold the renewal placed releases");
-    let released = renew(&held).await;
 
     assert!(uninstalled.is_ok(), "{:?}", uninstalled.err());
-    assert_eq!(
-        released.err().map(|error| error.code()),
-        Some(error_code::RUN_LEASE_LOST)
-    );
     close(held).await;
 }
 

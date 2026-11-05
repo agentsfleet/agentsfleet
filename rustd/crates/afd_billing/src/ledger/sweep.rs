@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 
+use afd_core::error_code::ErrorCode;
 use afd_core::id::Uuid7;
 use afd_wire::usage::UsageLine;
 use jiff::Timestamp;
@@ -23,6 +24,8 @@ use crate::rates::Posture;
 use crate::{Nanos, Result, sql};
 
 const SELECT_UNSETTLED: &str = include_str!("sql/select_unsettled.sql");
+#[cfg(feature = "test-util")]
+const SELECT_UNSETTLED_WORK: &str = include_str!("sql/select_unsettled_work.sql");
 const SELECT_WORK_CHARGED: &str = include_str!("sql/select_work_charged.sql");
 const SELECT_OWED: &str = include_str!("sql/select_owed.sql");
 
@@ -43,6 +46,8 @@ pub struct Resettled {
     pub failed: u64,
     /// Whether the pass read a whole batch, so more lines may be waiting.
     pub full: bool,
+    /// The code of the first refusal, for the pass's one aggregate record.
+    pub refused: Option<ErrorCode>,
 }
 
 /// Settles up to one batch of unsettled lines through `biller`, one call per
@@ -68,7 +73,19 @@ pub async fn resettle(database: &afd_db::Db, biller: &dyn Biller) -> Result<Rese
                 done.settled += 1;
                 metrics::sweeper_resettled(observed::work_type(&settlement.work), 1);
             }
-            Err(_fault) => done.failed += 1,
+            Err(fault) => {
+                done.failed += 1;
+                let error_code = fault.code();
+                done.refused.get_or_insert(error_code);
+                // Bound first: the macro repeats its field expressions.
+                let (work_id, error_code) = (settlement.work.id().as_str(), error_code.as_str());
+                tracing::debug!(
+                    work_id,
+                    error_code,
+                    event = EVENT_REFUSED,
+                    "the biller refused this work's settlement; the next pass retries"
+                );
+            }
         }
     }
     let owed = {
@@ -96,7 +113,6 @@ struct OwedRow {
     fleet_nanos: i64,
     authoring_nanos: i64,
     oldest_seconds: i64,
-    held_nanos: i64,
 }
 
 impl From<OwedRow> for metrics::Owed {
@@ -105,13 +121,15 @@ impl From<OwedRow> for metrics::Owed {
         Self {
             unsettled_nanos: [gauge(row.fleet_nanos), gauge(row.authoring_nanos)],
             oldest_seconds: gauge(row.oldest_seconds),
-            held_nanos: gauge(row.held_nanos),
         }
     }
 }
 
 /// The table a malformed identifier is reported against.
 const TABLE_LINES: &str = "billing.usage_lines";
+
+/// A work whose settlement the biller refused this pass; the next pass retries.
+const EVENT_REFUSED: &str = "billing_relay_refused";
 
 /// What `work`'s logged lines cost in total, settled or not.
 ///
@@ -135,10 +153,7 @@ pub async fn charged_so_far<'e>(executor: impl PgExecutor<'e>, work: &WorkKey) -
 ///
 /// # Errors
 /// The statement would not run, or a stored identifier is not one.
-pub async fn unsettled<'e>(
-    executor: impl PgExecutor<'e>,
-    limit: i64,
-) -> Result<Vec<Settlement>> {
+pub async fn unsettled<'e>(executor: impl PgExecutor<'e>, limit: i64) -> Result<Vec<Settlement>> {
     let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED)
         .bind(limit)
         .fetch_all(executor)
@@ -162,6 +177,37 @@ pub async fn unsettled<'e>(
         }
     }
     Ok(works.into_values().collect())
+}
+
+/// `work`'s unsettled lines as the one [`Settlement`] a relay pass hands the
+/// biller for it, or `None` when it has none: for a test that settles one work
+/// on a shared database without a pass over every other work's lines.
+///
+/// # Errors
+/// The statement would not run, or a stored identifier is not one.
+#[cfg(feature = "test-util")]
+pub async fn unsettled_work<'e>(
+    executor: impl PgExecutor<'e>,
+    work: &WorkKey,
+) -> Result<Option<Settlement>> {
+    let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED_WORK)
+        .bind(work.work_type())
+        .bind(work.id().as_str())
+        .fetch_all(executor)
+        .await
+        .map_err(query(CONTEXT_UNSETTLED))?;
+    let mut settlement: Option<Settlement> = None;
+    for row in rows {
+        let Some(kind) = row.work() else {
+            continue;
+        };
+        let line = row.line()?;
+        match settlement.as_mut() {
+            Some(settlement) => settlement.lines.push(line),
+            None => settlement = Some(row.settlement(kind, line)?),
+        }
+    }
+    Ok(settlement)
 }
 
 /// One unsettled line, by column name.

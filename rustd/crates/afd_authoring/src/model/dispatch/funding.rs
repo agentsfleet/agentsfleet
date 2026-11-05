@@ -71,7 +71,7 @@ impl ModelCalls {
             .await?;
         funding.ceiling = funding.ceiling(&attempt)?;
         attempt.reserved_nanos = funding.ceiling;
-        budget::hold(self.drafts.biller.as_ref(), &attempt).await?;
+        budget::covers(self.drafts.biller.as_ref(), &attempt).await?;
         Ok(Some(funding))
     }
 }

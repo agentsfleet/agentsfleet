@@ -1,17 +1,18 @@
-//! The billing relay's pass over fleet leases: settle every logged line, and
-//! release the holds of leases that ended.
+//! The billing relay's pass over fleet leases: bill the last slice of a lease
+//! that ended unreported, and settle every logged line.
 //!
 //! A lease logs its usage inside its own transaction and returns; it never
-//! settles or releases (billing §11). This pass is the only thing that moves
+//! settles (billing §11). This pass is the only thing that moves
 //! that money, through the [`Biller`] it is given, so the biller can live in
-//! another process without the lease path changing. Every call it makes is
-//! idempotent: settling keys on `(work, seq)` and releasing on the work, so a
-//! repeated pass or a second daemon's relay charges nothing twice.
+//! another process without the lease path changing. Settling is idempotent on
+//! `(work, seq)`, so a repeated pass or a second daemon's relay charges nothing
+//! twice.
 
 use std::time::Duration;
 
-use afd_billing::biller::{Biller, Release, WorkKey};
+use afd_billing::biller::Biller;
 use afd_billing::rates::Posture;
+use afd_core::error_code::ErrorCode;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -39,24 +40,13 @@ const CONTEXT_EXPIRED: &str = "billing sweep expired leases";
 /// The table a malformed expired-lease identifier is reported against.
 const TABLE_LEASES: &str = "runner.leases";
 
-/// What the finished-holds statement was doing, for [`query`].
-const CONTEXT_HOLDS: &str = "billing sweep finished holds";
-
-/// The table a malformed hold identifier is reported against.
-const TABLE_HOLDS: &str = "billing.holds";
-
-/// How long an expired, unreported lease waits before this pass bills its last
-/// slice and releases its hold, so a runner's late report still wins.
-///
-/// Measured from the lease's deadline for the slice and from its last change
-/// for the hold. A reported lease does not wait: its report billed it.
+/// How long an expired, unreported lease waits, from its deadline, before this
+/// pass bills its last slice, so a runner's late report still wins. A reported
+/// lease is never billed here: its report billed it.
 pub const GRACE: Duration = Duration::from_secs(120);
 
 /// Holds one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
-
-/// Open holds of leases that ended without releasing them.
-const SELECT_FINISHED_HOLDS: &str = include_str!("sql/select_finished_holds.sql");
 
 /// What one pass did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -65,10 +55,6 @@ pub struct BillingSwept {
     pub resettled: u64,
     /// Lines' works it could not settle; they wait for the next pass.
     pub settle_failures: u64,
-    /// Holds of finished leases this pass released.
-    pub released: u64,
-    /// Holds it could not release; they wait for the next pass.
-    pub release_failures: u64,
     /// Expired leases whose last slice this pass logged and settled.
     pub expired_billed: u64,
     /// Expired leases whose logged last slice did not settle; the line sweep
@@ -76,61 +62,52 @@ pub struct BillingSwept {
     pub expired_settle_failures: u64,
     /// Whether the line sweep read a whole batch, so more lines may wait.
     pub lines_full: bool,
+    /// The code of the first refusal, for the pass's one aggregate record.
+    pub refused: Option<ErrorCode>,
 }
 
-/// One pass: bill the last slice of every lease expired past [`GRACE`], settle
-/// one batch of unsettled lines through [`afd_billing::ledger::resettle`], then
-/// release the open hold of every reported lease and of every other finished
-/// lease past [`GRACE`].
-///
-/// The last slice comes first, so the release that follows closes a hold
-/// whose run time is already logged (spec Dimension 9.5). `entropy` mints the
-/// lines' identifiers and `now` stamps them.
+/// A work whose settlement the biller refused this pass.
+const EVENT_REFUSED: &str = "billing_relay_refused";
+
+impl BillingSwept {
+    /// Notes that the biller refused `work_id`: one `debug` record per work
+    /// (LOG-HOT), and the first code kept for the pass's aggregate.
+    fn refused(&mut self, work_id: &str, fault: &afd_billing::Error) {
+        let error_code = fault.code();
+        self.refused.get_or_insert(error_code);
+        let error_code = error_code.as_str();
+        tracing::debug!(
+            work_id,
+            error_code,
+            event = EVENT_REFUSED,
+            "the biller refused this work; the next pass retries"
+        );
+    }
+}
+
+/// One pass: bill the last slice of every lease expired past [`GRACE`], then
+/// settle one batch of unsettled lines through
+/// [`afd_billing::ledger::resettle`]. `entropy` mints the lines' identifiers
+/// and `now` stamps them.
 ///
 /// # Errors
 /// Reports a datastore that would not answer a read. A biller that refuses one
-/// settlement or release is counted, not raised: the rest of the batch still
-/// runs, and the next pass retries what failed.
+/// settlement is counted, not raised: the rest of the batch still runs, and
+/// the next pass retries what failed.
 pub async fn sweep(
     database: &Db,
     biller: &dyn Biller,
     entropy: &Entropy,
     now: Timestamp,
 ) -> Result<BillingSwept> {
-    let (expired_billed, expired_settle_failures) =
-        bill_expired(database, biller, entropy, now).await?;
+    let mut swept = BillingSwept::default();
+    bill_expired(database, biller, entropy, now, &mut swept).await?;
     let lines = afd_billing::ledger::resettle(database, biller).await?;
-    let mut swept = BillingSwept {
-        resettled: lines.settled,
-        settle_failures: lines.failed,
-        lines_full: lines.full,
-        expired_billed,
-        expired_settle_failures,
-        ..BillingSwept::default()
-    };
+    swept.resettled = lines.settled;
+    swept.settle_failures = lines.failed;
+    swept.lines_full = lines.full;
+    swept.refused = swept.refused.or(lines.refused);
 
-    let finished: Vec<FinishedHold> = {
-        let mut connection = database.acquire().await?;
-        sqlx::query_as(SELECT_FINISHED_HOLDS)
-            .bind(afd_billing::sql::work::FLEET_LEASE)
-            .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(GRACE)
-            .bind(BATCH_LIMIT)
-            .bind(sql::LEASE_STATUS_REPORTED)
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_HOLDS))?
-    };
-    for hold in finished {
-        let lease = Uuid7::parse(&hold.lease_id).map_err(row_malformed(TABLE_HOLDS, "work_id"))?;
-        match biller
-            .release(&WorkKey::FleetLease(lease), hold.release())
-            .await
-        {
-            Ok(()) => swept.released += 1,
-            Err(_fault) => swept.release_failures += 1,
-        }
-    }
     Ok(swept)
 }
 
@@ -141,13 +118,14 @@ pub async fn sweep(
 /// its own transaction, which advances its cursor to that deadline and logs
 /// the runtime line together, so a second pass, or a late report racing it,
 /// measures nothing more. A reported lease is never a candidate: its report
-/// billed it. Answers how many settled and how many did not.
+/// billed it. Counts what settled and what did not on `swept`.
 async fn bill_expired(
     database: &Db,
     biller: &dyn Biller,
     entropy: &Entropy,
     now: Timestamp,
-) -> Result<(u64, u64)> {
+    swept: &mut BillingSwept,
+) -> Result<()> {
     let candidates: Vec<String> = {
         let mut connection = database.acquire().await?;
         sqlx::query_scalar(SELECT_UNBILLED_EXPIRED_LEASES)
@@ -158,18 +136,20 @@ async fn bill_expired(
             .await
             .map_err(query(CONTEXT_EXPIRED))?
     };
-    let (mut settled, mut unsettled) = (0, 0);
     for lease_id in candidates {
         let lease = Uuid7::parse(&lease_id).map_err(row_malformed(TABLE_LEASES, "id"))?;
         let Some(settlement) = log_last_slice(database, entropy, &lease, now).await? else {
             continue;
         };
         match biller.settle(&settlement).await {
-            Ok(_receipt) => settled += 1,
-            Err(_fault) => unsettled += 1,
+            Ok(_receipt) => swept.expired_billed += 1,
+            Err(fault) => {
+                swept.expired_settle_failures += 1;
+                swept.refused(&lease_id, &fault);
+            }
         }
     }
-    Ok((settled, unsettled))
+    Ok(())
 }
 
 /// Advances `lease`'s cursor to its deadline and logs the run time between,
@@ -217,26 +197,4 @@ struct ExpiredLease {
     posture: String,
     provider: String,
     model: String,
-}
-
-/// A finished lease's open hold, by column name.
-#[derive(Debug, sqlx::FromRow)]
-struct FinishedHold {
-    lease_id: String,
-    /// `None` once retention deleted the lease row.
-    status: Option<String>,
-}
-
-impl FinishedHold {
-    /// Why the hold is released: a reported lease completed and only its
-    /// release was lost; anything else ended without a report.
-    fn release(&self) -> Release {
-        if self.status.as_deref() == Some(sql::LEASE_STATUS_REPORTED) {
-            Release::Completed
-        } else {
-            Release::Expired {
-                runtime: Duration::ZERO,
-            }
-        }
-    }
 }

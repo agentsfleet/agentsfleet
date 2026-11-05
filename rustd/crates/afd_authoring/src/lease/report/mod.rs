@@ -80,7 +80,6 @@ impl Drafts {
         }
         Ok(ack)
     }
-
 }
 
 /// What a settlement decides from, sampled under the attempt row lock.

@@ -27,7 +27,7 @@ pub(super) async fn observe(
                 balance
                     .balance
                     .as_i64()
-                    .saturating_sub(balance.held.as_i64())
+                    .saturating_sub(balance.unsettled.as_i64())
                     >= interval
             })
         }
