@@ -61,6 +61,15 @@ pub(crate) enum ErrorKind {
         source: ProviderError,
     },
 
+    /// The provider finished a turn that neither answered nor called a tool,
+    /// so the run did nothing a person could read.
+    #[error("the model provider {} with no answer", if *.cut { "stopped the turn early" } else { "finished the turn" })]
+    Silent {
+        /// Whether the provider stopped before it finished the turn, such as
+        /// at its output limit, rather than ending it by choice.
+        cut: bool,
+    },
+
     /// The provider's reply passed the bytes one turn may carry; the read
     /// ended there.
     #[error("the model provider response exceeds its byte bound of {limit} bytes")]
@@ -158,6 +167,13 @@ impl Error {
         })
     }
 
+    /// A turn that ended with neither text nor a tool call; `cut` when the
+    /// provider stopped it early rather than finishing it.
+    #[must_use]
+    pub fn silent(cut: bool) -> Self {
+        Self::from(ErrorKind::Silent { cut })
+    }
+
     /// The failure in a sentence, without its code or backtrace, for a
     /// report's detail.
     #[must_use]
@@ -175,6 +191,7 @@ impl Error {
             ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
+            | ErrorKind::Silent { .. }
             | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unsendable { .. }
@@ -192,6 +209,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Lost { .. } | ErrorKind::Ended { .. } => Some(FailureClass::TransportLoss),
             ErrorKind::Refused { .. }
+            | ErrorKind::Silent { .. }
             | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
@@ -213,6 +231,7 @@ impl Error {
             | ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
+            | ErrorKind::Silent { .. }
             | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Configuration { .. }

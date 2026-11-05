@@ -207,6 +207,13 @@ impl<'s, 'run> Harness<'s, 'run> {
                 None => break Ending::Stopped,
             };
             if turn.calls.is_empty() {
+                // A run that never called a tool and ends with no text did
+                // nothing a person can read; reporting it as an answer shows
+                // an empty reply as a success. After tool calls the work is
+                // done, so a closing turn without text still answers.
+                if turns == 1 && turn.text.trim().is_empty() {
+                    break Ending::Failed(afr_providers::Error::silent(turn.cut));
+                }
                 break Ending::Answered(turn.text);
             }
             let mut results = Vec::with_capacity(turn.calls.len());
