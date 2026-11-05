@@ -131,7 +131,9 @@ event_received frame on First (as today) → gate pass, reads overlapped → ref
 | `rustd/crates/afd_fleet/src/lease/sql/queue.rs`, `sql/lease/mod.rs` | EDIT | statement registry follows the deletions |
 | `rustd/crates/afd_fleet/src/lease/assign/ledger.rs`, `assign/mod.rs`, `assign/measured.rs` | EDIT | §2, §6: one statement, no loop, honest counts |
 | `rustd/crates/afd_fleet/src/lease/event.rs` | EDIT | §2, §4: `record_received` and `redelivery_of` go; `block` is one statement |
-| `rustd/crates/afd_fleet/src/lease/affinity.rs` | EDIT | §2: `Leases::claim` goes; `Fence::as_u64` refuses a negative fence |
+| `rustd/crates/afd_fleet/src/lease/affinity.rs` | EDIT | §2: `Leases::claim` goes; `Fence::as_u64` refuses a negative fence. §4: `let_go` takes the ending's backoff |
+| `rustd/crates/afd_core/src/timing.rs` | EDIT | §4: `CLAIM_RETRY_BACKOFF` and its compile-time relation to `LEASE_TTL` |
+| `rustd/crates/afd_fleet/src/lease/sql/lease/release_unleased_slot.sql` | EDIT | §4: the release takes a backoff interval |
 | `rustd/crates/afd_fleet/src/lease/pull/mod.rs`, `pull/held.rs`, `pull/claimed.rs`, `pull/refuse.rs`, `pull/poll.rs` | EDIT | §4: overlapped reads, `ControlFlow` |
 | `rustd/crates/afd_fleet/src/lease/pull/step.rs` | DELETE | §4: `std::ops::ControlFlow` |
 | `rustd/crates/afd_fleet/src/lease/admit/gates.rs`, `admit/mod.rs` | EDIT | §4: estimate, balance and spend overlapped |
@@ -247,11 +249,16 @@ The pass keeps its reads and their order. Two groups of reads that do not depend
 - It settles the admission `WHERE lease_fence = $fence`.
 - It sets the slot's `lease_expires_at` in the past, and the trigger recomputes `ready_at`.
 
-`settle_terminal.sql` takes the same shape for the `Terminal` ending, leaving the event status unchanged. On a datastore fault mid-pass, `let_go` releases the slot as today, so the admission is claimable on the next poll. `Step<T>` and `proceed` become `std::ops::ControlFlow<Ending, T>`.
+`settle_terminal.sql` takes the same shape for the `Terminal` ending, leaving the event status unchanged. `Step<T>` and `proceed` become `std::ops::ControlFlow<Ending, T>`.
+
+A pass that ends without settling or parking the admission frees the slot with a backoff. These endings are a datastore fault, a `Declined::Retry` from a transient gate read, an unwritten grant request, and an unreadable config. `let_go` takes the ending's backoff and sets `lease_expires_at = clock_timestamp() + CLAIM_RETRY_BACKOFF` instead of a past instant. The claim's `lease_expires_at < now` predicate then skips that fleet until the backoff passes, while `ready_at` keeps its place in the queue.
+
+Without the backoff, the oldest-first order would pick a failing fleet first on every poll and starve the fleets behind it. Today's `random()` order hides that. `CLAIM_RETRY_BACKOFF` is a new `afd_core::timing` constant of 5 s, asserted below `LEASE_TTL` at compile time. Endings that free the fleet for another runner, `Denied` and `Lost` in §5, keep the past instant.
 
 - **Dimension 4.1** — a refusal is one statement → Test `test_refused_event_ends_in_one_statement` (integration): a balance-gate refusal. The event is `gate_blocked`, the admission is settled, the slot is free, `ready_at` moved to the next admission, and the request's `pg_stat_statements` delta holds one ending statement.
 - **Dimension 4.2** — the money reads overlap → Test `test_money_gate_reads_start_together` (unit): with recording accounts doubles that block until released, all three reads have started before any completes.
-- **Dimension 4.3** — a fault frees the fleet at once → Test `test_pass_fault_releases_the_slot_for_the_next_poll` (integration, TEST-INJECT): with a refused statement injected at the grants read, the poll answers the error, and the next poll claims the same admission as `Repeat`.
+- **Dimension 4.3** — a fault frees the fleet after the backoff → Test `test_pass_fault_releases_the_slot_after_the_backoff` (integration, TEST-INJECT): a refused statement is injected at the grants read. The poll answers the error, a poll inside `CLAIM_RETRY_BACKOFF` does not claim that fleet, and a poll after it claims the same admission as `Repeat`.
+- **Dimension 4.5** — a failing fleet does not starve a healthy one → Test `test_a_failing_fleet_does_not_starve_a_healthy_one` (integration, TEST-INJECT): two ready fleets, the older one's provider read failing on every pass. Two sequential polls lease the younger fleet on the second, and the older fleet is retried only after the backoff. The false pass this rejects is a test with two runners polling concurrently, which would lease the younger fleet without any backoff.
 - **Dimension 4.4** — a stale refusal writes nothing → Test `test_refusal_under_a_stale_fence_reads_already` (integration): after the fence advanced, `block` returns `Already` and changes no row.
 
 ### §5 — A lost lease reply frees the fleet at once
@@ -309,7 +316,8 @@ Prerequisite: §1 to §6.
 | Head locked during claim | race | another transaction holds the head | skipped; the slot is untouched | `test_empty_claim_writes_nothing` |
 | Claim race | race | 100 pollers, one fleet | one winner | `test_hundred_pollers_claim_one_fleet_once` |
 | Deadlock | race | claim, report, park and admit of one fleet | slot-first order; the trigger never waits behind a claim | `test_claim_report_park_and_admit_never_deadlock` |
-| Pass fault | failure | Postgres refuses a gate read | the error is answered; the slot is released; the next poll redelivers | `test_pass_fault_releases_the_slot_for_the_next_poll` |
+| Pass fault | failure | Postgres refuses a gate read | the error is answered; the slot frees after `CLAIM_RETRY_BACKOFF`; then a poll redelivers | `test_pass_fault_releases_the_slot_after_the_backoff` |
+| Failing fleet at the head | failure | a fleet's transient gate read fails on every pass | that fleet is skipped for `CLAIM_RETRY_BACKOFF` after each failure; younger ready fleets are leased meanwhile | `test_a_failing_fleet_does_not_starve_a_healthy_one` |
 | Capacity denial | capacity | a host at its worker count | the slot is freed for another runner | `test_capacity_denial_releases_the_slot` |
 | Runner dies mid-lease | failure | SIGKILL after issue | reclaimed once after `LEASE_TTL`; the late report is refused | `test_sigkill_mid_lease_reclaims_once_and_refuses_the_late_report` |
 | Lost ring | failure | `SPUBLISH` fails | the worker leases on the 1 s retry | `test_a_held_heartbeat_is_woken_by_admitted_work` |
@@ -324,6 +332,7 @@ Prerequisite: §1 to §6.
 4. A fleet's slot is locked before its admission or lease rows, except by the trigger, which a claim never waits behind (Dimension 2.8).
 5. A poll key frees at most the one lease its worker's poll issued. `UNIQUE (runner_id, poll_key)` holds, and the arm matches this runner's active lease only (Dimension 5.1).
 6. One ring completes at most one held beat per replica, through `Notify::notify_one` (Dimension 3.1).
+7. A fleet whose pass ended with a retry is not claimed again before `CLAIM_RETRY_BACKOFF`. `let_go` writes the deadline, and the claim's `lease_expires_at < now` predicate reads it (Dimension 4.5).
 
 ## Metrics & Observability
 
@@ -346,6 +355,7 @@ Prerequisite: §1 to §6.
 | R5 | The claim plan holds at 10 000 fleets (§2) | `make test-integration-rustd` | `test_claim_plan_uses_ready_index ... ok` | P1 | |
 | R6 | No deadlock across claim, report, park and admit (§2) | `make test-integration-rustd` | `test_claim_report_park_and_admit_never_deadlock ... ok` | P0 | |
 | R7 | A lost reply is freed at once (§5) | `make test-integration-rustd` | `test_lost_lease_reply_is_freed_by_the_repeated_key ... ok` | P1 | |
+| R11 | A failing fleet does not starve a healthy one (§4) | `make test-integration-rustd` | `test_a_failing_fleet_does_not_starve_a_healthy_one ... ok` | P0 | |
 | R8 | A refusal ends in one statement (§4) | `make test-integration-rustd` | `test_refused_event_ends_in_one_statement ... ok` | P1 | |
 | R9 | The scan and the separate stamp are gone (§2) | `git grep -n -w -e SELECT_CANDIDATES -e STAMP_DELIVERY -e CLAIM_FLEET_SLOT -e MAX_CANDIDATES_PER_POLL -- rustd` | no output | P1 | |
 | R10 | Statements and commits per lease fall (Overview) | `make bench-lease PROFILE=rig` then `make bench-compare LANE=lease PROFILE=rig` | `drain_statements_per_lease` at least 7 and `drain_commits_per_lease` at least 2 below the baseline recorded at PLAN | P1 | |
