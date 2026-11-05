@@ -86,7 +86,7 @@ event_received frame on First (as today) → gate pass, reads overlapped → ref
 
 **Lock order this spec pins:** every statement that updates an existing `fleet.admissions` row locks that fleet's `runner.fleet_slots` row first, so the trigger's slot update always finds the slot already held by its own transaction. The claim takes the admission with `SKIP LOCKED` after the slot. `park` (`LOCK_ADMISSION`), the refusal, the report (`meter_lease.sql`) and the renewal already lock slot-first.
 
-`afd_approval`'s `resolve_gate.sql` and `expire_gates.sql` do not. They update every unsettled admission of the fleet, including a running head, and would take the slot through the trigger afterwards. That deadlocks against `park` and against a report settling that head. §1 changes both to lock the slot first.
+`afd_approval`'s `resolve_gate.sql` and `expire_gates.sql` do not. They update every unsettled admission of the fleet, including a running head, and would take the slot through the trigger afterwards. That deadlocks against `park` and against a report settling that head. §1 makes each a transaction whose first statement locks the slot, so the unpark also reads a fresh snapshot.
 
 The admission insert is the one writer that reaches the slot after an admission row. Its new row is invisible to every other transaction until commit, so no one can be waiting on it. Dimensions 1.6 and 2.8 prove the order.
 
@@ -138,7 +138,9 @@ The admission insert is the one writer that reaches the slot after an admission 
 | `rustd/crates/afd_fleet/src/lease/affinity.rs` | EDIT | §2: `Leases::claim` goes; `Fence::as_u64` refuses a negative fence. §4: `let_go` takes the ending's backoff |
 | `rustd/crates/afd_core/src/timing.rs` | EDIT | §4: `CLAIM_RETRY_BACKOFF` and its compile-time relation to `LEASE_TTL` |
 | `rustd/crates/afd_fleet/src/lease/sql/lease/release_unleased_slot.sql` | EDIT | §4: the release takes a backoff interval |
-| `rustd/crates/afd_approval/src/sql/resolve_gate.sql`, `rustd/crates/afd_approval/src/sql/expire_gates.sql` | EDIT | §1: lock the fleet's slot before unparking, and unpark only parked rows |
+| `rustd/crates/afd_approval/src/sql/resolve_gate.sql`, `rustd/crates/afd_approval/src/sql/expire_gates.sql` | EDIT | §1: unpark only parked rows; expiry takes the locked fleet ids |
+| `rustd/crates/afd_approval/src/sql/lock_gate_fleet_slot.sql`, `rustd/crates/afd_approval/src/sql/lock_expiring_fleet_slots.sql`, `rustd/crates/afd_approval/src/sql/mod.rs` | CREATE, EDIT | §1: the slot locks that open each transaction |
+| `rustd/crates/afd_approval/src/inbox/resolve/mod.rs`, `rustd/crates/afd_approval/src/inbox/sweep.rs` | EDIT | §1: resolve and expire run their two statements in one transaction |
 | `rustd/crates/afd_approval/tests/` gate resolution suite | EDIT | §1: Dimension 1.6's resolve and expiry ordering |
 | `rustd/crates/afd_fleet/src/lease/pull/mod.rs`, `pull/held.rs`, `pull/claimed.rs`, `pull/refuse.rs`, `pull/poll.rs` | EDIT | §4: overlapped reads, `ControlFlow` |
 | `rustd/crates/afd_fleet/src/lease/pull/step.rs` | DELETE | §4: `std::ops::ControlFlow` |
@@ -195,7 +197,13 @@ It adds an `AFTER INSERT OR UPDATE OF settled_at, parked_at` row trigger on `fle
 
 The value is recomputed, never incremented, so every writer of `fleet.admissions` keeps it exact. That covers the `afd_admission` insert, `park_waiting.sql`, `afd_approval`'s `resolve_gate.sql` and `expire_gates.sql`, `meter_lease.sql`'s settle, `settle_terminal.sql`, and future writers. The trigger names no status string, only `NULL` markers (STS).
 
-`resolve_gate.sql` and `expire_gates.sql` gain a `MATERIALIZED` step that locks the resolved fleets' slot rows `FOR UPDATE`, ordered by `fleet_id`, and their `unparked` update joins that step, so the slot is held before any admission row. The `unparked` update also gains `AND a.parked_at IS NOT NULL`. It then touches only parked admissions and never a running head. Today it rewrites every unsettled admission of the fleet, which would fire the trigger on rows that did not change.
+Gate resolution and gate expiry each become a two-statement transaction, so the slot lock comes from an earlier statement than the unpark:
+- **Resolve** (`inbox/resolve/mod.rs`): `lock_gate_fleet_slot.sql` locks the slot of the fleet that owns the gate's `action_id`, `FOR UPDATE`. Then `resolve_gate.sql` runs unchanged except for its `unparked` filter.
+- **Expire** (`inbox/sweep.rs`): `lock_expiring_fleet_slots.sql` locks the slots of every fleet with an unresolved gate past `expires_at`, ordered by `fleet_id`, and returns those fleet ids. `expire_gates.sql` then takes that array and expires only gates of those fleets. A gate that expires between the two statements waits for the next sweep, so the sweep never unparks an admission whose slot it does not hold.
+
+The order matters for correctness as well as deadlocks. Under the pool's READ COMMITTED isolation, the unpark statement's snapshot is taken after the slot wait ends. So a `park` that committed while approval waited is visible, and its row is unparked. A `park` that starts after approval took the slot waits for approval to commit, then finds the gate resolved and parks nothing. One statement that locks the slot in a CTE would keep its starting snapshot and miss that row.
+
+The `unparked` update gains `AND a.parked_at IS NOT NULL`, so it touches only parked admissions and never a running head. Today it rewrites every unsettled admission of the fleet, which would fire the trigger on rows that did not change. The isolation level is part of this proof: if the pool's default isolation ever changes, Dimension 1.6 is rerun.
 
 A lease taking or extending the slot leaves `ready_at` alone. Readiness and occupancy are separate facts: the claim reads `ready_at IS NOT NULL AND lease_expires_at < now`. A lease that lapses silently therefore becomes claimable when its deadline passes, with no writer. The backfill inserts missing slot rows for fleets with unsettled admissions and sets every slot's `ready_at` by the same rule.
 
@@ -203,7 +211,7 @@ A lease taking or extending the slot leaves `ready_at` alone. Readiness and occu
 
 - **Dimension 1.1** — a new admission arms its fleet → Test `test_admission_insert_sets_ready_at_to_the_head` (integration): admitting on a fleet with no slot creates the slot with fence 0 and `ready_at` equal to the admission's `created_at`. A second admission leaves `ready_at` unchanged.
 - **Dimension 1.2** — park disarms, resolution re-arms → Test `test_parked_head_disarms_and_gate_resolution_rearms` (integration): `park_waiting` sets `ready_at` `NULL`, and `afd_approval`'s approve sets it back to the head's `created_at`.
-- **Dimension 1.6** — gate resolution waits on the slot, never on an admission → Test `test_gate_resolution_locks_the_slot_before_any_admission` (integration): a test transaction holds the fleet's slot `FOR UPDATE`, as `park` does before its admission lock. `resolve_gate` started beside it waits on the slot and holds no admission row while it waits. The held transaction then locks the admission and commits, and both finish with no `40P01`. The same order is checked for `expire_gates`. The false pass this rejects is a contention test whose timing never interleaves the two locks.
+- **Dimension 1.6** — gate resolution waits on the slot and still unparks a concurrent park → Test `test_gate_resolution_locks_the_slot_before_any_admission` (integration). A test transaction holds the fleet's slot `FOR UPDATE`, then stamps `parked_at` on the head without committing, as `park` does. A gate resolution started beside it waits on the slot and holds no admission row while it waits. The held transaction commits, and the resolution finishes with no `40P01`. Afterwards the head's `parked_at` is `NULL` and `ready_at` equals the head's `created_at`. The same sequence is checked for gate expiry. Two false passes are rejected: a test that only checks for no deadlock, and a test whose timing never interleaves the two locks.
 - **Dimension 1.3** — settling the head moves readiness to the next → Test `test_settling_the_head_moves_ready_at_to_the_next_admission` (integration): with two admissions, a report settles the first and `ready_at` becomes the second's `created_at`. Settling the second sets `NULL`.
 - **Dimension 1.4** — a silent lapse needs no writer → Test `test_lapsed_lease_is_claimable_without_any_write` (integration): a lease whose runner stops renewing is claimed by another runner once `LEASE_TTL` passes, with no sweep run.
 - **Dimension 1.5** — the backfill is exact → Test `test_ready_backfill_matches_unsettled_heads` (integration): three fleets are seeded, one with an unsettled unparked head and one with a parked head. After the migration, only the first has `ready_at`.
@@ -325,7 +333,7 @@ Prerequisite: §1 to §6.
 | Head locked during claim | race | another transaction holds the head | skipped; the slot is untouched | `test_empty_claim_writes_nothing` |
 | Claim race | race | 100 pollers, one fleet | one winner | `test_hundred_pollers_claim_one_fleet_once` |
 | Deadlock | race | claim, report, park, gate resolution and admit of one fleet | every update of an existing admission locks the slot first | `test_claim_report_park_and_admit_never_deadlock` |
-| Approval against park | race | `resolve_gate` takes an admission between `park`'s slot and admission locks | resolution locks the slot first and waits; no cycle | `test_gate_resolution_locks_the_slot_before_any_admission` |
+| Approval against park | race | `resolve_gate` takes an admission between `park`'s slot and admission locks | resolution locks the slot in its first statement and waits; its unpark statement then reads a fresh snapshot and clears the new park; no cycle | `test_gate_resolution_locks_the_slot_before_any_admission` |
 | Pass fault | failure | Postgres refuses a gate read | the error is answered; the slot frees after `CLAIM_RETRY_BACKOFF`; then a poll redelivers | `test_pass_fault_releases_the_slot_after_the_backoff` |
 | Failing fleet at the head | failure | a fleet's transient gate read fails on every pass | that fleet is skipped for `CLAIM_RETRY_BACKOFF` after each failure; younger ready fleets are leased meanwhile | `test_a_failing_fleet_does_not_starve_a_healthy_one` |
 | Capacity denial | capacity | a host at its worker count | the slot is freed for another runner | `test_capacity_denial_releases_the_slot` |
