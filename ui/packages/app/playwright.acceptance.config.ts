@@ -70,6 +70,8 @@ const LIVE_COUNTER_SPEC = "**/fleet-count.spec.ts";
 const PULSE_WALL_SPEC = "**/multi-fleet.spec.ts";
 const FETCH_AUDIT_SPEC = "**/workspace-fetch-dedupe.spec.ts";
 const SOAK_SPEC = "**/fleet-soak.spec.ts";
+// Local-only soak helpers: run from playwright.soak-local.config.ts, never in the ladder.
+const SOAK_LOCAL_SPECS = ["**/soak-cli-smoke.spec.ts", "**/soak-hold.spec.ts"];
 
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
@@ -133,6 +135,7 @@ export default defineConfig({
         PULSE_WALL_SPEC,
         FETCH_AUDIT_SPEC,
         SOAK_SPEC,
+        ...SOAK_LOCAL_SPECS,
       ],
       grepInvert: FRAME_BUDGET,
       dependencies: [PROJECT_PREFLIGHT],
