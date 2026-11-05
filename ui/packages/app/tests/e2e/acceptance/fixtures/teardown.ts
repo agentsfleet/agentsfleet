@@ -18,7 +18,7 @@ import { clientFor } from "./api-client";
 import type { ClientHandle } from "./api-client";
 import { listFleets, listWorkspaces } from "./seed";
 import { AGENTSFLEET_STATUS, FIXTURE_KEYS } from "./constants";
-import { CONTINUITY_FLEET_PREFIX } from "./continuity-scenario";
+import { SOAK_FLEET_PREFIX } from "./soak-scenario";
 
 /**
  * agentsfleetd enforces a state-machine transition before delete:
@@ -68,7 +68,7 @@ export async function cleanWorkspaceFleets(
   const counts: SweepCounts = { removed: 0, failed: 0 };
   for (const z of fleets) {
     // Long journeys clean themselves after success; preserve failed live records.
-    if (namePrefix === undefined && z.name.startsWith(CONTINUITY_FLEET_PREFIX)) continue;
+    if (namePrefix === undefined && z.name.startsWith(SOAK_FLEET_PREFIX)) continue;
     if (namePrefix !== undefined && !z.name.startsWith(namePrefix)) continue;
     try {
       await purgeFixtureFleet(handle, workspaceId, z.id);

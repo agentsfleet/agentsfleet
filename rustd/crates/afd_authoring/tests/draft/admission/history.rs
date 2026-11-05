@@ -42,7 +42,7 @@ async fn history(f: &Fixture, draft: &Draft, lease: &Claimed) {
         seed(&mut owner, draft, lease, first, last).await;
         let plan: Value = sqlx::query_scalar(EXPLAIN)
             .bind(draft.id.as_str())
-            .bind("settled")
+            .bind(["awaiting_accounting", "settled"])
             .bind(last)
             .fetch_one(&mut owner)
             .await

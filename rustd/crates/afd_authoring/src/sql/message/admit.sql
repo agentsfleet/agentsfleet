@@ -5,19 +5,11 @@ WITH prior AS MATERIALIZED (
       FROM authoring.replay_receipts r
      WHERE r.scope = $11 AND r.operation_id = $4::uuid
        AND r.created_at > statement_timestamp() - $13::interval
-), pending AS MATERIALIZED (
-    SELECT usage_unknown
-      FROM authoring.attempts
-     WHERE draft_id = $1::uuid AND message_sequence > $14
-       AND (status <> $15 OR usage_unknown)
-     ORDER BY message_sequence DESC
-     LIMIT 1
 ), eligible AS MATERIALIZED (
     SELECT $2::bigint AS sequence
      WHERE $2::bigint IS NOT NULL
        AND $3::uuid IS NOT NULL AND $8::uuid IS NOT NULL
        AND NOT EXISTS (SELECT 1 FROM prior)
-       AND NOT COALESCE((SELECT usage_unknown FROM pending), false)
 ), expired AS (
     DELETE FROM authoring.replay_receipts
      WHERE scope = $11 AND operation_id = $4::uuid
@@ -29,7 +21,7 @@ WITH prior AS MATERIALIZED (
         (id, draft_id, sequence, operation_id, status, tenant_model_id,
          user_text, save_requested, created_at, updated_at)
     SELECT $3::uuid, $1::uuid, e.sequence, $4::uuid, $5, $6::uuid,
-           $7, $16, now(), now()
+           $7, $14, now(), now()
       -- Finish deleting an expired receipt before its unique key is reused.
       FROM eligible e CROSS JOIN (SELECT count(*) FROM expired) expired_done
     RETURNING id
@@ -52,5 +44,4 @@ WITH prior AS MATERIALIZED (
 SELECT (SELECT row_to_json(prior) FROM prior) AS prior,
        (SELECT m.sequence FROM authoring.messages m JOIN prior p ON m.id = p.resource_id::uuid
          WHERE m.draft_id = $1::uuid) AS prior_sequence,
-       COALESCE((SELECT usage_unknown FROM pending), false) AS usage_unknown,
        (SELECT last_message_sequence FROM advanced) AS sequence

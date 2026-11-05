@@ -178,3 +178,97 @@ async fn a_stopped_turn_is_counted_as_stopped() {
 
     assert_eq!(turn_outcomes(&recorded), vec![TurnOutcome::Stopped]);
 }
+
+/// Drives a run whose model plays `turns` with an empty-tooled lease.
+async fn outcome_of(turns: Vec<Vec<afr_providers::Chunk>>) -> crate::engine::RunOutput {
+    let script = crate::fixture::Script::new(turns);
+    let engine = engine(Vec::new(), &script);
+    let (output, _frames) =
+        drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
+    output
+}
+
+#[tokio::test]
+async fn a_first_turn_with_no_text_and_no_call_fails_the_run_instead_of_answering() {
+    let output = outcome_of(vec![vec![]]).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("an empty first turn must not complete the run");
+    };
+    assert_eq!(
+        failure.class, None,
+        "the fleet's error carries no failure reason"
+    );
+    assert_eq!(
+        failure.detail,
+        "the model provider finished the turn with no answer"
+    );
+    assert_eq!(output.result.content, "", "a failed run reports no answer");
+}
+
+#[tokio::test]
+async fn a_first_turn_of_only_whitespace_fails_the_run() {
+    let output = outcome_of(vec![vec![say(" \n\t ")]]).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("whitespace is not an answer");
+    };
+    assert_eq!(
+        failure.detail,
+        "the model provider finished the turn with no answer"
+    );
+}
+
+#[tokio::test]
+async fn an_empty_first_turn_cut_at_its_limit_says_it_stopped_early() {
+    let output = outcome_of(vec![vec![crate::fixture::ended(true)]]).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("a cut empty turn must not complete the run");
+    };
+    assert_eq!(
+        failure.detail,
+        "the model provider stopped the turn early with no answer"
+    );
+}
+
+#[tokio::test]
+async fn a_short_non_ascii_answer_still_completes() {
+    let output = outcome_of(vec![vec![say("✓ 東京")]]).await;
+
+    assert_eq!(
+        output.result.outcome,
+        ResultOutcome::Completed(crate::Completed)
+    );
+    assert_eq!(output.result.content, "✓ 東京");
+}
+
+#[tokio::test]
+async fn a_closing_turn_without_text_after_a_tool_call_still_completes() {
+    use afr_tools::catalog::UPDATE_PLAN;
+    let script = crate::fixture::Script::new([
+        vec![crate::fixture::call(
+            "p1",
+            UPDATE_PLAN.name(),
+            serde_json::json!({"operation": "add"}),
+        )],
+        vec![],
+    ]);
+    let engine = engine(
+        vec![crate::fixture::Canned::boxed(&UPDATE_PLAN, "done")],
+        &script,
+    );
+    let (output, _frames) = drive(
+        &engine,
+        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &CancellationToken::new(),
+    )
+    .await;
+
+    assert_eq!(
+        output.result.outcome,
+        ResultOutcome::Completed(crate::Completed),
+        "a run that acted through a tool has done its work"
+    );
+    assert_eq!(output.result.content, "");
+}

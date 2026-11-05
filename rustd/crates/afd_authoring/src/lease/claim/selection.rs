@@ -11,7 +11,7 @@ use crate::{
     draft::read,
     error::raise::query,
     funnel::{Message, Owed},
-    lease::{Status, pending},
+    lease::{FINISHED, pending},
     model,
     types::{CANCELLED, DraftState, EDITING, QUEUED},
 };
@@ -71,7 +71,8 @@ pub(super) async fn candidates(database: &Db) -> Result<Vec<Hint>> {
     let rows: Vec<HintRow> = sqlx::query_as(sql::CANDIDATES)
         .bind(EDITING)
         .bind(QUEUED)
-        .bind(Status::Settled.as_str())
+        // Only a running attempt holds the draft; one awaiting accounting does not.
+        .bind(&FINISHED[..])
         .bind(sql::SCAN_LIMIT)
         .fetch_all(&mut *database.acquire().await?)
         .await
@@ -171,7 +172,7 @@ async fn select_message(
     connection: &mut PgConnection,
     draft: read::Locked,
 ) -> Result<Option<Selected>> {
-    let outstanding = pending::current(connection, &draft).await?.is_some();
+    let outstanding = pending::running(connection, &draft).await?;
     if draft.status != DraftState::Editing || outstanding {
         return Ok(None);
     }
