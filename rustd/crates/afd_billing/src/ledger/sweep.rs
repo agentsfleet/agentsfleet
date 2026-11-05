@@ -210,11 +210,12 @@ pub async fn unsettled_work<'e>(
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
+    let kind: fn(Uuid7) -> WorkKey = match work {
+        WorkKey::FleetLease(_) => WorkKey::FleetLease,
+        WorkKey::AuthoringAttempt(_) => WorkKey::AuthoringAttempt,
+    };
     let mut settlement: Option<Settlement> = None;
     for row in rows {
-        let Some(kind) = row.work() else {
-            continue;
-        };
         let line = row.line()?;
         match settlement.as_mut() {
             Some(settlement) => settlement.lines.push(line),

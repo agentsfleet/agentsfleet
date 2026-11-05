@@ -130,12 +130,6 @@ impl Funds {
             }
         }
     }
-
-    /// Whether the work may spend.
-    #[must_use]
-    pub const fn admits(self) -> bool {
-        matches!(self, Self::Covered | Self::Unconfirmed)
-    }
 }
 
 /// Priced lines of one piece of work, ready to charge.

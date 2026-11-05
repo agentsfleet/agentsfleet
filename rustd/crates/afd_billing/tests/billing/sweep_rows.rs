@@ -99,6 +99,35 @@ async fn a_foreign_line_is_skipped_by_the_read_and_the_pass() {
     lane.cleanup().await;
 }
 
+/// What is still owed is read after every pass; a read that cannot sum it
+/// fails the pass rather than publishing a silent zero.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_unreadable_debt_fails_the_pass() {
+    let (lane, database) = private_log().await;
+    for _ in 0..2 {
+        seed(&database, afd_billing::sql::work::FLEET_LEASE, None).await;
+    }
+    sqlx::query("UPDATE billing.usage_lines SET charged_nanos = 9223372036854775807")
+        .execute(&mut *database.acquire().await.expect("a private connection"))
+        .await
+        .expect("two lines no BIGINT can sum");
+
+    let biller = RecordingBiller::new();
+    let failed = resettle(&database, &biller, None)
+        .await
+        .expect_err("the owed read overflows");
+    assert_eq!(failed.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert!(
+        failed.to_string().contains("read what is still owed"),
+        "the failure names the owed read: {failed}"
+    );
+    assert!(biller.settlements().is_empty(), "nothing was settled");
+
+    database.close().await;
+    lane.cleanup().await;
+}
+
 /// A line whose price reference is not an identifier refuses the read and
 /// names the column, rather than settling at a price nobody can trace.
 #[tokio::test]

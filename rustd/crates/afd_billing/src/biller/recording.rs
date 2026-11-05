@@ -21,7 +21,6 @@ struct State {
     balances: Vec<i64>,
     exhausted_at: Vec<Option<Timestamp>>,
     settled: HashSet<(WorkKey, u32)>,
-    checks: Vec<Ask>,
     settlements: Vec<Settlement>,
 }
 
@@ -59,12 +58,6 @@ impl RecordingBiller {
         }
     }
 
-    /// Every funds check this biller answered, in order.
-    #[must_use]
-    pub fn checks(&self) -> Vec<Ask> {
-        self.lock().checks.clone()
-    }
-
     /// Every settlement this biller was asked to charge, in order.
     #[must_use]
     pub fn settlements(&self) -> Vec<Settlement> {
@@ -85,11 +78,10 @@ impl RecordingBiller {
 #[async_trait::async_trait]
 impl Biller for RecordingBiller {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
-        let mut state = self.lock();
+        let state = self.lock();
         let index = state
             .tenant(&ask.payer.tenant)
             .ok_or_else(billing_wallet_missing)?;
-        state.checks.push(ask.clone());
         let left = Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default());
         Ok(Funds::of(left, ask.next))
     }
