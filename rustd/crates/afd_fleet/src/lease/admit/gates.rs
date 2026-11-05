@@ -28,10 +28,9 @@ const EVENT_BUDGET_BREACH: &str = "lease_budget_breach";
 
 /// The tenant's credit pool against this run's floor cost.
 ///
-/// Answers the floor when the pool covers it: the lease's first hold reserves
-/// exactly that once the lease is issued. The pool is the biller's balance
-/// less every hold other work has open, so runs already in flight count
-/// against it.
+/// Answers the floor when the pool covers it. The pool is the biller's
+/// balance less every line the tenant has logged and the relay has not yet
+/// charged, so what runs already in flight spent counts against it.
 ///
 /// Two reads, and BOTH are taken even when the first answers that the run
 /// cannot be priced. An unpriceable model costs zero to admit against, but the
@@ -61,7 +60,12 @@ pub(super) async fn balance(
         workspace: request.workspace_id.clone(),
     };
     let available = match biller.balance(&payer).await {
-        Ok(held) => Nanos::from_i64(held.balance.as_i64().saturating_sub(held.held.as_i64())),
+        Ok(funds) => Nanos::from_i64(
+            funds
+                .balance
+                .as_i64()
+                .saturating_sub(funds.unsettled.as_i64()),
+        ),
         Err(fault) if fault.is_wallet_missing() => return Ok(floor),
         Err(fault) => return BALANCE.absorb(&fault).map_or(Ok(floor), Err),
     };

@@ -295,7 +295,7 @@ Integration (CI) job that runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims hold the runner row while counting live capacity and writing a lease. Both renewal kinds hold it before extending deadlines and sample database time after acquiring it. Runtime renewal takes runner → lease/affinity → wallet.
+All claims hold the runner row while counting live capacity and writing a lease. Both renewal kinds hold it before extending deadlines and sample database time after acquiring it. Runtime renewal takes runner → lease/affinity; its funds check reads the wallet without a lock.
 
 A setup chat renewal takes draft → attempt → runner instead (`afd_authoring/src/lease/renew.rs`). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 
@@ -303,11 +303,11 @@ The claim is the one path that holds a host and then asks for a draft, and it ne
 
 So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
 
-Runtime reports take the lease row and never acquire the runner, authoring or wallet rows: the billing relay settles their lines in its own transactions (M240_002). Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage keeps its outstanding admission bound.
+Runtime reports take the lease row and never acquire the runner, authoring or wallet rows: the billing relay settles their lines in its own transactions (M240_002). Only the relay locks a wallet row, wallet then lines. Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage keeps its outstanding admission bound.
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
-No setup chat path locks the wallet row. The claim gate reads the balance less every open hold, without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`).
+No setup chat path locks the wallet row. The claim gate reads the balance less every unsettled line, without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`).
 
 Stop and delete take draft → attempt and never later take the runner guard.
 

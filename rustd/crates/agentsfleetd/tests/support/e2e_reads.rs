@@ -275,12 +275,11 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
     .expect("a count is a bigint")
 }
 
-/// How long the daemon's billing relay may take to move a report's money: a
-/// few of its 2 s passes.
+/// How long a test waits for the daemon's billing relay to settle a report's
+/// lines before its assertion names what is left; generous, so a slow
+/// machine never fails a correct relay.
 const RELAY_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
-/// How often a wait reads again, and how long a repeated report is given to
-/// show a charge before its absence is asserted: one relay pass and a margin.
-pub(crate) const RELAY_PASS: std::time::Duration = std::time::Duration::from_secs(3);
+/// How often the wait reads again.
 const RELAY_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Waits until the relay has settled every line the scenario's event logged,

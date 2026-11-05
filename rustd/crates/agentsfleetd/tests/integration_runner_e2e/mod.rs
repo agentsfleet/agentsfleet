@@ -44,8 +44,8 @@ use serde_json::{Value, json};
 
 use crate::e2e::{Scenario, scenario};
 use crate::reads::{
-    RELAY_PASS, balance, counter_column, event_column, lease_column, lease_rows, ledger_rows,
-    relay_settled, unsettled_lines,
+    balance, counter_column, event_column, lease_column, lease_rows, ledger_rows, relay_settled,
+    unsettled_lines,
 };
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
@@ -301,8 +301,7 @@ async fn assert_replay_returns_the_stored_outcome(
         logged,
         "and logs no line: nothing claimed, so nothing charged"
     );
-    // A charge, had the repeat made one, would land on the relay's next pass.
-    tokio::time::sleep(RELAY_PASS).await;
+    // No new line, so nothing for the relay to charge: the balance is final.
     assert_eq!(
         balance(run).await,
         drawn,

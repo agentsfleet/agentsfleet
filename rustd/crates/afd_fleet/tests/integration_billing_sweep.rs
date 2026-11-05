@@ -1,6 +1,5 @@
-//! The billing sweeper finishes what the lease path could not: it settles a
-//! usage line that committed without its settlement, and releases the hold of
-//! a lease that ended without releasing it.
+//! The billing relay settles what the lease path logged, and bills the last
+//! slice of a lease that ended unreported.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -11,9 +10,7 @@
 
 use std::sync::Arc;
 
-use afd_billing::biller::{
-    Account, Attribution, Biller as _, Hold, Reservation, Settlement, WorkKey,
-};
+use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines};
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
@@ -31,16 +28,13 @@ const LINE: Nanos = Nanos::from_i64(40_000);
 /// The runtime the orphaned line measured.
 const RUNTIME_MS: u32 = 400;
 
-/// The hold the finished lease left open.
-const HELD: Nanos = Nanos::from_i64(90_000);
-
 /// Ages both of a row's stamps past the sweeper's grace.
 const AGED: &str = "UPDATE {table} SET created_at = created_at - $2::interval, \
                     updated_at = updated_at - $2::interval WHERE {key} = $1::uuid";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
+async fn the_relay_settles_orphaned_lines() {
     // Its own database: a pass sweeps every unsettled line it can see, so the
     // counts below are exact only where this test's rows are the only ones.
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
@@ -50,7 +44,7 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
         Entropy::new(),
         Arc::new(afd_core::clock::SystemClock),
     );
-    orphan(&held, &biller).await;
+    orphan(&held).await;
 
     let swept = sweep(database, &biller, &Entropy::new(), held.now)
         .await
@@ -59,7 +53,6 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
         swept,
         BillingSwept {
             resettled: 1,
-            released: 1,
             ..BillingSwept::default()
         }
     );
@@ -68,18 +61,6 @@ async fn the_sweeper_settles_orphaned_lines_and_releases_finished_holds() {
         Some(DEEP_POOL - LINE.as_i64()),
         "the orphaned line is charged once"
     );
-    let open: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM billing.holds WHERE work_id = $1::uuid AND released_at IS NULL",
-    )
-    .bind(held.lease_key.as_str())
-    .fetch_one(&mut *database.acquire().await.expect("a pooled connection"))
-    .await
-    .expect("the holds count");
-    assert_eq!(
-        open, 0,
-        "the finished lease's hold no longer counts against the balance"
-    );
-
     let again = sweep(database, &biller, &Entropy::new(), held.now)
         .await
         .expect("the pass reads");
@@ -216,21 +197,12 @@ async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     .expect("the runtime lines read")
 }
 
-/// The state a crash leaves: the lease's hold placed and one line logged, then
-/// the process died — no settle, no release — and the lease expired
-/// unreported, all longer ago than the sweeper's grace.
-pub(crate) async fn orphan(held: &Held, biller: &LedgerBiller) {
+/// The state a crash leaves: one line logged, then the process died before
+/// any relay pass settled it, and the lease expired unreported, all longer ago
+/// than the grace.
+pub(crate) async fn orphan(held: &Held) {
     let database = &held.fixtures.database;
     let settlement = settlement(held).await;
-    let placed = biller
-        .reserve(&Reservation {
-            work: settlement.work.clone(),
-            payer: settlement.payer.clone(),
-            ceiling: HELD,
-        })
-        .await
-        .expect("the hold is placed");
-    assert!(matches!(placed, Hold::Held { .. }), "{placed:?}");
     log_lines(
         &mut *database.acquire().await.expect("a pooled connection"),
         &Entropy::new(),
@@ -247,11 +219,7 @@ pub(crate) async fn orphan(held: &Held, biller: &LedgerBiller) {
         .execute(&mut *connection)
         .await
         .expect("the lease ends unreported");
-    for (table, key) in [
-        ("billing.usage_lines", "work_id"),
-        ("billing.holds", "work_id"),
-        ("runner.leases", "id"),
-    ] {
+    for (table, key) in [("billing.usage_lines", "work_id"), ("runner.leases", "id")] {
         sqlx::query(sqlx::AssertSqlSafe(
             AGED.replace("{table}", table).replace("{key}", key),
         ))

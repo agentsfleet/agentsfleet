@@ -1,7 +1,7 @@
 //! The gate chain over a claimed event, entered where a suite can steer it.
 //!
 //! Every gate below the claim is proven on its own elsewhere — `installed()`
-//! against a paused fleet, `money_gates` against a drained ledger,
+//! against a paused fleet, the money gates against a drained ledger,
 //! `Gates::check` against a recorded decision. What no suite reached is the
 //! ORDER above them: which of `Plane::lease`'s endings each verdict becomes,
 //! and what the event row is left holding on the way out.
@@ -41,7 +41,6 @@ mod cases;
 mod chat;
 mod faults;
 mod history;
-mod money;
 mod seed;
 mod slack;
 mod stops;

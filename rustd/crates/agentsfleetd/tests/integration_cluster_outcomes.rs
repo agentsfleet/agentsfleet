@@ -44,7 +44,7 @@ use serde_json::json;
 
 use crate::e2e::{Scenario, dragonfly_config, scenario};
 use crate::reads::{
-    RELAY_PASS, balance, counter_column, lease_column, ledger_rows, relay_settled, unsettled_lines,
+    balance, counter_column, lease_column, ledger_rows, relay_settled, unsettled_lines,
 };
 use crate::tail::{next_frame, settle};
 use crate::wire::{
@@ -240,18 +240,17 @@ async fn a_report_settles_once_across_both_stores(
         "a repeat is acknowledged rather than refused — a runner replays because \
          it did not hear the first answer, and refusing teaches it to retry forever"
     );
-    // A charge, had the repeat made one, would land on the relay's next pass.
-    tokio::time::sleep(RELAY_PASS).await;
+    assert_eq!(
+        ledger_rows(run).await,
+        logged,
+        "the repeat logs no usage line"
+    );
+    // No new line, so nothing for the relay to charge: the balance is final.
     assert_eq!(
         balance(run).await,
         after,
         "and it charges nothing: the settlement keys on the ledger row, so a \
          replayed receipt cannot debit twice"
-    );
-    assert_eq!(
-        ledger_rows(run).await,
-        logged,
-        "with no usage line behind it either"
     );
     assert_eq!(
         counter_column(run, "succeeded_count").await.as_deref(),

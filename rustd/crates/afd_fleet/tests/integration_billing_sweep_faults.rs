@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_billing::ledger::LedgerBiller;
+use afd_core::error_code;
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::{BillingSwept, sweep};
 use afd_fleet::lease::sql::LEASE_STATUS_REPORTED;
@@ -55,29 +56,22 @@ async fn close(held: Held) {
     held.fixtures.cleanup().await;
 }
 
-/// A reported lease's open hold the biller cannot release is counted and
-/// left open; the next pass, with the biller back, releases it as completed.
+/// A reported lease's line the biller cannot settle is counted and left
+/// unsettled; the next pass, with the biller back, settles it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
+async fn a_line_the_biller_cannot_settle_waits_for_the_next_pass() {
     let held = isolated().await;
     let database = &held.fixtures.database;
     let ledger = LedgerBiller::on_system_clock(database.clone());
-    orphan(&held, &ledger).await;
+    orphan(&held).await;
     sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1::uuid")
         .bind(held.lease_key.as_str())
         .bind(LEASE_STATUS_REPORTED)
         .execute(&mut *database.acquire().await.expect("a connection"))
         .await
-        .expect("the lease reported before its release was lost");
-    let down = Faulty::over(
-        database,
-        Faults {
-            settle: true,
-            release: true,
-            ..Faults::NONE
-        },
-    );
+        .expect("the lease reported before the relay's next pass");
+    let down = Faulty::over(database, Faults { settle: true });
 
     let missed = sweep(database, down.as_ref(), &Entropy::new(), held.now)
         .await
@@ -90,7 +84,7 @@ async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
         missed,
         BillingSwept {
             settle_failures: 1,
-            release_failures: 1,
+            refused: Some(error_code::INTERNAL_DB_UNAVAILABLE),
             ..BillingSwept::default()
         }
     );
@@ -98,7 +92,6 @@ async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
         recovered,
         BillingSwept {
             resettled: 1,
-            released: 1,
             ..BillingSwept::default()
         }
     );
@@ -114,13 +107,7 @@ async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
     let held = isolated().await;
     let database = &held.fixtures.database;
     abandon(&held).await;
-    let down = Faulty::over(
-        database,
-        Faults {
-            settle: true,
-            ..Faults::NONE
-        },
-    );
+    let down = Faulty::over(database, Faults { settle: true });
 
     let swept = sweep(database, down.as_ref(), &Entropy::new(), held.now)
         .await
@@ -131,6 +118,7 @@ async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
         BillingSwept {
             settle_failures: 1,
             expired_settle_failures: 1,
+            refused: Some(error_code::INTERNAL_DB_UNAVAILABLE),
             ..BillingSwept::default()
         }
     );

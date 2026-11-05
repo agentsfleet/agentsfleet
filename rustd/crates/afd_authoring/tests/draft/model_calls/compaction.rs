@@ -4,9 +4,7 @@ use super::{
     fixture,
 };
 use afd_authoring::{Drafts, ProviderRequest, ProviderResponse, Transport, types::Source};
-use afd_billing::biller::{
-    Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey,
-};
+use afd_billing::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
 use afd_billing::ledger::LedgerBiller;
 use afd_crypto::entropy::Entropy;
 use serde_json::{Value, json};
@@ -26,21 +24,18 @@ struct ChangedHistory {
 
 #[async_trait::async_trait]
 impl Biller for ChangedHistory {
-    async fn reserve(&self, ask: &Reservation) -> afd_billing::Result<Hold> {
-        let hold = self.ledger.reserve(ask).await?;
+    async fn check(&self, ask: &Ask) -> afd_billing::Result<Funds> {
+        let funds = self.ledger.check(ask).await?;
         // The first preparation has committed and dropped its connection here.
         let written = sqlx::query("UPDATE authoring.messages SET answer_text='changed after measurement' WHERE draft_id=$1::uuid AND sequence=1")
             .bind(self.draft.as_str())
             .execute(&mut *self.db.acquire().await.expect("biller boundary releases the pool"))
             .await.expect("controlled source change between measured funding and dispatch");
         assert_eq!(written.rows_affected(), 1);
-        Ok(hold)
+        Ok(funds)
     }
     async fn settle(&self, settlement: &Settlement) -> afd_billing::Result<Receipt> {
         self.ledger.settle(settlement).await
-    }
-    async fn release(&self, work: &WorkKey, why: Release) -> afd_billing::Result<()> {
-        self.ledger.release(work, why).await
     }
     async fn balance(&self, payer: &Account) -> afd_billing::Result<Balance> {
         self.ledger.balance(payer).await

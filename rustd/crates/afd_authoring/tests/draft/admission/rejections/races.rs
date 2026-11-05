@@ -106,7 +106,7 @@ async fn settle(f: &Fixture, lease: &Claimed) {
     assert!(duplicate.settled);
     assert!(duplicate.replayed);
     f.relay(&lease.attempt_id).await;
-    assert_eq!(state(f, lease).await, ("settled".into(), false, 1, false));
+    assert_eq!(state(f, lease).await, ("settled".into(), false, 1));
 }
 
 // Value: protects=Stop owns the terminal event even when a late provider rejects;
