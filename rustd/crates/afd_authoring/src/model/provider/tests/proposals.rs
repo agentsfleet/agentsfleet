@@ -124,7 +124,7 @@ fn initialization_requires_native_policy_types() -> Result<(), Box<dyn std::erro
                 json!({"proposal":{"kind":"initialize","definition":proposed}}),
             ),
         );
-        let result = serde_json::to_value(proposal(&call, None)?)?;
+        let result = serde_json::to_value(proposal(&call, None, None)?)?;
         assert_eq!(result.get("reason").is_some(), malformed);
         assert_eq!(result.get("proposal").is_some(), !malformed);
         if malformed {
@@ -155,7 +155,7 @@ fn instruction_edits_use_exact_text_anchors_instead_of_model_counted_offsets() {
 fn structured_edits_decode_without_weakening_native_revision_validation()
 -> Result<(), Box<dyn std::error::Error>> {
     let base = candidate("")?;
-    let accepted = proposal(&edit(&json!("1"))?, Some(&base))?;
+    let accepted = proposal(&edit(&json!("1"))?, Some(&base), None)?;
     assert_eq!(
         serde_json::to_value(accepted)?.pointer("/proposal/base_candidate_revision"),
         Some(&json!("1"))
@@ -168,7 +168,7 @@ fn structured_edits_decode_without_weakening_native_revision_validation()
         json!(true),
     ] {
         assert_eq!(
-            serde_json::to_value(proposal(&edit(&invalid)?, Some(&base))?)?,
+            serde_json::to_value(proposal(&edit(&invalid)?, Some(&base), None)?)?,
             json!({"id":"proposal-fixture","reason":"invalid_arguments"})
         );
     }
