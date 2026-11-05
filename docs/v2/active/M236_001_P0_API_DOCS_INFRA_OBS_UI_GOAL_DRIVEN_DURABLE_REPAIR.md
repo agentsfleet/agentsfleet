@@ -24,7 +24,7 @@
 **Design flow:** message admission → configured intent decision → native DT creation/association → action/evidence → goal assessment → native transition.
 
 Indy approved these mechanisms for implementation on November 3, 2026.
-No runtime behavior or passing acceptance is claimed.
+Native ownership, task reads and decision accounting are implemented; automatic work, effects, waits and R2 recovery remain pending.
 Indy selected Durable Tasks (DTs), configurable decisions per runner, initial TypeSafe `jev-latest` and Cloudflare R2.
 Concrete interfaces and default limits are defined below and in their owning architecture pages.
 Runtime implementation is authorized; live activation requires the declared configuration and proof.
