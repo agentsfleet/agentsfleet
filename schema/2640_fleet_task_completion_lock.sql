@@ -7,9 +7,9 @@ RETURNS TABLE (id UUID)
 LANGUAGE sql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $$
     SELECT c.id FROM fleet.task_completions c
-    JOIN fleet.task_completion_fanout p ON p.completion_id = c.id
-    WHERE retention > INTERVAL '0 seconds' AND batch_limit > 0
-      AND c.received_at <= statement_timestamp() - GREATEST(retention, INTERVAL '72 hours')
+    JOIN fleet.task_completion_fanout p ON p.task_completion_id = c.id
+    WHERE retention > make_interval(secs => 0) AND batch_limit > 0
+      AND c.received_at <= statement_timestamp() - GREATEST(retention, make_interval(hours => 72))
       AND p.finished_at IS NOT NULL
     ORDER BY c.received_at, c.id
     LIMIT LEAST(GREATEST(batch_limit, 0), 256)

@@ -10,37 +10,17 @@ use afd_db::{Migrator, config::DbRole, test_util::TestDatabase};
 const QUEUE_MIGRATION: i64 = 2110;
 const RECEIPT_DROP_MIGRATION: i64 = 2120;
 const DISPATCH_DEADLINE_MIGRATION: i64 = 2130;
-const CLAIM_ORDER_MIGRATION: i64 = 2140;
-const GATE_DEADLINE_MIGRATION: i64 = 2150;
-const CONTEXT_CHECKPOINT_MIGRATION: i64 = 2160;
-const MESSAGE_SAVE_MIGRATION: i64 = 2170;
-const EVENT_TYPE_INDEX_MIGRATION: i64 = 2180;
-const TASK_ITEMS_MIGRATION: i64 = 2190;
-const TASKS_MIGRATION: i64 = 2200;
-const TASK_INPUTS_MIGRATION: i64 = 2210;
-const TASK_BINDINGS_MIGRATION: i64 = 2220;
-const DECISION_REVISIONS_MIGRATION: i64 = 2230;
-const MODEL_DECISIONS_MIGRATION: i64 = 2240;
-const DECISION_PRICES_MIGRATION: i64 = 2250;
-const RUNNER_DECISION_MODEL_MIGRATION: i64 = 2260;
-const LEASE_DECISION_SNAPSHOT_MIGRATION: i64 = 2270;
-const DECISION_CALLS_MIGRATION: i64 = 2280;
-const DECISION_PAYLOADS_MIGRATION: i64 = 2290;
-
 // A higher dispatch slot must not hide an unapplied queue upgrade.
 static DISPATCH_ONLY: std::sync::LazyLock<Vec<afd_db::migration::Migration>> =
     std::sync::LazyLock::new(|| {
         afd_db::migration::MIGRATIONS
             .iter()
             .copied()
+            // Recreate the historical M230 boundary; later migrations may
+            // depend on the queue columns intentionally absent from this setup.
             .filter(|migration| {
-                ![
-                    QUEUE_MIGRATION,
-                    RECEIPT_DROP_MIGRATION,
-                    CLAIM_ORDER_MIGRATION,
-                    GATE_DEADLINE_MIGRATION,
-                ]
-                .contains(&migration.version())
+                migration.version() <= DISPATCH_DEADLINE_MIGRATION
+                    && ![QUEUE_MIGRATION, RECEIPT_DROP_MIGRATION].contains(&migration.version())
             })
             .collect()
     });
@@ -138,29 +118,12 @@ async fn test_receipt_drop_migration_applies_populated() {
         .expect("schema before removal");
     let (fleet, admission) = populate_before_drop(&db).await;
     let outcome = Migrator::new().run(&db).await.expect("populated upgrade");
-    assert_eq!(
-        outcome.applied,
-        [
-            RECEIPT_DROP_MIGRATION,
-            DISPATCH_DEADLINE_MIGRATION,
-            CLAIM_ORDER_MIGRATION,
-            GATE_DEADLINE_MIGRATION,
-            CONTEXT_CHECKPOINT_MIGRATION,
-            MESSAGE_SAVE_MIGRATION,
-            EVENT_TYPE_INDEX_MIGRATION,
-            TASK_ITEMS_MIGRATION,
-            TASKS_MIGRATION,
-            TASK_INPUTS_MIGRATION,
-            TASK_BINDINGS_MIGRATION,
-            DECISION_REVISIONS_MIGRATION,
-            MODEL_DECISIONS_MIGRATION,
-            DECISION_PRICES_MIGRATION,
-            RUNNER_DECISION_MODEL_MIGRATION,
-            LEASE_DECISION_SNAPSHOT_MIGRATION,
-            DECISION_CALLS_MIGRATION,
-            DECISION_PAYLOADS_MIGRATION,
-        ]
-    );
+    let expected: Vec<_> = migrations
+        .iter()
+        .skip(removal)
+        .map(afd_db::migration::Migration::version)
+        .collect();
+    assert_eq!(outcome.applied, expected);
     let mut connection = db.acquire().await.expect("database");
     let old_columns: i64 = sqlx::query_scalar("SELECT count(*) FROM information_schema.columns WHERE (table_schema='fleet' AND table_name='admissions' AND column_name=ANY($1)) OR (table_schema='runner' AND table_name='leases' AND column_name='receipt')")
         .bind(&["receipt", "replay_count", "replay_claim_expires_at"][..])
@@ -194,16 +157,13 @@ async fn test_queue_upgrade_after_dispatch_deadline_preserves_admission() {
     assert!(installed.applied.contains(&DISPATCH_DEADLINE_MIGRATION));
     let (_, admission) = populate_before_drop(&db).await;
     let outcome = Migrator::new().run(&db).await.expect("M226 after M230");
-    assert_eq!(
-        outcome.applied,
-        [
-            QUEUE_MIGRATION,
-            RECEIPT_DROP_MIGRATION,
-            CLAIM_ORDER_MIGRATION,
-            GATE_DEADLINE_MIGRATION
-        ]
-    );
-    assert!(outcome.skipped.contains(&DISPATCH_DEADLINE_MIGRATION));
+    let expected: Vec<_> = afd_db::migration::MIGRATIONS
+        .iter()
+        .map(afd_db::migration::Migration::version)
+        .filter(|version| !installed.applied.contains(version))
+        .collect();
+    assert_eq!(outcome.applied, expected);
+    assert_eq!(outcome.skipped, installed.applied);
     let mut connection = db.acquire().await.expect("database");
     let fence: i64 = sqlx::query_scalar(
         "UPDATE fleet.admissions SET lease_fence=1, settled_at=clock_timestamp() \

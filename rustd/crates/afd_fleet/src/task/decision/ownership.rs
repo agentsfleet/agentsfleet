@@ -164,6 +164,10 @@ pub(super) async fn authorize_source(
             .bind(LEASE_STATUS_ACTIVE)
             .bind(source_id.as_str())
             .bind(false)
+            .bind(afd_admission::Producer::SlackMention.as_str())
+            .bind(afd_connector::Provider::Slack.id())
+            .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+            .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
             .fetch_optional(connection)
             .await
             .map_err(query("claim the next native human decision source"))?

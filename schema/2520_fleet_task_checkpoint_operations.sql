@@ -1,6 +1,6 @@
 -- Opaque retry receipts outlive private plan retention and owner deletion.
 CREATE TABLE fleet.task_checkpoint_operations (
-    checkpoint_id UUID PRIMARY KEY,
+    task_checkpoint_id UUID PRIMARY KEY,
     task_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,

@@ -19,7 +19,7 @@ CREATE TABLE fleet.task_effects (
     request_digest TEXT NOT NULL,
     repository_id BIGINT NOT NULL,
     installation_id BIGINT NOT NULL,
-    issuance_deadline TIMESTAMPTZ(3) NOT NULL,
+    issuance_expires_at TIMESTAMPTZ(3) NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_task_effects_ordinal UNIQUE (task_id, ordinal),
     CONSTRAINT uq_task_effects_operation UNIQUE (task_id, operation_id)

@@ -1,6 +1,6 @@
 WITH completed AS (
     UPDATE fleet.task_storage_purges p SET completed_at = clock_timestamp(), updated_at = now()
-    WHERE p.object_id = $1::uuid AND p.workspace_id = $2::uuid AND p.completed_at IS NULL
+    WHERE p.task_object_id = $1::uuid AND p.workspace_id = $2::uuid AND p.completed_at IS NULL
     RETURNING p.accounted_bytes, p.stored
 )
 UPDATE fleet.task_storage_quota q

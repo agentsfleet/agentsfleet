@@ -27,6 +27,7 @@ pub(super) struct TaskRow {
     pub stop_generation: i64,
     pub covered_input_sequence: i64,
     pub input_sequence: i64,
+    #[sqlx(rename = "task_checkpoint_id")]
     pub checkpoint_id: Option<String>,
     pub checkpoint_generation: Option<i64>,
     pub effect_cursor: i64,

@@ -17,7 +17,7 @@ CREATE TABLE fleet.task_waits (
     baseline_digest TEXT NOT NULL,
     due_at TIMESTAMPTZ(3) NOT NULL,
     expires_at TIMESTAMPTZ(3) NOT NULL,
-    cooldown_until TIMESTAMPTZ(3) NOT NULL,
+    cooldown_expires_at TIMESTAMPTZ(3) NOT NULL,
     fallback_count INTEGER NOT NULL CHECK (fallback_count >= 0),
     initial_read_at TIMESTAMPTZ(3),
     signalled_at TIMESTAMPTZ(3),

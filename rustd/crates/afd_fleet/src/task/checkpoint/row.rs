@@ -21,6 +21,7 @@ pub(super) struct Plan {
     pub request_digest: String,
     pub mode: String,
     pub repository: String,
+    #[sqlx(rename = "task_base_id")]
     pub base_id: Option<String>,
     pub format_version: i32,
     pub toolbox_digest: String,
@@ -42,6 +43,7 @@ pub(super) struct Plan {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub expires_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    #[sqlx(rename = "transfer_expires_at")]
     pub transfer_deadline: jiff::Timestamp,
     pub ready: bool,
     pub abandoned: bool,
@@ -139,6 +141,7 @@ pub(super) struct Pin {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub expires_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    #[sqlx(rename = "operation_expires_at")]
     pub operation_deadline: jiff::Timestamp,
     pub released: bool,
 }

@@ -1,6 +1,6 @@
 UPDATE fleet.tasks t SET checkpoint_cleanup_at = (
     SELECT min(due.at) FROM (
-        SELECT c.transfer_deadline AS at FROM fleet.task_checkpoints c WHERE c.task_id = t.id AND c.ready_at IS NULL AND c.abandoned_at IS NULL
+        SELECT c.transfer_expires_at AS at FROM fleet.task_checkpoints c WHERE c.task_id = t.id AND c.ready_at IS NULL AND c.abandoned_at IS NULL
         UNION ALL
         SELECT p.expires_at FROM fleet.task_object_pins p WHERE p.task_id = t.id AND p.released_at IS NULL AND p.expires_at > clock_timestamp()
         UNION ALL

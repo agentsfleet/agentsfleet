@@ -11,7 +11,7 @@ CREATE TABLE fleet.task_checkpoints (
     stop_generation BIGINT NOT NULL CHECK (stop_generation >= 0),
     mode TEXT NOT NULL,
     repository TEXT NOT NULL,
-    base_id UUID,
+    task_base_id UUID,
     commit_oid TEXT,
     format_version INTEGER NOT NULL CHECK (format_version > 0),
     toolbox_digest TEXT NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE fleet.task_checkpoints (
     owner_lease_id UUID NOT NULL,
     owner_fence BIGINT NOT NULL,
     expires_at TIMESTAMPTZ(3) NOT NULL,
-    transfer_deadline TIMESTAMPTZ(3) NOT NULL,
+    transfer_expires_at TIMESTAMPTZ(3) NOT NULL,
     ready_at TIMESTAMPTZ(3),
     abandoned_at TIMESTAMPTZ(3),
     created_at TIMESTAMPTZ(3) NOT NULL,
@@ -37,14 +37,14 @@ CREATE TABLE fleet.task_checkpoints (
         REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE CASCADE,
     CONSTRAINT fk_task_checkpoint_revision FOREIGN KEY (accepted_revision_id, fleet_id)
         REFERENCES fleet.revisions (id, fleet_id),
-    CONSTRAINT fk_task_checkpoints_base FOREIGN KEY (base_id, workspace_id, repository)
+    CONSTRAINT fk_task_checkpoints_base FOREIGN KEY (task_base_id, workspace_id, repository)
         REFERENCES fleet.task_bases (id, workspace_id, repository),
     CONSTRAINT uq_task_checkpoint_scope UNIQUE (id, task_id, fleet_id, workspace_id),
     CONSTRAINT uq_task_checkpoint_workspace UNIQUE (id, workspace_id),
     CONSTRAINT uq_task_checkpoint_generation UNIQUE (task_id, generation),
     CONSTRAINT ck_task_checkpoint_root CHECK ((ready_at IS NULL) OR (manifest_root IS NOT NULL))
 );
-CREATE INDEX idx_task_checkpoints_base ON fleet.task_checkpoints (base_id) WHERE base_id IS NOT NULL;
+CREATE INDEX idx_task_checkpoints_base ON fleet.task_checkpoints (task_base_id) WHERE task_base_id IS NOT NULL;
 CREATE UNIQUE INDEX uq_task_checkpoint_capture ON fleet.task_checkpoints (task_id)
     WHERE ready_at IS NULL AND abandoned_at IS NULL;
 CREATE INDEX idx_task_checkpoints_expiry ON fleet.task_checkpoints ((COALESCE(abandoned_at, expires_at)), id)

@@ -39,6 +39,9 @@ pub(in crate::task) async fn load(
         .bind(admission.as_str())
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
         .fetch_optional(connection)
         .await
         .map_err(query("lock durable task source"))?

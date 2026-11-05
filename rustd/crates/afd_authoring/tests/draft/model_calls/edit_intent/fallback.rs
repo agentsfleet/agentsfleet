@@ -75,12 +75,16 @@ async fn a_revoked_profile_makes_the_inflight_answer_stale_but_retains_usage() {
         server.finish().await;
     };
     let (response, ()) = tokio::join!(response, observe);
-    let response = response.expect("stale decision fallback");
-    assert!(matches!(
-        response.proposal_calls.as_slice(),
-        [ProposalCall::Proposed { .. }]
-    ));
+    assert_eq!(
+        response
+            .expect_err("catalogue revocation also fences the pinned chat model")
+            .code(),
+        afd_core::error_code::AUTHORING_MODEL
+    );
     assert_eq!(case.journal().await, ("stale".into(), Some(112), true));
+    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
+        .bind(case.attempt.id.as_str()).fetch_one(&mut *case.f.connection().await).await.expect("revoked result retains only accounting");
+    assert_eq!(receipt, (true, "known".into()));
     case.finish().await;
 }
 

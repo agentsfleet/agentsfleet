@@ -10,7 +10,7 @@ WITH inserted AS (
     ON CONFLICT (workspace_id, scope_fleet_id, installation_id, repository_id, run_id, run_attempt) DO NOTHING
     RETURNING id
 ), progress AS (
-    INSERT INTO fleet.task_completion_fanout (completion_id, next_attempt_at, created_at, updated_at)
-    SELECT id, clock_timestamp(), now(), now() FROM inserted RETURNING completion_id
+    INSERT INTO fleet.task_completion_fanout (task_completion_id, next_attempt_at, created_at, updated_at)
+    SELECT id, clock_timestamp(), now(), now() FROM inserted RETURNING task_completion_id
 )
 SELECT count(*)::bigint FROM progress

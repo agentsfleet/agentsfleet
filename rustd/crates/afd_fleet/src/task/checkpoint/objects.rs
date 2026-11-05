@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Serialize)]
 struct NewObject {
     id: String,
+    #[serde(rename = "task_identity_key_id")]
     identity_key_id: String,
     content_identity: String,
     plaintext_digest: String,

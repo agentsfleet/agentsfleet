@@ -84,6 +84,10 @@ pub(super) async fn read(
         .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
         .bind(None::<&str>)
         .bind(true)
+        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
         .fetch_all(&mut *tx)
         .await
         .map_err(query("read complete eligible human inputs"))?;

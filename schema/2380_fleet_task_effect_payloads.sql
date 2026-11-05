@@ -1,6 +1,6 @@
 -- Private repository/branch/workflow details purge with their native task owner.
 CREATE TABLE fleet.task_effect_payloads (
-    effect_id UUID PRIMARY KEY REFERENCES fleet.task_effects (id),
+    task_effect_id UUID PRIMARY KEY REFERENCES fleet.task_effects (id),
     task_id UUID NOT NULL,
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,

@@ -135,7 +135,7 @@ async fn completions(
     let ids: Vec<_> = (0..count).map(|_| mint_id()).collect();
     sqlx::query("INSERT INTO fleet.task_completions (id, workspace_id, installation_id, repository_id, head_oid, workflow_id, run_id, run_number, run_attempt, conclusion, body_digest, received_at, created_at) SELECT id::uuid, $1::uuid, 1, 1, repeat('a',40), 1, number, number, 1, 'success', repeat('b',64), statement_timestamp()-$3::interval, statement_timestamp() FROM unnest($2::text[]) WITH ORDINALITY AS owned(id,number)")
         .bind(workspace).bind(&ids).bind(age).execute(&mut *connection).await.expect("owned immutable completions");
-    sqlx::query("INSERT INTO fleet.task_completion_fanout (completion_id, next_attempt_at, finished_at, created_at, updated_at) SELECT id::uuid, statement_timestamp(), CASE WHEN $2 THEN statement_timestamp() ELSE NULL END, statement_timestamp(), statement_timestamp() FROM unnest($1::text[]) AS owned(id)")
+    sqlx::query("INSERT INTO fleet.task_completion_fanout (task_completion_id, next_attempt_at, finished_at, created_at, updated_at) SELECT id::uuid, statement_timestamp(), CASE WHEN $2 THEN statement_timestamp() ELSE NULL END, statement_timestamp(), statement_timestamp() FROM unnest($1::text[]) AS owned(id)")
         .bind(&ids).bind(finished).execute(connection).await.expect("owned fanout custody");
     ids
 }
