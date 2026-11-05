@@ -6,19 +6,18 @@
 )]
 use self::harness::{Fleet, json_body, send};
 use crate::harness;
-use afd_auth::credential::Presented;
-use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_db::Db;
-use afd_db::config::DbRole;
-use afd_db::test_util::{
-    ApiKeySeed, ModelSeed, PlatformDefault, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
-};
+use afd_db::test_util::{PlatformDefault, mint_id};
 use http::{Method, StatusCode};
 use serde_json::Value;
 const SUBJECT: &str = "user_live_platform_catalogue";
 const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","metadata":{"display_name":"Fixture model","context_cap_tokens":200000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
 const MODEL_UPDATE: &str = r#"{"metadata":{"display_name":"Fixture model","context_cap_tokens":250000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"6","cached_input_nanos_per_mtok":"2","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"30","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+#[path = "integration_admin/fixture.rs"]
+mod fixture;
+use fixture::Fixture;
+#[path = "integration_admin/decision_models.rs"]
+mod decision_models;
 #[path = "integration_admin/model_refusals.rs"]
 mod model_refusals;
 #[tokio::test]
@@ -33,6 +32,7 @@ async fn platform_models_and_keys_complete_real_http_lifecycles() {
     )
     .router();
     exercise_models(&router, &fixture.token).await;
+    decision_models::lifecycle(&router, &fixture).await;
     // The platform-key route creates this provider's default through the
     // product; the hold removes it even when an assertion fails first.
     let platform_default =
@@ -275,98 +275,4 @@ fn contains_provider(document: &Value, expected: &str) -> bool {
             keys.iter()
                 .any(|key| key.get("provider").and_then(Value::as_str) == Some(expected))
         })
-}
-
-struct Fixture {
-    lane: TestDatabase,
-    database: Db,
-    tenant: String,
-    key: String,
-    token: String,
-    workspace: String,
-    platform_model_row: String,
-    platform_model: String,
-    provider: String,
-}
-
-impl Fixture {
-    async fn create() -> Self {
-        let lane = TestDatabase::shared();
-        let first = mint_id().replace('-', "");
-        let second = mint_id().replace('-', "");
-        let provider = mint_id().replace('-', "");
-        Self {
-            database: lane.open(DbRole::Api, &[]).await,
-            tenant: mint_id(),
-            key: mint_id(),
-            token: format!("agt_t{first}{second}"),
-            workspace: mint_id(),
-            platform_model_row: mint_id(),
-            platform_model: "platform-key-model".to_owned(),
-            provider,
-            lane,
-        }
-    }
-
-    fn platform_key_body(&self) -> String {
-        serde_json::json!({
-            "provider": self.provider,
-            "source_workspace_id": self.workspace,
-            "model": self.platform_model,
-        })
-        .to_string()
-    }
-
-    async fn seed(&self) {
-        let digest = Digest::of(&Presented::new(&self.token).expect("the fixture token is valid"));
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        TenantSeed::new(&self.tenant)
-            .name("Platform catalogue")
-            .insert(&mut *connection)
-            .await
-            .expect("the platform tenant seeds");
-        WorkspaceSeed::new(&self.workspace, &self.tenant)
-            .name("platform-default")
-            .insert(&mut *connection)
-            .await
-            .expect("its workspace seeds");
-        ApiKeySeed::new(&self.key, &self.tenant, digest.as_str(), SUBJECT)
-            .name("platform")
-            .insert(&mut *connection)
-            .await
-            .expect("the platform credential seeds");
-        ModelSeed::new(
-            &self.platform_model_row,
-            &self.provider,
-            &self.platform_model,
-            200_000,
-        )
-        .rates(5, 1, 25)
-        .insert(&mut *connection)
-        .await
-        .expect("the platform-default model seeds");
-    }
-
-    async fn cleanup(self) {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM model.platform_defaults WHERE provider = $1")
-            .bind(&self.provider)
-            .execute(&mut *connection)
-            .await
-            .expect("the platform default cleanup runs");
-        sqlx::query("DELETE FROM model.platform_models WHERE id = $1::uuid")
-            .bind(&self.platform_model_row)
-            .execute(&mut *connection)
-            .await
-            .expect("the platform model cleanup runs");
-
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
-            .bind(&self.tenant)
-            .execute(&mut *connection)
-            .await
-            .expect("the scoped credential cleans up");
-        drop(connection);
-        drop(self.database);
-        self.lane.cleanup().await;
-    }
 }

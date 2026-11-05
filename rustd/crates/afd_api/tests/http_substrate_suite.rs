@@ -2,6 +2,8 @@
 
 mod harness;
 
+mod build_stamp;
+
 #[path = "admission_ceiling.rs"]
 mod admission_ceiling;
 #[path = "header_limit.rs"]

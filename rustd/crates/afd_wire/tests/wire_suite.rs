@@ -13,6 +13,7 @@
 
 mod authoring_compaction;
 mod claim_selection;
+mod decision_receipts;
 
 #[path = "inference_images.rs"]
 mod inference_images;

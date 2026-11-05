@@ -337,6 +337,9 @@ Repository text and logs remain untrusted state and cannot replace templates, gr
 Detect repeated JSON object keys before their earlier values disappear.
 Ambiguous answers invalidate the assessment while retaining independently readable usage; ambiguous usage or duplicate envelopes retain unknown accounting.
 
+Normalized score receipts use `serde_with` for numeric JSON keys and reject collisions after integer conversion.
+A rejected wire receipt leaves the existing reservation and stored call unchanged.
+
 Use bounded timeouts and retry accounting shared with the task or pre-task admission.
 Input tokens determine TypeSafe's documented charge; output usage remains recorded even when its rate is zero.
 Resolve exact rates through reviewed configuration rather than reusing an unrelated chat model's prices.

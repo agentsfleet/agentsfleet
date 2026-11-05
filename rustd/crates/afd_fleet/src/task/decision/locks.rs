@@ -40,7 +40,7 @@ impl Mode {
             "serialize decision accounting with physical issuance",
         ))?;
         if let Some(task) = &call.task_id {
-            sqlx::query_scalar::<_, String>(self.statement(sql::LOCK_TASK, sql::TRY_TASK))
+            sqlx::query_scalar::<_, i64>(self.statement(sql::LOCK_TASK, sql::TRY_TASK))
                 .bind(task)
                 .bind(&call.fleet_id)
                 .bind(&call.workspace_id)

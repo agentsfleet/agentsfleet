@@ -62,18 +62,22 @@ fn owner_questions_roundtrip_with_every_role_criteria_and_stable_statement_order
         Some("Current code and regression evidence demonstrate the accepted behavior.")
     );
     assert_eq!(statement.question().criterion("DONE"), None);
-    let restored = Definition::parse(
-        &serde_json::to_string(&definition).expect("serialize accepted definition"),
-    )
-    .expect("stored policy uses the same parser");
-    assert_eq!(restored, definition);
-    assert_eq!(
-        canonical_digest(&restored).expect("restored digest"),
-        canonical_digest(&definition).expect("original digest")
-    );
+    assert_policy_roundtrip(&definition);
     assert!(
         parse(&value()).runtime().decision_policy().is_none(),
         "ordinary fleets acquire no hidden questions"
+    );
+}
+
+fn assert_policy_roundtrip(definition: &Definition) {
+    let restored = Definition::parse(
+        &serde_json::to_string(definition).expect("serialize accepted definition"),
+    )
+    .expect("stored policy uses the same parser");
+    assert_eq!(&restored, definition);
+    assert_eq!(
+        canonical_digest(&restored).expect("restored digest"),
+        canonical_digest(definition).expect("original digest")
     );
 }
 
@@ -118,6 +122,83 @@ fn question_edits_change_the_next_content_identity_and_leave_the_accepted_setup_
     }).expect_err("question edits cannot introduce native actions");
     assert_eq!(invalid.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
     assert_eq!(original, parse(&document()));
+    renamed_role_edits_preserve_the_accepted_definition(&changed);
+    combined_question_edits_preserve_the_accepted_definition(&changed);
+}
+
+fn renamed_role_edits_preserve_the_accepted_definition(accepted: &Definition) {
+    let before = serde_json::to_value(accepted).expect("accepted setup");
+    let digest = canonical_digest(accepted).expect("accepted digest");
+    for (suffix, key) in [
+        ("/routing/intent/criteria", "clarify"),
+        ("/routing/multiple_requests/criteria", "false"),
+        ("/completion/statements/0/criteria", "false"),
+    ] {
+        let path = format!("{POLICY_PATH}{suffix}");
+        let mut criteria = before
+            .pointer(&path)
+            .expect("complete role criteria")
+            .clone();
+        let object = criteria.as_object_mut().expect("named criteria");
+        let text = object.remove(key).expect("original required role");
+        object.insert("publish".to_owned(), text);
+        let fault = accepted
+            .edit(EditBatch {
+                config_ops: vec![ConfigOp::Replace {
+                    path,
+                    value: criteria,
+                }],
+                ..EditBatch::default()
+            })
+            .expect_err("same-sized criteria cannot replace a native role");
+        assert_eq!(fault.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
+        assert_eq!(
+            serde_json::to_value(accepted).expect("retained setup"),
+            before
+        );
+        assert_eq!(canonical_digest(accepted).expect("retained digest"), digest);
+    }
+}
+
+fn combined_question_edits_preserve_the_accepted_definition(accepted: &Definition) {
+    let statement = json!({"id":"defect-fixed", "question":"q".repeat(400),
+        "criteria":{"true":"t".repeat(400),"false":"f".repeat(155)}});
+    assert_eq!(
+        serde_json::to_vec(&statement)
+            .expect("complete authored question")
+            .len(),
+        1024
+    );
+    let revision = accepted
+        .edit(EditBatch {
+            config_ops: vec![ConfigOp::Replace {
+                path: format!("{POLICY_PATH}/completion/statements/0"),
+                value: statement,
+            }],
+            ..EditBatch::default()
+        })
+        .expect("exact combined byte boundary remains editable");
+    let before = serde_json::to_value(&revision).expect("new accepted setup");
+    let digest = canonical_digest(&revision).expect("new revision digest");
+    assert_ne!(digest, canonical_digest(accepted).expect("previous digest"));
+    let fault = revision
+        .edit(EditBatch {
+            config_ops: vec![ConfigOp::Replace {
+                path: format!("{POLICY_PATH}/completion/statements/0/criteria/false"),
+                value: json!("f".repeat(156)),
+            }],
+            ..EditBatch::default()
+        })
+        .expect_err("individually bounded text cannot exceed the combined authored limit");
+    assert_eq!(fault.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
+    assert_eq!(
+        serde_json::to_value(&revision).expect("retained complete setup"),
+        before
+    );
+    assert_eq!(
+        canonical_digest(&revision).expect("retained revision digest"),
+        digest
+    );
 }
 
 #[test]

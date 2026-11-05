@@ -182,6 +182,8 @@ afr_tools = { path = "crates/afr_tools" }
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+# Tagged answer enums retain numeric JSON map keys through Serde's buffered data.
+serde_with = { version = "3.24.0", default-features = false, features = ["std"] }
 # The metric census is a tab-separated contract, and this is the crate that
 # reads one: delimiter, `#` comment lines, header-to-field mapping, unequal-row
 # detection and serde-typed deserialization are all its job rather than ours,

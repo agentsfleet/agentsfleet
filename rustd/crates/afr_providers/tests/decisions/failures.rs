@@ -58,11 +58,19 @@ async fn physical_failures_are_bounded_and_never_retried_implicitly() {
         assert!(
             matches!(measured.as_slice(), [Recorded::Decision(_, DecisionPurpose::Goal, actual, _)] if *actual == expected)
         );
-        if expected == MeasuredOutcome::RateLimited {
-            assert!(matches!(error.decision_status(), Some(429 | 529)));
-            assert_eq!(error.decision_retry_after(), Some(Duration::from_secs(1)));
-        }
+        assert_failure_details(&error, expected);
         server.shutdown().await;
+    }
+}
+
+fn assert_failure_details(error: &afr_providers::Error, expected: MeasuredOutcome) {
+    if expected == MeasuredOutcome::RateLimited {
+        assert!(matches!(error.decision_status(), Some(429 | 529)));
+        assert_eq!(error.decision_retry_after(), Some(Duration::from_secs(1)));
+    } else {
+        let status = (expected == MeasuredOutcome::ProviderFailure).then_some(500);
+        assert_eq!(error.decision_status(), status);
+        assert_eq!(error.decision_retry_after(), None);
     }
 }
 

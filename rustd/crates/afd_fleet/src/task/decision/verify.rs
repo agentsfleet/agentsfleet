@@ -46,6 +46,6 @@ pub(super) async fn on(
     Ok(Verified {
         current: native.current,
         context,
-        task: native.task,
+        task: native.task.map(|task| task.snapshot),
     })
 }
