@@ -1,5 +1,5 @@
 WITH workspace AS MATERIALIZED (
-    SELECT id FROM identity.workspaces WHERE id = $2::uuid FOR KEY SHARE
+    SELECT id FROM identity.lock_workspace($2::uuid)
 )
 SELECT f.id::text FROM fleet.fleets f
 JOIN workspace w ON w.id = f.workspace_id

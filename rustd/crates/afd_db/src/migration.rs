@@ -235,6 +235,8 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("2600_fleet_task_completion_fanout.sql"),
     migration!("2610_connector_person_links.sql"),
     migration!("2620_event_task_activity.sql"),
+    migration!("2630_identity_workspace_lock.sql"),
+    migration!("2640_fleet_task_completion_lock.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

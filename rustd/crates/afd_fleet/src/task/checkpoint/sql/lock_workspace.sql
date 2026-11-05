@@ -1,1 +1,1 @@
-SELECT id::text FROM identity.workspaces WHERE id = $1::uuid FOR KEY SHARE
+SELECT id::text FROM identity.lock_workspace($1::uuid)

@@ -562,3 +562,13 @@ impl TaskLifecycle for Tasks {
         )
     }
 }
+
+/// Actual parent-lock statement for API-role migration and contention proofs.
+#[cfg(feature = "test-util")]
+pub const TASK_SCOPE_LOCK_STATEMENT: &str = sql::LOCK_SCOPE;
+/// Actual checkpoint parent-lock statement for API-role migration proofs.
+#[cfg(feature = "test-util")]
+pub const CHECKPOINT_WORKSPACE_LOCK_STATEMENT: &str = sql::LOCK_WORKSPACE;
+/// Actual bounded receipt collection statement for API-role migration proofs.
+#[cfg(feature = "test-util")]
+pub const TASK_COMPLETION_COLLECTION_STATEMENT: &str = sql::COLLECT_COMPLETIONS;

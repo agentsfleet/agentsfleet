@@ -85,7 +85,7 @@ struct Candidate {
 }
 
 async fn lock(connection: &mut PgConnection, workspace: &str) -> Result<bool> {
-    let parent: Option<String> = sqlx::query_scalar(include_str!("../sql/lock_workspace.sql"))
+    let parent: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_WORKSPACE)
         .bind(workspace)
         .fetch_optional(&mut *connection)
         .await

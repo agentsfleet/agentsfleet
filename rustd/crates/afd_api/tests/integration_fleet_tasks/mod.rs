@@ -104,6 +104,10 @@ async fn detail(router: &axum::Router, fixture: &Tasks<'_>) {
     assert_eq!(body.get("setup_revision"), Some(&json!(1)));
     assert_eq!(body.pointer("/context/state"), Some(&json!("waiting")));
     assert_eq!(
+        body.pointer("/context/target"),
+        Some(&json!({"kind":"api_only"}))
+    );
+    assert_eq!(
         body.pointer("/context/task_id"),
         Some(&json!(fixture.ids[1]))
     );

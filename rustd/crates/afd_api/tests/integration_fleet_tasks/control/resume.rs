@@ -33,8 +33,7 @@ async fn task_resume_queues_one_continuation_and_refuses_foreign_children() {
 }
 
 async fn pause(router: &axum::Router, fixture: &Tasks<'_>) -> (Value, String) {
-    let task = afd_core::id::Uuid7::parse(&fixture.ids[2]).expect("task identity");
-    let first_tag = afd_core::etag::versioned(&task, 1);
+    let (_, first_tag) = read_task(router, fixture, 2).await;
     let response = patch(
         router,
         fixture,
