@@ -75,6 +75,23 @@ jobs:
         run: cargo fetch --locked
         working-directory: rustd
 
+  # The kernel lane's toolbox image, saved under the key its job restores
+  # (.github/actions/kernel-toolbox). Pull requests cannot read a cache another
+  # pull request saved, so without this every new branch rebuilt the image from
+  # snapshot.debian.org on its first run. It builds only when the pinned
+  # manifest or the builder changed, and the runner image matches the lane's.
+  warm-kernel-toolbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the toolbox builder
+        run: bash .github/actions/build-toolbox/install-tools.sh
+
+      - name: Restore or build the toolbox image
+        uses: ./.github/actions/kernel-toolbox
+
   # The musl gate's fast-profile build, saved under the key test.yml restores.
   # It builds the same two binaries and stops there: the static check belongs to
   # the gate, and a second run of it on main buys nothing.
