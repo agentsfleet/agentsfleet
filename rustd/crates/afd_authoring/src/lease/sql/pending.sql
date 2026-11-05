@@ -1,4 +1,4 @@
-SELECT usage_unknown
+SELECT true
   FROM authoring.attempts
  WHERE draft_id = $1::uuid AND message_sequence > $3
    AND status <> ALL($2::text[])
