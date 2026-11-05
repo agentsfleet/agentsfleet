@@ -1,0 +1,65 @@
+name: Restore or build the kernel lane's toolbox
+description: The toolbox image the kernel lane mounts, built once per pinned manifest and builder and cached. Run install-tools.sh first.
+inputs:
+  output-dir:
+    description: Directory that holds the image and its release record.
+    default: dist/kernel/toolbox
+outputs:
+  image:
+    description: Absolute path of the toolbox image.
+    value: ${{ steps.image.outputs.path }}
+runs:
+  using: composite
+  steps:
+    # The builder's package versions are part of the key: a different
+    # mmdebstrap or erofs-utils can write different bytes from the same manifest.
+    - name: Fingerprint the installed builder tools
+      id: builder
+      shell: bash
+      run: |
+        fingerprint=$(dpkg-query -W -f="\${Package}=\${Version}\n" mmdebstrap erofs-utils debian-archive-keyring uidmap python3 curl jq | sha256sum | cut -d' ' -f1)
+        echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+    # Restore and save are separate steps. A combined cache step saves only when
+    # the whole job succeeds, so a kernel-lane test failure after a good build
+    # would throw the image away and the next run would rebuild it from
+    # snapshot.debian.org.
+    - name: Restore the toolbox image
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.output-dir }}
+        key: toolbox-kernel-amd64-v1-${{ steps.builder.outputs.fingerprint }}-${{ hashFiles('scripts/toolbox/**', 'VERSION', '.github/actions/kernel-toolbox/action.yml') }}
+
+    - name: Build from the pinned manifest on a cache miss
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        sudo make --no-print-directory toolbox-image TOOLBOX_DIR="$PWD/$OUTPUT_DIR"
+        sudo chown -R "$(id -u):$(id -g)" "$OUTPUT_DIR"
+
+    - name: Verify the image's identity on hits and misses
+      id: image
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        images=("$OUTPUT_DIR"/toolbox-*.erofs)
+        [ "${#images[@]}" = 1 ]
+        image="${images[0]}"
+        source deploy/baremetal/toolbox.sh
+        digest="$(toolbox_digest_of "$image")"
+        [ "$(sha256sum "$image" | cut -d' ' -f1)" = "$digest" ]
+        [ -f "$OUTPUT_DIR/toolbox-$digest.json" ]
+        echo "path=$PWD/$image" >> "$GITHUB_OUTPUT"
+
+    - name: Save the toolbox image
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.output-dir }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}
