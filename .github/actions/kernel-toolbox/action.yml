@@ -12,12 +12,13 @@ runs:
   using: composite
   steps:
     # The builder's package versions are part of the key: a different
-    # mmdebstrap or erofs-utils can write different bytes from the same manifest.
+    # mmdebstrap, erofs-utils or liblz4 can write different bytes from the same
+    # manifest. The list covers every builder package build.sh records.
     - name: Fingerprint the installed builder tools
       id: builder
       shell: bash
       run: |
-        fingerprint=$(dpkg-query -W -f="\${Package}=\${Version}\n" mmdebstrap erofs-utils debian-archive-keyring uidmap python3 curl jq | sha256sum | cut -d' ' -f1)
+        fingerprint=$(dpkg-query -W -f="\${Package}=\${Version}\n" mmdebstrap apt dpkg erofs-utils liblz4-1 debian-archive-keyring uidmap python3 curl jq | sha256sum | cut -d' ' -f1)
         echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
     # Restore and save are separate steps. A combined cache step saves only when
