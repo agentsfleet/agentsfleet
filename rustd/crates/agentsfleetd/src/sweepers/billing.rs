@@ -18,6 +18,10 @@ use crate::supervisor::Supervisor;
 /// how far a balance can trail the charges a person reads.
 const INTERVAL: Duration = Duration::from_secs(2);
 
+/// Ticks between restarts of the line read at the oldest unsettled line: a
+/// line the biller refused is retried at least this often.
+const LAP_TICKS: u64 = 30;
+
 /// Passes one tick may run back to back. A backlog drains at the biller's
 /// pace, and a sustained one still yields to the next tick.
 const DRAIN_PASSES: usize = 10;
@@ -41,15 +45,22 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
     supervisor.spawn(super::BILLING, move |stop| async move {
         let mut interval = tokio::time::interval(INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // Where the next pass's line read resumes. It outlives the tick, so a
+        // refused backlog of any size never holds newer lines; it goes back to
+        // the oldest line every LAP_TICKS, so a refused line is retried.
+        let resume = Mutex::new(None);
+        let mut ticks: u64 = 0;
         loop {
             tokio::select! {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
-            // Each tick starts at the oldest unsettled line, so every refused
-            // line is retried once a tick; within the tick, each pass resumes
-            // after the last, so a refused batch never holds newer lines.
-            let resume = Mutex::new(None);
+            ticks = ticks.wrapping_add(1);
+            if restarts(ticks)
+                && let Ok(mut at) = resume.lock()
+            {
+                *at = None;
+            }
             drain(
                 || sweep_leases(&database, biller.as_ref(), &entropy, &resume),
                 &stop,
@@ -112,6 +123,11 @@ async fn sweep_leases(
     }
 }
 
+/// Whether tick `tick` sends the line read back to the oldest unsettled line.
+const fn restarts(tick: u64) -> bool {
+    tick % LAP_TICKS == 0
+}
+
 /// A pass that read a whole batch runs again at once, resuming after it, so a
 /// backlog drains at the biller's pace and a batch the biller refused never
 /// holds newer lines. [`DRAIN_PASSES`] bounds the passes one tick makes.
@@ -157,7 +173,17 @@ mod tests {
 
     use tokio_util::sync::CancellationToken;
 
-    use super::{DRAIN_PASSES, FAILED, REFUSED, drain, drains, log_moved, sweep_leases};
+    use super::{
+        DRAIN_PASSES, FAILED, LAP_TICKS, REFUSED, drain, drains, log_moved, restarts, sweep_leases,
+    };
+
+    /// The line read goes back to the oldest line once a lap and only then, so
+    /// refused lines are retried and progress through newer lines is kept.
+    #[test]
+    fn the_read_restarts_at_the_oldest_line_once_a_lap() {
+        let restarted: Vec<u64> = (1..=LAP_TICKS * 2).filter(|tick| restarts(*tick)).collect();
+        assert_eq!(restarted, [LAP_TICKS, LAP_TICKS * 2]);
+    }
 
     /// Passes reporting more waiting, then nothing: one tick runs all three
     /// back to back rather than one per tick.
