@@ -249,35 +249,47 @@ fn without_a_runtime_every_offer_is_refused_so_the_producer_does_the_work() {
     assert_eq!(recorder.seen(), Vec::<Message>::new());
 }
 
-/// A consumer that keeps the trait's default `abandoned`.
-#[derive(Debug)]
-struct AlwaysRetry;
+/// Keeps the trait's default `abandoned`: retries message `(0, 1)` forever and
+/// records every other.
+#[derive(Debug, Default)]
+struct RetriesFirst {
+    seen: Mutex<Vec<Message>>,
+}
 
 #[async_trait::async_trait]
-impl Consumer<Message> for AlwaysRetry {
-    async fn consume(&self, _message: &Message) -> Outcome {
-        Outcome::Retry
+impl Consumer<Message> for RetriesFirst {
+    async fn consume(&self, message: &Message) -> Outcome {
+        if *message == (0, 1) {
+            return Outcome::Retry;
+        }
+        self.seen.lock().unwrap().push(*message);
+        Outcome::Done
     }
 }
 
 #[tokio::test]
-async fn a_consumer_without_an_abandon_hook_lets_the_queue_move_on() {
+async fn after_the_default_abandon_hook_the_same_queue_delivers_the_next_message() {
+    let consumer = Arc::new(RetriesFirst::default());
     let queue = Memory::start(
-        &(Arc::new(AlwaysRetry) as Arc<dyn Consumer<Message>>),
-        settings(8, NO_RETRY),
-        by_producer(),
-    );
-    let recorder = Arc::new(Recorder::default());
-    let after = Memory::start(
-        &(Arc::clone(&recorder) as Arc<dyn Consumer<Message>>),
-        settings(8, NO_RETRY),
+        &(Arc::clone(&consumer) as Arc<dyn Consumer<Message>>),
+        settings(8, TWO_RETRIES),
         by_producer(),
     );
 
     assert_eq!(queue.offer((0, 1)), Offer::Accepted);
-    assert_eq!(after.offer((0, 2)), Offer::Accepted);
-    until(&recorder, 1).await;
-    assert_eq!(recorder.seen(), [(0, 2)]);
+    assert_eq!(queue.offer((0, 2)), Offer::Accepted);
+
+    for _ in 0..1_000 {
+        if !consumer.seen.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    assert_eq!(
+        *consumer.seen.lock().unwrap(),
+        [(0, 2)],
+        "the second message follows the abandoned first"
+    );
 }
 
 #[tokio::test]
