@@ -61,7 +61,7 @@ async fn acknowledged_unknown(f: &Fixture, a: &Attempt, before: i64, request: &R
         .find_map(|m| m.failure)
         .expect("durable recovery action");
     assert_eq!(failure.error_code, error_code::AUTHORING_UNKNOWN);
-    assert_eq!(failure.recovery_action, "await_accounting");
+    assert_eq!(failure.recovery_action, "retry_message");
     let early = f
         .drafts
         .report(&f.runner, &a.lease, request.clone())

@@ -69,7 +69,9 @@ const OPERATOR_JOURNEY_SPEC = "**/operator-journey.spec.ts";
 const LIVE_COUNTER_SPEC = "**/fleet-count.spec.ts";
 const PULSE_WALL_SPEC = "**/multi-fleet.spec.ts";
 const FETCH_AUDIT_SPEC = "**/workspace-fetch-dedupe.spec.ts";
-const CONTINUITY_SPEC = "**/fleet-continuity-final.spec.ts";
+const SOAK_SPEC = "**/fleet-soak.spec.ts";
+// Local-only soak helpers: run from playwright.soak-local.config.ts, never in the ladder.
+const SOAK_LOCAL_SPECS = ["**/soak-cli-smoke.spec.ts", "**/soak-hold.spec.ts"];
 
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
@@ -79,7 +81,7 @@ const PROJECT_LIVE_COUNTER = "live-counter";
 const PROJECT_PULSE_WALL = "pulse-wall";
 const PROJECT_FRAME_BUDGET = "frame-budget";
 const PROJECT_FETCH_AUDIT = "fetch-audit";
-const PROJECT_CONTINUITY = "final-continuity";
+const PROJECT_SOAK = "soak";
 const FRAME_BUDGET = new RegExp(FRAME_BUDGET_TAG);
 
 const CHROMIUM = { ...devices["Desktop Chrome"] };
@@ -132,7 +134,8 @@ export default defineConfig({
         LIVE_COUNTER_SPEC,
         PULSE_WALL_SPEC,
         FETCH_AUDIT_SPEC,
-        CONTINUITY_SPEC,
+        SOAK_SPEC,
+        ...SOAK_LOCAL_SPECS,
       ],
       grepInvert: FRAME_BUDGET,
       dependencies: [PROJECT_PREFLIGHT],
@@ -178,11 +181,11 @@ export default defineConfig({
       use: CHROMIUM,
     },
     {
-      name: PROJECT_CONTINUITY,
-      testMatch: CONTINUITY_SPEC,
-      // A requested ten-fleet run needs preflight without replaying the bulk
+      name: PROJECT_SOAK,
+      testMatch: SOAK_SPEC,
+      // A requested soak run needs preflight without replaying the bulk
       // browser suite. Full local acceptance retains its original ordering.
-      dependencies: [process.env.AGENTSFLEET_ACCEPTANCE_SCOPE === "ten-fleets" ? PROJECT_PREFLIGHT : PROJECT_FETCH_AUDIT],
+      dependencies: [["soak-mini", "ten-fleets"].includes(process.env.AGENTSFLEET_ACCEPTANCE_SCOPE ?? "") ? PROJECT_PREFLIGHT : PROJECT_FETCH_AUDIT],
       use: CHROMIUM,
     },
   ],

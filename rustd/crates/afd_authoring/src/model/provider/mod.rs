@@ -9,6 +9,7 @@ mod request;
 mod resolver;
 mod response;
 mod schema;
+mod verbatim;
 
 #[cfg(test)]
 mod tests;

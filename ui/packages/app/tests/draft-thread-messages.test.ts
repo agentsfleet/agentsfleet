@@ -38,7 +38,7 @@ it("places a dated receipt before the undated answer to an optimistic request", 
 });
 
 it.each(["deadline", "cancelled", "provider_interrupted", "completion_unverified"] as const)("preserves the recorded %s in failure details without replacing a partial answer", (cause) => {
-  const failure = {reason: UNKNOWN_USAGE_REASON, cause, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"};
+  const failure = {reason: UNKNOWN_USAGE_REASON, cause, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [MESSAGE, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
   expect(rows[1]).toMatchObject({content: [{type: "text", text: "Partial answer"}], status: {type: "complete"},
@@ -46,7 +46,7 @@ it.each(["deadline", "cancelled", "provider_interrupted", "completion_unverified
 });
 
 it("preserves unsettled usage after stopping without inventing a cause or retry text", () => {
-  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"};
+  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: {...DRAFT, cancelled_through: MESSAGE.sequence},
     messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}]});
   expect(rows).toMatchObject([{content: [{type: "text", text: ""}], metadata: {custom: {failure, retryText: undefined}}}]);

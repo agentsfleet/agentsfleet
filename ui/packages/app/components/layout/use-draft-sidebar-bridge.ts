@@ -22,7 +22,7 @@ export function useDraftSidebarBridge(client: DraftClient, view: DraftView, work
   const more = view.moreChats && !inaccessible ? loadChats : null;
   const setupRevision = view.fleet?.id === view.draft?.linked_fleet_id ? view.fleet?.setup_revision ?? null : null;
   const recovery = chatRecovery(view);
-  const activity = recovery.pending ? CHAT_ACTIVITY.pending : recovery.blocked || view.messages.at(-1)?.failure ? CHAT_ACTIVITY.failed : undefined;
+  const activity = recovery.pending ? CHAT_ACTIVITY.pending : view.messages.at(-1)?.failure ? CHAT_ACTIVITY.failed : undefined;
   const cards = useMemo(() => inaccessible ? [] : sidebarDrafts(source, view.draft, request, setupRevision, activity),
     [source, view.draft, request, inaccessible, setupRevision, activity]);
   const status = view.listStatus;

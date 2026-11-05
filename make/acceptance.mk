@@ -22,12 +22,13 @@ acceptance-codex:  ## Build local services and run unchanged acceptance suites o
 acceptance-build:  ## Build the daemon, runner, CLI and dashboard for acceptance.
 	@bun scripts/build-acceptance.ts
 
-acceptance-e2e:  ## Dashboard acceptance (ACCEPTANCE_SCOPE=full|post-deploy|ten-fleets; default: full).
+acceptance-e2e:  ## Dashboard acceptance (ACCEPTANCE_SCOPE=full|post-deploy|soak-mini|ten-fleets; default: full).
 	@echo "→ [app] Running dashboard acceptance e2e (Clerk sign-in + lifecycle)..."
 	@case "$(ACCEPTANCE_SCOPE)" in \
 	  full) set -- ;; \
 	  post-deploy) set -- --project=journeys --grep=@post-deploy ;; \
-	  ten-fleets) set -- --project=final-continuity --grep=@ten-fleets ;; \
+	  soak-mini) set -- --project=soak --grep=@soak-mini ;; \
+	  ten-fleets) set -- --project=soak --grep=@soak-marathon ;; \
 	  *) printf 'Unknown ACCEPTANCE_SCOPE: %s\n' "$(ACCEPTANCE_SCOPE)" >&2; exit 2 ;; \
 	esac; \
 	cd ui/packages/app && AGENTSFLEET_ACCEPTANCE_SCOPE="$(ACCEPTANCE_SCOPE)" bun run test:e2e:acceptance "$$@"

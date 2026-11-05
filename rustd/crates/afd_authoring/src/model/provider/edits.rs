@@ -28,6 +28,7 @@ pub(super) enum TextEdit {
 pub(super) fn native(
     proposal: Suggestion,
     candidate: Option<&Candidate>,
+    said: Option<&str>,
 ) -> Result<Native, ProposalRejection> {
     let proposal = garde::Unvalidated::new(proposal)
         .validate()
@@ -48,7 +49,7 @@ pub(super) fn native(
                 })
                 .ok_or(ProposalRejection::StaleCandidate)?;
             let instruction_edits =
-                instructions(base.definition.instructions_md(), instruction_edits)?;
+                instructions(base.definition.instructions_md(), instruction_edits, said)?;
             Ok(Proposal::Edit {
                 base_candidate_id,
                 base_candidate_revision,
@@ -62,6 +63,7 @@ pub(super) fn native(
 fn instructions(
     base: &str,
     edits: Vec<TextEdit>,
+    said: Option<&str>,
 ) -> Result<Vec<InstructionEdit>, ProposalRejection> {
     let mut ranges = Vec::new();
     let mut appended = None::<String>;
@@ -70,8 +72,17 @@ fn instructions(
             .validate()
             .map_err(|_untrusted| ProposalRejection::InvalidArguments)?;
         match edit.into_inner() {
-            TextEdit::Append { text } => appended.get_or_insert_default().push_str(&text),
-            TextEdit::Replace { old_text, text } => ranges.push(replace(base, &old_text, text)?),
+            // Inserted text is the person's own where the model retyped it.
+            TextEdit::Append { text } => appended
+                .get_or_insert_default()
+                .push_str(&super::verbatim::restore(&text, said)),
+            TextEdit::Replace { old_text, text } => {
+                ranges.push(replace(
+                    base,
+                    &old_text,
+                    super::verbatim::restore(&text, said),
+                )?);
+            }
         }
     }
     // All additions share one base position. Joining them preserves their

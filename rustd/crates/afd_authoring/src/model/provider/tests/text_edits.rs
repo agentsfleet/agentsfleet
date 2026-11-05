@@ -46,7 +46,7 @@ fn unicode_anchors_become_exact_native_ranges_and_preserve_the_surrounding_text(
         config_ops,
         instruction_edits,
         ..
-    } = native(proposed, Some(&base))
+    } = native(proposed, Some(&base), None)
         .map_err(|reason| format!("unexpected rejection: {reason:?}"))?
     else {
         return Err("expected an edit".into());
@@ -83,7 +83,7 @@ fn ambiguous_missing_empty_and_invalid_anchors_are_refused()
             &base,
             &json!([{"kind":"replace","old_text":anchor,"text":"replacement"}]),
         )?;
-        assert_eq!(native(proposed, Some(&base)).err(), Some(reason));
+        assert_eq!(native(proposed, Some(&base), None).err(), Some(reason));
         assert_eq!(base.definition.instructions_md(), text);
     }
     Ok(())
@@ -100,7 +100,7 @@ fn stale_and_missing_candidate_snapshots_cannot_resolve_edits()
         &json!([{"kind":"replace","old_text":"current","text":"changed"}]),
     )?;
     assert_eq!(
-        native(proposed, None).err(),
+        native(proposed, None, None).err(),
         Some(ProposalRejection::StaleCandidate)
     );
     let proposed = suggestion(
@@ -109,7 +109,7 @@ fn stale_and_missing_candidate_snapshots_cannot_resolve_edits()
     )?;
     base.revision = "2".into();
     assert_eq!(
-        native(proposed, Some(&base)).err(),
+        native(proposed, Some(&base), None).err(),
         Some(ProposalRejection::StaleCandidate)
     );
     Ok(())
@@ -129,7 +129,7 @@ fn empty_instructions_have_one_unambiguous_insertion_position()
         config_ops,
         instruction_edits,
         ..
-    } = native(proposed, Some(&base))
+    } = native(proposed, Some(&base), None)
         .map_err(|reason| format!("unexpected rejection: {reason:?}"))?
     else {
         return Err("expected an edit".into());
@@ -163,7 +163,7 @@ fn multiple_additions_append_once_after_unicode_instructions()
         config_ops,
         instruction_edits,
         ..
-    } = native(proposed, Some(&base))
+    } = native(proposed, Some(&base), None)
         .map_err(|reason| format!("unexpected rejection: {reason:?}"))?
     else {
         return Err("expected an edit".into());
@@ -176,6 +176,38 @@ fn multiple_additions_append_once_after_unicode_instructions()
     assert_eq!(
         changed.instructions_md(),
         "語🙂 Keep this rule.\n\nAccept corrections.\nAcknowledge uncertainty."
+    );
+    Ok(())
+}
+
+// Value: protects=an instruction added "exactly as written" stores the person's bytes, not the model's retyping;
+// fails_when=the edit keeps straight quotes the model substituted for the person's curly ones.
+#[test]
+fn an_appended_rule_keeps_the_persons_quotes_and_every_prior_byte()
+-> Result<(), Box<dyn std::error::Error>> {
+    let base = candidate("Answer directly.")?;
+    let said = "Add this instruction exactly as written: Write units as “ms”, “µs” and “°C” in every answer.";
+    let proposed = suggestion(
+        &base,
+        &json!([{"kind":"append","text":"\n\n- Write units as \"ms\", \"µs\" and \"°C\" in every answer."}]),
+    )?;
+    let Proposal::Edit {
+        config_ops,
+        instruction_edits,
+        ..
+    } = native(proposed, Some(&base), Some(said))
+        .map_err(|reason| format!("unexpected rejection: {reason:?}"))?
+    else {
+        return Err("expected an edit".into());
+    };
+    assert_eq!(
+        base.definition
+            .edit(EditBatch {
+                config_ops,
+                instruction_edits
+            })?
+            .instructions_md(),
+        "Answer directly.\n\n- Write units as “ms”, “µs” and “°C” in every answer."
     );
     Ok(())
 }

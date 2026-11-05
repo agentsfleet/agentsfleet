@@ -26,7 +26,7 @@ fn invalid_model_arguments_become_nonexecutable_refusals() -> Result<(), Box<dyn
                 }}),
             ),
         );
-        let refused: Value = serde_json::to_value(proposal(&call, Some(&base))?)?;
+        let refused: Value = serde_json::to_value(proposal(&call, Some(&base), None)?)?;
         assert_eq!(refused, json!({"id":"rejected-fixture","reason":reason}));
         assert_eq!(base.definition.instructions_md(), "Keep the existing rule.");
     }

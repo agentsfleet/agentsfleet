@@ -160,7 +160,7 @@ it("keeps pending and failed states accessible without visible status icons", ()
   expect(screen.getByText("Waiting for a result").classList.contains("sr-only")).toBe(true);
   expect(link.querySelector("svg")).toBeTruthy();
   view.rerender(tree({...initial, messages: [{...MESSAGE, role: "assistant", state: "failed",
-    failure: {reason: "provider_usage_unknown", error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}]}));
+    failure: {reason: "provider_usage_unknown", error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}}]}));
   expect(screen.getByText("Setup message failed")).toBeTruthy();
   expect(link.querySelector("svg")).toBeTruthy();
   fireEvent.focus(link);

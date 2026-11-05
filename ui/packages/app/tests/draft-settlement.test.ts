@@ -7,76 +7,31 @@ import { FakeEventSource } from "./helpers/fake-event-source";
 import { ACCEPTED, DRAFT_ID, MESSAGE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
-const SETTLED_REASON = "provider_failed";
 const FOLLOW_LIMIT_MS = 330_000;
 const POLL_WINDOW_MS = 6_000;
 beforeEach(() => { fixture.mount(); vi.useFakeTimers(); vi.spyOn(Math, "random").mockReturnValue(0); });
 afterEach(() => { fixture.dispose(); vi.useRealTimers(); });
 
-function messages(unknown: boolean): Response {
+function unknownUsage(): Response {
   return response({items: [{...MESSAGE, state: MESSAGE_STATE.failed,
-    failure: {reason: unknown ? UNKNOWN_USAGE_REASON : SETTLED_REASON,
-      error_code: "UZ-AUTHOR-015", recovery_action: "await_accounting"}}], next_cursor: null});
+    failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}}],
+  next_cursor: null});
 }
 
-it("should unblock Send when accounting settles without a second finish event", async () => {
-  let unknown = true;
-  fixture.override = ({path, method}) => path.endsWith("/messages") && method === "GET" ? messages(unknown) : undefined;
+function queuedWork(): Response {
+  return response({items: [{...MESSAGE, state: MESSAGE_STATE.queued}], next_cursor: null});
+}
+
+it("should leave Send open and watch nothing after a failure whose usage is unaccounted", async () => {
+  fixture.override = ({path, method}) => path.endsWith("/messages") && method === "GET" ? unknownUsage() : undefined;
   const client = await fixture.ready(true);
-  const stream = FakeEventSource.instances[0];
-  expect(stream).toBeDefined();
-  expect(chatRecovery(client.getSnapshot()).blocked).toBe(true);
-  stream?.open(); await vi.advanceTimersByTimeAsync(0);
-  unknown = false;
-  await vi.advanceTimersByTimeAsync(POLL_WINDOW_MS);
-  expect(chatRecovery(client.getSnapshot()).blocked).toBe(false);
-  expect(client.getSnapshot().messages[0]?.failure?.reason).toBe(SETTLED_REASON);
-  expect(stream?.closed).toBe(true);
+  expect(chatRecovery(client.getSnapshot())).toEqual({pending: false, canStop: false});
+  expect(FakeEventSource.instances).toHaveLength(0);
   const reads = fixture.calls.length;
   await vi.advanceTimersByTimeAsync(POLL_WINDOW_MS);
-  expect(fixture.calls).toHaveLength(reads);
+  expect(fixture.calls, "nothing polls for accounting").toHaveLength(reads);
   await client.send("Continue setup");
   expect(fixture.mutations().at(-1)?.path).toContain(`/drafts/${DRAFT_ID}/messages`);
-});
-
-it("should stop accounting polling without saying failed work is still pending", async () => {
-  const deadline = new AbortController();
-  const timeout = AbortSignal.timeout.bind(AbortSignal);
-  vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => ms === FOLLOW_LIMIT_MS ? deadline.signal : timeout(ms));
-  fixture.override = ({path}) => path.endsWith("/messages") ? messages(true) : undefined;
-  const client = await fixture.ready(true);
-  FakeEventSource.instances[0]?.open();
-  await vi.advanceTimersByTimeAsync(0);
-  deadline.abort(); await vi.advanceTimersByTimeAsync(0);
-  expect(client.getSnapshot().notice).toBeNull();
-  expect(client.getSnapshot().messages[0]?.failure?.reason).toBe(UNKNOWN_USAGE_REASON);
-  expect(FakeEventSource.instances[0]?.closed).toBe(true);
-  const reads = fixture.calls.length;
-  await vi.advanceTimersByTimeAsync(POLL_WINDOW_MS);
-  expect(fixture.calls).toHaveLength(reads);
-});
-
-it("should release accounting polling when Stop is followed by New Fleet", async () => {
-  fixture.override = ({path, method}) => {
-    if (path.endsWith("/messages") && method === "GET") return messages(true);
-    if (path.endsWith("/cancellations")) {
-      fixture.current = {...fixture.current, cancelled_through: MESSAGE.sequence};
-      return response({cancelled_through: MESSAGE.sequence, stopped: []});
-    }
-    return undefined;
-  };
-  const client = await fixture.ready(true);
-  const stream = FakeEventSource.instances[0];
-  stream?.open(); await vi.advanceTimersByTimeAsync(0);
-  await client.stop();
-  expect(chatRecovery(client.getSnapshot()).blocked).toBe(false);
-  expect(stream?.closed).toBe(true);
-  client.fresh();
-  expect(stream?.closed).toBe(true);
-  const reads = fixture.calls.length;
-  await vi.advanceTimersByTimeAsync(POLL_WINDOW_MS);
-  expect(fixture.calls).toHaveLength(reads);
-  expect(client.getSnapshot().draft).toBeNull();
 });
 
 it("should give a new Send its own watch deadline after Stop", async () => {
@@ -91,7 +46,7 @@ it("should give a new Send its own watch deadline after Stop", async () => {
     if (path.endsWith("/messages")) {
       if (method === "POST") { fresh = true; return response({...ACCEPTED, sequence: "2"}, 202); }
       if (fresh) return response({items: [{...MESSAGE, sequence: "2", state: MESSAGE_STATE.queued}], next_cursor: null});
-      return messages(true);
+      return queuedWork();
     }
     if (path.endsWith("/cancellations")) {
       fixture.current = {...fixture.current, cancelled_through: MESSAGE.sequence};
@@ -118,7 +73,7 @@ it("should follow concurrent work above Stop's observed cutoff", async () => {
   let concurrent = false;
   fixture.override = ({path, method}) => {
     if (path.endsWith("/messages") && method === "GET") {
-      return concurrent ? response({items: [{...MESSAGE, sequence: "2", state: MESSAGE_STATE.queued}], next_cursor: null}) : messages(true);
+      return concurrent ? response({items: [{...MESSAGE, sequence: "2", state: MESSAGE_STATE.queued}], next_cursor: null}) : queuedWork();
     }
     if (path.endsWith("/cancellations")) {
       concurrent = true;
@@ -135,5 +90,5 @@ it("should follow concurrent work above Stop's observed cutoff", async () => {
   expect(stopped?.closed).toBe(true);
   expect(FakeEventSource.instances).toHaveLength(2);
   expect(FakeEventSource.instances[1]?.closed).toBe(false);
-  expect(chatRecovery(client.getSnapshot())).toMatchObject({pending: true, canStop: true, blocked: false});
+  expect(chatRecovery(client.getSnapshot())).toEqual({pending: true, canStop: true});
 });
