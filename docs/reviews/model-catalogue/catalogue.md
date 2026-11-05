@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-10-18
+verified: 2026-11-05
 product_version: 0.61.0
 executable: false
 ---
@@ -11,7 +11,8 @@ executable: false
 ## What it is
 
 Issue [#771](https://github.com/agentsfleet/agentsfleet/issues/771) declares 17 default entries and one advanced entry for `agentsfleet`.
-The [catalogue data](../../../scripts/model-library-allowlist.json) contains those exact 18 identities and 24 dated price rows.
+The [catalogue data](../../../scripts/model-library-allowlist.json) now holds 21 identities and 27 dated price rows.
+MiniMax M3.1 Flash, MiniMax M3.1 Flash (Free) and Kimi K3.1 Pro were added after the 2026-10-18 verification.
 The section remains in progress; this document records verified inputs, not a completed deployed picker.
 
 ## Why it exists
@@ -31,12 +32,15 @@ A provider's own models API supplies each context integer when it answers withou
 | openai | `gpt-6-astra` | GPT-6 Astra | Default | 1,050,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-6-astra/endpoints#openai) · 2026-10-19T03:15:54Z |
 | openai | `gpt-6-luna` | GPT-6 Luna | Default | 1,050,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints#openai) · 2026-10-19T03:15:54Z |
 | openai | `gpt-5.6-terra` | GPT-5.6 Terra | Advanced | 1,050,000 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-5.6-terra/endpoints#openai) · 2026-10-19T03:15:54Z |
+| fireworks | `accounts/fireworks/models/minimax-m3p1-flash` | MiniMax M3.1 Flash | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/minimax-m3p1-flash#contextLength) · 2026-10-23T07:42:54Z |
 | fireworks | `accounts/fireworks/models/glm-5p3-flash` | GLM 5.3 Flash | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/glm-5p3-flash#contextLength) · 2026-10-18T13:32:07Z |
 | fireworks | `accounts/fireworks/models/kimi-k3` | Kimi K3 | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3#contextLength) · 2026-10-18T13:32:07Z |
+| fireworks | `accounts/fireworks/models/kimi-k3p1-pro` | Kimi K3.1 Pro | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3p1-pro#contextLength) · 2026-11-05T03:56:45Z |
 | fireworks | `accounts/fireworks/models/deepseek-v4p1-flash` | DeepSeek V4.1 Flash | Default | 1,048,576 · [models API](https://api.fireworks.ai/v1/accounts/fireworks/models/deepseek-v4p1-flash#contextLength) · 2026-10-18T13:32:07Z |
 | openrouter | `meta/muse-wonder` | Muse Wonder | Default | 1,048,576 · [models API](https://openrouter.ai/api/v1/models#meta/muse-wonder) · 2026-10-18T13:32:07Z |
 | openrouter | `google/gemini-4-argon` | Gemini 4 Argon | Default | 1,048,576 · [models API](https://openrouter.ai/api/v1/models#google/gemini-4-argon) · 2026-10-18T13:32:07Z |
 | openrouter | `qwen/qwen3.8-max-0902` | Qwen3.8 Max 0902 | Default | 1,000,000 · [models API](https://openrouter.ai/api/v1/models#qwen/qwen3.8-max-0902) · 2026-10-18T13:32:07Z |
+| openrouter | `minimax/minimax-m3.1-flash:free` | MiniMax M3.1 Flash (Free) | Default | 1,000,000 · [models API](https://openrouter.ai/api/v1/models#minimax/minimax-m3.1-flash:free) · 2026-10-20T10:14:45Z |
 | groq | `openai/gpt-oss-120b` | GPT OSS 120B | Default | 131,072 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/openai/gpt-oss-120b/endpoints#groq) · 2026-10-19T03:15:54Z |
 | mistral | `mistral-large-4` | Mistral Large 4 | Default | 1,048,576 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/mistralai/mistral-large-4-0/endpoints#mistral) · 2026-10-19T03:15:54Z |
 | mistral | `mistral-small-2603` | Mistral Small 4 | Default | 262,144 · [OpenRouter endpoint](https://openrouter.ai/api/v1/models/mistralai/mistral-small-2603/endpoints#mistral) · 2026-10-19T03:15:54Z |
@@ -62,12 +66,15 @@ An unknown write rate is absent evidence, never a free rate.
 | openai / `gpt-6-luna` | 272000 | 2026-10-18T00:00:00Z → open | 0.20 | 0.02 | 0.25 | unknown | unknown | 0.75 | [price source](https://developers.openai.com/api/docs/pricing) |
 | openai / `gpt-5.6-terra` | 0 | 2026-10-18T00:00:00Z → open | 2 | 0.20 | 2.5 | unknown | unknown | 12 | [price source](https://developers.openai.com/api/docs/pricing) |
 | openai / `gpt-5.6-terra` | 272000 | 2026-10-18T00:00:00Z → open | 4 | 0.40 | 5 | unknown | unknown | 18 | [price source](https://developers.openai.com/api/docs/pricing) |
+| fireworks / `accounts/fireworks/models/minimax-m3p1-flash` | 0 | 2026-10-23T07:42:54Z → open | 0.15 | 0.015 | unknown | unknown | unknown | 0.60 | [price source](https://fireworks.ai/models/fireworks/minimax-m3p1-flash) |
 | fireworks / `accounts/fireworks/models/glm-5p3-flash` | 0 | 2026-10-18T00:00:00Z → open | 0.15 | 0.03 | unknown | unknown | unknown | 0.50 | [price source](https://fireworks.ai/models/fireworks/glm-5p3-flash) |
 | fireworks / `accounts/fireworks/models/kimi-k3` | 0 | 2026-10-18T00:00:00Z → open | 3 | 0.30 | unknown | unknown | unknown | 15 | [price source](https://fireworks.ai/models/fireworks/kimi-k3) |
+| fireworks / `accounts/fireworks/models/kimi-k3p1-pro` | 0 | 2026-11-05T03:57:16Z → open | 2 | 0.20 | unknown | unknown | unknown | 10 | [price source](https://fireworks.ai/models/fireworks/kimi-k3p1-pro) |
 | fireworks / `accounts/fireworks/models/deepseek-v4p1-flash` | 0 | 2026-10-18T00:00:00Z → open | 0.30 | 0.006 | unknown | unknown | unknown | 1.20 | [price source](https://fireworks.ai/models/deepseek-ai/deepseek-v4p1-flash) |
 | openrouter / `meta/muse-wonder` | 0 | 2026-10-18T00:00:00Z → open | 4 | 0.20 | unknown | unknown | unknown | 20 | [price source](https://openrouter.ai/api/v1/models) |
 | openrouter / `google/gemini-4-argon` | 0 | 2026-10-18T00:00:00Z → open | 2 | 0.10 | 0.1875 | unknown | unknown | 10 | [price source](https://openrouter.ai/api/v1/models) |
 | openrouter / `qwen/qwen3.8-max-0902` | 0 | 2026-10-18T00:00:00Z → open | 2 | 0.25 | unknown | unknown | unknown | 6 | [price source](https://openrouter.ai/api/v1/models) |
+| openrouter / `minimax/minimax-m3.1-flash:free` | 0 | 2026-10-19T00:00:00Z → open | 0 | 0 | unknown | unknown | unknown | 0 | [price source](https://openrouter.ai/api/v1/models) |
 | groq / `openai/gpt-oss-120b` | 0 | 2026-10-18T00:00:00Z → open | 0.15 | 0.075 | unknown | unknown | unknown | 0.60 | [price source](https://console.groq.com/docs/prompt-caching) |
 | mistral / `mistral-large-4` | 0 | 2026-10-18T00:00:00Z → open | 0.68 | 0.07 | unknown | unknown | unknown | 2.09 | [price source](https://docs.mistral.ai/inference/pricing) |
 | mistral / `mistral-small-2603` | 0 | 2026-10-18T00:00:00Z → open | 0.15 | 0.015 | unknown | unknown | unknown | 0.60 | [price source](https://docs.mistral.ai/inference/pricing) |
@@ -89,7 +96,7 @@ Unauthenticated Fireworks repeats returned HTTP 401; they supplied no new limit 
 ## Limits
 
 OpenRouter serves Muse Wonder at **1,048,576**, while #771 states 1,000,000. The provider API integer wins.
-Fireworks' model pages say “1040k”; the stored API responses supply **1,048,576** for all three exact identifiers.
+Fireworks' model pages say “1040k”; the models API supplies **1,048,576** for every Fireworks identifier in the table.
 Twelve entries lack exact readable provider API limits and remain unseeded. An authenticated models API check must settle those limits.
 DeepSeek V4 Pro 0813 remains absent because Fireworks deprecated its serverless route on Sep 25, 2026.
 
