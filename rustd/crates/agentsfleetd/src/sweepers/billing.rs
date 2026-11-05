@@ -55,12 +55,7 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
-            ticks = ticks.wrapping_add(1);
-            if restarts(ticks)
-                && let Ok(mut at) = resume.lock()
-            {
-                *at = None;
-            }
+            lap(&mut ticks, &resume);
             drain(
                 || sweep_leases(&database, biller.as_ref(), &entropy, &resume),
                 &stop,
@@ -128,6 +123,17 @@ const fn restarts(tick: u64) -> bool {
     tick.is_multiple_of(LAP_TICKS)
 }
 
+/// Counts one tick and, once a lap, sends the line read back to the oldest
+/// unsettled line by clearing `resume`.
+fn lap<T>(ticks: &mut u64, resume: &Mutex<Option<T>>) {
+    *ticks = ticks.wrapping_add(1);
+    if restarts(*ticks)
+        && let Ok(mut at) = resume.lock()
+    {
+        *at = None;
+    }
+}
+
 /// A pass that read a whole batch runs again at once, resuming after it, so a
 /// backlog drains at the biller's pace and a batch the biller refused never
 /// holds newer lines. [`DRAIN_PASSES`] bounds the passes one tick makes.
@@ -174,8 +180,31 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::{
-        DRAIN_PASSES, FAILED, LAP_TICKS, REFUSED, drain, drains, log_moved, restarts, sweep_leases,
+        DRAIN_PASSES, FAILED, LAP_TICKS, REFUSED, drain, drains, lap, log_moved, restarts,
+        sweep_leases,
     };
+
+    /// The read position survives every tick of a lap and is cleared on the
+    /// lap's last tick, so the next pass starts at the oldest line.
+    #[test]
+    fn a_lap_clears_the_read_position_on_its_last_tick() {
+        let resume = std::sync::Mutex::new(Some(7_u8));
+        let mut ticks = 0;
+        for _ in 1..LAP_TICKS {
+            lap(&mut ticks, &resume);
+        }
+        assert_eq!(
+            resume.lock().map(|at| *at).ok(),
+            Some(Some(7)),
+            "kept within the lap"
+        );
+        lap(&mut ticks, &resume);
+        assert_eq!(
+            resume.lock().map(|at| *at).ok(),
+            Some(None),
+            "cleared at the lap"
+        );
+    }
 
     /// The line read goes back to the oldest line once a lap and only then, so
     /// refused lines are retried and progress through newer lines is kept.

@@ -7,10 +7,10 @@
 //! because the install and its counters are shared with the runner cases.
 
 use afd_observability::metrics::declared::billing::{
-    BILLING_SWEEPER_RESETTLED_TOTAL, BILLING_UNPRICED_TOKENS_TOTAL, BILLING_UNSETTLED_NANOS,
-    BILLING_UNSETTLED_OLDEST_SECONDS,
+    BILLING_FUNDS_CHECK_TOTAL, BILLING_SWEEPER_RESETTLED_TOTAL, BILLING_UNPRICED_TOKENS_TOTAL,
+    BILLING_UNSETTLED_NANOS, BILLING_UNSETTLED_OLDEST_SECONDS,
 };
-use afd_observability::metrics::label::billing::WorkType;
+use afd_observability::metrics::label::billing::{FundsOutcome, WorkType};
 use afd_observability::producers::billing::{self, Owed};
 use afd_observability::semconv;
 use afd_observability::test_util::Capture;
@@ -48,6 +48,22 @@ fn should_count_unpriced_tokens_under_their_model() {
 
     assert_eq!(after_none, 0, "a fully priced settlement adds no series");
     assert_eq!(capture.sum(family, &series), UNPRICED);
+}
+
+/// Each funds check counts once under its work type and its answer.
+#[test]
+fn should_count_each_funds_check_under_its_answer() {
+    let capture = Capture::install();
+    let series = [
+        (semconv::LABEL_WORK_TYPE, WorkType::FleetLease.as_str()),
+        (semconv::LABEL_OUTCOME, FundsOutcome::Short.as_str()),
+    ];
+    let family = BILLING_FUNDS_CHECK_TOTAL.wire_name();
+    let before = capture.sum(family, &series);
+
+    billing::funds_checked(WorkType::FleetLease, FundsOutcome::Short);
+
+    assert_eq!(capture.sum(family, &series), before + 1);
 }
 
 /// A sweep's repairs count under their work type; a sweep that repaired
