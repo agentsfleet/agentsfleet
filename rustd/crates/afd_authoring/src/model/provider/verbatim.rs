@@ -38,12 +38,10 @@ fn restore_line(line: &str, said: &str, source: &Folded) -> String {
         .origin
         .get(start)
         .zip(source.origin.get(start + wanted.len()))
-        .and_then(|(&from, &to)| said.get(from..to));
+        .and_then(|(&from, &to)| said.get(from..to))
+        .unwrap_or(trimmed);
     let tail = content.get(trimmed.len()..).unwrap_or_default();
-    original.map_or_else(
-        || line.to_owned(),
-        |original| format!("{lead}{}{tail}", original.trim_end()),
-    )
+    format!("{lead}{}{tail}", original.trim_end())
 }
 
 /// Bytes of a leading list marker the model may have added.
