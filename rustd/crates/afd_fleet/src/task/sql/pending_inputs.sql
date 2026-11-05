@@ -31,7 +31,7 @@ WITH origin AS MATERIALIZED (
             )) AS claimable
     FROM conversation a
     WHERE ((a.producer = $4 AND a.actor <> $5 AND a.actor LIKE $6)
-        OR (a.producer = 'slack_mention' AND connector.slack_person_allowed($2::uuid, a.actor)))
+        OR (a.producer = $14 AND connector.slack_person_allowed($2::uuid, a.actor, $15, $16, $17)))
       AND a.id <> $3::uuid AND a.sequence > $7
     ORDER BY a.sequence LIMIT $8
 ), eligible AS MATERIALIZED (

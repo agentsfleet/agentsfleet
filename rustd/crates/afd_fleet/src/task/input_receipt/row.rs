@@ -29,6 +29,10 @@ pub(super) async fn item(
         .bind(&current.workspace_id)
         .bind(&input.source_admission_id)
         .bind(&input.plan_digest)
+        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
         .fetch_optional(connection)
         .await
         .map_err(query("read accepted scoped input identity"))?

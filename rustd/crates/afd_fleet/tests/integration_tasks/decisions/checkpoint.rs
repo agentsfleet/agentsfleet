@@ -183,7 +183,7 @@ async fn report_head(case: &Case, task: &DecisionTaskVersion, plan: &CheckpointP
         .acquire()
         .await
         .expect("report observer");
-    let state: (String, String) = sqlx::query_as("SELECT c.commit_oid, b.commit_oid FROM fleet.task_checkpoints c JOIN fleet.task_bases b ON b.id = c.base_id WHERE c.id = $1::uuid")
+    let state: (String, String) = sqlx::query_as("SELECT c.commit_oid, b.commit_oid FROM fleet.task_checkpoints c JOIN fleet.task_bases b ON b.id = c.task_base_id WHERE c.id = $1::uuid")
         .bind(&plan.checkpoint_id).fetch_one(&mut *connection).await.expect("separate saved heads");
     assert_eq!(state, (head.to_owned(), "0".repeat(40)));
     let revision: String = sqlx::query_scalar(

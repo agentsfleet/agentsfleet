@@ -6,5 +6,5 @@ LEFT JOIN fleet.tasks t ON t.id = i.task_id AND t.fleet_id = i.fleet_id AND t.wo
 LEFT JOIN fleet.task_inputs n ON n.task_item_id = i.id AND n.task_id = i.task_id
 WHERE i.id = $1::uuid AND i.fleet_id = $2::uuid AND i.workspace_id = $3::uuid
   AND i.admission_id = $4::uuid AND i.plan_digest = $5
-  AND (p.source_producer IS DISTINCT FROM 'slack_mention'
-       OR connector.slack_person_allowed(i.workspace_id, p.source_actor))
+  AND (p.source_producer IS DISTINCT FROM $6
+       OR connector.slack_person_allowed(i.workspace_id, p.source_actor, $7, $8, $9))

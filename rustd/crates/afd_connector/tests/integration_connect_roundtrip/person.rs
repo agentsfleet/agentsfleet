@@ -106,9 +106,12 @@ async fn slack_person_authority_is_scoped_revocable_and_does_not_follow_a_reinst
 }
 
 async fn allowed(round: &Round, actor: &str) -> bool {
-    sqlx::query_scalar("SELECT connector.slack_person_allowed($1::uuid, $2)")
+    sqlx::query_scalar("SELECT connector.slack_person_allowed($1::uuid, $2, $3, $4, $5)")
         .bind(round.workspace.as_str())
         .bind(actor)
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
         .fetch_one(
             &mut *round
                 .database

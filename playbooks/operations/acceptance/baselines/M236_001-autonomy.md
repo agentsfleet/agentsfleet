@@ -2,6 +2,26 @@
 
 ## Current continuation point
 
+### Reviewable gate corrections awaiting explicit approval
+
+Two independently reviewed proposals are recorded but **not applied**:
+[composite foreign-key naming](M236_001-fk-gate-proposal.patch) and
+[structural SQL literals](M236_001-literal-gate-proposal.patch).
+Repository .orly/AGENTS.md requires explicit session approval naming a gate and
+reason before editing it. Approval was requested; silence is not approval.
+The proposals retain ordinary identity-pointer naming, status/provider rejection,
+database identifier-shape constraints, immutability triggers and ownership FKs.
+
+Subsequent live integration passed the original decision lifecycle, tenant task
+reads/controls/resume, authoring paging/concurrency and revocation cases. It then
+stopped in db_suite (43 passed, seven failures): historical migration ranges,
+SQL parameter typing, persisted names/timestamps, mutable person-link tracking,
+and structural gate false positives. The two new API-role lock tests **passed**.
+Source corrections address the implementation/fixture issues; only the two gate
+proposals need approval. The latest source batch passed `make lint-all` and `make check-version`
+(all versions0.73.0), but has not passed full runtime verification. Full Rust diff coverage above99.5%, exact-head green CI and all final
+PR-boundary checks remain required; no merge and durable_tasks_v1 remains false.
+
 ### Latest live result — Nov 05, 2026
 
 The tenant task-read, control and all three resume scenarios now pass after the

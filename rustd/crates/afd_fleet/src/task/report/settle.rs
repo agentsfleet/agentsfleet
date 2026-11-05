@@ -19,6 +19,7 @@ struct Current {
     input_sequence: i64,
     effect_cursor: i64,
     confirmed_effect_watermark: i64,
+    #[sqlx(rename = "task_checkpoint_id")]
     checkpoint_id: Option<String>,
     within_limits: bool,
     effects_resolved: bool,

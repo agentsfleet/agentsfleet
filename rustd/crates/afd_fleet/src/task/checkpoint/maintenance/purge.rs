@@ -11,8 +11,10 @@ const RECHECK_SECONDS: i32 = 5 * 60;
 
 #[derive(sqlx::FromRow)]
 struct Purge {
+    #[sqlx(rename = "task_object_id")]
     object_id: String,
     workspace_id: String,
+    #[sqlx(rename = "task_identity_key_id")]
     identity_key_id: String,
     bucket_reference: String,
 }

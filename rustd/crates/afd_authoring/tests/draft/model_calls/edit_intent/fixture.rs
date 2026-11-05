@@ -25,21 +25,9 @@ pub(super) struct Case {
 
 impl Case {
     pub(super) async fn create(server: &Server, text: &str) -> Self {
-        let f = Fixture::create().await;
-        let attempt = Attempt::start(
-            &f,
-            f.access(),
-            Source::Definition {
-                definition: Box::new(definition()),
-            },
-        )
-        .await;
-        sqlx::query("UPDATE authoring.messages SET user_text=$2 WHERE draft_id=$1::uuid")
-            .bind(attempt.draft.id.as_str())
-            .bind(text)
-            .execute(&mut *f.connection().await)
-            .await
-            .expect("accepted newest message");
+        // Admin edits advance the whole catalogue generation. Keep them private
+        // to this case and finish them before pinning the chat model snapshot.
+        let f = Fixture::isolated().await;
         let mut model = DecisionModelFixture::create(&f.db)
             .await
             .expect("reviewed decision model fixture");
@@ -64,6 +52,20 @@ impl Case {
                 .expect("freeze fixture endpoint")
         );
         model.model.details = details;
+        let attempt = Attempt::start(
+            &f,
+            f.access(),
+            Source::Definition {
+                definition: Box::new(definition()),
+            },
+        )
+        .await;
+        sqlx::query("UPDATE authoring.messages SET user_text=$2 WHERE draft_id=$1::uuid")
+            .bind(attempt.draft.id.as_str())
+            .bind(text)
+            .execute(&mut *f.connection().await)
+            .await
+            .expect("accepted newest message");
         sqlx::query(
             "UPDATE runner.runners SET decision_platform_model_id=$2::uuid WHERE id=$1::uuid",
         )

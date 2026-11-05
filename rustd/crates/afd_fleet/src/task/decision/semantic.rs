@@ -87,6 +87,10 @@ pub(super) async fn current_on(connection: &mut PgConnection, call: &Call) -> Re
         .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
         .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
         .bind(crate::lease::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("read current decision owner without financial locks"))?;
@@ -128,6 +132,10 @@ async fn execution(connection: &mut PgConnection, call: &Call) -> Result<Option<
         .bind(&task.task_id)
         .bind(&call.fleet_id)
         .bind(&call.workspace_id)
+        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_connector::Provider::Slack.id())
+        .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
+        .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
         .fetch_optional(connection)
         .await
         .map_err(query(

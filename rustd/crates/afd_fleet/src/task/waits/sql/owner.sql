@@ -8,7 +8,7 @@ SELECT w.id::text, w.task_id::text, w.fleet_id::text, w.workspace_id::text,
        t.reply_provider, t.reply_address, i.admission_id::text AS source_admission_id,
        t.expires_at > statement_timestamp() AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
          AND t.used_running_nanos < t.max_running_nanos AND t.used_leases < t.max_leases AS within_limits,
-       w.due_at <= statement_timestamp() AND w.cooldown_until <= statement_timestamp() AS due
+       w.due_at <= statement_timestamp() AND w.cooldown_expires_at <= statement_timestamp() AS due
 FROM fleet.task_waits w JOIN fleet.tasks t ON t.id = w.task_id AND t.fleet_id = w.fleet_id AND t.workspace_id = w.workspace_id
 JOIN fleet.task_items i ON i.id = t.originating_task_item_id
 WHERE w.id = $1::uuid AND w.consumed_at IS NULL AND w.cancelled_at IS NULL
