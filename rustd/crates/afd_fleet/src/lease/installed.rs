@@ -107,12 +107,20 @@ impl Leases {
         self.installed_for_admission(fleet_id, None).await
     }
 
-    pub(crate) async fn installed_for_admission(&self, fleet_id: &Uuid7, event: Option<&str>) -> Result<Option<Installed>> {
+    pub(crate) async fn installed_for_admission(
+        &self,
+        fleet_id: &Uuid7,
+        event: Option<&str>,
+    ) -> Result<Option<Installed>> {
         let mut connection = self.pool().acquire().await?;
         Self::installed_on(&mut connection, fleet_id, event).await
     }
 
-    pub(crate) async fn installed_on(connection: &mut sqlx::PgConnection, fleet_id: &Uuid7, event: Option<&str>) -> Result<Option<Installed>> {
+    pub(crate) async fn installed_on(
+        connection: &mut sqlx::PgConnection,
+        fleet_id: &Uuid7,
+        event: Option<&str>,
+    ) -> Result<Option<Installed>> {
         let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_SESSION)
             .bind(fleet_id.as_str())
             .bind(event)
@@ -127,7 +135,10 @@ impl Leases {
             name,
             context_json,
             policy_semantics: policy,
-            revision_id, head_revision_id, task_generation, current_definition,
+            revision_id,
+            head_revision_id,
+            task_generation,
+            current_definition,
         }) = found
         else {
             return Ok(None);
@@ -142,7 +153,9 @@ impl Leases {
             Definition::parse(&document.ok_or(crate::error::ErrorKind::SetupUnavailable)?)?;
         definition.validate_for_save()?;
         if task_generation.is_some() {
-            let current = Definition::parse(&current_definition.ok_or(crate::error::ErrorKind::SetupUnavailable)?)?;
+            let current = Definition::parse(
+                &current_definition.ok_or(crate::error::ErrorKind::SetupUnavailable)?,
+            )?;
             if !definition.runtime().same_task_authority(current.runtime()) {
                 return Err(crate::task::TaskRefusal::InvalidTarget.into());
             }
@@ -157,9 +170,13 @@ impl Leases {
             context_json: context_json.unwrap_or_else(|| FRESH_CONTEXT.to_owned()),
             runtime_model_ref: runtime_model_ref
                 .ok_or(crate::error::ErrorKind::SetupUnavailable)?,
-            issue_revision: revision_id.zip(head_revision_id).map(|(accepted, current)| IssueRevision {
-                accepted, current, task_generation,
-            }),
+            issue_revision: revision_id
+                .zip(head_revision_id)
+                .map(|(accepted, current)| IssueRevision {
+                    accepted,
+                    current,
+                    task_generation,
+                }),
         }))
     }
 

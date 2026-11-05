@@ -219,6 +219,8 @@ impl<'a> Decisions<'a> {
                 .first()
                 .expect("one task")
                 .task_id
+                .as_ref()
+                .expect("accepted goal owns a task")
                 .to_string(),
             generation: 1,
         }

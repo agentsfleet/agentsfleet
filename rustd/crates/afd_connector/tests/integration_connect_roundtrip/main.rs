@@ -39,8 +39,8 @@
 mod cases;
 mod disconnect;
 mod handle_shapes;
-mod routing;
 mod person;
+mod routing;
 mod vendor;
 
 use std::sync::Arc;

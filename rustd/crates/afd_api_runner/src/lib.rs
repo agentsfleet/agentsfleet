@@ -38,16 +38,31 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
             get(handler::runner::context::load::<D>).put(handler::runner::context::put::<D>)
         }
         RunnerRoute::TaskCheckpoints => post(handler::runner::task_checkpoints::plan::handle::<D>),
-        RunnerRoute::TaskCheckpoint => patch(handler::runner::task_checkpoints::commit::handle::<D>),
-        RunnerRoute::TaskCheckpointPage => get(handler::runner::task_checkpoints::page_read::handle::<D>).put(handler::runner::task_checkpoints::page_write::handle::<D>),
-        RunnerRoute::TaskCheckpointObjects => get(handler::runner::task_checkpoints::objects_read::handle::<D>).post(handler::runner::task_checkpoints::objects_register::handle::<D>),
-        RunnerRoute::TaskCheckpointUploads => post(handler::runner::task_checkpoints::uploads::handle::<D>),
-        RunnerRoute::TaskCheckpointAuthorizations => post(handler::runner::task_checkpoints::authorize::handle::<D>),
-        RunnerRoute::TaskCheckpointPin => patch(handler::runner::task_checkpoints::pin::handle::<D>),
+        RunnerRoute::TaskCheckpoint => {
+            patch(handler::runner::task_checkpoints::commit::handle::<D>)
+        }
+        RunnerRoute::TaskCheckpointPage => {
+            get(handler::runner::task_checkpoints::page_read::handle::<D>)
+                .put(handler::runner::task_checkpoints::page_write::handle::<D>)
+        }
+        RunnerRoute::TaskCheckpointObjects => {
+            get(handler::runner::task_checkpoints::objects_read::handle::<D>)
+                .post(handler::runner::task_checkpoints::objects_register::handle::<D>)
+        }
+        RunnerRoute::TaskCheckpointUploads => {
+            post(handler::runner::task_checkpoints::uploads::handle::<D>)
+        }
+        RunnerRoute::TaskCheckpointAuthorizations => {
+            post(handler::runner::task_checkpoints::authorize::handle::<D>)
+        }
+        RunnerRoute::TaskCheckpointPin => {
+            patch(handler::runner::task_checkpoints::pin::handle::<D>)
+        }
         RunnerRoute::TaskInputReceipts => post(handler::runner::task_input_receipts::handle::<D>),
         RunnerRoute::TaskInputs => get(handler::runner::task_inputs::read::<D>),
         RunnerRoute::TaskBindings => post(handler::runner::task_bindings::accept::<D>),
-        RunnerRoute::TaskEffects => get(handler::runner::task_effects::list::<D>).post(handler::runner::task_effects::publish::<D>),
+        RunnerRoute::TaskEffects => get(handler::runner::task_effects::list::<D>)
+            .post(handler::runner::task_effects::publish::<D>),
         RunnerRoute::TaskEffect => get(handler::runner::task_effects::read::<D>),
         RunnerRoute::TaskDecisions => post(handler::runner::decisions::reserve::<D>),
         RunnerRoute::TaskDecision => patch(handler::runner::decisions::record::<D>),

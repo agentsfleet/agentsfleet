@@ -5,11 +5,15 @@ mod objects;
 mod plan;
 
 pub use manifest::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPageInput};
-pub use objects::{CheckpointAuthorizationInput, CheckpointObject, CheckpointObjectsInput,
-    CheckpointObjectStatus, CheckpointPlaintext, CheckpointTransfer, CheckpointUpload,
-    CheckpointUploadsInput, CheckpointObjectsPage, CheckpointAuthorizations};
-pub use plan::{CheckpointCommitInput, CheckpointMode, CheckpointPin, CheckpointPinInput,
-    CheckpointPlan, CheckpointPlanInput, CheckpointReadQuery, CheckpointTransferPurpose};
+pub use objects::{
+    CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointObject,
+    CheckpointObjectStatus, CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPlaintext,
+    CheckpointTransfer, CheckpointUpload, CheckpointUploadsInput,
+};
+pub use plan::{
+    CheckpointCommitInput, CheckpointMode, CheckpointPin, CheckpointPinInput, CheckpointPlan,
+    CheckpointPlanInput, CheckpointReadQuery, CheckpointTransferPurpose,
+};
 
 /// Current independently validated capture/restore format.
 pub const CHECKPOINT_FORMAT: u32 = 1;
@@ -23,7 +27,13 @@ pub const CHECKPOINT_PAGES: u32 = 64;
 pub const CHECKPOINT_BATCH: usize = 256;
 
 pub(super) fn digest(value: &str, _context: &()) -> garde::Result {
-    if value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) {
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         Ok(())
-    } else { Err(garde::Error::new("expected lowercase SHA-256")) }
+    } else {
+        Err(garde::Error::new("expected lowercase SHA-256"))
+    }
 }

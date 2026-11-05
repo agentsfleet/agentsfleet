@@ -109,7 +109,13 @@ impl Connectors {
             .read(provider, &exchanged, location, installation_id, now)
             .await?;
         self.grants
-            .land_for(spent.workspace(), provider, &grant, now, Some(&spent.authenticated_subject))
+            .land_for(
+                spent.workspace(),
+                provider,
+                &grant,
+                now,
+                Some(&spent.authenticated_subject),
+            )
             .await?;
         Ok(Landed::Connected)
     }

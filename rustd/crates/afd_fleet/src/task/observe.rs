@@ -52,10 +52,16 @@ fn failure(error: &Error) -> TaskOutcome {
         | error_code::RUN_STALE_FENCING_TOKEN
         | error_code::RUN_LEASE_LOST => TaskOutcome::Stale,
         error_code::TASK_REPLAY_CONFLICT => TaskOutcome::Conflict,
-        error_code::TASK_INVALID_TARGET | error_code::TASK_INPUT_AMBIGUOUS | error_code::TASK_CHECKPOINT_INCOMPATIBLE => TaskOutcome::Invalid,
+        error_code::TASK_INVALID_TARGET
+        | error_code::TASK_INPUT_AMBIGUOUS
+        | error_code::TASK_CHECKPOINT_INCOMPATIBLE => TaskOutcome::Invalid,
         error_code::TASK_LIMIT_EXHAUSTED => TaskOutcome::Limit,
-        error_code::TASK_DECISION_UNAVAILABLE | error_code::TASK_STORAGE_UNAVAILABLE => TaskOutcome::Unavailable,
-        error_code::TASK_EFFECT_UNCERTAIN if error.remote_cooldown().is_some() => TaskOutcome::Unavailable,
+        error_code::TASK_DECISION_UNAVAILABLE | error_code::TASK_STORAGE_UNAVAILABLE => {
+            TaskOutcome::Unavailable
+        }
+        error_code::TASK_EFFECT_UNCERTAIN if error.remote_cooldown().is_some() => {
+            TaskOutcome::Unavailable
+        }
         error_code::TASK_EFFECT_UNCERTAIN => TaskOutcome::Conflict,
         _ if error.is_datastore_unavailable() => TaskOutcome::Unavailable,
         _ => TaskOutcome::Failed,

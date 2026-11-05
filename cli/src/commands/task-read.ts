@@ -9,20 +9,31 @@ import { nanosSchema } from "../lib/nanos.ts";
 const identity = Schema.String.check(Schema.makeFilter(isValidId));
 const count = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0));
 const state = Schema.Literals(["ready", "running", "waiting", "blocked", "paused", "done", "cancelled", "exhausted"]);
+const oid = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u));
+const target = Schema.Union([
+  Schema.Struct({kind: Schema.Literal("api_only")}),
+  Schema.Struct({kind: Schema.Literal("existing_pr"), repository: Schema.String, number: count, branch: Schema.String,
+    head: oid, tree: oid, url: Schema.String, workflows: Schema.Array(Schema.Struct({id: count, path: Schema.String, digest: Schema.String}))}),
+]);
+const dependency = Schema.Struct({active: Schema.Boolean, head: oid, updated_at: instant, checks: Schema.Array(Schema.Struct({
+  workflow_id: count, run_id: Schema.NullOr(count), run_number: Schema.NullOr(count), run_attempt: Schema.NullOr(count),
+  status: Schema.String, conclusion: Schema.NullOr(Schema.String),
+}))});
 const question = Schema.Struct({name: Schema.String, question: Schema.Struct({
   type: Schema.Literal("noul"), instructions: Schema.String,
   criteria: Schema.Struct({true: Schema.String, false: Schema.String}),
 })});
 
-export const TaskSummarySchema = Schema.Struct({
-  id: identity, title: Schema.String, status: state, resource_version: count, generation: count,
-  accepted_revision_id: identity, created_at: instant, expires_at: instant,
-});
-export const TaskPageSchema = Schema.Struct({items: Schema.Array(TaskSummarySchema), next_cursor: Schema.NullOr(Schema.String)});
 export const TaskDetailSchema = Schema.Struct({
+  publication: Schema.optionalKey(Schema.NullOr(Schema.Struct({effect_id: identity, ordinal: count,
+    state: Schema.Literals(["prepared", "issued", "confirmed", "unknown", "refused"]),
+    expected_head: oid, tested_tree: oid, commit: Schema.NullOr(oid), pull_request_url: Schema.String,
+  }))),
+  dependency: Schema.optionalKey(Schema.NullOr(dependency)),
   title: Schema.String, resource_version: count, setup_revision: count,
   etag: Schema.String.check(Schema.isPattern(/^"[0-9a-f]{64}"$/u)),
   context: Schema.Struct({
+    target: Schema.optionalKey(target),
     task_id: identity, generation: count, stop_generation: count, state,
     accepted_revision_id: identity, objective: Schema.String, goal_digest: Schema.String,
     questions: Schema.Array(question), covered_input_sequence: count,

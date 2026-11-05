@@ -1,8 +1,8 @@
 //! Private storage custody is supervised independently of timely GitHub evidence reads.
 
-use std::time::Duration;
-use afd_fleet::task::{TaskLifecycle as _, Tasks, CheckpointMaintenanceCursor};
 use crate::supervisor::Supervisor;
+use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _, Tasks};
+use std::time::Duration;
 
 const INTERVAL: Duration = Duration::from_secs(5 * 60);
 const PASS_LIMIT: Duration = Duration::from_secs(4 * 60);

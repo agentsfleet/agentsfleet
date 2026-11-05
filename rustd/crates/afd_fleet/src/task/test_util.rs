@@ -45,7 +45,13 @@ impl PreparedPlan {
             source_admission_id,
             accepted_revision_id,
             digest,
-            items: items.into_iter().map(|task| super::PreparedItem::New { interpretation: task.objective.clone(), task }).collect(),
+            items: items
+                .into_iter()
+                .map(|task| super::PreparedItem::New {
+                    interpretation: task.objective.clone(),
+                    task,
+                })
+                .collect(),
             authorization: None,
         }
     }

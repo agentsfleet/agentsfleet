@@ -60,8 +60,12 @@ impl TaskRefusal {
         match self {
             Self::EffectUncertain => "the saved publication requires authoritative reconciliation",
             Self::InputAmbiguous => "the input needs clarification before it can change work",
-            Self::CheckpointIncompatible => "the checkpoint cannot safely restore this task generation",
-            Self::StorageUnavailable => "checkpoint storage cannot currently establish object custody",
+            Self::CheckpointIncompatible => {
+                "the checkpoint cannot safely restore this task generation"
+            }
+            Self::StorageUnavailable => {
+                "checkpoint storage cannot currently establish object custody"
+            }
             Self::NotFound => "the task does not belong to this workspace and fleet",
             Self::StaleState => "the task generation or lifecycle state changed",
             Self::ReplayConflict => "the task operation conflicts with its saved interpretation",

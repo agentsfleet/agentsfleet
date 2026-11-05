@@ -16,7 +16,11 @@ pub(super) struct Continuation {
 }
 
 #[derive(Debug)]
-enum Destination { Inherit(Uuid7), Recorded(afd_connector::Provider, String), None }
+enum Destination {
+    Inherit(Uuid7),
+    Recorded(afd_connector::Provider, String),
+    None,
+}
 
 impl Continuation {
     pub(super) fn new(scope: &TaskScope, task_id: &Uuid7, generation: u64, source: &Uuid7) -> Self {
@@ -29,10 +33,18 @@ impl Continuation {
         }
     }
 
-    pub(super) fn with_reply(mut self, provider: Option<&str>, address: Option<&str>) -> crate::Result<Self> {
+    pub(super) fn with_reply(
+        mut self,
+        provider: Option<&str>,
+        address: Option<&str>,
+    ) -> crate::Result<Self> {
         self.destination = match (provider, address) {
             (None, None) => Destination::None,
-            (Some(provider), Some(address)) => Destination::Recorded(afd_connector::Provider::parse(provider).ok_or(super::TaskRefusal::InvalidTarget)?, address.to_owned()),
+            (Some(provider), Some(address)) => Destination::Recorded(
+                afd_connector::Provider::parse(provider)
+                    .ok_or(super::TaskRefusal::InvalidTarget)?,
+                address.to_owned(),
+            ),
             _ => return Err(super::TaskRefusal::InvalidTarget.into()),
         };
         Ok(self)
@@ -48,9 +60,14 @@ impl Continuation {
             event_type: EventType::Continuation,
             request_json: &self.payload,
             reply: match &self.destination {
-                Destination::Recorded(provider, address) => Reply::To { connector: provider.id(), address },
+                Destination::Recorded(provider, address) => Reply::To {
+                    connector: provider.id(),
+                    address,
+                },
                 Destination::None => Reply::None,
-                Destination::Inherit(source) => Reply::Inherit { event_id: source.as_str() },
+                Destination::Inherit(source) => Reply::Inherit {
+                    event_id: source.as_str(),
+                },
             },
         }
     }
@@ -70,7 +87,13 @@ impl Continuation {
 
 /// Retire superseded native work without settling an issued lease or human reply.
 pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &str) -> crate::Result<()> {
-    sqlx::query(include_str!("sql/retire_continuations.sql")).bind(task).bind(Producer::TaskContinuation.as_str())
-        .execute(connection).await.map_err(crate::error::query("retire never-issued obsolete task continuations"))?;
+    sqlx::query(include_str!("sql/retire_continuations.sql"))
+        .bind(task)
+        .bind(Producer::TaskContinuation.as_str())
+        .execute(connection)
+        .await
+        .map_err(crate::error::query(
+            "retire never-issued obsolete task continuations",
+        ))?;
     Ok(())
 }

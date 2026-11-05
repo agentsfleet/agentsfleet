@@ -13,6 +13,8 @@ pub(super) struct TaskRow {
     pub id: String,
     pub originating_item_id: String,
     pub target: String,
+    pub dependency: Option<String>,
+    pub publication: Option<String>,
     pub accepted_revision_id: String,
     pub accepted_revision_number: i64,
     pub title: String,
@@ -53,6 +55,26 @@ impl TaskRow {
         let questions =
             serde_json::from_str(&self.questions).map_err(afd_core::json::Unreadable::from)?;
         Ok(TaskSnapshot {
+            publication: self
+                .publication
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(afd_core::json::Unreadable::from)?,
+            publication_digest: self
+                .publication
+                .as_deref()
+                .map(|value| afd_core::etag::sha256_hex(value.as_bytes())),
+            dependency: self
+                .dependency
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(afd_core::json::Unreadable::from)?,
+            dependency_digest: self
+                .dependency
+                .as_deref()
+                .map(|value| afd_core::etag::sha256_hex(value.as_bytes())),
             title: self.title,
             resource_version: counter(self.resource_version, "resource_version")?,
             accepted_revision_number: counter(self.accepted_revision_number, "revision")?,
@@ -78,7 +100,10 @@ impl TaskRow {
                     "confirmed_effect_watermark",
                 )?,
                 checkpoint_id: self.checkpoint_id.map(Cow::Owned),
-                checkpoint_generation: self.checkpoint_generation.map(|generation| counter(generation, "checkpoint generation")).transpose()?,
+                checkpoint_generation: self
+                    .checkpoint_generation
+                    .map(|generation| counter(generation, "checkpoint generation"))
+                    .transpose()?,
                 expires_at: self.expires_at,
                 limits: TaskLimits {
                     model_nanos: self.max_model_nanos,
@@ -107,13 +132,32 @@ impl TaskRow {
 }
 
 fn target(encoded: &str) -> Result<afd_wire::task::TaskTarget> {
-    let value: serde_json::Value = serde_json::from_str(encoded).map_err(afd_core::json::Unreadable::from)?;
-    if value.get("kind").and_then(serde_json::Value::as_str) == Some("api_only") { return Ok(afd_wire::task::TaskTarget::ApiOnly); }
-    let target: super::github::BoundPr = serde_json::from_value(value).map_err(afd_core::json::Unreadable::from)?;
-    Ok(afd_wire::task::TaskTarget::ExistingPr { repository: target.repository, repository_id: target.repository_id,
-        number: target.number, branch: target.branch, base: target.base, head: target.head, tree: target.tree, url: target.url,
-        workflows: target.workflows.into_iter().map(|workflow| afd_wire::task::TaskWorkflow {
-            id: workflow.id, path: workflow.path, digest: workflow.digest }).collect() })
+    let value: serde_json::Value =
+        serde_json::from_str(encoded).map_err(afd_core::json::Unreadable::from)?;
+    if value.get("kind").and_then(serde_json::Value::as_str) == Some("api_only") {
+        return Ok(afd_wire::task::TaskTarget::ApiOnly);
+    }
+    let target: super::github::BoundPr =
+        serde_json::from_value(value).map_err(afd_core::json::Unreadable::from)?;
+    Ok(afd_wire::task::TaskTarget::ExistingPr {
+        repository: target.repository,
+        repository_id: target.repository_id,
+        number: target.number,
+        branch: target.branch,
+        base: target.base,
+        head: target.head,
+        tree: target.tree,
+        url: target.url,
+        workflows: target
+            .workflows
+            .into_iter()
+            .map(|workflow| afd_wire::task::TaskWorkflow {
+                id: workflow.id,
+                path: workflow.path,
+                digest: workflow.digest,
+            })
+            .collect(),
+    })
 }
 
 pub(super) fn state(stored: &str) -> Result<TaskState> {

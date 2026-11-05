@@ -10,6 +10,16 @@ export const TASK_STATUS = {
 const Status = z.enum(Object.values(TASK_STATUS));
 const Count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const Identity = z.uuidv7();
+const GitOid = z.string().regex(/^[0-9a-f]{40}$/u);
+const Target = z.discriminatedUnion("kind", [z.object({kind: z.literal("api_only")}), z.object({
+  kind: z.literal("existing_pr"), repository: z.string(), number: Count, branch: z.string(),
+  head: GitOid, tree: GitOid, url: z.url().refine(value => value.startsWith("https://github.com/")),
+  workflows: z.array(z.object({id: Count, path: z.string(), digest: z.string()})),
+})]);
+const Dependency = z.object({active: z.boolean(), head: GitOid, updated_at: Instant, checks: z.array(z.object({
+  workflow_id: Count, run_id: Count.nullable(), run_number: Count.nullable(), run_attempt: Count.nullable(),
+  status: z.string(), conclusion: z.string().nullable(),
+}))});
 const Statement = z.object({name: z.string().min(1), question: z.object({
   type: z.literal("noul"), instructions: z.string().min(1),
   criteria: z.object({true: z.string().min(1), false: z.string().min(1)}),
@@ -22,9 +32,15 @@ const Summary = z.object({
 // the whole panel; a continuation would mean an incomplete response, not no work.
 const Page = z.object({items: z.array(Summary).max(100), next_cursor: z.null()});
 const Detail = z.object({
+  publication: z.object({effect_id: Identity, ordinal: Count,
+    state: z.enum(["prepared", "issued", "confirmed", "unknown", "refused"]),
+    expected_head: GitOid, tested_tree: GitOid, commit: GitOid.nullable(), pull_request_url: z.string(),
+  }).nullable().optional(),
+  dependency: Dependency.nullable().optional(),
   title: z.string().min(1), resource_version: Count, setup_revision: Count,
   etag: z.string().regex(/^"[0-9a-f]{64}"$/u).optional(),
   context: z.object({
+    target: Target.optional(),
     task_id: Identity, generation: Count, stop_generation: Count,
     accepted_revision_id: Identity, objective: z.string(), goal_digest: z.string(),
     questions: z.array(Statement).min(1).max(6), state: Status,

@@ -47,7 +47,11 @@ pub(super) async fn disposition(
     }
 }
 
-pub(super) fn answers_match(call: &Call, request: &DecisionRequest, result: &DecisionResult) -> bool {
+pub(super) fn answers_match(
+    call: &Call,
+    request: &DecisionRequest,
+    result: &DecisionResult,
+) -> bool {
     let DecisionOutcome::Answered { answers } = &result.result else {
         return false;
     };

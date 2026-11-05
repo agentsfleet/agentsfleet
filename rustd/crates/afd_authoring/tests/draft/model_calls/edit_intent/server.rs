@@ -1,7 +1,12 @@
 //! One owned TLS request, observed before the test releases its reply.
 
 use serde_json::Value;
-use tokio::{io::{AsyncReadExt as _, AsyncWriteExt as _}, net::TcpListener, sync::oneshot, task::JoinHandle};
+use tokio::{
+    io::{AsyncReadExt as _, AsyncWriteExt as _},
+    net::TcpListener,
+    sync::oneshot,
+    task::JoinHandle,
+};
 
 pub(super) struct Server {
     pub client: reqwest::Client,
@@ -12,8 +17,10 @@ pub(super) struct Server {
 }
 
 impl Server {
-    pub async fn start(reply: Value) -> Self {
-        let socket = TcpListener::bind("127.0.0.1:0").await.expect("isolated decision port");
+    pub(super) async fn start(reply: Value) -> Self {
+        let socket = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("isolated decision port");
         let address = socket.local_addr().expect("bound address");
         let (root, tls) = super::tls::server();
         let client = super::tls::client(root, address);
@@ -26,22 +33,46 @@ impl Server {
             sent.send(body).expect("scenario awaits decision request");
             released.await.expect("scenario releases response");
             let body = serde_json::to_string(&reply).expect("decision fixture JSON");
-            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
-            stream.write_all(response.as_bytes()).await.expect("response write");
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .await
+                .expect("response write");
             stream.shutdown().await.expect("TLS close");
         });
-        Self { client, endpoint: format!("https://{}:{}/v1/systemone", super::tls::HOST, address.port()), seen, release: Some(release), worker }
+        Self {
+            client,
+            endpoint: format!(
+                "https://{}:{}/v1/systemone",
+                super::tls::HOST,
+                address.port()
+            ),
+            seen,
+            release: Some(release),
+            worker,
+        }
     }
 
-    pub async fn received(&mut self) -> Value {
-        tokio::time::timeout(std::time::Duration::from_secs(5), &mut self.seen).await
-            .expect("decision arrives within fixture budget").expect("owned server")
+    pub(super) async fn received(&mut self) -> Value {
+        tokio::time::timeout(std::time::Duration::from_secs(5), &mut self.seen)
+            .await
+            .expect("decision arrives within fixture budget")
+            .expect("owned server")
     }
 
-    pub async fn finish(mut self) {
-        self.release.take().expect("release sender").send(()).expect("response remains owned");
-        tokio::time::timeout(std::time::Duration::from_secs(5), &mut self.worker).await
-            .expect("server terminates").expect("server task succeeds");
+    pub(super) async fn finish(mut self) {
+        self.release
+            .take()
+            .expect("release sender")
+            .send(())
+            .expect("response remains owned");
+        tokio::time::timeout(std::time::Duration::from_secs(5), &mut self.worker)
+            .await
+            .expect("server terminates")
+            .expect("server task succeeds");
     }
 }
 
@@ -54,10 +85,14 @@ async fn read(stream: &mut tokio_rustls::server::TlsStream<tokio::net::TcpStream
         request.extend_from_slice(&buffer[..count]);
         if let Some(offset) = request.windows(4).position(|window| window == b"\r\n\r\n") {
             let header = std::str::from_utf8(&request[..offset]).expect("HTTP header");
-            let length = header.lines().find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().expect("content length"))
-            }).expect("request content length");
+            let length = header
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().expect("content length"))
+                })
+                .expect("request content length");
             break (offset + 4, length);
         }
     };

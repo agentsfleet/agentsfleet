@@ -21,9 +21,18 @@ use super::Target;
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum Published<'a> {
-    TaskDecisionStarted { event_id: &'a str, progress: &'a afd_wire::activity::TaskActivity },
-    TaskDecisionCompleted { event_id: &'a str, progress: &'a afd_wire::activity::TaskActivity },
-    TaskTransferProgress { event_id: &'a str, progress: &'a afd_wire::activity::TaskActivity },
+    TaskDecisionStarted {
+        event_id: &'a str,
+        progress: &'a afd_wire::activity::TaskActivity,
+    },
+    TaskDecisionCompleted {
+        event_id: &'a str,
+        progress: &'a afd_wire::activity::TaskActivity,
+    },
+    TaskTransferProgress {
+        event_id: &'a str,
+        progress: &'a afd_wire::activity::TaskActivity,
+    },
     ContextProgress {
         event_id: &'a str,
         #[serde(flatten)]
@@ -89,9 +98,15 @@ impl<'a> Published<'a> {
         let event_id = target.event_id.as_str();
         let call_id = |call: &str| fenced_call_id(target.fence, call);
         Ok(match frame {
-            ActivityFrame::TaskDecisionStarted(progress) => Self::TaskDecisionStarted { event_id, progress },
-            ActivityFrame::TaskDecisionCompleted(progress) => Self::TaskDecisionCompleted { event_id, progress },
-            ActivityFrame::TaskTransferProgress(progress) => Self::TaskTransferProgress { event_id, progress },
+            ActivityFrame::TaskDecisionStarted(progress) => {
+                Self::TaskDecisionStarted { event_id, progress }
+            }
+            ActivityFrame::TaskDecisionCompleted(progress) => {
+                Self::TaskDecisionCompleted { event_id, progress }
+            }
+            ActivityFrame::TaskTransferProgress(progress) => {
+                Self::TaskTransferProgress { event_id, progress }
+            }
             ActivityFrame::ContextProgress(progress) => Self::ContextProgress {
                 event_id,
                 progress: *progress,

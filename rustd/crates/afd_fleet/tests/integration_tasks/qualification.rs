@@ -230,7 +230,10 @@ async fn accepted_revision(case: &Case, revision: &str, number: u64) {
     );
     for binding in &accepted.items {
         let task = tasks
-            .read(scope, &binding.task_id)
+            .read(
+                scope,
+                binding.task_id.as_ref().expect("accepted goal owns a task"),
+            )
             .await
             .expect("saved accepted goal");
         assert_eq!(

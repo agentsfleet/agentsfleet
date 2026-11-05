@@ -45,6 +45,6 @@ pub use self::router::Router;
 // re-exported so the supervisor implements it through the crate it drives.
 pub use afr_tools::{LeaseVerbs, ScheduleCall, Unanswered};
 
+pub use decision::PreparedTask;
 pub use engine::ContextCheckpoints;
 pub use engine::TaskRecovery;
-pub use decision::PreparedTask;

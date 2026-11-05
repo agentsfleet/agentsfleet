@@ -1,12 +1,16 @@
 //! Sandbox build and freeze own recovery; the model sees only authenticated history.
 
+use super::{LeaseRun, build::Build};
+use crate::{
+    Result, error,
+    recovery::{Capture, Restore},
+    report::Ending,
+};
 use afd_core::id::Uuid7;
 use afd_wire::task::{CheckpointMode, CheckpointPlan, TaskDisposition, TaskTarget};
 use afr_agent::{PreparedTask, TaskRecovery};
 use afr_sandbox::Sandbox;
 use zeroize::Zeroizing;
-use crate::{Result, error, recovery::{Capture, Restore}, report::Ending};
-use super::{LeaseRun, build::Build};
 
 #[derive(Debug)]
 pub(super) struct State {
@@ -15,31 +19,73 @@ pub(super) struct State {
     base_paths: Vec<String>,
 }
 
-fn api_toolbox() -> String { afd_core::etag::sha256_hex(b"agentsfleet.api-only-recovery.v1") }
+fn api_toolbox() -> String {
+    afd_core::etag::sha256_hex(b"agentsfleet.api-only-recovery.v1")
+}
 
 impl LeaseRun<'_> {
-    pub(super) async fn prepare_recovery(&self, sandbox: &dyn Sandbox, build: &Build<'_>) -> Result<()> {
-        let Some(prepared) = build.prepared_task.filter(|prepared| prepared.allow_actions) else { return Ok(()); };
-        let task = prepared.inputs.current_task.as_ref().ok_or_else(|| error::config("durable workspace has no native task"))?;
-        let workspace = sandbox.workspace().ok_or_else(|| error::config("sandbox has no trusted snapshot workspace"))?;
-        let toolbox = sandbox.toolbox_digest().ok_or_else(|| error::config("sandbox has no verified recovery toolbox"))?;
+    pub(super) async fn prepare_recovery(
+        &self,
+        sandbox: &dyn Sandbox,
+        build: &Build<'_>,
+    ) -> Result<()> {
+        let Some(prepared) = build
+            .prepared_task
+            .filter(|prepared| prepared.allow_actions)
+        else {
+            return Ok(());
+        };
+        let task = prepared
+            .inputs
+            .current_task
+            .as_ref()
+            .ok_or_else(|| error::config("durable workspace has no native task"))?;
+        let workspace = sandbox
+            .workspace()
+            .ok_or_else(|| error::config("sandbox has no trusted snapshot workspace"))?;
+        let toolbox = sandbox
+            .toolbox_digest()
+            .ok_or_else(|| error::config("sandbox has no verified recovery toolbox"))?;
         let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
-        sandbox.freeze().await.map_err(|_| error::config("sandbox could not freeze for recovery"))?;
+        sandbox
+            .freeze()
+            .await
+            .map_err(|_| error::config("sandbox could not freeze for recovery"))?;
         let restored: Result<State> = async {
             if task.checkpoint_id.is_some() {
-                let restored = Restore { plane: &self.lessee.plane, lease: &self.ids.lease, workspace: &scope,
-                    fence: self.lease.fencing_token, task, toolbox, stop: &self.interrupt }
-                    .run(Some((workspace.root.to_owned(), workspace.owner))).await?;
+                let restored = Restore {
+                    plane: &self.lessee.plane,
+                    lease: &self.ids.lease,
+                    workspace: &scope,
+                    fence: self.lease.fencing_token,
+                    task,
+                    toolbox,
+                    stop: &self.interrupt,
+                }
+                .run(Some((workspace.root.to_owned(), workspace.owner)))
+                .await?;
                 let mut recovered_task = task.clone();
                 recovered_task.covered_input_sequence = restored.plan.covered_input_sequence;
                 recovered_task.confirmed_effect_watermark = restored.plan.effect_watermark;
-                Ok(State { history: Some(TaskRecovery { task: recovered_task,
-                    history: Zeroizing::new(restored.history.expose().to_vec()) }),
-                    base: Some(restored.plan), base_paths: restored.base_paths })
-            } else if let TaskTarget::ExistingPr { repository, head, .. } = &task.target {
+                Ok(State {
+                    history: Some(TaskRecovery {
+                        task: recovered_task,
+                        history: Zeroizing::new(restored.history.expose().to_vec()),
+                    }),
+                    base: Some(restored.plan),
+                    base_paths: restored.base_paths,
+                })
+            } else if let TaskTarget::ExistingPr {
+                repository, head, ..
+            } = &task.target
+            {
                 let root = workspace.root.to_owned();
-                let name = repository.split_once('/').map(|(_, name)| name)
-                    .filter(|name| !name.is_empty() && !name.contains('/') && !matches!(*name, "." | ".."))
+                let name = repository
+                    .split_once('/')
+                    .map(|(_, name)| name)
+                    .filter(|name| {
+                        !name.is_empty() && !name.contains('/') && !matches!(*name, "." | "..")
+                    })
                     .ok_or_else(|| error::config("native recovery repository name is invalid"))?;
                 let destination = root.join(name);
                 let expected = head.clone();
@@ -48,76 +94,197 @@ impl LeaseRun<'_> {
                 tokio::task::spawn_blocking(move || {
                     let repository = gix::open_opts(destination, gix::open::Options::isolated())
                         .map_err(|_| error::config("fresh task checkout cannot be opened"))?;
-                    let actual = repository.head_id().map_err(|_| error::config("fresh task checkout has no head"))?;
-                    if actual.to_string() != expected { return Err(error::config("task branch moved before initial capture")); }
+                    let actual = repository
+                        .head_id()
+                        .map_err(|_| error::config("fresh task checkout has no head"))?;
+                    if actual.to_string() != expected {
+                        return Err(error::config("task branch moved before initial capture"));
+                    }
                     Ok::<_, crate::Error>(())
-                }).await??;
-                let base = Capture { plane: &self.lessee.plane, lease: &self.ids.lease, workspace: &scope,
-                    fence: self.lease.fencing_token, task, toolbox, mode: CheckpointMode::RetainBase,
-                    base: None, stop: &self.interrupt }.run(Some(root), Zeroizing::new(Vec::new()), Vec::new()).await?;
-                let base_paths = Restore { plane: &self.lessee.plane, lease: &self.ids.lease, workspace: &scope,
-                    fence: self.lease.fencing_token, task, toolbox, stop: &self.interrupt }.base_paths(&base).await?;
-                Ok(State { history: None, base: Some(base), base_paths })
-            } else { Ok(State { history: None, base: None, base_paths: Vec::new() }) }
-        }.await;
+                })
+                .await??;
+                let base = Capture {
+                    plane: &self.lessee.plane,
+                    lease: &self.ids.lease,
+                    workspace: &scope,
+                    fence: self.lease.fencing_token,
+                    task,
+                    toolbox,
+                    mode: CheckpointMode::RetainBase,
+                    base: None,
+                    stop: &self.interrupt,
+                }
+                .run(Some(root), Zeroizing::new(Vec::new()), Vec::new())
+                .await?;
+                let base_paths = Restore {
+                    plane: &self.lessee.plane,
+                    lease: &self.ids.lease,
+                    workspace: &scope,
+                    fence: self.lease.fencing_token,
+                    task,
+                    toolbox,
+                    stop: &self.interrupt,
+                }
+                .base_paths(&base)
+                .await?;
+                Ok(State {
+                    history: None,
+                    base: Some(base),
+                    base_paths,
+                })
+            } else {
+                Ok(State {
+                    history: None,
+                    base: None,
+                    base_paths: Vec::new(),
+                })
+            }
+        }
+        .await;
         // Failure remains a failed build even when thaw also fails; teardown owns
         // the entire sandbox. No partially restored executor enters the slot.
-        let thawed = sandbox.thaw().await.map_err(|_| error::config("sandbox could not thaw after recovery"));
+        let thawed = sandbox
+            .thaw()
+            .await
+            .map_err(|_| error::config("sandbox could not thaw after recovery"));
         let state: State = restored?;
         thawed?;
-        build.recovery.set(state).map_err(|_| error::config("sandbox recovery was prepared twice"))?;
+        build
+            .recovery
+            .set(state)
+            .map_err(|_| error::config("sandbox recovery was prepared twice"))?;
         Ok(())
     }
 
-    pub(super) async fn recover_without_sandbox(&self, prepared: Option<&PreparedTask>) -> Result<Option<TaskRecovery>> {
-        let Some(task) = prepared.filter(|prepared| prepared.allow_actions).and_then(|prepared| prepared.inputs.current_task.as_ref()) else { return Ok(None); };
-        if task.checkpoint_id.is_none() { return Ok(None); }
-        if !matches!(task.target, TaskTarget::ApiOnly) { return Err(error::config("repository recovery requires a sandbox")); }
+    pub(super) async fn recover_without_sandbox(
+        &self,
+        prepared: Option<&PreparedTask>,
+    ) -> Result<Option<TaskRecovery>> {
+        let Some(task) = prepared
+            .filter(|prepared| prepared.allow_actions)
+            .and_then(|prepared| prepared.inputs.current_task.as_ref())
+        else {
+            return Ok(None);
+        };
+        if task.checkpoint_id.is_none() {
+            return Ok(None);
+        }
+        if !matches!(task.target, TaskTarget::ApiOnly) {
+            return Err(error::config("repository recovery requires a sandbox"));
+        }
         let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
         let toolbox = api_toolbox();
-        let restored = Restore { plane: &self.lessee.plane, lease: &self.ids.lease, workspace: &scope,
-            fence: self.lease.fencing_token, task, toolbox: &toolbox, stop: &self.interrupt }.run(None).await?;
+        let restored = Restore {
+            plane: &self.lessee.plane,
+            lease: &self.ids.lease,
+            workspace: &scope,
+            fence: self.lease.fencing_token,
+            task,
+            toolbox: &toolbox,
+            stop: &self.interrupt,
+        }
+        .run(None)
+        .await?;
         let mut task = task.clone();
         task.covered_input_sequence = restored.plan.covered_input_sequence;
         task.confirmed_effect_watermark = restored.plan.effect_watermark;
-        Ok(Some(TaskRecovery { task, history: Zeroizing::new(restored.history.expose().to_vec()) }))
+        Ok(Some(TaskRecovery {
+            task,
+            history: Zeroizing::new(restored.history.expose().to_vec()),
+        }))
     }
 
-    pub(super) async fn capture_frozen(&self, sandbox: &dyn Sandbox, state: Option<&State>, ending: &mut Ending) {
+    pub(super) async fn capture_frozen(
+        &self,
+        sandbox: &dyn Sandbox,
+        state: Option<&State>,
+        ending: &mut Ending,
+    ) {
         let result: Result<()> = async {
-            let Ending::Ran { output, .. } = ending else { return Ok(()); };
-            let Some(recovery) = output.recovery.as_ref() else { return Ok(()); };
-            let state = state.ok_or_else(|| error::config("task workspace has no recovery owner"))?;
-            let workspace = sandbox.workspace().ok_or_else(|| error::config("task workspace is unavailable for capture"))?;
-            let toolbox = sandbox.toolbox_digest().ok_or_else(|| error::config("task toolbox is unavailable for capture"))?;
+            let Ending::Ran { output, .. } = ending else {
+                return Ok(());
+            };
+            let Some(recovery) = output.recovery.as_ref() else {
+                return Ok(());
+            };
+            let state =
+                state.ok_or_else(|| error::config("task workspace has no recovery owner"))?;
+            let workspace = sandbox
+                .workspace()
+                .ok_or_else(|| error::config("task workspace is unavailable for capture"))?;
+            let toolbox = sandbox
+                .toolbox_digest()
+                .ok_or_else(|| error::config("task toolbox is unavailable for capture"))?;
             let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
-            let saved = Capture { plane: &self.lessee.plane, lease: &self.ids.lease, workspace: &scope,
-                fence: self.lease.fencing_token, task: &recovery.task, toolbox, mode: CheckpointMode::Incremental,
-                base: state.base.as_ref(), stop: &self.interrupt }
-                .run(Some(workspace.root.to_owned()), recovery.history.clone(), state.base_paths.clone()).await?;
-            if let Some(report) = output.task.as_mut() { report.checkpoint_id = Some(saved.checkpoint_id); }
+            let saved = Capture {
+                plane: &self.lessee.plane,
+                lease: &self.ids.lease,
+                workspace: &scope,
+                fence: self.lease.fencing_token,
+                task: &recovery.task,
+                toolbox,
+                mode: CheckpointMode::Incremental,
+                base: state.base.as_ref(),
+                stop: &self.interrupt,
+            }
+            .run(
+                Some(workspace.root.to_owned()),
+                recovery.history.clone(),
+                state.base_paths.clone(),
+            )
+            .await?;
+            if let Some(report) = output.task.as_mut() {
+                report.checkpoint_id = Some(saved.checkpoint_id);
+            }
             output.recovery = None;
             Ok(())
-        }.await;
-        if let Err(failure) = result { capture_failed(ending, &failure); }
+        }
+        .await;
+        if let Err(failure) = result {
+            capture_failed(ending, &failure);
+        }
     }
 
     pub(super) async fn capture_without_sandbox(&self, ending: &mut Ending) {
-        if self.interrupt.is_cancelled() { capture_unavailable(ending); return; }
+        if self.interrupt.is_cancelled() {
+            capture_unavailable(ending);
+            return;
+        }
         let result: Result<()> = async {
-            let Ending::Ran { output, .. } = ending else { return Ok(()); };
-            let Some(recovery) = output.recovery.as_ref() else { return Ok(()); };
-            if !matches!(recovery.task.target, TaskTarget::ApiOnly) { return Err(error::config("repository capture has no sandbox")); }
+            let Ending::Ran { output, .. } = ending else {
+                return Ok(());
+            };
+            let Some(recovery) = output.recovery.as_ref() else {
+                return Ok(());
+            };
+            if !matches!(recovery.task.target, TaskTarget::ApiOnly) {
+                return Err(error::config("repository capture has no sandbox"));
+            }
             let scope = Uuid7::parse(&self.lease.event.workspace_id)?;
             let toolbox = api_toolbox();
-            let saved = Capture { plane: &self.lessee.plane, lease: &self.ids.lease, workspace: &scope,
-                fence: self.lease.fencing_token, task: &recovery.task, toolbox: &toolbox, mode: CheckpointMode::Incremental,
-                base: None, stop: &self.interrupt }.run(None, recovery.history.clone(), Vec::new()).await?;
-            if let Some(report) = output.task.as_mut() { report.checkpoint_id = Some(saved.checkpoint_id); }
+            let saved = Capture {
+                plane: &self.lessee.plane,
+                lease: &self.ids.lease,
+                workspace: &scope,
+                fence: self.lease.fencing_token,
+                task: &recovery.task,
+                toolbox: &toolbox,
+                mode: CheckpointMode::Incremental,
+                base: None,
+                stop: &self.interrupt,
+            }
+            .run(None, recovery.history.clone(), Vec::new())
+            .await?;
+            if let Some(report) = output.task.as_mut() {
+                report.checkpoint_id = Some(saved.checkpoint_id);
+            }
             output.recovery = None;
             Ok(())
-        }.await;
-        if let Err(failure) = result { capture_failed(ending, &failure); }
+        }
+        .await;
+        if let Err(failure) = result {
+            capture_failed(ending, &failure);
+        }
     }
 }
 
@@ -128,7 +295,9 @@ fn capture_failed(ending: &mut Ending, failure: &crate::Error) {
 
 pub(super) fn capture_unavailable(ending: &mut Ending) {
     if let Ending::Ran { output, .. } = ending {
-        if output.task.is_none() && output.recovery.is_none() { return; }
+        if output.task.is_none() && output.recovery.is_none() {
+            return;
+        }
         if let Some(task) = output.task.as_mut() {
             task.disposition = TaskDisposition::Blocked;
             task.decision_call_id = None;

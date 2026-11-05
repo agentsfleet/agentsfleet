@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct Workflow {
+pub(in crate::task) struct Workflow {
     pub id: u64,
     pub path: String,
     pub digest: String,
@@ -24,12 +24,12 @@ pub(in crate::task) struct BoundPr {
 }
 
 #[derive(Deserialize)]
-pub(super) struct Object { pub sha: String }
+pub(super) struct Object {
+    pub sha: String,
+}
 
 #[derive(Deserialize)]
 pub(super) struct Commit {
     pub sha: String,
     pub tree: Object,
-    pub parents: Vec<Object>,
-    pub message: String,
 }

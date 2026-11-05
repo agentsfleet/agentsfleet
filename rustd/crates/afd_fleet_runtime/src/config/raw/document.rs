@@ -114,8 +114,8 @@ pub(crate) struct Runtime {
     #[garde(skip)]
     pub(crate) repository_publication: Option<crate::config::RepositoryPublication>,
     /// Exact owner-reviewed validation-only workflows for existing PR publication.
-    #[garde(inner(length(min = 1, max = 16), dive))]
-    pub(crate) repository_validation_workflows: Option<Vec<crate::config::repository::ValidationWorkflow>>,
+    #[garde(dive)]
+    pub(crate) repository_validation_workflows: Option<ValidationWorkflows>,
     /// The branch every pull request opens against. Required with `write`, refused with `read`.
     #[garde(inner(length(chars, min = 1, max = MAX_BASE_BRANCH_LEN), custom(is_branch_name)))]
     pub(crate) repository_base: Option<String>,
@@ -126,3 +126,12 @@ pub(crate) struct Runtime {
     #[cfg_attr(feature = "openapi", schema(ignore))]
     pub(crate) extra: Map<String, Value>,
 }
+
+/// Keep collection bounds alongside element validation, including optional input.
+#[derive(Debug, Deserialize, Validate)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(transparent)]
+pub(crate) struct ValidationWorkflows(
+    #[garde(length(min = 1, max = 16), dive)]
+    pub(crate)  Vec<crate::config::repository::ValidationWorkflow>,
+);

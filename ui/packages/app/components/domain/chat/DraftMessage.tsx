@@ -24,7 +24,6 @@ export function DraftRetryProvider({client, disabled, children}: {client: DraftC
     const recovery = chatRecovery(current);
     if (current.busy || current.pending || current.inaccessible || recovery.pending) return;
     try {
-      if (recovery.blocked) await client.stop();
       await client.send(text);
     } catch { /* DraftClient exposes the failure and retains the request. */ }
   }, [client]);

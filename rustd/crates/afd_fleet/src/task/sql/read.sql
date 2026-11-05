@@ -8,8 +8,25 @@ SELECT t.id::text, t.originating_task_item_id::text AS originating_item_id, t.ta
        t.max_leases, t.used_leases, t.max_publications, t.used_publications,
        t.max_decision_calls, t.used_decision_calls, t.max_fallback_reads,
        t.used_fallback_reads, t.expires_at,
+       CASE WHEN w.id IS NULL THEN NULL ELSE jsonb_build_object(
+           'active', w.consumed_at IS NULL AND w.cancelled_at IS NULL,
+           'head', w.expected_head, 'checks', w.checks, 'updated_at', w.updated_at)::text END AS dependency,
+       publication.receipt::text AS publication,
        EXTRACT(EPOCH FROM (t.expires_at - t.created_at))::int4 AS wall_seconds
 FROM fleet.tasks t
 JOIN fleet.revisions r ON r.id = t.accepted_revision_id AND r.fleet_id = t.fleet_id
 LEFT JOIN fleet.task_checkpoints c ON c.id = t.checkpoint_id AND c.task_id = t.id
+LEFT JOIN LATERAL (
+    SELECT id, expected_head, checks, updated_at, consumed_at, cancelled_at FROM fleet.task_waits
+    WHERE task_id = t.id AND fleet_id = t.fleet_id AND workspace_id = t.workspace_id
+    ORDER BY generation DESC LIMIT 1
+) w ON true
+LEFT JOIN LATERAL (
+    SELECT jsonb_build_object('effect_id', e.id, 'ordinal', e.ordinal, 'state', s.status,
+        'expected_head', e.expected_head, 'tested_tree', e.tested_tree, 'commit', s.commit_oid,
+        'pull_request_url', t.target->>'url') AS receipt
+    FROM fleet.task_effects e JOIN fleet.task_effect_states s ON s.effect_id = e.id
+    WHERE e.task_id = t.id AND e.fleet_id = t.fleet_id AND e.workspace_id = t.workspace_id
+    ORDER BY e.ordinal DESC LIMIT 1
+) publication ON true
 WHERE t.id = $1::uuid AND t.fleet_id = $2::uuid AND t.workspace_id = $3::uuid

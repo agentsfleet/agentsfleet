@@ -38,7 +38,7 @@ export function TaskControls({workspaceId, fleetId, detail, enabled, onChanged}:
       {status.kind === "sending" ? <output className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground"><SignalSpinner aria-hidden="true" />{status.label}…</output> : null}
       {status.kind === "failed" || !detail.etag ? <Button variant="ghost" size="sm" onClick={onChanged}>Refresh progress</Button> : null}
     </div>
-    {status.kind === "failed" ? <p role="status" className="text-eyebrow text-muted-foreground">{status.message}</p> : null}
+    {status.kind === "failed" ? <output className="block text-eyebrow text-muted-foreground">{status.message}</output> : null}
   </div>;
 }
 

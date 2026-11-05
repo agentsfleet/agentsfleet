@@ -1,8 +1,8 @@
 //! Safe-boundary application and source-message reply obligations are separate.
 
+use super::DecisionTaskVersion;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use super::DecisionTaskVersion;
 
 /// One durable item can be applied once and answered once.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -21,7 +21,11 @@ impl TaskInputMode {
     /// Persisted receipt identity.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self { Self::ApplyHere => "apply_here", Self::Queued => "queued", Self::Answered => "answered" }
+        match self {
+            Self::ApplyHere => "apply_here",
+            Self::Queued => "queued",
+            Self::Answered => "answered",
+        }
     }
 }
 

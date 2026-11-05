@@ -24,7 +24,10 @@ pub(in crate::model) fn tool(editing: bool) -> Value {
 }
 
 #[cfg(test)]
-#[expect(clippy::expect_used, reason = "source-tree fixture failures must fail the regression guard") ]
+#[expect(
+    clippy::expect_used,
+    reason = "source-tree fixture failures must fail the regression guard"
+)]
 mod tests {
     use std::{fs, path::Path};
 

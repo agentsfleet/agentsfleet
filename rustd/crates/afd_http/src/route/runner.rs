@@ -141,10 +141,15 @@ impl RunnerRoute {
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::ContextCheckpoint | Self::TaskCheckpointPage => &[Verb::Get, Verb::Put],
-            Self::Schedules | Self::ScheduleRuns | Self::TaskEffects | Self::TaskCheckpointObjects => &[Verb::Get, Verb::Post],
+            Self::Schedules
+            | Self::ScheduleRuns
+            | Self::TaskEffects
+            | Self::TaskCheckpointObjects => &[Verb::Get, Verb::Post],
             Self::Schedule => &[Verb::Patch, Verb::Delete],
             Self::TaskDecision | Self::TaskCheckpoint | Self::TaskCheckpointPin => &[Verb::Patch],
-            Self::SelfRecord | Self::MemoryHydrate | Self::TaskInputs | Self::TaskEffect => &[Verb::Get],
+            Self::SelfRecord | Self::MemoryHydrate | Self::TaskInputs | Self::TaskEffect => {
+                &[Verb::Get]
+            }
             Self::Heartbeat
             | Self::Lease
             | Self::Report

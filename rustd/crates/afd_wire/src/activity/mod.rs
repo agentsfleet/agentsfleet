@@ -12,7 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::tool_trace::{ToolCallStatus, edge_fits};
 
 mod task;
-pub use task::{TaskActivity, TaskActivityOperation, TaskActivityPhase, TaskActivityRecord, TaskActivityHistory};
+pub use task::{
+    TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
+    TaskActivityRecord, TaskTransferBytes,
+};
 
 /// The longest call identity a tool frame may carry.
 ///
@@ -177,9 +180,15 @@ impl ActivityFrame<'_> {
     #[must_use]
     pub fn task_activity(&self) -> Option<TaskActivityRecord> {
         match self {
-            Self::TaskDecisionStarted(progress) => Some(TaskActivityRecord::TaskDecisionStarted(progress.clone())),
-            Self::TaskDecisionCompleted(progress) => Some(TaskActivityRecord::TaskDecisionCompleted(progress.clone())),
-            Self::TaskTransferProgress(progress) => Some(TaskActivityRecord::TaskTransferProgress(progress.clone())),
+            Self::TaskDecisionStarted(progress) => {
+                Some(TaskActivityRecord::TaskDecisionStarted(progress.clone()))
+            }
+            Self::TaskDecisionCompleted(progress) => {
+                Some(TaskActivityRecord::TaskDecisionCompleted(progress.clone()))
+            }
+            Self::TaskTransferProgress(progress) => {
+                Some(TaskActivityRecord::TaskTransferProgress(progress.clone()))
+            }
             _ => None,
         }
     }
@@ -191,8 +200,11 @@ impl ActivityFrame<'_> {
             Self::ToolCallStarted(body) => Some(&body.call_id),
             Self::ToolCallProgress(body) => Some(&body.call_id),
             Self::ToolCallCompleted(body) => Some(&body.call_id),
-            Self::FleetResponseChunk(_) | Self::ContextProgress(_) | Self::TaskDecisionStarted(_)
-                | Self::TaskDecisionCompleted(_) | Self::TaskTransferProgress(_) => None,
+            Self::FleetResponseChunk(_)
+            | Self::ContextProgress(_)
+            | Self::TaskDecisionStarted(_)
+            | Self::TaskDecisionCompleted(_)
+            | Self::TaskTransferProgress(_) => None,
         }
     }
 

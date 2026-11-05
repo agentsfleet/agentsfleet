@@ -3,6 +3,7 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+/// Read a bounded page of human inputs using the current lease and recovery cursor.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema, utoipa::IntoParams))]
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -23,7 +24,9 @@ pub struct TaskInputsQuery {
     pub limit: u32,
 }
 
-const fn input_page_size() -> u32 { 4 }
+const fn input_page_size() -> u32 {
+    4
+}
 
 /// One complete persisted human message; reading never consumes it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -19,7 +19,7 @@ pub(in crate::task) struct Source {
     input_claim_fence: Option<i64>,
 }
 
-pub(super) async fn lock(
+pub(in crate::task) async fn lock(
     connection: &mut PgConnection,
     lease: TaskLease<'_>,
     current: &LeaseRow,
@@ -62,7 +62,11 @@ pub(in crate::task) fn check_claim(
 
 pub(in crate::task) fn check_human(source: &Source) -> Result<()> {
     if source.producer == Producer::SlackMention.as_str() {
-        return if source.slack_person_allowed { Ok(()) } else { Err(TaskRefusal::InvalidTarget.into()) };
+        return if source.slack_person_allowed {
+            Ok(())
+        } else {
+            Err(TaskRefusal::InvalidTarget.into())
+        };
     }
     if source.producer != Producer::Steer.as_str()
         || !afd_events::is_steer_actor(&source.actor)
@@ -95,7 +99,9 @@ pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) ->
         if message.get(start..end).is_none() {
             return Err(TaskRefusal::ReplayConflict.into());
         }
-        if let super::super::PreparedItem::New { task, .. } = item { check_limits(task.limits)?; }
+        if let super::super::PreparedItem::New { task, .. } = item {
+            check_limits(task.limits)?;
+        }
     }
     Ok(())
 }
@@ -106,10 +112,18 @@ impl Source {
     }
 }
 
-pub(in crate::task) fn message_for<'a>(producer: &str, body: &'a str) -> Result<std::borrow::Cow<'a, str>> {
-    if producer != Producer::SlackMention.as_str() { return Ok(afd_wire::event::message_of(body)); }
+pub(in crate::task) fn message_for<'a>(
+    producer: &str,
+    body: &'a str,
+) -> Result<std::borrow::Cow<'a, str>> {
+    if producer != Producer::SlackMention.as_str() {
+        return Ok(afd_wire::event::message_of(body));
+    }
     #[derive(serde::Deserialize)]
-    struct Human<'a> { #[serde(borrow)] human_message: std::borrow::Cow<'a, str> }
+    struct Human<'a> {
+        #[serde(borrow)]
+        human_message: std::borrow::Cow<'a, str>,
+    }
     let human: Human<'_> = serde_json::from_str(body).map_err(afd_core::json::Unreadable::from)?;
     Ok(human.human_message)
 }

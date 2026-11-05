@@ -17,17 +17,25 @@ pub(super) const CLOCK: &str = "clock.json";
 
 pub(in crate::report_spool) fn directory(path: &Path) -> Result<()> {
     fs::create_dir_all(path)?;
-    let directory = OpenOptions::new().read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC).open(path)?;
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(path)?;
     directory.set_permissions(fs::Permissions::from_mode(0o700))?;
     directory.sync_all()?;
     // Fsyncing a receipt file does not make its newly created directory entry
     // durable. Both levels precede any physical dispatch that relies on it.
     if let Some(parent) = path.parent() {
-        let parent = if parent.as_os_str().is_empty() { Path::new(".") } else { parent };
-        OpenOptions::new().read(true)
+        let parent = if parent.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            parent
+        };
+        OpenOptions::new()
+            .read(true)
             .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC)
-            .open(parent)?.sync_all()?;
+            .open(parent)?
+            .sync_all()?;
     }
     Ok(())
 }
@@ -45,8 +53,10 @@ pub(in crate::report_spool) fn write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 pub(in crate::report_spool) fn read(path: &Path, maximum: u64) -> Result<Vec<u8>> {
-    let file = OpenOptions::new().read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(path)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)?;
     let metadata = file.metadata()?;
     if !metadata.is_file() || metadata.len() > maximum {
         return Err(error::config(
@@ -54,9 +64,7 @@ pub(in crate::report_spool) fn read(path: &Path, maximum: u64) -> Result<Vec<u8>
         ));
     }
     let mut bytes = Vec::new();
-    file
-        .take(maximum + 1)
-        .read_to_end(&mut bytes)?;
+    file.take(maximum + 1).read_to_end(&mut bytes)?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > maximum {
         return Err(error::config(
             "a private report component grew beyond its bound",

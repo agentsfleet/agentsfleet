@@ -15,7 +15,8 @@ const CONTEXT: &str = "control durable task";
 #[derive(sqlx::FromRow)]
 struct Origin {
     source_admission_id: String,
-    reply_provider: Option<String>, reply_address: Option<String>,
+    reply_provider: Option<String>,
+    reply_address: Option<String>,
     generation: i64,
 }
 
@@ -85,7 +86,7 @@ async fn transition(
         .await
         .map_err(query(CONTEXT))?
         .ok_or(TaskRefusal::NotFound)?;
-    let tag = afd_core::etag::versioned(task_id, locked.resource_version);
+    let tag = read::on(connection, scope, task_id).await?.etag();
     if tag != expected_tag {
         return Err(crate::error::ErrorKind::TaskPrecondition { current_etag: tag }.into());
     }
@@ -184,7 +185,11 @@ async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Re
         task_id,
         generation,
         &guard::id(&origin.source_admission_id, "admission_id")?,
-    ).with_reply(origin.reply_provider.as_deref(), origin.reply_address.as_deref())?)
+    )
+    .with_reply(
+        origin.reply_provider.as_deref(),
+        origin.reply_address.as_deref(),
+    )?)
 }
 
 async fn update(

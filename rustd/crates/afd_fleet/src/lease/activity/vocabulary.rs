@@ -71,9 +71,17 @@ const fn slot(frame: &ActivityFrame<'_>) -> usize {
 /// One frame of each kind, the smallest each can be.
 fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
     let progress = afd_wire::activity::TaskActivity {
-        activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(), task_id: None, source_admission_id: None,
-        operation: afd_wire::activity::TaskActivityOperation::Intent, phase: afd_wire::activity::TaskActivityPhase::Starting,
-        provider: Some("typesafe".to_owned()), model: Some("jev-latest".to_owned()), completed: 0, total: None,
+        activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
+        task_id: None,
+        source_admission_id: None,
+        operation: afd_wire::activity::TaskActivityOperation::Intent,
+        phase: afd_wire::activity::TaskActivityPhase::Starting,
+        provider: Some("typesafe".to_owned()),
+        model: Some("jev-latest".to_owned()),
+        completed: 0,
+        total: None,
+        bytes: None,
+        sequence: None,
     };
     [
         ActivityFrame::TaskDecisionStarted(progress.clone()),

@@ -191,44 +191,58 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
     async fn message(&self, text: &str) -> Result<bool, Unanswered>;
 
     /// Read complete native input and accepted recovery meaning at a safe boundary.
-    async fn task_inputs(&self, _query: afd_wire::task::TaskInputsQuery)
-        -> Result<afd_wire::task::TaskInputsResponse<'static>, Unanswered> {
+    async fn task_inputs(
+        &self,
+        _query: afd_wire::task::TaskInputsQuery,
+    ) -> Result<afd_wire::task::TaskInputsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Freeze the complete interpretation once, with native decision proofs.
-    async fn task_bindings(&self, _input: afd_wire::task::TaskBindingsInput)
-        -> Result<afd_wire::task::TaskBindingsResponse<'static>, Unanswered> {
+    async fn task_bindings(
+        &self,
+        _input: afd_wire::task::TaskBindingsInput,
+    ) -> Result<afd_wire::task::TaskBindingsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Acknowledge an accepted input or answer without replaying its meaning.
-    async fn task_input_receipt(&self, _input: afd_wire::task::TaskInputReceiptInput)
-        -> Result<afd_wire::task::TaskInputReceiptResult, Unanswered> {
+    async fn task_input_receipt(
+        &self,
+        _input: afd_wire::task::TaskInputReceiptInput,
+    ) -> Result<afd_wire::task::TaskInputReceiptResult, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Reserve, evaluate and account one decision outside model/sandbox custody.
-    async fn task_decision(&self, _input: afd_wire::task::DecisionReservationInput)
-        -> Result<DecisionEvaluation, Unanswered> {
+    async fn task_decision(
+        &self,
+        _input: afd_wire::task::DecisionReservationInput,
+    ) -> Result<DecisionEvaluation, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Publish a tested tree through the native exact-head effect owner.
-    async fn task_publish(&self, _input: afd_wire::task::TaskEffectInput)
-        -> Result<afd_wire::task::TaskEffect, Unanswered> {
+    async fn task_publish(
+        &self,
+        _input: afd_wire::task::TaskEffectInput,
+    ) -> Result<afd_wire::task::TaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Read back one original publication; this never authorizes a new write.
-    async fn task_effect(&self, _effect_id: &str)
-        -> Result<afd_wire::task::TaskEffect, Unanswered> {
+    async fn task_effect(
+        &self,
+        _effect_id: &str,
+    ) -> Result<afd_wire::task::TaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Recover all effects beyond a checkpoint's confirmed watermark.
-    async fn task_effects(&self, _query: afd_wire::task::TaskEffectsQuery)
-        -> Result<afd_wire::task::TaskEffectsPage, Unanswered> {
+    async fn task_effects(
+        &self,
+        _query: afd_wire::task::TaskEffectsQuery,
+    ) -> Result<afd_wire::task::TaskEffectsPage, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 }

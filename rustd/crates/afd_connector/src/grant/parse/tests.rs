@@ -99,13 +99,36 @@ fn slack_answer() -> Value {
 fn slack_person_authority_comes_only_from_a_bounded_oauth_user_identity() {
     let mut body = slack_answer();
     body[AUTHED_USER][ACCOUNT_ID] = json!("UVERIFIED");
-    assert_eq!(slack(&body, slack_delimiter()).expect("valid grant").external_person_id.as_deref(), Some("UVERIFIED"));
-    for invalid in ["U".to_owned(), "quoted UVERIFIED".to_owned(), "uverified".to_owned(), format!("U{}", "A".repeat(64))] {
+    assert_eq!(
+        slack(&body, slack_delimiter())
+            .expect("valid grant")
+            .external_person_id
+            .as_deref(),
+        Some("UVERIFIED")
+    );
+    for invalid in [
+        "U".to_owned(),
+        "quoted UVERIFIED".to_owned(),
+        "uverified".to_owned(),
+        format!("U{}", "A".repeat(64)),
+    ] {
         body[AUTHED_USER][ACCOUNT_ID] = json!(invalid);
-        assert!(slack(&body, slack_delimiter()).expect("bot grant remains valid").external_person_id.is_none());
+        assert!(
+            slack(&body, slack_delimiter())
+                .expect("bot grant remains valid")
+                .external_person_id
+                .is_none()
+        );
     }
-    body.as_object_mut().expect("fixture object").remove(AUTHED_USER);
-    assert!(slack(&body, slack_delimiter()).expect("bot-only grant").external_person_id.is_none());
+    body.as_object_mut()
+        .expect("fixture object")
+        .remove(AUTHED_USER);
+    assert!(
+        slack(&body, slack_delimiter())
+            .expect("bot-only grant")
+            .external_person_id
+            .is_none()
+    );
 }
 
 /// A refresh-grant answer carrying the triple.

@@ -56,7 +56,7 @@ export function TaskGoalAdoption({workspaceId, fleetId, detail, enabled, onChang
     <Button variant="ghost" size="sm" disabled={!enabled || state.kind === "reading" || state.kind === "applying"}
       onClick={() => {void review();}}>Review latest saved criteria</Button>
     {state.kind === "reading" ? <output className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground"><SignalSpinner aria-hidden="true" />Reading saved criteria…</output> : null}
-    {state.kind === "notice" ? <p role="status" className="text-eyebrow text-muted-foreground">{state.text}</p> : null}
+    {state.kind === "notice" ? <output className="block text-eyebrow text-muted-foreground">{state.text}</output> : null}
     {preview ? <div className="space-y-sm rounded-md border border-border p-sm">
       <p className="font-medium">Success criteria from setup v{preview.revision}</p>
       {preview.policy.completion.statements.map((statement, index) => <QuestionDetails key={statement.id} number={index + 1} question={statement} />)}

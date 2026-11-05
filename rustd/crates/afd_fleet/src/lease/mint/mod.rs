@@ -70,7 +70,11 @@ const EVENT_REFRESH_ROTATED: &str = "refresh_rotated";
 const EVENT_HANDLE_REFUSED: &str = "credential_handle_refused";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Purpose { Runner, TaskRead, TaskPublish }
+enum Purpose {
+    Runner,
+    TaskRead,
+    TaskPublish,
+}
 
 impl Plane {
     /// Mints one short-lived credential for the child behind `runner_id`.
@@ -86,57 +90,109 @@ impl Plane {
         request: &MintCredentialRequest<'_>,
         now: Timestamp,
     ) -> Result<Minted> {
-        self.mint_for(runner_id, request, now, Purpose::Runner, None).await
+        self.mint_for(runner_id, request, now, Purpose::Runner, None)
+            .await
     }
 
-    pub(crate) async fn mint_task_publisher(&self, runner_id: &Uuid7, request: &MintCredentialRequest<'_>, now: Timestamp) -> Result<Minted> {
-        self.mint_for(runner_id, request, now, Purpose::TaskPublish, None).await
+    pub(crate) async fn mint_task_publisher(
+        &self,
+        runner_id: &Uuid7,
+        request: &MintCredentialRequest<'_>,
+        now: Timestamp,
+    ) -> Result<Minted> {
+        self.mint_for(runner_id, request, now, Purpose::TaskPublish, None)
+            .await
     }
 
-    pub(crate) async fn mint_task_reader(&self, runner_id: &Uuid7, request: &MintCredentialRequest<'_>, now: Timestamp, repository: &str) -> Result<Minted> {
-        self.mint_for(runner_id, request, now, Purpose::TaskRead, Some(repository)).await
+    pub(crate) async fn mint_task_reader(
+        &self,
+        runner_id: &Uuid7,
+        request: &MintCredentialRequest<'_>,
+        now: Timestamp,
+        repository: &str,
+    ) -> Result<Minted> {
+        self.mint_for(runner_id, request, now, Purpose::TaskRead, Some(repository))
+            .await
     }
 
-    async fn mint_for(&self, runner_id: &Uuid7, request: &MintCredentialRequest<'_>, now: Timestamp, purpose: Purpose, repository: Option<&str>) -> Result<Minted> {
+    async fn mint_for(
+        &self,
+        runner_id: &Uuid7,
+        request: &MintCredentialRequest<'_>,
+        now: Timestamp,
+        purpose: Purpose,
+        repository: Option<&str>,
+    ) -> Result<Minted> {
         let mut scope = self
             .leases
             .mint_scope(runner_id, &request.lease_id)
             .await?
             .ok_or_else(lease_not_found)?;
-        if purpose == Purpose::TaskPublish && !scope.binding.as_ref().is_some_and(|binding|
-            binding.publication() == afd_fleet_runtime::config::RepositoryPublication::ExistingPr) {
+        if purpose == Purpose::TaskPublish
+            && !scope.binding.as_ref().is_some_and(|binding| {
+                binding.publication()
+                    == afd_fleet_runtime::config::RepositoryPublication::ExistingPr
+            })
+        {
             return Err(crate::task::TaskRefusal::InvalidTarget.into());
         }
         if purpose == Purpose::TaskRead {
-            scope.binding = Some(scope.binding.as_ref().and_then(|binding| repository.and_then(|repository| binding.read_repository(repository)))
-                .ok_or(crate::task::TaskRefusal::InvalidTarget)?);
-        } else if request.integration == "github" && purpose == Purpose::Runner && scope.binding.as_ref().is_some_and(|binding|
-                binding.publication() == afd_fleet_runtime::config::RepositoryPublication::ExistingPr) {
-            scope.binding = scope.binding.as_ref().map(afd_fleet_runtime::config::RepositoryBinding::read_only);
+            scope.binding = Some(
+                scope
+                    .binding
+                    .as_ref()
+                    .and_then(|binding| {
+                        repository.and_then(|repository| binding.read_repository(repository))
+                    })
+                    .ok_or(crate::task::TaskRefusal::InvalidTarget)?,
+            );
+        } else if request.integration == "github"
+            && purpose == Purpose::Runner
+            && scope.binding.as_ref().is_some_and(|binding| {
+                binding.publication()
+                    == afd_fleet_runtime::config::RepositoryPublication::ExistingPr
+            })
+        {
+            scope.binding = scope
+                .binding
+                .as_ref()
+                .map(afd_fleet_runtime::config::RepositoryBinding::read_only);
         }
-        self.mint_scoped(&scope, &request.integration, now, None).await
+        self.mint_scoped(&scope, &request.integration, now, None)
+            .await
     }
 
-    pub(crate) async fn mint_wait_reader(&self, permit: &crate::task::ReadPermit, now: Timestamp) -> Result<Minted> {
-        self.mint_scoped(permit.scope(), "github", now, Some(permit.installation())).await
+    pub(crate) async fn mint_wait_reader(
+        &self,
+        permit: &crate::task::ReadPermit,
+        now: Timestamp,
+    ) -> Result<Minted> {
+        self.mint_scoped(permit.scope(), "github", now, Some(permit.installation()))
+            .await
     }
 
-    async fn mint_scoped(&self, scope: &MintScope, integration: &str, now: Timestamp, expected_installation: Option<u64>) -> Result<Minted> {
+    async fn mint_scoped(
+        &self,
+        scope: &MintScope,
+        integration: &str,
+        now: Timestamp,
+        expected_installation: Option<u64>,
+    ) -> Result<Minted> {
         // Resolved once, and it answers both questions that follow: whether
         // this connector is gated at all, and which family's refusal copy the
         // runner reads. A name comparison at each site would be two places for
         // the connector set to be described.
         let connector = self.broker.connectors().resolve(integration);
 
-        self.admit_mint(&scope, integration, connector)
-            .await?;
+        self.admit_mint(&scope, integration, connector).await?;
 
         let handle = self.handle(&scope, integration).await?;
-        if expected_installation.is_some_and(|expected| afd_credential::credential::github::installation(&handle) != Some(expected)) {
+        if expected_installation.is_some_and(|expected| {
+            afd_credential::credential::github::installation(&handle) != Some(expected)
+        }) {
             return Err(crate::task::TaskRefusal::InvalidTarget.into());
         }
-        self.admit_handle(&scope, integration, &handle)
-            .await?;
+        self.admit_handle(&scope, integration, &handle).await?;
         let outcome = self
             .broker
             .mint(Ask {

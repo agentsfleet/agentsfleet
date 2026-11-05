@@ -46,7 +46,7 @@ async fn should_discover_two_queued_drafts_when_stopped_history_grows() {
         let plan: Value = sqlx::query_scalar(EXPLAIN)
             .bind("editing")
             .bind("queued")
-            .bind("settled")
+            .bind(["awaiting_accounting", "settled"])
             .bind(DISCOVERY_LIMIT)
             .fetch_one(&mut owner)
             .await

@@ -147,6 +147,8 @@ pub(super) fn render_one(saved: afd_fleet::task::TaskSnapshot) -> Response {
             (header::CACHE_CONTROL, "private, no-cache".to_owned()),
         ],
         Json(TaskResponse {
+            dependency: saved.dependency,
+            publication: saved.publication,
             etag: Cow::Owned(tag),
             title: Cow::Owned(saved.title),
             resource_version: saved.resource_version,

@@ -106,7 +106,10 @@ impl Error {
 
     /// A provider cooldown is a native deadline, never an immediate retry hint.
     pub(crate) const fn remote_cooldown(&self) -> Option<jiff::Timestamp> {
-        match self.inner.kind { ErrorKind::TaskRemoteCooldown { until, .. } => Some(until), _ => None }
+        match self.inner.kind {
+            ErrorKind::TaskRemoteCooldown { until, .. } => Some(until),
+            _ => None,
+        }
     }
 
     /// Whether the caller sent something this plane will not accept.
@@ -163,8 +166,13 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
-            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageDeadline { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
-            ErrorKind::TaskRemote { .. } | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteDeadline { .. } | ErrorKind::TaskRemoteCooldown { .. } => error_code::TASK_EFFECT_UNCERTAIN,
+            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageDeadline { .. } => {
+                error_code::TASK_STORAGE_UNAVAILABLE
+            }
+            ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteDeadline { .. }
+            | ErrorKind::TaskRemoteCooldown { .. } => error_code::TASK_EFFECT_UNCERTAIN,
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => {
                 error_code::TASK_DECISION_UNAVAILABLE
             }

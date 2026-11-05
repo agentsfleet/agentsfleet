@@ -19,7 +19,13 @@ async fn unreadable(case: &Case) {
         .bind(case.lease(), &case.plan("retained-work", 1))
         .await
         .expect("accepted work");
-    let task = &accepted.items.first().expect("retained identity").task_id;
+    let task = accepted
+        .items
+        .first()
+        .expect("retained identity")
+        .task_id
+        .as_ref()
+        .expect("accepted new-work item owns a task");
     let before = tasks
         .read(scope, task)
         .await

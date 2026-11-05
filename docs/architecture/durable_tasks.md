@@ -259,6 +259,11 @@ Message your fleet...
 ```
 
 Default rows show title, state, next dependency and confirmed result links.
+The existing task detail read joins its latest native wait through the
+task/generation index. A typed dependency snapshot carries the exact head,
+recorded check results and wait-update time; it is included in the resource tag.
+This adds no endpoint or second polling owner. Clients label those checks as
+saved observations, never as a fresh GitHub query.
 Attempts, subagents and tool evidence stay expandable; subagents are helpers within work, not DTs themselves.
 Local saved edits and published changes have different labels.
 
@@ -742,6 +747,15 @@ Fast activity remains in history; prolonged activity updates the existing row ra
 
 Repository preparation, change scanning, encryption/upload, manifest verification and restoration have distinct stages.
 Upload progress counts acknowledged unique bytes against known missing bytes; retries cannot count the same content twice.
+The existing recovery session owns a concrete transfer counter, with an object-ID
+map that records missing, acknowledged and reused ciphertext once per operation.
+No shared lock, worker or callback is needed. Native upload readback establishes
+acknowledgement; authenticated download establishes restore acknowledgement.
+Known missing bytes are a remaining count, not a prediction of unscanned files.
+Repeated object references do not increase counters. Updates are coalesced to
+one per second within a stage; stage changes and terminal outcomes are immediate.
+The optional typed byte record keeps historical activity readable. This is source
+design; runtime and performance verification remain pending.
 State reused content separately and use counts or an indeterminate state when the total is unknown.
 
 ```text
@@ -780,3 +794,21 @@ Missing telemetry blocks that demonstration with its missing evidence; it does n
 
 Development repair approval does not authorize merge, deployment or production changes.
 Existing deployment authority remains separate even when the proposed DT tracks post-deploy observation.
+
+### Ordered public observations
+
+Task progress uses an event-local daemon sequence, not UUID timestamps from different
+workers. The existing event row retains at most 128 facts within a 120 KB item
+budget. The write rechecks slot and lease ownership under nonblocking locks; stale
+or contended cosmetic frames are dropped rather than publishing unsequenced task
+facts. The live tail receives the canonical saved counters and sequence. Clients
+merge by that sequence and preserve monotonic acknowledged/reused counters.
+Historical unsequenced windows require a shared observation to establish a newer
+tail; disjoint old windows cannot evict the durable window.
+
+Task reads include the latest publication receipt and latest wait observation,
+including consumed waits. Only a confirmed receipt labels a commit as published;
+local diffs and saved files do not. Observation content participates in the task
+read ETag, so unchanged task versions cannot mask changed check/publication facts.
+The wait update timestamp is the saved observation timestamp, not a claim that a
+provider was just queried.

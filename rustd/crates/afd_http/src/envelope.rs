@@ -86,8 +86,16 @@ impl ProblemResponse {
 
     /// A saved publication conflict includes its immutable recovery identity.
     #[must_use]
-    pub fn effect_conflict(code: ErrorCode, detail: &'static str, request_id: impl Into<String>, effect: afd_wire::task::TaskEffect) -> Self {
-        Self { effect: Some(effect), ..Self::new(code, detail, request_id) }
+    pub fn effect_conflict(
+        code: ErrorCode,
+        detail: &'static str,
+        request_id: impl Into<String>,
+        effect: afd_wire::task::TaskEffect,
+    ) -> Self {
+        Self {
+            effect: Some(effect),
+            ..Self::new(code, detail, request_id)
+        }
     }
 
     /// A 409, carrying the state that forbade the transition.
@@ -214,7 +222,9 @@ impl ProblemResponse {
         if let Some(user_message) = self.problem.user_message() {
             body.insert("user_message".to_owned(), user_message.into());
         }
-        if let Some(effect) = &self.effect { body.insert("effect".to_owned(), serde_json::json!(effect)); }
+        if let Some(effect) = &self.effect {
+            body.insert("effect".to_owned(), serde_json::json!(effect));
+        }
         Value::Object(body)
     }
 }

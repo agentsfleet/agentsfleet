@@ -1,10 +1,14 @@
 //! Pending inputs are complete native messages; this route never consumes them.
 
-use std::sync::Arc;
 use afd_fleet::task::TaskLease;
 use afd_http::handler::{Refusal, parse_id};
 use afd_wire::task::TaskInputsQuery;
-use axum::{Json, extract::{Path, Query, State, rejection::QueryRejection}, response::{IntoResponse as _, Response}};
+use axum::{
+    Json,
+    extract::{Path, Query, State, rejection::QueryRejection},
+    response::{IntoResponse as _, Response},
+};
+use std::sync::Arc;
 
 use crate::{auth::RunnerIdentity, services::Services};
 
@@ -31,13 +35,26 @@ pub(crate) async fn read<D: Services>(
 ) -> Result<Response, Refusal> {
     let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
     let Query(query) = query.map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let input = garde::Unvalidated::new(query).validate().map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let lease = TaskLease { runner_id: runner.id(), lease_id: &lease_id, fencing_token: input.fencing_token };
-    let page = services.tasks().inputs(lease, &input).await.map_err(Refusal::conflict_or_at(EVENT, conflict))?;
+    let input = garde::Unvalidated::new(query)
+        .validate()
+        .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
+    let lease = TaskLease {
+        runner_id: runner.id(),
+        lease_id: &lease_id,
+        fencing_token: input.fencing_token,
+    };
+    let page = services
+        .tasks()
+        .inputs(lease, &input)
+        .await
+        .map_err(Refusal::conflict_or_at(EVENT, conflict))?;
     Ok(([(http::header::CACHE_CONTROL, "no-store")], Json(page)).into_response())
 }
 
 fn conflict(error: &afd_fleet::Error) -> Option<&'static str> {
-    matches!(error.code(), afd_core::error_code::RUN_STALE_FENCING_TOKEN | afd_core::error_code::TASK_STALE_STATE)
-        .then_some("superseded")
+    matches!(
+        error.code(),
+        afd_core::error_code::RUN_STALE_FENCING_TOKEN | afd_core::error_code::TASK_STALE_STATE
+    )
+    .then_some("superseded")
 }

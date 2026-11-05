@@ -5,13 +5,15 @@ import { Button, SignalSpinner } from "@agentsfleet/design-system";
 import { readTask, type TaskSummary } from "@/lib/api/tasks";
 import { TaskGoalAdoption } from "./TaskGoalAdoption";
 import { TaskControls } from "./TaskControls";
+import { TaskRepositoryProgress } from "./TaskRepositoryProgress";
 import { QuestionDetails } from "./SetupQuestions";
 import { confirmed, useTaskRead } from "./use-task-read";
 
 type Props = {workspaceId: string; fleetId: string; task: TaskSummary; onChanged: () => void};
 
 export function TaskDetail({workspaceId, fleetId, task, onChanged}: Props) {
-  const load = useCallback((signal: AbortSignal) => readTask(workspaceId, fleetId, task.id, signal), [workspaceId, fleetId, task.id]);
+  // A refreshed summary must reread dependency observations even when its task version is unchanged.
+  const load = useCallback((signal: AbortSignal) => readTask(workspaceId, fleetId, task.id, signal), [workspaceId, fleetId, task]);
   const {resource, retry} = useTaskRead(load, task.resource_version);
   const detail = confirmed(resource);
   return <div className="space-y-md pb-md text-body-sm" aria-label={`${task.title} details`}>
@@ -23,6 +25,7 @@ export function TaskDetail({workspaceId, fleetId, task, onChanged}: Props) {
     {detail ? <>
       <TaskControls workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={() => {retry(); onChanged();}} />
       <p className="whitespace-pre-wrap break-words">{detail.context.objective}</p>
+      <TaskRepositoryProgress detail={detail} />
       <div className="space-y-sm">
         <h3 className="font-medium">What counts as done?</h3>
         <p className="text-eyebrow text-muted-foreground">Uses the success criteria saved in setup v{detail.setup_revision}.</p>

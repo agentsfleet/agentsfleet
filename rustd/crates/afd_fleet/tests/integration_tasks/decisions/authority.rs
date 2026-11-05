@@ -32,6 +32,8 @@ async fn ownership(case: &Case) {
         .first()
         .expect("foreign binding")
         .task_id
+        .as_ref()
+        .expect("accepted goal owns a task")
         .to_string();
     refused(&fixture, &task, &other, &before).await;
     sibling.held.fixtures.cleanup().await;

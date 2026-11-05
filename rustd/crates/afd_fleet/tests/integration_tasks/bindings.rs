@@ -31,7 +31,12 @@ async fn bind_and_replay(case: &Case) {
     let unique: BTreeSet<_> = first
         .items
         .iter()
-        .map(|item| item.task_id.as_str())
+        .map(|item| {
+            item.task_id
+                .as_ref()
+                .expect("accepted new-work item owns a task")
+                .as_str()
+        })
         .collect();
     assert_eq!(unique.len(), 3);
     assert_eq!(
@@ -74,10 +79,8 @@ async fn contended_calls(case: &Case, plan: &PreparedPlan) -> Vec<TaskBindings> 
 async fn accepted_goals(case: &Case, bindings: &TaskBindings) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     for (index, (binding, goal)) in bindings.items.iter().zip(GOALS).enumerate() {
-        let snapshot = tasks
-            .read(scope, &binding.task_id)
-            .await
-            .expect("accepted goal");
+        let task_id = binding.task_id.as_ref().expect("accepted goal owns a task");
+        let snapshot = tasks.read(scope, task_id).await.expect("accepted goal");
         let current = &snapshot.context;
         let state = if index == 0 {
             TaskState::Running
@@ -95,7 +98,7 @@ async fn accepted_goals(case: &Case, bindings: &TaskBindings) {
                 current.accepted_revision_id.as_ref(),
                 current.task_id.as_ref()
             ),
-            (goal, goal, case.revision.as_str(), binding.task_id.as_str())
+            (goal, goal, case.revision.as_str(), task_id.as_str())
         );
         assert_eq!(current.questions, questions());
         assert_eq!(
@@ -184,7 +187,13 @@ async fn ownership(case: &Case) {
         workspace_id: id(&afd_db::test_util::mint_id()),
         ..case.scope.clone()
     };
-    let task = &accepted.items.first().expect("first accepted task").task_id;
+    let task = accepted
+        .items
+        .first()
+        .expect("first accepted task")
+        .task_id
+        .as_ref()
+        .expect("accepted new-work item owns a task");
     let refused = tasks
         .read(&foreign, task)
         .await

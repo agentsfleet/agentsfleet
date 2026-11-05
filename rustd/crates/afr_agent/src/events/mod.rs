@@ -56,12 +56,16 @@ impl<'run> Live<'run> {
         Self::new(&SILENT, scrub, started)
     }
 
-    pub(crate) fn hide_reasoning(&mut self) { self.private_reasoning = true; }
+    pub(crate) fn hide_reasoning(&mut self) {
+        self.private_reasoning = true;
+    }
 
     /// Streams `text` of `kind`, holding back any tail that could still be a
     /// secret's start.
     pub(crate) fn text(&mut self, kind: StreamTextKind, text: &str) {
-        if self.private_reasoning && kind == StreamTextKind::Reasoning { return; }
+        if self.private_reasoning && kind == StreamTextKind::Reasoning {
+            return;
+        }
         let carry = match kind {
             StreamTextKind::Answer => &mut self.answer,
             StreamTextKind::Reasoning => &mut self.reasoning,

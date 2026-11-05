@@ -190,16 +190,28 @@ impl ServingPlane {
             broker,
             biller,
         );
-        let storage = checkpoint_storage.zip(platform_admin_workspace.clone()).map(|(config, admin)|
-            afd_fleet::task::storage::R2CheckpointStore::new(config, admin,
-                Vault::new(database.clone(), Arc::clone(&task_master), Entropy::new()), Arc::clone(&task_master), github_client.clone()));
+        let storage = checkpoint_storage
+            .zip(platform_admin_workspace.clone())
+            .map(|(config, admin)| {
+                afd_fleet::task::storage::R2CheckpointStore::new(
+                    config,
+                    admin,
+                    Vault::new(database.clone(), Arc::clone(&task_master)),
+                    Arc::clone(&task_master),
+                    github_client.clone(),
+                )
+            });
         let tasks = afd_fleet::task::Tasks::new(
             leases.leases.clone(),
             task_admissions,
             afd_fleet::task::TaskDependencies {
                 admin_workspace: platform_admin_workspace.clone(),
                 storage,
-                github: Some(afd_fleet::task::Github::new(leases.clone(), github_client, task_master)),
+                github: Some(afd_fleet::task::Github::new(
+                    leases.clone(),
+                    github_client,
+                    task_master,
+                )),
                 ..afd_fleet::task::TaskDependencies::from(&leases)
             },
         );

@@ -1,3 +1,5 @@
+import { ActivityPrinter } from "../src/commands/task-activity.ts";
+import { ToolActivityPrinter } from "../src/commands/tool-activity.ts";
 import { Output } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { describe, expect, test } from "bun:test";
@@ -14,6 +16,43 @@ const TOKEN = Redacted.make("test-token");
 const EVENT_PATH = `/v1/workspaces/${WORKSPACE}/fleets/${FLEET}/events/${EVENT}`;
 
 describe("steer recovery reads the admitted event directly", () => {
+  test("fallback shares stream presentation and suppresses stale progress and repeated tools", async () => {
+    const lines: string[] = [];
+    const print = (line: string) => { lines.push(line); };
+    const presentation = {activity: new ActivityPrinter(print), tools: new ToolActivityPrinter(print)};
+    const progress = {activity_id: EVENT, operation: "capture", phase: "uploading", provider: null, model: null,
+      sequence: 10, completed: 2, total: 3, bytes: {acknowledged: 128, missing: 64, reused: 256}};
+    const call = {name: "shell", call_id: "one", status: "succeeded", output_head: "checked"};
+    presentation.activity.frame("task_transfer_progress", {progress});
+    presentation.tools.frame("tool_call_completed", call);
+    const http = Layer.succeed(HttpClient, {request: <T>() => Effect.succeed({event_id: EVENT,
+      status: EVENT_STATUS.PROCESSED, task_activity: {items: [{kind: "task_transfer_progress",
+        progress: {...progress, sequence: 9, completed: 1}}], truncated: false}, tool_calls: {calls: [call]},
+    } as T)});
+    await Effect.runPromise(pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, undefined, presentation)
+      .pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("128 bytes acknowledged");
+    expect(lines[1]).toContain("checked");
+  });
+
+  test("JSON polling emits neither progress nor final-reply prose", async () => {
+    const lines: string[] = [];
+    const http = Layer.succeed(HttpClient, {
+      request: <T>() => Effect.succeed({event_id: EVENT, status: EVENT_STATUS.PROCESSED, response_text: "repair complete",
+        task_activity: {items: [{kind: "task_transfer_progress", progress: {activity_id: EVENT,
+          operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1,
+          bytes: {acknowledged: 128, missing: 0, reused: 64}}}], truncated: false},
+        tool_calls: {calls: [{name: "shell", call_id: "one", status: "succeeded", output_head: "checked"}]},
+      } as T),
+    });
+    const output = Layer.succeed(Output, {...outputDouble({jsonMode: true}), info: (line: string) => Effect.sync(() => { lines.push(line); })});
+    const outcome = await Effect.runPromise(pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN)
+      .pipe(Effect.provide(Layer.merge(http, output))));
+    expect(outcome).toEqual({kind: STATUS_COMPLETE, status: EVENT_STATUS.PROCESSED});
+    expect(lines).toEqual([]);
+  });
+
   test("finds a UUID event without inferring its age or searching a bounded page", async () => {
     const requests: HttpRequestInput[] = [];
     const abort = new AbortController();

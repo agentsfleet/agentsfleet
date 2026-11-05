@@ -290,7 +290,9 @@ struct Bubblewrapped {
 
 #[async_trait::async_trait]
 impl Sandbox for Bubblewrapped {
-    fn toolbox_digest(&self) -> Option<&str> { Some(self._toolbox.digest()) }
+    fn toolbox_digest(&self) -> Option<&str> {
+        Some(self._toolbox.digest())
+    }
 
     fn executor(&self) -> &dyn Executor {
         &self.client

@@ -4,35 +4,45 @@
 //! checkpoint generation remain separate counters with separate purposes.
 
 mod assessment;
-mod context;
-mod target;
-mod decision;
-mod limits;
-mod input;
-mod effect;
 mod binding;
-mod input_receipt;
 mod checkpoint;
-mod state;
+mod context;
+mod decision;
+mod effect;
+mod input;
+mod input_receipt;
+mod limits;
 mod report;
+mod state;
+mod target;
 
 pub use assessment::{DecisionAssessment, DecisionRetryDelay, DecisionUnavailableCause};
 pub use context::TaskContext;
-pub use target::{TaskTarget, TaskWorkflow};
 pub use decision::{
     DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt,
     DecisionReceiptInput, DecisionReceiptResult, DecisionRecordDisposition, DecisionRecorded,
     DecisionReservationInput, DecisionReservationResult, DecisionTaskVersion,
 };
-pub use input::{TaskHumanInput, TaskInputCandidate, TaskInputsQuery, TaskInputsResponse, TaskAcceptedInput,
-    TaskAcceptedInterpretation, TaskRecoveredItem};
-pub use effect::{TaskEffect, TaskEffectInput, TaskEffectQuery, TaskEffectState, TaskEffectsPage, TaskEffectsQuery, TaskFileChange};
-pub use binding::{TaskBindingItem, TaskBindingsInput, TaskBindingsResponse, TaskInputAction, TaskItemBinding, TaskProposedItem, TaskRequestedTarget};
-pub use input_receipt::{TaskInputMode, TaskInputReceiptInput, TaskInputReceiptResult};
+pub use effect::{
+    TaskEffect, TaskEffectInput, TaskEffectQuery, TaskEffectState, TaskEffectsPage,
+    TaskEffectsQuery, TaskFileChange,
+};
+pub use input::{
+    TaskAcceptedInput, TaskAcceptedInterpretation, TaskHumanInput, TaskInputCandidate,
+    TaskInputsQuery, TaskInputsResponse, TaskRecoveredItem,
+};
+pub use target::{TaskTarget, TaskWorkflow};
+mod dependency;
+pub use binding::{
+    TaskBindingItem, TaskBindingsInput, TaskBindingsResponse, TaskInputAction, TaskItemBinding,
+    TaskProposedItem, TaskRequestedTarget,
+};
 pub use checkpoint::*;
+pub use dependency::{TaskCheck, TaskDependency};
+pub use input_receipt::{TaskInputMode, TaskInputReceiptInput, TaskInputReceiptResult};
 pub use limits::{TaskLimits, TaskUsage};
-pub use state::TaskState;
 pub use report::{TaskDisposition, TaskReport};
+pub use state::TaskState;
 
 /// Maximum unfinished objectives a fleet can retain.
 pub const UNFINISHED_MAX: u32 = 16;

@@ -1,8 +1,8 @@
 //! Immutable native publication requests and recoverable effect receipts.
 
+use super::DecisionTaskVersion;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use super::DecisionTaskVersion;
 
 /// Complete content for one supported regular-file change.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -69,8 +69,13 @@ impl TaskEffectState {
     /// Native stored spelling matches this shared wire vocabulary.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self { Self::Prepared => "prepared", Self::Issued => "issued", Self::Confirmed => "confirmed",
-            Self::Unknown => "unknown", Self::Refused => "refused" }
+        match self {
+            Self::Prepared => "prepared",
+            Self::Issued => "issued",
+            Self::Confirmed => "confirmed",
+            Self::Unknown => "unknown",
+            Self::Refused => "refused",
+        }
     }
 }
 
@@ -138,15 +143,28 @@ pub struct TaskEffectQuery {
     pub fencing_token: u64,
 }
 
-const fn default_limit() -> u32 { 50 }
+const fn default_limit() -> u32 {
+    50
+}
 
 fn file_path(value: &str, _context: &()) -> garde::Result {
     let parts: Vec<_> = value.split('/').collect();
-    if parts.len() > 32 || value.contains('\\') || value.chars().any(char::is_control)
-        || parts.iter().any(|part| matches!(*part, "" | "." | "..") || part.eq_ignore_ascii_case(".git"))
-        || parts.first().is_some_and(|part| part.eq_ignore_ascii_case(".gitmodules"))
-        || parts.first().is_some_and(|part| part.eq_ignore_ascii_case(".github"))
-            && parts.get(1).is_some_and(|part| part.eq_ignore_ascii_case("workflows")) {
+    if parts.len() > 32
+        || value.contains('\\')
+        || value.chars().any(char::is_control)
+        || parts
+            .iter()
+            .any(|part| matches!(*part, "" | "." | "..") || part.eq_ignore_ascii_case(".git"))
+        || parts
+            .first()
+            .is_some_and(|part| part.eq_ignore_ascii_case(".gitmodules"))
+        || parts
+            .first()
+            .is_some_and(|part| part.eq_ignore_ascii_case(".github"))
+            && parts
+                .get(1)
+                .is_some_and(|part| part.eq_ignore_ascii_case("workflows"))
+    {
         return Err(garde::Error::new("unsupported publication path"));
     }
     Ok(())

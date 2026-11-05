@@ -117,10 +117,21 @@ impl Leases {
             .map_err(query(CONTEXT_INSTALL_HELD))
     }
 
-    pub(crate) async fn hold_install_on(connection: &mut sqlx::PgConnection, workspace: &Uuid7, account: &str) -> Result<bool> {
-        Ok(sqlx::query_scalar::<_, String>(include_str!("sql/lease/hold_connector_install.sql"))
-            .bind("github").bind(account).bind(workspace.as_str()).fetch_optional(connection)
-            .await.map_err(query(CONTEXT_INSTALL_HELD))?.is_some())
+    pub(crate) async fn hold_install_on(
+        connection: &mut sqlx::PgConnection,
+        workspace: &Uuid7,
+        account: &str,
+    ) -> Result<bool> {
+        Ok(
+            sqlx::query_scalar::<_, String>(include_str!("sql/lease/hold_connector_install.sql"))
+                .bind("github")
+                .bind(account)
+                .bind(workspace.as_str())
+                .fetch_optional(connection)
+                .await
+                .map_err(query(CONTEXT_INSTALL_HELD))?
+                .is_some(),
+        )
     }
 }
 
