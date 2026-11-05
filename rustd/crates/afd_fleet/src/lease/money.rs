@@ -51,7 +51,8 @@ impl Plane {
             ceiling: floor,
         };
         let work_id = lease_id.as_str();
-        match self.biller.reserve(&ask).await {
+        // Detached: issue already admitted the floor, so the lease never waits on the ledger.
+        match self.biller.reserve_detached(&ask).await {
             Ok(Hold::Held { .. } | Hold::Unconfirmed) => {}
             Ok(held) => tracing::warn!(
                 work_id,

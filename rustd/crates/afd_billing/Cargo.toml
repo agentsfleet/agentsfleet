@@ -32,6 +32,8 @@ afd_wire.workspace = true
 afd_observability.workspace = true
 # `Biller` is held as `Arc<dyn Biller>`, and its methods are async.
 async-trait.workspace = true
+# Settlements, releases and holds at claim are offered to a queue sink.
+afd_queue.workspace = true
 # Only the conformance suite races two reservations on one task.
 futures-util = { workspace = true, optional = true }
 # A month window is a CALENDAR question — `afd_core::clock` is the instant type
