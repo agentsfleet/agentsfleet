@@ -37,6 +37,7 @@ const RETRY: &[Duration] = &[
 ];
 const EVENT_GAVE_UP: &str = "billing_queue_abandoned";
 const EVENT_DEFERRED: &str = "billing_queue_deferred";
+const EVENT_QUEUE_FULL: &str = "billing_queue_full";
 const EVENT_HOLD_UNPLACED: &str = "billing_hold_unplaced";
 
 /// One money movement waiting to be made.
@@ -70,8 +71,8 @@ pub struct Queued {
 }
 
 impl Queued {
-    /// Money moved by a worker in this process. Outside a Tokio runtime there
-    /// is no worker, and every movement happens before the call returns.
+    /// Money moved by workers in this process. Outside a Tokio runtime there
+    /// is no worker, and every movement is left to the sweepers.
     #[must_use]
     pub fn in_memory(inner: Arc<dyn Biller>) -> Self {
         let mover = Arc::new(Mover { inner });
@@ -88,12 +89,17 @@ impl Queued {
         Self { mover, sink }
     }
 
-    /// Offers `job`; a sink that cannot take it leaves the caller to move the money once.
-    async fn offer(&self, job: BillingJob) {
-        if let Offer::Refused(job) = self.sink.offer(job)
-            && self.mover.consume(&job).await == Outcome::Retry
-        {
-            self.mover.abandoned(&job);
+    /// Offers `job`. A job the sink refuses is never moved here: moving it
+    /// beside the queue could release a work's hold before its queued reserve
+    /// places it. Its lines are already logged, so the sweepers move it.
+    fn offer(&self, job: BillingJob) {
+        if let Offer::Refused(job) = self.sink.offer(job) {
+            let work_id = job.work().id().as_str();
+            tracing::warn!(
+                work_id,
+                event = EVENT_QUEUE_FULL,
+                "the billing queue is full; the billing sweeper will move this money"
+            );
         }
     }
 }
@@ -108,19 +114,19 @@ impl Biller for Queued {
     /// Offered: the claim's gate already admitted the bound, so the hold's
     /// answer only confirms it. Answers as an unreachable biller would.
     async fn reserve_detached(&self, ask: &Reservation) -> Result<Hold> {
-        self.offer(BillingJob::Reserve(ask.clone())).await;
+        self.offer(BillingJob::Reserve(ask.clone()));
         Ok(Hold::Unconfirmed)
     }
 
     /// Offered: the lines are already logged; charging them waits for no one.
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
-        self.offer(BillingJob::Settle(settlement.clone())).await;
+        self.offer(BillingJob::Settle(settlement.clone()));
         Ok(Receipt::default())
     }
 
     /// Offered behind the work's settlements, so nothing is freed before it is charged.
     async fn release(&self, work: &WorkKey, why: Release) -> Result<()> {
-        self.offer(BillingJob::Release(work.clone(), why)).await;
+        self.offer(BillingJob::Release(work.clone(), why));
         Ok(())
     }
 

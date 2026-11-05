@@ -206,7 +206,7 @@ async fn a_job_the_biller_could_not_answer_is_retried_until_it_lands() {
 }
 
 #[test]
-fn without_a_runtime_every_movement_runs_before_the_call_returns() {
+fn a_refused_job_is_left_to_the_sweeper_and_never_moved_out_of_order() {
     let ledger = Arc::new(Ledger::default());
     let queued = Queued::in_memory(Arc::clone(&ledger) as Arc<dyn Biller>);
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -214,12 +214,18 @@ fn without_a_runtime_every_movement_runs_before_the_call_returns() {
         .build()
         .unwrap();
 
-    runtime.block_on(async {
-        queued.settle(&settlement()).await.unwrap();
+    let receipt = runtime.block_on(async {
         queued.reserve_detached(&reservation()).await.unwrap();
+        queued.release(&work(), Release::Completed).await.unwrap();
+        queued.settle(&settlement()).await.unwrap()
     });
 
-    assert_eq!(ledger.moved(), ["settle", "reserve"]);
+    assert_eq!(receipt, Receipt::default());
+    assert_eq!(
+        ledger.moved(),
+        Vec::<&str>::new(),
+        "no queue, so nothing moves beside it"
+    );
 }
 
 #[tokio::test]
@@ -258,27 +264,5 @@ async fn a_permanent_refusal_is_not_retried_and_moves_nothing() {
         ledger.moved(),
         Vec::<&str>::new(),
         "a refusal is left to the sweeper, not retried"
-    );
-}
-
-#[test]
-fn a_refused_offer_whose_inline_move_fails_still_answers_and_moves_nothing() {
-    let ledger = Arc::new(Ledger {
-        failures_left: Mutex::new(1),
-        ..Ledger::default()
-    });
-    let queued = Queued::in_memory(Arc::clone(&ledger) as Arc<dyn Biller>);
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .unwrap();
-
-    let receipt = runtime.block_on(queued.settle(&settlement())).unwrap();
-
-    assert_eq!(receipt, Receipt::default());
-    assert_eq!(
-        ledger.moved(),
-        Vec::<&str>::new(),
-        "one inline attempt, then the sweeper's"
     );
 }
