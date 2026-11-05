@@ -8,7 +8,6 @@ use crate::{
         ErrorKind,
         raise::{invalid, query},
     },
-    lease::Status,
     model, replay, sql,
     types::{Accepted, DraftState, QUEUED, SendMessage},
 };
@@ -26,14 +25,15 @@ const SEQUENCE_EXHAUSTED: &str = "message sequence is exhausted";
 /// preceding sender's committed receipt, sequence and Stop watermark.
 /// `$1` draft, `$2` next sequence, `$3` message, `$4` operation, `$5` status,
 /// `$6` model, `$7` text, `$8` receipt, `$9` workspace, `$10` actor, `$11` scope,
-/// `$12` digest, `$13` replay window, `$14` Stop watermark, `$15` settled status.
+/// `$12` digest, `$13` replay window, `$14` save requested. An earlier attempt
+/// whose usage is still being accounted never refuses a new message: its hold
+/// keeps the wallet bounded while the person keeps talking.
 const ADMIT: &str = include_str!("../sql/message/admit.sql");
 
 #[derive(sqlx::FromRow)]
 struct Admission {
     prior: Option<sqlx::types::Json<replay::Receipt>>,
     prior_sequence: Option<i64>,
-    usage_unknown: bool,
     sequence: Option<i64>,
 }
 
@@ -51,9 +51,6 @@ impl Admission {
                 sequence: self.prior_sequence.ok_or(ErrorKind::Gone)?.to_string(),
                 replayed: true,
             });
-        }
-        if self.usage_unknown {
-            return Err(ErrorKind::Unknown.into());
         }
         next.ok_or_else(|| invalid(SEQUENCE_EXHAUSTED))?;
         identifiers?;
@@ -154,8 +151,6 @@ impl Drafts {
             .bind(scope(&draft.workspace_id, &draft.id))
             .bind(&digest)
             .bind(replay::REPLAY_WINDOW)
-            .bind(draft.cancelled_through_sequence)
-            .bind(Status::Settled.as_str())
             .bind(request.save)
             .fetch_one(connection)
             .await

@@ -49,8 +49,6 @@ const ACTION_CHOOSE_MODEL: &str = "choose_authoring_model";
 const ACTION_REDUCE_CONTEXT: &str = "reduce_context";
 /// A new message with a new key may be sent.
 const ACTION_RETRY_MESSAGE: &str = "retry_message";
-/// Uncancelled provider work must settle or be explicitly stopped.
-const ACTION_AWAIT_ACCOUNTING: &str = "await_accounting";
 /// The setup must be reviewed again under the current policy.
 const ACTION_REVIEW_SETUP: &str = "review_setup";
 
@@ -69,17 +67,9 @@ pub struct Failure {
 }
 
 impl Failure {
-    pub(crate) fn for_message(
-        reason: FailureReason,
-        sequence: i64,
-        cancelled_through: i64,
-        cause: Option<FailureCause>,
-    ) -> Self {
+    pub(crate) fn for_message(reason: FailureReason, cause: Option<FailureCause>) -> Self {
         let mut failure = Self::from(reason);
         failure.cause = cause;
-        if reason == FailureReason::ProviderUsageUnknown && sequence <= cancelled_through {
-            failure.recovery_action = ACTION_RETRY_MESSAGE;
-        }
         failure
     }
 }
@@ -93,8 +83,9 @@ impl From<FailureReason> for Failure {
             FailureReason::ModelUnavailable => (error_code::AUTHORING_MODEL, ACTION_CHOOSE_MODEL),
             FailureReason::ContextTooLarge => (error_code::AUTHORING_TOKEN, ACTION_REDUCE_CONTEXT),
             FailureReason::ProviderFailed => (error_code::AUTHORING_PROVIDER, ACTION_RETRY_MESSAGE),
+            // The draft no longer waits on accounting, so the person may send again.
             FailureReason::ProviderUsageUnknown => {
-                (error_code::AUTHORING_UNKNOWN, ACTION_AWAIT_ACCOUNTING)
+                (error_code::AUTHORING_UNKNOWN, ACTION_RETRY_MESSAGE)
             }
             FailureReason::AttemptTimedOut => (error_code::AUTHORING_TIMEOUT, ACTION_RETRY_MESSAGE),
             FailureReason::PolicyChanged => (error_code::AUTHORING_POLICY, ACTION_REVIEW_SETUP),

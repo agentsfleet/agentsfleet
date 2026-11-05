@@ -97,7 +97,7 @@ pub(super) async fn page_on(
             break;
         }
         next_cursor = Some(cursor(&binding, row.sequence, row.ordinal));
-        items.push(project(row, draft.cancelled_through_sequence)?);
+        items.push(project(row)?);
     }
     Ok(Page {
         items,
@@ -136,7 +136,7 @@ pub(super) fn window_cursors(
         .collect())
 }
 
-fn project(stored: Stored, cancelled_through: i64) -> Result<Message> {
+fn project(stored: Stored) -> Result<Message> {
     let cause = stored
         .failure_cause
         .as_deref()
@@ -167,14 +167,7 @@ fn project(stored: Stored, cancelled_through: i64) -> Result<Message> {
             .as_deref()
             .map(word::<afd_wire::authoring::FailureReason>)
             .transpose()?
-            .map(|reason| {
-                crate::types::Failure::for_message(
-                    reason,
-                    stored.sequence,
-                    cancelled_through,
-                    cause,
-                )
-            }),
+            .map(|reason| crate::types::Failure::for_message(reason, cause)),
         created_at: stored.created_at,
         finished_at: stored.finished_at.map(jiff_sqlx::Timestamp::to_jiff),
     })

@@ -1,6 +1,6 @@
 //! Chat ownership ends at Stop; the old attempt still owns its accounting.
 
-use super::{Status, sql};
+use super::{FINISHED, sql};
 use crate::{Result, draft::read::Locked, error::raise::query};
 use sqlx::PgConnection;
 
@@ -18,15 +18,16 @@ pub(crate) enum Pending {
     UsageUnknown,
 }
 
-/// The caller holds the draft lock. Admission permits only one outstanding
-/// attempt above its watermark; stopped attempts remain available to reports.
+/// The caller holds the draft lock. Admission permits only one running attempt
+/// above its watermark; stopped attempts remain available to reports, and an
+/// attempt awaiting accounting no longer holds the draft.
 pub(crate) async fn current(
     connection: &mut PgConnection,
     draft: &Locked,
 ) -> Result<Option<Pending>> {
     let unknown: Option<bool> = sqlx::query_scalar(sql::PENDING)
         .bind(draft.id.as_str())
-        .bind(Status::Settled.as_str())
+        .bind(&FINISHED[..])
         .bind(draft.cancelled_through_sequence)
         .fetch_optional(connection)
         .await
