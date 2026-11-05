@@ -39,7 +39,7 @@ fetch_vendors() {
     read -r v_arch url sha256 members <<<"$line"
     [ "$v_arch" = "$arch" ] || continue
     archive="$work/vendor-$(basename "$url")"
-    curl --fail --silent --show-error --location --output "$archive" "$url"
+    curl --fail --silent --show-error --location --retry 4 --retry-all-errors --output "$archive" "$url"
     [ "$(file_sha256 "$archive")" = "$sha256" ]
     printf '%s\t%s\n' "$url" "$sha256" >>"$work/vendored.tsv"
     read -r -a pairs <<<"$members"
@@ -171,8 +171,15 @@ configure_root() {
   hooks+=('--customize-hook=rm -rf "$1/tmp/toolbox-audit" "$1/tmp/toolbox-purge" "$1/tmp/toolbox-required" "$1/tmp/build.sh"')
 }
 
+# snapshot.debian.org drops connections under load, and one dropped package
+# download fails the whole build. The archive is pinned, so a retry of the same
+# build fetches the same bytes; it is retried here rather than through an apt
+# option, which mmdebstrap would write into the image and change its digest.
+readonly MMDEBSTRAP_ATTEMPTS=4
+readonly MMDEBSTRAP_PAUSE_SECONDS=30
+
 build_root() {
-  local entry archive_name archive_suite include mode=root sources=()
+  local entry archive_name archive_suite include mode=root sources=() attempt=1
   [ "$(id -u)" -eq 0 ] || mode=unshare
   include="$(IFS=,; echo "${packages[*]}")"
   for entry in "${archives[@]}"; do
@@ -180,12 +187,24 @@ build_root() {
     sources+=("deb http://snapshot.debian.org/archive/$archive_name/$snapshot $archive_suite main")
   done
   # Keep archives for provenance; finalization owns cleanup so apt cannot recreate its state.
+  until run_mmdebstrap "$include" "$mode" "${sources[@]}"; do
+    [ "$attempt" -lt "$MMDEBSTRAP_ATTEMPTS" ] || return 1
+    echo "build.sh: mmdebstrap attempt $attempt of $MMDEBSTRAP_ATTEMPTS failed; retrying in $((attempt * MMDEBSTRAP_PAUSE_SECONDS))s" >&2
+    rm -f "$work/root.tar" "$work/inventory.tar.gz"
+    sleep "$((attempt * MMDEBSTRAP_PAUSE_SECONDS))"
+    attempt=$((attempt + 1))
+  done
+}
+
+run_mmdebstrap() {
+  local include="$1" mode="$2"
+  shift 2
   SOURCE_DATE_EPOCH="$epoch" mmdebstrap --quiet --mode="$mode" --variant=minbase --skip=essential/unlink --skip=cleanup/apt \
     --include="$include" --aptopt='Acquire::Check-Valid-Until "false"' \
     --dpkgopt='path-exclude=/usr/share/doc/*' --dpkgopt='path-include=/usr/share/doc/*/copyright' \
     --dpkgopt='path-exclude=/usr/share/man/*' --dpkgopt='path-exclude=/usr/share/locale/*' \
     --dpkgopt='path-exclude=/usr/share/info/*' --keyring="$keyring" \
-    "${hooks[@]}" "$suite" "$work/root.tar" "${sources[@]}"
+    "${hooks[@]}" "$suite" "$work/root.tar" "$@"
 }
 
 assemble_image() {
