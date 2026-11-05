@@ -23,8 +23,11 @@ async fn test_a_poll_accepting_both_kinds_places_the_owed_authoring_turn() {
         .claim(
             &drafts,
             &running.runner,
-            &[],
-            AcceptedKinds::ALL,
+            afd_fleet::lease::Asked {
+                held: &[],
+                accepted: AcceptedKinds::ALL,
+                key: None,
+            },
             false,
             running.now,
         )

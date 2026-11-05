@@ -15,7 +15,7 @@
 //! `ManualReader` — the obvious way to ask a provider for its numbers — sits
 //! behind `experimental_metrics_custom_reader` in `opentelemetry_sdk` 0.32.1,
 //! and features unify across a workspace: turning it on here would turn it on
-//! for the daemon's own provider too. A push exporter that keeps the three
+//! for the daemon's own provider too. A push exporter that keeps the lease
 //! sums it was handed is public API, local to this crate, and about as much
 //! code as the feature flag would have been comment.
 //!
@@ -50,9 +50,6 @@ use crate::error::{ErrorKind, Result};
 /// Total polls the lease path has made.
 const POLLS: &str = "agentsfleet_lease_polls_total";
 
-/// Total fleets those polls examined.
-const CANDIDATES: &str = "agentsfleet_lease_poll_candidates_scanned_total";
-
 /// Total Postgres round trips those polls issued.
 const ROUNDTRIPS: &str = "agentsfleet_lease_poll_db_roundtrips_total";
 
@@ -70,8 +67,6 @@ const POISONED: &str = "the captured counters lock was poisoned";
 pub struct PollCounters {
     /// Polls made.
     pub polls: u64,
-    /// Fleets those polls examined.
-    pub candidates: u64,
     /// Postgres round trips those polls issued.
     pub roundtrips: u64,
     /// Dragonfly commands those polls issued.
@@ -84,7 +79,6 @@ impl PollCounters {
     pub const fn since(self, earlier: Self) -> Self {
         Self {
             polls: self.polls.saturating_sub(earlier.polls),
-            candidates: self.candidates.saturating_sub(earlier.candidates),
             roundtrips: self.roundtrips.saturating_sub(earlier.roundtrips),
             dragonfly_commands: self
                 .dragonfly_commands
@@ -96,7 +90,7 @@ impl PollCounters {
 /// Keeps the last export's lease counters, and nothing else.
 ///
 /// Every other family the daemon declares passes through untouched: this is a
-/// sink, not a store, and the three names below are the only ones it reads.
+/// sink, not a store, and the names below are the only ones it reads.
 #[derive(Debug, Default)]
 struct CapturedCounters {
     latest: Mutex<PollCounters>,
@@ -133,7 +127,7 @@ impl PushMetricExporter for CapturingExporter {
 }
 
 impl CapturingExporter {
-    /// Take the three lease sums out of one export batch.
+    /// Take the lease sums out of one export batch.
     fn capture(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
         let mut captured = PollCounters::default();
         for scope in metrics.scope_metrics() {
@@ -144,7 +138,6 @@ impl CapturingExporter {
                 let total: u64 = sum.data_points().map(SumDataPoint::value).sum();
                 match metric.name() {
                     POLLS => captured.polls = total,
-                    CANDIDATES => captured.candidates = total,
                     ROUNDTRIPS => captured.roundtrips = total,
                     DRAGONFLY_COMMANDS => captured.dragonfly_commands = total,
                     _ => {}

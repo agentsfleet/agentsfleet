@@ -122,16 +122,22 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
         .expect("claim")
         .expect("work");
     assert_eq!(&acquired.event_id, admission);
-    let first = leases
-        .record_received(&acquired)
+    // The claim opened the event: a first delivery. Freed with no lease, the
+    // same admission is claimed again and reads as a repeat.
+    leases
+        .release(&acquired.fleet_id, acquired.fence)
         .await
-        .expect("first delivery");
+        .expect("the claim is freed");
     let again = leases
-        .record_received(&acquired)
+        .select(&runner, &[])
         .await
-        .expect("repeat delivery");
-    assert_eq!(first.delivery, afd_fleet::lease::Delivery::First);
-    assert_eq!(again.delivery, afd_fleet::lease::Delivery::Repeat);
+        .expect("claim")
+        .expect("the same work again");
+    assert_eq!(acquired.delivery, afd_fleet::lease::Delivery::First);
+    assert_eq!(
+        (again.event_id.as_str(), again.delivery),
+        (admission.as_str(), afd_fleet::lease::Delivery::Repeat)
+    );
     let delivered: bool = sqlx::query_scalar(
         "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid",
     )

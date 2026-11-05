@@ -11,6 +11,9 @@ use crate::{
 use afd_core::id::Uuid7;
 use sqlx::Connection as _;
 const CONTEXT: &str = "admission queue transition";
+/// What a park sends: its transaction's begin and commit around the lock, the
+/// park and the release.
+const PARK_STATEMENTS: u64 = 5;
 
 impl Leases {
     /// Park and free the slot atomically. An answer that already committed is
@@ -21,6 +24,8 @@ impl Leases {
     /// Preserves database failures. A superseded claim changes nothing.
     pub async fn park(&self, fleet: &Uuid7, event: &str, fence: Fence) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
+        // Begin, lock, park, release, commit.
+        self.tally().statements(PARK_STATEMENTS);
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
         if self
             .lock_admission_on(&mut transaction, fleet, event, fence)
@@ -36,6 +41,7 @@ impl Leases {
             sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
                 .bind(fleet.as_str())
                 .bind(fence.as_i64())
+                .bind(std::time::Duration::ZERO)
                 .execute(&mut *transaction)
                 .await
                 .map_err(query(CONTEXT))?;
@@ -58,40 +64,5 @@ impl Leases {
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))
-    }
-
-    /// Suppress a terminal event without allowing a stale claimant to clear it.
-    pub(crate) async fn settle_terminal(&self, acquired: &super::Acquired) -> Result<()> {
-        let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
-        if self
-            .lock_admission_on(
-                &mut transaction,
-                &acquired.fleet_id,
-                &acquired.event_id,
-                acquired.fence,
-            )
-            .await?
-        {
-            self.settle_terminal_on(&mut transaction, acquired).await?;
-        }
-        transaction.commit().await.map_err(query(CONTEXT))?;
-        Ok(())
-    }
-
-    pub(crate) async fn settle_terminal_on(
-        &self,
-        connection: &mut sqlx::PgConnection,
-        acquired: &super::Acquired,
-    ) -> Result<()> {
-        sqlx::query(queue::SETTLE_TERMINAL)
-            .bind(acquired.fleet_id.as_str())
-            .bind(&acquired.event_id)
-            .bind(acquired.fence.as_i64())
-            .bind(afd_core::event::status::RECEIVED)
-            .execute(connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        Ok(())
     }
 }

@@ -44,7 +44,7 @@ pub const INSERT_LEASE_WITH_EVENT: &str = include_str!("insert_lease_with_event.
 
 /// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
 ///
-/// Twenty positional parameters, several of them same-typed text that a
+/// Twenty-one positional parameters, several of them same-typed text that a
 /// transposition would compile straight through, and this workspace disables
 /// sqlx's `macros` feature deliberately, so there is no compile-time query
 /// checking to catch it. Naming the fields is what replaces
@@ -85,6 +85,9 @@ pub struct LeaseRow<'a> {
     /// Whether this lease is a fresh pull or a reclaim, as its wire spelling.
     /// It reaches the audit row's metadata, where an operator reads it.
     pub kind: &'a str,
+    /// The `Idempotency-Key` of the worker poll this lease answers, when the
+    /// runner sent one: a repeat of that poll finds and frees this lease.
+    pub poll_key: Option<&'a Uuid7>,
 }
 
 impl<'a> LeaseRow<'a> {
@@ -111,5 +114,6 @@ impl<'a> LeaseRow<'a> {
             .bind(afd_runner::sql::meta::KIND)
             .bind(self.kind)
             .bind(self.event_created_at.to_sqlx())
+            .bind(self.poll_key.map(Uuid7::as_str))
     }
 }

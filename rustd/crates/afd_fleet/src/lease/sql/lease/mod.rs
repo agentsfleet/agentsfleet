@@ -1,55 +1,14 @@
-//! `runner.fleet_slots` and `runner.leases` — the claim, the fence,
-//! and the row that records who owns a fleet's work.
+//! `runner.fleet_slots` and `runner.leases` — the fence's releases and the
+//! row that records who owns a fleet's work.
 //!
-//! # The claim is the whole concurrency design
-//!
-//! [`CLAIM_FLEET_SLOT`] is one conditional UPSERT and it carries three jobs
-//! at once: it wins the fleet iff the slot is free or its prior claim expired,
-//! it bumps the monotonic `fencing_token`, and it records the sticky-routing
-//! hint. Exactly one of N racing runners takes the row. Crucially the claim
-//! PRECEDES the event read, so a loser has consumed no event and nothing is
-//! orphaned — which is why `test_lease_affinity_race` asserts one lease row and
-//! one no-work reply rather than counting retries.
+//! The claim itself is [`super::queue::CLAIM_HEAD`]: one statement that takes
+//! the oldest ready slot with `SKIP LOCKED`, bumps the monotonic
+//! `fencing_token`, records the sticky-routing hint and opens the event. Exactly
+//! one of N racing runners takes a slot, and a loser writes nothing.
 
 mod row;
 
 pub use self::row::{INSERT_LEASE_WITH_EVENT, LeaseRow};
-
-/// Claim a fleet's lease slot, bumping the monotonic fence.
-///
-/// `fleet_id` is the whole primary key (schema/630), so the conflict target IS
-/// the table's only unique index — two runners racing a brand-new fleet's slot
-/// take the update arm rather than colliding on an index this statement does
-/// not name.
-///
-/// Answers no row when a live runner still holds the slot — that absence is the
-/// `.taken` verdict, not an error.
-///
-/// # A held fleet is its holder's first
-///
-/// While `hold_expires_at` is in the future and its holder, `last_runner_id`, can
-/// still lease — `$5` (active) and not degraded, and beaten within `$4`
-/// (`RUNNER_OFFLINE_AFTER`) — only the holder wins: its sandbox carries the
-/// fleet's last run, and the next event should run there. A holder that
-/// cannot lease binds nobody: a degraded runner is answered no work, and one
-/// drained or revoked is refused before its poll or its beat reaches here.
-/// A hold is a head start at the slot, never the slot. The holder still claims
-/// through this statement and its fence, so one fleet still has one live
-/// holder. The holder's own claim keeps `hold_expires_at`, so a claim that finds no
-/// event leaves the hold in place for the next one; its report then records
-/// the hold anew or clears it. Any other runner's claim clears it, since the
-/// sandbox it named no longer carries the fleet's latest run.
-///
-/// `prior` reads the slot before the statement changes it, so the caller can
-/// tell a claim on a held fleet from one on an unheld fleet. A CTE sees the
-/// statement's starting snapshot on every Postgres version.
-///
-/// `$1` fleet, `$2` runner, `$3` the lease lifetime, `$4` how long a silent
-/// runner stays live, `$5` the runner status that may lease. One
-/// `clock_timestamp()` reading decides every deadline: an upsert cannot lock
-/// before it reads, so the instant is taken first, which only ever makes a
-/// lock wait refuse a claim or shorten a lease, never extend one.
-pub const CLAIM_FLEET_SLOT: &str = include_str!("claim_fleet_slot.sql");
 
 /// Release the slot — fencing-guarded, so only the current holder can free it —
 /// and record whether that holder keeps the fleet's sandbox.
@@ -70,7 +29,11 @@ pub const CLAIM_FLEET_SLOT: &str = include_str!("claim_fleet_slot.sql");
 /// this one.
 pub const RELEASE_FLEET_SLOT: &str = include_str!("release_fleet_slot.sql");
 
-/// [`RELEASE_FLEET_SLOT`] for a claim that leased nothing. `$1` fleet, `$2` fence.
+/// [`RELEASE_FLEET_SLOT`] for a claim that leased nothing.
+///
+/// `$1` fleet, `$2` fence, `$3` how long the fleet stays out of claims: zero
+/// for an ending that frees it for another runner, the retry backoff for one
+/// the next poll would likely meet again.
 ///
 /// It drops the sticky hint too, or a fleet whose pass keeps stopping sorts
 /// first for that runner on every poll of its partition, starving the rest.
@@ -78,6 +41,14 @@ pub const RELEASE_FLEET_SLOT: &str = include_str!("release_fleet_slot.sql");
 /// is what steers the fleet's next event there. Every fleet nobody holds is
 /// unhinted as before, so the starvation guard still covers it.
 pub const RELEASE_UNLEASED_SLOT: &str = include_str!("release_unleased_slot.sql");
+
+/// Name `$2` as `$1`'s last runner, creating the slot with no lease when the
+/// fleet has none, so that runner's next claim takes this fleet first.
+///
+/// Test fixtures only: a suite sharing the lane database steers its own
+/// runner to its own fleet, as a finished run there would.
+#[cfg(feature = "test-util")]
+pub const PREFER_RUNNER: &str = include_str!("prefer_runner.sql");
 
 /// What one lease authorises a mint to reach.
 ///

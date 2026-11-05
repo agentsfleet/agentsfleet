@@ -1,13 +1,11 @@
-//! `runner.fleet_slots` — the per-fleet lease SLOT: the atomic claim, the
-//! monotonic fencing source, and the sticky-routing hint, all on one row.
+//! `runner.fleet_slots` — the per-fleet lease SLOT: the monotonic fencing
+//! source, the sticky-routing hint and the queue position, all on one row.
 //!
-//! The GUARANTEE is that exactly one of N racing runners wins a fleet, and the
-//! winner carries a token that is strictly greater than every token issued
-//! before it. "No slot won" is an absence and says so as [`Option::None`]
-//! rather than as a second variant a caller must remember to match. The verbs
-//! are methods on [`Leases`], which owns the pool and keeps it `pub(crate)`, so
-//! nothing outside this crate can run a statement that is not in
-//! [`crate::lease::sql`].
+//! The claim itself is the assignment statement (`super::assign`); this
+//! module owns what a claim hands out and how a claim that issued no lease is
+//! let go. The verbs are methods on [`Leases`], which owns the pool and keeps
+//! it `pub(crate)`, so nothing outside this crate can run a statement that is
+//! not in [`crate::lease::sql`].
 //!
 //! # Why the token is a type
 //!
@@ -20,7 +18,7 @@
 
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
-use afd_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use afd_core::timing::{CLAIM_RETRY_BACKOFF, SANDBOX_HOLD_IDLE};
 use afd_observability::metrics::label::fleet::HeldClaim;
 use afd_observability::producers;
 use jiff::Timestamp;
@@ -33,9 +31,6 @@ use crate::lease::sql;
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_CLAIM: &str = "affinity claim";
-
-/// Statement name, for the context a query failure carries.
 const CONTEXT_RELEASE: &str = "affinity release";
 
 /// A claim that issued no lease could not be freed; it lapses at its expiry.
@@ -43,7 +38,7 @@ pub(crate) const EVENT_CLAIM_RELEASE_FAILED: &str = "lease_claim_release_failed"
 
 /// The `fencing_token` column, which is the one number that orders lease holders.
 ///
-/// Monotonic per fleet and minted only by [`Leases::claim`]: every winning
+/// Monotonic per fleet and minted only by the lease claim: every winning
 /// claim bumps it, so a holder superseded by a reclaim carries a strictly
 /// smaller value than the runner that displaced it. That is the whole basis of
 /// Invariant 2, and the reason a report verifies its token inside the same
@@ -58,18 +53,17 @@ impl Fence {
         self.0
     }
 
-    /// The token as the wire spells it.
+    /// The token as the wire spells it, or `None` for a negative one.
     ///
-    /// `fencing_token` is a monotonic counter the claim statement starts at one
-    /// and only ever increments, so no value this crate produces is negative.
-    /// One edited out of band could be, and it saturates to ZERO rather than
-    /// panicking or taking its magnitude: zero is below every token a claim
-    /// can mint, so a corrupted row fences itself out. `unsigned_abs` alone
-    /// would turn `-1` into `1`, which is a token another holder may legitimately
-    /// hold — a plausible wrong answer, which is the worse failure.
+    /// `fencing_token` is a monotonic counter: a slot starts at zero and every
+    /// claim increments it, so no value this crate produces is negative. One
+    /// edited out of band could be, and it is refused rather than mapped: zero
+    /// is a slot no claim has taken yet, and `unsigned_abs` would turn `-1`
+    /// into `1`, a token another holder may legitimately hold. Either is a
+    /// plausible wrong answer, which is the worse failure.
     #[must_use]
-    pub const fn as_u64(self) -> u64 {
-        if self.0 < 0 { 0 } else { self.0.unsigned_abs() }
+    pub const fn as_u64(self) -> Option<u64> {
+        if self.0 < 0 { None } else { Some(self.0.unsigned_abs()) }
     }
 
     /// A token as read back from a row.
@@ -82,77 +76,34 @@ impl Fence {
     }
 }
 
-/// A won claim: the new token, the instant the slot — and the lease issued
-/// against it — stays valid until, and whether the winner held the fleet.
+/// How long a freed claim keeps its fleet out of the next claims.
+///
+/// The claim takes the OLDEST ready fleet first, so a fleet whose pass ended
+/// for a reason the next poll would meet again would sit at the head of every
+/// poll and starve the fleets behind it. Such an ending frees the slot a little
+/// in the future instead of in the past: `ready_at` keeps the fleet's place in
+/// the queue, and the claim's `lease_expires_at < now` predicate skips it until
+/// the backoff passes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Claimed {
-    /// The monotonic token this claim minted.
-    pub fence: Fence,
-    /// When the claim lapses and the slot becomes winnable again.
-    pub leased_until: Timestamp,
-    /// Whether the winner holds the sandbox the fleet's last lease left: that
-    /// lease ran on this runner and its hold had not lapsed at the claim.
-    pub resume_hold: bool,
+pub(crate) enum Backoff {
+    /// Free at once, for another runner: the fleet itself is fine.
+    None,
+    /// Free after [`CLAIM_RETRY_BACKOFF`]: the pass met a fault or a gate
+    /// that could not decide, and the next poll would likely meet it again.
+    Retry,
 }
 
-/// What [`sql::lease::CLAIM_FLEET_SLOT`] answers when the claim wins: the new
-/// fence, the slot's deadline on the database clock, and whether the slot's
-/// prior hold was still live and whose it was.
-#[derive(Debug, sqlx::FromRow)]
-struct Won {
-    fencing_token: i64,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    lease_expires_at: Timestamp,
-    held: bool,
-    holder: Option<String>,
+impl Backoff {
+    /// The interval the release statement adds to its clock.
+    const fn delay(self) -> Duration {
+        match self {
+            Self::None => Duration::ZERO,
+            Self::Retry => CLAIM_RETRY_BACKOFF,
+        }
+    }
 }
 
 impl Leases {
-    /// Atomically claim `fleet_id`'s lease slot for `runner_id`, valid for
-    /// `ttl_ms`.
-    ///
-    /// Wins iff the slot is unclaimed or its prior claim has expired, and no
-    /// other live runner holds the fleet's sandbox, bumping the monotonic token
-    /// and recording the sticky hint. Answers `None` when a live runner still
-    /// holds it — an ordinary outcome the caller reads as "try the next
-    /// candidate", not a failure.
-    ///
-    /// The claim PRECEDES the event read by design: a loser has consumed no
-    /// event, so nothing is orphaned by losing.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer. A refused claim is
-    /// `Ok(None)`.
-    pub async fn claim(
-        &self,
-        fleet_id: &Uuid7,
-        runner_id: &Uuid7,
-        ttl: Duration,
-    ) -> Result<Option<Claimed>> {
-        let mut connection = self.pool().acquire().await?;
-        let won: Option<Won> = sqlx::query_as(sql::lease::CLAIM_FLEET_SLOT)
-            .bind(fleet_id.as_str())
-            .bind(runner_id.as_str())
-            .bind(ttl)
-            .bind(RUNNER_OFFLINE_AFTER)
-            .bind(sql::RUNNER_STATUS_ACTIVE)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_CLAIM))?;
-        let Some(won) = won else {
-            return Ok(None);
-        };
-        let outcome = held_claim(won.held, won.holder.as_deref(), runner_id);
-        if outcome == Some(HeldClaim::OtherAfterLapse) {
-            producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);
-        }
-        Ok(Some(Claimed {
-            fence: Fence::from_i64(won.fencing_token),
-            leased_until: won.lease_expires_at,
-            resume_hold: outcome == Some(HeldClaim::Holder),
-        }))
-    }
-
     /// Free a slot whose claim issued no lease, so the fleet's next event is
     /// claimable.
     ///
@@ -163,17 +114,30 @@ impl Leases {
     ///
     /// Called on every post-claim path that does not issue a lease, so an
     /// abandoned claim costs one poll rather than a full TTL of silence on that
-    /// fleet. It also drops the sticky hint the claim wrote: no run happened on
-    /// this runner, and a hint left behind would sort a fleet that keeps
-    /// stopping first for it on every poll of the partition.
+    /// fleet, or `backoff` when the ending would repeat on the next poll. It
+    /// also drops the sticky hint the claim wrote: no run happened on this
+    /// runner, and a hint left behind would sort a fleet that keeps stopping
+    /// first for it on every poll.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
     pub async fn release(&self, fleet_id: &Uuid7, fence: Fence) -> Result<()> {
+        self.release_after(fleet_id, fence, Backoff::None).await
+    }
+
+    /// [`Leases::release`], keeping the fleet out of claims for `backoff`.
+    pub(crate) async fn release_after(
+        &self,
+        fleet_id: &Uuid7,
+        fence: Fence,
+        backoff: Backoff,
+    ) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
+        self.tally().statements(1);
         sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
             .bind(fleet_id.as_str())
             .bind(fence.as_i64())
+            .bind(backoff.delay())
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE))?;
@@ -188,8 +152,8 @@ impl Leases {
     /// changes nothing it can act on: the claim lapses at its expiry, which is
     /// the cost every such ending paid before this existed. So the failure is
     /// logged and the answer stands.
-    pub(crate) async fn let_go(&self, fleet_id: &Uuid7, fence: Fence) {
-        if let Err(failure) = self.release(fleet_id, fence).await {
+    pub(crate) async fn let_go(&self, fleet_id: &Uuid7, fence: Fence, backoff: Backoff) {
+        if let Err(failure) = self.release_after(fleet_id, fence, backoff).await {
             let Logged { error_code, reason } = failure.logged();
             let fleet_id = fleet_id.as_str();
             tracing::warn!(
@@ -237,6 +201,27 @@ impl Leases {
     }
 }
 
+#[cfg(feature = "test-util")]
+impl Leases {
+    /// Steers `fleet_id`'s next claim to `runner_id`, as a finished run on
+    /// that runner would: the slot names it the fleet's last runner and holds
+    /// no lease. Test fixtures share the lane database, and the claim's
+    /// affinity order is how a suite keeps its runner on its own fleet.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn prefer(&self, fleet_id: &Uuid7, runner_id: &Uuid7) -> Result<()> {
+        let mut connection = self.pool().acquire().await?;
+        sqlx::query(sql::lease::PREFER_RUNNER)
+            .bind(fleet_id.as_str())
+            .bind(runner_id.as_str())
+            .execute(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_RELEASE))?;
+        Ok(())
+    }
+}
+
 /// Counts the holder's claim on its live hold, on the exit that hands out a
 /// lease resuming it. Not at the claim: the holder's reclaim resumes nothing,
 /// since the event's first attempt may have run in that sandbox.
@@ -250,7 +235,11 @@ pub(crate) fn count_resumed(acquired: &Acquired) {
 /// the slot's prior `hold_expires_at` and `last_runner_id`, or `None` when it held
 /// none. A hold at or past its deadline binds nobody at the claim's own
 /// predicate, so it is no hold here either.
-fn held_claim(held: bool, holder: Option<&str>, runner_id: &Uuid7) -> Option<HeldClaim> {
+pub(crate) fn held_claim(
+    held: bool,
+    holder: Option<&str>,
+    runner_id: &Uuid7,
+) -> Option<HeldClaim> {
     held.then(|| {
         if holder == Some(runner_id.as_str()) {
             HeldClaim::Holder

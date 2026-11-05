@@ -1,21 +1,20 @@
 //! The two money gates, in the order a refusal must not be charged in.
 //!
-//! Both answer `Option<Declined>`, where `None` continues the pass. That is
-//! the shape the whole sequence composes on: a gate either produces the answer
-//! or it does not, and nothing in here decides what a FAULT means — that is
-//! [`super::fault`]'s, applied through the [`Gate`](super::fault::Gate)
-//! value each one names.
+//! Each JUDGES reads the caller already made: the estimate, the balance and
+//! the fleet's spend depend on nothing but the request, so [`super::money_gates`]
+//! starts all three together and hands their answers here in judging order.
+//! Nothing in here decides what a FAULT means — that is [`super::fault`]'s,
+//! applied through the [`Gate`](super::fault::Gate) value each one names.
 
 use afd_core::error_code;
-use afd_core::id::Uuid7;
 
-use afd_billing::biller::{Account, Biller};
-use jiff::Timestamp;
+use afd_billing::biller::Balance;
+use afd_billing::rates::Estimate;
 
 use crate::lease::admit::fault::{BALANCE, BUDGET};
 use crate::lease::admit::{Declined, Refusal, Request};
 use afd_billing::budget::{self, Verdict};
-use afd_billing::{Accounts, Nanos};
+use afd_billing::{Nanos, Spend};
 
 /// The credit pool cannot cover this run.
 ///
@@ -33,7 +32,7 @@ const EVENT_BUDGET_BREACH: &str = "lease_budget_breach";
 /// less every hold other work has open, so runs already in flight count
 /// against it.
 ///
-/// Two reads, and BOTH are taken even when the first answers that the run
+/// Two reads, and BOTH are judged even when the first answers that the run
 /// cannot be priced. An unpriceable model costs zero to admit against, but the
 /// balance read is still what makes an exhausted pool refuse — skipping it
 /// because the estimate was zero would let a catalogue change silently disable
@@ -41,26 +40,17 @@ const EVENT_BUDGET_BREACH: &str = "lease_budget_breach";
 ///
 /// A tenant with no wallet row is ADMITTED — see [`afd_billing::wallet`] for
 /// why an unprovisioned tenant is an operator gap rather than a refusal.
-pub(super) async fn balance(
-    accounts: &Accounts,
-    biller: &dyn Biller,
+pub(super) fn balance(
     request: &Request<'_>,
-    tenant_id: &Uuid7,
-    now: Timestamp,
+    estimate: afd_billing::Result<Estimate>,
+    balance: afd_billing::Result<Balance>,
 ) -> Result<Nanos, Declined> {
-    let estimate = match accounts
-        .estimate(request.posture, request.provider, request.model, now)
-        .await
-    {
+    let estimate = match estimate {
         Ok(estimate) => estimate,
         Err(fault) => return BALANCE.absorb(&fault).map_or(Ok(Nanos::ZERO), Err),
     };
     let floor = estimate.floor();
-    let payer = Account {
-        tenant: tenant_id.clone(),
-        workspace: request.workspace_id.clone(),
-    };
-    let available = match biller.balance(&payer).await {
+    let available = match balance {
         Ok(held) => Nanos::from_i64(held.balance.as_i64().saturating_sub(held.held.as_i64())),
         Err(fault) if fault.is_wallet_missing() => return Ok(floor),
         Err(fault) => return BALANCE.absorb(&fault).map_or(Ok(floor), Err),
@@ -91,8 +81,11 @@ pub(super) async fn balance(
 /// Runs AFTER the tenant's credit pool and BEFORE the receive debit: a refused
 /// event must never be charged, and the two ceilings are independent — passing
 /// one says nothing about the other.
-pub(super) async fn fleet_budget(accounts: &Accounts, request: &Request<'_>) -> Option<Declined> {
-    let spend = match accounts.spend(request.workspace_id, request.fleet_id).await {
+pub(super) fn fleet_budget(
+    request: &Request<'_>,
+    spend: afd_billing::Result<Spend>,
+) -> Option<Declined> {
+    let spend = match spend {
         Ok(spend) => spend,
         Err(fault) => return BUDGET.absorb(&fault),
     };

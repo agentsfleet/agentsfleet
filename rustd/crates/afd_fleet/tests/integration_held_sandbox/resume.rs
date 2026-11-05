@@ -9,13 +9,13 @@
 )]
 
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use afd_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use afd_fleet::lease::{Billed, Kind, Leases};
 use jiff::Timestamp;
 
 use super::{hold, id, live};
 use crate::rows::{LAPSE, Row};
-use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
+use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_waiting};
 use crate::support::Fixtures;
 
 /// When a live hold made here lapses.
@@ -25,10 +25,8 @@ fn until(fixtures: &Fixtures) -> Timestamp {
 
 /// Whether `runner`'s won claim on `fleet` resumes its hold.
 async fn resumes(leases: &Leases, fleet: &str, runner: &Uuid7) -> bool {
-    leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+    crate::seed::claim_fleet(leases, runner, fleet)
         .await
-        .expect("the claim answers")
         .expect("the slot is won")
         .resume_hold
 }
@@ -37,7 +35,7 @@ async fn resumes(leases: &Leases, fleet: &str, runner: &Uuid7) -> bool {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder]) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
@@ -50,8 +48,8 @@ async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
-    let (never_held, ..) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder]) = seeded_waiting::<1>(&fixtures).await;
+    let (never_held, ..) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
@@ -74,7 +72,7 @@ async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder, other]) = seeded_waiting::<2>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
@@ -83,10 +81,8 @@ async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
         .age(Row::Runner(holder.as_str()), "last_seen_at", silence)
         .await;
 
-    let others = leases
-        .claim(&id(&fleet), &other, LEASE_TTL)
+    let others = crate::seed::claim_fleet(&leases, &other, &fleet)
         .await
-        .expect("the claim answers")
         .expect("a silent holder's fleet is won");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
@@ -125,10 +121,6 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
     let fresh = seed::select_fleet(&leases, &holder, &fleet)
         .await
         .expect("the holder leases its held fleet");
-    leases
-        .record_received(&fresh)
-        .await
-        .expect("the event's row opens");
     let billed = Billed {
         tenant_id: &tenant_id,
         posture: POSTURE,
@@ -139,6 +131,7 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
         .issue(&holder, &fresh, billed, now)
         .await
         .expect("the lease row is written")
+        .issued()
         .expect("the claim is still held");
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)

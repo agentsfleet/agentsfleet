@@ -10,6 +10,18 @@ use crate::{
     error::{DETAIL_EVENT_MALFORMED, rejected},
 };
 
+/// What a runner's poll asked for, as its request carried it.
+#[derive(Debug, Clone, Copy)]
+pub struct Asked<'a> {
+    /// The fleets whose sandboxes the runner holds, tried first.
+    pub held: &'a [Uuid7],
+    /// The work kinds this runner accepts.
+    pub accepted: AcceptedKinds,
+    /// The worker's `Idempotency-Key` for this poll attempt, if it sent one:
+    /// fleet work reads it to free a lease whose reply was lost.
+    pub key: Option<&'a Uuid7>,
+}
+
 impl Plane {
     /// Place one accepted kind, alternating after each committed placement.
     ///
@@ -22,8 +34,7 @@ impl Plane {
         &self,
         drafts: &afd_authoring::Drafts,
         runner: &Uuid7,
-        held: &[Uuid7],
-        accepted: AcceptedKinds,
+        asked: Asked<'_>,
         degraded: bool,
         now: Timestamp,
     ) -> Result<String> {
@@ -32,7 +43,7 @@ impl Plane {
         }
         let hosts =
             afd_runner::Runners::new(self.leases.pool().clone(), self.leases.entropy().clone());
-        let Some(ticket) = hosts.claim_offer(runner, accepted).await? else {
+        let Some(ticket) = hosts.claim_offer(runner, asked.accepted).await? else {
             return no_work(runner, "the runner is unavailable");
         };
         for kind in ticket.order() {
@@ -48,7 +59,8 @@ impl Plane {
                 }
                 LeaseKind::Fleet => {
                     if let Polled::Lease(body) =
-                        self.poll(runner, held, false, now, Some(ticket)).await?
+                        self.poll(runner, asked.held, false, now, Some(ticket), asked.key.cloned())
+                            .await?
                     {
                         return Ok(body);
                     }

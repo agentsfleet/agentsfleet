@@ -46,6 +46,30 @@ pub(super) fn no_work(runner_id: &Uuid7, reason: &str) -> Result<String> {
     answer(None)
 }
 
+/// The answer to a poll that repeated a key whose lease it never read: no
+/// work, and poll again now.
+///
+/// The repeat freed the lease the earlier poll issued, so the admission is
+/// claimable at once, and the worker's next poll — under a fresh key — takes
+/// it back. Waiting out the usual backoff would only delay the run.
+///
+/// # Errors
+/// As [`no_work`].
+pub(super) fn replay_now(runner_id: &Uuid7) -> Result<String> {
+    let runner_id = runner_id.as_str();
+    tracing::info!(
+        event = EVENT_NO_WORK,
+        runner_id,
+        reason = "the poll repeated a key whose lease was never read",
+        "the poll issued no lease"
+    );
+    serde_json::to_string(&LeaseResponse::<serde_json::Value> {
+        lease: None,
+        retry_after_ms: Some(0),
+    })
+    .map_err(|_shape| rejected(DETAIL_EVENT_MALFORMED))
+}
+
 /// One `LeaseResponse`, serialized.
 ///
 /// The backoff hint rides on the EMPTY answer only: a runner handed work has
@@ -87,7 +111,11 @@ pub(super) fn render<'a>(
 ) -> Result<String> {
     answer(Some(LeasePayload {
         lease_id: lease_id.as_str().into(),
-        fencing_token: acquired.fence.as_u64(),
+        // A negative token was edited out of band; it fences nobody in.
+        fencing_token: acquired
+            .fence
+            .as_u64()
+            .ok_or_else(crate::error::stale_fence)?,
         lease_expires_at: acquired.leased_until,
         // The one delivery this port serves. `scoped` and `proxy` are wire
         // values with no implementation on either side.

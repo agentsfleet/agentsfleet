@@ -6,53 +6,11 @@ fn fleet(index: usize) -> afd_core::error::Result<Uuid7> {
     Uuid7::parse(&format!("0195b4ba-8d3a-7000-8abc-{index:012x}"))
 }
 
-#[test]
-fn duplicate_hints_are_shared_and_consumed_once() -> afd_core::error::Result<()> {
-    let bell = Doorbell::new();
-    let reader = bell.clone();
-    let fleet = fleet(1)?;
-    bell.ring(fleet.clone());
-    bell.ring(fleet.clone());
-    assert_eq!(reader.take(), Some(fleet));
-    assert_eq!(bell.take(), None);
-    Ok(())
-}
-
-#[test]
-fn a_burst_discards_old_hints_without_growing_the_buffer() -> afd_core::error::Result<()> {
-    let bell = Doorbell::new();
-    for index in 0..100 {
-        bell.ring(fleet(index)?);
-    }
-    let hints: Vec<_> = std::iter::from_fn(|| bell.take()).collect();
-    assert_eq!(hints.len(), 64);
-    assert_eq!(hints.first(), Some(&fleet(36)?));
-    assert_eq!(hints.last(), Some(&fleet(99)?));
-    Ok(())
-}
-
-#[test]
-fn concurrent_duplicate_notifications_cannot_duplicate_a_claim_hint() -> afd_core::error::Result<()>
-{
-    let bell = Doorbell::new();
-    let fleet = fleet(1)?;
-    std::thread::scope(|scope| {
-        for _ in 0..100 {
-            let bell = bell.clone();
-            let fleet = fleet.clone();
-            scope.spawn(move || bell.ring(fleet));
-        }
-    });
-    assert_eq!(bell.take(), Some(fleet));
-    assert_eq!(bell.take(), None);
-    Ok(())
-}
-
 #[tokio::test]
-async fn shutdown_releases_every_doorbell_listener_and_its_buffer() {
+async fn shutdown_releases_every_doorbell_listener() {
     let (hub, _server) = crate::SubscriptionHub::detached();
     let bell = Doorbell::new();
-    let buffer = std::sync::Arc::downgrade(&bell.hints);
+    let buffer = std::sync::Arc::downgrade(&bell.rings);
     bell.listen(&hub);
     for shard in 0..super::WAKE_SHARDS {
         assert_eq!(hub.readers(&super::channel(shard)), 1);
@@ -69,7 +27,7 @@ async fn shutdown_releases_every_doorbell_listener_and_its_buffer() {
 }
 
 #[tokio::test]
-async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> afd_core::error::Result<()>
+async fn gaps_and_lag_are_counted_without_losing_the_next_valid_ring() -> afd_core::error::Result<()>
 {
     let metrics = Capture::install();
     let family = "agentsfleet_fleet_ready_wake_failures_total";
@@ -87,8 +45,7 @@ async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> afd_co
         server.publish(&channel, "invalid fleet");
     }
     server.confirm(&channel);
-    let expected = fleet(1)?;
-    server.publish(&channel, expected.as_str());
+    server.publish(&channel, fleet(1)?.as_str());
     hub.shutdown();
     let stopped = tokio::time::timeout(
         std::time::Duration::from_secs(1),
@@ -99,8 +56,15 @@ async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> afd_co
         stopped.is_ok(),
         "the listener drains and exits after shutdown"
     );
-    assert_eq!(bell.take(), Some(expected));
-    assert_eq!(bell.take(), None, "invalid and lost frames create no hints");
+    // The one valid frame left one permit; the invalid and lost frames left
+    // none, so a second wait finds nothing and runs to its deadline.
+    let first = bell.wait_for_ring(SHORT, 1).await;
+    let second = bell.wait_for_ring(SHORT, 1).await;
+    assert_eq!(
+        (first, second),
+        (super::Waited::Rung, super::Waited::Deadline),
+        "one valid frame rings once; invalid and lost frames ring nothing"
+    );
     assert_eq!(metrics.sum(family, &labels) - before, 2);
     assert_eq!(
         hub.readers(&channel),
@@ -113,17 +77,127 @@ async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> afd_co
 /// Longer than any test waits, so a wait that ends early ended for a reason.
 const LONG: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Long enough for a woken wait to have answered, short enough to wait out.
+const SHORT: std::time::Duration = std::time::Duration::from_millis(50);
+
 /// A held wait ends on the next ring, and gives its place back when it does.
 #[tokio::test]
-async fn a_ring_answers_a_held_wait() -> afd_core::error::Result<()> {
+async fn a_ring_answers_a_held_wait() {
     let bell = Doorbell::new();
-    let fleet = fleet(1)?;
     let (waited, ()) = tokio::join!(bell.wait_for_ring(LONG, 2), async {
         tokio::task::yield_now().await;
-        bell.ring(fleet);
+        bell.ring();
     });
     assert_eq!((waited, bell.held()), (super::Waited::Rung, 0));
-    Ok(())
+}
+
+/// A ring with no beat held is kept: the next beat answers at once, and only
+/// that one.
+#[tokio::test]
+async fn a_ring_before_the_hold_is_kept_for_the_next_beat() {
+    let bell = Doorbell::new();
+    bell.ring();
+    let first = bell.wait_for_ring(LONG, 1).await;
+    let second = bell.wait_for_ring(SHORT, 1).await;
+    assert_eq!(
+        (first, second),
+        (super::Waited::Rung, super::Waited::Deadline)
+    );
+}
+
+/// Waits until `count` beats are held on `bell`.
+async fn until_held(bell: &Doorbell, count: usize) {
+    while bell.held() < count {
+        tokio::task::yield_now().await;
+    }
+}
+
+/// Dimension 3.1: with three beats held, one ring completes exactly one; the
+/// other two are still held after it has answered.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_a_ring_completes_exactly_one_held_beat() {
+    let bell = Doorbell::new();
+    let mut waits: Vec<_> = (0..3)
+        .map(|_| {
+            let bell = bell.clone();
+            tokio::spawn(async move { bell.wait_for_ring(LONG, 3).await })
+        })
+        .collect();
+    until_held(&bell, 3).await;
+    bell.ring();
+    let (rung, _index, rest) = futures_util::future::select_all(waits.drain(..)).await;
+    tokio::time::sleep(SHORT).await;
+    assert_eq!(
+        (rung.ok(), bell.held(), rest.iter().filter(|wait| wait.is_finished()).count()),
+        (Some(super::Waited::Rung), 2, 0),
+        "one ring answers one beat and leaves the other two held"
+    );
+    bell.close();
+}
+
+/// Dimension 3.2: closing ends every held beat at once, and a wait after the
+/// close is not held at all.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_close_ends_every_held_beat() {
+    let bell = Doorbell::new();
+    let waits: Vec<_> = (0..3)
+        .map(|_| {
+            let bell = bell.clone();
+            tokio::spawn(async move { bell.wait_for_ring(LONG, 3).await })
+        })
+        .collect();
+    until_held(&bell, 3).await;
+    bell.close();
+    let mut answers = Vec::new();
+    for wait in waits {
+        answers.push(
+            tokio::time::timeout(SHORT * 20, wait)
+                .await
+                .ok()
+                .and_then(Result::ok),
+        );
+    }
+    let after = tokio::time::timeout(SHORT, bell.wait_for_ring(LONG, 3)).await;
+    assert_eq!(
+        (answers, after.ok(), bell.held()),
+        (
+            vec![Some(super::Waited::Deadline); 3],
+            Some(super::Waited::Deadline),
+            0
+        )
+    );
+}
+
+/// Dimension 3.3: past the cap a beat answers `Capped` at once, and a held
+/// beat dropped mid-wait gives its place back to a new one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_held_beats_past_the_cap_answer_capped() {
+    const CAP: usize = 64;
+    let bell = Doorbell::new();
+    let waits: Vec<_> = (0..CAP)
+        .map(|_| {
+            let bell = bell.clone();
+            tokio::spawn(async move { bell.wait_for_ring(LONG, CAP).await })
+        })
+        .collect();
+    until_held(&bell, CAP).await;
+    let past_the_cap = bell.wait_for_ring(LONG, CAP).await;
+    let mut waits = waits.into_iter();
+    if let Some(dropped) = waits.next() {
+        dropped.abort();
+        let _cancelled = dropped.await;
+    }
+    let replacement = {
+        let bell = bell.clone();
+        tokio::spawn(async move { bell.wait_for_ring(LONG, CAP).await })
+    };
+    until_held(&bell, CAP).await;
+    assert_eq!(
+        (past_the_cap, replacement.is_finished()),
+        (super::Waited::Capped, false),
+        "the 65th beat is refused, and a dropped beat's place is held again"
+    );
+    bell.close();
 }
 
 /// With no ring the wait ends at its deadline, and gives its place back.
@@ -138,39 +212,18 @@ async fn a_silent_wait_answers_at_its_deadline() {
 
 /// A wait past the cap is refused at once while the held one keeps waiting.
 #[tokio::test]
-async fn a_wait_past_the_cap_is_refused_at_once() -> afd_core::error::Result<()> {
+async fn a_wait_past_the_cap_is_refused_at_once() {
     let bell = Doorbell::new();
-    let fleet = fleet(1)?;
     let (held, refused) = tokio::join!(bell.wait_for_ring(LONG, 1), async {
         let refused = bell.wait_for_ring(LONG, 1).await;
         let while_held = bell.held();
-        bell.ring(fleet);
+        bell.ring();
         (refused, while_held)
     });
     assert_eq!(
         (held, refused, bell.held()),
         (super::Waited::Rung, (super::Waited::Capped, 1), 0)
     );
-    Ok(())
-}
-
-/// A second admission for a fleet whose hint is still buffered is fresh work
-/// too: the generation moves before the hint dedup, so the wait hears it.
-#[tokio::test]
-async fn a_ring_for_a_buffered_fleet_still_wakes_a_wait() -> afd_core::error::Result<()> {
-    let bell = Doorbell::new();
-    let fleet = fleet(1)?;
-    bell.ring(fleet.clone());
-    let (waited, ()) = tokio::join!(bell.wait_for_ring(LONG, 1), async {
-        tokio::task::yield_now().await;
-        bell.ring(fleet.clone());
-    });
-    assert_eq!(
-        (waited, bell.take(), bell.take()),
-        (super::Waited::Rung, Some(fleet), None),
-        "woken, with the hint still buffered once"
-    );
-    Ok(())
 }
 
 /// Closing ends a held wait at once, as at its deadline, and a wait after the
@@ -194,10 +247,10 @@ async fn a_closed_doorbell_ends_and_refuses_held_waits() {
 }
 
 /// A hundred waits racing for sixty-four places: exactly sixty-four are held
-/// and thirty-six refused, one ring answers every held one, and every place
-/// is given back.
+/// and thirty-six refused, one ring per held wait answers them all, and every
+/// place is given back.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn the_cap_holds_under_contention() -> afd_core::error::Result<()> {
+async fn the_cap_holds_under_contention() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     const WAITS: usize = 100;
@@ -222,7 +275,9 @@ async fn the_cap_holds_under_contention() -> afd_core::error::Result<()> {
     while bell.held() < CAP || refused.load(Ordering::Acquire) < WAITS - CAP {
         tokio::task::yield_now().await;
     }
-    bell.ring(fleet(1)?);
+    for _ in 0..CAP {
+        bell.ring();
+    }
     let mut answers = Vec::new();
     for wait in waits {
         // A wait that panicked counts as neither, and fails the totals below.
@@ -237,5 +292,4 @@ async fn the_cap_holds_under_contention() -> afd_core::error::Result<()> {
         ),
         (CAP, WAITS - CAP, 0)
     );
-    Ok(())
 }

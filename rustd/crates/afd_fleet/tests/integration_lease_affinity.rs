@@ -19,7 +19,6 @@
 use crate::requests;
 use crate::support;
 use afd_core::id::Uuid7;
-use afd_core::timing::LEASE_TTL;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::{enrolment_tagged, placement_tag};
@@ -64,6 +63,21 @@ const CONTENDERS: usize = 4;
 /// Fixed-size so callers DESTRUCTURE rather than index: `let [a, b] = …` cannot
 /// panic, where `runners[1]` can, and a contention test that panics on its own
 /// scaffolding reports the wrong failure.
+/// One admission waiting on the fixture's fleet: the claim takes only ready
+/// work, so a slot is won through the work it carries.
+async fn waiting(fixtures: &Fixtures, ids: &Ids) {
+    crate::queue::enqueue(
+        &fixtures.database,
+        &ids.fleet,
+        &ids.workspace,
+        crate::seed::ACTOR,
+        crate::seed::EVENT_TYPE,
+        crate::seed::REQUEST_JSON,
+        fixtures.enrolled_at(),
+    )
+    .await;
+}
+
 async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
     let mut runners = Vec::with_capacity(N);
     for _ in 0..N {
@@ -99,6 +113,7 @@ async fn test_lease_affinity_race() {
     fixtures
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
+    waiting(&fixtures, &ids).await;
     let runners: [Uuid7; CONTENDERS] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
@@ -106,9 +121,8 @@ async fn test_lease_affinity_race() {
     // Every contender claims the same slot at the same instant. Awaited
     // together rather than in sequence so the datastore, not this loop, decides
     // the order they arrive in.
-    let attempts = runners
-        .iter()
-        .map(|runner| leases.claim(&fleet, runner, LEASE_TTL));
+    let named = [fleet.clone()];
+    let attempts = runners.iter().map(|runner| leases.select(runner, &named));
     let outcomes = futures_util::future::join_all(attempts).await;
 
     let won: Vec<_> = outcomes
@@ -124,7 +138,7 @@ async fn test_lease_affinity_race() {
     assert_eq!(
         fixtures.text(Row::Slot(&ids.fleet), "fencing_token").await,
         Some("1".to_owned()),
-        "a slot claimed for the first time opens at fence one"
+        "a slot claimed for the first time carries fence one"
     );
     let winner = won.first().expect("the count above proved there is one");
     assert_eq!(
@@ -150,21 +164,17 @@ async fn test_reclaim_bumps_fence() {
     fixtures
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
+    waiting(&fixtures, &ids).await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
 
-    let first = leases
-        .claim(&fleet, &first_runner, LEASE_TTL)
+    let first = crate::seed::claim_fleet(&leases, &first_runner, &ids.fleet)
         .await
-        .expect("the first claim must not fault")
         .expect("an unclaimed slot is winnable");
 
     // A live holder blocks the slot, whoever asks.
-    let blocked = leases
-        .claim(&fleet, &second_runner, LEASE_TTL)
-        .await
-        .expect("a blocked claim is not a fault");
+    let blocked = crate::seed::claim_fleet(&leases, &second_runner, &ids.fleet)
+        .await;
     assert!(
         blocked.is_none(),
         "a live claim must not be displaceable before it lapses"
@@ -175,10 +185,8 @@ async fn test_reclaim_bumps_fence() {
     fixtures
         .age(Row::Slot(&ids.fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed = leases
-        .claim(&fleet, &second_runner, LEASE_TTL)
+    let reclaimed = crate::seed::claim_fleet(&leases, &second_runner, &ids.fleet)
         .await
-        .expect("the reclaim must not fault")
         .expect("a lapsed slot is winnable");
 
     assert!(
@@ -204,22 +212,19 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
     fixtures
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
+    waiting(&fixtures, &ids).await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
     let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
 
-    let stale = leases
-        .claim(&fleet, &first_runner, LEASE_TTL)
+    let stale = crate::seed::claim_fleet(&leases, &first_runner, &ids.fleet)
         .await
-        .expect("the first claim must not fault")
         .expect("an unclaimed slot is winnable");
     fixtures
         .age(Row::Slot(&ids.fleet), "lease_expires_at", LAPSE)
         .await;
-    let live = leases
-        .claim(&fleet, &second_runner, LEASE_TTL)
+    let live = crate::seed::claim_fleet(&leases, &second_runner, &ids.fleet)
         .await
-        .expect("the reclaim must not fault")
         .expect("a lapsed slot is winnable");
 
     // The displaced holder tries to tidy up, carrying its own stale token.

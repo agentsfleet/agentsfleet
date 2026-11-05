@@ -16,7 +16,7 @@
 //! reason the cursor survives a claim.
 
 use afd_core::id::Uuid7;
-use afd_observability::metrics::label::fleet::DeliveryStage;
+use afd_observability::metrics::label::fleet::{DeliveryStage, IssueDenied};
 use afd_observability::producers;
 use afd_runner::capacity::choice;
 use afd_wire::lease::LeaseKind;
@@ -30,6 +30,10 @@ use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ISSUE: &str = "lease issue";
+
+/// What an issue that writes its row sends: begin, the host lock, the row, the
+/// choice record and the commit.
+const ISSUE_STATEMENTS: u64 = 5;
 
 /// What the gates resolved, and what the row records about the money.
 ///
@@ -60,6 +64,37 @@ pub struct Issued {
     pub lease_id: Uuid7,
 }
 
+/// What the issue step did with a claim.
+///
+/// Two ways to write no row, kept apart because they mean different things to
+/// an operator: a LOST claim is this pass outliving its own fence, and a
+/// DENIED one is this runner's host refusing the work it claimed. Both hand
+/// the slot back, so another runner claims the fleet on its next poll.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Issue {
+    /// The row is written; the runner owns the work.
+    Issued(Issued),
+    /// The fence was superseded, the slot's deadline passed, or the host's
+    /// choice record moved under this pass.
+    Lost,
+    /// The host row is gone, the host cannot take a claim (it is at its
+    /// worker count, degraded or draining), or its kind choice no longer
+    /// permits fleet work.
+    Denied(IssueDenied),
+}
+
+#[cfg(feature = "test-util")]
+impl Issue {
+    /// The issued lease, or `None` for either way of writing no row.
+    #[must_use]
+    pub fn issued(self) -> Option<Issued> {
+        match self {
+            Self::Issued(issued) => Some(issued),
+            Self::Lost | Self::Denied(_) => None,
+        }
+    }
+}
+
 impl Leases {
     /// Write the lease row for `acquired`, and the audit row that explains it.
     ///
@@ -68,10 +103,9 @@ impl Leases {
     /// see a lease with no audit row, a tally that has drifted from the rows it
     /// counts, or a fresh lease metering from a previous run's cursor.
     ///
-    /// `None` when the claim that earned `acquired` is no longer this pass's:
-    /// its fence was superseded or it lapsed, so another runner may already
-    /// hold the same entry. Nothing is written, and the claim is not this
-    /// pass's to release.
+    /// [`Issue::Lost`] when the claim that earned `acquired` is no longer this
+    /// pass's, and [`Issue::Denied`] when the host refuses it. Nothing is
+    /// written either way; the caller frees a slot still under this fence.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and an entropy source that
@@ -82,19 +116,25 @@ impl Leases {
         acquired: &Acquired,
         billed: Billed<'_>,
         now: Timestamp,
-    ) -> Result<Option<Issued>> {
+    ) -> Result<Issue> {
         let mut connection = self.pool().acquire().await?;
+        // Begin, the host lock, the row, the choice record and the commit.
+        self.tally().statements(ISSUE_STATEMENTS);
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
         let Some(capacity) = afd_runner::capacity::lock(&mut transaction, runner_id).await? else {
-            return Ok(None);
+            return Ok(Issue::Denied(IssueDenied::HostMissing));
         };
-        if !capacity.can_claim()
-            || acquired.leased_until <= capacity.now()
-            || self
-                .ticket()
-                .is_some_and(|ticket| !ticket.permits(capacity, LeaseKind::Fleet))
+        if !capacity.can_claim() {
+            return Ok(Issue::Denied(IssueDenied::Capacity));
+        }
+        if self
+            .ticket()
+            .is_some_and(|ticket| !ticket.permits(capacity, LeaseKind::Fleet))
         {
-            return Ok(None);
+            return Ok(Issue::Denied(IssueDenied::Ticket));
+        }
+        if acquired.leased_until <= capacity.now() {
+            return Ok(Issue::Lost);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
         let written = sql::lease::LeaseRow {
@@ -113,6 +153,7 @@ impl Leases {
             checked_at: capacity.now(),
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
+            poll_key: self.poll_key(),
         }
         .bind()
         .execute(&mut *transaction)
@@ -125,12 +166,12 @@ impl Leases {
         if written.rows_affected() == 0
             || !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await?
         {
-            return Ok(None);
+            return Ok(Issue::Lost);
         }
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
         record_issued(&lease_id, runner_id, acquired);
-        Ok(Some(Issued { lease_id }))
+        Ok(Issue::Issued(Issued { lease_id }))
     }
 
     /// Draw the independent lease and audit identities.

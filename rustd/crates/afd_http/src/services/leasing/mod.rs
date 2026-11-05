@@ -28,8 +28,11 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
     ///
     /// `degraded` fails CLOSED: a runner whose verdict could not be read is
     /// issued nothing, because its assignment names an isolation the host may
-    /// not deliver. `held` names the fleets whose sandboxes the runner holds,
-    /// for the pass to try before its partition.
+    /// not deliver. `asked` is what the runner's request carried: the fleets
+    /// whose sandboxes it holds, for the pass to try first, the kinds it
+    /// accepts, and the worker's `Idempotency-Key` for this poll attempt, when
+    /// it sent one — a repeat of a poll whose reply was lost frees the lease
+    /// that poll issued.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, or a stored configuration
@@ -39,8 +42,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         &self,
         drafts: &afd_authoring::Drafts,
         runner_id: &Uuid7,
-        held: &[Uuid7],
-        accepted: afd_wire::lease::AcceptedKinds,
+        asked: afd_fleet::lease::Asked<'_>,
         degraded: bool,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send;

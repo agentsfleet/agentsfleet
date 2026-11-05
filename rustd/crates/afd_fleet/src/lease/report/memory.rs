@@ -47,11 +47,16 @@ impl Plane {
         // The row's token, as the settle is fenced on it: the report is this
         // runner's by the load, and a lease the fleet has moved past writes
         // neither its memory nor its settle.
+        // A negative token was edited out of band and fences nobody in: there
+        // is no holder to write the memory as.
+        let Some(fencing_token) = lease.fence.as_u64() else {
+            return;
+        };
         let holder = Holder {
             runner_id,
             fleet_id: &lease.fleet_id,
             lease_id: request.lease_id.as_ref(),
-            fencing_token: lease.fence.as_u64(),
+            fencing_token,
         };
         let Err(failure) = self.capture_for(holder, &request.memory, now).await else {
             return;

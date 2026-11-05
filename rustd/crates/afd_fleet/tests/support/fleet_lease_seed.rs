@@ -93,6 +93,28 @@ pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
     }
 }
 
+/// [`seeded_parts`] with one admission waiting, for a suite about the slot.
+///
+/// The claim takes only ready work, so a suite asking who may win a fleet's
+/// slot gives the fleet work to win it through. The admission is claimed and
+/// released as the slot is; nothing reports it.
+pub(crate) async fn seeded_waiting<const N: usize>(
+    fixtures: &Fixtures,
+) -> (String, String, String, [Uuid7; N]) {
+    let (fleet, workspace, tenant, runners) = seeded_parts::<N>(fixtures).await;
+    crate::queue::enqueue(
+        &fixtures.database,
+        &fleet,
+        &workspace,
+        ACTOR,
+        EVENT_TYPE,
+        REQUEST_JSON,
+        fixtures.enrolled_at(),
+    )
+    .await;
+    (fleet, workspace, tenant, runners)
+}
+
 /// `runner`'s first beat, carrying the capability report a real host sends
 /// before it polls.
 ///
@@ -165,6 +187,28 @@ pub(crate) async fn select_fleet(leases: &Leases, runner: &Uuid7, fleet: &str) -
         assert_eq!(acquired.fleet_id.as_str(), fleet);
     }
     acquired
+}
+
+/// The production claim, answering only for `fleet`.
+///
+/// The claim takes no fleet id: it takes the runner's held fleets first, then
+/// its oldest ready one. A suite asking whether `runner` may take `fleet`
+/// names it held, and a claim that took some other fleet instead is let go
+/// and answered as `None`, which is what "this fleet was not won" means.
+pub(crate) async fn claim_fleet(leases: &Leases, runner: &Uuid7, fleet: &str) -> Option<Acquired> {
+    let named = [Uuid7::parse(fleet).expect("seeded fleet")];
+    let acquired = leases
+        .select(runner, &named)
+        .await
+        .expect("serving claim")?;
+    if acquired.fleet_id.as_str() == fleet {
+        return Some(acquired);
+    }
+    leases
+        .release(&acquired.fleet_id, acquired.fence)
+        .await
+        .expect("an unwanted claim is let go");
+    None
 }
 
 /// One serving discovery pass, including its unconditional Postgres probe.

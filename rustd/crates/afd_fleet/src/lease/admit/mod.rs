@@ -39,7 +39,8 @@ use afd_fleet_runtime::config::Budget;
 use jiff::Timestamp;
 
 use crate::error::Result;
-use afd_billing::biller::Biller;
+use afd_billing::biller::{Account, Biller};
+use futures_util::future;
 use afd_billing::rates::Posture;
 use afd_billing::{Accounts, Nanos};
 use afd_gate::gate::Waiting;
@@ -209,11 +210,24 @@ pub async fn money_gates(
         Err(stop) => return Ok(stop.into()),
     };
 
-    let floor = match gates::balance(accounts, biller, &request, &tenant_id, now).await {
+    // Three independent reads, started together: none depends on another's
+    // answer, and each keeps its own pooled connection for one statement. They
+    // are JUDGED below in the order a refusal must not be charged in.
+    let payer = Account {
+        tenant: tenant_id.clone(),
+        workspace: request.workspace_id.clone(),
+    };
+    let (estimate, balance, spend) = future::join3(
+        accounts.estimate(request.posture, request.provider, request.model, now),
+        biller.balance(&payer),
+        accounts.spend(request.workspace_id, request.fleet_id),
+    )
+    .await;
+    let floor = match gates::balance(&request, estimate, balance) {
         Ok(floor) => floor,
         Err(stop) => return Ok(stop.into()),
     };
-    if let Some(stop) = gates::fleet_budget(accounts, &request).await {
+    if let Some(stop) = gates::fleet_budget(&request, spend) {
         return Ok(stop.into());
     }
 

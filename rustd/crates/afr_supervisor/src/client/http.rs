@@ -9,6 +9,9 @@ use url::Url;
 use zeroize::Zeroizing;
 
 use super::{Call, RunnerApi};
+
+/// The header the lease poll names its attempt with.
+const IDEMPOTENCY_KEY: &str = "idempotency-key";
 use crate::config::Config;
 use crate::error::{self, Result};
 
@@ -84,6 +87,10 @@ impl RunnerApi for HttpRunnerApi {
             request.timeout(AUTHORING_MODEL_TIMEOUT)
         } else {
             request
+        };
+        let request = match call.key {
+            Some(key) => request.header(IDEMPOTENCY_KEY, key.as_str()),
+            None => request,
         };
         let request = match call.body {
             Some(body) => request.header(CONTENT_TYPE, APPLICATION_JSON).body(body),

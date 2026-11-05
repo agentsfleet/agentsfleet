@@ -7,11 +7,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use afd_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
 use super::{hold, id, live, slot};
 use crate::rows::Row;
-use crate::seed::{self, Seeded, seeded, seeded_parts};
+use crate::seed::{self, Seeded, seeded, seeded_waiting};
 use crate::support::Fixtures;
 
 /// What ended a hold's grip on its fleet.
@@ -93,7 +93,7 @@ async fn test_another_runners_poll_is_offered_a_silent_holders_fleet() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder]) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(
@@ -106,10 +106,8 @@ async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
     .await;
     lapse_hold(&fixtures, &fleet, holder.as_str(), Lapse::Deadline).await;
 
-    let claimed = leases
-        .claim(&id(&fleet), &holder, LEASE_TTL)
+    let claimed = crate::seed::claim_fleet(&leases, &holder, &fleet)
         .await
-        .expect("answers")
         .expect("the holder wins");
     leases
         .release(&id(&fleet), claimed.fence)

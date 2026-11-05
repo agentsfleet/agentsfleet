@@ -27,6 +27,7 @@ use jiff::Timestamp;
 
 use crate::lease::affinity::Fence;
 use crate::lease::envelope::{Acquired, Kind};
+use crate::lease::event::Delivery;
 use crate::lease::pull::Plane;
 use crate::lease::store::Leases;
 use afd_memory::Memories;
@@ -107,5 +108,9 @@ pub(crate) fn acquired() -> Acquired {
         reused: None,
         resume_hold: false,
         redelivered: false,
+        // Opened by an earlier claim, so the pass announces nothing on the
+        // dead queue and goes straight to its first read.
+        delivery: Delivery::Repeat,
+        opened_at: AT,
     }
 }

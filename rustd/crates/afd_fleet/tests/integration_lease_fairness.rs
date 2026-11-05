@@ -1,11 +1,10 @@
-//! Ineligible fleets cannot fill the bounded candidate list ahead of eligible work.
+//! Ineligible fleets cannot hide eligible work, and ready fleets are claimed
+//! oldest first.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use crate::{queue, requests, seed, support::Fixtures};
-use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::Doorbell;
 use afd_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -15,6 +14,10 @@ const PLACEABLE: usize = 3;
 const HOT_TAG: &str = "fixture:nobody-carries-this";
 
 async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) {
+    enqueue_at(fixtures, fleet, workspace, fixtures.enrolled_at()).await;
+}
+
+async fn enqueue_at(fixtures: &Fixtures, fleet: &str, workspace: &str, at: jiff::Timestamp) {
     queue::enqueue(
         &fixtures.database,
         fleet,
@@ -22,7 +25,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) {
         seed::ACTOR,
         seed::EVENT_TYPE,
         seed::REQUEST_JSON,
-        fixtures.enrolled_at(),
+        at,
     )
     .await;
 }
@@ -69,9 +72,9 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
     for remaining in (1..=PLACEABLE).rev() {
         let (answer, cost) = leases.select_measured(&runner, &[]).await;
         let acquired = answer.expect("poll").expect("eligible work");
-        assert!(
-            cost.candidates_scanned <= u64::try_from(remaining).expect("small count"),
-            "{cost:?}"
+        assert_eq!(
+            cost.database_roundtrips, 1,
+            "one claim statement with {remaining} placeable left: {cost:?}"
         );
         found.insert(acquired.fleet_id.as_str().to_owned());
     }
@@ -79,18 +82,28 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
     fixtures.cleanup().await;
 }
 
+/// Dimension 2.6: three ready fleets armed at ascending instants, written in
+/// another order, with no hold and no affinity: the claim takes the oldest.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
+async fn test_claim_takes_the_oldest_ready_fleet() {
     let fixtures = Fixtures::create_with_queue().await;
     let (first, workspace, tenant) = seed::unique_ids();
-    let second = mint_id();
-    let mut request = enrolment(&first);
-    for fleet in [&first, &second] {
+    let fleets = [first, mint_id(), mint_id()];
+    let mut request = enrolment(&fleets[0]);
+    for fleet in &fleets {
         let tag = requests::placement_tag(fleet);
         fixtures.seed_fleet(fleet, &workspace, &tenant, &tag).await;
         request.labels.push(Cow::Owned(tag));
-        enqueue(&fixtures, fleet, &workspace).await;
+    }
+    // Written newest first, so the order claimed is the instants' and not the
+    // order the rows landed in.
+    for (offset, fleet) in [(2, &fleets[2]), (0, &fleets[0]), (1, &fleets[1])] {
+        let at = afd_core::clock::after(
+            fixtures.enrolled_at(),
+            std::time::Duration::from_secs(offset),
+        );
+        enqueue_at(&fixtures, fleet, &workspace, at).await;
     }
     let runner = fixtures
         .runners()
@@ -98,28 +111,16 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
         .await
         .expect("runner")
         .runner_id;
-    let bell = Doorbell::new();
-    bell.ring(Uuid7::parse(&second).expect("fleet"));
-    let leases = fixtures.leases().with_doorbell(bell);
-    assert_eq!(
-        leases
+    let leases = fixtures.leases();
+    let mut claimed = Vec::new();
+    for _ in &fleets {
+        let acquired = leases
             .select(&runner, &[])
             .await
             .expect("poll")
-            .expect("rung fleet")
-            .fleet_id
-            .as_str(),
-        second
-    );
-    assert_eq!(
-        leases
-            .select(&runner, &[])
-            .await
-            .expect("poll")
-            .expect("unnotified fleet")
-            .fleet_id
-            .as_str(),
-        first
-    );
+            .expect("ready work");
+        claimed.push(acquired.fleet_id.as_str().to_owned());
+    }
+    assert_eq!(claimed, fleets.to_vec(), "oldest ready first");
     fixtures.cleanup().await;
 }

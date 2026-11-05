@@ -103,11 +103,6 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         .await
         .expect("a ready fleet holding an event is leasable");
     // The lease row references the event's row, which the narrative log opens.
-    fixtures
-        .leases()
-        .record_received(&held)
-        .await
-        .expect("the narrative log opens");
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let issued = fixtures
         .leases()
@@ -124,6 +119,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         )
         .await
         .expect("the lease row must be written")
+        .issued()
         .expect("the claim is still held");
     let lease = issued.lease_id.as_str().to_owned();
 

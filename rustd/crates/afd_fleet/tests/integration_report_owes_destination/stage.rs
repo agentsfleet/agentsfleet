@@ -106,10 +106,6 @@ impl Stage {
         let acquired = crate::seed::select_fleet(&self.leases, &self.runner, &self.fleet)
             .await
             .expect("one rotation of polls must reach the fleet holding admitted work");
-        self.leases
-            .record_received(&acquired)
-            .await
-            .expect("the narrative log must open");
         let issued = self
             .leases
             .issue(
@@ -125,6 +121,7 @@ impl Stage {
             )
             .await
             .expect("the lease row must be written")
+        .issued()
             .expect("the claim is still held");
         let lease = self
             .leases

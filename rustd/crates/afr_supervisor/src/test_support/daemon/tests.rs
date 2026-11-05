@@ -8,6 +8,7 @@ fn call(verb: Verb) -> Call {
         verb,
         path: "/fake".into(),
         body: None,
+        key: None,
     }
 }
 

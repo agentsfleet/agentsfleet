@@ -1,10 +1,9 @@
 //! A claim finds a prior narrative by its fleet and logical identity.
 
-use super::{Fixtures, relation_scans, run};
+use super::{Fixtures, claim_plan, read_scans, run};
 use crate::report_seed::held_in;
 use afd_db::config::DbRole;
-use afd_fleet::lease::sql::queue::CLAIM_HEAD;
-use sqlx::{Connection as _, PgConnection};
+use sqlx::Connection as _;
 
 const RETAINED: &str = "WITH events AS (INSERT INTO fleet.events \
     (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,created_at,updated_at) \
@@ -54,8 +53,8 @@ async fn prior_lease_lookup_uses_both_event_index_keys_for_fresh_and_reclaimed_h
                 .await
                 .expect("fresh head");
         }
-        let plan = claim_plan(&mut tx, &held.fleet, held.runner.as_str()).await;
-        let scans = relation_scans(&plan, "events");
+        let plan = claim_plan(&mut tx, held.runner.as_str()).await;
+        let scans = read_scans(&plan, "events");
         assert_eq!(scans.len(), 1, "fresh={fresh}: {plan}");
         let condition = scans.first().expect("prior event lookup")["Index Cond"]
             .as_str()
@@ -70,20 +69,4 @@ async fn prior_lease_lookup_uses_both_event_index_keys_for_fresh_and_reclaimed_h
     drop(connection);
     owner.close().await;
     held.fixtures.cleanup().await;
-}
-
-async fn claim_plan(connection: &mut PgConnection, fleet: &str, runner: &str) -> serde_json::Value {
-    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-        "EXPLAIN (ANALYZE, FORMAT JSON) {CLAIM_HEAD}"
-    )))
-    .bind(fleet)
-    .bind(runner)
-    .bind(afd_core::timing::LEASE_TTL)
-    .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
-    .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-    .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
-    .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
-    .fetch_one(connection)
-    .await
-    .expect("prepared production claim plan")
 }

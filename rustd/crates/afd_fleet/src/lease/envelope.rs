@@ -1,6 +1,6 @@
 //! Work read from the admissions ledger under the fleet's current fence.
 
-use crate::lease::{affinity::Fence, reclaim::Reused};
+use crate::lease::{affinity::Fence, event::Delivery, reclaim::Reused};
 use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
@@ -67,4 +67,12 @@ pub struct Acquired {
     pub resume_hold: bool,
     /// Whether this admission was delivered on an earlier attempt.
     pub redelivered: bool,
+    /// What the claim found when it opened the event's row: new, still open,
+    /// or already finished.
+    pub delivery: Delivery,
+    /// The event row's stored `created_at`: a steer's admission instant,
+    /// otherwise the instant the claim opened it. The received frame carries
+    /// it, so the tail announces the instant the history read lists the row
+    /// under.
+    pub opened_at: Timestamp,
 }

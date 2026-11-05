@@ -93,10 +93,6 @@ async fn test_reclaim_counts_as_reclaimed() {
     let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
-    leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     leases
         .issue(
@@ -112,6 +108,7 @@ async fn test_reclaim_counts_as_reclaimed() {
         )
         .await
         .expect("the lease row must be written")
+        .issued()
         .expect("the claim is still held");
 
     let before = capture.sum(RUNS_STARTED, &[(KIND, RECLAIMED)]);

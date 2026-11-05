@@ -72,7 +72,7 @@ async fn an_unreleased_claim_reason_carries_no_code_prefix() {
 
     let log = afd_core::test_util::trace::Capture::install();
     test_dead::leases()
-        .let_go(&test_dead::id(1), Fence::from_i64(3))
+        .let_go(&test_dead::id(1), Fence::from_i64(3), Backoff::Retry)
         .await;
 
     let line = log.only(EVENT_CLAIM_RELEASE_FAILED);

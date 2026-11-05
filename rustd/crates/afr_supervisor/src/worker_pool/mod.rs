@@ -13,7 +13,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afd_core::error_code;
+use afd_core::id::Uuid7;
 use afd_core::timing::NO_WORK_RETRY_AFTER;
+use afd_crypto::entropy::Entropy;
 use afd_wire::lease::{LeaseResponse, TaggedLease};
 use backon::ExponentialBackoff;
 use futures_util::FutureExt as _;
@@ -110,6 +112,7 @@ pub(crate) async fn serve(lessee: Arc<Lessee>, mut assignment: watch::Receiver<A
                     turns: turns.clone(),
                     assignment: assignment.clone(),
                     failures: endless(),
+                    poll_key: None,
                 }
                 .run(),
             );
@@ -132,6 +135,14 @@ struct Worker {
     turns: FleetTurns,
     assignment: watch::Receiver<Assignment>,
     failures: ExponentialBackoff,
+    /// The key of the poll attempt whose answer this worker has not read yet.
+    ///
+    /// Kept across a transport failure, a timeout or a 5xx, because the
+    /// daemon may have issued a lease whose reply was lost: the repeat frees
+    /// it. Dropped once any answer is decoded — a lease, no work or a
+    /// refusal — so the next poll is a new attempt. Never shared between
+    /// workers, so a repeat can only free this worker's own lease.
+    poll_key: Option<Uuid7>,
 }
 
 impl Worker {
@@ -195,25 +206,38 @@ impl Worker {
     /// long to pause before the next poll, or `None` to stop.
     async fn next(&mut self) -> Option<Duration> {
         let number = self.number;
-        let leasing = self.lessee.halt.leasing();
+        let lessee = Arc::clone(&self.lessee);
+        let leasing = lessee.halt.leasing();
         tokio::select! {
             () = leasing.cancelled() => return None,
             wanted = self.assignment.wait_for(|now| now.takes_work(number)) => wanted.ok()?,
         };
         let held = self.lessee.holds.fleets().await;
+        let key = match self.attempt_key() {
+            Ok(key) => key,
+            Err(failure) => return Some(self.failed(&failure, EVENT_POLL_FAILED)),
+        };
         let polled = tokio::select! {
             () = leasing.cancelled() => return None,
-            polled = self.lessee.plane.lease(&held) => polled,
+            polled = self.lessee.plane.lease(&held, &key) => polled,
         };
         let body = match polled {
             Ok(body) => body,
             Err(failure) if self.lessee.halt.stops_on(&failure) => return None,
-            Err(failure) => return Some(self.failed(&failure, EVENT_POLL_FAILED)),
+            Err(failure) => {
+                // A refusal is an answer the daemon decided; a transport
+                // failure or a 5xx may hide a lease, so its key is repeated.
+                if !failure.is_retryable() {
+                    self.poll_key = None;
+                }
+                return Some(self.failed(&failure, EVENT_POLL_FAILED));
+            }
         };
         let reply = match body.decode::<LeaseResponse<'_>>() {
             Ok(reply) => reply,
             Err(failure) => return Some(self.failed(&failure, EVENT_POLL_FAILED)),
         };
+        self.poll_key = None;
         self.failures = endless();
         let Some(lease) = reply.lease else {
             let hinted = reply.retry_after_ms.map_or(NO_WORK_RETRY_AFTER, |ms| {
@@ -232,6 +256,17 @@ impl Worker {
             return Some(self.failed(&failure, EVENT_LEASE_ERROR));
         }
         Some(Duration::ZERO)
+    }
+
+    /// The key this poll attempt is sent under: the one an unanswered attempt
+    /// left, or a fresh `UUIDv7`.
+    fn attempt_key(&mut self) -> crate::Result<Uuid7> {
+        if let Some(key) = &self.poll_key {
+            return Ok(key.clone());
+        }
+        let key = Entropy::new().uuid7(self.lessee.clock.now())?;
+        self.poll_key = Some(key.clone());
+        Ok(key)
     }
 
     /// Logs a failed poll or lease, and backs off before the next.

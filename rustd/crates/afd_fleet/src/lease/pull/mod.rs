@@ -1,10 +1,10 @@
 //! The lease verb: one runner's poll, from claim to answer.
 //!
 //! Every step below already exists and is proven on its own. What is here is
-//! the ORDER, which is the part no single step can be right about — the money
-//! gates must not run before the narrative log exists to record a refusal on,
-//! the policy must not assemble before the gates have passed, and the row must
-//! not be written before the policy is known to be buildable.
+//! the ORDER, which is the part no single step can be right about — the claim
+//! opens the narrative log before any gate, so a refusal has a row to be
+//! recorded on, the policy must not assemble before the gates have passed, and
+//! the lease must not be written before the policy is known to be buildable.
 //!
 //! # Why this answers serialized bytes
 //!
@@ -34,7 +34,9 @@
 //! — that last would need a new registry code. Any body, or none, gets that
 //! shape.
 
-use afd_core::{error_code, id::Uuid7};
+use std::ops::ControlFlow;
+
+use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 use jiff::Timestamp;
 
@@ -42,6 +44,7 @@ use crate::error::Result;
 use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates, payer_gate};
 use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
+use crate::lease::event::Delivery;
 use crate::lease::installed::Installed;
 use crate::lease::store::Leases;
 use afd_billing::Accounts;
@@ -55,12 +58,14 @@ mod claimed;
 mod held;
 mod poll;
 mod refuse;
-mod step;
 #[cfg(all(test, feature = "test-util"))]
 mod tests;
 
-pub(in crate::lease) use self::step::{Leased, Step, claim_lost};
+pub(in crate::lease) use self::held::{Ending, Leased, Step, claim_lost, issue_denied};
 pub use poll::Polled;
+
+/// What the money gates read: the estimate, the balance and the fleet's spend.
+const MONEY_READS: u64 = 3;
 
 /// A finished event's redelivery was acknowledged and not executed.
 const EVENT_TERMINAL_SUPPRESSED: &str = "terminal_redelivery_suppressed";
@@ -158,46 +163,30 @@ impl Plane {
         degraded: bool,
         now: Timestamp,
     ) -> Result<String> {
-        self.poll(runner_id, held, degraded, now, None)
+        self.poll(runner_id, held, degraded, now, None, None)
             .await
             .map(Polled::into_body)
     }
 
-    /// Run gates after selection under the slot and admission fences.
+    /// Run gates after the claim, which already opened the event's row.
     async fn admit_claimed(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
     ) -> Result<Step<Admission2>> {
-        let installed = match self
-            .resolve_installed(&acquired, runner_id)
-            .await?
-            .proceed()
-        {
-            Ok(installed) => installed,
-            Err(ended) => return Ok(ended),
-        };
-
-        let received = match self.leases.record_received(&acquired).await {
-            Ok(received) => received,
-            Err(stale) if stale.code() == error_code::RUN_STALE_FENCING_TOKEN => {
-                return claim_lost(runner_id, &acquired);
-            }
-            Err(failure) => return Err(failure),
-        };
-        let delivery = received.delivery;
-        if delivery == crate::lease::event::Delivery::Terminal {
+        if acquired.delivery == Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
         }
         // The tail's opening bracket, once per row: a redelivery found the row
-        // already there, and its watchers already hold the marker. The counters
-        // were read after the row landed, because the insert is what moves them.
-        if delivery == crate::lease::event::Delivery::First {
-            self.leases
-                .publish_received(&acquired, received.opened_at, received.counters)
-                .await;
+        // already there, and its watchers already hold the marker.
+        if acquired.delivery == Delivery::First {
+            self.leases.publish_opened(&acquired).await;
         }
+        let installed = match self.resolve_installed(&acquired, runner_id).await? {
+            ControlFlow::Continue(installed) => installed,
+            ControlFlow::Break(ending) => return Ok(ControlFlow::Break(ending)),
+        };
         self.billed(acquired, installed, runner_id, now).await
     }
 
@@ -216,16 +205,18 @@ impl Plane {
             return self
                 .refused(&acquired, label, runner_id, &reason)
                 .await
-                .map(Step::Stop);
+                .map(|answer| ControlFlow::Break(Ending::Ended(answer)));
         };
 
         // The payer is read ONCE, here: the provider resolves against it and
         // the gates bill it, so a second read could only disagree with the first.
         let read = self.accounts.payer(&acquired.workspace_id).await;
+        self.leases.tally().statements(1);
         let tenant = match payer_gate(read, &acquired.workspace_id)? {
             Ok(tenant) => tenant,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
+        self.leases.tally().statements(1);
         let resolved = self
             .providers
             .resolve_reference(&tenant, &installed.runtime_model_ref)
@@ -235,7 +226,7 @@ impl Plane {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
-        Ok(Step::Go(Admission2 {
+        Ok(ControlFlow::Continue(Admission2 {
             acquired,
             installed,
             event_type,
@@ -244,7 +235,8 @@ impl Plane {
         }))
     }
 
-    /// A durable ending suppresses execution and settles the admission under its fence.
+    /// A durable ending suppresses execution, settling the admission and
+    /// freeing the slot in one statement under the claim's fence.
     async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<Admission2>> {
         self.leases.settle_terminal(acquired).await?;
         let fleet_id = acquired.fleet_id.as_str();
@@ -255,7 +247,7 @@ impl Plane {
             event = EVENT_TERMINAL_SUPPRESSED,
             "the redelivered event already has a durable ending"
         );
-        no_work(runner_id, REDELIVERED_FINISHED).map(Step::Stop)
+        no_work(runner_id, REDELIVERED_FINISHED).map(|answer| ControlFlow::Break(Ending::Ended(answer)))
     }
 
     /// The money gates over the tenant the payer gate found, then — once they
@@ -277,6 +269,8 @@ impl Plane {
             provider: resolved.provider.as_ref(),
             model: resolved.model.as_ref(),
         };
+        // The estimate, the balance and the fleet's spend.
+        self.leases.tally().statements(MONEY_READS);
         let money = money_gates(
             &self.accounts,
             self.biller.as_ref(),
@@ -298,6 +292,9 @@ impl Plane {
         installed: &Installed,
         now: Timestamp,
     ) -> Option<Admission> {
+        // The recorded question in Postgres and the gate's cached answer.
+        self.leases.tally().statements(1);
+        self.leases.tally().commands(1);
         let verdict = self
             .gates
             .check(

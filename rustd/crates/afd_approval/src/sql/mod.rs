@@ -112,6 +112,20 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 /// revoked, `$9` grant gate type.
 pub(crate) const RESOLVE_GATE: &str = include_str!("resolve_gate.sql");
 
+/// Ensure and lock the slot of every fleet holding a pending gate for an
+/// action, before [`RESOLVE_GATE`] unparks anything.
+///
+/// The first statement of the resolve's transaction, so the slot lock comes
+/// before any admission lock (the order `docs/architecture/concurrency.md`
+/// pins) and the unpark that follows reads a snapshot taken after the wait: a
+/// park that committed while this waited is visible and is cleared. An upsert
+/// with an unconditional no-op `DO UPDATE` (SQL-UPSERT): a fleet whose setup
+/// card predates its first admission has no slot yet, and the insert arm makes
+/// the row the admission trigger would, with no lease and no readiness.
+///
+/// `$1` action, `$2` fleet filter (empty disables).
+pub(crate) const LOCK_GATE_FLEET_SLOT: &str = include_str!("lock_gate_fleet_slot.sql");
+
 /// The gate an action already holds, newest first.
 ///
 /// Read only when [`RESOLVE_GATE`] updated nothing, to tell a gate somebody
@@ -134,5 +148,16 @@ pub(crate) const SELECT_GATE_BY_ACTION: &str = include_str!("select_gate_by_acti
 /// count still sees the swept rows as pending; excluding what `swept` holds
 /// is what makes it the state after the sweep.
 ///
-/// `$1` expired status, `$2` resolver attribution, `$3` detail.
+/// `$1` expired status, `$2` resolver attribution, `$3` detail, `$4` the fleets
+/// whose slots [`LOCK_EXPIRING_FLEET_SLOTS`] locked. A gate of any other fleet
+/// waits for the next sweep, so the sweep never unparks an admission whose
+/// slot it does not hold.
 pub(crate) const EXPIRE_GATES: &str = include_str!("expire_gates.sql");
+
+/// Ensure and lock, in fleet order, the slot of every fleet with a pending gate
+/// past its deadline, and name those fleets.
+///
+/// [`LOCK_GATE_FLEET_SLOT`]'s shape for the sweep. Fleet order keeps two
+/// replicas' sweeps from deadlocking each other, and `now()` is the
+/// transaction's, so [`EXPIRE_GATES`] reads the same deadline.
+pub(crate) const LOCK_EXPIRING_FLEET_SLOTS: &str = include_str!("lock_expiring_fleet_slots.sql");

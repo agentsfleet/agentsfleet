@@ -57,8 +57,8 @@ fn a_request_that_could_not_be_written_retries_rather_than_ending() {
     // Postgres that would not answer must never be read as a person's no.
     // Ending here would destroy a delivery on an outage, and the outage is
     // the one condition guaranteed to pass. Nor may it park: no card exists
-    // for anyone to answer, so the next poll has to ask again.
-    assert_eq!(answers(None), Ungranted::Retries);
+    // for anyone to answer, so a later poll has to ask again.
+    assert_eq!(answers(None), Ungranted::Unwritten);
 }
 
 /// The error `written` is handed when an identifier cannot be minted.
@@ -125,22 +125,24 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
 /// An open card parks the delivery; every other answer stops it.
 ///
 /// Parking blocks the admission head, so only a card a person will
-/// answer may park: a retry that parked would wait on nobody.
+/// answer may park: a retry that parked would wait on nobody. An unwritten
+/// card stops behind the retry backoff, so the oldest-first claim does not
+/// hand the same failing fleet straight back.
 #[test]
 fn only_an_open_card_turns_the_answer_into_a_park() {
+    use super::{Backoff, Ending};
+
     let answer = || "no work".to_owned();
-    assert!(matches!(
-        Ungranted::Parks.ending(answer()),
-        super::Step::Park(bytes) if bytes == answer()
-    ));
-    assert!(matches!(
+    assert_eq!(Ungranted::Parks.ending(answer()), Ending::Park(answer()));
+    assert_eq!(
         Ungranted::Retries.ending(answer()),
-        super::Step::Stop(bytes) if bytes == answer()
-    ));
-    assert!(matches!(
-        Ungranted::Ends.ending(answer()),
-        super::Step::Stop(bytes) if bytes == answer()
-    ));
+        Ending::Stop(answer(), Backoff::None)
+    );
+    assert_eq!(
+        Ungranted::Unwritten.ending(answer()),
+        Ending::Stop(answer(), Backoff::Retry)
+    );
+    assert_eq!(Ungranted::Ends.ending(answer()), Ending::Ended(answer()));
 }
 
 #[test]
@@ -151,7 +153,7 @@ fn an_unwritten_request_never_ends_the_event() {
     // one condition guaranteed to occur.
     assert_eq!(
         answers(written(Err(unwritable()), &fleet(), "github")),
-        Ungranted::Retries
+        Ungranted::Unwritten
     );
 }
 

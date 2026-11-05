@@ -73,7 +73,7 @@ async fn test_memory_capture_fencing() {
         .capture(
             &run.runner,
             &fleet_id,
-            &push(lease, run.fence.as_u64(), HELD_CONTENT),
+            &push(lease, run.fence.as_u64().expect("a claimed fence is not negative"), HELD_CONTENT),
             run.now,
         )
         .await
@@ -87,7 +87,7 @@ async fn test_memory_capture_fencing() {
     // One below the lease's own token, which is still the live sequence: the
     // fence refuses it as not the holder's. A reclaim that moved the fleet past
     // the lease is `test_memory_routes_refuse_a_superseded_active_lease`.
-    let superseded = run.fence.as_u64() - 1;
+    let superseded = run.fence.as_u64().expect("a claimed fence is not negative") - 1;
     let refusal = plane
         .capture(
             &run.runner,
@@ -150,7 +150,7 @@ async fn test_memory_capture_refuses_a_token_that_is_not_the_holders() {
     let plane = run.fixtures.plane();
     let lease = run.issued.lease_id.as_str();
 
-    for presented in [run.fence.as_u64() + 1, u64::MAX] {
+    for presented in [run.fence.as_u64().expect("a claimed fence is not negative") + 1, u64::MAX] {
         let refusal = plane
             .capture(
                 &run.runner,
@@ -193,7 +193,7 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
     // The control: while the fleet has not moved past it, the holder recalls
     // and hydrates, so each refusal below is the reclaim's doing.
     plane
-        .recall(&run.runner, &fleet_id, &recall(lease, run.fence.as_u64()))
+        .recall(&run.runner, &fleet_id, &recall(lease, run.fence.as_u64().expect("a claimed fence is not negative")))
         .await
         .expect("the holder recalls while the fleet has not moved past it");
     plane
@@ -202,7 +202,7 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
         .expect("and hydrates");
     let live = run.supersede().await;
 
-    for presented in [run.fence.as_u64(), live, u64::MAX] {
+    for presented in [run.fence.as_u64().expect("a claimed fence is not negative"), live, u64::MAX] {
         let pushed = plane
             .capture(
                 &run.runner,
@@ -262,7 +262,7 @@ async fn test_memory_capture_refuses_a_lease_the_runner_does_not_hold() {
             &fleet_id,
             &push(
                 run.issued.lease_id.as_str(),
-                run.fence.as_u64(),
+                run.fence.as_u64().expect("a claimed fence is not negative"),
                 SUPERSEDED_CONTENT,
             ),
             run.now,

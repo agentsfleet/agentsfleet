@@ -2,7 +2,8 @@
 //!
 //! Split from [`super`] on the seam between READING the queue and MOVING a
 //! row. The read half is two statements and a decoder; this half is one
-//! guarded UPDATE plus the three things that follow from it — the tail is
+//! guarded UPDATE behind the fleet's slot lock, plus the three things that
+//! follow from it — the tail is
 //! told, a parked delivery is woken, and an approval that held a run lands
 //! the continuation. They belong together because they share one
 //! invariant: the row moved first, so none of them may turn a durable
@@ -14,6 +15,7 @@ use afd_api_wire::approval::status;
 use afd_api_wire::grant::status as grant_status;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
 use afd_dragonfly::FleetStreams;
+use sqlx::Connection as _;
 
 use super::announce::Answer;
 use super::row::{StoredResolution, StoredWin};
@@ -77,7 +79,18 @@ impl Inbox {
     ) -> Result<Resolution> {
         let scope = fleet.unwrap_or(NO_FILTER);
         let mut connection = self.database.acquire().await?;
-
+        // Two statements, one transaction: the slot lock comes first, so the
+        // unpark reads a snapshot taken after any wait on a concurrent park.
+        let mut transaction = connection
+            .begin()
+            .await
+            .map_err(error::query(CONTEXT_RESOLVE))?;
+        sqlx::query(sql::LOCK_GATE_FLEET_SLOT)
+            .bind(action)
+            .bind(scope)
+            .execute(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_RESOLVE))?;
         let won = sqlx::query_as::<_, StoredWin>(sql::RESOLVE_GATE)
             .bind(outcome.as_str())
             .bind(detail)
@@ -88,7 +101,11 @@ impl Inbox {
             .bind(GRANT_APPROVED)
             .bind(GRANT_REVOKED)
             .bind(KIND_INTEGRATION_GRANT)
-            .fetch_optional(&mut *connection)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_RESOLVE))?;
+        transaction
+            .commit()
             .await
             .map_err(error::query(CONTEXT_RESOLVE))?;
 

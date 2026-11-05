@@ -18,7 +18,7 @@
 use crate::seed;
 use crate::support;
 use afd_core::id::Uuid7;
-use afd_fleet::lease::{Billed, Delivery, Kind};
+use afd_fleet::lease::{Billed, Delivery, Issue, Kind};
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
@@ -51,11 +51,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     // — without it the reclaim finds nothing and correctly falls through to a
     // fresh pull, which is what an earlier revision of this test observed.
     assert_eq!(
-        leases
-            .record_received(&held)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
+        held.delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );
@@ -75,6 +71,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         )
         .await
         .expect("the lease row must be written")
+        .issued()
         .expect("the claim is still held");
     let lease = issued.lease_id.as_str();
 
@@ -154,13 +151,10 @@ async fn test_every_lease_meters_from_its_own_issue() {
         .await
         .expect("the fleet is leasable");
     leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
-    leases
         .issue(&first, &held, billed, fixtures.enrolled_at())
         .await
         .expect("the fresh lease row must be written")
+        .issued()
         .expect("the claim is still held");
     let dead_holders_cursor = fixtures.metered_since(&fleet).await;
 
@@ -175,6 +169,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
         .issue(&second, &reclaimed, billed, fixtures.enrolled_at())
         .await
         .expect("the reclaimed lease row must be written")
+        .issued()
         .expect("the claim is still held");
     assert!(
         fixtures.metered_since(&fleet).await > dead_holders_cursor,
@@ -222,12 +217,10 @@ async fn test_a_stale_claim_writes_no_lease() {
         .issue(&first, &held, billed, fixtures.enrolled_at())
         .await
         .expect("the fenced insert answers");
-    assert!(expired.is_none(), "a lapsed claim writes no lease");
+    assert_eq!(expired, Issue::Lost, "a lapsed claim writes no lease");
 
-    let won = leases
-        .claim(&held.fleet_id, &second, afd_core::timing::LEASE_TTL)
-        .await
-        .expect("the claim statement answers");
+    let won = crate::seed::claim_fleet(&leases, &second, held.fleet_id.as_str())
+        .await;
     assert!(
         won.is_some(),
         "the lapsed slot is winnable by another runner"
@@ -236,7 +229,7 @@ async fn test_a_stale_claim_writes_no_lease() {
         .issue(&first, &held, billed, now)
         .await
         .expect("the fenced insert answers");
-    assert!(superseded.is_none(), "a superseded fence writes no lease");
+    assert_eq!(superseded, Issue::Lost, "a superseded fence writes no lease");
     let mut connection = fixtures.database.acquire().await.expect("database");
     let active: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM runner.leases WHERE fleet_id = $1::uuid AND status = 'active'",

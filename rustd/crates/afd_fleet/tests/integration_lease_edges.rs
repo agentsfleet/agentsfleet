@@ -246,7 +246,17 @@ async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
     let window = plane.hydrate(&held.spare, &fleet).await;
     let capture = Capture::install();
     let answer = plane
-        .claim(&drafts, &stranger, &[], AcceptedKinds::ALL, false, held.now)
+        .claim(
+            &drafts,
+            &stranger,
+            afd_fleet::lease::Asked {
+                held: &[],
+                accepted: AcceptedKinds::ALL,
+                key: None,
+            },
+            false,
+            held.now,
+        )
         .await
         .expect("an unknown host is answered, not refused");
 

@@ -66,10 +66,6 @@ impl Running {
         let acquired = seed::select_fleet(&leases, &runner, &fleet)
             .await
             .expect("a fresh affinity is selected");
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("open event history");
         let tenant = Uuid7::parse(&tenant).expect("fixture tenant");
         let issued = leases
             .issue(
@@ -85,6 +81,7 @@ impl Running {
             )
             .await
             .expect("issue reaches Postgres")
+        .issued()
             .expect("capacity is available");
         Self {
             fixtures,

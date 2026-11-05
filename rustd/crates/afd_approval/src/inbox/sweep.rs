@@ -5,7 +5,8 @@
 //! hands back each row's fleet, event and the fleet's count after the sweep;
 //! the loop below reads the fleet's counters and wakes the fleet once per
 //! distinct fleet, then decodes and announces. Expiry clears the admission's
-//! park stamp in Postgres. A failed wake cannot hide the admission from polls.
+//! park stamp in Postgres, under the fleet's slot lock taken by the statement
+//! before it. A failed wake cannot hide the admission from polls.
 //!
 //! # The rows decode by construction
 //!
@@ -27,6 +28,7 @@ use std::collections::BTreeMap;
 
 use afd_api_wire::approval::status;
 use afd_api_wire::tail::FleetCounters;
+use sqlx::Connection as _;
 use sqlx::FromRow as _;
 
 use super::Inbox;
@@ -73,11 +75,29 @@ impl Inbox {
     /// not match — which only a statement and decoder out of step can cause.
     pub async fn expire(&self) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
+        // The slots first, in fleet order, then only those fleets' gates: the
+        // unpark never touches an admission whose slot this does not hold.
+        let mut transaction = connection
+            .begin()
+            .await
+            .map_err(error::query(CONTEXT_EXPIRE))?;
+        let fleets: Vec<String> = sqlx::query_scalar(sql::LOCK_EXPIRING_FLEET_SLOTS)
+            .fetch_all(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_EXPIRE))?;
+        if fleets.is_empty() {
+            return Ok(0);
+        }
         let rows = sqlx::query(sql::EXPIRE_GATES)
             .bind(status::TIMED_OUT)
             .bind(SWEEPER)
             .bind(SWEPT_DETAIL)
-            .fetch_all(&mut *connection)
+            .bind(&fleets)
+            .fetch_all(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_EXPIRE))?;
+        transaction
+            .commit()
             .await
             .map_err(error::query(CONTEXT_EXPIRE))?;
         drop(connection);

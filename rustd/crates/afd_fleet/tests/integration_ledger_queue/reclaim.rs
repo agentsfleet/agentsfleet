@@ -18,8 +18,7 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     let first = next(&leases, &holder).await.expect("first claim");
     assert!(!first.redelivered);
     assert!(first.reused.is_none());
-    let received = leases.record_received(&first).await.expect("open event");
-    assert_eq!(received.delivery, Delivery::First);
+    assert_eq!(first.delivery, Delivery::First, "the claim opened the event");
     let issued = issue(&fixtures, &leases, &first, &holder, &tenant).await;
     fixtures.lapse_holder(&issued, &fleet).await;
 
@@ -75,6 +74,7 @@ pub(super) async fn issue(
         )
         .await
         .expect("issue query")
+        .issued()
         .expect("live fence")
         .lease_id
         .as_str()

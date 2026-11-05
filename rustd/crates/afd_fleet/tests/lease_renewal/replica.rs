@@ -65,6 +65,7 @@ impl Replica {
             )
             .await
             .expect("issue reaches Postgres")
+        .issued()
             .expect("the freed slot admits the re-leased event");
         (acquired.event_id, issued.lease_id)
     }

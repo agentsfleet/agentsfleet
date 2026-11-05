@@ -75,6 +75,7 @@ fn call(verb: Verb, path: &str, body: Option<&'static [u8]>) -> Call {
         verb,
         path: path.to_owned().into(),
         body: body.map(Bytes::from_static),
+        key: None,
     }
 }
 

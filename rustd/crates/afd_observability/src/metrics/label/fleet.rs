@@ -161,6 +161,22 @@ closed_set! {
 }
 
 closed_set! {
+    /// Why a claimed lease's host refused it at issue.
+    ///
+    /// Each hands the slot back for another runner. A rising `capacity` share
+    /// means hosts poll for more work than their worker count admits.
+    IssueDenied {
+        /// The runner's host row is gone.
+        HostMissing => "host_missing",
+        /// The host cannot take a claim: it is running its worker count, or
+        /// it is degraded or draining.
+        Capacity => "capacity",
+        /// The host's kind choice no longer permits fleet work.
+        Ticket => "ticket",
+    }
+}
+
+closed_set! {
     /// How a run came to start.
     ///
     /// Two rather than two families: an operator reads them as one line split

@@ -8,21 +8,23 @@
 //! moves the ending — and the file cap forced the cut at a seam the two
 //! already had.
 
+use std::ops::ControlFlow;
+
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::event::label;
 use afd_core::id::Uuid7;
 
-use super::step::{Step, waited};
+use super::held::{Ending, Step, waited};
 use super::{Admission2, Plane};
 use crate::error::{Error, Result};
 use crate::lease::admit::{Declined, Refusal};
+use crate::lease::affinity::Backoff;
 use crate::lease::answer::{EVENT_REFUSED, no_work};
 use crate::lease::envelope::Acquired;
-use crate::lease::event::Delivery;
 use crate::lease::installed::Installed;
 
 /// The no-work reason for a fleet paused between selection and claim.
-const FLEET_STOPPED: &str = "the fleet stopped between selection and claim";
+const FLEET_STOPPED: &str = "the fleet stopped between the claim and its read";
 
 /// A fleet whose unreadable config could not even be recorded as such.
 pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
@@ -31,7 +33,7 @@ impl Plane {
     /// The installed fleet behind a claim, or the answer that ends the pass.
     ///
     /// Three of the four arms end it, which is why this is a
-    /// [`Step`](super::step::Step) rather than an `Option`: a paused fleet, an
+    /// [`Step`](super::held::Step) rather than an `Option`: a paused fleet, an
     /// unreadable document and a datastore outage are different endings, and
     /// the caller should not have to tell them apart to know the pass is over.
     pub(super) async fn resolve_installed(
@@ -40,18 +42,19 @@ impl Plane {
         runner_id: &Uuid7,
     ) -> Result<Step<Installed>> {
         match self.leases.installed(&acquired.fleet_id).await {
-            Ok(Some(installed)) => Ok(Step::Go(installed)),
-            // The selection pass filters on status, so reaching here with a
-            // stopped fleet means an operator paused it in the window between
-            // selection and this read. The pass frees the claim; the pause
-            // already cleared the mark.
-            Ok(None) => no_work(runner_id, FLEET_STOPPED).map(Step::Stop),
+            Ok(Some(installed)) => Ok(ControlFlow::Continue(installed)),
+            // The claim filters on status, so reaching here with a stopped
+            // fleet means an operator paused it in the window between the
+            // claim and this read. The pass frees the claim at once; the claim
+            // skips a paused fleet until it resumes.
+            Ok(None) => no_work(runner_id, FLEET_STOPPED)
+                .map(|answer| ControlFlow::Break(Ending::Stop(answer, Backoff::None))),
             // One fleet's unreadable document is that fleet's fault and not
             // this runner's, which is the whole of `refuse_unreadable_config`.
             Err(unreadable) if unreadable.is_config_permanent() => self
                 .refuse_unreadable_config(acquired, runner_id, &unreadable)
                 .await
-                .map(Step::Stop),
+                .map(ControlFlow::Break),
             Err(outage) => Err(outage),
         }
     }
@@ -59,7 +62,7 @@ impl Plane {
     /// Apply a stop the payer, money or approval gate declined with.
     ///
     /// A wait on a person parks; a refusal ends the event; a retry leaves the
-    /// delivery leasable for the next poll.
+    /// delivery leasable once the retry backoff has passed.
     pub(super) async fn ended(
         &self,
         acquired: &Acquired,
@@ -71,15 +74,17 @@ impl Plane {
             Declined::Refuse(refusal) => self
                 .refused(acquired, refusal.label, runner_id, refusal.detail)
                 .await
-                .map(Step::Stop),
-            Declined::Retry(transient) => no_work(runner_id, transient.at).map(Step::Stop),
+                .map(|answer| ControlFlow::Break(Ending::Ended(answer))),
+            Declined::Retry(transient) => no_work(runner_id, transient.at)
+                .map(|answer| ControlFlow::Break(Ending::Stop(answer, Backoff::Retry))),
         }
     }
 
     /// End the event, then answer no-work.
     ///
-    /// The refusal is written before the answer. Whether a row MOVED decides
-    /// only the tail's closing bracket: an already-terminal row is a
+    /// The refusal is written before the answer, in the one statement that
+    /// also settles the admission and frees the slot. Whether a row MOVED
+    /// decides only the tail's closing bracket: an already-terminal row is a
     /// redelivery whose earlier acknowledgement was lost, its watchers already
     /// hold the ending, and the runner is told the same thing either way.
     pub(in crate::lease) async fn refused(
@@ -133,26 +138,30 @@ impl Plane {
     /// documented no-work rather than an error it would count toward its own
     /// self-termination ceiling.
     ///
-    /// # Why the narrative row is opened first
+    /// # Why the narrative row is already open
     ///
     /// [`Leases::block`](crate::lease::store::Leases::block) is an UPDATE
     /// guarded on `received`. A refusal written with no open row moves nothing,
     /// acknowledges the entry anyway, and leaves an operator with a fleet that
-    /// quietly drops its work. Opening it here is the same pair of brackets
-    /// every other refusal writes — the tail's watchers see the run open and
-    /// close, rather than a run that never existed.
+    /// quietly drops its work. The claim opened the row before this read ran,
+    /// so this is the same pair of brackets every other refusal writes — the
+    /// tail's watchers see the run open and close, rather than a run that
+    /// never existed.
     pub(super) async fn refuse_unreadable_config(
         &self,
         acquired: &Acquired,
         runner_id: &Uuid7,
         fault: &Error,
-    ) -> Result<String> {
+    ) -> Result<Ending> {
         let Logged {
             error_code: config_error_code,
             reason,
         } = fault.logged();
-        match self.end_unreadable(acquired, runner_id, &reason).await {
-            Ok(answer) => Ok(answer),
+        match self
+            .refused(acquired, label::CONFIG_UNREADABLE, runner_id, &reason)
+            .await
+        {
+            Ok(answer) => Ok(Ending::Ended(answer)),
             // Logged, never propagated, and the reasoning is this module's
             // already: the terminal-redelivery acknowledgement a few lines
             // upstream is swallowed for the same reason, because "failing the
@@ -190,28 +199,8 @@ impl Plane {
                      will be offered again"
                 );
                 no_work(runner_id, label::CONFIG_UNREADABLE)
+                    .map(|answer| Ending::Stop(answer, Backoff::Retry))
             }
         }
-    }
-
-    /// The durable half of [`Self::refuse_unreadable_config`].
-    ///
-    /// Separated so the caller can answer the runner whether or not this
-    /// succeeded, without a `match` arm deciding it in the middle of the
-    /// write sequence.
-    async fn end_unreadable(
-        &self,
-        acquired: &Acquired,
-        runner_id: &Uuid7,
-        reason: &str,
-    ) -> Result<String> {
-        let received = self.leases.record_received(acquired).await?;
-        if received.delivery == Delivery::First {
-            self.leases
-                .publish_received(acquired, received.opened_at, received.counters)
-                .await;
-        }
-        self.refused(acquired, label::CONFIG_UNREADABLE, runner_id, reason)
-            .await
     }
 }

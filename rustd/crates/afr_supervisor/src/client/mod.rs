@@ -58,6 +58,9 @@ pub(crate) struct Call {
     pub(crate) path: Cow<'static, str>,
     /// The JSON body; a read has none.
     pub(crate) body: Option<Bytes>,
+    /// The `Idempotency-Key` naming this attempt, on the one verb that takes
+    /// one: the lease poll.
+    pub(crate) key: Option<Uuid7>,
 }
 
 /// Sends one runner verb and returns the successful reply's bytes.
@@ -121,14 +124,25 @@ impl ControlPlane {
 
     /// Polls for the next lease, naming the fleets whose sandboxes this
     /// runner holds so a held fleet's next event comes here first.
-    pub(crate) async fn lease(&self, held: &[Uuid7]) -> Result<Body> {
+    ///
+    /// `key` names this poll attempt. The worker sends the same key again
+    /// only when the earlier attempt's reply never arrived, so the daemon
+    /// frees a lease this worker was issued and never read.
+    pub(crate) async fn lease(&self, held: &[Uuid7], key: &Uuid7) -> Result<Body> {
         let path = Cow::Borrowed(paths::RUNNER_LEASES);
         let holds = held.iter().map(|fleet| Cow::Borrowed(fleet.as_str()));
         let request = LeaseRequest {
             holds: HeldFleets(holds.collect()),
             accepted_kinds: AcceptedKinds::ALL,
         };
-        self.send_json(Verb::Lease, path, &request).await
+        let bytes = serde_json::to_vec(&request).map_err(error::encode)?;
+        self.dispatch(Call {
+            verb: Verb::Lease,
+            path,
+            body: Some(Bytes::from(bytes)),
+            key: Some(key.clone()),
+        })
+        .await
     }
 
     /// Renews a held lease with the run's cumulative tokens, and returns its
@@ -220,12 +234,24 @@ impl ControlPlane {
         self.send(verb, path, Some(Bytes::from(bytes))).await
     }
 
-    /// The one place a verb leaves the runner, so every call is logged once.
+    /// A verb with no key.
     async fn send(&self, verb: Verb, path: Cow<'static, str>, body: Option<Bytes>) -> Result<Body> {
+        self.dispatch(Call {
+            verb,
+            path,
+            body,
+            key: None,
+        })
+        .await
+    }
+
+    /// The one place a verb leaves the runner, so every call is logged once.
+    async fn dispatch(&self, call: Call) -> Result<Body> {
+        let verb = call.verb;
         let verb_name = verb.as_str();
         let event = EVENT_STARTED;
         tracing::debug!(verb = verb_name, event);
-        match self.api.send(Call { verb, path, body }).await {
+        match self.api.send(call).await {
             Ok(bytes) => {
                 let event = EVENT_COMPLETED;
                 tracing::debug!(verb = verb_name, event);

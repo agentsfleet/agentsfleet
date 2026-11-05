@@ -1,5 +1,6 @@
-//! Sharded notifications prioritize recent work; Postgres remains authoritative.
-//! The bounded local hints may be dropped at any time without losing admissions.
+//! Sharded notifications that end held heartbeats; Postgres remains the queue.
+//! A ring carries no work and may be lost at any time without losing an
+//! admission: the runner's next poll still claims it.
 
 use crate::{
     Dragonfly, FleetStreams, SubscriptionHub,
@@ -12,51 +13,40 @@ use afd_core::{
 };
 use afd_observability::{metrics::label::fleet::ReadyWake, producers};
 use std::{
-    collections::VecDeque,
+    pin::pin,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
-use tokio::sync::watch;
+use tokio::sync::Notify;
 
 /// Independent publish channels spread notifications over cluster slots.
 pub const WAKE_SHARDS: u16 = 16;
-const HINT_CAPACITY: usize = 64;
 const CHANNEL_PREFIX: &str = "fleet:wake";
 const EVENT_RING_FAILED: &str = "admission_wake_ring_failed";
 
-/// Recent fleet hints shared by the hub listener and every lease poll, and the
-/// rings a held heartbeat waits for.
+/// The rings a held heartbeat waits for, shared by the hub listener and every
+/// held beat on this replica.
 #[derive(Debug, Clone, Default)]
 pub struct Doorbell {
-    hints: Arc<Mutex<VecDeque<Uuid7>>>,
     rings: Arc<Rings>,
 }
 
-/// Every ring this process heard, as a generation a held beat compares
-/// against, and how many beats are held waiting for the next one.
+/// One ring wakes one held beat, and how many beats are held waiting.
 ///
-/// A `watch` rather than a `Notify`: a holder takes the generation when it
-/// arrives and waits for it to move, so a ring that lands between the two is
-/// still seen, and every holder hears every ring.
-#[derive(Debug)]
+/// A `Notify` rather than a broadcast: one admission is one unit of work, and
+/// the oldest-first claim serves whichever host polls, so waking every idle
+/// host on the replica would send them all to claim the one admission. A ring
+/// with no beat held stores one permit, so the next beat returns at once and
+/// no ring that lands between two holds is lost.
+#[derive(Debug, Default)]
 struct Rings {
-    generation: watch::Sender<u64>,
+    notify: Notify,
     held: AtomicUsize,
     /// Set once the process stops accepting requests: no beat is held after.
     closed: AtomicBool,
-}
-
-impl Default for Rings {
-    fn default() -> Self {
-        Self {
-            generation: watch::Sender::new(0),
-            held: AtomicUsize::new(0),
-            closed: AtomicBool::new(false),
-        }
-    }
 }
 
 /// How a held beat ended.
@@ -81,53 +71,27 @@ impl Drop for Held<'_> {
 }
 
 impl Doorbell {
-    /// An empty hint buffer.
+    /// A doorbell nothing has rung.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Store a hint without allowing a burst to grow process memory.
+    /// Fresh work was admitted: complete the longest-held beat on this
+    /// replica, or leave one permit for the next beat to arrive.
     ///
-    /// The generation moves first, before the dedup: a second admission for a
-    /// fleet whose hint is still buffered is fresh work a held beat must hear.
-    pub fn ring(&self, fleet: Uuid7) {
-        self.rings
-            .generation
-            .send_modify(|generation| *generation = generation.wrapping_add(1));
-        let mut hints = self
-            .hints
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if hints.contains(&fleet) {
-            return;
-        }
-        if hints.len() == HINT_CAPACITY {
-            hints.pop_front();
-        }
-        hints.push_back(fleet);
-    }
-
-    /// Consume one hint. A missing hint still requires the Postgres probe.
-    #[must_use]
-    pub fn take(&self) -> Option<Uuid7> {
-        self.hints
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .pop_front()
+    /// No fleet is named. The claim takes the oldest ready fleet, so the woken
+    /// host needs no hint to find it.
+    pub fn ring(&self) {
+        self.rings.notify.notify_one();
     }
 
     /// Holds the caller until the next ring or `deadline`, unless `max` beats
-    /// are already held. The generation is taken before the wait starts, so a
-    /// ring between the two is not lost.
+    /// are already held.
+    ///
+    /// The wait is registered before the closed check, so a close between the
+    /// two still reaches it, and a ring between the two is kept as a permit.
     pub async fn wait_for_ring(&self, deadline: Duration, max: usize) -> Waited {
-        // Subscribed before the closed check: a close between the two moves
-        // the generation this receiver already watches, so no wait sleeps
-        // through it.
-        let mut generation = self.rings.generation.subscribe();
-        if self.is_closed() {
-            return Waited::Deadline;
-        }
         let reserved = self
             .rings
             .held
@@ -138,12 +102,15 @@ impl Doorbell {
             return Waited::Capped;
         }
         let _held = Held(&self.rings.held);
-        match tokio::time::timeout(deadline, generation.changed()).await {
-            Ok(Ok(())) if self.is_closed() => Waited::Deadline,
-            Ok(Ok(())) => Waited::Rung,
-            // The sender lives as long as this doorbell, so a closed channel
-            // cannot happen while `self` is borrowed; it reads as no ring.
-            Ok(Err(_)) | Err(_) => Waited::Deadline,
+        let mut rung = pin!(self.rings.notify.notified());
+        rung.as_mut().enable();
+        if self.is_closed() {
+            return Waited::Deadline;
+        }
+        match tokio::time::timeout(deadline, rung).await {
+            Ok(()) if self.is_closed() => Waited::Deadline,
+            Ok(()) => Waited::Rung,
+            Err(_) => Waited::Deadline,
         }
     }
 
@@ -152,9 +119,7 @@ impl Doorbell {
     /// waiting until its deadline. The waits answer as at their deadline.
     pub fn close(&self) {
         self.rings.closed.store(true, Ordering::Release);
-        self.rings
-            .generation
-            .send_modify(|generation| *generation = generation.wrapping_add(1));
+        self.rings.notify.notify_waiters();
     }
 
     fn is_closed(&self) -> bool {
@@ -178,9 +143,11 @@ impl Doorbell {
 async fn answer(mut subscription: Subscription, bell: Doorbell) {
     while let Ok(received) = subscription.recv().await {
         match received {
+            // A payload that is not a fleet id was not sent by `publish`, and
+            // wakes nobody.
             Received::Message(message) => {
-                if let Ok(fleet) = Uuid7::parse(&message.payload) {
-                    bell.ring(fleet);
+                if Uuid7::parse(&message.payload).is_ok() {
+                    bell.ring();
                 }
             }
             Received::Lagged(_) | Received::Gap => {

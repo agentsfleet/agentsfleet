@@ -192,6 +192,8 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("2160_memory_context_checkpoints.sql"),
     migration!("2170_authoring_message_save.sql"),
     migration!("2180_fleet_event_type_index.sql"),
+    migration!("2190_runner_fleet_slots_ready.sql"),
+    migration!("2200_runner_leases_poll_key.sql"),
 ];
 
 /// Derives the slot number from the filename during constant evaluation.

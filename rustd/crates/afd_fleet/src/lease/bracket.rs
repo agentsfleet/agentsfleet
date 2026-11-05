@@ -110,6 +110,7 @@ impl Leases {
     /// Announce that a run ended, carrying the row the ending wrote. Answers
     /// whether the announcement landed.
     pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) -> bool {
+        self.tally().commands(1);
         let frame = TailFrame::EventComplete {
             event: Box::new(TailRow::from(closed.row.summary())),
             final_reply: inline_final_reply(final_reply),

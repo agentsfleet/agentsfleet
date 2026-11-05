@@ -84,6 +84,10 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::HeldClaim::ALL.len(),
         ),
         (
+            fleet::LEASE_ISSUE_DENIED_TOTAL.wire_name(),
+            fleet_labels::IssueDenied::ALL.len(),
+        ),
+        (
             library::LIBRARY_STAGE_DURATION_SECONDS_TOTAL.wire_name(),
             library_labels::Surface::ALL.len() * library_labels::Stage::ALL.len(),
         ),

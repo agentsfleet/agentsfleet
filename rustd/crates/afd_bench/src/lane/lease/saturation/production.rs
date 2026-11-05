@@ -11,7 +11,7 @@ use afd_core::clock;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::{Asked, Plane};
 use afd_wire::authoring::{Knowledge, Meter, Renew};
 use afd_wire::lease::{AcceptedKinds, LeaseResponse, TaggedLease};
 
@@ -58,8 +58,11 @@ impl Host for Production {
             .claim(
                 &self.drafts,
                 runner,
-                &[],
-                AcceptedKinds::ALL,
+                Asked {
+                    held: &[],
+                    accepted: AcceptedKinds::ALL,
+                    key: None,
+                },
                 false,
                 clock::now(),
             )

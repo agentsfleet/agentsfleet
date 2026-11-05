@@ -70,11 +70,7 @@ async fn received(fixtures: &Fixtures) -> afd_fleet::lease::Acquired {
         .await
         .expect("the fleet is leasable");
     assert_eq!(
-        leases
-            .record_received(&held)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
+        held.delivery,
         Delivery::First
     );
     held

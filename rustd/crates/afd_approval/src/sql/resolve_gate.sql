@@ -26,7 +26,7 @@ WITH resolved AS (
 ), unparked AS (
   UPDATE fleet.admissions a SET parked_at = NULL, updated_at = now()
   FROM resolved r
-  WHERE a.fleet_id = r.fleet_id AND a.settled_at IS NULL
+  WHERE a.fleet_id = r.fleet_id AND a.settled_at IS NULL AND a.parked_at IS NOT NULL
 )
 
 SELECT id::text AS gate_id, action_id, workspace_id::text AS workspace_id,

@@ -91,6 +91,7 @@ impl Leases {
     /// runner polls a rotation and refusing the RUNNER would refuse every
     /// fleet. See `super::pull::refuse::refuse_unreadable_config`.
     pub async fn installed(&self, fleet_id: &Uuid7) -> Result<Option<Installed>> {
+        self.tally().statements(1);
         let mut connection = self.pool().acquire().await?;
         let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_SESSION)
             .bind(fleet_id.as_str())

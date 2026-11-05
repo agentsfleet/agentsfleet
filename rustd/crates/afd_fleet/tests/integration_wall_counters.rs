@@ -2,9 +2,9 @@
 //! still counted, and moves no budget.
 //!
 //! The receive is the one frame whose counters cannot ride its own statement:
-//! the insert that writes the row is what fires the counter trigger, and a
-//! `RETURNING` on that insert does not see the trigger's write. So the pull
-//! reads the counters after the row landed and hands them to the frame — and
+//! the claim's insert that writes the row is what fires the counter trigger,
+//! and a `RETURNING` on that insert does not see the trigger's write. So the
+//! pull reads the counters after the claim and hands them to the frame — and
 //! an event that then PARKS behind a gate never closes, so that frame is the
 //! only word the tail hears about it. If it carried the old count, the tile
 //! would show a fleet that never received the event a human is being asked
@@ -54,14 +54,15 @@ const PROBE: &str = r#"{"kind":"probe"}"#;
 struct Parked {
     fixtures: Fixtures,
     fleet: String,
+    runner: Uuid7,
     held: Acquired,
     tail: Subscription,
     counters: FleetCounters,
 }
 
-/// Leases a seeded event and records its receive, which answers the counters
-/// the pull hands the frame — the row is then left open, which is what a
-/// park is from the tail's point of view: nothing closes it.
+/// Claims a seeded event, which opens its row, and announces it as the pull
+/// does — the row is then left open, which is what a park is from the tail's
+/// point of view: nothing closes it.
 async fn parked() -> Parked {
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded {
@@ -75,31 +76,20 @@ async fn parked() -> Parked {
     let tail = hub.subscribe(&fleet_activity_channel(&fleet));
     await_subscribed(&fixtures, &fleet).await;
 
-    let now = fixtures.enrolled_at();
     let leases = fixtures.leases();
     let held = crate::seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
-    let received = leases
-        .record_received(&held)
+    assert_eq!(held.delivery, Delivery::First, "the claim opened the row");
+    let counters = afd_events::fleet_counters(&fixtures.database, &fleet)
         .await
-        .expect("the narrative log must open");
-    assert_eq!(received.delivery, Delivery::First);
-    let counters = received
-        .counters
-        .expect("a first delivery reads its counters on the connection the insert held");
-    assert_eq!(
-        afd_events::fleet_counters(&fixtures.database, &fleet)
-            .await
-            .expect("the counters read back"),
-        counters,
-        "the figures the receive carries are the database's"
-    );
-    leases.publish_received(&held, now, Some(counters)).await;
+        .expect("the counters read back");
+    leases.publish_opened(&held).await;
 
     Parked {
         fixtures,
         fleet,
+        runner,
         held,
         tail,
         counters,
@@ -235,14 +225,15 @@ async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
     let mut run = parked().await;
     let _opening = next_frame(&mut run.tail).await;
 
-    let again = run
-        .fixtures
-        .leases()
-        .record_received(&run.held)
+    let leases = run.fixtures.leases();
+    leases
+        .release(&run.held.fleet_id, run.held.fence)
         .await
-        .expect("the redelivery must not fault");
+        .expect("the claim is freed");
+    let again = crate::seed::select_fleet(&leases, &run.runner, &run.fleet)
+        .await
+        .expect("the same admission is claimed again");
     assert_eq!(again.delivery, Delivery::Repeat);
-    assert_eq!(again.counters, None, "a redelivery reads nothing");
     // The pull publishes the opening only on a first delivery, so nothing
     // more reaches the tail.
     let silence = tokio::time::timeout(SILENCE_BUDGET, run.tail.recv()).await;

@@ -15,7 +15,8 @@
 use crate::seed;
 use crate::support;
 use afd_core::id::Uuid7;
-use afd_fleet::lease::Billed;
+use afd_fleet::lease::{Billed, Issue};
+use afd_observability::metrics::label::fleet::IssueDenied;
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;
@@ -45,10 +46,6 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
     let held = crate::seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
-    leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
     let degrade = |reason: Option<&'static str>| {
         let fixtures = &fixtures;
         let runner = runner.as_str().to_owned();
@@ -77,9 +74,20 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
         .await
         .expect("the healthy host's insert answers");
 
-    assert!(unknown.is_none(), "a host with no row takes no work");
-    assert!(degraded.is_none(), "a degraded host takes no work");
-    assert!(cleared.is_some(), "the claim survived both refusals");
+    assert_eq!(
+        unknown,
+        Issue::Denied(IssueDenied::HostMissing),
+        "a host with no row takes no work"
+    );
+    assert_eq!(
+        degraded,
+        Issue::Denied(IssueDenied::Capacity),
+        "a degraded host takes no work"
+    );
+    assert!(
+        matches!(cleared, Issue::Issued(_)),
+        "the claim survived both refusals"
+    );
     fixtures.cleanup().await;
 }
 
@@ -97,24 +105,14 @@ async fn an_event_absent_from_the_ledger_cannot_open_history() {
     let minted = crate::seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("claim");
-    let absent = afd_fleet::lease::Acquired {
-        event_id: afd_db::test_util::mint_id(),
-        ..minted
-    };
-    let error = leases
-        .record_received(&absent)
-        .await
-        .expect_err("absent admission");
-    assert_eq!(
-        error.to_string(),
-        afd_fleet::Error::stale_fence().to_string()
-    );
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id=$1::uuid")
+    // History opens only through the claim, and only for the admission it
+    // took: one row, and it is that admission's.
+    let opened: Vec<String> =
+        sqlx::query_scalar("SELECT event_id FROM fleet.events WHERE fleet_id=$1::uuid")
             .bind(&fleet)
-            .fetch_one(&mut *fixtures.database.acquire().await.expect("database"))
+            .fetch_all(&mut *fixtures.database.acquire().await.expect("database"))
             .await
-            .expect("history count");
-    assert_eq!(count, 0);
+            .expect("history rows");
+    assert_eq!(opened, vec![minted.event_id.clone()]);
     fixtures.cleanup().await;
 }

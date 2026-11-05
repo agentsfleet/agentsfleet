@@ -39,7 +39,7 @@ async fn test_standing_answers_only_the_live_holder() {
     let held = held().await;
     let plane = held.fixtures.plane();
     let lease = held.issued.lease_id.clone();
-    let token = held.fence.as_u64();
+    let token = held.fence.as_u64().expect("a claimed fence is not negative");
 
     let standing = plane
         .standing(&held.runner, lease.clone(), token)
@@ -81,7 +81,7 @@ async fn test_messages_count_against_the_live_holder() {
     let lease_id = Uuid7::parse(&lease_id).expect("a lease id is a v7 spelling");
     let plane = stage.fixtures.plane();
     let say = |text: &'static str| MessageRequest {
-        fencing_token: lease.fence.as_u64(),
+        fencing_token: lease.fence.as_u64().expect("a claimed fence is not negative"),
         text: Cow::Borrowed(text),
     };
 
@@ -108,7 +108,7 @@ async fn test_messages_count_against_the_live_holder() {
             &silent.runner,
             silent.issued.lease_id.clone(),
             &MessageRequest {
-                fencing_token: silent.fence.as_u64(),
+                fencing_token: silent.fence.as_u64().expect("a claimed fence is not negative"),
                 text: Cow::Borrowed("hello?"),
             },
         )
@@ -135,7 +135,7 @@ async fn test_a_run_is_refused_past_its_message_cap() {
     let lease_id = Uuid7::parse(&lease_id).expect("a lease id is a v7 spelling");
     let plane = stage.fixtures.plane();
     let request = MessageRequest {
-        fencing_token: lease.fence.as_u64(),
+        fencing_token: lease.fence.as_u64().expect("a claimed fence is not negative"),
         text: Cow::Borrowed("still going"),
     };
 
@@ -164,7 +164,7 @@ async fn test_tool_call_records_keep_only_under_the_live_fence() {
     let plane = held.fixtures.plane();
     let lease = held.issued.lease_id.as_str();
     let post = |token: u64| format!(r#"{{"fencing_token":{token},"calls":[{RECORD}]}}"#);
-    let (live, stale) = (post(held.fence.as_u64()), post(held.fence.as_u64() + 1));
+    let (live, stale) = (post(held.fence.as_u64().expect("a claimed fence is not negative")), post(held.fence.as_u64().expect("a claimed fence is not negative") + 1));
     let live: ToolCallRecordsRequest<'_> = serde_json::from_str(&live).expect("a well-formed post");
     let stale: ToolCallRecordsRequest<'_> =
         serde_json::from_str(&stale).expect("a well-formed post");
@@ -189,7 +189,7 @@ async fn test_tool_call_records_keep_only_under_the_live_fence() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_write_fence_holds_only_for_the_live_token() {
     let held = held().await;
-    let token = held.fence.as_u64();
+    let token = held.fence.as_u64().expect("a claimed fence is not negative");
     let fence =
         |presented| WriteFence::new(held.runner.clone(), held.issued.lease_id.clone(), presented);
     let mut connection = held

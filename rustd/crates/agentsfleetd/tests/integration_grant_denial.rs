@@ -70,14 +70,9 @@ async fn connect_and_declare(run: &Scenario) {
         run.booted.queue.clone(),
         Entropy::new(),
     )
-    .claim(
-        &Uuid7::parse(&run.fleet).expect("fleet"),
-        &run.runner_id,
-        std::time::Duration::ZERO,
-    )
+    .prefer(&Uuid7::parse(&run.fleet).expect("fleet"), &run.runner_id)
     .await
-    .expect("initial affinity claim")
-    .expect("new fleet is unclaimed");
+    .expect("the fixture's runner is the fleet's last runner");
 }
 
 /// How many approval cards this fixture's fleet has raised.

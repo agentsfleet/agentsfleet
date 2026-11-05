@@ -135,7 +135,7 @@ async fn test_write_fence_refuses_a_lease_lapsed_in_the_wait() {
     let fence = WriteFence::new(
         held.runner.clone(),
         held.issued.lease_id.clone(),
-        held.fence.as_u64(),
+        held.fence.as_u64().expect("a claimed fence is not negative"),
     );
     let mut holder = held
         .fixtures
@@ -174,7 +174,7 @@ async fn test_tool_call_records_refuse_a_lease_lapsed_in_the_wait() {
     let lease = held.issued.lease_id.as_str();
     let post = format!(
         r#"{{"fencing_token":{},"calls":[{RECORD}]}}"#,
-        held.fence.as_u64()
+        held.fence.as_u64().expect("a claimed fence is not negative")
     );
     let post: ToolCallRecordsRequest<'_> = serde_json::from_str(&post).expect("a well-formed post");
     let plane = held.fixtures.plane();
@@ -214,7 +214,7 @@ async fn test_message_count_refuses_a_lease_lapsed_in_the_wait() {
     let (lease, issued) = stage.lease_next(stage.fixtures.enrolled_at()).await;
     let lease_id = Uuid7::parse(&lease).expect("a lease id is a v7 spelling");
     let request = MessageRequest {
-        fencing_token: issued.fence.as_u64(),
+        fencing_token: issued.fence.as_u64().expect("a claimed fence is not negative"),
         text: Cow::Borrowed("still here?"),
     };
     let plane = stage.fixtures.plane();

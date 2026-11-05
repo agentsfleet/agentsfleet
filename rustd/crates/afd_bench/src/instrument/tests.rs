@@ -16,7 +16,7 @@ use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter as _;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
-use super::{CANDIDATES, CapturedCounters, CapturingExporter, POLLS, PollCounters, ROUNDTRIPS};
+use super::{CapturedCounters, CapturingExporter, POLLS, PollCounters, ROUNDTRIPS};
 
 /// A provider exporting into `sink`.
 fn provider_into(sink: &Arc<CapturedCounters>) -> SdkMeterProvider {
@@ -41,7 +41,6 @@ fn a_flush_and_a_shutdown_keep_the_last_capture_a_lane_reads() {
     let provider = provider_into(&sink);
     let meter = provider.meter("afd_bench_test");
     meter.u64_counter(POLLS).build().add(3, &[]);
-    meter.u64_counter(CANDIDATES).build().add(30, &[]);
     meter.u64_counter(ROUNDTRIPS).build().add(6, &[]);
     meter
         .u64_counter("some_other_family_total")
@@ -67,7 +66,6 @@ fn a_flush_and_a_shutdown_keep_the_last_capture_a_lane_reads() {
         latest(&sink),
         PollCounters {
             polls: 3,
-            candidates: 30,
             roundtrips: 6,
             dragonfly_commands: 0,
         },

@@ -1,4 +1,4 @@
-// Value: protects=sharded notifications reach independent process buffers;
+// Value: protects=sharded notifications reach every process's held beats;
 // fails_when=publish routing or listener delivery breaks; why_new=lost-wake
 // tests prove fallback only; seam=none; no_claim=durable queue correctness.
 #![cfg(feature = "test-util")]
@@ -7,10 +7,9 @@
     reason = "failed fixture setup must fail the test"
 )]
 
-use std::collections::BTreeSet;
 use std::time::Duration;
 
-use afd_dragonfly::doorbell::{self, Doorbell, WAKE_SHARDS};
+use afd_dragonfly::doorbell::{self, Doorbell, WAKE_SHARDS, Waited};
 use afd_dragonfly::{FleetStreams, SubscriptionHub};
 
 use crate::support::DragonflyHarness;
@@ -35,17 +34,17 @@ async fn sharded_notifications_reach_each_process_and_shutdown_releases_them() {
         .map(|shard| format!("fleet:wake:{{{shard}}}"))
         .collect();
     subscriptions(&harness, &channels, 2).await;
-    let expected: BTreeSet<_> = (0..24)
-        .map(|index| format!("0195b4ba-8d3a-7000-8abc-{index:012x}"))
-        .collect();
     FleetStreams::new(harness.redis.clone())
         .publish("fleet:wake:{0}", "malformed fleet")
         .await
-        .expect("publish malformed hint");
-    for fleet in &expected {
-        doorbell::publish(&harness.redis, fleet).await;
+        .expect("publish malformed ring");
+    // Fleets spread over the shards: each ring must reach a held beat on both
+    // processes. A malformed payload rings nobody, so it leaves no permit for
+    // the first wait to find.
+    for index in 0..24 {
+        let fleet = format!("0195b4ba-8d3a-7000-8abc-{index:012x}");
+        rung_on_both(&bells, &harness, &fleet).await;
     }
-    receive(&bells, &expected).await;
     assert_eq!(first.connections_opened(), 1);
     assert_eq!(second.connections_opened(), 1);
     first.shutdown();
@@ -54,21 +53,22 @@ async fn sharded_notifications_reach_each_process_and_shutdown_releases_them() {
     subscriptions(&harness, &channels, 0).await;
 }
 
-async fn receive(bells: &[Doorbell; 2], expected: &BTreeSet<String>) {
-    let mut received = [BTreeSet::new(), BTreeSet::new()];
-    tokio::time::timeout(BUDGET, async {
-        loop {
-            for (bell, seen) in bells.iter().zip(&mut received) {
-                seen.extend(std::iter::from_fn(|| bell.take()).map(String::from));
-            }
-            if received.iter().all(|seen| seen == expected) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("every valid hint reaches both process buffers");
+/// Holds one beat on each process, publishes one ring for `fleet`, and
+/// expects both beats to answer `Rung` well before their deadline.
+async fn rung_on_both(bells: &[Doorbell; 2], harness: &DragonflyHarness, fleet: &str) {
+    let [first, second] = bells.clone();
+    let waits = [
+        tokio::spawn(async move { first.wait_for_ring(BUDGET, 1).await }),
+        tokio::spawn(async move { second.wait_for_ring(BUDGET, 1).await }),
+    ];
+    doorbell::publish(&harness.redis, fleet).await;
+    for wait in waits {
+        assert_eq!(
+            wait.await.expect("the held beat runs to its answer"),
+            Waited::Rung,
+            "{fleet}'s ring reaches each process"
+        );
+    }
 }
 
 async fn subscriptions(harness: &DragonflyHarness, channels: &[String], wanted: i64) {

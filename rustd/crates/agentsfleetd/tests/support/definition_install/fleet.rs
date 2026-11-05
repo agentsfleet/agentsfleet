@@ -155,9 +155,8 @@ pub(super) async fn enrol(
         booted.queue.clone(),
         Entropy::new(),
     )
-    .claim(fleet, &enrolled.runner_id, std::time::Duration::ZERO)
+    .prefer(fleet, &enrolled.runner_id)
     .await
-    .expect("the affinity claim runs")
-    .expect("a freshly installed fleet is unclaimed");
+    .expect("the fixture's runner is the fleet's last runner");
     (enrolled.runner_id, enrolled.token.expose().to_owned())
 }

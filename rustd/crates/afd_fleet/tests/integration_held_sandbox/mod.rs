@@ -29,7 +29,7 @@ mod unleasable;
 use std::borrow::Cow;
 
 use afd_core::id::Uuid7;
-use afd_core::timing::{HEARTBEAT_INTERVAL, LEASE_TTL, SANDBOX_HOLD_IDLE};
+use afd_core::timing::{HEARTBEAT_INTERVAL, SANDBOX_HOLD_IDLE};
 use afd_fleet::lease::Leases;
 use afd_runner::Beat;
 use afd_runner::heartbeat::holds::prove;
@@ -38,7 +38,7 @@ use jiff::Timestamp;
 
 use crate::requests::capable;
 use crate::rows::Row;
-use crate::seed::seeded_parts;
+use crate::seed::seeded_waiting;
 use crate::support::Fixtures;
 
 /// A fleet status other than active: what an owner's stop leaves.
@@ -87,10 +87,8 @@ async fn beats_at(
 /// `runner` claims `fleet`, and its report releases the slot holding the
 /// sandbox until `until`.
 async fn hold(leases: &Leases, fixtures: &Fixtures, fleet: &str, runner: &Uuid7, until: Timestamp) {
-    let claimed = leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+    let claimed = crate::seed::claim_fleet(leases, runner, fleet)
         .await
-        .expect("the claim answers")
         .expect("a free slot is won");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
@@ -123,14 +121,12 @@ fn beat<'a>(holds: &'a [&'a str]) -> HeartbeatRequest<'a> {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_stores_hold_under_fencing() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [runner]) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
 
-    let first = leases
-        .claim(&id(&fleet), &runner, LEASE_TTL)
+    let first = crate::seed::claim_fleet(&leases, &runner, &fleet)
         .await
-        .expect("answers")
         .expect("won");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
@@ -138,10 +134,8 @@ async fn test_report_stores_hold_under_fencing() {
         .await
         .expect("lands");
     let stored = slot(&fixtures, &fleet).await;
-    let second = leases
-        .claim(&id(&fleet), &runner, LEASE_TTL)
+    let second = crate::seed::claim_fleet(&leases, &runner, &fleet)
         .await
-        .expect("answers")
         .expect("the runner wins its own fleet again");
     leases
         .release_through(&mut connection, &id(&fleet), first.fence, None)
@@ -168,8 +162,8 @@ async fn test_report_stores_hold_under_fencing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_heartbeat_clears_dropped_holds() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (kept, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let (dropped, ..) = seeded_parts::<1>(&fixtures).await;
+    let (kept, _workspace, _tenant, [runner]) = seeded_waiting::<1>(&fixtures).await;
+    let (dropped, ..) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
     live(&fixtures, &runner).await;
@@ -191,8 +185,8 @@ async fn test_heartbeat_clears_dropped_holds() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_inactive_fleet_hold_destroyed() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [runner, other]) = seeded_parts::<2>(&fixtures).await;
-    let (foreign, ..) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [runner, other]) = seeded_waiting::<2>(&fixtures).await;
+    let (foreign, ..) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &runner).await;
     hold(

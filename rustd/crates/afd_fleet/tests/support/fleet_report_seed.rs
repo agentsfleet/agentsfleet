@@ -108,11 +108,7 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         .await
         .expect("the seeded fleet is leasable");
     assert_eq!(
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
+        acquired.delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );
@@ -131,6 +127,7 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
         )
         .await
         .expect("the lease row must be written")
+        .issued()
         .expect("the claim is still held");
     let event_id = acquired.event_id.clone();
     let lease_key = issued.lease_id.clone();

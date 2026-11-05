@@ -7,6 +7,7 @@
 //! terminal row and answers no-work, while a construction failure here means
 //! the fleet's own configuration cannot be enforced.
 
+use std::ops::ControlFlow;
 use std::time::Instant;
 
 use afd_core::error_code::{Coded as _, Logged};
@@ -24,7 +25,9 @@ use crate::lease::answer::{Context, EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
 use crate::lease::history;
 use crate::lease::issue::Billed;
-use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
+use crate::lease::affinity::Backoff;
+use crate::lease::issue::Issue;
+use crate::lease::pull::{Admission2, Ending, Leased, Plane, Step, claim_lost, issue_denied};
 use afd_core::event::label;
 use afd_gate::policy::build::{self, Assembled};
 use afd_gate::policy::repair;
@@ -33,8 +36,8 @@ impl Plane {
     /// Assemble the policy and write the row that makes this runner the holder.
     ///
     /// Named `deliver` rather than `issue`: `Leases::issue` writes the ROW, and
-    /// this is the whole delivery around it. Answers [`Step::Go`] only when
-    /// that row was written.
+    /// this is the whole delivery around it. Answers `Continue` only when that
+    /// row was written.
     pub(super) async fn deliver(
         &self,
         runner_id: &Uuid7,
@@ -42,19 +45,21 @@ impl Plane {
         now: Timestamp,
         began: Instant,
     ) -> Result<Step<Leased>> {
-        let declared = self
-            .vault
-            .declared(
+        // Two independent reads, overlapped: neither nests an acquire, so each
+        // keeps its own pooled connection for as long as one statement.
+        self.leases.tally().statements(2);
+        let (declared, granted) = future::join(
+            self.vault.declared(
                 &admitted.acquired.workspace_id,
                 &admitted.installed.credential_names(),
                 self.broker.connectors(),
-            )
-            .await?;
+            ),
+            self.gates
+                .approved_integrations(&admitted.acquired.fleet_id),
+        )
+        .await;
+        let (declared, granted) = (declared?, granted?);
         let branch = Self::repair_branch(&admitted.acquired.event_id, &admitted.installed.config);
-        let granted = self
-            .gates
-            .approved_integrations(&admitted.acquired.fleet_id)
-            .await?;
 
         let policy = match build::assemble(
             build::Inputs {
@@ -87,7 +92,7 @@ impl Plane {
                         reason,
                     )
                     .await
-                    .map(Step::Stop);
+                    .map(|answer| ControlFlow::Break(Ending::Ended(answer)));
             }
             // Anything else is a fault the next poll may not meet, so it is
             // raised rather than ending the event for good.
@@ -136,8 +141,8 @@ impl Plane {
             Ungranted::Ends => self
                 .refused(acquired, label::GRANT_DENIED, runner_id, &reason)
                 .await
-                .map(Step::Stop),
-            waits => no_work(runner_id, &reason).map(|answer| waits.ending(answer)),
+                .map(|answer| ControlFlow::Break(Ending::Ended(answer))),
+            waits => no_work(runner_id, &reason).map(|answer| ControlFlow::Break(waits.ending(answer))),
         }
     }
 
@@ -150,7 +155,7 @@ impl Plane {
         began: Instant,
     ) -> Result<Step<Leased>> {
         // LAST, and only once everything above succeeded.
-        let Some(issued) = self
+        let issued = match self
             .leases
             .issue(
                 runner_id,
@@ -164,9 +169,12 @@ impl Plane {
                 now,
             )
             .await?
-        else {
-            return claim_lost(runner_id, &admitted.acquired);
+        {
+            Issue::Issued(issued) => issued,
+            Issue::Lost => return claim_lost(runner_id, &admitted.acquired),
+            Issue::Denied(reason) => return issue_denied(runner_id, &admitted.acquired, reason),
         };
+        self.leases.tally().statements(1);
         self.hold_issued(
             &issued.lease_id,
             &admitted.billed.tenant_id,
@@ -184,6 +192,7 @@ impl Plane {
         log_issued(runner_id, &issued.lease_id, &admitted.acquired, issued_at);
         // Two independent reads, overlapped: the thread's turns and the
         // fleet's memory window.
+        self.leases.tally().statements(2);
         let (history, memory) = future::join(
             history::turns(
                 self.thread.as_ref(),
@@ -201,7 +210,7 @@ impl Plane {
             policy,
             Context { history, memory },
         )
-        .map(|answer| Step::Go(Leased(answer)))
+        .map(|answer| ControlFlow::Continue(Leased(answer)))
     }
 
     /// The branch a write-bound lease may author on.
@@ -294,22 +303,26 @@ enum Ungranted {
     /// A card is open and a person owes the answer, which re-marks the fleet:
     /// the delivery parks until then.
     Parks,
-    /// Nobody owes an answer — the grant just landed, or its card could not
-    /// be written — so the delivery stays leasable and the next poll asks
-    /// again.
+    /// The grant just landed since the assembly read: nobody owes an
+    /// answer, so the delivery is leasable again at once.
     Retries,
+    /// The card could not be WRITTEN, so nobody can answer it: the delivery
+    /// stays leasable behind the retry backoff, and a later poll asks again.
+    Unwritten,
     /// The event ends: nothing about the next poll would be different.
     Ends,
 }
 
 impl Ungranted {
-    /// The step an ungranted delivery takes once its answer is rendered: an
+    /// The ending an ungranted delivery takes once its answer is rendered: an
     /// open card parks it, and anything else stops it — for the next poll to
     /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
-    fn ending(self, answer: String) -> Step<Leased> {
+    fn ending(self, answer: String) -> Ending {
         match self {
-            Self::Parks => Step::Park(answer),
-            Self::Retries | Self::Ends => Step::Stop(answer),
+            Self::Parks => Ending::Park(answer),
+            Self::Retries => Ending::Stop(answer, Backoff::None),
+            Self::Unwritten => Ending::Stop(answer, Backoff::Retry),
+            Self::Ends => Ending::Ended(answer),
         }
     }
 }
@@ -332,7 +345,8 @@ const fn answers(asked: Option<Requested>) -> Ungranted {
     match asked {
         Some(Requested::Denied) => Ungranted::Ends,
         Some(Requested::Raised | Requested::Pending) => Ungranted::Parks,
-        Some(Requested::Approved) | None => Ungranted::Retries,
+        Some(Requested::Approved) => Ungranted::Retries,
+        None => Ungranted::Unwritten,
     }
 }
 

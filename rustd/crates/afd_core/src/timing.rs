@@ -30,6 +30,15 @@ pub const LEASE_TTL: Duration = Duration::from_secs(30);
 /// has room to retry before the deadline.
 pub const RENEWAL_WINDOW: Duration = Duration::from_secs(10);
 
+/// How long a fleet whose lease pass ended on a retry stays out of claims.
+///
+/// The claim takes the oldest ready fleet first, so a fleet whose pass keeps
+/// meeting a datastore fault or a gate that cannot decide would otherwise sit
+/// at the head of every poll and starve the fleets behind it. Strictly below
+/// [`LEASE_TTL`]: a backoff is a shorter wait than the lapse a lost claim
+/// already costs, never a longer one.
+pub const CLAIM_RETRY_BACKOFF: Duration = Duration::from_secs(5);
+
 /// How often a runner's supervision loop wakes to consider a renewal.
 ///
 /// Strictly below [`RENEWAL_WINDOW`] so at least one tick lands inside the
@@ -105,6 +114,10 @@ pub const DAY: Duration = Duration::from_hours(24);
 const _: () = assert!(
     RENEWAL_WINDOW.as_nanos() < LEASE_TTL.as_nanos(),
     "a renewal must be attempted with slack left to retry before the deadline"
+);
+const _: () = assert!(
+    CLAIM_RETRY_BACKOFF.as_nanos() < LEASE_TTL.as_nanos(),
+    "a retried fleet must come back sooner than a lapsed claim would"
 );
 const _: () = assert!(
     RENEWAL_TICK.as_nanos() < RENEWAL_WINDOW.as_nanos(),

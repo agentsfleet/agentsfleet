@@ -9,14 +9,14 @@
 
 use std::borrow::Cow;
 
-use afd_core::timing::{LEASE_TTL, SANDBOX_HOLD_IDLE};
+use afd_core::timing::SANDBOX_HOLD_IDLE;
 use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use jiff::Timestamp;
 
 use super::{id, slot};
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
 use crate::report_seed::{Held, SLICE, SLICE_MS, held};
-use crate::seed::seeded_parts;
+use crate::seed::seeded_waiting;
 use crate::support::Fixtures;
 
 /// A processed report on `held`'s lease, asking to hold its sandbox until
@@ -25,7 +25,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
     ReportRequest {
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),
-        fencing_token: held.fence.as_u64(),
+        fencing_token: held.fence.as_u64().expect("a claimed fence is not negative"),
         outcome: Outcome::Processed,
         failure_reason: None,
         failure_detail: Cow::Borrowed(""),
@@ -68,10 +68,8 @@ async fn released(
     asked: Option<Timestamp>,
 ) -> Option<Timestamp> {
     let leases = fixtures.leases();
-    let claimed = leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+    let claimed = crate::seed::claim_fleet(&leases, runner, fleet)
         .await
-        .expect("the claim answers")
         .expect("the runner wins its own fleet");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
@@ -117,7 +115,7 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_stored_hold_is_capped_at_one_idle_window() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [runner]) = seeded_waiting::<1>(&fixtures).await;
 
     let inside = afd_core::clock::after(fixtures.database_now().await, SANDBOX_HOLD_IDLE / 2);
     assert_eq!(

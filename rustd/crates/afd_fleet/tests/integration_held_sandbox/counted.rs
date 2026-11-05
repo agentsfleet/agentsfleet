@@ -12,14 +12,14 @@
 )]
 
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use afd_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use afd_fleet::lease::{Acquired, Billed, Kind, Leases};
 use afd_observability::test_util::Capture;
 use jiff::Timestamp;
 
 use super::{hold, id, live};
 use crate::rows::{LAPSE, Row};
-use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
+use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_waiting};
 use crate::support::Fixtures;
 
 /// The family a won claim on a held fleet counts under.
@@ -46,10 +46,8 @@ fn claims(capture: &Capture, outcome: &str) -> u64 {
 
 /// `runner` wins `fleet`'s slot.
 async fn wins(leases: &Leases, fleet: &str, runner: &Uuid7) {
-    leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+    crate::seed::claim_fleet(leases, runner, fleet)
         .await
-        .expect("the claim answers")
         .expect("the slot is won");
 }
 
@@ -76,12 +74,6 @@ async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: Timestamp) -> Acqui
     let acquired = seed::select_fleet(leases, holder, &seeded.fleet)
         .await
         .expect("the holder leases its held fleet");
-    if acquired.kind == Kind::Fresh {
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("the event's row opens");
-    }
     let tenant_id = Uuid7::parse(&seeded.tenant).expect("a seeded tenant");
     let billed = Billed {
         tenant_id: &tenant_id,
@@ -93,6 +85,7 @@ async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: Timestamp) -> Acqui
         .issue(holder, &acquired, billed, now)
         .await
         .expect("the lease row is written")
+        .issued()
         .expect("the claim is still held");
     acquired
 }
@@ -155,7 +148,7 @@ async fn test_the_holders_reclaims_on_a_live_hold_count_nothing() {
 async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() {
     let capture = Capture::install();
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder, other]) = seeded_waiting::<2>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
@@ -180,7 +173,7 @@ async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() 
 async fn test_claims_on_an_unheld_fleet_count_nothing() {
     let capture = Capture::install();
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, runners) = seeded_parts::<2>(&fixtures).await;
+    let (fleet, _workspace, _tenant, runners) = seeded_waiting::<2>(&fixtures).await;
     let leases = fixtures.leases();
     let before = (
         claims(&capture, HOLDER),
@@ -189,10 +182,8 @@ async fn test_claims_on_an_unheld_fleet_count_nothing() {
 
     let rounds = usize::try_from(CLAIMS_IN_A_ROW).expect("sixteen fits a usize");
     for runner in runners.iter().cycle().take(rounds) {
-        let claimed = leases
-            .claim(&id(&fleet), runner, LEASE_TTL)
-            .await
-            .expect("the claim answers")
+        let claimed = crate::seed::claim_fleet(&leases, runner, &fleet)
+        .await
             .expect("a free slot is won");
         leases
             .release(&id(&fleet), claimed.fence)

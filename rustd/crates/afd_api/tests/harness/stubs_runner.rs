@@ -65,12 +65,12 @@ impl Leasing for NoWork {
         &self,
         _drafts: &afd_authoring::Drafts,
         _runner_id: &Uuid7,
-        held: &[Uuid7],
-        _accepted: afd_wire::lease::AcceptedKinds,
+        asked: afd_fleet::lease::Asked<'_>,
         _degraded: bool,
         _now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
-        let named = held.iter().map(|fleet| fleet.as_str().to_owned()).collect();
+        let named = asked
+            .held.iter().map(|fleet| fleet.as_str().to_owned()).collect();
         self.polled
             .lock()
             .expect("the poll log is healthy")

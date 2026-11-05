@@ -12,7 +12,7 @@ use afd_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest};
 use jiff::Timestamp;
 
 use super::{beat, beats_at, hold, live, settle, slot};
-use crate::seed::seeded_parts;
+use crate::seed::seeded_waiting;
 use crate::support::Fixtures;
 
 /// When every hold made here lapses.
@@ -31,8 +31,8 @@ async fn beats(fixtures: &Fixtures, runner: &Uuid7, request: &HeartbeatRequest<'
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_beat_clears_only_its_own_runners_holds() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
-    let (others_fleet, ..) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder, other]) = seeded_waiting::<2>(&fixtures).await;
+    let (others_fleet, ..) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
@@ -57,8 +57,8 @@ async fn test_a_beat_clears_only_its_own_runners_holds() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_hold_that_is_no_identifier_is_dropped_alone() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (kept, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
-    let (dropped, ..) = seeded_parts::<1>(&fixtures).await;
+    let (kept, _workspace, _tenant, [holder]) = seeded_waiting::<1>(&fixtures).await;
+    let (dropped, ..) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &kept, &holder, until(&fixtures)).await;
@@ -93,7 +93,7 @@ async fn test_an_out_of_bounds_holds_list_holds_nothing() {
     ];
 
     for (shape, request) in &shapes {
-        let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
+        let (fleet, _workspace, _tenant, [holder]) = seeded_waiting::<1>(&fixtures).await;
         live(&fixtures, &holder).await;
         hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
         settle(&fixtures, &[&fleet]).await;
@@ -114,7 +114,7 @@ async fn test_an_out_of_bounds_holds_list_holds_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_hold_reported_inside_the_beat_interval_survives_that_beat() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder]) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
@@ -145,7 +145,7 @@ async fn test_a_hold_reported_inside_the_beat_interval_survives_that_beat() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_closing_beat_clears_a_hold_reported_inside_the_interval() {
     let fixtures = Fixtures::create_with_queue().await;
-    let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
+    let (fleet, _workspace, _tenant, [holder]) = seeded_waiting::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;

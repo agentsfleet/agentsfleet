@@ -7,8 +7,10 @@
 use core::time::Duration;
 use std::time::Instant;
 
-use afd_fleet::lease::assign::MAX_CANDIDATES_PER_POLL;
-use afd_fleet::lease::sql::queue::SELECT_CANDIDATES;
+use afd_fleet::lease::sql::queue::CLAIM_HEAD;
+use sqlx::Connection as _;
+use sqlx::postgres::{PgArguments, Postgres};
+use sqlx::query::QueryScalar;
 
 use crate::datastores::{Datastores, postgres_count};
 use crate::error::{ErrorKind, Result};
@@ -17,16 +19,16 @@ use crate::report::Report;
 /// Measurement key: `fleet.fleets` on disk at population, bytes.
 pub(super) const FLEETS_TABLE_BYTES: &str = "postgres_fleets_table_bytes";
 
-/// Measurement key: the candidate query's execution time at population.
+/// Measurement key: the claim statement's execution time at population.
 const CANDIDATE_QUERY_MS: &str = "candidate_query_ms";
 
-/// Measurement key: the candidate query's planning time at population.
+/// Measurement key: the claim statement's planning time at population.
 const CANDIDATE_PLAN_MS: &str = "candidate_plan_ms";
 
 /// Samples per latency reading, so a rung reports a median and not one call.
 const SAMPLES: usize = 20;
 
-/// How the candidate query is explained: with timing, as text, so the two
+/// How the claim statement is explained: with timing, as text, so the two
 /// times are read off their own lines. Text rather than JSON because decoding
 /// a `json` column needs a sqlx feature the workspace does not enable, and
 /// two labelled lines are not worth turning it on for.
@@ -51,23 +53,45 @@ const POPULATION_QUERY: &str = include_str!("sql/select_fleet_population.sql");
 const POSTGRES: &str = "postgres";
 const SELECT_ADMISSION_HEAD: &str = include_str!("sql/select_admission_head.sql");
 
-/// Median candidate discovery latency over the serving query.
+/// The serving claim with this lane's binds: a runner holding nothing, no
+/// poll key.
+///
+/// The claim WRITES when it finds work, so every caller runs it inside a
+/// transaction it rolls back: the reading is the statement's cost, and the
+/// population it measures is left as it was.
+fn claim<'q, O>(
+    query: QueryScalar<'q, Postgres, O, PgArguments>,
+    runner: &'q str,
+) -> QueryScalar<'q, Postgres, O, PgArguments> {
+    query
+        .bind(runner)
+        .bind(Vec::<String>::new())
+        .bind(afd_core::timing::LEASE_TTL)
+        // How long a silent holder binds, and the status a holder must be in
+        // to bind at all: the lease path's own binds for the hold condition.
+        .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
+        .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
+        .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
+        .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+        .bind(afd_core::event::status::RECEIVED)
+        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(None::<&str>)
+}
+
+/// Median latency of the serving claim, each sample rolled back.
 pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
     let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
+        let mut transaction = connection.begin().await?;
         let started = Instant::now();
-        let _candidates: Vec<String> = sqlx::query_scalar(SELECT_CANDIDATES)
-            .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
-            .bind(runner)
-            .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
-            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-            .bind(Vec::<String>::new())
-            .bind(None::<&str>)
-            .fetch_all(&mut *connection)
-            .await?;
+        let _claimed: Option<Option<String>> =
+            claim(sqlx::query_scalar(CLAIM_HEAD), runner)
+                .fetch_optional(&mut *transaction)
+                .await?;
         samples.push(started.elapsed());
+        transaction.rollback().await?;
     }
     median_ms(samples).ok_or_else(|| {
         ErrorKind::CounterUnreadable {
@@ -99,7 +123,7 @@ pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &str) -> Res
     })
 }
 
-/// Table sizes and the candidate query's plan at population.
+/// Table sizes and the claim statement's plan at population.
 pub(super) async fn postgres_at_population(
     stores: &Datastores,
     runner: &str,
@@ -110,22 +134,16 @@ pub(super) async fn postgres_at_population(
         crate::report::count(table_sizes(&stores.database).await?),
     );
     let mut connection = stores.database.acquire().await?;
+    let mut transaction = connection.begin().await?;
     // `AssertSqlSafe` because the statement is assembled from two constants
     // this crate and `afd_fleet` own; nothing a caller typed reaches it.
-    let lines: Vec<String> =
-        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("{EXPLAIN}{SELECT_CANDIDATES}")))
-            .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
-            .bind(runner)
-            .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            // How long a silent holder binds, and the status a holder must be in to
-            // bind at all: the lease path's own binds for the hold condition. The
-            // instant they compare against is the statement's own clock.
-            .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
-            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-            .bind(Vec::<String>::new())
-            .bind(None::<&str>)
-            .fetch_all(&mut *connection)
-            .await?;
+    let lines: Vec<String> = claim(
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("{EXPLAIN}{CLAIM_HEAD}"))),
+        runner,
+    )
+    .fetch_all(&mut *transaction)
+    .await?;
+    transaction.rollback().await?;
     if let Some(execution) = plan_time(&lines, EXECUTION_TIME) {
         report.measurement(CANDIDATE_QUERY_MS, execution);
     }

@@ -179,15 +179,9 @@ async fn test_the_daemon_doorbell_hears_its_hub() {
     let rung = Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").expect("fleet");
     server.publish("fleet:wake:{6}", rung.as_str());
 
-    let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
-    let mut taken = None;
-    while taken.is_none() && tokio::time::Instant::now() < deadline {
-        taken = doorbell.take();
-        tokio::task::yield_now().await;
-    }
     assert_eq!(
-        taken,
-        Some(rung),
+        doorbell.wait_for_ring(HEARD_WITHIN, 1).await,
+        afd_dragonfly::doorbell::Waited::Rung,
         "the daemon's doorbell listens on its hub"
     );
 }

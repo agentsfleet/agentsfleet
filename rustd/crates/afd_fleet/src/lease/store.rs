@@ -10,13 +10,18 @@
 //! file — [`super::affinity`] is the claim and the fence, and the modules
 //! beside it add the gates and the row.
 
+use std::sync::Arc;
+
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_dragonfly::doorbell::Waited;
 use afd_dragonfly::{Doorbell, Dragonfly, FleetStreams, OutboundQueue};
 
+use crate::lease::assign::Tally;
+
 /// Queue selection and lease writes use Postgres. Dragonfly carries the live
-/// tail, outbound delivery and disposable recent-work notifications.
+/// tail, outbound delivery and the disposable rings that end held heartbeats.
 #[derive(Debug, Clone)]
 pub struct Leases {
     database: Db,
@@ -24,6 +29,8 @@ pub struct Leases {
     entropy: Entropy,
     doorbell: Doorbell,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
+    poll_key: Option<Uuid7>,
+    tally: Arc<Tally>,
 }
 
 impl Leases {
@@ -36,6 +43,8 @@ impl Leases {
             entropy,
             doorbell: Doorbell::new(),
             ticket: None,
+            poll_key: None,
+            tally: Arc::default(),
         }
     }
 
@@ -51,10 +60,33 @@ impl Leases {
         self.ticket
     }
 
-    /// The same store, taking recent fleet hints from `doorbell`.
+    /// The same store, answering one worker poll that carried `key` as its
+    /// `Idempotency-Key`: the claim's replay arm reads it, and the issued lease
+    /// records it.
+    pub(super) fn with_poll_key(mut self, key: Option<Uuid7>) -> Self {
+        self.poll_key = key;
+        self
+    }
+
+    pub(super) const fn poll_key(&self) -> Option<&Uuid7> {
+        self.poll_key.as_ref()
+    }
+
+    /// The same store, counting one poll's cost from zero.
+    pub(super) fn with_fresh_tally(mut self) -> Self {
+        self.tally = Arc::default();
+        self
+    }
+
+    /// What the poll through this store has spent so far.
+    pub(super) fn tally(&self) -> &Tally {
+        &self.tally
+    }
+
+    /// The same store, holding heartbeats on `doorbell`.
     ///
     /// Without one nothing rings, and polls find fresh work through the
-    /// Postgres probe alone. The daemon hands in the doorbell its hub listens for.
+    /// Postgres claim alone. The daemon hands in the doorbell its hub listens for.
     #[must_use]
     pub fn with_doorbell(mut self, doorbell: Doorbell) -> Self {
         self.doorbell = doorbell;
@@ -69,8 +101,7 @@ impl Leases {
         &self.entropy
     }
 
-    /// The doorbell every poll through this store takes rung partitions from,
-    /// and every held heartbeat waits on.
+    /// The doorbell every held heartbeat waits on.
     #[must_use]
     pub const fn doorbell(&self) -> &Doorbell {
         &self.doorbell

@@ -18,12 +18,11 @@ impl Leasing for Plane {
         &self,
         drafts: &afd_authoring::Drafts,
         runner_id: &Uuid7,
-        held: &[Uuid7],
-        accepted: afd_wire::lease::AcceptedKinds,
+        asked: afd_fleet::lease::Asked<'_>,
         degraded: bool,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
-        Self::claim(self, drafts, runner_id, held, accepted, degraded, now)
+        Self::claim(self, drafts, runner_id, asked, degraded, now)
     }
 
     fn report(

@@ -120,11 +120,6 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
     let seeded = ready(&fixtures).await;
     let claimed = claim(&fixtures, &seeded).await;
     fixtures
-        .leases()
-        .record_received(&claimed)
-        .await
-        .expect("first delivery");
-    fixtures
         .end_event(
             &seeded.fleet,
             &seeded.event_id,
@@ -208,11 +203,8 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     let claimed = claim(&fixtures, &seeded).await;
     let slot = Row::Slot(claimed.fleet_id.as_str());
     fixtures.age(slot, "lease_expires_at", LAPSE).await;
-    let won = fixtures
-        .leases()
-        .claim(&claimed.fleet_id, &rival, afd_core::timing::LEASE_TTL)
-        .await
-        .expect("the claim statement answers");
+    let won = crate::seed::claim_fleet(&fixtures.leases(), &rival, claimed.fleet_id.as_str())
+        .await;
     assert!(won.is_some(), "the rival takes the lapsed slot");
 
     let log = Capture::install();
