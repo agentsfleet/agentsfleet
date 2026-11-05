@@ -22,8 +22,8 @@ use crate::supervisor::Supervisor;
 
 mod authoring;
 mod billing;
-mod tasks;
 mod checkpoints;
+mod tasks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
 // asserts the supervisor's INVENTORY, and a test spelling these as literals

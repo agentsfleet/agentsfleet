@@ -70,8 +70,12 @@ impl LeaseRun<'_> {
     /// Admits the lease's sandbox, then runs its build and its turn together
     /// and hands the sandbox back with the turn's ending. A held sandbox keeps
     /// the repositories as its last lease left them.
-    pub(super) async fn sandboxed(&self, memory: Seed<'_>, sink: ActivitySink,
-        prepared_task: Option<&afr_agent::PreparedTask>) -> Worked {
+    pub(super) async fn sandboxed(
+        &self,
+        memory: Seed<'_>,
+        sink: ActivitySink,
+        prepared_task: Option<&afr_agent::PreparedTask>,
+    ) -> Worked {
         // Timed from here to the build's end, whichever way it ends.
         let setup = self.timeline.start(Segment::Sandbox);
         let admitted = match self.admitted(prepared_task).await {
@@ -108,10 +112,23 @@ impl LeaseRun<'_> {
                         ready = slot.get() => ready.is_ok(),
                         () = self.interrupt.cancelled() => false,
                     };
-                    if !ready { return failed(FailureClass::StartupPosture, "durable task workspace was not recovered"); }
+                    if !ready {
+                        return failed(
+                            FailureClass::StartupPosture,
+                            "durable task workspace was not recovered",
+                        );
+                    }
                 }
-                self.drive(memory, &slot, sink, prepared_task,
-                    recovery.get().and_then(|state: &super::recovery::State| state.history.as_ref())).await
+                self.drive(
+                    memory,
+                    &slot,
+                    sink,
+                    prepared_task,
+                    recovery
+                        .get()
+                        .and_then(|state: &super::recovery::State| state.history.as_ref()),
+                )
+                .await
             });
             let ending = self.beside(building, driving, &stop).await;
             (ending, slot.held())
@@ -119,7 +136,11 @@ impl LeaseRun<'_> {
         self.timeline.waited(held);
         Worked {
             ending,
-            kept: cell.into_inner().map(|sandbox| Kept { sandbox, key, recovery: recovery.into_inner() }),
+            kept: cell.into_inner().map(|sandbox| Kept {
+                sandbox,
+                key,
+                recovery: recovery.into_inner(),
+            }),
         }
     }
 
@@ -170,7 +191,10 @@ impl LeaseRun<'_> {
     /// Every check whose failure would repeat on each lease, made before any
     /// model request: the size, the egress and the checkout plan. A refusal
     /// ends the lease at startup and releases the fleet's hold.
-    async fn admitted<'p>(&'p self, prepared: Option<&'p afr_agent::PreparedTask>) -> Result<Admitted<'p>, Box<Ending>> {
+    async fn admitted<'p>(
+        &'p self,
+        prepared: Option<&'p afr_agent::PreparedTask>,
+    ) -> Result<Admitted<'p>, Box<Ending>> {
         let refused = |ending: Box<Ending>| {
             self.release_hold();
             ending

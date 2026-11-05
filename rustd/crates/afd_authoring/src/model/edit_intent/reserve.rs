@@ -3,9 +3,7 @@
 use afd_core::id::Uuid7;
 use sqlx::Connection as _;
 
-use super::{
-    CONTEXT, ModelCallInput, ModelCalls, Prepared, prepare::record_fallback,
-};
+use super::{CONTEXT, ModelCallInput, ModelCalls, Prepared, prepare::record_fallback};
 use crate::{
     Result,
     error::{ErrorKind, raise::query},

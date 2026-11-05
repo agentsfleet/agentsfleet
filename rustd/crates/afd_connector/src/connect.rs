@@ -90,7 +90,9 @@ pub struct Spent {
 
 impl std::fmt::Debug for Spent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Spent").field("workspace", &self.workspace).finish_non_exhaustive()
+        f.debug_struct("Spent")
+            .field("workspace", &self.workspace)
+            .finish_non_exhaustive()
     }
 }
 
@@ -261,11 +263,16 @@ impl Connectors {
     /// deployment SIGNED carrying an unparseable id, so it is this daemon's
     /// fault rather than the caller's.
     pub async fn spend(&self, provider: Provider, verified: &Verified) -> Result<Option<Spent>> {
-        let Some(subject) = verified.authenticated_subject.as_ref() else { return Ok(None); };
+        let Some(subject) = verified.authenticated_subject.as_ref() else {
+            return Ok(None);
+        };
         let workspace = Uuid7::parse(verified.workspace())?;
         let binding = provider.state_binding();
         Ok(nonce::consume(&self.queue, binding, verified.nonce())
             .await?
-            .then_some(Spent { workspace, authenticated_subject: subject.clone() }))
+            .then_some(Spent {
+                workspace,
+                authenticated_subject: subject.clone(),
+            }))
     }
 }

@@ -28,7 +28,12 @@ async fn exhausted(case: &Case) {
         .expect("fourth independent goal");
     let all = accepted.items.into_iter().chain(fourth.items);
     for (binding, resource) in all.zip(["model", "running", "leases", "wall"]) {
-        refused_resume(case, &binding.task_id, resource).await;
+        refused_resume(
+            case,
+            binding.task_id.as_ref().expect("accepted goal owns a task"),
+            resource,
+        )
+        .await;
     }
     let page = tasks
         .list(scope, None, 16)

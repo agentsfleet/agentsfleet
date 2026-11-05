@@ -114,8 +114,6 @@ pub(crate) enum Verb {
     TaskCheckpointPage,
     /// Bounded native plaintext object registration.
     TaskCheckpointObjectsRegister,
-    /// One authorized recovery object page.
-    TaskCheckpointObjects,
     /// Immutable ciphertext and create-only transfers.
     TaskCheckpointUploads,
     /// Native restore custody and transfer refresh.
@@ -128,7 +126,7 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 41] = [
+    pub(crate) const ALL: [Self; 40] = [
         Self::Heartbeat,
         Self::ContextLoad,
         Self::ContextCommit,
@@ -166,7 +164,6 @@ impl Verb {
         Self::TaskCheckpointPageWrite,
         Self::TaskCheckpointPage,
         Self::TaskCheckpointObjectsRegister,
-        Self::TaskCheckpointObjects,
         Self::TaskCheckpointUploads,
         Self::TaskCheckpointAuthorizations,
         Self::TaskCheckpointPin,
@@ -183,8 +180,7 @@ impl Verb {
             | Self::TaskInputs
             | Self::TaskEffects
             | Self::TaskEffect
-            | Self::TaskCheckpointPage
-            | Self::TaskCheckpointObjects => Method::Get,
+            | Self::TaskCheckpointPage => Method::Get,
             Self::ContextCommit | Self::TaskCheckpointPageWrite => Method::Put,
             Self::ScheduleUpdate
             | Self::TaskDecisionRecord
@@ -258,7 +254,6 @@ impl Verb {
             Self::TaskCheckpointPageWrite => "task_checkpoint_page_write",
             Self::TaskCheckpointPage => "task_checkpoint_page",
             Self::TaskCheckpointObjectsRegister => "task_checkpoint_objects_register",
-            Self::TaskCheckpointObjects => "task_checkpoint_objects",
             Self::TaskCheckpointUploads => "task_checkpoint_uploads",
             Self::TaskCheckpointAuthorizations => "task_checkpoint_authorizations",
             Self::TaskCheckpointPin => "task_checkpoint_pin",
@@ -303,7 +298,6 @@ impl Verb {
             | Self::TaskCheckpointPageWrite
             | Self::TaskCheckpointPage
             | Self::TaskCheckpointObjectsRegister
-            | Self::TaskCheckpointObjects
             | Self::TaskCheckpointUploads
             | Self::TaskCheckpointAuthorizations
             | Self::TaskCheckpointPin => error_code::INTERNAL_OPERATION_FAILED,

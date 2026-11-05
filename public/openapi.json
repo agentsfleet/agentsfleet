@@ -3711,7 +3711,7 @@
           "Webhooks"
         ],
         "summary": "Receive a provider event",
-        "description": "Receives signed GitHub events and starts runs for matching subscribed fleets. Duplicate deliveries do not start another run. Repair pull requests, workflow results, and `deployment_status` deliveries are acknowledged without starting runs or saving repair evidence.",
+        "description": "Receives signed GitHub events and starts runs for matching subscribed fleets. Duplicate deliveries do not start another run. Repair pull requests, workflow results, and `deployment_status` deliveries do not start unrelated investigations. Verified workflow completions may request an independent read for an existing task wait.",
         "operationId": "ingest_connector_webhook",
         "parameters": [
           {
@@ -6630,6 +6630,1535 @@
         ]
       }
     },
+    "/v1/runners/me/leases/{lease_id}/tasks/bindings": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Accept a complete native task interpretation",
+        "description": "Checks accounted current intent and association answers, whole-message multiplicity, pinned item digests and native source spans. Accepts every item in one transaction. Conversation never creates a task; independent new work joins the existing FIFO admission path. Existing PR targets require exact human assignment, reviewed workflows and current grants.",
+        "operationId": "runner_accept_task_bindings",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Current lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskBindingsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Immutable interpretation replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBindingsResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Complete interpretation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskBindingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/checkpoints": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Allocate a fenced checkpoint capture plan",
+        "description": "Binds the native repository, cumulative byte ceilings, immutable ordered page identities and one expiring writer pin before any upload. Replays preserve the original operation and deadlines.",
+        "operationId": "runner_checkpoint_plan",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointPlanInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/checkpoints/{checkpoint_id}": {
+      "patch": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Publish a complete verified checkpoint",
+        "description": "Checks ordered base plus overlay pages, expanded file bounds, chained symlinks, compatible history, all verified objects and native input/effect coverage. Only the committed manifest advances recovery.",
+        "operationId": "runner_checkpoint_commit",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointCommitInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/checkpoints/{checkpoint_id}/authorizations": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Acquire or refresh bounded checkpoint transfers",
+        "description": "A restore request without object identities acquires a native reader pin and ordered manifest descriptors. Bounded refresh verifies acknowledged uploads or signs current scoped transfers.",
+        "operationId": "runner_checkpoint_authorize",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointAuthorizationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointAuthorizations"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/checkpoints/{checkpoint_id}/objects": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Page authorized restore objects",
+        "description": "Returns at most 100 scoped registered objects and expiring read authorizations. Every page checks the current lease and restore pin.",
+        "operationId": "runner_checkpoint_objects_read",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencing_token",
+            "in": "path",
+            "description": "Current lease fence.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "pin_id",
+            "in": "path",
+            "description": "Current restore pin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "path",
+            "description": "Ordered object cursor.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointObjectsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Register immutable checkpoint objects",
+        "description": "Arbitrates at most 256 scoped plaintext descriptors in one quota transaction. Returns missing, verified reusable or busy objects; temporary key material belongs only to trusted supervision.",
+        "operationId": "runner_checkpoint_objects_register",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointObjectsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointObjectsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/checkpoints/{checkpoint_id}/pages/{page_id}": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Read one bounded manifest page",
+        "description": "Requires the current live lease and native restore pin. Returns one base or overlay page; the supervisor verifies its digest and the ordered root before attaching files.",
+        "operationId": "runner_checkpoint_page_read",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_id",
+            "in": "path",
+            "description": "Native page UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencing_token",
+            "in": "path",
+            "description": "Current lease fence.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "pin_id",
+            "in": "path",
+            "description": "Current restore pin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "path",
+            "description": "Ordered object cursor.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Freeze one complete manifest page",
+        "description": "Checks canonical page bytes, native page position, paths and registered object scope. Identical replay succeeds; changed bytes or page position conflict.",
+        "operationId": "runner_checkpoint_page_write",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_id",
+            "in": "path",
+            "description": "Native page UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointPageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/checkpoints/{checkpoint_id}/pins/{pin_id}": {
+      "patch": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Renew a current capture or restore pin",
+        "description": "Requires matching task, fence and pin versions. Renewal cannot extend the original transfer deadline or revive expired, stopped or superseded authority.",
+        "operationId": "runner_checkpoint_pin",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pin_id",
+            "in": "path",
+            "description": "Native pin UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointPinInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointPin"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/checkpoints/{checkpoint_id}/uploads": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Freeze exact ciphertext upload descriptors",
+        "description": "Persists every ciphertext digest and length before signing create-only uploads. Exact replay cannot choose a new key, nonce or representation.",
+        "operationId": "runner_checkpoint_uploads",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Native lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "description": "Native checkpoint UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointUploadsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Native checkpoint result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointObjectsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/me/leases/{lease_id}/tasks/decisions": {
       "post": {
         "tags": [
@@ -6879,6 +8408,776 @@
           },
           "413": {
             "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/effects": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Recover publications after a checkpoint watermark",
+        "description": "Pages native task-local effect order, including unresolved and newly confirmed effects. A replacement worker needs no previously returned effect ID.",
+        "operationId": "runner_list_task_effects",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Current lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencing_token",
+            "in": "path",
+            "description": "Current lease fence.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Selected current task.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ordinal_after",
+            "in": "path",
+            "description": "Checkpoint's last confirmed effect.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "path",
+            "description": "Last native ordinal returned by the preceding page.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "path",
+            "description": "Maximum effects in one response.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered recoverable publication states",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskEffectsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Publish one tested exact-head repair",
+        "description": "Persists immutable expected-head and tested-tree authority before one native publication. Refuses workflow changes, unsupported file modes, stale ownership and unresolved effects. Unknown acknowledgements require reconciliation and never repeat the mutation.",
+        "operationId": "runner_publish_task_effect",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Current lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskEffectInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved operation replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskEffect"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Confirmed new publication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskEffect"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Coded problem with the immutable effect receipt; UZ-DT-010 identifies an uncertain publication",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/effects/{effect_id}": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Read and reconcile one publication",
+        "description": "Returns the immutable publication identity and verified receipt. Reconciles unknown outcomes through bounded exact-branch history reads; absence never authorizes another mutation.",
+        "operationId": "runner_read_task_effect",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Current lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "effect_id",
+            "in": "path",
+            "description": "Native effect UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencing_token",
+            "in": "path",
+            "description": "Current fleet-slot fence.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Native publication state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskEffect"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/input-receipts": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Acknowledge accepted input and its original reply",
+        "description": "Fences apply-here and queued acknowledgements against immutable accepted meaning. Advances the current input cursor once, preserves original delivery obligations and never executes a different task under the current lease.",
+        "operationId": "runner_accept_task_input_receipt",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Current lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskInputReceiptInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Immutable receipt replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskInputReceiptResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Accepted input receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskInputReceiptResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runners/me/leases/{lease_id}/tasks/inputs": {
+      "get": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Read pending human task input",
+        "description": "Returns up to four complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live lease and fence.",
+        "operationId": "runner_read_task_inputs",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Current lease UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fencing_token",
+            "in": "path",
+            "description": "Current native lease fence.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "path",
+            "description": "Opaque ascending boundary returned by the previous input page.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "after_input_sequence",
+            "in": "path",
+            "description": "Task-local position already present in this worker's recovered/current history.",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "path",
+            "description": "At most four complete messages per safe boundary.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete pending input and native work",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskInputsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14768,7 +17067,7 @@
           "Fleets"
         ],
         "summary": "Stream live fleet activity",
-        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `task_changed`: committed `task_id` and `resource_version`. Read the task collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
+        "description": "Streams fleet activity using Server-Sent Events (SSE). Each message has `id`, `event`, and JSON `data`; `event` matches `data.kind`.\n\nThe first message is `hello`, with `fleet_ids` containing this fleet and empty `counters`. It confirms subscription readiness. No `hello` means the live subscription is unavailable.\n\nActivity includes:\n- `task_changed`: committed `task_id` and `resource_version`. Read the task collection or detail for confirmed progress; also reconcile tasks on `hello` and gap recovery.\n- `event_admitted`: accepted chat message, with `event_id`, `actor`, `event_type`, `message`, and `created_at`.\n- `event_received`: run started, with the same fields; `message` appears for user messages.\n- `event_complete`: the saved event without fleet or workspace identifiers, plus `fleet_status` and `pending_approvals`. `final_reply` appears up to 64 KiB; otherwise fetch event details.\n- `gate_opened` and `gate_resolved`: `gate_id`, `event_id`, and `pending_approvals`. Requests outside a run use null `event_id`. Resolutions add `status` and `resolved_by`.\n- `chunk`, `tool_call_started`, `tool_call_progress`, `tool_call_completed`, and `context_progress`: live reply and tool activity. Tool messages include `event_id` and `name`. Newer runners add a unique `call_id` per call, shared across its messages.\n- `task_decision_started`, `task_decision_completed`, and `task_transfer_progress`: `event_id` and a `progress` object with operation identity, phase, selected model and bounded object counts. Event details retain up to 128 steps in `task_activity`; `truncated` marks an incomplete history. These observations never establish task completion or expose private recovery contents.\n- Completed tools from newer runners add `status` (`succeeded`, `failed`, or `interrupted`), the first and last five output lines, and `output_line_count`. These lines are `output_head` and `output_tail`; process calls also include `exit_code`.\n\n`catching_up` reports missed messages through `dropped`; zero means the count is unknown. Reload saved events after this signal. Identifiers restart at zero per connection; `Last-Event-ID` is ignored. `hello` and `catching_up` use zero without advancing activity identifiers. Heartbeats arrive after 15 idle seconds, with `kind: heartbeat` and no identifier.\n\nAccess is checked every 15 seconds. `access_revoked` sends `data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` and closes; do not reconnect. Failed access checks close the stream after about one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` includes `Retry-After`. Fetch missed events before reconnecting.",
         "operationId": "stream_fleet_events",
         "parameters": [
           {
@@ -17365,6 +19664,196 @@
             "BearerAuth": []
           }
         ]
+      },
+      "patch": {
+        "tags": [
+          "Fleets"
+        ],
+        "summary": "Control fleet work or adopt reviewed goal criteria",
+        "description": "Requires FleetWrite and the current strong If-Match tag. Native version and generation checks run while holding the task lock. Controls preserve the accepted goal, cumulative usage and deadline. Ready resumes paused or blocked work within its remaining allowance; cancellation does not claim rollback of issued effects.",
+        "operationId": "patch_fleet_task",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "description": "Fleet identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task UUIDv7.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Required current strong resource tag.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Current task",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid task control",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Task unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Generation or lifecycle refuses mutation",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Stale resource tag; problem body carries the current etag",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "428": {
+            "description": "Missing tag",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Task allowance or request limit reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal failure",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Dependency unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/workspaces/{workspace_id}/members": {
@@ -18489,6 +20978,45 @@
       },
       "ActivityFrame": {
         "oneOf": [
+          {
+            "type": "object",
+            "description": "A physical intent/goal decision has started.",
+            "required": [
+              "task_decision_started"
+            ],
+            "properties": {
+              "task_decision_started": {
+                "$ref": "#/components/schemas/TaskActivity",
+                "description": "A physical intent/goal decision has started."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Its original-owner receipt is recorded or unavailable.",
+            "required": [
+              "task_decision_completed"
+            ],
+            "properties": {
+              "task_decision_completed": {
+                "$ref": "#/components/schemas/TaskActivity",
+                "description": "Its original-owner receipt is recorded or unavailable."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Encrypted recovery is preparing, transferring or committed.",
+            "required": [
+              "task_transfer_progress"
+            ],
+            "properties": {
+              "task_transfer_progress": {
+                "$ref": "#/components/schemas/TaskActivity",
+                "description": "Encrypted recovery is preparing, transferring or committed."
+              }
+            }
+          },
           {
             "type": "object",
             "description": "The root conversation is summarizing or continuing after a checkpoint.",
@@ -19885,6 +22413,10 @@
             },
             "description": "Controllers present in the delegated cgroup's subtree control."
           },
+          "durable_tasks_v1": {
+            "type": "boolean",
+            "description": "This build implements fenced task execution and workspace handoff."
+          },
           "egress_enforcement": {
             "type": "boolean",
             "description": "Whether the operating system can restrict outgoing network access to allowed hosts."
@@ -20402,6 +22934,847 @@
             "description": "Where the next page resumes, or `null` on the last page — emitted\neither way, for the module's null rule."
           }
         }
+      },
+      "CheckpointAuthorizationInput": {
+        "type": "object",
+        "description": "Acquire a restore pin, or refresh exact registered transfer material.",
+        "required": [
+          "fencing_token",
+          "task",
+          "purpose"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing lease fence.",
+            "minimum": 0
+          },
+          "object_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Native object identities, never arbitrary bucket paths."
+          },
+          "pin_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omitted only to bootstrap a restore pin and ordered pages."
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/CheckpointTransferPurpose",
+            "description": "Read or upload authority, each checked natively."
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task version."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointAuthorizations": {
+        "type": "object",
+        "description": "Restore bootstrap or bounded refresh, always including the native pin.",
+        "required": [
+          "plan",
+          "objects"
+        ],
+        "properties": {
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointObject"
+            },
+            "description": "Requested scoped transfers; empty at restore bootstrap."
+          },
+          "plan": {
+            "$ref": "#/components/schemas/CheckpointPlan",
+            "description": "Bounded complete recovery descriptor."
+          }
+        }
+      },
+      "CheckpointCommitInput": {
+        "type": "object",
+        "description": "Commit only after complete pages and registered objects verify.",
+        "required": [
+          "fencing_token",
+          "task",
+          "pin_id",
+          "manifest_root",
+          "history_digest",
+          "covered_input_sequence",
+          "effect_watermark"
+        ],
+        "properties": {
+          "covered_input_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Inputs included in the saved state.",
+            "minimum": 0
+          },
+          "effect_watermark": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Confirmed effects incorporated locally, never merely observed remotely.",
+            "minimum": 0
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing lease fence.",
+            "minimum": 0
+          },
+          "history_digest": {
+            "type": "string",
+            "description": "Complete compatible conversation digest."
+          },
+          "manifest_root": {
+            "type": "string",
+            "description": "Canonical ordered page-root digest."
+          },
+          "pin_id": {
+            "type": "string",
+            "description": "Current writer pin."
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task version."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointEntry": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointFile",
+                "description": "Ordinary file; special files are never captured."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "Ordinary file; special files are never captured."
+          },
+          {
+            "type": "object",
+            "description": "An explicit directory, including empty directories.",
+            "required": [
+              "path",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "directory"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative directory path, including an otherwise empty directory."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A relative non-escaping symlink, validated against its parent natively.",
+            "required": [
+              "path",
+              "target",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "symlink"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative location at which the link is restored."
+              },
+              "target": {
+                "type": "string",
+                "description": "Link destination relative to its parent, checked for workspace escape."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Explicit removal from the verified base.",
+            "required": [
+              "path",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "remove"
+                ]
+              },
+              "path": {
+                "type": "string",
+                "description": "Workspace-relative base entry to remove, including any descendants."
+              }
+            }
+          }
+        ],
+        "description": "Complete logical entry or explicit deletion relative to the retained base."
+      },
+      "CheckpointFile": {
+        "type": "object",
+        "description": "One bounded file represented by immutable encrypted chunks in order.",
+        "required": [
+          "path",
+          "executable",
+          "size",
+          "objects"
+        ],
+        "properties": {
+          "executable": {
+            "type": "boolean",
+            "description": "Ordinary file executable bit."
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Native chunk identities, in byte order."
+          },
+          "path": {
+            "type": "string",
+            "description": "Declared workspace-relative path; never followed during restoration."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Logical length; empty files require no objects.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointMode": {
+        "type": "string",
+        "description": "A verified base is retained separately from task recovery pointers.",
+        "enum": [
+          "retain_base",
+          "incremental"
+        ]
+      },
+      "CheckpointObject": {
+        "type": "object",
+        "description": "Registration projection; temporary keys remain outside model/sandbox state.",
+        "required": [
+          "object_id",
+          "repository",
+          "plaintext",
+          "status"
+        ],
+        "properties": {
+          "ciphertext_length": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Frozen ciphertext length when already known.",
+            "minimum": 0
+          },
+          "ciphertext_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Frozen ciphertext digest when already known."
+          },
+          "data_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Temporary data key, returned only to this native owner/reader."
+          },
+          "nonce": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact fixed nonce, base64 encoded."
+          },
+          "object_id": {
+            "type": "string",
+            "description": "Native random object identity."
+          },
+          "plaintext": {
+            "$ref": "#/components/schemas/CheckpointPlaintext",
+            "description": "Plaintext descriptor."
+          },
+          "repository": {
+            "type": "string",
+            "description": "Canonical scope for authenticated encryption."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckpointObjectStatus",
+            "description": "Current ownership disposition."
+          },
+          "transfer": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CheckpointTransfer",
+                "description": "Exact scoped URL when requested."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CheckpointObjectStatus": {
+        "type": "string",
+        "description": "Native registration disposition.",
+        "enum": [
+          "missing",
+          "reused",
+          "busy"
+        ]
+      },
+      "CheckpointObjectsInput": {
+        "type": "object",
+        "description": "Register a batch under one quota and ownership transaction.",
+        "required": [
+          "fencing_token",
+          "task",
+          "pin_id",
+          "objects"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing lease fence.",
+            "minimum": 0
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointPlaintext"
+            },
+            "description": "At most one descriptor page."
+          },
+          "pin_id": {
+            "type": "string",
+            "description": "Current writer pin."
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task version."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointObjectsPage": {
+        "type": "object",
+        "description": "Bounded current object page.",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointObject"
+            },
+            "description": "Complete objects for this request or bounded read page."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Next native identity when more objects remain."
+          }
+        }
+      },
+      "CheckpointPage": {
+        "type": "object",
+        "description": "At most one mebibyte of the complete logical manifest.",
+        "required": [
+          "page_number",
+          "entries",
+          "history_objects"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointEntry"
+            },
+            "description": "Logical entries, bounded again by complete serialized bytes."
+          },
+          "history_objects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Compatible private conversation objects; not independently selected history."
+          },
+          "page_number": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Zero-based immutable page position.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointPageInput": {
+        "type": "object",
+        "description": "Publish one immutable manifest page with its exact digest.",
+        "required": [
+          "fencing_token",
+          "task",
+          "pin_id",
+          "digest",
+          "contents"
+        ],
+        "properties": {
+          "contents": {
+            "$ref": "#/components/schemas/CheckpointPage",
+            "description": "Bounded typed representation."
+          },
+          "digest": {
+            "type": "string",
+            "description": "Canonical SHA-256 of this complete page."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing lease fence.",
+            "minimum": 0
+          },
+          "pin_id": {
+            "type": "string",
+            "description": "Live writer pin."
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task version."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointPin": {
+        "type": "object",
+        "description": "One capture or restore operation, renewed without extending its deadline.",
+        "required": [
+          "id",
+          "resource_version",
+          "operation_deadline",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Current liveness deadline."
+          },
+          "id": {
+            "type": "string",
+            "description": "Native pin identity."
+          },
+          "operation_deadline": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Hard operation deadline."
+          },
+          "resource_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Compare-and-swap version for renewal.",
+            "minimum": 0
+          }
+        }
+      },
+      "CheckpointPinInput": {
+        "type": "object",
+        "description": "Versioned reader/writer renewal.",
+        "required": [
+          "fencing_token",
+          "task",
+          "resource_version"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing lease fence.",
+            "minimum": 0
+          },
+          "resource_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing pin version.",
+            "minimum": 0
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task version."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointPlaintext": {
+        "type": "object",
+        "description": "Trusted capture's plaintext descriptor; no storage key is caller-selected.",
+        "required": [
+          "sha256",
+          "size",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "Declared file, Git or history bytes."
+          },
+          "sha256": {
+            "type": "string",
+            "description": "Private plaintext SHA-256, verified again after decryption."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bounded plaintext chunk length.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointPlan": {
+        "type": "object",
+        "description": "Native recovery descriptor, bounded independently of manifest size.",
+        "required": [
+          "checkpoint_id",
+          "generation",
+          "mode",
+          "repository",
+          "format_version",
+          "toolbox_digest",
+          "page_ids",
+          "base_page_ids",
+          "covered_input_sequence",
+          "effect_watermark",
+          "expires_at",
+          "pin",
+          "replayed"
+        ],
+        "properties": {
+          "base_commit_oid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact base commit, independent of a later published branch head."
+          },
+          "base_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Retained base identity when present."
+          },
+          "base_manifest_root": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Ordered retained-base root, checked before overlaying local changes."
+          },
+          "base_page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Verified retained base pages, read through the same scoped page resource."
+          },
+          "checkpoint_id": {
+            "type": "string",
+            "description": "Native task-bound plan."
+          },
+          "covered_input_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Inputs actually incorporated in this state.",
+            "minimum": 0
+          },
+          "effect_watermark": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Confirmed outcomes incorporated in this state.",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Deadline established once when the plan is created."
+          },
+          "format_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Required restore format.",
+            "minimum": 0
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Checkpoint ordering, distinct from the task generation.",
+            "minimum": 0
+          },
+          "history_digest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "History state bound to the same file generation."
+          },
+          "manifest_root": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent until native verification commits."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/CheckpointMode",
+            "description": "Base or incremental state."
+          },
+          "page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Complete ordered pages; never an unbounded inline manifest."
+          },
+          "pin": {
+            "$ref": "#/components/schemas/CheckpointPin",
+            "description": "Current writer/reader pin."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "Immutable plan replay."
+          },
+          "repository": {
+            "type": "string",
+            "description": "Repository identity selected by native task authority."
+          },
+          "toolbox_digest": {
+            "type": "string",
+            "description": "Host-local toolbox compatibility."
+          }
+        }
+      },
+      "CheckpointPlanInput": {
+        "type": "object",
+        "description": "Allocate immutable page identities before capture uploads.",
+        "required": [
+          "fencing_token",
+          "operation_id",
+          "task",
+          "mode",
+          "format_version",
+          "toolbox_digest",
+          "page_count",
+          "upload_budget_bytes",
+          "logical_bytes",
+          "entry_count"
+        ],
+        "properties": {
+          "base_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "An already verified base; omitted for repository-free tasks."
+          },
+          "commit_oid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Captured repository head; an incremental plan can use an older retained base."
+          },
+          "entry_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Expanded entries, checked again against complete pages.",
+            "minimum": 0
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing fleet-slot authority.",
+            "minimum": 0
+          },
+          "format_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Restore format, independently checked by the daemon.",
+            "minimum": 0
+          },
+          "logical_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Expanded logical state, independent of deduplication.",
+            "minimum": 0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/CheckpointMode",
+            "description": "Initial retained source or an incremental logical state."
+          },
+          "operation_id": {
+            "type": "string",
+            "description": "Retry identity; replay returns this exact plan."
+          },
+          "page_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Ordered page identities to allocate.",
+            "minimum": 0
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current objective version."
+          },
+          "toolbox_digest": {
+            "type": "string",
+            "description": "Pinned host-local toolbox, excluded from checkpoint bytes."
+          },
+          "upload_budget_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Declared unique new content allowance, clamped natively by mode.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointTransfer": {
+        "type": "object",
+        "description": "Exact scoped transfer material, redacted from debug output.",
+        "required": [
+          "url",
+          "headers",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Deadline shared with native pin custody."
+          },
+          "headers": {
+            "type": "object",
+            "description": "Exact signed headers; create-only uploads cannot omit them.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "type": "string",
+            "description": "Short-lived supervisor-only URL."
+          }
+        }
+      },
+      "CheckpointTransferPurpose": {
+        "type": "string",
+        "description": "Supervisor-only read purpose.",
+        "enum": [
+          "upload",
+          "restore"
+        ]
+      },
+      "CheckpointUpload": {
+        "type": "object",
+        "description": "One frozen ciphertext representation, registered before its first URL.",
+        "required": [
+          "object_id",
+          "ciphertext_sha256",
+          "ciphertext_length"
+        ],
+        "properties": {
+          "ciphertext_length": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Plaintext length plus the fixed authentication tag.",
+            "minimum": 0
+          },
+          "ciphertext_sha256": {
+            "type": "string",
+            "description": "Exact ciphertext and authentication tag SHA-256."
+          },
+          "object_id": {
+            "type": "string",
+            "description": "Native registration identity."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CheckpointUploadsInput": {
+        "type": "object",
+        "description": "Freeze an entire descriptor page atomically.",
+        "required": [
+          "fencing_token",
+          "task",
+          "pin_id",
+          "objects"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Existing lease fence.",
+            "minimum": 0
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckpointUpload"
+            },
+            "description": "At most one immutable descriptor page."
+          },
+          "pin_id": {
+            "type": "string",
+            "description": "Current writer pin."
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task version."
+          }
+        },
+        "additionalProperties": false
       },
       "ChoiceOption": {
         "type": "object",
@@ -23397,6 +26770,28 @@
             "maxLength": 255,
             "minLength": 1
           },
+          "repository_publication": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RepositoryPublication",
+                "description": "Reviewed write mode; existing_pr reserves branch publication for native tasks."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repository_validation_workflows": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ValidationWorkflows",
+                "description": "Exact owner-reviewed validation-only workflows for existing PR publication."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tools": {
             "type": "array",
             "items": {
@@ -24136,6 +27531,10 @@
             "type": "string",
             "description": "Where the event's run got to, as stored."
           },
+          "task_activity": {
+            "$ref": "#/components/schemas/TaskActivityHistory",
+            "description": "Retained public task progress, separate from private conversation state."
+          },
           "tokens": {
             "type": [
               "integer",
@@ -24629,6 +28028,7 @@
           "etag",
           "setup_etag",
           "setup_revision",
+          "setup_revision_id",
           "policy_semantics",
           "definition",
           "setup",
@@ -24703,6 +28103,10 @@
           "setup_revision": {
             "type": "string",
             "description": "Exact decimal immutable setup revision."
+          },
+          "setup_revision_id": {
+            "type": "string",
+            "description": "Native immutable revision identity used for explicit task goal adoption."
           },
           "start": {
             "type": "object",
@@ -25463,6 +28867,10 @@
               }
             ]
           },
+          "durable_tasks": {
+            "type": "boolean",
+            "description": "Owner-authored task policy requires intent before any investigation or checkout."
+          },
           "event": {
             "$ref": "#/components/schemas/EventEnvelope",
             "description": "The event to run."
@@ -25528,6 +28936,17 @@
           "secret_delivery": {
             "$ref": "#/components/schemas/SecretDelivery",
             "description": "How secrets reached this run."
+          },
+          "task": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskContext",
+                "description": "Native task ownership and saved recovery cursors, frozen at issuance."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -27515,6 +30934,56 @@
           "killed"
         ]
       },
+      "PatchTaskRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Pause, resume or cancel without changing the accepted objective.",
+            "required": [
+              "state",
+              "expected_generation"
+            ],
+            "properties": {
+              "expected_generation": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Generation from the task's current native context.",
+                "minimum": 0
+              },
+              "state": {
+                "$ref": "#/components/schemas/TaskControlState",
+                "description": "Requested native lifecycle state."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Adopt the completion criteria from an explicitly reviewed fleet revision.",
+            "required": [
+              "goal_revision_id",
+              "expected_generation",
+              "operation_id"
+            ],
+            "properties": {
+              "expected_generation": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Generation read before requesting adoption.",
+                "minimum": 0
+              },
+              "goal_revision_id": {
+                "type": "string",
+                "description": "Existing immutable setup revision belonging to this fleet."
+              },
+              "operation_id": {
+                "type": "string",
+                "description": "Stable retry identity for the same adoption."
+              }
+            }
+          }
+        ],
+        "description": "A conditional lifecycle control or explicit adoption of reviewed goal wording."
+      },
       "PlatformDefaultRow": {
         "type": "object",
         "description": "The deployment's platform default, as the page's Default row shows it.",
@@ -27987,7 +31456,8 @@
           "invalid_arguments",
           "instructions_missing",
           "instructions_ambiguous",
-          "stale_candidate"
+          "stale_candidate",
+          "edit_not_requested"
         ]
       },
       "Proposal_Value_Value_Value": {
@@ -28484,6 +31954,17 @@
             "type": "string",
             "description": "The run's output."
           },
+          "task": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskReport",
+                "description": "Safe-boundary task disposition, independently verified before changing task state."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "telemetry": {
             "$ref": "#/components/schemas/ReportTelemetry",
             "description": "Latency the runner observed."
@@ -28616,6 +32097,14 @@
             "description": "Repositories the run may reach."
           }
         }
+      },
+      "RepositoryPublication": {
+        "type": "string",
+        "description": "Publication authority explicitly reviewed with the fleet setup.",
+        "enum": [
+          "event_draft",
+          "existing_pr"
+        ]
       },
       "RequestLines": {
         "type": "array",
@@ -30427,11 +33916,463 @@
         ],
         "description": "Placement alone determines which protocol and authority the worker receives."
       },
+      "TaskAcceptedInput": {
+        "type": "object",
+        "description": "Recovery receipt for an acknowledged interpretation whose worker was lost.",
+        "required": [
+          "source_admission_id",
+          "plan_digest",
+          "item_id",
+          "task",
+          "sequence",
+          "action",
+          "original_message",
+          "accepted_text",
+          "interpretation",
+          "applied"
+        ],
+        "properties": {
+          "accepted_text": {
+            "type": "string",
+            "description": "Exact accepted source slice."
+          },
+          "action": {
+            "$ref": "#/components/schemas/TaskInputAction",
+            "description": "Accepted native action."
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Already incorporated natively; recovery restores meaning without applying it twice."
+          },
+          "interpretation": {
+            "type": "string",
+            "description": "Accepted interpretation, never recomputed after recovery."
+          },
+          "item_id": {
+            "type": "string",
+            "description": "Immutable interpreted item."
+          },
+          "original_message": {
+            "type": "string",
+            "description": "Complete original human message, preserving mixed-request context."
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "Immutable complete interpretation digest."
+          },
+          "response_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Confirmed original answer when available, independent of the lost local history."
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Strict task-local input order.",
+            "minimum": 0
+          },
+          "source_admission_id": {
+            "type": "string",
+            "description": "Original native admission, retained even after queue settlement."
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task and generation that may apply this input."
+          }
+        }
+      },
+      "TaskAcceptedInterpretation": {
+        "type": "object",
+        "description": "Complete immutable source interpretation, retained independently of a worker.",
+        "required": [
+          "source_admission_id",
+          "plan_digest",
+          "message",
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskRecoveredItem"
+            },
+            "description": "Native item identities in the accepted original order."
+          },
+          "message": {
+            "type": "string",
+            "description": "Complete original human text."
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "Complete accepted plan digest."
+          },
+          "source_admission_id": {
+            "type": "string",
+            "description": "Original admitted source."
+          }
+        }
+      },
+      "TaskActivity": {
+        "type": "object",
+        "description": "Progress comes from native identities and counters, never model prose.",
+        "required": [
+          "activity_id",
+          "operation",
+          "phase",
+          "completed"
+        ],
+        "properties": {
+          "activity_id": {
+            "type": "string",
+            "description": "Physical decision or checkpoint operation identity."
+          },
+          "bytes": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskTransferBytes",
+                "description": "Deduplicated ciphertext bytes; absent for decisions and historical frames."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Completed objects, never an inferred success percentage.",
+            "minimum": 0
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Selected model label."
+          },
+          "operation": {
+            "$ref": "#/components/schemas/TaskActivityOperation",
+            "description": "Native operation category."
+          },
+          "phase": {
+            "$ref": "#/components/schemas/TaskActivityPhase",
+            "description": "The current public stage."
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Selected provider label; no credential or URL."
+          },
+          "sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Event-local observation order assigned by the daemon, never a worker clock.",
+            "minimum": 0
+          },
+          "source_admission_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Exact original admission, when assessing human intent."
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Native task, absent during initial intent routing."
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Total objects when known.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskActivityHistory": {
+        "type": "object",
+        "description": "Retained activity is bounded independently of the task's private history.",
+        "required": [
+          "items",
+          "truncated"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskActivityRecord"
+            },
+            "description": "Latest 128 operation/stage facts, in observed order."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether earlier stages were omitted by the public history bound."
+          }
+        }
+      },
+      "TaskActivityOperation": {
+        "type": "string",
+        "description": "The operation whose progress is being shown.",
+        "enum": [
+          "intent",
+          "goal",
+          "capture",
+          "restore"
+        ]
+      },
+      "TaskActivityPhase": {
+        "type": "string",
+        "description": "A public stage, separate from authoritative task completion.",
+        "enum": [
+          "starting",
+          "recorded",
+          "unavailable",
+          "preparing",
+          "scanning",
+          "uploading",
+          "verifying",
+          "saved",
+          "restoring",
+          "restored",
+          "failed"
+        ]
+      },
+      "TaskActivityRecord": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A physical judgment started.",
+            "required": [
+              "progress",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "task_decision_started"
+                ]
+              },
+              "progress": {
+                "$ref": "#/components/schemas/TaskActivity",
+                "description": "A physical judgment started."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Its original receipt was recorded or remained unusable.",
+            "required": [
+              "progress",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "task_decision_completed"
+                ]
+              },
+              "progress": {
+                "$ref": "#/components/schemas/TaskActivity",
+                "description": "Its original receipt was recorded or remained unusable."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A bounded capture/restore stage advanced.",
+            "required": [
+              "progress",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "task_transfer_progress"
+                ]
+              },
+              "progress": {
+                "$ref": "#/components/schemas/TaskActivity",
+                "description": "A bounded capture/restore stage advanced."
+              }
+            }
+          }
+        ],
+        "description": "Saved progress uses the same discriminators as live activity."
+      },
+      "TaskBindingItem": {
+        "type": "object",
+        "description": "One action and its separate decision proof when decomposition is required.",
+        "required": [
+          "proposed"
+        ],
+        "properties": {
+          "decision_call_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omit only for a single request already covered by the message decision."
+          },
+          "proposed": {
+            "$ref": "#/components/schemas/TaskProposedItem",
+            "description": "Complete item whose meaning was pinned before classification."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskBindingsInput": {
+        "type": "object",
+        "description": "Atomically accept the complete bounded interpretation of one admitted input.",
+        "required": [
+          "fencing_token",
+          "source_admission_id",
+          "accepted_revision_id",
+          "plan_digest",
+          "message_decision_call_id",
+          "items"
+        ],
+        "properties": {
+          "accepted_revision_id": {
+            "type": "string",
+            "description": "Reviewed setup used for the message's questions and new objectives."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current slot fence.",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskBindingItem"
+            },
+            "description": "The complete interpretation; no prefix can be partially accepted."
+          },
+          "message_decision_call_id": {
+            "type": "string",
+            "description": "Paid, accounted, current complete-message routing decision."
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "SHA-256 of interpretation(), computed independently by the daemon."
+          },
+          "source_admission_id": {
+            "type": "string",
+            "description": "Complete native source admission; queued human claims use this same ID."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskBindingsResponse": {
+        "type": "object",
+        "description": "Complete message receipt, stable across lost acknowledgements.",
+        "required": [
+          "items",
+          "replayed"
+        ],
+        "properties": {
+          "current_task": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskContext",
+                "description": "Current lease objective after binding, with native target and recovery state."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskItemBinding"
+            },
+            "description": "Accepted immutable items in their original order."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "True when no new item, task, input or continuation was allocated."
+          }
+        }
+      },
+      "TaskCheck": {
+        "type": "object",
+        "description": "One reviewed workflow's last recorded exact-head observation.",
+        "required": [
+          "workflow_id",
+          "status"
+        ],
+        "properties": {
+          "conclusion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Recorded provider conclusion; absent until known."
+          },
+          "run_attempt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Observed attempt within the run.",
+            "minimum": 0
+          },
+          "run_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Observed workflow run, absent when none exists.",
+            "minimum": 0
+          },
+          "run_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Observed workflow run number.",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "description": "Recorded provider status; absence of a run is pending."
+          },
+          "workflow_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Reviewed GitHub workflow identity.",
+            "minimum": 0
+          }
+        }
+      },
       "TaskContext": {
         "type": "object",
         "description": "Context for a task-bound lease; ordinary leases omit this owner.",
         "required": [
           "task_id",
+          "originating_item_id",
+          "target",
           "generation",
           "stop_generation",
           "accepted_revision_id",
@@ -30440,6 +34381,7 @@
           "questions",
           "state",
           "covered_input_sequence",
+          "input_sequence",
           "effect_cursor",
           "confirmed_effect_watermark",
           "expires_at",
@@ -30450,6 +34392,15 @@
           "accepted_revision_id": {
             "type": "string",
             "description": "Fleet revision whose reviewed goal was accepted."
+          },
+          "checkpoint_generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Last complete saved generation, distinct from allocated failed plans.",
+            "minimum": 0
           },
           "checkpoint_id": {
             "type": [
@@ -30491,6 +34442,12 @@
             "type": "string",
             "description": "Digest of the frozen objective and completion questions."
           },
+          "input_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Last accepted input; recovery must incorporate any gap before new effects.",
+            "minimum": 0
+          },
           "limits": {
             "$ref": "#/components/schemas/TaskLimits",
             "description": "Cumulative bounds, clamped by existing fleet/credit ceilings."
@@ -30498,6 +34455,10 @@
           "objective": {
             "type": "string",
             "description": "Accepted objective, distinct from standing fleet instructions."
+          },
+          "originating_item_id": {
+            "type": "string",
+            "description": "Immutable source item required for attributable task effects."
           },
           "questions": {
             "type": "array",
@@ -30516,6 +34477,10 @@
             "description": "Committed cutoff for new effects.",
             "minimum": 0
           },
+          "target": {
+            "$ref": "#/components/schemas/TaskTarget",
+            "description": "Exact target selected by native admission, never changed by recovered notes."
+          },
           "task_id": {
             "type": "string",
             "description": "Native task identity; never selected by a tool result."
@@ -30523,6 +34488,521 @@
           "usage": {
             "$ref": "#/components/schemas/TaskUsage",
             "description": "Already consumed and reserved work."
+          }
+        }
+      },
+      "TaskControlState": {
+        "type": "string",
+        "description": "Explicit human lifecycle control; completion requires native goal proof.",
+        "enum": [
+          "paused",
+          "ready",
+          "cancelled"
+        ]
+      },
+      "TaskDependency": {
+        "type": "object",
+        "description": "Current native dependency; reading it launches no remote checks.",
+        "required": [
+          "active",
+          "head",
+          "checks",
+          "updated_at"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Whether this observation still owns an unconsumed, uncancelled wait."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskCheck"
+            },
+            "description": "Saved observations of the reviewed workflows."
+          },
+          "head": {
+            "type": "string",
+            "description": "Exact branch head this wait observes."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the native wait was updated; not a fresh provider observation time."
+          }
+        }
+      },
+      "TaskDisposition": {
+        "type": "string",
+        "description": "Native goal disposition requested at a completed safe boundary.",
+        "enum": [
+          "complete",
+          "waiting",
+          "blocked",
+          "continue"
+        ]
+      },
+      "TaskEffect": {
+        "type": "object",
+        "description": "No token or arbitrary remote response is exposed in this receipt.",
+        "required": [
+          "effect_id",
+          "ordinal",
+          "state",
+          "expected_head",
+          "tested_tree",
+          "pull_request_url"
+        ],
+        "properties": {
+          "commit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Confirmed commit only after native readback."
+          },
+          "effect_id": {
+            "type": "string",
+            "description": "Native effect UUIDv7 discoverable after replacement-worker recovery."
+          },
+          "expected_head": {
+            "type": "string",
+            "description": "Recorded expected branch head."
+          },
+          "ordinal": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Task-local publication order, independent of response delivery.",
+            "minimum": 0
+          },
+          "pull_request_url": {
+            "type": "string",
+            "description": "Exact accepted PR URL."
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskEffectState",
+            "description": "Native state."
+          },
+          "tested_tree": {
+            "type": "string",
+            "description": "Verified candidate tree."
+          }
+        }
+      },
+      "TaskEffectInput": {
+        "type": "object",
+        "description": "The supervisor has tested this exact tree against the recorded expected head.",
+        "required": [
+          "operation_id",
+          "fencing_token",
+          "task",
+          "source_item_id",
+          "covered_input_sequence",
+          "expected_head",
+          "tested_tree",
+          "changes"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskFileChange"
+            },
+            "description": "Complete changes, bounded again by one MiB of decoded bytes."
+          },
+          "covered_input_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Every accepted current-task input through this cursor was considered.",
+            "minimum": 0
+          },
+          "expected_head": {
+            "type": "string",
+            "description": "Exact native old head; GitHub compares it atomically during publication."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current slot fence.",
+            "minimum": 0
+          },
+          "operation_id": {
+            "type": "string",
+            "description": "Stable identity; a lost acknowledgement must reuse this operation."
+          },
+          "source_item_id": {
+            "type": "string",
+            "description": "Accepted originating action item."
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current selected task and generation."
+          },
+          "tested_tree": {
+            "type": "string",
+            "description": "Git tree actually tested in the isolated workspace."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskEffectState": {
+        "type": "string",
+        "description": "Native publication state, retained independently of a runner response.",
+        "enum": [
+          "prepared",
+          "issued",
+          "confirmed",
+          "unknown",
+          "refused"
+        ]
+      },
+      "TaskEffectsPage": {
+        "type": "object",
+        "description": "Ordered complete effect recovery page.",
+        "required": [
+          "effects"
+        ],
+        "properties": {
+          "effects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskEffect"
+            },
+            "description": "Includes unresolved and newly confirmed publications."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Native ordinal cursor when more rows remain."
+          }
+        }
+      },
+      "TaskFileChange": {
+        "type": "object",
+        "description": "Complete content for one supported regular-file change.",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "contents": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Standard base64 contents; null deletes a regular file."
+          },
+          "path": {
+            "type": "string",
+            "description": "Canonical relative Git path; no Git metadata or workflow changes."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskHumanInput": {
+        "type": "object",
+        "description": "One complete persisted human message; reading never consumes it.",
+        "required": [
+          "source_admission_id",
+          "sequence",
+          "message"
+        ],
+        "properties": {
+          "accepted": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskAcceptedInterpretation",
+                "description": "Already accepted meaning; recovery must answer it without reclassification."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Complete user text; never a truncated interpretation."
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Native FIFO position, independent of task-local input positions.",
+            "minimum": 0
+          },
+          "source_admission_id": {
+            "type": "string",
+            "description": "Native source admission identity used for decision and consumption."
+          }
+        }
+      },
+      "TaskInputAction": {
+        "type": "string",
+        "description": "A closed routing answer; criteria remain authored in the accepted setup.",
+        "enum": [
+          "conversation",
+          "status",
+          "refresh",
+          "steer",
+          "new_work",
+          "clarify"
+        ]
+      },
+      "TaskInputCandidate": {
+        "type": "object",
+        "description": "Trusted compact work offered for intent association without loading private evidence.",
+        "required": [
+          "task_id",
+          "title",
+          "state",
+          "generation"
+        ],
+        "properties": {
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current native generation, required for an accepted steer.",
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/TaskState",
+            "description": "Current durable state."
+          },
+          "task_id": {
+            "type": "string",
+            "description": "Native task identity."
+          },
+          "title": {
+            "type": "string",
+            "description": "User-facing compact objective name."
+          }
+        }
+      },
+      "TaskInputMode": {
+        "type": "string",
+        "description": "One durable item can be applied once and answered once.",
+        "enum": [
+          "apply_here",
+          "queued",
+          "answered"
+        ]
+      },
+      "TaskInputReceiptInput": {
+        "type": "object",
+        "description": "Record a native input outcome, without reinterpreting any accepted item.",
+        "required": [
+          "fencing_token",
+          "operation_id",
+          "source_admission_id",
+          "plan_digest",
+          "item_id",
+          "mode"
+        ],
+        "properties": {
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Current slot fence.",
+            "minimum": 0
+          },
+          "item_id": {
+            "type": "string",
+            "description": "One native action within the complete accepted plan."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TaskInputMode",
+            "description": "Native application or answer mode."
+          },
+          "operation_id": {
+            "type": "string",
+            "description": "Stable acknowledgement identity."
+          },
+          "plan_digest": {
+            "type": "string",
+            "description": "Complete immutable interpretation identity."
+          },
+          "response_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Required only for a conversational answer; queued text is formed natively."
+          },
+          "source_admission_id": {
+            "type": "string",
+            "description": "Accepted native source, never an invented reply destination."
+          },
+          "task": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecisionTaskVersion",
+                "description": "Expected associated task; absent only for conversation or clarification."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskInputReceiptResult": {
+        "type": "object",
+        "description": "Acknowledges history and cursors, without claiming a task goal is complete.",
+        "required": [
+          "item_id",
+          "mode",
+          "replayed"
+        ],
+        "properties": {
+          "covered_input_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Current covered input boundary when a task is associated.",
+            "minimum": 0
+          },
+          "item_id": {
+            "type": "string",
+            "description": "Accepted native item."
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TaskInputMode",
+            "description": "Committed historical outcome."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "No repeated application, response or continuation was created."
+          }
+        }
+      },
+      "TaskInputsResponse": {
+        "type": "object",
+        "description": "Complete bounded messages and eligible current work from the same lease scope.",
+        "required": [
+          "source_admission_id",
+          "inputs",
+          "accepted_inputs",
+          "tasks"
+        ],
+        "properties": {
+          "accepted_inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskAcceptedInput"
+            },
+            "description": "Accepted meaning not yet incorporated by the current native task cursor."
+          },
+          "accepted_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Installed revision under which a new human interpretation may bind."
+          },
+          "current_interpretation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskAcceptedInterpretation",
+                "description": "Current admission's complete saved meaning, including a conversation-only replay."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Complete current human message, absent for native machine continuations.\nIts presence is established from native admission authority."
+          },
+          "current_task": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskContext",
+                "description": "Current native objective and recovery pointer, including after interpretation replay."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskHumanInput"
+            },
+            "description": "Ascending native message order."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent when no next eligible input exists."
+          },
+          "source_admission_id": {
+            "type": "string",
+            "description": "Native admission owned by this lease, including signed continuation events."
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskInputCandidate"
+            },
+            "description": "At most sixteen unfinished native objectives."
+          }
+        }
+      },
+      "TaskItemBinding": {
+        "type": "object",
+        "description": "One accepted immutable action, with no invented task for conversational input.",
+        "required": [
+          "item_id",
+          "action",
+          "applies_here"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TaskInputAction",
+            "description": "Accepted routing meaning."
+          },
+          "applies_here": {
+            "type": "boolean",
+            "description": "Whether current execution may apply this input at its next safe boundary."
+          },
+          "input_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Native FIFO cursor for an accepted existing-task input.",
+            "minimum": 0
+          },
+          "item_id": {
+            "type": "string",
+            "description": "Native immutable item UUIDv7."
+          },
+          "task_generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Current native generation, including a wake caused by this input.",
+            "minimum": 0
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Native objective, absent for conversation or clarification."
           }
         }
       },
@@ -30582,10 +35062,189 @@
         },
         "additionalProperties": false
       },
+      "TaskProposedItem": {
+        "type": "object",
+        "description": "Model-proposed meaning; its digest is frozen before item decision calls.",
+        "required": [
+          "source_start",
+          "source_end",
+          "action",
+          "title",
+          "interpretation"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TaskInputAction",
+            "description": "One proposed route, subject to the recorded configured decision model."
+          },
+          "interpretation": {
+            "type": "string",
+            "description": "Bounded explanation retained in the native interpretation receipt."
+          },
+          "source_end": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Exclusive byte offset; native code checks UTF-8 boundaries and non-overlap."
+          },
+          "source_start": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Inclusive byte offset in the complete original human message."
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskRequestedTarget",
+                "description": "Required for new work; not an authority token."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Existing same-fleet task, when the item concerns prior work."
+          },
+          "title": {
+            "type": "string",
+            "description": "Compact label; the accepted objective remains the original source text."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskRecoveredItem": {
+        "type": "object",
+        "description": "An accepted item and its already confirmed original reply, if any.",
+        "required": [
+          "binding",
+          "accepted_text",
+          "interpretation"
+        ],
+        "properties": {
+          "accepted_text": {
+            "type": "string",
+            "description": "Exact accepted byte slice."
+          },
+          "binding": {
+            "$ref": "#/components/schemas/TaskItemBinding",
+            "description": "Native current association; no new execution is granted by reading it."
+          },
+          "interpretation": {
+            "type": "string",
+            "description": "Immutable accepted interpretation."
+          },
+          "response_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Confirmed original response; absent means the item still needs an answer."
+          }
+        }
+      },
+      "TaskReport": {
+        "type": "object",
+        "description": "Exact native task state and its independently accounted goal assessment.",
+        "required": [
+          "task",
+          "disposition",
+          "covered_input_sequence",
+          "effect_watermark"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The compatible complete generation protecting the requested handoff."
+          },
+          "covered_input_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Inputs actually incorporated in this run's conversation/file generation.",
+            "minimum": 0
+          },
+          "decision_call_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Recorded native goal call, never a free-form model verdict."
+          },
+          "disposition": {
+            "$ref": "#/components/schemas/TaskDisposition",
+            "description": "Accepted semantic action; native code still verifies prerequisites."
+          },
+          "effect_watermark": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Confirmed effects incorporated locally, independently reconciled on restore.",
+            "minimum": 0
+          },
+          "task": {
+            "$ref": "#/components/schemas/DecisionTaskVersion",
+            "description": "Current task and generation at the last completed action group."
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskRequestedTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "API-only work has no mandatory repository checkout or GitHub grant.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "api_only"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Existing-PR work must name an exact human-assigned same-repository PR.",
+            "required": [
+              "repository",
+              "number",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "existing_pr"
+                ]
+              },
+              "number": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Exact open PR requested by the person.",
+                "minimum": 0
+              },
+              "repository": {
+                "type": "string",
+                "description": "Repository inside both accepted setup and current grant ceiling."
+              }
+            }
+          }
+        ],
+        "description": "Requested target; the daemon resolves its authority and exact remote identity."
+      },
       "TaskResponse": {
         "type": "object",
         "description": "Task detail with immutable success criteria and cumulative progress.",
         "required": [
+          "etag",
           "title",
           "resource_version",
           "setup_revision",
@@ -30595,6 +35254,32 @@
           "context": {
             "$ref": "#/components/schemas/TaskContext",
             "description": "Accepted objective, questions, cursors and remaining limits."
+          },
+          "dependency": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskDependency",
+                "description": "Current native dependency and saved check results; no remote refresh is implied."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "etag": {
+            "type": "string",
+            "description": "Strong version shared with the response header and conditional writes."
+          },
+          "publication": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TaskEffect",
+                "description": "Latest publication receipt; only a confirmed receipt establishes a published head."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "resource_version": {
             "type": "integer",
@@ -30682,6 +35367,123 @@
           }
         }
       },
+      "TaskTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Repository-free work cannot acquire a coding checkout by implication.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "api_only"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Explicitly accepted existing same-repository pull request.",
+            "required": [
+              "repository",
+              "repository_id",
+              "number",
+              "branch",
+              "base",
+              "head",
+              "tree",
+              "url",
+              "workflows",
+              "kind"
+            ],
+            "properties": {
+              "base": {
+                "type": "string",
+                "description": "Accepted base branch."
+              },
+              "branch": {
+                "type": "string",
+                "description": "Writable non-protected branch selected by native admission."
+              },
+              "head": {
+                "type": "string",
+                "description": "Latest native confirmed branch head."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "existing_pr"
+                ]
+              },
+              "number": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Accepted pull request number.",
+                "minimum": 0
+              },
+              "repository": {
+                "type": "string",
+                "description": "Canonical owner/name from GitHub, never a guessed repository."
+              },
+              "repository_id": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Immutable native repository identity.",
+                "minimum": 0
+              },
+              "tree": {
+                "type": "string",
+                "description": "Tree at that head."
+              },
+              "url": {
+                "type": "string",
+                "description": "Confirmed pull request link."
+              },
+              "workflows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TaskWorkflow"
+                },
+                "description": "Owner-reviewed validation identities, never arbitrary workflow names."
+              }
+            }
+          }
+        ],
+        "description": "No repository is required for a repair performed only through APIs."
+      },
+      "TaskTransferBytes": {
+        "type": "object",
+        "description": "Transfer facts, excluding speculative sends and repeated object references.",
+        "required": [
+          "acknowledged",
+          "missing",
+          "reused"
+        ],
+        "properties": {
+          "acknowledged": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unique bytes verified after upload or authenticated download.",
+            "minimum": 0
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Known missing bytes still awaiting acknowledgement; not a total estimate.",
+            "minimum": 0
+          },
+          "reused": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unique bytes already present when native authorization was read.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "TaskUsage": {
         "type": "object",
         "description": "Measured usage retained on the objective, including stopped attempts.",
@@ -30735,6 +35537,31 @@
           }
         },
         "additionalProperties": false
+      },
+      "TaskWorkflow": {
+        "type": "object",
+        "description": "Frozen owner-reviewed validation identity.",
+        "required": [
+          "id",
+          "path",
+          "digest"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "description": "Owner-reviewed exact bytes."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Native GitHub workflow identity.",
+            "minimum": 0
+          },
+          "path": {
+            "type": "string",
+            "description": "Owner-reviewed path."
+          }
+        }
       },
       "TasksResponse": {
         "type": "object",
@@ -31283,6 +36110,32 @@
             "description": "Upward-rounded cumulative runtime cost."
           }
         }
+      },
+      "ValidationWorkflow": {
+        "type": "object",
+        "description": "Exact workflow content reviewed by the owner as validation-only.",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Only a direct YAML file inside GitHub's workflow directory."
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 of the complete reviewed UTF-8 workflow text."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidationWorkflows": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ValidationWorkflow"
+        },
+        "description": "Keep collection bounds alongside element validation, including optional input."
       },
       "VerifySessionRequest": {
         "type": "object",

@@ -167,6 +167,17 @@ jobs:
           tool: cargo-llvm-cov
       - name: Install the toolbox builder and bubblewrap
         run: bash .github/actions/build-toolbox/install-tools.sh bubblewrap
+      # Restored from the cache warm-cache.yml saves on main, or built once and
+      # saved, so most runs never download from snapshot.debian.org. Rebuilding
+      # it on every run is what failed this job. A dispatched qualification run
+      # names its own candidate image below, and that later value wins.
+      - name: Restore or build the toolbox image
+        id: toolbox
+        uses: ./.github/actions/kernel-toolbox
+      - name: Point the lane at that image
+        env:
+          IMAGE: ${{ steps.toolbox.outputs.image }}
+        run: echo "AFR_TOOLBOX_IMAGE=$IMAGE" >> "$GITHUB_ENV"
       # The host the runner playbook prepares: IPv4 forwarding on, and no
       # forward chain that drops by policy (Docker's `FORWARD` chain does, and
       # the runner's probe refuses such a host). Ubuntu's AppArmor denies

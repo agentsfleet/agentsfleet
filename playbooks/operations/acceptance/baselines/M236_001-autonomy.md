@@ -2,6 +2,70 @@
 
 ## Current continuation point
 
+### Active continuation — Nov 05, 2026 (supersedes execution restrictions below)
+
+Kishore explicitly authorized gates after implementation, updating from main before
+gates, pushing existing PR #803, and merging only on green exact-head CI and all
+Greptile threads resolved. Acceptance inability may be reported without blocking
+that conditional merge. No new PR; keep M236 IN_PROGRESS and durable_tasks_v1 false
+until verification. The older no-gates/no-merge handoff below remains historical.
+
+Existing clones and setup were retained. Feature ancestry was verified for
+9d826de4d3b4e449fc1fee17ff5ca173d1c13708,
+6bb180dcd9851ed6952ebcfbcb2acef9e09a8892 and
+6cacc80c8cb28ca3863faa31793697838fd8712b. Companion docs ancestry was verified
+at b535f3aed85d981446f666a701b62c5c7d5b89c5. Main integration includes
+66059667bb8d2b12b9f6fb3a63a65a660789dca7 (#808, with #807/#806 ancestors);
+setup admission SQL comes from main without local edits. Fetch again before gates.
+
+| Area | Implementation and review outcome | Evidence boundary |
+| --- | --- | --- |
+| Chat/CLI presentation | Dedicated local diffs, published-head receipt, active/saved check results; existing steer command only | Source complete; runtime verification pending |
+| Transfer progress | One concrete operation owner deduplicates missing/acknowledged/reused ciphertext bytes; terminal counters survive partial failure | Regression fixtures authored, not yet run |
+| Reconnect | Daemon observation sequence, canonical live frames, bounded saved history, shared CLI stream/poll printers | Ownership race corrected in write SQL; integration fixtures pending execution |
+| Publication/JSON | Private Selection method call replaced with public tool lookup; all CLI live progress suppressed in JSON output | Both initial Greptile P1 source fixes pending verification |
+| Refactoring | Reuse jsdiff9 and Node terminal sanitizer; existing crypto, capability filesystem and native receipt helpers retained | Codex review found no justification for broad trait/generic indirection |
+| Native review | Decision receipts, execution, recovery, publication and authority reviewed; partial download successes now counted before returning error | Source review does not prove runtime behavior |
+| UI design | Existing separate setup/work chat, Save done/Open fleet, inline expanding Current work preserved | Original HTML approval visuals remain unverified |
+| Documentation | Architecture and companion CLI/fleet docs describe evidence semantics | Companion source changes uncommitted until gates |
+
+Current continuation verification (working tree; not exact-head CI):
+
+| Check | Observed result | Follow-up |
+| --- | --- | --- |
+| orly doctor / gate work | Passed; installed rules match, four verification commands declared | Repeat relevant final gates after final source changes |
+| CLI build | Passed | Full CLI coverage remains pending |
+| source rules | 44 rule tests passed; repository scan clean after replacing test SQL file reads with shared production helpers | No gate or suppression edits |
+| app/design-system/CLI lint | All three passed, including TypeScript checks and CLI runtime/constant audits | Repeat after latest fixtures and command-scope correction |
+| Rust formatting | Completed; also formats previously unformatted checkpoint source | Repeat after compile corrections |
+| Rust all-feature workspace check | Passed cargo check --workspace --all-features --all-targets after validation, visibility, borrowing, dependency, fixture and ETag corrections | Compilation only; execution and coverage pending |
+| dependency locks / OpenAPI | CLI and native locks generated; daemon all-feature build passed and --no-banner openapi generated 123 paths | Runtime acceptance pending |
+| directory secret scan | Findings only in generated dependency .rmeta files under rustd/target | Stage-source scan is the commit boundary; no allowlist edits |
+
+App coverage rerun with command-local environment corrections: 477 suites and
+4,676 tests passed; coverage remains below the unchanged 100% floor (lines
+99.41%, branches 98.88%). Added regression fixtures remain pending rerun.
+The first run's 30 failures came from inherited nonexistent environment-file
+pointers and disabled analytics; no user setup files were rewritten.
+
+Command-tree audit found older checkpoint task subcommands still registered.
+They and unused control handlers/arguments were removed: the command tree now
+matches main, and only existing steer receives richer presentation.
+
+Independent standards review found three SQL findings: two statements used a
+volatile clock despite SKIP LOCKED, and retention budgets were SQL literals.
+All were corrected and independently rechecked; no gate was weakened.
+
+Historical evidence, not verification of this branch:
+- Initial head 9d826de: Vercel statuses passed, smoke workflows skipped; no green
+  exact-head CI proof. Greptile 3/5 with two open P1 threads.
+- Main 66059667 dev run 42059734556: acceptance-e2e job127362832634 and
+  acceptance-cli job127362844747 succeeded.
+- Production run 42059935851 job127358457696 failed before scenarios in
+  fixtures/bootstrap.ts:79: getaddrinfo ENOTFOUND api.agentsfleet.net.
+  This is DNS setup evidence, not a tested M236 product defect.
+
+
 ### New cloud-agent handoff — Nov 05, 2026
 
 Kishore requested a committed context save and a prompt for a new cloud session.

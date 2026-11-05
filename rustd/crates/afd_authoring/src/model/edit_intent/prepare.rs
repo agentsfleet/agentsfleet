@@ -48,8 +48,13 @@ impl ModelCalls {
     ) -> Result<Prepared> {
         self.decisions.as_ref().ok_or(ErrorKind::Model)?;
         let unresolved: bool = sqlx::query_scalar(include_str!("sql/paid_unavailable.sql"))
-            .bind(guarded.attempt.id.as_str()).fetch_one(&mut *connection).await.map_err(query(CONTEXT))?;
-        if unresolved { return Err(ErrorKind::Balance.into()); }
+            .bind(guarded.attempt.id.as_str())
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))?;
+        if unresolved {
+            return Err(ErrorKind::Balance.into());
+        }
         let selected = afd_runner::decision_assignment_on(connection, runner)
             .await?
             .ok_or(ErrorKind::Model)?;
@@ -85,9 +90,16 @@ impl ModelCalls {
         )
         .await?;
         book.quote(guarded.now, 0).ok_or(ErrorKind::Model)?;
-        let reserved_nanos = book.decision_reservation(guarded.now, profile.input_max_bytes,
-            u32::try_from(afd_wire::decision::REPLY_MAX_BYTES).map_err(|_overflow| ErrorKind::Balance)?)
-            .ok_or(ErrorKind::Balance)?.as_i64().max(20_000_000);
+        let reserved_nanos = book
+            .decision_reservation(
+                guarded.now,
+                profile.input_max_bytes,
+                u32::try_from(afd_wire::decision::REPLY_MAX_BYTES)
+                    .map_err(|_overflow| ErrorKind::Balance)?,
+            )
+            .ok_or(ErrorKind::Balance)?
+            .as_i64()
+            .max(20_000_000);
         Ok(Prepared {
             request,
             attempt: attempt.clone(),

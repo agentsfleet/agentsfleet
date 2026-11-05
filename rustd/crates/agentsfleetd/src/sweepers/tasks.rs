@@ -1,8 +1,8 @@
 //! Native due work stays supervised and performs no autonomous queued writes.
 
-use std::time::Duration;
-use afd_fleet::task::{TaskLifecycle as _, Tasks};
 use crate::supervisor::Supervisor;
+use afd_fleet::task::{TaskLifecycle as _, Tasks};
+use std::time::Duration;
 
 const INTERVAL: Duration = Duration::from_secs(10);
 const PASS_DEADLINE: Duration = Duration::from_secs(30);

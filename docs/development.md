@@ -335,6 +335,15 @@ follows is the repo-workflow half that page does not carry.
   lifecycle). CI runs the same suite against the dev deployment on PR and prod
   post-deploy.
 
+- **Soak = the long chat runs**, part of the `full` ladder and runnable alone.
+  `tests/e2e/acceptance/fleet-soak.spec.ts` sends 181 real-model messages to one
+  fleet through four saved setups.
+  - `make acceptance-e2e ACCEPTANCE_SCOPE=soak-mini` runs it on two fleets at
+    once, sized for the shared-CPU dev API; `ten-fleets` runs ten.
+  - A failed turn is recorded with its screenshot and is never resent.
+  - `SOAK_CHECKPOINT_DIR` keeps a checkpoint per turn, `SOAK_RESUME` continues
+    from one, and `SOAK_KEEP=1` keeps passing fleets for review.
+
 - **Runner execute-loop without a language model:** `afr_agent`'s scripted
   engine (`rustd/crates/afr_agent/src/scripted.rs`) runs a fixed turn of tool
   calls, streamed text and memory items. So a sandbox or wire fault cannot hide

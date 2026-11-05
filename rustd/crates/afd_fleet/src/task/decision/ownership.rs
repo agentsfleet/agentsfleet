@@ -121,7 +121,8 @@ pub(super) async fn execution(
             if task.context.generation != expected.generation
                 || current.task_generation != i64::try_from(task.context.generation).ok()
                 || current.task_stop_generation != i64::try_from(task.context.stop_generation).ok()
-                || task.context.state != afd_wire::task::TaskState::Running {
+                || task.context.state != afd_wire::task::TaskState::Running
+            {
                 return Err(TaskRefusal::StaleState.into());
             }
             Ok(Some(Execution {

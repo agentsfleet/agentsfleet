@@ -167,8 +167,14 @@ impl Grants {
         self.land_for(workspace, provider, grant, now, None).await
     }
 
-    pub(crate) async fn land_for(&self, workspace: &Uuid7, provider: Provider, grant: &Grant,
-        now: Timestamp, subject: Option<&str>) -> Result<()> {
+    pub(crate) async fn land_for(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+        grant: &Grant,
+        now: Timestamp,
+        subject: Option<&str>,
+    ) -> Result<()> {
         let name = SecretName::parse(provider.grant_key())?;
         let body = handle_body(grant)?;
 
@@ -209,11 +215,20 @@ impl Grants {
             )
             .await?;
             if provider == Provider::Slack {
-                if let (Some(person), Some(subject)) = (grant.external_person_id.as_deref(), subject) {
-                    let linked = sqlx::query(include_str!("sql/link_person.sql"))
-                        .bind(workspace.as_str()).bind(&install.external_account_id).bind(person).bind(subject)
-                        .execute(&mut *transaction).await.map_err(query("link verified Slack person to current workspace member"))?;
-                    if linked.rows_affected() != 1 { return Err(crate::error::exchange_unreadable()); }
+                if let (Some(person), Some(subject)) =
+                    (grant.external_person_id.as_deref(), subject)
+                {
+                    let linked = link_person(
+                        &mut transaction,
+                        workspace,
+                        &install.external_account_id,
+                        person,
+                        subject,
+                    )
+                    .await?;
+                    if linked != 1 {
+                        return Err(crate::error::exchange_unreadable());
+                    }
                 }
             }
         }
@@ -319,3 +334,28 @@ impl Grants {
 
 #[cfg(test)]
 mod tests;
+
+/// Link a verified provider person only while their workspace membership is current.
+///
+/// # Errors
+/// Reports a database failure; an ineligible person returns zero affected rows.
+#[doc(hidden)]
+pub async fn link_person(
+    connection: &mut sqlx::PgConnection,
+    workspace: &Uuid7,
+    team: &str,
+    person: &str,
+    subject: &str,
+) -> crate::error::Result<u64> {
+    sqlx::query(include_str!("sql/link_person.sql"))
+        .bind(workspace.as_str())
+        .bind(team)
+        .bind(person)
+        .bind(subject)
+        .execute(connection)
+        .await
+        .map(|result| result.rows_affected())
+        .map_err(query(
+            "link verified Slack person to current workspace member",
+        ))
+}

@@ -144,6 +144,7 @@ pub const LEASE_TASK_CHECKPOINT_OBJECTS: &str = concatcp!(LEASE_TASK_CHECKPOINT,
 /// Immutable ciphertext descriptors and conditional upload authorizations.
 pub const LEASE_TASK_CHECKPOINT_UPLOADS: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/uploads");
 /// Restore-pin bootstrap and bounded transfer refresh.
-pub const LEASE_TASK_CHECKPOINT_AUTHORIZATIONS: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/authorizations");
+pub const LEASE_TASK_CHECKPOINT_AUTHORIZATIONS: &str =
+    concatcp!(LEASE_TASK_CHECKPOINT, "/authorizations");
 /// One native reader/writer pin renewal.
 pub const LEASE_TASK_CHECKPOINT_PIN: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/pins/{pin_id}");

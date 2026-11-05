@@ -9,7 +9,13 @@ pub(crate) struct ReadPermit {
 }
 
 impl ReadPermit {
-    pub(crate) const fn scope(&self) -> &MintScope { &self.scope }
-    pub(crate) const fn installation(&self) -> u64 { self.installation }
-    pub(crate) const fn deadline(&self) -> jiff::Timestamp { self.deadline }
+    pub(crate) const fn scope(&self) -> &MintScope {
+        &self.scope
+    }
+    pub(crate) const fn installation(&self) -> u64 {
+        self.installation
+    }
+    pub(crate) const fn deadline(&self) -> jiff::Timestamp {
+        self.deadline
+    }
 }

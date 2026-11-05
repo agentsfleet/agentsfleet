@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FLEET, FLEET_ID, DRAFT_ID, CANDIDATE_ID } from "./helpers/draft-fixtures";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { CONTINUITY_FLEET_PREFIX } from "./e2e/acceptance/fixtures/continuity-scenario";
+import { SOAK_FLEET_PREFIX } from "./e2e/acceptance/fixtures/soak-scenario";
 
 const DEV_API_URL = "https://api-dev.agentsfleet.net";
 const PROD_API_URL = "https://api.agentsfleet.net";
@@ -71,9 +71,9 @@ afterEach(() => {
 });
 
 describe("sweepLeakedFixtureFleets", () => {
-  it("preserves continuity evidence while removing unrelated leaked fleets", async () => {
+  it("preserves soak evidence while removing unrelated leaked fleets", async () => {
     listWorkspaces.mockResolvedValue([{id: "ws-1", name: "fixture-workspace"}]);
-    listFleets.mockResolvedValue(fleets(`${CONTINUITY_FLEET_PREFIX}single-preserved`, UNLISTED_NAMES[0]));
+    listFleets.mockResolvedValue(fleets(`${SOAK_FLEET_PREFIX}single-preserved`, UNLISTED_NAMES[0]));
     const {sweepLeakedFixtureFleets} = await loadSweep();
 
     const counts = await sweepLeakedFixtureFleets();

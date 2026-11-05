@@ -1,4 +1,5 @@
 import { Effect, Exit, Layer, Redacted } from "effect";
+import { readSteeredWork } from "./steer-work.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -139,6 +140,7 @@ const steerTurnWithTail = (
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
+    yield* readSteeredWork(wsId, fleetId, post.event_id, token, signal);
     yield* renderOutcome(outcome, post.event_id, fleetId, wsId, token, signal);
   });
 
@@ -157,7 +159,7 @@ const resolveSteerOutcome = (
   Effect.gen(function* () {
     if (readiness === TAIL_TIMED_OUT) {
       yield* Effect.promise(() => tail.close());
-      return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal);
+      return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal, tail.presentation);
     }
     tail.deliverEventId(eventId);
     const streamOutcome = yield* Effect.promise(() => tail.awaitOutcome());
@@ -165,7 +167,7 @@ const resolveSteerOutcome = (
       return streamOutcome;
     }
     if (signal?.aborted) return yield* failSteerInterrupted();
-    return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal);
+    return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal, tail.presentation);
   });
 
 const renderOutcome = (

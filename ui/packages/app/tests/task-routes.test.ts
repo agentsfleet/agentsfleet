@@ -5,7 +5,7 @@ const {getToken} = vi.hoisted(() => ({getToken: vi.fn()}));
 vi.mock("@clerk/nextjs/server", () => ({auth: async () => ({getToken})}));
 
 import { GET as list } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/route";
-import { GET as one } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/[taskId]/route";
+import { GET as one, PATCH as change } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/[taskId]/route";
 
 beforeEach(() => {getToken.mockReset(); getToken.mockResolvedValue("fixture-bearer");});
 afterEach(() => vi.unstubAllGlobals());
@@ -32,4 +32,18 @@ it("proxies scoped task pages and conditional details with server-only identity 
   expect([same.status, same.headers.get("etag"), same.headers.get("cache-control"), await same.text()]).toEqual([304, tag, "no-store", ""]);
   expect(network.mock.calls[2]?.[1]?.headers).toMatchObject({"If-None-Match": tag, Authorization: "Bearer fixture-bearer"});
   expect(network).toHaveBeenCalledTimes(3);
+});
+
+
+it("forwards task mutations with exact concurrency preconditions through the authenticated whitelist", async () => {
+  const tag = `"${"a".repeat(64)}"`;
+  const network = vi.fn<typeof fetch>().mockResolvedValue(Response.json(detail(), {headers: {etag: tag}}));
+  vi.stubGlobal("fetch", network);
+  const scope = {workspaceId: TASK_IDS[0], fleetId: TASK_IDS[1], taskId: TASK_IDS[2]};
+  const response = await change(new Request("https://dashboard.test/live", {method: "PATCH",
+    headers: {"content-type": "application/json", "if-match": tag}, body: JSON.stringify({state: "paused", expected_generation: 1})}), {params: Promise.resolve(scope)});
+  expect(response.status).toBe(200);
+  expect(network.mock.calls[0]?.[0]).toContain(`/fleets/${TASK_IDS[1]}/tasks/${TASK_IDS[2]}`);
+  expect(network.mock.calls[0]?.[1]?.method).toBe("PATCH");
+  expect(new Headers(network.mock.calls[0]?.[1]?.headers).get("if-match")).toBe(tag);
 });

@@ -1,6 +1,6 @@
 SELECT c.id::text, c.task_id::text, c.workspace_id::text, c.fleet_id::text,
-       c.generation, c.task_generation, c.accepted_revision_id::text, c.stop_generation,
-       r.request_digest, c.mode, c.repository, c.base_id::text, c.commit_oid, c.format_version,
+       c.generation, c.task_generation, c.stop_generation,
+       r.request_digest, c.mode, c.repository, c.base_id::text, c.format_version,
        c.toolbox_digest, c.page_count, c.page_ids::text[], c.upload_budget_bytes,
        c.uploaded_bytes, c.logical_bytes, c.entry_count, c.manifest_root, c.history_digest,
        c.covered_input_sequence, c.effect_watermark, c.owner_lease_id::text, c.owner_fence,

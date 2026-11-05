@@ -9,7 +9,7 @@ afd_core::error_lifts!(Error, ErrorKind:
     afr_tools::Error => Tools,
     afr_secrets::Error => Scrub,
     serde_json::Error => TaskJson,
-    afd_crypto::Error => TaskCrypto,
+    afd_crypto::error::Error => TaskCrypto,
     afd_context::Error => TaskContext,
 );
 

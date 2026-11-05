@@ -121,8 +121,11 @@ impl RunClock {
                     clocked.busy += Duration::from_millis(ms);
                 }
             }
-            ActivityFrame::ToolCallProgress(_) | ActivityFrame::ContextProgress(_) | ActivityFrame::TaskDecisionStarted(_)
-                | ActivityFrame::TaskDecisionCompleted(_) | ActivityFrame::TaskTransferProgress(_) => {}
+            ActivityFrame::ToolCallProgress(_)
+            | ActivityFrame::ContextProgress(_)
+            | ActivityFrame::TaskDecisionStarted(_)
+            | ActivityFrame::TaskDecisionCompleted(_)
+            | ActivityFrame::TaskTransferProgress(_) => {}
         }
     }
 

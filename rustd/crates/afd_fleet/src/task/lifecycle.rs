@@ -1,10 +1,12 @@
 //! Behavior of the existing native task owner, shared by person and runner APIs.
 
-use std::pin::Pin;
-use afd_core::id::Uuid7;
+use super::{
+    DecisionMaintenance, DecisionMaintenanceCursor, PreparedPlan, ReservedDecision, TaskAdoption,
+    TaskAfter, TaskBindings, TaskControl, TaskLease, TaskPage, TaskScope, TaskSnapshot,
+};
 use crate::Result;
-use super::{DecisionMaintenance, DecisionMaintenanceCursor, PreparedPlan, ReservedDecision,
-    TaskAdoption, TaskAfter, TaskBindings, TaskControl, TaskLease, TaskPage, TaskScope, TaskSnapshot};
+use afd_core::id::Uuid7;
+use std::pin::Pin;
 
 /// Object-safe native operation using the owning crate's error shell.
 pub type TaskFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -14,55 +16,118 @@ pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
     /// Observe due native dependencies with bounded concurrency, without an agent lease.
     fn maintain_waits(&self) -> TaskFuture<'_, super::WaitMaintenance>;
     /// Retain verified provider evidence; it can only request an independent native read.
-    fn record_github_completion<'a>(&'a self, completion: &'a super::VerifiedCompletion) -> TaskFuture<'a, u64>;
+    fn record_github_completion<'a>(
+        &'a self,
+        completion: &'a super::VerifiedCompletion,
+    ) -> TaskFuture<'a, u64>;
     /// Collect private generations and acknowledge bounded remote storage purges.
-    fn maintain_checkpoints<'a>(&'a self, cursor: &'a mut super::CheckpointMaintenanceCursor) -> TaskFuture<'a, super::CheckpointMaintenance>;
+    fn maintain_checkpoints<'a>(
+        &'a self,
+        cursor: &'a mut super::CheckpointMaintenanceCursor,
+    ) -> TaskFuture<'a, super::CheckpointMaintenance>;
     /// Allocate a fenced capture plan with immutable native page identities.
-    fn plan_checkpoint<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::CheckpointPlanInput>)
-        -> TaskFuture<'a, afd_wire::task::CheckpointPlan>;
+    fn plan_checkpoint<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        input: &'a garde::Valid<afd_wire::task::CheckpointPlanInput>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointPlan>;
     /// Freeze one complete bounded manifest page.
-    fn write_checkpoint_page<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, page: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointPageInput>) -> TaskFuture<'a, afd_wire::task::CheckpointPage>;
+    fn write_checkpoint_page<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        page: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointPageInput>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointPage>;
     /// Read one base or overlay page under a current restore pin.
-    fn checkpoint_page<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, page: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>) -> TaskFuture<'a, afd_wire::task::CheckpointPage>;
+    fn checkpoint_page<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        page: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointPage>;
     /// Register at most one bounded batch with one native upload owner per identity.
-    fn register_checkpoint_objects<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointObjectsInput>) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage>;
+    fn register_checkpoint_objects<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointObjectsInput>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage>;
     /// Freeze exact ciphertext descriptors before authorizing conditional uploads.
-    fn checkpoint_uploads<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointUploadsInput>) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage>;
+    fn checkpoint_uploads<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointUploadsInput>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage>;
     /// Acquire a restore pin or refresh exact registered transfer material.
-    fn checkpoint_authorizations<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointAuthorizationInput>) -> TaskFuture<'a, afd_wire::task::CheckpointAuthorizations>;
+    fn checkpoint_authorizations<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointAuthorizationInput>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointAuthorizations>;
     /// Page restore objects and keys without loading the complete manifest.
-    fn checkpoint_objects<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage>;
+    fn checkpoint_objects<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage>;
     /// Renew one native pin without extending the capture/restore deadline.
-    fn renew_checkpoint_pin<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, pin: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointPinInput>) -> TaskFuture<'a, afd_wire::task::CheckpointPin>;
+    fn renew_checkpoint_pin<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        pin: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointPinInput>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointPin>;
     /// Publish the saved generation only after native complete-state verification.
-    fn commit_checkpoint<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointCommitInput>) -> TaskFuture<'a, afd_wire::task::CheckpointPlan>;
+    fn commit_checkpoint<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        checkpoint: &'a Uuid7,
+        input: &'a garde::Valid<afd_wire::task::CheckpointCommitInput>,
+    ) -> TaskFuture<'a, afd_wire::task::CheckpointPlan>;
     /// Reconcile issued effects using bounded expiring read-only custody, including after deletion.
     fn maintain_effects(&self) -> TaskFuture<'_, super::EffectMaintenance>;
     /// Acknowledge accepted input application or its own original reply obligation.
-    fn accept_input<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskInputReceiptInput>)
-        -> TaskFuture<'a, afd_wire::task::TaskInputReceiptResult>;
+    fn accept_input<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        input: &'a garde::Valid<afd_wire::task::TaskInputReceiptInput>,
+    ) -> TaskFuture<'a, afd_wire::task::TaskInputReceiptResult>;
     /// Accept complete native routing/association proofs through the existing bind path.
-    fn interpret<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskBindingsInput>)
-        -> TaskFuture<'a, afd_wire::task::TaskBindingsResponse<'static>>;
+    fn interpret<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        input: &'a garde::Valid<afd_wire::task::TaskBindingsInput>,
+    ) -> TaskFuture<'a, afd_wire::task::TaskBindingsResponse<'static>>;
     /// Persist and issue one exact-head publication, or return its immutable replay.
-    fn publish_effect<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskEffectInput>)
-        -> TaskFuture<'a, (afd_wire::task::TaskEffect, bool)>;
+    fn publish_effect<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        input: &'a garde::Valid<afd_wire::task::TaskEffectInput>,
+    ) -> TaskFuture<'a, (afd_wire::task::TaskEffect, bool)>;
     /// Read and reconcile an issued publication without repeating its mutation.
-    fn effect<'a>(&'a self, lease: TaskLease<'a>, id: &'a Uuid7) -> TaskFuture<'a, afd_wire::task::TaskEffect>;
+    fn effect<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        id: &'a Uuid7,
+    ) -> TaskFuture<'a, afd_wire::task::TaskEffect>;
     /// Recover every effect following a saved checkpoint watermark.
-    fn effects<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskEffectsQuery>)
-        -> TaskFuture<'a, afd_wire::task::TaskEffectsPage>;
+    fn effects<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        input: &'a garde::Valid<afd_wire::task::TaskEffectsQuery>,
+    ) -> TaskFuture<'a, afd_wire::task::TaskEffectsPage>;
     /// Read complete pending human input without consuming or reordering it.
-    fn inputs<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskInputsQuery>)
-        -> TaskFuture<'a, afd_wire::task::TaskInputsResponse<'static>>;
+    fn inputs<'a>(
+        &'a self,
+        lease: TaskLease<'a>,
+        input: &'a garde::Valid<afd_wire::task::TaskInputsQuery>,
+    ) -> TaskFuture<'a, afd_wire::task::TaskInputsResponse<'static>>;
 
     /// Adopt reviewed goal criteria without changing target authority or cumulative limits.
     fn adopt_goal<'a>(

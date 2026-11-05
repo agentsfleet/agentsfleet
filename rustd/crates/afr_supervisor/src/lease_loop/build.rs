@@ -149,15 +149,22 @@ impl LeaseRun<'_> {
         let (sandbox, held) = self.acquire(build).await?;
         let landed = match build.plan {
             // A held sandbox keeps the repositories its last lease left.
-            Some(plan) if !held && !build.prepared_task.and_then(|prepared| prepared.inputs.current_task.as_ref())
-                .is_some_and(|task| task.checkpoint_id.is_some()) => {
+            Some(plan)
+                if !held
+                    && !build
+                        .prepared_task
+                        .and_then(|prepared| prepared.inputs.current_task.as_ref())
+                        .is_some_and(|task| task.checkpoint_id.is_some()) =>
+            {
                 let _checking_out = self.timeline.start(Segment::Checkout);
                 self.check_out(sandbox.as_ref(), plan, build.stop).await
             }
             _nothing_to_land => Ok(()),
         };
         let landed = match landed {
-            Ok(()) => self.prepare_recovery(sandbox.as_ref(), build).await
+            Ok(()) => self
+                .prepare_recovery(sandbox.as_ref(), build)
+                .await
                 .map_err(|failure| Ended::Failed(Unavailable::Prepare, failure.logged())),
             Err(failure) => Err(failure),
         };
@@ -184,9 +191,13 @@ impl LeaseRun<'_> {
         let held = if build.prepared_task.is_some() {
             // Durable state has one restore owner; an unrelated warm workspace
             // cannot silently replace the native checkpoint generation.
-            self.lessee.holds.release(self.ids.fleet.clone(), Release::Superseded);
+            self.lessee
+                .holds
+                .release(self.ids.fleet.clone(), Release::Superseded);
             None
-        } else { self.revive(build.key, build.bound).await };
+        } else {
+            self.revive(build.key, build.bound).await
+        };
         mark_reused(held.is_some());
         match held {
             Some(sandbox) => Ok((sandbox, true)),

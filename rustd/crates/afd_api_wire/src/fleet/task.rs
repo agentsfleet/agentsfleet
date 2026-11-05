@@ -48,6 +48,10 @@ pub struct TaskSummary<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskResponse<'a> {
+    /// Current native dependency and saved check results; no remote refresh is implied.
+    pub dependency: Option<afd_wire::task::TaskDependency>,
+    /// Latest publication receipt; only a confirmed receipt establishes a published head.
+    pub publication: Option<afd_wire::task::TaskEffect>,
     /// Strong version shared with the response header and conditional writes.
     #[serde(borrow)]
     pub etag: Cow<'a, str>,

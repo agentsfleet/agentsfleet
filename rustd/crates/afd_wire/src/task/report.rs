@@ -1,8 +1,8 @@
 //! A task outcome is settled through the existing lease report.
 
+use super::DecisionTaskVersion;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use super::DecisionTaskVersion;
 
 /// Native goal disposition requested at a completed safe boundary.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -25,17 +25,27 @@ pub enum TaskDisposition {
 #[serde(deny_unknown_fields)]
 pub struct TaskReport {
     /// Current task and generation at the last completed action group.
-    #[garde(dive)] pub task: DecisionTaskVersion,
+    #[garde(dive)]
+    pub task: DecisionTaskVersion,
     /// Accepted semantic action; native code still verifies prerequisites.
-    #[garde(skip)] pub disposition: TaskDisposition,
+    #[garde(skip)]
+    pub disposition: TaskDisposition,
     /// Recorded native goal call, never a free-form model verdict.
-    #[garde(inner(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")))]
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
     pub decision_call_id: Option<String>,
     /// The compatible complete generation protecting the requested handoff.
-    #[garde(inner(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")))]
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
     pub checkpoint_id: Option<String>,
     /// Inputs actually incorporated in this run's conversation/file generation.
-    #[garde(skip)] pub covered_input_sequence: u64,
+    #[garde(skip)]
+    pub covered_input_sequence: u64,
     /// Confirmed effects incorporated locally, independently reconciled on restore.
-    #[garde(skip)] pub effect_watermark: u64,
+    #[garde(skip)]
+    pub effect_watermark: u64,
 }

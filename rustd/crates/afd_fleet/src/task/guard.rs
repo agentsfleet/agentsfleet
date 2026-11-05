@@ -103,13 +103,29 @@ pub(super) async fn scope(connection: &mut PgConnection, scope: &TaskScope) -> R
     Ok(())
 }
 
-pub(super) async fn context(connection: &mut PgConnection, current: &LeaseRow) -> Result<Option<afd_wire::task::TaskContext<'static>>> {
-    let Some(task) = &current.task_id else { return Ok(None); };
-    let scope = TaskScope { fleet_id: id(&current.fleet_id, "fleet_id")?, workspace_id: id(&current.workspace_id, "workspace_id")? };
-    Ok(Some(super::read::on(connection, &scope, &id(task, "task_id")?).await?.context))
+pub(super) async fn context(
+    connection: &mut PgConnection,
+    current: &LeaseRow,
+) -> Result<Option<afd_wire::task::TaskContext<'static>>> {
+    let Some(task) = &current.task_id else {
+        return Ok(None);
+    };
+    let scope = TaskScope {
+        fleet_id: id(&current.fleet_id, "fleet_id")?,
+        workspace_id: id(&current.workspace_id, "workspace_id")?,
+    };
+    Ok(Some(
+        super::read::on(connection, &scope, &id(task, "task_id")?)
+            .await?
+            .context,
+    ))
 }
 
-pub(super) async fn lock_scope(connection: &mut PgConnection, fleet: &str, workspace: &str) -> Result<()> {
+pub(super) async fn lock_scope(
+    connection: &mut PgConnection,
+    fleet: &str,
+    workspace: &str,
+) -> Result<()> {
     sqlx::query_scalar::<_, String>(sql::LOCK_SCOPE)
         .bind(fleet)
         .bind(workspace)

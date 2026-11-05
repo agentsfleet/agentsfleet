@@ -56,7 +56,13 @@ async fn capacity(case: &Case) {
         "no partial task, item or continuation survives"
     );
 
-    let queued = &first.items.get(1).expect("a queued accepted task").task_id;
+    let queued = first
+        .items
+        .get(1)
+        .expect("a queued accepted task")
+        .task_id
+        .as_ref()
+        .expect("accepted new-work item owns a task");
     let queued_snapshot = tasks.read(scope, queued).await.expect("queued goal");
     tasks
         .control(

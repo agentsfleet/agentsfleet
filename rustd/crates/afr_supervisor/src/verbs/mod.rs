@@ -48,9 +48,13 @@ impl<'a> FencedVerbs<'a> {
 
 #[async_trait::async_trait]
 impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
-    async fn task_decision(&self, input: afd_wire::task::DecisionReservationInput)
-        -> Result<afr_tools::verbs::DecisionEvaluation, Unanswered> {
-        self.evaluate(input).await.map_err(|failure| unanswered(&failure))
+    async fn task_decision(
+        &self,
+        input: afd_wire::task::DecisionReservationInput,
+    ) -> Result<afr_tools::verbs::DecisionEvaluation, Unanswered> {
+        self.evaluate(input)
+            .await
+            .map_err(|failure| unanswered(&failure))
     }
 
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered> {
@@ -72,39 +76,67 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_inputs(&self, mut query: afd_wire::task::TaskInputsQuery)
-        -> Result<afd_wire::task::TaskInputsResponse<'static>, Unanswered> {
+    async fn task_inputs(
+        &self,
+        mut query: afd_wire::task::TaskInputsQuery,
+    ) -> Result<afd_wire::task::TaskInputsResponse<'static>, Unanswered> {
         query.fencing_token = self.fencing_token;
-        self.plane.task_inputs(self.lease_id, &query).await.map_err(|failure| unanswered(&failure))
+        self.plane
+            .task_inputs(self.lease_id, &query)
+            .await
+            .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_bindings(&self, mut input: afd_wire::task::TaskBindingsInput)
-        -> Result<afd_wire::task::TaskBindingsResponse<'static>, Unanswered> {
+    async fn task_bindings(
+        &self,
+        mut input: afd_wire::task::TaskBindingsInput,
+    ) -> Result<afd_wire::task::TaskBindingsResponse<'static>, Unanswered> {
         input.fencing_token = self.fencing_token;
-        self.plane.task_bindings(self.lease_id, &input).await.map_err(|failure| unanswered(&failure))
+        self.plane
+            .task_bindings(self.lease_id, &input)
+            .await
+            .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_input_receipt(&self, mut input: afd_wire::task::TaskInputReceiptInput)
-        -> Result<afd_wire::task::TaskInputReceiptResult, Unanswered> {
+    async fn task_input_receipt(
+        &self,
+        mut input: afd_wire::task::TaskInputReceiptInput,
+    ) -> Result<afd_wire::task::TaskInputReceiptResult, Unanswered> {
         input.fencing_token = self.fencing_token;
-        self.plane.task_input_receipt(self.lease_id, &input).await.map_err(|failure| unanswered(&failure))
+        self.plane
+            .task_input_receipt(self.lease_id, &input)
+            .await
+            .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_publish(&self, mut input: afd_wire::task::TaskEffectInput)
-        -> Result<afd_wire::task::TaskEffect, Unanswered> {
+    async fn task_publish(
+        &self,
+        mut input: afd_wire::task::TaskEffectInput,
+    ) -> Result<afd_wire::task::TaskEffect, Unanswered> {
         input.fencing_token = self.fencing_token;
-        self.plane.task_publish(self.lease_id, &input).await.map_err(|failure| unanswered(&failure))
+        self.plane
+            .task_publish(self.lease_id, &input)
+            .await
+            .map_err(|failure| unanswered(&failure))
     }
 
     async fn task_effect(&self, effect_id: &str) -> Result<afd_wire::task::TaskEffect, Unanswered> {
         let id = Uuid7::parse(effect_id).map_err(|_| Unanswered::Refused(None))?;
-        self.plane.task_effect(self.lease_id, &id, self.fencing_token).await.map_err(|failure| unanswered(&failure))
+        self.plane
+            .task_effect(self.lease_id, &id, self.fencing_token)
+            .await
+            .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_effects(&self, mut query: afd_wire::task::TaskEffectsQuery)
-        -> Result<afd_wire::task::TaskEffectsPage, Unanswered> {
+    async fn task_effects(
+        &self,
+        mut query: afd_wire::task::TaskEffectsQuery,
+    ) -> Result<afd_wire::task::TaskEffectsPage, Unanswered> {
         query.fencing_token = self.fencing_token;
-        self.plane.task_effects(self.lease_id, &query).await.map_err(|failure| unanswered(&failure))
+        self.plane
+            .task_effects(self.lease_id, &query)
+            .await
+            .map_err(|failure| unanswered(&failure))
     }
 }
 

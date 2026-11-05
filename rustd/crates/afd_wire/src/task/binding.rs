@@ -7,14 +7,33 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TaskInputAction { Conversation, Status, Refresh, Steer, NewWork, Clarify }
+pub enum TaskInputAction {
+    /// Respond conversationally without creating or changing an objective.
+    Conversation,
+    /// Explain the recorded state of an existing objective.
+    Status,
+    /// Request a fresh assessment of an existing objective.
+    Refresh,
+    /// Apply new human guidance to an existing objective.
+    Steer,
+    /// Propose a new objective under the accepted setup.
+    NewWork,
+    /// Ask for information needed to resolve the human request.
+    Clarify,
+}
 
 impl TaskInputAction {
     /// Stable reviewed option identity used in decision questions and receipts.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
-        match self { Self::Conversation => "conversation", Self::Status => "status", Self::Refresh => "refresh",
-            Self::Steer => "steer", Self::NewWork => "new_work", Self::Clarify => "clarify" }
+        match self {
+            Self::Conversation => "conversation",
+            Self::Status => "status",
+            Self::Refresh => "refresh",
+            Self::Steer => "steer",
+            Self::NewWork => "new_work",
+            Self::Clarify => "clarify",
+        }
     }
 }
 
@@ -28,7 +47,10 @@ pub enum TaskRequestedTarget {
     /// Existing-PR work must name an exact human-assigned same-repository PR.
     ExistingPr {
         /// Repository inside both accepted setup and current grant ceiling.
-        #[garde(length(bytes, min = 3, max = 255), pattern(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))]
+        #[garde(
+            length(bytes, min = 3, max = 255),
+            pattern(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+        )]
         repository: String,
         /// Exact open PR requested by the person.
         #[garde(range(min = 1))]
@@ -105,8 +127,14 @@ pub struct TaskBindingsInput {
 impl TaskBindingsInput {
     /// Stable meaning excludes call IDs and lease fences, which grant no replay authority.
     pub fn interpretation(&self) -> impl Serialize + '_ {
-        (&self.source_admission_id, &self.accepted_revision_id,
-            self.items.iter().map(|item| &item.proposed).collect::<Vec<_>>())
+        (
+            &self.source_admission_id,
+            &self.accepted_revision_id,
+            self.items
+                .iter()
+                .map(|item| &item.proposed)
+                .collect::<Vec<_>>(),
+        )
     }
 }
 

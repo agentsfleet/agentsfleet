@@ -30,10 +30,16 @@ impl Harness<'_, '_> {
             ending = Ending::Answered(self.combined_task_answer(text));
         }
         if let Ending::Answered(text) = &ending {
-            self.messages.push(afr_providers::Message::Assistant { text: self.shared.scrub.text(text).into_owned(),
-                calls: Vec::new(), replay: afr_providers::Replay::default() });
+            self.messages.push(afr_providers::Message::Assistant {
+                text: self.shared.scrub.text(text).into_owned(),
+                calls: Vec::new(),
+                replay: afr_providers::Replay::default(),
+            });
         }
-        let recovery_task = self.task.as_ref().filter(|task| task.allow_actions)
+        let recovery_task = self
+            .task
+            .as_ref()
+            .filter(|task| task.allow_actions)
             .and_then(|task| task.inputs.current_task.clone());
         let recovery = recovery_task.and_then(|task| match crate::TaskRecovery::capture(task, self.shared.model, &self.shared.payload.policy.provider, std::mem::take(&mut self.messages)) {
                 Ok(recovery) => Some(recovery),

@@ -103,7 +103,11 @@ const GRANTS: [(&str, &str, &[Verb]); 79] = [
     ("fleet.task_checkpoint_pages", "api_runtime", READ_WRITE),
     ("fleet.task_base_pages", "api_runtime", READ_WRITE),
     ("fleet.task_storage_purges", "api_runtime", READ_WRITE),
-    ("fleet.task_checkpoint_operations", "api_runtime", APPEND_ONLY),
+    (
+        "fleet.task_checkpoint_operations",
+        "api_runtime",
+        APPEND_ONLY,
+    ),
     ("fleet.task_waits", "api_runtime", READ_WRITE),
     ("fleet.task_completions", "api_runtime", WRITE_ONCE),
     ("fleet.task_completion_fanout", "api_runtime", READ_WRITE),

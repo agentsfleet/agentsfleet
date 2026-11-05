@@ -143,6 +143,12 @@ pub struct TaskBinding {
 /// A native workspace read, including the version used by public `ETags`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskSnapshot {
+    /// The current native wait's saved exact-head observations.
+    pub dependency: Option<afd_wire::task::TaskDependency>,
+    pub(super) dependency_digest: Option<String>,
+    /// Latest native publication attempt, including an unconfirmed outcome.
+    pub publication: Option<afd_wire::task::TaskEffect>,
+    pub(super) publication_digest: Option<String>,
     /// Native state and cumulative usage.
     pub context: TaskContext<'static>,
     /// User-facing compact name.
@@ -160,6 +166,8 @@ impl TaskSnapshot {
         afd_core::etag::compute(&[
             Some(self.context.task_id.as_bytes()),
             Some(&self.resource_version.to_be_bytes()),
+            self.dependency_digest.as_deref().map(str::as_bytes),
+            self.publication_digest.as_deref().map(str::as_bytes),
         ])
     }
 }

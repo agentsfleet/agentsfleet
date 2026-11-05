@@ -16,6 +16,19 @@
 **Provenance:** agent-drafted from Indy's decisions; historical scenario reviews plus a fresh-context Astra design review and verified correction pass
 **Canonical architecture:** `docs/architecture/scenarios/durable-repair.md` owns the combined outcome; topic pages retain their existing mechanisms
 **Additional authorized work:** [Runner deadline correction](M236_002_P1_INFRA_OBS_RUNNER_ENDING_DEADLINE.md), [schedule activity](M236_003_P1_API_DOCS_OBS_UI_FLEET_SCHEDULE_ACTIVITY.md) and the [pending signal audit](../pending/M240_001_P1_INFRA_OBS_EXECUTOR_SIGNAL_ISOLATION_AUDIT.md) stay in PR #803, per Indy's “no new PR”.
+## Nov 05 continuation implementation
+
+The remaining presentation and byte-progress source is implemented; source review
+corrections cover stream/poll ownership, daemon ordering across worker clocks,
+consumed wait observations, partial transfer accounting, and lease ownership in
+the history write. CLI uses existing steer syntax and jsdiff; no new command or
+flag. Companion documentation is in its existing branch. See the current
+continuation table in `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`
+for exact historical evidence and pending verification. M236 remains IN_PROGRESS;
+no runtime or coverage claim follows from source completion. Kishore's latest
+session authorization permits gates after implementation and main integration,
+then merge only with green exact-head CI and all Greptile threads resolved.
+
 ## Overview
 
 **Goal (testable):** An authorized repair continues toward its reviewed goal across later CI results and worker replacement, while human conversation neither restarts the task nor widens its authority.

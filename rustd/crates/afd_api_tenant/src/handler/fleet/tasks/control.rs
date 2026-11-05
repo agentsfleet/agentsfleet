@@ -81,23 +81,43 @@ pub(crate) async fn change<D: Services>(
     let tag = expected(&headers)?
         .ok_or_else(|| Refusal::coded(afd_core::error_code::AUTHORING_PRECONDITION, REQUIRED))?;
     let saved = match request.into_inner() {
-        PatchTaskRequest::Control { state, expected_generation } => {
+        PatchTaskRequest::Control {
+            state,
+            expected_generation,
+        } => {
             let control = match state {
                 TaskControlState::Paused => TaskControl::Pause,
                 TaskControlState::Ready => TaskControl::Resume,
                 TaskControlState::Cancelled => TaskControl::Cancel,
             };
-            services.tasks().control(&scope, &task, tag, expected_generation, control).await
+            services
+                .tasks()
+                .control(&scope, &task, tag, expected_generation, control)
+                .await
         }
-        PatchTaskRequest::AdoptGoal { goal_revision_id, expected_generation, operation_id } => {
+        PatchTaskRequest::AdoptGoal {
+            goal_revision_id,
+            expected_generation,
+            operation_id,
+        } => {
             let adoption = TaskAdoption {
-                goal_revision_id: afd_http::handler::parse_id(&goal_revision_id, "goal_revision_id must be a UUIDv7")?,
-                operation_id: afd_http::handler::parse_id(&operation_id, "operation_id must be a UUIDv7")?,
+                goal_revision_id: afd_http::handler::parse_id(
+                    &goal_revision_id,
+                    "goal_revision_id must be a UUIDv7",
+                )?,
+                operation_id: afd_http::handler::parse_id(
+                    &operation_id,
+                    "operation_id must be a UUIDv7",
+                )?,
                 expected_generation,
             };
-            services.tasks().adopt_goal(&scope, &task, tag, &adoption).await
+            services
+                .tasks()
+                .adopt_goal(&scope, &task, tag, &adoption)
+                .await
         }
-    }.map_err(refusal)?;
+    }
+    .map_err(refusal)?;
     Ok(read::render_one(saved))
 }
 

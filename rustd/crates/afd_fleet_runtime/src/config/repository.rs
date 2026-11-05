@@ -47,7 +47,10 @@ pub enum RepositoryPublication {
 #[serde(deny_unknown_fields)]
 pub struct ValidationWorkflow {
     /// Only a direct YAML file inside GitHub's workflow directory.
-    #[garde(length(bytes, min = 23, max = 255), pattern(r"^\.github/workflows/[A-Za-z0-9_-]+\.ya?ml$"))]
+    #[garde(
+        length(bytes, min = 23, max = 255),
+        pattern(r"^\.github/workflows/[A-Za-z0-9_-]+\.ya?ml$")
+    )]
     pub path: String,
     /// SHA-256 of the complete reviewed UTF-8 workflow text.
     #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]{64}$"))]
@@ -107,25 +110,40 @@ pub struct RepositoryBinding {
 impl RepositoryBinding {
     /// Whether only the native publisher may advance an assigned existing PR.
     #[must_use]
-    pub const fn publication(&self) -> RepositoryPublication { self.publication }
+    pub const fn publication(&self) -> RepositoryPublication {
+        self.publication
+    }
 
     /// Frozen validation-only content accepted with the setup revision.
     #[must_use]
-    pub fn validation_workflows(&self) -> &[ValidationWorkflow] { &self.validation_workflows }
+    pub fn validation_workflows(&self) -> &[ValidationWorkflow] {
+        &self.validation_workflows
+    }
 
     /// Narrows a native runner-visible token without widening repository scope.
     #[must_use]
     pub fn read_only(&self) -> Self {
-        Self { repositories: self.repositories.clone(), reach: Reach::Read,
-            publication: self.publication, validation_workflows: Box::default() }
+        Self {
+            repositories: self.repositories.clone(),
+            reach: Reach::Read,
+            publication: self.publication,
+            validation_workflows: Box::default(),
+        }
     }
 
     /// Exact repository evidence reads never retain a fleet's wider token scope.
     #[must_use]
     pub fn read_repository(&self, repository: &str) -> Option<Self> {
-        let held = self.repositories.iter().find(|held| held.eq_ignore_ascii_case(repository))?;
-        Some(Self { repositories: vec![held.clone()].into_boxed_slice(), reach: Reach::Read,
-            publication: self.publication, validation_workflows: Box::default() })
+        let held = self
+            .repositories
+            .iter()
+            .find(|held| held.eq_ignore_ascii_case(repository))?;
+        Some(Self {
+            repositories: vec![held.clone()].into_boxed_slice(),
+            reach: Reach::Read,
+            publication: self.publication,
+            validation_workflows: Box::default(),
+        })
     }
 
     /// The repositories, as `owner/name`.
@@ -179,12 +197,26 @@ impl RepositoryBinding {
         let repositories = authored.repositories.take();
         let base = authored.repository_base.take();
         let publication = authored.repository_publication.unwrap_or_default();
-        let workflows = authored.repository_validation_workflows.take().unwrap_or_default();
-        if publication == RepositoryPublication::ExistingPr && authored.repository_access != Some(Access::Write) {
-            return Err(ErrorKind::InvalidRepositoryBinding { reason: "existing PR publication requires an explicit repository write binding" }.into());
+        let workflows = authored
+            .repository_validation_workflows
+            .take()
+            .map(|workflows| workflows.0)
+            .unwrap_or_default();
+        if publication == RepositoryPublication::ExistingPr
+            && authored.repository_access != Some(Access::Write)
+        {
+            return Err(ErrorKind::InvalidRepositoryBinding {
+                reason: "existing PR publication requires an explicit repository write binding",
+            }
+            .into());
         }
         if (publication == RepositoryPublication::ExistingPr) == workflows.is_empty()
-            || workflows.iter().enumerate().any(|(index, entry)| workflows[..index].iter().any(|other| other.path == entry.path)) {
+            || workflows.iter().enumerate().any(|(index, entry)| {
+                workflows[..index]
+                    .iter()
+                    .any(|other| other.path == entry.path)
+            })
+        {
             return Err(ErrorKind::InvalidRepositoryBinding { reason: "existing PR publication requires unique owner-reviewed validation workflow digests" }.into());
         }
 
@@ -257,7 +289,8 @@ impl RepositoryBinding {
             repositories: &self.repositories,
             access: self.reach.access(),
             base: self.reach.base(),
-            publication: (self.publication == RepositoryPublication::ExistingPr).then_some(self.publication),
+            publication: (self.publication == RepositoryPublication::ExistingPr)
+                .then_some(self.publication),
             validation_workflows: &self.validation_workflows,
         }
     }

@@ -6,10 +6,10 @@ use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
 
 use super::INSERT_LINES;
-use crate::{Result, Nanos};
 use crate::biller::{Attribution, Settlement};
 use crate::error::{charge_overflow, query};
 use crate::price::RatedLine;
+use crate::{Nanos, Result};
 
 /// What the statement was doing, for [`query`].
 const CONTEXT_LOG: &str = "log usage lines";

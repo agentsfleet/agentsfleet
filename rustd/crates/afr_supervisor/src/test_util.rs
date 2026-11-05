@@ -69,6 +69,26 @@ impl Healthy {
                 | Verb::AuthoringRenew
                 | Verb::AuthoringReport,
             ) => Value::Null,
+            // Durable-task fixtures must supply native ownership, decision and
+            // checkpoint receipts explicitly; a generic acknowledgement is invalid.
+            Some(
+                Verb::TaskInputs
+                | Verb::TaskBindings
+                | Verb::TaskInputReceipt
+                | Verb::TaskDecisionReserve
+                | Verb::TaskDecisionRecord
+                | Verb::TaskEffectPublish
+                | Verb::TaskEffects
+                | Verb::TaskEffect
+                | Verb::TaskCheckpointPlan
+                | Verb::TaskCheckpointCommit
+                | Verb::TaskCheckpointPageWrite
+                | Verb::TaskCheckpointPage
+                | Verb::TaskCheckpointObjectsRegister
+                | Verb::TaskCheckpointUploads
+                | Verb::TaskCheckpointAuthorizations
+                | Verb::TaskCheckpointPin,
+            ) => Value::Null,
             Some(Verb::ContextLoad | Verb::ContextCommit) => serde_json::json!({}),
             Some(Verb::Heartbeat) => self.heartbeat(),
             Some(Verb::Lease) => value(&LeaseResponse::<serde_json::Value> {

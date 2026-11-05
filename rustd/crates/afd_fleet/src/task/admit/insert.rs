@@ -4,7 +4,8 @@ use afd_wire::task::{TaskState, UNFINISHED_MAX};
 use sqlx::PgConnection;
 
 use super::super::{
-    PreparedItem, PreparedPlan, PreparedTask, TaskBinding, TaskLease, TaskRefusal, guard::LeaseRow, sql,
+    PreparedItem, PreparedPlan, PreparedTask, TaskBinding, TaskLease, TaskRefusal, guard::LeaseRow,
+    sql,
 };
 use super::source::Source;
 use crate::error::{Error, ErrorKind, Result, query};
@@ -59,7 +60,13 @@ pub(super) async fn task(
     let questions =
         serde_json::to_string(&item.questions).map_err(afd_core::json::Unreadable::from)?;
     sqlx::query_scalar::<_, String>(sql::INSERT_TASK)
-        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?.as_str())
+        .bind(
+            binding
+                .task_id
+                .as_ref()
+                .ok_or(TaskRefusal::InvalidTarget)?
+                .as_str(),
+        )
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(&current.tenant_id)
@@ -95,7 +102,13 @@ pub(super) async fn lease(
     binding: &TaskBinding,
 ) -> Result<()> {
     sqlx::query(sql::BIND_LEASE)
-        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?.as_str())
+        .bind(
+            binding
+                .task_id
+                .as_ref()
+                .ok_or(TaskRefusal::InvalidTarget)?
+                .as_str(),
+        )
         .bind(lease.lease_id.as_str())
         .bind(lease.runner_id.as_str())
         .bind(afd_billing::biller::WorkKey::FleetLease(lease.lease_id.clone()).work_type())
@@ -114,7 +127,13 @@ pub(super) async fn admission(
     binding: &TaskBinding,
 ) -> Result<()> {
     sqlx::query(sql::BIND_ADMISSION)
-        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?.as_str())
+        .bind(
+            binding
+                .task_id
+                .as_ref()
+                .ok_or(TaskRefusal::InvalidTarget)?
+                .as_str(),
+        )
         .bind(binding.item_id.as_str())
         .bind(admission)
         .execute(connection)

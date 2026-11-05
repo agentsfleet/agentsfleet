@@ -14,7 +14,7 @@ export function DraftSaveButton({client, view, dirty = false}: {client: DraftCli
   if (view.inaccessible || savedDraft(view)) return null;
   const recovery = chatRecovery(view);
   const updating = draft?.review?.effective.target_setup_revision !== undefined || Boolean(view.preview?.setupRevision);
-  const disabled = dirty || !draft?.candidate || !draft.review || draft.state !== DRAFT_STATE.editing || view.busy || view.pending || recovery.pending || recovery.blocked;
+  const disabled = dirty || !draft?.candidate || !draft.review || draft.state !== DRAFT_STATE.editing || view.busy || view.pending || recovery.pending;
   return <Button size="sm" disabled={disabled} title={dirty ? "Update instructions before saving these changes." : undefined} onClick={() => {void (updating ? client.apply() : client.save()).catch(ignore);}}>
       {updating ? "Save changes" : "Save fleet"}
     </Button>;

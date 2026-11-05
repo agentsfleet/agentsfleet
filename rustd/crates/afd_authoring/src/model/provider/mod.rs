@@ -10,6 +10,7 @@ mod resolver;
 mod response;
 mod schema;
 mod triggers;
+mod verbatim;
 
 #[cfg(test)]
 mod tests;

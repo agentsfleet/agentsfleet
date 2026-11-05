@@ -39,7 +39,9 @@ pub use self::decision::DecisionPolicy;
 pub use self::gates::{Behavior, DEFAULT_TIMEOUT, GatePolicy, GateRule};
 pub use self::policy::http_egress::HttpEgress;
 pub use self::policy::{ContextBudget, Network};
-pub use self::repository::{Access, Reach, Recorded, RepositoryBinding, RepositoryPublication, ValidationWorkflow};
+pub use self::repository::{
+    Access, Reach, Recorded, RepositoryBinding, RepositoryPublication, ValidationWorkflow,
+};
 pub use self::trigger::{
     ChannelId, Cron, KIND_CRON, KIND_MENTION, KIND_WEBHOOK, Mention, TRIGGER_KINDS, Trigger,
     VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WEBHOOK_SOURCE_GITHUB,

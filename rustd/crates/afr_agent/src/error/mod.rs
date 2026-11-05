@@ -30,16 +30,27 @@ pub(crate) enum ErrorKind {
     TaskDecision,
     /// The existing native verb already retains its refusal code.
     #[error("native task request was not answered: {reason:?}")]
-    TaskNative { reason: afr_tools::verbs::Unanswered },
+    TaskNative {
+        reason: afr_tools::verbs::Unanswered,
+    },
     /// A private bounded task document could not be encoded or decoded.
     #[error("private task document is unreadable")]
-    TaskJson { #[from] source: serde_json::Error },
+    TaskJson {
+        #[from]
+        source: serde_json::Error,
+    },
     /// Native operation identity could not be generated.
     #[error("task cryptographic operation failed")]
-    TaskCrypto { #[from] source: afd_crypto::Error },
+    TaskCrypto {
+        #[from]
+        source: afd_crypto::error::Error,
+    },
     /// The existing context owner could not prepare complete evidence.
     #[error("task evidence context is unavailable")]
-    TaskContext { #[from] source: afd_context::Error },
+    TaskContext {
+        #[from]
+        source: afd_context::Error,
+    },
     /// A mid-run memory checkpoint was not written.
     #[error("a mid-run memory checkpoint was not written")]
     Checkpoint {
@@ -105,8 +116,12 @@ impl Error {
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::TaskDecision => error_code::INTERNAL_OPERATION_FAILED,
-            ErrorKind::TaskNative { reason: afr_tools::verbs::Unanswered::Refused(Some(code)) } => *code,
-            ErrorKind::TaskNative { .. } | ErrorKind::TaskJson { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::TaskNative {
+                reason: afr_tools::verbs::Unanswered::Refused(Some(code)),
+            } => *code,
+            ErrorKind::TaskNative { .. } | ErrorKind::TaskJson { .. } => {
+                error_code::INTERNAL_OPERATION_FAILED
+            }
             ErrorKind::TaskCrypto { source } => source.code(),
             ErrorKind::TaskContext { source } => source.code(),
             ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
@@ -124,8 +139,10 @@ impl Error {
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
         match self.kind() {
             ErrorKind::TaskDecision => None,
-            ErrorKind::TaskNative { .. } | ErrorKind::TaskJson { .. }
-                | ErrorKind::TaskCrypto { .. } | ErrorKind::TaskContext { .. } => None,
+            ErrorKind::TaskNative { .. }
+            | ErrorKind::TaskJson { .. }
+            | ErrorKind::TaskCrypto { .. }
+            | ErrorKind::TaskContext { .. } => None,
             ErrorKind::Tools { source } => source.unhosted_tool().map(Unhosted::Tool),
             ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
             ErrorKind::Checkpoint { .. } | ErrorKind::Scrub { .. } => None,

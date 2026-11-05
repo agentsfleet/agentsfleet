@@ -36,6 +36,7 @@
   "dependencies": {
     "@effect/platform-bun": "4.0.6",
     "@vercel/detect-agent": "^1.2.7",
+    "diff": "^9.0.0",
     "effect": "4.0.6",
     "posthog-node": "^5.56.4",
     "uuid": "^14.0.3"

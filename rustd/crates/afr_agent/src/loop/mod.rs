@@ -57,11 +57,20 @@ impl Loop {
 
 #[async_trait::async_trait]
 impl AgentEngine for Loop {
-    async fn prepare_task(&self, lease: &afd_wire::lease::LeasePayload<'_>, verbs: &dyn afr_tools::LeaseVerbs,
-        meter: &crate::Meter, stop: &CancellationToken) -> Result<Option<crate::PreparedTask>> {
-        if !lease.durable_tasks { return Ok(None); }
+    async fn prepare_task(
+        &self,
+        lease: &afd_wire::lease::LeasePayload<'_>,
+        verbs: &dyn afr_tools::LeaseVerbs,
+        meter: &crate::Meter,
+        stop: &CancellationToken,
+    ) -> Result<Option<crate::PreparedTask>> {
+        if !lease.durable_tasks {
+            return Ok(None);
+        }
         let provider = self.connect.connect(lease)?;
-        crate::decision::prepare(lease, verbs, provider.as_ref(), meter, stop).await.map(Some)
+        crate::decision::prepare(lease, verbs, provider.as_ref(), meter, stop)
+            .await
+            .map(Some)
     }
 
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<Needs> {
@@ -75,7 +84,14 @@ impl AgentEngine for Loop {
         if run.lease.durable_tasks && run.prepared_task.is_none() {
             return Err(crate::decision::unavailable());
         }
-        let tools = if run.prepared_task.is_some_and(|prepared| !prepared.allow_actions) { &[][..] } else { &policy.tools };
+        let tools = if run
+            .prepared_task
+            .is_some_and(|prepared| !prepared.allow_actions)
+        {
+            &[][..]
+        } else {
+            &policy.tools
+        };
         let selection = self.catalog.select(tools)?;
         let provider = self.connect.connect(run.lease)?;
         let scrub = Scrub::new(policy)?;
@@ -106,9 +122,17 @@ impl AgentEngine for Loop {
             })
             .collect();
         if let Some(recovered) = run.recovered_task {
-            let current = run.prepared_task.and_then(|prepared| prepared.inputs.current_task.as_ref())
+            let current = run
+                .prepared_task
+                .and_then(|prepared| prepared.inputs.current_task.as_ref())
                 .ok_or_else(crate::decision::unavailable)?;
-            opening = crate::TaskRecovery::restore(&recovered.history, current, &policy.context.model, &policy.provider, &scrub)?;
+            opening = crate::TaskRecovery::restore(
+                &recovered.history,
+                current,
+                &policy.context.model,
+                &policy.provider,
+                &scrub,
+            )?;
             opening.push(Message::User("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.".to_owned()));
         } else {
             opening.push(Message::User(scrub.clean(prompt.message).into_inner()));
@@ -177,11 +201,21 @@ impl<'s, 'run> Harness<'s, 'run> {
         let selection = shared.selection;
         let mut root = Self {
             task: shared.prepared_task.cloned(),
-            incorporated_input_sequence: shared.recovered_task.map_or(0, |recovery| recovery.task.covered_input_sequence),
-            reconciled_effect_ordinal: shared.recovered_task.map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
-            confirmed_effect_watermark: shared.recovered_task.map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
+            incorporated_input_sequence: shared
+                .recovered_task
+                .map_or(0, |recovery| recovery.task.covered_input_sequence),
+            reconciled_effect_ordinal: shared
+                .recovered_task
+                .map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
+            confirmed_effect_watermark: shared
+                .recovered_task
+                .map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
             task_report: None,
-            group_start: if shared.recovered_task.is_some() { 0 } else { opening.len() },
+            group_start: if shared.recovered_task.is_some() {
+                0
+            } else {
+                opening.len()
+            },
             shared,
             depth: 0,
             stop: shared.stop.clone(),
@@ -191,12 +225,20 @@ impl<'s, 'run> Harness<'s, 'run> {
             hosted: offer::hosted(selection),
             live: Live::new(shared.events, shared.scrub, shared.started),
             checkpoints: Checkpoints::new(shared.context),
-            context: context::State::new(if shared.recovered_task.is_some() { 0 } else { opening.len().saturating_sub(1) }),
+            context: context::State::new(if shared.recovered_task.is_some() {
+                0
+            } else {
+                opening.len().saturating_sub(1)
+            }),
             messages: opening,
             child: None,
         };
-        if root.task.is_some() { root.live.hide_reasoning(); }
-        if root.publication_allowed() { root.specs.push(publication::spec()); }
+        if root.task.is_some() {
+            root.live.hide_reasoning();
+        }
+        if root.publication_allowed() {
+            root.specs.push(publication::spec());
+        }
         root
     }
 
@@ -241,12 +283,25 @@ impl<'s, 'run> Harness<'s, 'run> {
         loop {
             turns += 1;
             self.read_input();
-            if self.incorporate_task_inputs().await.is_err() { break Ending::Stopped; }
-            if self.reconcile_task_effects().await.is_err() { break Ending::Stopped; }
-            if self.answer_task_inputs().await.is_err() { break Ending::Stopped; }
-            if let Some(answer) = self.accepted_answer() { break Ending::Answered(answer); }
+            if self.incorporate_task_inputs().await.is_err() {
+                break Ending::Stopped;
+            }
+            if self.reconcile_task_effects().await.is_err() {
+                break Ending::Stopped;
+            }
+            if self.answer_task_inputs().await.is_err() {
+                break Ending::Stopped;
+            }
+            if let Some(answer) = self.accepted_answer() {
+                break Ending::Answered(answer);
+            }
             if turns == 1 && self.shared.recovered_task.is_some() {
-                if let Some(ending) = self.assess_task("Recovery reconciled; no new action has run.").await { break ending; }
+                if let Some(ending) = self
+                    .assess_task("Recovery reconciled; no new action has run.")
+                    .await
+                {
+                    break ending;
+                }
             }
             if let Err(error) = self.preflight().await {
                 if self.stop.is_cancelled() {
@@ -260,12 +315,20 @@ impl<'s, 'run> Harness<'s, 'run> {
                 Some(Err(failure)) => break Ending::Failed(failure),
                 None => break Ending::Stopped,
             };
-            if self.task.is_some() && (!turn.finished || turn.cut) { break Ending::Stopped; }
+            if self.task.is_some() && (!turn.finished || turn.cut) {
+                break Ending::Stopped;
+            }
             if turn.calls.is_empty() {
+                // An empty first turn must not turn a silent failure into task success.
+                if turns == 1 && turn.text.trim().is_empty() {
+                    break Ending::Failed(afr_providers::Error::silent(turn.cut));
+                }
                 if let Some(ending) = self.assess_task(&turn.text).await {
                     break ending;
                 }
-                if self.task_report.as_ref().is_some_and(|report| report.disposition == afd_wire::task::TaskDisposition::Continue) {
+                if self.task_report.as_ref().is_some_and(|report| {
+                    report.disposition == afd_wire::task::TaskDisposition::Continue
+                }) {
                     let said = self.remembered(turn.text, turn.calls, turn.replay);
                     self.messages.push(said);
                     self.messages.push(Message::User("The accepted task goal remains incomplete. Continue the next bounded action group using the current evidence.".to_owned()));
@@ -289,8 +352,14 @@ impl<'s, 'run> Harness<'s, 'run> {
             if self.stop.is_cancelled() {
                 break Ending::Stopped;
             }
-            if self.incorporate_task_inputs().await.is_err() || self.reconcile_task_effects().await.is_err() { break Ending::Stopped; }
-            if let Some(ending) = self.assess_task("").await { break ending; }
+            if self.incorporate_task_inputs().await.is_err()
+                || self.reconcile_task_effects().await.is_err()
+            {
+                break Ending::Stopped;
+            }
+            if let Some(ending) = self.assess_task("").await {
+                break ending;
+            }
         }
     }
 
@@ -303,7 +372,9 @@ impl<'s, 'run> Harness<'s, 'run> {
             if cut {
                 return router::cut(&call.name);
             }
-            if call.name == publication::NAME { return self.publish_task(&call.arguments).await; }
+            if call.name == publication::NAME {
+                return self.publish_task(&call.arguments).await;
+            }
             if let Some(output) = nested::run(self, call).await {
                 return output;
             }
@@ -335,14 +406,14 @@ mod attach;
 mod children;
 mod context;
 mod conversation;
-mod task;
-mod task_evidence;
-mod task_replies;
-mod task_effects;
-mod publication;
 mod finish;
 mod model_turn;
+mod publication;
 pub(crate) mod shared;
+mod task;
+mod task_effects;
+mod task_evidence;
+mod task_replies;
 
 #[cfg(test)]
 pub(crate) mod tests;

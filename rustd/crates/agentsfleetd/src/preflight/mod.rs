@@ -20,8 +20,8 @@
 //! there is no window in which a daemon with an unusable KEK has already
 //! opened a listening socket.
 
-mod config;
 mod checkpoint;
+mod config;
 #[cfg(test)]
 mod knob_tests;
 mod knobs;
@@ -30,8 +30,8 @@ mod read;
 #[cfg(test)]
 mod stream_ceiling_tests;
 
-pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
 pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
+pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
 pub use afd_otlp::{
     OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
 };

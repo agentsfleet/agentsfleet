@@ -276,9 +276,16 @@ pub struct Needs {
 pub trait AgentEngine: Send + Sync + fmt::Debug {
     /// Establishes native intent before provisioning any sandbox or checkout.
     /// Engines without durable coordination refuse durable leases explicitly.
-    async fn prepare_task(&self, lease: &LeasePayload<'_>, _verbs: &dyn LeaseVerbs,
-        _meter: &Meter, _stop: &CancellationToken) -> Result<Option<crate::PreparedTask>> {
-        if lease.durable_tasks { return Err(crate::decision::unavailable()); }
+    async fn prepare_task(
+        &self,
+        lease: &LeasePayload<'_>,
+        _verbs: &dyn LeaseVerbs,
+        _meter: &Meter,
+        _stop: &CancellationToken,
+    ) -> Result<Option<crate::PreparedTask>> {
+        if lease.durable_tasks {
+            return Err(crate::decision::unavailable());
+        }
         Ok(None)
     }
     /// Says what a lease under `policy` needs, before anything is prepared

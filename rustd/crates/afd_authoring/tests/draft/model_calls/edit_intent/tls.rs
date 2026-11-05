@@ -12,7 +12,8 @@ pub(super) fn server() -> (reqwest::Certificate, TlsAcceptor) {
     let mut authority = CertificateParams::new(Vec::<String>::new()).expect("TLS fixture");
     authority.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
     authority.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
-    let issuer = CertifiedIssuer::self_signed(authority, KeyPair::generate().expect("TLS fixture")).expect("TLS fixture");
+    let issuer = CertifiedIssuer::self_signed(authority, KeyPair::generate().expect("TLS fixture"))
+        .expect("TLS fixture");
     let leaf_key = KeyPair::generate().expect("TLS fixture");
     let leaf = CertificateParams::new(vec![HOST.to_owned()])
         .expect("TLS fixture")

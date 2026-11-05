@@ -4,13 +4,15 @@ mod cipher;
 #[cfg(test)]
 mod tests;
 
-use std::{fs, path::PathBuf};
-use afd_core::id::Uuid7;
-use afd_wire::task::{DecisionReceipt, DecisionReceiptInput, DecisionReceiptResult, DecisionUnavailableCause};
-use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
-use crate::{Result, client::ControlPlane, error};
 use super::{ReportSpool, authoring::files};
+use crate::{Result, client::ControlPlane, error};
+use afd_core::id::Uuid7;
+use afd_wire::task::{
+    DecisionReceipt, DecisionReceiptInput, DecisionReceiptResult, DecisionUnavailableCause,
+};
+use serde::{Deserialize, Serialize};
+use std::{fs, path::PathBuf};
+use zeroize::Zeroizing;
 
 const DIRECTORY: &str = "decisions";
 const ACTIVE: &str = "active";
@@ -40,13 +42,29 @@ pub(crate) struct Pending {
 
 impl ReportSpool {
     /// A committed uncertainty record precedes the physical request.
-    pub(crate) async fn begin_decision(&self, lease: &Uuid7, call: &Uuid7, fence: u64) -> Result<Pending> {
-        let mut pending = Pending { directory: self.dir.join(DIRECTORY).join(call.as_str()),
-            lease: lease.clone(), call: call.clone(), active: false,
-            input: DecisionReceiptInput { fencing_token: fence,
-                receipt: DecisionReceipt::Unknown { cause: DecisionUnavailableCause::Transport } } };
+    pub(crate) async fn begin_decision(
+        &self,
+        lease: &Uuid7,
+        call: &Uuid7,
+        fence: u64,
+    ) -> Result<Pending> {
+        let mut pending = Pending {
+            directory: self.dir.join(DIRECTORY).join(call.as_str()),
+            lease: lease.clone(),
+            call: call.clone(),
+            active: false,
+            input: DecisionReceiptInput {
+                fencing_token: fence,
+                receipt: DecisionReceipt::Unknown {
+                    cause: DecisionUnavailableCause::Transport,
+                },
+            },
+        };
         tokio::task::spawn_blocking(move || {
-            let parent = pending.directory.parent().ok_or_else(|| error::config("decision spool has no parent"))?;
+            let parent = pending
+                .directory
+                .parent()
+                .ok_or_else(|| error::config("decision spool has no parent"))?;
             files::directory(parent)?;
             // An existing identity is never overwritten into permission to send again.
             fs::create_dir(&pending.directory)?;
@@ -58,7 +76,8 @@ impl ReportSpool {
             files::write(&pending.directory.join(ACTIVE), b"")?;
             pending.write()?;
             Ok(pending)
-        }).await?
+        })
+        .await?
     }
 
     /// Called once before workers start; no previous process can still publish a receipt.
@@ -68,13 +87,16 @@ impl ReportSpool {
             files::directory(&directory)?;
             for item in fs::read_dir(&directory)? {
                 let item = item?;
-                if !item.file_type()?.is_dir() { continue; }
+                if !item.file_type()?.is_dir() {
+                    continue;
+                }
                 if item.path().join(cipher::CONTENT).is_file() {
                     files::remove(&item.path().join(ACTIVE))?;
                 }
             }
             Ok(())
-        }).await?
+        })
+        .await?
     }
 
     /// One bounded page on the existing report drainer, with no provider redispatch.
@@ -88,9 +110,11 @@ impl ReportSpool {
                 Err(failure) => Err(failure),
             };
             match delivered {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(failure) => {
-                    if failure.is_unauthorized() { return Err(failure); }
+                    if failure.is_unauthorized() {
+                        return Err(failure);
+                    }
                     retained = true;
                     tracing::warn!(event = "decision_receipt_waiting", error_code = %failure.code());
                 }
@@ -102,24 +126,45 @@ impl ReportSpool {
 
 impl Pending {
     fn write(&self) -> Result<()> {
-        let receipt = Receipt { lease_id: self.lease.to_string(), call_id: self.call.to_string(), input: self.input.clone() };
+        let receipt = Receipt {
+            lease_id: self.lease.to_string(),
+            call_id: self.call.to_string(),
+            input: self.input.clone(),
+        };
         let bytes = Zeroizing::new(serde_json::to_vec(&receipt).map_err(error::encode)?);
         cipher::write(&self.directory, self.call.as_str(), &bytes)
     }
 
     /// Only completed receipts enter the online drain. A crash leaves the initial uncertainty.
     pub(crate) async fn finish(mut self, receipt: DecisionReceipt) -> Result<(Self, Result<()>)> {
-        self.input = garde::Unvalidated::new(DecisionReceiptInput { fencing_token: self.input.fencing_token, receipt }).validate()?.into_inner();
+        self.input = garde::Unvalidated::new(DecisionReceiptInput {
+            fencing_token: self.input.fencing_token,
+            receipt,
+        })
+        .validate()?
+        .into_inner();
         tokio::task::spawn_blocking(move || {
-            let saved = self.write().and_then(|()| files::remove(&self.directory.join(ACTIVE)));
-            if saved.is_ok() { self.active = false; }
+            let saved = self
+                .write()
+                .and_then(|()| files::remove(&self.directory.join(ACTIVE)));
+            if saved.is_ok() {
+                self.active = false;
+            }
             (self, saved)
-        }).await.map_err(crate::Error::from)
+        })
+        .await
+        .map_err(crate::Error::from)
     }
 
     pub(crate) async fn deliver(&self, plane: &ControlPlane) -> Result<DecisionReceiptResult> {
-        let result = plane.task_decision_record(&self.lease, &self.call, &self.input).await?;
-        if result.call_id != self.call.as_str() { return Err(error::config("decision receipt acknowledgement names another call")); }
+        let result = plane
+            .task_decision_record(&self.lease, &self.call, &self.input)
+            .await?;
+        if result.call_id != self.call.as_str() {
+            return Err(error::config(
+                "decision receipt acknowledgement names another call",
+            ));
+        }
         let directory = self.directory.clone();
         tokio::task::spawn_blocking(move || files::remove(&directory)).await??;
         Ok(result)
@@ -130,55 +175,106 @@ fn load(directory: PathBuf, call: &str) -> Result<Receipt> {
     let bytes = cipher::read(&directory, call)?;
     let receipt: Receipt = serde_json::from_slice(bytes.expose())
         .map_err(error::malformed(crate::client::Verb::TaskDecisionRecord))?;
-    if receipt.call_id != call { return Err(error::config("decision receipt identity does not match its path")); }
+    if receipt.call_id != call {
+        return Err(error::config(
+            "decision receipt identity does not match its path",
+        ));
+    }
     Ok(receipt)
 }
 
 #[derive(Serialize, Deserialize)]
-struct Cursor { after: String, through: String }
+struct Cursor {
+    after: String,
+    through: String,
+}
 
 fn scan(directory: &std::path::Path) -> Result<Scanned> {
     let mut candidates = std::collections::BTreeMap::new();
-    if !directory.try_exists()? { return Ok(Scanned { pending: vec![], again: false }); }
+    if !directory.try_exists()? {
+        return Ok(Scanned {
+            pending: vec![],
+            again: false,
+        });
+    }
     let cursor_path = directory.join(CURSOR);
     let cursor: Option<Cursor> = if cursor_path.try_exists()? {
-        Some(serde_json::from_slice(&files::read(&cursor_path, 256)?)
-            .map_err(error::malformed(crate::client::Verb::TaskDecisionRecord))?)
-    } else { None };
+        Some(
+            serde_json::from_slice(&files::read(&cursor_path, 256)?)
+                .map_err(error::malformed(crate::client::Verb::TaskDecisionRecord))?,
+        )
+    } else {
+        None
+    };
     let mut through = cursor.as_ref().map(|cursor| cursor.through.clone());
     for item in fs::read_dir(directory)? {
         let item = item?;
-        if !item.file_type()?.is_dir() || item.path().join(ACTIVE).exists() { continue; }
-        let Some(name) = item.file_name().to_str().map(str::to_owned) else { continue; };
-        if Uuid7::parse(&name).is_err() { continue; }
-        if cursor.as_ref().is_some_and(|cursor| name <= cursor.after || name > cursor.through) { continue; }
-        if through.as_ref().is_none_or(|last| last < &name) { through = Some(name.clone()); }
+        if !item.file_type()?.is_dir() || item.path().join(ACTIVE).exists() {
+            continue;
+        }
+        let Some(name) = item.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if Uuid7::parse(&name).is_err() {
+            continue;
+        }
+        if cursor
+            .as_ref()
+            .is_some_and(|cursor| name <= cursor.after || name > cursor.through)
+        {
+            continue;
+        }
+        if through.as_ref().is_none_or(|last| last < &name) {
+            through = Some(name.clone());
+        }
         candidates.insert(name, item.path());
-        if candidates.len() > PAGE { candidates.pop_last(); }
+        if candidates.len() > PAGE {
+            candidates.pop_last();
+        }
     }
     if let Some((name, _)) = candidates.last_key_value() {
-        let next = Cursor { after: name.clone(), through: through.unwrap_or_else(|| name.clone()) };
-        files::write(&cursor_path, &serde_json::to_vec(&next).map_err(error::encode)?)?;
-    } else { files::remove(&cursor_path)?; }
+        let next = Cursor {
+            after: name.clone(),
+            through: through.unwrap_or_else(|| name.clone()),
+        };
+        files::write(
+            &cursor_path,
+            &serde_json::to_vec(&next).map_err(error::encode)?,
+        )?;
+    } else {
+        files::remove(&cursor_path)?;
+    }
     let again = !candidates.is_empty() || cursor.is_some();
-    let pending = candidates.into_iter().map(|(name, directory)| {
-        let call = Uuid7::parse(&name)?;
-        let receipt = load(directory.clone(), &name)?;
-        Ok(Pending { directory, lease: Uuid7::parse(&receipt.lease_id)?, call,
-            input: receipt.input, active: false })
-    }).collect();
+    let pending = candidates
+        .into_iter()
+        .map(|(name, directory)| {
+            let call = Uuid7::parse(&name)?;
+            let receipt = load(directory.clone(), &name)?;
+            Ok(Pending {
+                directory,
+                lease: Uuid7::parse(&receipt.lease_id)?,
+                call,
+                input: receipt.input,
+                active: false,
+            })
+        })
+        .collect();
     Ok(Scanned { pending, again })
 }
 
 impl std::fmt::Debug for Pending {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PendingDecision").field("call", &self.call).finish_non_exhaustive()
+        f.debug_struct("PendingDecision")
+            .field("call", &self.call)
+            .finish_non_exhaustive()
     }
 }
 
 impl Drop for Pending {
     fn drop(&mut self) {
-        if self.active && let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        if self.active
+            && let Ok(runtime) = tokio::runtime::Handle::try_current()
+        {
             let marker = self.directory.join(ACTIVE);
             // A cancelled future cannot publish a later result. Its durable uncertainty
             // is now safe for the drainer; process death takes the startup path.

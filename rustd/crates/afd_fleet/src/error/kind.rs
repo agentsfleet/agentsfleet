@@ -5,15 +5,27 @@ use super::Error;
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
     #[error("private checkpoint storage could not establish object custody")]
-    TaskStorage { #[source] source: object_store::Error },
+    TaskStorage {
+        #[source]
+        source: object_store::Error,
+    },
     #[error("the checkpoint storage operation exceeded its absolute deadline")]
-    TaskStorageDeadline { #[source] source: tokio::time::error::Elapsed },
+    TaskStorageDeadline {
+        #[source]
+        source: tokio::time::error::Elapsed,
+    },
     #[error("the native GitHub request did not produce a confirmed receipt")]
-    TaskRemote { #[source] source: reqwest::Error },
+    TaskRemote {
+        #[source]
+        source: reqwest::Error,
+    },
     #[error("the native GitHub request returned status {status}")]
     TaskRemoteStatus { status: u16 },
     #[error("the native GitHub read exceeded its absolute deadline")]
-    TaskRemoteDeadline { #[source] source: tokio::time::error::Elapsed },
+    TaskRemoteDeadline {
+        #[source]
+        source: tokio::time::error::Elapsed,
+    },
     #[error("GitHub requested a cooldown after status {status}")]
     TaskRemoteCooldown { status: u16, until: jiff::Timestamp },
     #[error("the complete decision request cannot be represented within its reviewed bounds")]

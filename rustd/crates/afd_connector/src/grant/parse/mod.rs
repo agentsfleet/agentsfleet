@@ -146,7 +146,9 @@ pub fn slack(body: &Value, delimiter: char) -> Option<Grant> {
     handle.insert(HANDLE_SCOPES.into(), scope.into());
 
     Some(Grant {
-        external_person_id: body.get("authed_user").and_then(|user| non_empty_str(user, WIRE_ID))
+        external_person_id: body
+            .get("authed_user")
+            .and_then(|user| non_empty_str(user, WIRE_ID))
             .filter(|id| garde::Validate::validate(&SlackPerson { value: id }).is_ok())
             .map(str::to_owned),
         handle,

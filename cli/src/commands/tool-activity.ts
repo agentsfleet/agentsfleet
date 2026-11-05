@@ -1,5 +1,6 @@
 import { isRecord, isString } from "../lib/guards.ts";
 import { activityText } from "./task-activity.ts";
+import { fileActivity } from "./file-activity.ts";
 
 const KINDS = new Set(["tool_call_started", "tool_call_progress", "tool_call_completed"]);
 const STATUSES = new Set(["succeeded", "failed", "interrupted"]);
@@ -20,7 +21,9 @@ export class ToolActivityPrinter {
     const duration = payload["ms"] ?? payload["elapsed_ms"];
     const lines = [`[tool] ${name} ${status}${typeof duration === "number" && Number.isFinite(duration) && duration >= 0 ? ` ${duration}ms` : ""}`];
     const args = payload["args_redacted"];
-    if (isRecord(args)) lines.push(JSON.stringify(args, null, 2));
+    const diff = fileActivity(name, args, status);
+    if (diff !== undefined) lines.push(diff);
+    else if (isRecord(args)) lines.push(JSON.stringify(args, null, 2));
     const head = payload["output_head"];
     const tail = payload["output_tail"];
     if (isString(head) && head) lines.push(head);

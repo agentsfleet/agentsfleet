@@ -71,10 +71,7 @@ impl Plane {
         // by the tail and leaves no completion instant to measure from.
         let mut completed_at = None;
         if let Some(closed) = closed
-            && self
-                .leases
-                .publish_completion(&closed, Some(answer))
-                .await
+            && self.leases.publish_completion(&closed, Some(answer)).await
         {
             let event = EVENT_COMPLETION_PUBLISHED;
             tracing::debug!(fleet_id = fleet, lease_id, event);

@@ -35,7 +35,10 @@ pub(super) async fn read(
     if rows.is_empty() {
         return Ok(None);
     }
-    let count = plan.authorization.as_ref().map_or(plan.items.len(), |input| input.items.len());
+    let count = plan
+        .authorization
+        .as_ref()
+        .map_or(plan.items.len(), |input| input.items.len());
     if rows.len() != count || rows.iter().any(|row| row.plan_digest != plan.digest) {
         return Err(TaskRefusal::ReplayConflict.into());
     }
@@ -43,15 +46,29 @@ pub(super) async fn read(
         .into_iter()
         .map(|row| {
             let action: afd_wire::task::TaskInputAction = serde::Deserialize::deserialize(
-                serde::de::value::StrDeserializer::new(row.action.as_str()))
-                .map_err(|source: serde::de::value::Error| crate::error::Error::from(crate::error::ErrorKind::TaskState { source }))?;
+                serde::de::value::StrDeserializer::new(row.action.as_str()),
+            )
+            .map_err(|source: serde::de::value::Error| {
+                crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
+            })?;
             Ok(TaskBinding {
                 item_id: guard::id(&row.item_id, "item_id")?,
-                applies_here: row.task_id == current.task_id && row.task_state.as_deref() == Some(afd_wire::task::TaskState::Running.as_str()),
-                task_id: row.task_id.map(|task_id| guard::id(&task_id, "id")).transpose()?,
-                task_generation: row.task_generation.map(|generation| super::super::row::counter(generation, "generation")).transpose()?,
+                applies_here: row.task_id == current.task_id
+                    && row.task_state.as_deref()
+                        == Some(afd_wire::task::TaskState::Running.as_str()),
+                task_id: row
+                    .task_id
+                    .map(|task_id| guard::id(&task_id, "id"))
+                    .transpose()?,
+                task_generation: row
+                    .task_generation
+                    .map(|generation| super::super::row::counter(generation, "generation"))
+                    .transpose()?,
                 action,
-                input_sequence: row.input_sequence.map(|sequence| super::super::row::counter(sequence, "input sequence")).transpose()?,
+                input_sequence: row
+                    .input_sequence
+                    .map(|sequence| super::super::row::counter(sequence, "input sequence"))
+                    .transpose()?,
             })
         })
         .collect::<Result<Vec<_>>>()?;

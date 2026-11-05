@@ -13,7 +13,7 @@ import {
 import { ui } from "../output/index.ts";
 import { CliConfig } from "../services/config.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../services/output.ts";
 import {
   wsFleetEventPath,
   wsFleetEventsStreamPath,
@@ -72,14 +72,19 @@ const isTerminal = (status: string): boolean =>
 interface SteerFrameHandlers {
   readonly printLine: (line: string) => void;
   readonly eventId: string;
+  readonly presentation: SteerPresentation;
+}
+
+interface SteerPresentation {
+  readonly activity: ActivityPrinter;
+  readonly tools: ToolActivityPrinter;
 }
 
 const makeFrameCallback = (
   handlers: SteerFrameHandlers,
   setOutcome: (next: SteerOutcome) => void,
 ): StreamGetCallback => {
-  const activity = new ActivityPrinter(handlers.printLine);
-  const tools = new ToolActivityPrinter(handlers.printLine);
+  const {activity, tools} = handlers.presentation;
   return (event) => {
   const payload = event.data as Record<string, unknown> | null | undefined;
   if (!isRecord(payload)) return undefined;
@@ -117,6 +122,7 @@ export type TailReadiness =
   | typeof TAIL_TIMED_OUT;
 
 export interface EventTailHandle {
+  readonly presentation: SteerPresentation;
   readonly awaitReady: () => Promise<TailReadiness>;
   readonly awaitOutcome: () => Promise<SteerOutcome>;
   readonly deliverEventId: (id: string) => void;
@@ -208,8 +214,9 @@ export const openEventTail = (
     const url = `${config.apiUrl.replace(/\/$/, "")}${wsFleetEventsStreamPath(wsId, fleetId)}`;
     const headers = authHeaders({ token: Redacted.value(token) });
     const printLine = (line: string): void => {
-      Effect.runSync(output.info(line));
+      if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
     };
+    const presentation = {activity: new ActivityPrinter(printLine), tools: new ToolActivityPrinter(printLine)};
     let outcome: SteerOutcome = { kind: STATUS_SSE_DISCONNECTED };
     const ctrl = new AbortController();
     const streamSignal = signal ? AbortSignal.any([signal, ctrl.signal]) : ctrl.signal;
@@ -230,12 +237,13 @@ export const openEventTail = (
       if (dropped > 0) {
         printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet events ${fleetId}`));
       }
-      const filtered = makeFrameCallback({ printLine, eventId: id }, (next) => {
+      const filtered = makeFrameCallback({ printLine, eventId: id, presentation }, (next) => {
         outcome = next;
       });
       if (!buffer.promote(filtered)) ctrl.abort();
     };
     return Object.freeze({
+      presentation,
       awaitReady: boundedReady(opened, finished),
       // A buffered event_complete wins over a late stream error — the answer
       // is already known, so no redundant poll.
@@ -259,13 +267,17 @@ export const pollEventTerminal = (
   eventId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
+  presentation?: SteerPresentation,
 ): Effect.Effect<PolledSteerOutcome, CliError, HttpClient | Output> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const output = yield* Output;
-    const activity = new ActivityPrinter(line => Effect.runSync(output.info(line)));
-    const tools = new ToolActivityPrinter(line => Effect.runSync(output.info(line)));
-    yield* output.info("Reading saved activity after the live stream ended.");
+    const printLine = (line: string): void => {
+      if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
+    };
+    const activity = presentation?.activity ?? new ActivityPrinter(printLine);
+    const tools = presentation?.tools ?? new ToolActivityPrinter(printLine);
+    printLine("Reading saved activity after the live stream ended.");
     // Event IDs are opaque. The owned detail read avoids inferring a clock
     // from an ID or losing this event behind a busy fleet's newest page.
     const path = wsFleetEventPath(wsId, fleetId, eventId);
@@ -285,7 +297,7 @@ export const pollEventTerminal = (
       if (isRecord(res) && res.event_id === eventId) activity.history(res["task_activity"]);
       if (isRecord(res) && res.event_id === eventId && isString(res.status) && isTerminal(res.status)) {
         tools.history(res["tool_calls"]);
-        if (isString(res["response_text"]) && res["response_text"]) yield* output.info(`Final reply:\n${activityText(res["response_text"])}`);
+        if (isString(res["response_text"]) && res["response_text"]) printLine(`Final reply:\n${activityText(res["response_text"])}`);
         return { kind: STATUS_COMPLETE, status: res.status } as PolledSteerOutcome;
       }
       if (isRecord(res) && res.event_id === eventId) observed = true;

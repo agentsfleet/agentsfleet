@@ -207,8 +207,15 @@ async fn route<D: Services>(
         ));
     };
 
-    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Workspace(workspace.clone()), afd_ingress::replay_id(&body)) {
-        services.tasks().record_github_completion(&completion).await.map_err(Refusal::at(EVENT_DROPPED))?;
+    if let Some(completion) = delivery.completion(
+        afd_fleet::task::CompletionScope::Workspace(workspace.clone()),
+        afd_ingress::replay_id(&body),
+    ) {
+        services
+            .tasks()
+            .record_github_completion(&completion)
+            .await
+            .map_err(Refusal::at(EVENT_DROPPED))?;
     }
 
     let digest = match delivery.classify(Policy::AppIngress, services.now()) {

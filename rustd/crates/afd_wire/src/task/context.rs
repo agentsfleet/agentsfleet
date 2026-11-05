@@ -61,13 +61,26 @@ impl TaskContext<'_> {
     /// Detach a decoded control response before dropping its HTTP body.
     #[must_use]
     pub fn into_owned(self) -> TaskContext<'static> {
-        TaskContext { task_id: Cow::Owned(self.task_id.into_owned()), originating_item_id: Cow::Owned(self.originating_item_id.into_owned()),
-            target: self.target, generation: self.generation, stop_generation: self.stop_generation,
-            accepted_revision_id: Cow::Owned(self.accepted_revision_id.into_owned()), objective: Cow::Owned(self.objective.into_owned()),
-            goal_digest: Cow::Owned(self.goal_digest.into_owned()), questions: self.questions, state: self.state,
-            covered_input_sequence: self.covered_input_sequence, input_sequence: self.input_sequence,
-            effect_cursor: self.effect_cursor, confirmed_effect_watermark: self.confirmed_effect_watermark,
-            checkpoint_id: self.checkpoint_id.map(|id| Cow::Owned(id.into_owned())), checkpoint_generation: self.checkpoint_generation,
-            expires_at: self.expires_at, limits: self.limits, usage: self.usage }
+        TaskContext {
+            task_id: Cow::Owned(self.task_id.into_owned()),
+            originating_item_id: Cow::Owned(self.originating_item_id.into_owned()),
+            target: self.target,
+            generation: self.generation,
+            stop_generation: self.stop_generation,
+            accepted_revision_id: Cow::Owned(self.accepted_revision_id.into_owned()),
+            objective: Cow::Owned(self.objective.into_owned()),
+            goal_digest: Cow::Owned(self.goal_digest.into_owned()),
+            questions: self.questions,
+            state: self.state,
+            covered_input_sequence: self.covered_input_sequence,
+            input_sequence: self.input_sequence,
+            effect_cursor: self.effect_cursor,
+            confirmed_effect_watermark: self.confirmed_effect_watermark,
+            checkpoint_id: self.checkpoint_id.map(|id| Cow::Owned(id.into_owned())),
+            checkpoint_generation: self.checkpoint_generation,
+            expires_at: self.expires_at,
+            limits: self.limits,
+            usage: self.usage,
+        }
     }
 }

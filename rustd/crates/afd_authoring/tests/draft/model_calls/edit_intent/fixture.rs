@@ -1,13 +1,16 @@
 //! Real setup, catalogue, vault, billing and candidate persistence around two provider boundaries.
 
-use std::sync::Arc;
 use afd_authoring::{ModelCalls, types::Source};
 use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
+use super::super::{
+    super::{attempt::Attempt, definition, fixture::Fixture},
+    fixture::{self, Provider},
+};
 use super::{decision_model_fixture::DecisionModelFixture, server::Server};
-use super::super::{super::{attempt::Attempt, definition, fixture::Fixture}, fixture::{self, Provider}};
 
 pub(super) const SOAK: &str = "Two implementations are equally fast. How should we choose between them? Explain in at most thirty words without changing the setup.";
 
@@ -20,25 +23,52 @@ pub(super) struct Case {
 }
 
 impl Case {
-    pub async fn create(server: &Server, text: &str) -> Self {
+    pub(super) async fn create(server: &Server, text: &str) -> Self {
         let f = Fixture::create().await;
-        let attempt = Attempt::start(&f, f.access(), Source::Definition { definition: Box::new(definition()) }).await;
+        let attempt = Attempt::start(
+            &f,
+            f.access(),
+            Source::Definition {
+                definition: Box::new(definition()),
+            },
+        )
+        .await;
         sqlx::query("UPDATE authoring.messages SET user_text=$2 WHERE draft_id=$1::uuid")
-            .bind(attempt.draft.id.as_str()).bind(text).execute(&mut *f.connection().await).await.expect("accepted newest message");
+            .bind(attempt.draft.id.as_str())
+            .bind(text)
+            .execute(&mut *f.connection().await)
+            .await
+            .expect("accepted newest message");
         let mut model = DecisionModelFixture::create(&f.db).await;
         let mut details = model.model.details.clone();
         let decision = details.decision.as_mut().expect("reviewed decision");
-        decision.configuration.profile.endpoint.clone_from(&server.endpoint);
+        decision
+            .configuration
+            .profile
+            .endpoint
+            .clone_from(&server.endpoint);
         decision.configuration.profile.revision = "setup-edit-reviewed".into();
         let price = decision.prices.first_mut().expect("decision base price");
         price.input_nanos_per_mtok = 1_000_000;
         price.cached_input_nanos_per_mtok = 2_000_000;
         price.cache_write_nanos_per_mtok = Some(3_000_000);
         price.output_nanos_per_mtok = 4_000_000;
-        assert!(model.models.update(&model.model.id, details.clone(), afd_core::clock::now()).await.expect("freeze fixture endpoint"));
+        assert!(
+            model
+                .models
+                .update(&model.model.id, details.clone(), afd_core::clock::now())
+                .await
+                .expect("freeze fixture endpoint")
+        );
         model.model.details = details;
-        sqlx::query("UPDATE runner.runners SET decision_platform_model_id=$2::uuid WHERE id=$1::uuid")
-            .bind(f.runner.as_str()).bind(model.model.id.as_str()).execute(&mut *f.connection().await).await.expect("configured decision model");
+        sqlx::query(
+            "UPDATE runner.runners SET decision_platform_model_id=$2::uuid WHERE id=$1::uuid",
+        )
+        .bind(f.runner.as_str())
+        .bind(model.model.id.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("configured decision model");
         credential(&f).await;
         let mut stub = Provider::known();
         let base = attempt.draft.candidate.as_ref().expect("source candidate");
@@ -50,30 +80,51 @@ impl Case {
             }}).to_string()}
         ]);
         let provider = Arc::new(stub);
-        let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await
+        let calls = fixture::calls(&f, &attempt, Arc::clone(&provider))
+            .await
             .with_decisions(f.workspace.clone(), server.client.clone());
-        Self { f, attempt, calls, provider, model }
+        Self {
+            f,
+            attempt,
+            calls,
+            provider,
+            model,
+        }
     }
 
-    pub async fn journal(&self) -> (String, Option<i64>, bool) {
+    pub(super) async fn journal(&self) -> (String, Option<i64>, bool) {
         sqlx::query_as("SELECT disposition, charged_nanos, accounted_at IS NOT NULL FROM authoring.edit_decisions WHERE attempt_id=$1::uuid")
             .bind(self.attempt.id.as_str()).fetch_one(&mut *self.f.connection().await).await.expect("persisted decision")
     }
 
-    pub async fn finish(self) {
+    pub(super) async fn finish(self) {
         sqlx::query("UPDATE runner.runners SET decision_platform_model_id=NULL WHERE id=$1::uuid")
-            .bind(self.f.runner.as_str()).execute(&mut *self.f.connection().await).await.expect("remove fixture assignment");
+            .bind(self.f.runner.as_str())
+            .execute(&mut *self.f.connection().await)
+            .await
+            .expect("remove fixture assignment");
         self.model.finish().await;
         self.f.cleanup().await;
     }
 }
 
 async fn credential(f: &Fixture) {
-    let kek = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff").expect("fixture key");
+    let kek = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+        .expect("fixture key");
     let vault = Vault::new(f.db.clone(), Arc::new(kek), Entropy::new());
-    let raw = serde_json::value::RawValue::from_string(json!({"api_key":["setup","decision","fixture"].join("-")}).to_string()).expect("secret JSON");
-    vault.create(&f.workspace, &SecretName::parse("typesafe").expect("fixed secret bag"),
-        &SecretBody::parse(&raw).expect("secret shape"), afd_core::clock::now()).await.expect("seal platform fixture credential");
+    let raw = serde_json::value::RawValue::from_string(
+        json!({"api_key": (["setup","decision","fixture"].join("-"))}).to_string(),
+    )
+    .expect("secret JSON");
+    vault
+        .create(
+            &f.workspace,
+            &SecretName::parse("typesafe").expect("fixed secret bag"),
+            &SecretBody::parse(&raw).expect("secret shape"),
+            afd_core::clock::now(),
+        )
+        .await
+        .expect("seal platform fixture credential");
 }
 
 pub(super) fn reply(noul: f64) -> Value {

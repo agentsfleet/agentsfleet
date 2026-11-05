@@ -22,10 +22,21 @@ impl Gates {
     ///
     /// # Errors
     /// Preserves query failures; revocation waits for this shared row lock.
-    pub async fn hold_approved_on(connection: &mut sqlx::PgConnection, fleet: &Uuid7, integration: &str) -> Result<bool> {
-        Ok(sqlx::query_scalar::<_, String>(include_str!("grant_sql/hold_approved_service.sql"))
-            .bind(fleet.as_str()).bind(integration).bind(grant_sql::STATUS_APPROVED)
-            .fetch_optional(connection).await.map_err(query(CONTEXT_GRANTS))?.is_some())
+    pub async fn hold_approved_on(
+        connection: &mut sqlx::PgConnection,
+        fleet: &Uuid7,
+        integration: &str,
+    ) -> Result<bool> {
+        Ok(
+            sqlx::query_scalar::<_, String>(include_str!("grant_sql/hold_approved_service.sql"))
+                .bind(fleet.as_str())
+                .bind(integration)
+                .bind(grant_sql::STATUS_APPROVED)
+                .fetch_optional(connection)
+                .await
+                .map_err(query(CONTEXT_GRANTS))?
+                .is_some(),
+        )
     }
 
     /// Every integration `fleet_id` holds a standing grant for.

@@ -15,7 +15,6 @@ use std::sync::Arc;
 const FIRST: &str = "A request whose provider usage cannot be read";
 const NEXT: &str = "Continue after stopping the old turn";
 const ACTION_RETRY_MESSAGE: &str = "retry_message";
-const ACTION_AWAIT_ACCOUNTING: &str = "await_accounting";
 const ATTEMPTS: &str =
     "SELECT count(*),bool_or(usage_unknown) FROM authoring.attempts WHERE draft_id=$1::uuid";
 
@@ -45,7 +44,7 @@ fn failure_recovery_actions_preserve_the_daemons_reason_and_code() {
         (
             FailureReason::ProviderUsageUnknown,
             error_code::AUTHORING_UNKNOWN,
-            ACTION_AWAIT_ACCOUNTING,
+            ACTION_RETRY_MESSAGE,
         ),
         (
             FailureReason::AttemptTimedOut,
@@ -159,12 +158,12 @@ async fn failed(f: &Fixture, draft: &Draft) -> afd_authoring::types::Failure {
         .expect("durable provider failure")
 }
 
-// Value: protects=unknown provider work refuses fresh text but retains accepted replay;
-// fails_when=Send queues behind an unresolved turn or consumes its sequence;
-// why_new=the old Send accepted text which claim could never run; seam=physical provider only.
+// Value: protects=unknown provider usage never locks the chat: fresh text is accepted and claimed
+// while the old attempt's obligation stays recorded; fails_when=Send or claim waits behind an
+// attempt only accounting still holds; seam=physical provider only.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn unknown_work_refuses_fresh_send_but_preserves_exact_replay() {
+async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
     let f = funded(2).await;
     let operation = mint();
     let draft = f
@@ -192,23 +191,28 @@ async fn unknown_work_refuses_fresh_send_but_preserves_exact_replay() {
         message: NEXT.into(),
         operation_id: mint(),
     };
-    let error = f
+    let sent = f
         .drafts
         .send(f.access(), &draft.id, input, now())
         .await
-        .expect_err("new text cannot wait indefinitely behind unknown work");
-    assert_eq!(error.code(), error_code::AUTHORING_UNKNOWN);
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1::uuid")
-            .bind(draft.id.as_str())
-            .fetch_one(&mut *f.connection().await)
-            .await
-            .expect("message count");
-    assert_eq!(count, 1);
+        .expect("new text is accepted while old usage is still being accounted");
+    assert_eq!(sent.sequence, "2");
+    let newer = claim(&f, &draft)
+        .await
+        .expect("an attempt awaiting accounting does not own the chat");
+    assert_ne!(newer.attempt_id, lease.attempt_id);
+    assert_eq!(newer.sequence, "2");
+    let retained: (i64, bool) = sqlx::query_as(ATTEMPTS)
+        .bind(draft.id.as_str())
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("old obligation retained");
+    assert_eq!(retained, (2, true), "the unknown usage is still owed");
     assert_eq!(
         failed(&f, &draft).await.recovery_action,
-        ACTION_AWAIT_ACCOUNTING
+        ACTION_RETRY_MESSAGE
     );
+    late_cannot_publish(&f, &lease).await;
     f.cleanup().await;
 }
 

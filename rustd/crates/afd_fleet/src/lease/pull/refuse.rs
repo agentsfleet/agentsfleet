@@ -39,7 +39,11 @@ impl Plane {
         acquired: &Acquired,
         runner_id: &Uuid7,
     ) -> Result<Step<Installed>> {
-        match self.leases.installed_for_admission(&acquired.fleet_id, Some(&acquired.event_id)).await {
+        match self
+            .leases
+            .installed_for_admission(&acquired.fleet_id, Some(&acquired.event_id))
+            .await
+        {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
             // stopped fleet means an operator paused it in the window between
@@ -50,7 +54,11 @@ impl Plane {
             // this runner's, which is the whole of `refuse_unreadable_config`.
             Err(changed) if changed.code() == afd_core::error_code::TASK_INVALID_TARGET => {
                 self.leases.block_changed_task_setup(acquired).await?;
-                no_work(runner_id, "the task's accepted setup no longer fits current authority").map(Step::Stop)
+                no_work(
+                    runner_id,
+                    "the task's accepted setup no longer fits current authority",
+                )
+                .map(Step::Stop)
             }
             Err(unreadable) if unreadable.is_config_permanent() => self
                 .refuse_unreadable_config(acquired, runner_id, &unreadable)

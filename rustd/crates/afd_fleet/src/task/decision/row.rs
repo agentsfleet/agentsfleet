@@ -76,8 +76,12 @@ pub(super) async fn find(
 }
 
 pub(super) async fn read_on(connection: &mut PgConnection, id: &str) -> Result<Option<Call>> {
-    statement(sql::PEEK_CALL, Lookup::Id(id)).fetch_optional(connection).await
-        .map_err(query("read immutable accounted decision for task acceptance"))
+    statement(sql::PEEK_CALL, Lookup::Id(id))
+        .fetch_optional(connection)
+        .await
+        .map_err(query(
+            "read immutable accounted decision for task acceptance",
+        ))
 }
 
 pub(super) async fn find_with(

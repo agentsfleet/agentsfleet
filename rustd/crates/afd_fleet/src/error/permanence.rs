@@ -88,7 +88,9 @@ impl Error {
             | ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskStorage { .. }
             | ErrorKind::TaskStorageDeadline { .. }
-            | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteDeadline { .. } | ErrorKind::TaskRemoteCooldown { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteDeadline { .. }
+            | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
