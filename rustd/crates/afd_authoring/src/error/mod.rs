@@ -73,6 +73,11 @@ pub(crate) enum ErrorKind {
     Provider,
     #[error("the provider obligation remains unresolved")]
     Unknown,
+    #[error("the setup edit decision could not complete")]
+    Decision {
+        #[source]
+        source: afr_providers::Error,
+    },
     #[error("the configured model settings are invalid")]
     Inference {
         #[source]
@@ -148,6 +153,7 @@ pub(crate) enum ErrorKind {
 }
 
 afd_core::error_lifts!(Error, ErrorKind:
+    afr_providers::Error => Decision,
     afd_cron::Error => Cron,
     afd_context::Error => Context,
     afd_db::Error => Datastore,
@@ -188,9 +194,10 @@ impl Error {
             ErrorKind::Context { source } if source.is_window() => error_code::AUTHORING_TOKEN,
             ErrorKind::Context { source } => source.code(),
             ErrorKind::Provider => error_code::AUTHORING_PROVIDER,
-            ErrorKind::Unknown | ErrorKind::Transport { .. } | ErrorKind::Sdk { .. } => {
-                error_code::AUTHORING_UNKNOWN
-            }
+            ErrorKind::Unknown
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Decision { .. } => error_code::AUTHORING_UNKNOWN,
             ErrorKind::Cursor => error_code::AUTHORING_CURSOR,
             ErrorKind::Validation { .. }
             | ErrorKind::Definition { .. }
@@ -251,9 +258,10 @@ impl Error {
             ErrorKind::NameExists => Some("name_exists"),
             ErrorKind::Model | ErrorKind::Inference { .. } => Some("unavailable"),
             ErrorKind::Fence => Some("fenced"),
-            ErrorKind::Unknown | ErrorKind::Transport { .. } | ErrorKind::Sdk { .. } => {
-                Some("awaiting_accounting")
-            }
+            ErrorKind::Unknown
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Decision { .. } => Some("awaiting_accounting"),
             _ => None,
         }
     }

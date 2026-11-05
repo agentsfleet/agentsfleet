@@ -4,8 +4,8 @@ mod decision;
 
 use super::{KEY_DESCRIPTION, KEY_TYPE, PROPOSAL_ARGUMENT};
 use afd_fleet_runtime::definition::{
-    DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_EDITS,
-    MAX_INSTRUCTIONS_CHARS,
+    DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS,
+    MAX_INITIAL_INSTRUCTIONS_CHARS, MAX_INSTRUCTION_EDITS, MAX_INSTRUCTIONS_CHARS,
 };
 use afd_wire::authoring::DECIMAL_BYTES_MAX;
 use afd_wire::policy::HttpEgress;
@@ -96,7 +96,8 @@ fn definition() -> Value {
         &json!({
             KEY_SCHEMA_VERSION:{KEY_TYPE:TYPE_INTEGER,KEY_ENUM:[DEFINITION_SCHEMA_VERSION]},
             KEY_DESCRIPTION:{KEY_TYPE:TYPE_STRING,KEY_MIN_LENGTH:1,KEY_MAX_LENGTH:MAX_DESCRIPTION_CHARS},
-            KEY_INSTRUCTIONS_MD:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INSTRUCTIONS_CHARS},
+            KEY_INSTRUCTIONS_MD:{KEY_TYPE:TYPE_STRING,KEY_MAX_LENGTH:MAX_INITIAL_INSTRUCTIONS_CHARS,
+                KEY_DESCRIPTION:"The person’s fleet instructions, drafted only from their requests. Preserve supplied wording; ask about missing business decisions."},
             KEY_CONFIG:configuration()
         }),
         &[
@@ -111,23 +112,34 @@ fn definition() -> Value {
 fn configuration() -> Value {
     object(
         &json!({
-            KEY_NAME:{KEY_TYPE:TYPE_STRING},
+            KEY_NAME:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                KEY_DESCRIPTION:"Lowercase fleet slug. Preserve the current name unless the person requests a rename."},
             KEY_POLICY:{
                 KEY_TYPE:TYPE_OBJECT,
                 KEY_DESCRIPTION:"Native policy. Other supported runtime fields remain subject to daemon validation.",
                 KEY_PROPERTIES:{
                     KEY_TOOLS:list(&json!({KEY_TYPE:TYPE_STRING})),
                     "credentials":list(&json!({KEY_TYPE:TYPE_STRING})),
-                    "triggers":list(&json!({KEY_TYPE:TYPE_OBJECT})),
+                    "triggers":super::triggers::schema(),
                     "network":network(),
                     "decision_policy":decision::policy(),
+                    "repositories":list(&json!({KEY_TYPE:TYPE_STRING})),
+                    "repository_access":{KEY_TYPE:TYPE_STRING,KEY_ENUM:["read","write"]},
+                    "repository_base":{KEY_TYPE:TYPE_STRING},
+                    "repository_publication":{KEY_TYPE:TYPE_STRING,KEY_ENUM:["event_draft","existing_pr"],
+                        KEY_DESCRIPTION:"Default event_draft. Select existing_pr only when the person explicitly requests repair of assigned existing pull requests; native task publication still validates each target."},
+                    "repository_validation_workflows":{KEY_TYPE:TYPE_ARRAY,KEY_MAX_ITEMS:16,
+                        KEY_DESCRIPTION:"Owner-reviewed workflow paths and exact SHA-256 digests required for existing_pr. Ask for the reviewed identities; never invent approval or hashes.",
+                        KEY_ITEMS:object(&json!({"path":{KEY_TYPE:TYPE_STRING},
+                            "sha256":{KEY_TYPE:TYPE_STRING,KEY_PATTERN:"^[0-9a-f]{64}$"}}), &["path","sha256"])},
                     "gates":object(&json!({
                         "timeout_ms":{KEY_TYPE:TYPE_INTEGER},
                         "rules":list(&json!({KEY_TYPE:TYPE_OBJECT})),
                         "anomaly_rules":list(&json!({KEY_TYPE:TYPE_OBJECT}))
                     }), &[]),
                     KEY_BUDGET:object(&json!({
-                        KEY_DAILY_NANOS:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN},
+                        KEY_DAILY_NANOS:{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN,
+                            KEY_DESCRIPTION:"Positive decimal integer nanos, never dollars or a JSON number."},
                         "monthly_nanos":{KEY_TYPE:TYPE_STRING,KEY_PATTERN:DECIMAL_PATTERN}
                     }), &[KEY_DAILY_NANOS])
                 },

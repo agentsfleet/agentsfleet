@@ -121,3 +121,29 @@ pub const LEASE_TASK_DECISIONS: &str = concatcp!(LEASE, "tasks/decisions");
 
 /// Original-owner accounting for one reserved physical decision call.
 pub const LEASE_TASK_DECISION: &str = concatcp!(LEASE_TASK_DECISIONS, "/{call_id}");
+
+/// Complete pending human messages under the current lease.
+pub const LEASE_TASK_INPUTS: &str = concatcp!(LEASE, "tasks/inputs");
+/// Complete immutable interpretation of an admitted human message.
+pub const LEASE_TASK_BINDINGS: &str = concatcp!(LEASE, "tasks/bindings");
+/// Immutable native publication collection and recovery watermark reads.
+pub const LEASE_TASK_EFFECTS: &str = concatcp!(LEASE, "tasks/effects");
+/// One native publication and its attributable remote receipt.
+pub const LEASE_TASK_EFFECT: &str = concatcp!(LEASE_TASK_EFFECTS, "/{effect_id}");
+
+/// Original source reply or current-boundary input application acknowledgement.
+pub const LEASE_TASK_INPUT_RECEIPTS: &str = concatcp!(LEASE, "tasks/input-receipts");
+/// Native immutable capture plan allocation.
+pub const LEASE_TASK_CHECKPOINTS: &str = concatcp!(LEASE, "tasks/checkpoints");
+/// Complete compatible manifest publication.
+pub const LEASE_TASK_CHECKPOINT: &str = concatcp!(LEASE_TASK_CHECKPOINTS, "/{checkpoint_id}");
+/// One immutable bounded base/overlay page.
+pub const LEASE_TASK_CHECKPOINT_PAGE: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/pages/{page_id}");
+/// Native object registration and bounded restore reads.
+pub const LEASE_TASK_CHECKPOINT_OBJECTS: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/objects");
+/// Immutable ciphertext descriptors and conditional upload authorizations.
+pub const LEASE_TASK_CHECKPOINT_UPLOADS: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/uploads");
+/// Restore-pin bootstrap and bounded transfer refresh.
+pub const LEASE_TASK_CHECKPOINT_AUTHORIZATIONS: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/authorizations");
+/// One native reader/writer pin renewal.
+pub const LEASE_TASK_CHECKPOINT_PIN: &str = concatcp!(LEASE_TASK_CHECKPOINT, "/pins/{pin_id}");

@@ -9,6 +9,7 @@ mod request;
 mod resolver;
 mod response;
 mod schema;
+mod triggers;
 
 #[cfg(test)]
 mod tests;

@@ -57,7 +57,7 @@ pub(super) async fn change(
     let task = Uuid7::parse(&fixture.ids[1]).expect("task identity");
     let changed = fixture
         .lifecycle()
-        .control(&scope, &task, 1, TaskControl::Pause)
+        .control(&scope, &task, previous_tag, 1, TaskControl::Pause)
         .await
         .expect("native pause");
     assert_eq!(changed.resource_version, 2);

@@ -75,6 +75,8 @@ pub struct PlaneParts {
     /// than re-read, because `preflight` has already parsed and validated it
     /// and a second reader could disagree with the first.
     pub platform_admin_workspace: Option<Uuid7>,
+    /// Platform-owned R2 endpoint/bucket and vault reference, never a fleet option.
+    pub checkpoint_storage: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
     /// What a signup event from the identity provider is verified against.
     ///
     /// Threaded through rather than re-read, for the reason

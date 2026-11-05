@@ -1,4 +1,5 @@
-//! Both budgets count unsettled admissions. The fleet check holds its fleet row.
+//! Both budgets count outstanding queue ownership. The fleet check holds its fleet row.
+//! Obsolete task continuations retain billing receipts without consuming queue capacity.
 
 use afd_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
@@ -114,6 +115,7 @@ impl Admissions {
             .bind(i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX))
             .bind(admission.producer.as_str())
             .bind(key)
+            .bind(crate::Producer::TaskContinuation.as_str())
             .fetch_one(connection)
             .await
             .map_err(crate::error::query("fleet admission budget"))?;

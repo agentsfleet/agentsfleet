@@ -181,6 +181,7 @@ fn own_bind(bind: ExtraBind<'_>) -> ExtraBind<'static> {
 
 fn own_capability(report: CapabilityReport<'_>) -> CapabilityReport<'static> {
     CapabilityReport {
+        durable_tasks_v1: report.durable_tasks_v1,
         build_id: report.build_id.map(|value| Cow::Owned(value.into_owned())),
         landlock: report.landlock,
         seccomp: report.seccomp,

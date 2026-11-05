@@ -60,7 +60,7 @@ async fn test_a_superseded_report_commits_nothing() {
         .await
         .expect("a fenced report is an answer, not a fault");
     assert!(
-        matches!(fenced, Committed::Fenced),
+        matches!(fenced, Committed::Fenced { .. }),
         "the displaced holder must not win the report; the current holder's result wins"
     );
     assert_nothing_landed(&held, "a superseded holder writes none of the four").await;
@@ -82,7 +82,7 @@ async fn test_a_superseded_report_commits_nothing() {
         .await
         .expect("a report against a row that is gone is an answer, not a fault");
     assert!(
-        matches!(vanished, Committed::Fenced),
+        matches!(vanished, Committed::Fenced { .. }),
         "a lease that no longer exists cannot have settled, so it is refused and not acknowledged"
     );
     assert_nothing_landed(&held, "a lease row that is gone writes none of the four").await;

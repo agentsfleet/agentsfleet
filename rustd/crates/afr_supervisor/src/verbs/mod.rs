@@ -55,6 +55,36 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
             .map(|posted| posted.delivered)
             .map_err(|failure| unanswered(&failure))
     }
+
+    async fn task_inputs(&self, mut query: afd_wire::task::TaskInputsQuery)
+        -> Result<afd_wire::task::TaskInputsResponse<'static>, Unanswered> {
+        query.fencing_token = self.fencing_token;
+        self.plane.task_inputs(self.lease_id, &query).await.map_err(|failure| unanswered(&failure))
+    }
+
+    async fn task_bindings(&self, mut input: afd_wire::task::TaskBindingsInput)
+        -> Result<afd_wire::task::TaskBindingsResponse<'static>, Unanswered> {
+        input.fencing_token = self.fencing_token;
+        self.plane.task_bindings(self.lease_id, &input).await.map_err(|failure| unanswered(&failure))
+    }
+
+    async fn task_input_receipt(&self, mut input: afd_wire::task::TaskInputReceiptInput)
+        -> Result<afd_wire::task::TaskInputReceiptResult, Unanswered> {
+        input.fencing_token = self.fencing_token;
+        self.plane.task_input_receipt(self.lease_id, &input).await.map_err(|failure| unanswered(&failure))
+    }
+
+    async fn task_publish(&self, mut input: afd_wire::task::TaskEffectInput)
+        -> Result<afd_wire::task::TaskEffect, Unanswered> {
+        input.fencing_token = self.fencing_token;
+        self.plane.task_publish(self.lease_id, &input).await.map_err(|failure| unanswered(&failure))
+    }
+
+    async fn task_effects(&self, mut query: afd_wire::task::TaskEffectsQuery)
+        -> Result<afd_wire::task::TaskEffectsPage, Unanswered> {
+        query.fencing_token = self.fencing_token;
+        self.plane.task_effects(self.lease_id, &query).await.map_err(|failure| unanswered(&failure))
+    }
 }
 
 /// A failed call as a tool reads it: a refusal keeps its registry code, and

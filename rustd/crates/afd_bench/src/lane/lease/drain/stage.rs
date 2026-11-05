@@ -127,6 +127,7 @@ impl Staged {
 pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Plane {
     let database = stores.database.clone();
     Plane {
+        task_reports: None,
         leases: Leases::new(database.clone(), stores.queue.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), stores.queue.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),

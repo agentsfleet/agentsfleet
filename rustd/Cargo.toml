@@ -347,6 +347,10 @@ jiff-sqlx = { version = "0.2.1", default-features = false, features = ["postgres
 # hand-written unsafe of its own, and a JWKS document is three kilobytes read
 # twice a day — there is no throughput here to trade the posture for.
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
+# Bounded YAML decoding for native GitHub validation-workflow inspection.
+serde-saphyr = { version = "2.1.0", default-features = false, features = ["deserialize"] }
+# Immutable private checkpoint objects and native SigV4 transfer authorizations.
+object_store = { version = "0.14.2", default-features = false, features = ["aws"] }
 
 # The ONE cryptographic backend this workspace links.
 #

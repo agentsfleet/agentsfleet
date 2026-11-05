@@ -61,6 +61,7 @@ pub(crate) fn leases() -> Leases {
 pub(crate) fn plane() -> Plane {
     let kek = Arc::new(Kek::from_bytes([7; afd_crypto::KEY_LEN]));
     Plane {
+        task_reports: None,
         leases: leases(),
         gates: Gates::new(database(), queue(), Entropy::new()),
         accounts: Accounts::new(database()),

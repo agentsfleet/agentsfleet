@@ -24,6 +24,7 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi"]
 # The daemon-written resident is installed through the native setup writer.
 afd_authoring.workspace = true
 afd_fleet_lifecycle.workspace = true
+afd_fleet.workspace = true
 jiff.workspace = true
 afd_gate.workspace = true
 afd_approval.workspace = true

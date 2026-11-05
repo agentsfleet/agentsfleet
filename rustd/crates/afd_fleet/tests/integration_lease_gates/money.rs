@@ -85,6 +85,7 @@ impl Funded {
     /// A plane whose biller fails the calls `faults` names.
     fn plane(&self, faults: Faults) -> Plane {
         Plane {
+            task_reports: None,
             biller: Faulty::over(&self.fixtures.database, faults),
             ..self.fixtures.plane()
         }
@@ -123,6 +124,7 @@ impl Funded {
 /// A processed report of `lease`, its slice already run.
 fn processed(lease: &Issued) -> ReportRequest<'_> {
     ReportRequest {
+        task: None,
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event_id),
         fencing_token: lease.fencing_token,

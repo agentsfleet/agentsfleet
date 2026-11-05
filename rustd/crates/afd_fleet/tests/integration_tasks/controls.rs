@@ -39,7 +39,13 @@ async fn pause(case: &Case, task: &Uuid7, initial: TaskSnapshot) -> TaskSnapshot
     expected.context.stop_generation += 1;
     expected.resource_version += 1;
     let paused = tasks
-        .control(scope, task, initial.resource_version, TaskControl::Pause)
+        .control(
+            scope,
+            task,
+            &initial.etag(),
+            initial.context.generation,
+            TaskControl::Pause,
+        )
         .await
         .expect("pause");
     assert_eq!(
@@ -48,7 +54,13 @@ async fn pause(case: &Case, task: &Uuid7, initial: TaskSnapshot) -> TaskSnapshot
     );
     assert_eq!(
         tasks
-            .control(scope, task, paused.resource_version, TaskControl::Pause)
+            .control(
+                scope,
+                task,
+                &paused.etag(),
+                paused.context.generation,
+                TaskControl::Pause
+            )
             .await
             .expect("idempotent pause"),
         paused
@@ -65,7 +77,13 @@ async fn resume(case: &Case, task: &Uuid7, paused: TaskSnapshot) -> TaskSnapshot
     expected.context.generation += 1;
     expected.resource_version += 1;
     let resumed = tasks
-        .control(scope, task, paused.resource_version, TaskControl::Resume)
+        .control(
+            scope,
+            task,
+            &paused.etag(),
+            paused.context.generation,
+            TaskControl::Resume,
+        )
         .await
         .expect("resume");
     assert_eq!(resumed, expected);
@@ -76,16 +94,28 @@ async fn resume(case: &Case, task: &Uuid7, paused: TaskSnapshot) -> TaskSnapshot
     );
     assert_eq!(
         tasks
-            .control(scope, task, resumed.resource_version, TaskControl::Resume)
+            .control(
+                scope,
+                task,
+                &resumed.etag(),
+                resumed.context.generation,
+                TaskControl::Resume
+            )
             .await
             .expect("idempotent ready"),
         resumed
     );
     let stale = tasks
-        .control(scope, task, paused.resource_version, TaskControl::Resume)
+        .control(
+            scope,
+            task,
+            &paused.etag(),
+            paused.context.generation,
+            TaskControl::Resume,
+        )
         .await
         .expect_err("old version cannot repeat a transition");
-    assert_eq!(stale.code(), error_code::TASK_STALE_STATE);
+    assert_eq!(stale.code(), error_code::TASK_PRECONDITION_FAILED);
     assert_eq!(case.counts().await, (3, 3, 4));
 
     resumed
@@ -99,20 +129,43 @@ async fn cancel(case: &Case, task: &Uuid7, resumed: TaskSnapshot) {
     expected.context.stop_generation += 1;
     expected.resource_version += 1;
     let cancelled = tasks
-        .control(scope, task, resumed.resource_version, TaskControl::Cancel)
+        .control(
+            scope,
+            task,
+            &resumed.etag(),
+            resumed.context.generation,
+            TaskControl::Cancel,
+        )
         .await
         .expect("cancel");
     assert_eq!(cancelled, expected);
     assert_eq!(
         tasks
-            .control(scope, task, cancelled.resource_version, TaskControl::Cancel)
+            .control(
+                scope,
+                task,
+                &cancelled.etag(),
+                cancelled.context.generation,
+                TaskControl::Cancel
+            )
             .await
             .expect("idempotent cancel"),
         cancelled
     );
+    terminal_is_retained(case, task, &cancelled).await;
+}
+
+async fn terminal_is_retained(case: &Case, task: &Uuid7, cancelled: &TaskSnapshot) {
+    let (tasks, scope) = (&case.tasks, &case.scope);
     for action in [TaskControl::Pause, TaskControl::Resume] {
         let denied = tasks
-            .control(scope, task, cancelled.resource_version, action)
+            .control(
+                scope,
+                task,
+                &cancelled.etag(),
+                cancelled.context.generation,
+                action,
+            )
             .await
             .expect_err("terminal work cannot restart");
         assert_eq!(denied.code(), error_code::TASK_STALE_STATE);
@@ -122,7 +175,7 @@ async fn cancel(case: &Case, task: &Uuid7, resumed: TaskSnapshot) {
             .read(scope, task)
             .await
             .expect("terminal retained read"),
-        cancelled
+        *cancelled
     );
     assert_eq!(
         tasks

@@ -39,6 +39,17 @@ const TABLE_FLEETS: &str = "fleet.fleets";
 /// one rather than a missing one.
 pub const FRESH_CONTEXT: &str = "{}";
 
+/// Immutable revision selection used to assemble the delivered execution policy.
+#[derive(Debug, Clone)]
+pub struct IssueRevision {
+    /// Accepted setup whose text and policy were assembled.
+    pub accepted: String,
+    /// Current authority ceiling observed during assembly.
+    pub current: String,
+    /// Native generation, absent before the initial interpretation.
+    pub task_generation: Option<i64>,
+}
+
 /// A fleet as installed, resolved for one lease.
 #[derive(Debug, Clone)]
 pub struct Installed {
@@ -54,6 +65,8 @@ pub struct Installed {
     pub context_json: String,
     /// Exact owner model reference accepted with this immutable setup.
     pub runtime_model_ref: String,
+    /// Revision proof rechecked under the issue transaction.
+    pub issue_revision: Option<IssueRevision>,
 }
 
 impl Installed {
@@ -91,10 +104,19 @@ impl Leases {
     /// runner polls a rotation and refusing the RUNNER would refuse every
     /// fleet. See `super::pull::refuse::refuse_unreadable_config`.
     pub async fn installed(&self, fleet_id: &Uuid7) -> Result<Option<Installed>> {
+        self.installed_for_admission(fleet_id, None).await
+    }
+
+    pub(crate) async fn installed_for_admission(&self, fleet_id: &Uuid7, event: Option<&str>) -> Result<Option<Installed>> {
         let mut connection = self.pool().acquire().await?;
+        Self::installed_on(&mut connection, fleet_id, event).await
+    }
+
+    pub(crate) async fn installed_on(connection: &mut sqlx::PgConnection, fleet_id: &Uuid7, event: Option<&str>) -> Result<Option<Installed>> {
         let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_SESSION)
             .bind(fleet_id.as_str())
-            .fetch_optional(&mut *connection)
+            .bind(event)
+            .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_INSTALLED))?;
         let Some(FleetWithSession {
@@ -105,6 +127,7 @@ impl Leases {
             name,
             context_json,
             policy_semantics: policy,
+            revision_id, head_revision_id, task_generation, current_definition,
         }) = found
         else {
             return Ok(None);
@@ -118,6 +141,12 @@ impl Leases {
         let definition =
             Definition::parse(&document.ok_or(crate::error::ErrorKind::SetupUnavailable)?)?;
         definition.validate_for_save()?;
+        if task_generation.is_some() {
+            let current = Definition::parse(&current_definition.ok_or(crate::error::ErrorKind::SetupUnavailable)?)?;
+            if !definition.runtime().same_task_authority(current.runtime()) {
+                return Err(crate::task::TaskRefusal::InvalidTarget.into());
+            }
+        }
 
         Ok(Some(Installed {
             workspace_id: Uuid7::parse(&workspace)
@@ -128,6 +157,9 @@ impl Leases {
             context_json: context_json.unwrap_or_else(|| FRESH_CONTEXT.to_owned()),
             runtime_model_ref: runtime_model_ref
                 .ok_or(crate::error::ErrorKind::SetupUnavailable)?,
+            issue_revision: revision_id.zip(head_revision_id).map(|(accepted, current)| IssueRevision {
+                accepted, current, task_generation,
+            }),
         }))
     }
 
@@ -180,4 +212,8 @@ struct FleetWithSession {
     name: String,
     context_json: Option<String>,
     policy_semantics: Option<String>,
+    revision_id: Option<String>,
+    head_revision_id: Option<String>,
+    task_generation: Option<i64>,
+    current_definition: Option<String>,
 }

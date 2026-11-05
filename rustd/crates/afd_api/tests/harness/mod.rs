@@ -191,6 +191,8 @@ pub(crate) fn vault(database: Db) -> SecretVault {
 pub(crate) fn task_dependencies(database: Db) -> afd_fleet::task::TaskDependencies {
     afd_fleet::task::TaskDependencies {
         admin_workspace: None,
+        github: None,
+        storage: None,
         biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
             database.clone(),
             Entropy::new(),

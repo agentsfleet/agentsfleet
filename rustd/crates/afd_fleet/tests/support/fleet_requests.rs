@@ -70,6 +70,7 @@ pub(crate) fn enrolment_tagged(
 /// A host that proves everything.
 pub(crate) fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        durable_tasks_v1: false,
         build_id: None,
         landlock: true,
         seccomp: true,

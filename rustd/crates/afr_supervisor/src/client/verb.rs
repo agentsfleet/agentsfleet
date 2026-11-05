@@ -88,13 +88,47 @@ pub(crate) enum Verb {
     ScheduleRuns,
     /// A line said to the leased event's thread.
     Message,
+    /// Complete native human input and recovered meaning.
+    TaskInputs,
+    /// One complete immutable human interpretation.
+    TaskBindings,
+    /// Accepted input application or original reply.
+    TaskInputReceipt,
+    /// One native physical decision reservation.
+    TaskDecisionReserve,
+    /// Original-owner physical decision accounting.
+    TaskDecisionRecord,
+    /// One exact-head native publication.
+    TaskEffectPublish,
+    /// Recovery effects beyond a confirmed watermark.
+    TaskEffects,
+    /// One retained publication receipt.
+    TaskEffect,
+    /// An immutable capture plan and writer pin.
+    TaskCheckpointPlan,
+    /// A complete verified manifest publication.
+    TaskCheckpointCommit,
+    /// An immutable manifest page.
+    TaskCheckpointPageWrite,
+    /// One authorized recovery page.
+    TaskCheckpointPage,
+    /// Bounded native plaintext object registration.
+    TaskCheckpointObjectsRegister,
+    /// One authorized recovery object page.
+    TaskCheckpointObjects,
+    /// Immutable ciphertext and create-only transfers.
+    TaskCheckpointUploads,
+    /// Native restore custody and transfer refresh.
+    TaskCheckpointAuthorizations,
+    /// Versioned native reader or writer pin renewal.
+    TaskCheckpointPin,
 }
 
 impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 24] = [
+    pub(crate) const ALL: [Self; 41] = [
         Self::Heartbeat,
         Self::ContextLoad,
         Self::ContextCommit,
@@ -119,6 +153,23 @@ impl Verb {
         Self::ScheduleRun,
         Self::ScheduleRuns,
         Self::Message,
+        Self::TaskInputs,
+        Self::TaskBindings,
+        Self::TaskInputReceipt,
+        Self::TaskDecisionReserve,
+        Self::TaskDecisionRecord,
+        Self::TaskEffectPublish,
+        Self::TaskEffects,
+        Self::TaskEffect,
+        Self::TaskCheckpointPlan,
+        Self::TaskCheckpointCommit,
+        Self::TaskCheckpointPageWrite,
+        Self::TaskCheckpointPage,
+        Self::TaskCheckpointObjectsRegister,
+        Self::TaskCheckpointObjects,
+        Self::TaskCheckpointUploads,
+        Self::TaskCheckpointAuthorizations,
+        Self::TaskCheckpointPin,
     ];
 
     /// The method this verb is sent with.
@@ -128,9 +179,17 @@ impl Verb {
             | Self::Me
             | Self::ScheduleList
             | Self::ScheduleRuns
-            | Self::ContextLoad => Method::Get,
-            Self::ContextCommit => Method::Put,
-            Self::ScheduleUpdate => Method::Patch,
+            | Self::ContextLoad
+            | Self::TaskInputs
+            | Self::TaskEffects
+            | Self::TaskEffect
+            | Self::TaskCheckpointPage
+            | Self::TaskCheckpointObjects => Method::Get,
+            Self::ContextCommit | Self::TaskCheckpointPageWrite => Method::Put,
+            Self::ScheduleUpdate
+            | Self::TaskDecisionRecord
+            | Self::TaskCheckpointCommit
+            | Self::TaskCheckpointPin => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
             Self::Heartbeat
             | Self::Lease
@@ -147,7 +206,15 @@ impl Verb {
             | Self::Records
             | Self::ScheduleCreate
             | Self::ScheduleRun
-            | Self::Message => Method::Post,
+            | Self::Message
+            | Self::TaskBindings
+            | Self::TaskInputReceipt
+            | Self::TaskDecisionReserve
+            | Self::TaskEffectPublish
+            | Self::TaskCheckpointPlan
+            | Self::TaskCheckpointObjectsRegister
+            | Self::TaskCheckpointUploads
+            | Self::TaskCheckpointAuthorizations => Method::Post,
         }
     }
 
@@ -178,6 +245,23 @@ impl Verb {
             Self::ScheduleRun => "schedule_run",
             Self::ScheduleRuns => "schedule_runs",
             Self::Message => "message",
+            Self::TaskInputs => "task_inputs",
+            Self::TaskBindings => "task_bindings",
+            Self::TaskInputReceipt => "task_input_receipt",
+            Self::TaskDecisionReserve => "task_decision_reserve",
+            Self::TaskDecisionRecord => "task_decision_record",
+            Self::TaskEffectPublish => "task_effect_publish",
+            Self::TaskEffects => "task_effects",
+            Self::TaskEffect => "task_effect",
+            Self::TaskCheckpointPlan => "task_checkpoint_plan",
+            Self::TaskCheckpointCommit => "task_checkpoint_commit",
+            Self::TaskCheckpointPageWrite => "task_checkpoint_page_write",
+            Self::TaskCheckpointPage => "task_checkpoint_page",
+            Self::TaskCheckpointObjectsRegister => "task_checkpoint_objects_register",
+            Self::TaskCheckpointObjects => "task_checkpoint_objects",
+            Self::TaskCheckpointUploads => "task_checkpoint_uploads",
+            Self::TaskCheckpointAuthorizations => "task_checkpoint_authorizations",
+            Self::TaskCheckpointPin => "task_checkpoint_pin",
         }
     }
 
@@ -205,7 +289,24 @@ impl Verb {
             | Self::ScheduleDelete
             | Self::ScheduleRun
             | Self::ScheduleRuns
-            | Self::Message => error_code::INTERNAL_OPERATION_FAILED,
+            | Self::Message
+            | Self::TaskInputs
+            | Self::TaskBindings
+            | Self::TaskInputReceipt
+            | Self::TaskDecisionReserve
+            | Self::TaskDecisionRecord
+            | Self::TaskEffectPublish
+            | Self::TaskEffects
+            | Self::TaskEffect
+            | Self::TaskCheckpointPlan
+            | Self::TaskCheckpointCommit
+            | Self::TaskCheckpointPageWrite
+            | Self::TaskCheckpointPage
+            | Self::TaskCheckpointObjectsRegister
+            | Self::TaskCheckpointObjects
+            | Self::TaskCheckpointUploads
+            | Self::TaskCheckpointAuthorizations
+            | Self::TaskCheckpointPin => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

@@ -60,6 +60,7 @@ pub(crate) fn report<'a>(
 ) -> TerminalReport<'a> {
     let (lease_key, pricing) = priced;
     TerminalReport {
+        task_settlement: None,
         lease_id,
         runner_id,
         lease,

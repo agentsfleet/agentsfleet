@@ -41,6 +41,7 @@ impl Plane {
         closed: Option<Box<Closed>>,
         charged: Nanos,
         now: Timestamp,
+        answer: &str,
     ) -> Option<Timestamp> {
         let lease_id = request.lease_id.as_ref();
         // Hoisted for the `log` bridge's duplicated field expressions.
@@ -72,7 +73,7 @@ impl Plane {
         if let Some(closed) = closed
             && self
                 .leases
-                .publish_completion(&closed, Some(request.response_text.as_ref()))
+                .publish_completion(&closed, Some(answer))
                 .await
         {
             let event = EVENT_COMPLETION_PUBLISHED;

@@ -144,6 +144,7 @@ fn refusal(error: &crate::error::Error) {
 /// The report a runner that ran the event and answered sends back.
 fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
     ReportRequest {
+        task: None,
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),
         fencing_token: lease.fencing_token,

@@ -26,6 +26,14 @@ pub enum TaskRefusal {
     DecisionUnavailable,
     /// A physical cost exceeded its reservation; related paid work is blocked.
     DecisionOverage,
+    /// Remote acknowledgement does not prove whether the saved publication occurred.
+    EffectUncertain,
+    /// Only a complete compatible retained checkpoint can be attached.
+    CheckpointIncompatible,
+    /// Object custody cannot currently be established.
+    StorageUnavailable,
+    /// Intent, multiplicity or association does not meet the reviewed threshold.
+    InputAmbiguous,
 }
 
 impl TaskRefusal {
@@ -39,6 +47,10 @@ impl TaskRefusal {
             Self::InvalidTarget => error_code::TASK_INVALID_TARGET,
             Self::LimitExhausted | Self::DecisionOverage => error_code::TASK_LIMIT_EXHAUSTED,
             Self::DecisionUnavailable => error_code::TASK_DECISION_UNAVAILABLE,
+            Self::InputAmbiguous => error_code::TASK_INPUT_AMBIGUOUS,
+            Self::EffectUncertain => error_code::TASK_EFFECT_UNCERTAIN,
+            Self::CheckpointIncompatible => error_code::TASK_CHECKPOINT_INCOMPATIBLE,
+            Self::StorageUnavailable => error_code::TASK_STORAGE_UNAVAILABLE,
         }
     }
 
@@ -46,6 +58,10 @@ impl TaskRefusal {
     #[must_use]
     pub const fn detail(self) -> &'static str {
         match self {
+            Self::EffectUncertain => "the saved publication requires authoritative reconciliation",
+            Self::InputAmbiguous => "the input needs clarification before it can change work",
+            Self::CheckpointIncompatible => "the checkpoint cannot safely restore this task generation",
+            Self::StorageUnavailable => "checkpoint storage cannot currently establish object custody",
             Self::NotFound => "the task does not belong to this workspace and fleet",
             Self::StaleState => "the task generation or lifecycle state changed",
             Self::ReplayConflict => "the task operation conflicts with its saved interpretation",

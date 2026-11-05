@@ -12,4 +12,4 @@ pub use input::{PatchFleetRequest, PatchStatus, SaveFleetRequest, SaveOrigin, Sa
 pub use memory::{MemoryAccess, MemoryAccessRequest};
 pub use output::{FleetResponse, WebhookUrl};
 pub use revision::{AppliedRevision, ApplyRevision};
-pub use task::{TaskResponse, TaskSummary, TasksResponse};
+pub use task::{PatchTaskRequest, TaskControlState, TaskResponse, TaskSummary, TasksResponse};

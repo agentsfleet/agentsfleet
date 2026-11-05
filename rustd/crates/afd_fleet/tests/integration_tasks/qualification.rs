@@ -93,7 +93,7 @@ fn span_plan(case: &Case, span: Range<i32>) -> PreparedPlan {
         GOALS[0].to_owned(),
         questions(),
         "reviewed-goal".to_owned(),
-        "{}".to_owned(),
+        serde_json::json!({"kind":"api_only"}).to_string(),
         TaskLimits::default(),
     );
     PreparedPlan::from_parts(

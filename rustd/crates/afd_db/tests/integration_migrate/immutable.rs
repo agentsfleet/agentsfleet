@@ -7,7 +7,7 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 12] = [
+const IMMUTABLE: [&str; 20] = [
     "authoring.activity_receipts",
     "authoring.answer_receipts",
     "authoring.candidates",
@@ -16,6 +16,14 @@ const IMMUTABLE: [&str; 12] = [
     "billing.authoring_report_receipts",
     "fleet.revisions",
     "fleet.task_items",
+    "fleet.task_adoptions",
+    "fleet.task_effects",
+    "fleet.task_interpretations",
+    "fleet.task_effect_payloads",
+    "fleet.task_input_receipts",
+    "fleet.task_object_refs",
+    "fleet.task_checkpoint_operations",
+    "fleet.task_completions",
     "identity.memberships",
     "identity.workspaces",
     "model.decision_revisions",

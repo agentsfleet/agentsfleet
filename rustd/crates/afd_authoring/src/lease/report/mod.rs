@@ -102,6 +102,20 @@ impl Drafts {
                 "the setup chat's usage is logged but not yet charged; the billing sweeper settles it"
             );
         }
+        let unresolved = async {
+            let mut connection = self.database.acquire().await?;
+            sqlx::query_scalar::<_, bool>(include_str!(
+                "../../model/edit_intent/sql/unresolved.sql"
+            ))
+            .bind(work_id)
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))
+        }
+        .await;
+        if !matches!(unresolved, Ok(false)) {
+            return;
+        }
         if let Err(fault) = self.biller.release(&owing.lines.work, owing.release).await {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let error_code = fault.code().as_str();

@@ -50,7 +50,8 @@ async fn late(fixture: &Decisions<'_>, task: &DecisionTaskVersion, balance: i64)
         .control(
             &case.scope,
             &id(&task.task_id),
-            running.resource_version,
+            &running.etag(),
+            running.context.generation,
             TaskControl::Pause,
         )
         .await

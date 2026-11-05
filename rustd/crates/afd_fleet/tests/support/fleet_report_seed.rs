@@ -283,6 +283,7 @@ impl Fixtures {
     pub(crate) fn plane(&self) -> Plane {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         Plane {
+            task_reports: None,
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             leases: self.leases(),
             gates: self.gates(),
@@ -319,6 +320,7 @@ impl Fixtures {
     /// tail makes about itself.
     pub(crate) fn plane_with_dead_queue(&self) -> Plane {
         Plane {
+            task_reports: None,
             leases: self.leases_with_dead_queue(),
             ..self.plane()
         }

@@ -2,13 +2,14 @@
 
 mod insert;
 mod replay;
+mod prepare;
+mod input;
 pub(in crate::task) mod source;
 
-use afd_core::clock;
-use sqlx::Acquire as _;
+use sqlx::types::Json;
 
 use super::{
-    PreparedPlan, TaskBinding, TaskBindings, TaskLease, Tasks, continuation::Continuation, guard,
+    PreparedItem, PreparedPlan, TaskBinding, TaskBindings, TaskLease, Tasks, decision, guard, transaction,
 };
 use crate::error::{Result, query};
 
@@ -19,80 +20,101 @@ pub(super) async fn bind(
     lease: TaskLease<'_>,
     plan: &PreparedPlan,
 ) -> Result<TaskBindings> {
+    if let Some(accepted) = existing(tasks, lease, plan).await? { return Ok(accepted); }
     let scope = guard::lease_scope(tasks.leases.pool(), lease).await?;
-    let now = clock::now();
-    let mut identities = Vec::with_capacity(plan.items.len());
-    let mut continuations = Vec::with_capacity(plan.items.len());
-    for _item in &plan.items {
-        let task_id = tasks.leases.entropy().uuid7(now)?;
-        let item_id = tasks.leases.entropy().uuid7(now)?;
-        continuations.push(Continuation::new(
-            &scope,
-            &task_id,
-            1,
-            &plan.source_admission_id,
-        ));
-        identities.push(TaskBinding { item_id, task_id });
-    }
+    let (mut identities, continuations) = prepare::identities(tasks, &scope, plan).await?;
     // Backlog sampling precedes locks; staging below uses the caller's transaction.
     let mut prepared = Vec::with_capacity(continuations.len());
-    for continuation in &continuations {
-        prepared.push(tasks.admissions.prepare(continuation.admission()).await?);
+    for wake in &continuations {
+        prepared.push(match wake { Some(wake) => Some(tasks.admissions.prepare(wake.continuation.admission()).await?), None => None });
     }
-    let mut connection = tasks.leases.pool().acquire().await?;
-    let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
-    let current = guard::lease(&mut transaction, lease).await?;
-    let source = source::lock(&mut transaction, lease, &current, plan).await?;
-    if let Some(bindings) = replay::read(&mut transaction, &current, plan).await? {
-        transaction.commit().await.map_err(query(CONTEXT))?;
+    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut tx = transaction::begin(&mut connection).await?;
+    let current = guard::lease(&mut tx, lease).await?;
+    let source = source::lock(&mut tx, lease, &current, plan).await?;
+    if let Some(bindings) = replay::read(&mut tx, &current, plan).await? {
+        tx.commit().await.map_err(query(CONTEXT))?;
+        transaction::recycle(connection);
         return Ok(bindings);
     }
     source::check(&source, &current, plan)?;
+    if let Some(authorization) = &plan.authorization {
+        decision::authorize::binding(&mut tx, lease, authorization).await?;
+        sqlx::query(include_str!("sql/interpretation.sql")).bind(plan.source_admission_id.as_str())
+            .bind(&current.fleet_id).bind(&current.workspace_id).bind(&current.tenant_id).bind(&plan.digest)
+            .bind(afd_wire::event::message_of(&source.request_json).as_ref()).bind(Json(authorization))
+            .bind(lease.lease_id.as_str()).bind(current.fence).execute(&mut *tx).await.map_err(query(CONTEXT))?;
+    }
     let mut queued = Vec::new();
+    let mut bound = current.task_id.clone();
     for (ordinal, ((item, binding), continuation)) in
-        plan.items.iter().zip(&identities).zip(prepared).enumerate()
+        plan.items.iter().zip(&mut identities).zip(prepared).enumerate()
     {
-        let active = ordinal == 0 && current.task_id.is_none();
-        insert::item(&mut transaction, &current, plan, item, binding, ordinal).await?;
-        insert::task(
-            &mut transaction,
-            &current,
-            plan,
-            item,
-            binding,
-            &source,
-            active,
-        )
-        .await?;
-        if active {
-            insert::lease(&mut transaction, lease, binding).await?;
-            insert::admission(&mut transaction, plan.source_admission_id.as_str(), binding).await?;
-        } else {
+        insert::item(&mut tx, &current, plan, item, binding, ordinal).await?;
+        let should_queue = match item {
+            PreparedItem::New { task, .. } => {
+                let active = bound.is_none();
+                insert::task(&mut tx, &current, plan, task, binding, &source, active).await?;
+                binding.applies_here = active;
+                binding.task_generation = Some(1);
+                if active {
+                    insert::lease(&mut tx, lease, binding).await?;
+                    insert::admission(&mut tx, plan.source_admission_id.as_str(), binding).await?;
+                    bound = binding.task_id.as_ref().map(ToString::to_string);
+                }
+                !active
+            }
+            PreparedItem::Existing { .. } => input::accept(&mut tx, &current, lease, item, binding, &source,
+                continuations.get(ordinal).and_then(Option::as_ref)).await?,
+        };
+        if should_queue {
             let admitted = tasks
                 .admissions
-                .stage(&mut transaction, continuation)
+                .stage(&mut tx, continuation.ok_or(super::TaskRefusal::StaleState)?)
                 .await?;
-            insert::admission(&mut transaction, &admitted.stored.id, binding).await?;
+            insert::admission(&mut tx, &admitted.stored.id, binding).await?;
             queued.push(ordinal);
         }
     }
-    transaction.commit().await.map_err(query(CONTEXT))?;
+    if plan.authorization.is_some() {
+        sqlx::query(include_str!("sql/interpreted.sql")).bind(plan.source_admission_id.as_str())
+            .bind(&current.fleet_id).bind(&current.workspace_id).execute(&mut *tx).await.map_err(query(CONTEXT))?;
+    }
+    let current_task = match bound {
+        Some(id) => Some(super::read::on(&mut tx, &scope, &guard::id(&id, "task_id")?).await?.context),
+        None => None,
+    };
+    tx.commit().await.map_err(query(CONTEXT))?;
+    transaction::recycle(connection);
     for ordinal in queued {
-        if let Some(continuation) = continuations.get(ordinal) {
-            continuation.confirm(tasks).await;
+        if let Some(Some(wake)) = continuations.get(ordinal) {
+            wake.continuation.confirm(tasks).await;
         }
     }
     for binding in &identities {
-        tasks.publish_changed(&scope, &binding.task_id, 1).await;
+        let Some(task) = &binding.task_id else { continue; };
+        let snapshot = super::read::read(tasks, &scope, task).await?;
+        tasks.publish_changed(&scope, task, snapshot.resource_version).await;
         tracing::info!(
             event = "dt_transition",
-            task_id = binding.task_id.as_str(),
+            task_id = task.as_str(),
             lease_id = lease.lease_id.as_str(),
             reason = "admitted"
         );
     }
     Ok(TaskBindings {
         items: identities,
+        current_task,
         replayed: false,
     })
+}
+
+pub(super) async fn existing(tasks: &Tasks, lease: TaskLease<'_>, plan: &PreparedPlan) -> Result<Option<TaskBindings>> {
+    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut tx = transaction::begin(&mut connection).await?;
+    let current = guard::lease(&mut tx, lease).await?;
+    let saved = replay::read(&mut tx, &current, plan).await?;
+    tx.commit().await.map_err(query(CONTEXT))?;
+    transaction::recycle(connection);
+    Ok(saved)
 }

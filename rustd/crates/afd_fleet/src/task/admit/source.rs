@@ -78,13 +78,13 @@ pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) ->
     }
     let message = afd_wire::event::message_of(&source.request_json);
     for item in &plan.items {
-        let start = usize::try_from(item.source_span.start).map_err(|source| {
+        let start = usize::try_from(item.span().start).map_err(|source| {
             crate::error::Error::from(crate::error::ErrorKind::TaskCounter {
                 column: "source_start",
                 source,
             })
         })?;
-        let end = usize::try_from(item.source_span.end).map_err(|source| {
+        let end = usize::try_from(item.span().end).map_err(|source| {
             crate::error::Error::from(crate::error::ErrorKind::TaskCounter {
                 column: "source_end",
                 source,
@@ -93,7 +93,7 @@ pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) ->
         if message.get(start..end).is_none() {
             return Err(TaskRefusal::ReplayConflict.into());
         }
-        check_limits(item.limits)?;
+        if let super::super::PreparedItem::New { task, .. } = item { check_limits(task.limits)?; }
     }
     Ok(())
 }

@@ -77,10 +77,18 @@ impl Error {
             | ErrorKind::Events { .. }
             | ErrorKind::Outbound { .. }
             | ErrorKind::Rejected { .. }
+            | ErrorKind::TaskMutation { .. }
+            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlConflict { .. }
+            | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::TaskDocument { .. }
+            | ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageDeadline { .. }
+            | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteDeadline { .. } | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound

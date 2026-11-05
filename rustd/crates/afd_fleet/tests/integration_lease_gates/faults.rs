@@ -69,6 +69,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
 /// The fixture plane with a payer ledger whose database never answers.
 fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
     Plane {
+        task_reports: None,
         accounts: Accounts::new(afd_db::test_util::unreachable_db()),
         ..fixtures.plane()
     }

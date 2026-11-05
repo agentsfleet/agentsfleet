@@ -47,7 +47,7 @@ pub(super) async fn disposition(
     }
 }
 
-fn answers_match(call: &Call, request: &DecisionRequest, result: &DecisionResult) -> bool {
+pub(super) fn answers_match(call: &Call, request: &DecisionRequest, result: &DecisionResult) -> bool {
     let DecisionOutcome::Answered { answers } = &result.result else {
         return false;
     };
@@ -76,7 +76,7 @@ async fn current(tasks: &Tasks, call: &Call) -> Result<bool> {
     result
 }
 
-async fn current_on(connection: &mut PgConnection, call: &Call) -> Result<bool> {
+pub(super) async fn current_on(connection: &mut PgConnection, call: &Call) -> Result<bool> {
     let mut tx = transaction::begin(connection).await?;
     let owner: Option<Owner> = sqlx::query_as(sql::SEMANTIC_OWNER)
         .bind(&call.id)

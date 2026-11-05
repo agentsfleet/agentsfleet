@@ -4,7 +4,7 @@ mod account;
 mod allocate;
 mod attempt;
 mod budget;
-mod compile;
+pub(super) mod compile;
 mod context;
 mod dispatch;
 mod fund;
@@ -23,6 +23,8 @@ mod row;
 mod semantic;
 mod sql;
 mod verify;
+pub(super) mod authorize;
+pub(in crate::task) use authorize::goal;
 
 use std::fmt;
 

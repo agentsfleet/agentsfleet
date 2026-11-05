@@ -73,6 +73,8 @@ pub(super) struct Context<'a> {
     pub(super) history: Vec<Turn<'a>>,
     pub(super) memory: Option<MemoryHydrateResponse<'a>>,
     pub(super) decision: Option<Box<DecisionAssignment>>,
+    pub(super) task: Option<afd_wire::task::TaskContext<'static>>,
+    pub(super) expires_at: Option<jiff::Timestamp>,
 }
 
 /// The issued lease, as the bytes a runner executes from.
@@ -90,7 +92,7 @@ pub(super) fn render<'a>(
     answer(Some(LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
-        lease_expires_at: acquired.leased_until,
+        lease_expires_at: context.expires_at.unwrap_or(acquired.leased_until),
         // The one delivery this port serves. `scoped` and `proxy` are wire
         // values with no implementation on either side.
         secret_delivery: SecretDelivery::Inline,
@@ -110,6 +112,8 @@ pub(super) fn render<'a>(
         history: context.history,
         resume_hold: acquired.resume_hold,
         decision: context.decision,
+        task: context.task,
+        durable_tasks: installed.config.decision_policy().is_some(),
         memory: context.memory,
     }))
 }

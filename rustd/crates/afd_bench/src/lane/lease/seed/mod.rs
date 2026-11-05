@@ -286,6 +286,7 @@ pub async fn runner_with(
 /// A host that proves every confinement the enrolment asks for.
 fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        durable_tasks_v1: false,
         build_id: None,
         landlock: true,
         seccomp: true,

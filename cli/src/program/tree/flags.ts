@@ -254,6 +254,8 @@ const idArgument = (name: string, description: string) =>
   );
 
 export const fleetIdArgument = idArgument("fleet_id", FLEET_ID_DESC);
+export const taskIdArgument = idArgument("task_id", "Durable task ID");
+export const goalRevisionArgument = idArgument("revision_id", "Reviewed fleet setup revision ID");
 export const fleetIdOptionalArgument = fleetIdArgument.pipe(Argument.optional);
 export const workspaceIdArgument = idArgument("workspace_id", WORKSPACE_ID_DESC);
 export const workspaceIdOptionalArgument = workspaceIdArgument.pipe(Argument.optional);

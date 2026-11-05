@@ -197,6 +197,7 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **Connector install** (`connector.installs`) | A workspace's link to one provider account, such as a GitHub App installation, unique per `(provider, external_account_id)`. [(more)](./connectors.md#terminology-binding) |
 | **Coding fleet** | The workstation tool a human types into. [(more)](./user_flow.md#80-the-wedge-surface) |
 | **Steer** | A human message; lands as `actor=steer:<user>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
+| **Fleet steer** (proposed, M239) | One fleet's message to another fleet in its workspace, admitted as a steer with `actor=fleet:<fleet_id>` and at most two hops. [(more)](./scenarios/fleet-to-fleet.md) |
 | **App webhook trigger** | A provider App delivery; GitHub's lands as `actor=github-app`. [(more)](./connectors.md#github-app-platform-setup-to-fleet-execution) |
 | **Manual webhook trigger** | A post to `/v1/webhooks/{fleet_id}/{source}`, the URL Save returns for that trigger, signed with the fleet's own webhook secret. [(more)](./user_flow.md#83-triggering-the-fleet) |
 | **Trigger panel** | The card on a fleet's page (`/w/{workspaceId}/fleets/{id}`, `TriggerPanel`) showing trigger setup. [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |

@@ -123,6 +123,23 @@ impl PriceBook {
         })
     }
 
+    /// Provisional native-decision reservation across every active prompt tier.
+    /// Cache categories partition input, so its most expensive category bounds them all.
+    /// Absence or arithmetic overflow cannot authorize dispatch.
+    #[must_use]
+    pub fn decision_reservation(&self, at: Timestamp, input: u32, output: u32) -> Option<crate::Nanos> {
+        self.tiers.iter().filter(|tier| tier.covers(at)).map(|tier| {
+            let price = &tier.price;
+            let input_rate = [price.input_nanos_per_mtok, price.cached_input_nanos_per_mtok,
+                price.cache_write_nanos_per_mtok.unwrap_or(price.input_nanos_per_mtok)]
+                .into_iter().max()?;
+            let million = 1_000_000_i128;
+            let input = (i128::from(input) * i128::from(input_rate) + million - 1) / million + 2;
+            let output = (i128::from(output) * i128::from(price.output_nanos_per_mtok) + million - 1) / million;
+            i64::try_from(input + output).ok().map(crate::Nanos::from_i64)
+        }).collect::<Option<Vec<_>>>()?.into_iter().max()
+    }
+
     /// The tier a request of `whole_prompt` tokens made at `at` is priced at.
     ///
     /// Of the tiers whose dates cover `at`, the highest threshold the request

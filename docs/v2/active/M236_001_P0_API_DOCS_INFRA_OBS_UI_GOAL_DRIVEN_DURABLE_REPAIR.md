@@ -25,10 +25,8 @@
 
 Indy approved these mechanisms for implementation on November 3, 2026.
 Native ownership, task reads and decision accounting are implemented; automatic work, effects, waits and R2 recovery remain pending.
-Indy selected Durable Tasks (DTs), configurable decisions per runner, initial TypeSafe `jev-latest` and Cloudflare R2.
-Concrete interfaces and default limits are defined below and in their owning architecture pages.
-Runtime implementation is authorized; live activation requires the declared configuration and proof.
-Production launch and a new Firecracker backend are excluded.
+Indy selected Durable Tasks (DTs), configurable decisions per runner, initial TypeSafe `jev-latest` and Cloudflare R2. Concrete interfaces and default limits are defined below and in their owning architecture pages.
+Runtime implementation is authorized; live activation requires the declared configuration and proof. Production launch and a new Firecracker backend are excluded.
 
 ## Approved implementation scope
 
@@ -70,18 +68,17 @@ The extra-high Astra review and correction check are recorded in Discovery; impl
 The documentation change amends this pending spec and its owning architecture pages.
 The following module boundaries and interface definitions scope implementation; allocate schema numbering against fetched main at implementation start.
 Topic mechanisms are linked instead of copied into additional scenario documents.
-
 | Files | Action | Role |
 | --- | --- | --- |
-| `schema/{2190_fleet_task_items,2200_fleet_tasks,2210_fleet_task_inputs,2220_fleet_task_bindings,2260_runner_decision_model,2270_runner_lease_decisions,2280_runner_decision_calls,2290_runner_decision_payloads}.sql`; `rustd/crates/afd_db/src/{migration.rs,test_util/}`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection, retained decision accounting, test cleanup ownership and explicit migration/schema/role inventories; wait/effect/checkpoint slots follow |
-| `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,context,decision,coverage,billing_sweep,holds,money,installed,mod}.rs`, `lease/{report,renew,usage}/`, `lease/sql/{meter.rs,meter_lease.sql,bill_expired_slice.sql}`; tests | CREATE / EDIT | guarded DT ownership, lifecycle scenarios with gated accepted-plan fixtures, bounded reads, effects, snapshots and settlement integration |
+| `schema/{2190–2600}_*.sql` (explicit registered slots only); `rustd/crates/afd_db/src/{migration.rs,test_util/}`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection, retained decision/effect and checkpoint retry receipts, private storage/quota/pins, test cleanup ownership and explicit migration/schema/role inventories, signed completion/wait ownership and task-aware lease/report cursors |
+| `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,commit,context,decision,coverage,billing_sweep,holds,money,installed,mod}.rs`, `lease/{report,renew,usage,answer,deliver,assign,pull,mint}/`, `lease/sql/`; tests | CREATE / EDIT | guarded DT ownership, lifecycle scenarios with gated accepted-plan fixtures, bounded reads, effects, snapshots and settlement integration |
 | `rustd/crates/afd_wire/src/{decision,lease,policy,report,task}/`; matching wire tests | EDIT | explicit task generation, goal revision and decision/evidence boundaries |
 | `rustd/crates/afr_agent/src/{prompt,loop}/`; matching agent tests | EDIT | current intent, consumed human input and goal-aware action/decision loop |
-| `rustd/crates/afr_agent/src/decision/{mod,questions,routing,goal}.rs`; `afr_providers/src/{decision/,lib.rs,error/,retry/}`, `afr_providers/tests/decisions/`; `afd_fleet_runtime/src/{config/,definition/}`; `afd_authoring/src/model/provider/{prompt.rs,prompt/*.md}`; existing authoring review/Apply owners and tests | CREATE / EDIT | one typed decision trait/client; customer-owned instructions/questions; Markdown authoring guidance; linkable starters reuse immutable Library copies and existing setup chat |
+| `rustd/crates/afr_agent/src/decision/{mod,questions,routing,goal}.rs`; `afr_providers/src/{decision/,lib.rs,error/,retry/}`, `afr_providers/tests/decisions/`; `afd_fleet_runtime/src/{config/,definition/}`; `afd_authoring/src/model/{provider/,edit_intent/,dispatch/}`; authoring message, billing, candidate owners and daemon wiring; existing authoring review/Apply owners and tests | CREATE / EDIT | one typed decision trait/client; customer-owned instructions/questions; user-authored setup and native edit-intent checks; linkable starters reuse immutable Library copies and existing setup chat |
 | `rustd/crates/afd_gate/src/policy/`; `rustd/crates/afd_credential/src/credential/github/`; matching policy tests | EDIT | reviewed task/existing-PR authority and selected publication precondition |
 | `rustd/crates/afr_supervisor/src/{holds,lease_loop}/`; matching recovery tests | EDIT | compatible task-bound workspace recovery and effect reconciliation |
-| `rustd/crates/afd_api_ingress/src/handler/webhook/{app_route.rs,github/}`; `afd_ingress/src/app/`; `afd_cron/src/fire/`; `agentsfleetd/src/sweepers/{mod.rs,billing.rs,tasks.rs}`, `serve/mod.rs` and supervisor inventory/tests | EDIT / CREATE | signed completion matching, existing scheduler observation and supervised bounded task maintenance; financial expiry shares the billing loop |
-| `rustd/crates/afd_api_tenant/src/handler/{fleet/tasks,stream}/`; `afd_api_runner/src/{handler/runner/{tasks/,decisions.rs,mod.rs},lib.rs,openapi.rs}`; `afd_api_wire/src/fleet/`; `afd_wire/src/{lease,report,paths,usage}`; `afd_http/src/{route/,services/contract.rs}`; `afd_api/tests/{route_*,fleet_tasks.rs,openapi_stream_frames.rs,integration_fleet_tasks/,harness/,runner_plane/,runner_plane_suite.rs,tenant_plane_suite.rs}`; `agentsfleetd/src/plane/{mod,services}.rs`; `public/openapi.json` | CREATE / EDIT / GENERATE | authenticated task/lease APIs and capability negotiation defined by Interfaces |
+| `rustd/crates/afd_api_ingress/{Cargo.toml,src/handler/webhook/{app_route.rs,github_route.rs,github/}}`; `afd_ingress/src/app/`; `afd_cron/src/fire/`; `agentsfleetd/src/sweepers/`, `serve/{mod,runtime}.rs`, `preflight/` and supervisor inventory/tests | EDIT / CREATE | signed completion matching, existing scheduler observation, validated optional private R2 configuration and supervised bounded task/storage maintenance; financial expiry shares the billing loop |
+| `rustd/crates/afd_api_tenant/src/handler/{fleet/tasks,stream}/`; `afd_api_runner/src/{handler/runner/{task_*,decisions.rs,mod.rs},lib.rs,openapi.rs}`; `afd_api_wire/src/fleet/`; `afd_wire/src/{lease,report,paths,usage}`; `afd_http/src/{route/,envelope.rs,services/contract.rs}`; `afd_api/tests/{route_*,fleet_tasks.rs,openapi_stream_frames.rs,integration_fleet_tasks/,harness/,runner_plane/,runner_plane_suite.rs,tenant_plane_suite.rs}`; `agentsfleetd/src/plane/{mod,services,config}.rs`; `public/openapi.json` | CREATE / EDIT / GENERATE | authenticated task/lease APIs and capability negotiation defined by Interfaces |
 | `package.json`, `bun.lock`, `ui/packages/{app,design-system,website}/package.json`; `ui/packages/app/components/domain/chat/{TaskPanel,TaskDetail,TaskControls,SetupQuestions,ChatThread,ChatComposerFrame,DraftConversation,UnfinishedSetups}.tsx`, `{use-task-read,chat-defaults}.ts`; `ui/packages/app/public/fleet-starters.json`; `ui/packages/app/components/{domain/SteerComposer,layout/{DraftChatList,DraftSidebarItem}}.tsx`; existing fleet thread, setup/review/history, streaming, `app/live/` and `lib/api/{tasks,decision-policy,fleet-paths,live-json-proxy}.ts`; related tests | CREATE / EDIT | retain setup/chat layout, spinner, theming/save flow; editable customer-selected starters, aligned Resume action, concise fleet-chat guidance, compact work summaries, criteria/revisions and recovery; omit routing rules from setup display |
 | `docs/architecture/` owning topics; `docs/AUTH.md`; this spec and eventual done destination; `docs/DESIGN_SYSTEM.md` | EDIT / MOVE | architecture, credential custody and actual final evidence without duplicate owners |
 | `rustd/crates/afd_outbound/src/` | REUSE | no default edits; DT records correlate existing obligations and Slack markers |
@@ -90,15 +87,15 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | `docs/architecture/{durable_tasks,goal_evaluation}.md` | CREATE | lifecycle and decision-provider owners |
 | `docs/architecture/{README,data_flow,lease_flow,fleet_definitions,context_lifecycle,sandbox_evaluation}.md` | EDIT | owning mechanisms and explicit cross-lease handoff |
 | `rustd/crates/afr_supervisor/src/recovery/{mod,capture,restore,store,manifest}.rs`; tests; Cargo dependency files | CREATE / EDIT | encrypted incremental R2 checkpoints through proposed object_store transport |
-| `rustd/crates/afd_admission/src/{admission,admit}.rs`, `stage/` and SQL; tests | EDIT | task binding and shared single-use active-loop input claims |
-| `cli/src/commands/{fleet_steer,fleet_steer_events,fleet-read}.ts`; `commands/chat/{render,protocol,setup-session,questions}.ts`; response decoders and tests | EDIT / CREATE | readable setup/question revisions and task acceptance; accepted identity across reconnects without required user DT identifiers |
-| `rustd/{Cargo.toml,Cargo.lock}`; `rustd/crates/afd_crypto/src/{lib.rs,aad.rs,checkpoint.rs,envelope.rs,entropy.rs}` and tests; affected Cargo manifests | CREATE / EDIT | latest stable direct dependencies, domain-separated object encryption and guarded key buffers using existing AES-256-GCM; preserve vault bytes; no TLS-policy changes |
+| `rustd/crates/afd_admission/src/{admission,admit,backlog}.rs`, `budget/`, `stage/` and SQL; tests | EDIT | task binding, shared single-use active-loop input claims and executable backlog capacity independent of original financial receipts |
+| `cli/src/commands/{fleet_steer,fleet_steer_events,fleet-read,fleet_tasks,task-read}.ts`; `cli/src/program/tree/{fleet,task}.command.ts`; `commands/chat/{render,protocol,setup-session,questions}.ts`; response decoders and tests | EDIT / CREATE | readable setup/question revisions and task acceptance; accepted identity across reconnects without required user DT identifiers |
+| `rustd/{Cargo.toml,Cargo.lock}`; `rustd/crates/afd_crypto/src/{lib.rs,aad.rs,checkpoint.rs,checkpoint_digest.rs,envelope.rs,entropy.rs}` and tests; affected Cargo manifests | CREATE / EDIT | latest stable direct dependencies, domain-separated object encryption and guarded key buffers using existing AES-256-GCM; preserve vault bytes; no TLS-policy changes |
 | `rustd/crates/afd_billing/{Cargo.toml,src/}`; `afd_core/src/catalogue.rs`; `afd_wire/src/usage/`; `afd_fleet/src/lease/usage/`; tests | EDIT | frozen decision-protocol price schedules and one call-linked billing line across receipt/renew/report |
 | `rustd/crates/afd_core/src/{error_code,problem}/`; `afd_validate/{Cargo.toml,src/{lib.rs,serialized.rs}}`; registry, problem and bounded-serialization tests | CREATE / EDIT | UZ-DT errors and one allocation-free JSON size proof in the existing validation leaf, shared by decision config and wire |
 | `docs/architecture/scenarios/durable-tasks-three-prs.md` | CREATE | three-picture implementation-readiness walkthrough requested by Indy |
 | `rustd/crates/afd_wire/src/{task/,activity/,redact.rs}`; `afd_api_wire/src/tail/`; `afd_observability/src/{producers,metrics,semconv}/` and capture tests; `docs/metrics{,.runner}.census.tsv`; `afr_telemetry/src/` and tests; CLI/UI stream decoders and tests | CREATE / EDIT | typed task context, credential-safe diagnostics, frozen decisions, fair financial recovery, bounded attempt/age metrics and transfer readback |
-| `rustd/crates/afr_tools/src/verbs/mod.rs`; `afr_supervisor/src/client/lease_verbs/`; matching tests | EDIT | extend existing native LeaseVerbs for task calls rather than adding another runtime interface |
-| `rustd/crates/afd_runner/{Cargo.toml,src/{store,edit,record,decision}.rs,src/{capacity,policy,heartbeat,view,validate,error,sql}/,tests/}`; `afd_wire/src/runner/`; `afd_api_operator/src/handler/operator/`; `afd_api_wire/src/admin/`; runner edit/catalogue UI codecs and tests | EDIT / CREATE | reviewed decision-model selection through existing enrolment/edit/heartbeat, native catalogue checks and frozen lease profile |
+| `rustd/crates/afr_tools/src/verbs/`; `afr_supervisor/src/{verbs/,client/{lease_verbs/,task/,mod.rs,verb.rs}}`; matching tests | EDIT / CREATE | extend existing native LeaseVerbs for typed task calls and the existing closed runner transport vocabulary; keep physical decision keys and checkpoint transfers outside model/sandbox custody |
+| `rustd/crates/afd_runner/{Cargo.toml,src/{store,edit,record,decision,decision_profile}.rs,src/{capacity,policy,heartbeat,view,validate,error,sql}/,tests/}`; `afd_wire/src/runner/`; `afd_api_operator/src/handler/operator/`; `afd_api_wire/src/admin/`; runner edit/catalogue UI codecs and tests | EDIT / CREATE | reviewed decision-model selection through existing enrolment/edit/heartbeat, native catalogue checks and frozen lease profile |
 | `rustd/crates/afd_wire/src/{inference.rs,decision/}`; `afd_admin/src/{model.rs,model_validation.rs,catalogue.rs,decision_revision.rs,sql/}`; `afd_api_wire/src/admin_catalogue.rs`; `afd_api_operator/src/handler/admin/models/`; `afd_api/tests/integration_admin{.rs,/}`; model-catalogue readers/writers, fixtures and tests (`scripts/model-catalogue/`, `afd_db/src/test_util/sql/`), plus shared metadata; `afd_inference/src/`; `afd_credential/src/{provider/{mod.rs,decision.rs},vault/mod.rs,error/mod.rs}` and `tests/integration_rotation/decision_keys.rs`; `schema/{2230_model_decision_revisions,2240_model_decisions,2250_model_decision_prices}.sql` | EDIT / CREATE | reviewed profiles and protocol-specific rates; existing vault resolves platform-admin keys freshly for reserved calls |
 
 ## Applicable Rules
@@ -249,8 +246,7 @@ Toolbox bytes remain host-local by digest and never enter tenant checkpoints.
 
 Propose a 16-GiB retained base, 1-GiB incremental save, 50-GiB workspace storage cap and 15-minute transfer deadlines.
 The [storage protocol and limits](../../architecture/sandbox_evaluation.md#proposed-storage-authorization-and-encryption) define key ownership, scoped URLs, encryption, pins and retention.
-These are resource ceilings; the six-GiB fixture must still measure scanning, initial transfer and cold restore.
-Indy's 6-GB example is not an approved repository-size limit; enforce proposed capacity against actual measured bytes.
+These are resource ceilings; the six-GiB fixture must still measure scanning, initial transfer and cold restore. Indy's 6-GB example is not an approved repository-size limit; enforce proposed capacity against actual measured bytes.
 Use parallel independent encrypted chunks, not a redundant multipart session for each small object.
 Failed capture/upload preserves the prior manifest and shows the last recoverable generation.
 Garbage collection serializes tombstones with reader and publication pins; manifest commit converts live writer pins to durable references.
@@ -274,6 +270,8 @@ Add compact Current work above the shared fleet-chat composer with DT title, sta
 Expand local/published files, checks, attempts, subagents and evidence; subagents remain helpers within work.
 Preserve composer access, selected reading position and confirmed progress across recovery.
 Show the selected provider/model during routing and goal activity and transfer preparation/upload/verification stages in both CLI and browser, with bounded native progress events.
+Chat and CLI must show a Codex-style activity timeline: concise progress explanations, current tools and commands, bounded output, file diffs, check results, exact-head publication, waits and checkpoint capture/restore.
+Keep the current summary compact and details expandable; retain confirmed activity across reconnects, distinguish local/published and saving/saved states, and never expose credentials or private internal reasoning.
 Distinguish browser reconnection, inference interruption and uncertain tool effects; retries preserve task identity and reconcile native state first.
 The exact UI labels and scheduler/recovery narrative remain owned by the canonical scenario and design-system guidance.
 Reuse outbound obligations, Slack answer markers and repeat-delivery checks; DT records bind task/generation/destination.
@@ -326,8 +324,7 @@ Generate OpenAPI after route inventory, bounds and served-route authorization te
 | Maintenance | Supervised ten-second due-work scan; fallback reads at 60/120/240/300-second spacing, capped at 24 per DT; no new scheduler service. |
 
 These approved implementation defaults remain unmeasured operating limits; activation and acceptance require their declared proofs.
-The architecture owners carry full bounds and negative behavior; implementation follows the approved values without another signoff loop.
-The 60-second fallback is a backup read, not webhook delivery latency; unchanged status causes no agent lease, checkout restore or decision call.
+The architecture owners carry full bounds and negative behavior; implementation follows the approved values without another signoff loop. The 60-second fallback is a backup read, not webhook delivery latency; unchanged status causes no agent lease, checkout restore or decision call.
 Show the pending dependency and bounded recheck state without posting repeated unchanged reports.
 
 ## Failure Modes
@@ -375,10 +372,10 @@ Complete one crate slice before running its focused gates; repeat only for concr
 | 4.3 | integration | `publication_reconciles_uncertain_effects` | committed-before-ack-loss and human push → safe readback, no overwrite/duplicate |
 | 5.1 | integration | `replacement_worker_resumes_compatible_task_state` | worker replacement during CI wait → compatible state and same PR |
 | 5.2 | integration | `incompatible_recovery_never_attaches_writable_state` | wrong/stale/hostile/over-quota or disk-full restore → explicit refusal, retained checkpoint and preserved isolation |
-| 6.1 | e2e | `task_progress_and_failure_recovery_remain_truthful` | dry-lane browser tests under `tests/e2e/` (outside acceptance/) show progress and distinct recovery without losing native identity/actions |
+| 6.1 | e2e | `task_progress_and_failure_recovery_remain_truthful` | dry-lane browser tests under `tests/e2e/` (outside acceptance/) show concise progress, expandable commands/output/diffs/checks and distinct recovery without losing native identity/actions |
 | 6.2 | manual | `scheduled_grafana_incident_reaches_verified_development_outcome` | real scheduler/queries/GitHub/Slack and replaced worker → combined recorded outcome |
 | 6.3 | integration | `notification_retry_reconciles_native_delivery_state` | repeated/ack-lost notification intent → reconciled receipt or explicit unconfirmed state; no new repair or blind resend |
-| 6.4 | e2e | `decision_and_checkpoint_progress_is_visible_and_truthful` | CLI/browser show started/result/uncertainty and scan/upload/verify states; retries do not inflate bytes; saved appears only after manifest commit |
+| 6.4 | e2e | `decision_and_checkpoint_progress_is_visible_and_truthful` | CLI/browser retain a Codex-style action/result timeline across reconnects, including decisions, exact-head waits and capture/restore; retries do not inflate bytes and saved requires manifest commit |
 | 2.4 | integration | `intent_routing_refuses_uncertain_or_replayed_work` | mixed/ambiguous/malformed/stale routing cannot widen scope or apply input twice |
 | 5.3 | integration | `large_repository_checkpoints_upload_only_changed_content` | retained six-gigabyte base plus repeated small edits avoids complete reupload; cold restore remains exact |
 | 5.4 | integration | `checkpoint_quota_or_unsettled_kill_preserves_prior_generation` | disk-full, worker out-of-memory death, timeout, partial upload and live writers retain the prior checkpoint; no false saved state |
@@ -468,7 +465,9 @@ A backend rewrite cannot supply task authority; neither is a substitute for this
 > Owner (Indy, Nov 01, 2026, time not recorded): "So i assume in 1 spect all the above + the goal driven JEV based autonomous agent will exists?" — one unified scope selected; writing a spec does not claim implemented autonomy.
 
 ### Owner decisions from this session
-
+> Indy, Nov 05, 2026: "user will author"; "The initial prompt templates as i told you will be available in `Review Pull requests` when user selects that a template text will popup on the chat box." — remove compiled prompt Markdown; retain editable starters, schema descriptions and native checks. "i need the code complete first" — complete implementation before broad checks.
+> Indy, Nov 05, 2026: "Also ensure i need the activities displayed to the user in chat and cli must be like what codex app is showing me. So be elaborate."
+> Indy, Nov 05, 2026: "OKAY DO YOU WANT TO CONTEXT-SAVE SO A NEW CLOUD SESSION WITH A NEW AGENT CAN COMMENCE?" Then: "Well i want you to commit and push all the files and five me a prompt to have a new agent start from that branch?"; "undraft it. Indy knows its a draft" — publish the unfinished checkpoint on the existing branch and remove draft status; full implementation and final checks remain due.
 > Indy: "I would select Durable Tasks(DT) as the name."
 
 > Indy: "Yes agree on jev-latest model to use." Later: "This shouldnt be platform owned"; "not editing the same old revision." — owners revise criteria through chat/CLI and immutable revisions. On displaying routing rules: "What is the value the user gets by seeing that?" — remove those details from setup display.

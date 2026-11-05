@@ -95,3 +95,73 @@ async fn task_input_refusals_and_storage_outages_remain_distinct_and_bounded() {
         "a missing datastore cannot leave a task read stuck"
     );
 }
+
+#[tokio::test]
+async fn task_controls_require_write_scope_and_a_bounded_conditional_request() {
+    let token = format!("agt_t{}", "fade".repeat(16));
+    let reader = Fleet::new()
+        .with_person(
+            &token,
+            "user_task_reader",
+            ScopeSet::from_scopes(&[Scope::FleetRead]),
+        )
+        .router();
+    let writer = Fleet::new()
+        .with_person(
+            &token,
+            "user_task_writer",
+            ScopeSet::from_scopes(&[Scope::FleetWrite]),
+        )
+        .router();
+    let path = format!("{}/{TASK}", collection());
+    let body = r#"{"state":"paused","expected_generation":1}"#;
+    assert_eq!(
+        send(&writer, Method::PATCH, &path, None, body)
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&reader, Method::PATCH, &path, Some(&token), body)
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let missing = send(&writer, Method::PATCH, &path, Some(&token), body).await;
+    assert_eq!(missing.status(), StatusCode::PRECONDITION_REQUIRED);
+    assert_eq!(code_of(missing).await, "UZ-AUTHOR-004");
+    malformed_controls(&writer, &token, &path, body).await;
+}
+
+async fn malformed_controls(writer: &axum::Router, token: &str, path: &str, body: &str) {
+    for invalid in [
+        r#"{"state":"done","expected_generation":1}"#,
+        r#"{"state":"paused","expected_generation":0}"#,
+        r#"{"state":"paused","expected_generation":1,"task_id":"private"}"#,
+        r#"{"state":"paused","state":"cancelled","expected_generation":1}"#,
+    ] {
+        assert_eq!(
+            send(writer, Method::PATCH, path, Some(token), invalid)
+                .await
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let oversized = " ".repeat(128 * 1024 + 1);
+    assert_eq!(
+        send(writer, Method::PATCH, path, Some(token), &oversized)
+            .await
+            .status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    let unreachable = crate::harness::send_with_headers(
+        writer,
+        Method::PATCH,
+        path,
+        Some(token),
+        body,
+        &[(http::header::IF_MATCH, "\"current\"")],
+    )
+    .await;
+    assert_eq!(unreachable.status(), StatusCode::SERVICE_UNAVAILABLE);
+}

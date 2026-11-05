@@ -4,6 +4,9 @@
 //! store's private pool, and task work never introduces a competing queue.
 
 mod admit;
+mod adoption;
+mod lifecycle;
+pub(crate) mod lease;
 mod continuation;
 mod control;
 mod decision;
@@ -11,17 +14,27 @@ mod dependencies;
 mod fetch;
 mod guard;
 mod list;
+mod inputs;
+mod github;
+mod effects;
+mod execution;
+mod prepared;
+mod bindings;
+mod input_receipt;
+pub(crate) mod usage;
+mod checkpoint;
+pub mod storage;
 mod observe;
 mod read;
 mod refusal;
 mod row;
+mod report;
+mod waits;
 mod sql;
 #[cfg(feature = "test-util")]
 mod test_util;
 mod transaction;
 mod types;
-
-use std::pin::Pin;
 
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::task::{TaskOperation, TaskOutcome};
@@ -29,66 +42,31 @@ use tracing::Instrument as _;
 
 use crate::{Result, lease::Leases};
 
+pub(crate) const DECISION_POLICY_PATH: &[&str] = &["config", "x-agentsfleet", "decision_policy"];
+
 pub use decision::ReservedDecision;
+use prepared::PreparedItem;
 #[cfg(feature = "test-util")]
 pub use decision::{
     DECISION_BUDGET_STATEMENT, EXPIRED_DECISION_CALLS_STATEMENT, LOCKED_DECISION_CALL_STATEMENT,
 };
 pub use dependencies::TaskDependencies;
+pub use github::Github;
 pub use refusal::TaskRefusal;
 pub use types::{
-    DecisionMaintenance, DecisionMaintenanceCursor, PreparedPlan, PreparedTask, TaskAfter,
-    TaskBinding, TaskBindings, TaskControl, TaskLease, TaskPage, TaskScope, TaskSnapshot,
+    DecisionMaintenance, DecisionMaintenanceCursor, EffectMaintenance, CheckpointMaintenance, CheckpointMaintenanceCursor, PreparedPlan, PreparedTask, TaskAfter,
+    TaskAdoption, TaskBinding, TaskBindings, TaskControl, TaskLease, TaskPage, TaskScope, TaskSnapshot,
     TaskSummary,
 };
 
-/// Object-safe native operation using the owning crate's error shell.
-pub type TaskFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
-
-/// Behavior of the authoritative task owner; all writes are fenced natively.
-pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
-    /// Release expired reservations only when native history proves no issuance.
-    fn maintain_decisions<'a>(
-        &'a self,
-        cursor: &'a mut DecisionMaintenanceCursor,
-    ) -> TaskFuture<'a, DecisionMaintenance>;
-    /// Reserve one physical call; replays cannot issue another credential.
-    fn reserve_decision<'a>(
-        &'a self,
-        lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::DecisionReservationInput>,
-    ) -> TaskFuture<'a, ReservedDecision>;
-    /// Account original-owner usage independently of current task authority.
-    fn record_decision<'a>(
-        &'a self,
-        lease: TaskLease<'a>,
-        call: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::DecisionReceiptInput>,
-    ) -> TaskFuture<'a, afd_wire::task::DecisionReceiptResult>;
-    /// Page current work without loading private objectives or question bodies.
-    fn list<'a>(
-        &'a self,
-        scope: &'a TaskScope,
-        after: Option<&'a TaskAfter>,
-        limit: u32,
-    ) -> TaskFuture<'a, TaskPage>;
-    /// Bind a complete prepared interpretation without allocating on replay.
-    fn bind<'a>(
-        &'a self,
-        lease: TaskLease<'a>,
-        plan: &'a PreparedPlan,
-    ) -> TaskFuture<'a, TaskBindings>;
-    /// Read a task only inside the caller's authorized workspace/fleet scope.
-    fn read<'a>(&'a self, scope: &'a TaskScope, task_id: &'a Uuid7)
-    -> TaskFuture<'a, TaskSnapshot>;
-    /// Apply a versioned human lifecycle control without resetting budgets.
-    fn control<'a>(
-        &'a self,
-        scope: &'a TaskScope,
-        task_id: &'a Uuid7,
-        expected_version: u64,
-        control: TaskControl,
-    ) -> TaskFuture<'a, TaskSnapshot>;
+pub use lifecycle::{TaskFuture, TaskLifecycle};
+pub use report::{PreparedReport, TaskReportOwner, TaskSettlement};
+pub(crate) use waits::ReadPermit;
+pub use waits::{CompletionScope, VerifiedCompletion, WaitMaintenance};
+pub(crate) async fn settle_report(connection: &mut sqlx::PgConnection, lease: &Uuid7, runner: &Uuid7,
+    settlement: Option<TaskSettlement<'_>>) -> Result<Option<&'static str>> {
+    observe::measure(TaskOperation::ReportCommit, report::apply(connection, lease, runner, settlement),
+        |notice| if notice.is_none() { TaskOutcome::Accepted } else { TaskOutcome::Unavailable }).await
 }
 
 /// Task data and native dependencies; behavior is implemented by the trait.
@@ -127,6 +105,101 @@ impl Tasks {
 }
 
 impl TaskLifecycle for Tasks {
+    fn maintain_waits(&self) -> TaskFuture<'_, WaitMaintenance> {
+        Box::pin(observe::measure(TaskOperation::WaitSweep, waits::maintain(self), |_| TaskOutcome::Accepted))
+    }
+    fn record_github_completion<'a>(&'a self, completion: &'a VerifiedCompletion) -> TaskFuture<'a, u64> {
+        Box::pin(observe::measure(TaskOperation::CompletionMatch, waits::complete(self, completion), |_| TaskOutcome::Accepted))
+    }
+    fn maintain_checkpoints<'a>(&'a self, cursor: &'a mut CheckpointMaintenanceCursor) -> TaskFuture<'a, CheckpointMaintenance> {
+        Box::pin(observe::measure(TaskOperation::CheckpointSweep, checkpoint::maintain(self, cursor), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("checkpoint_maintenance")))
+    }
+    fn plan_checkpoint<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::CheckpointPlanInput>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointPlan> {
+        Box::pin(observe::measure(TaskOperation::CheckpointPlan, checkpoint::create(self, lease, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("plan_checkpoint", lease_id = lease.lease_id.as_str())))
+    }
+    fn write_checkpoint_page<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, page: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointPageInput>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointPage> {
+        Box::pin(observe::measure(TaskOperation::CheckpointPage, checkpoint::write(self, lease, checkpoint, page, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("write_checkpoint_page", lease_id = lease.lease_id.as_str())))
+    }
+    fn checkpoint_page<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, page: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointPage> {
+        Box::pin(observe::measure(TaskOperation::CheckpointPage, checkpoint::read(self, lease, checkpoint, page, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("checkpoint_page", lease_id = lease.lease_id.as_str())))
+    }
+    fn register_checkpoint_objects<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointObjectsInput>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage> {
+        Box::pin(observe::measure(TaskOperation::CheckpointRegister, checkpoint::register(self, lease, checkpoint, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("register_checkpoint_objects", lease_id = lease.lease_id.as_str())))
+    }
+    fn checkpoint_uploads<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointUploadsInput>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage> {
+        Box::pin(observe::measure(TaskOperation::CheckpointTransfer, checkpoint::uploads(self, lease, checkpoint, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("checkpoint_uploads", lease_id = lease.lease_id.as_str())))
+    }
+    fn checkpoint_authorizations<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointAuthorizationInput>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointAuthorizations> {
+        Box::pin(observe::measure(TaskOperation::CheckpointTransfer, checkpoint::authorize(self, lease, checkpoint, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("checkpoint_authorizations", lease_id = lease.lease_id.as_str())))
+    }
+    fn checkpoint_objects<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage> {
+        Box::pin(observe::measure(TaskOperation::CheckpointTransfer, checkpoint::list(self, lease, checkpoint, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("checkpoint_objects", lease_id = lease.lease_id.as_str())))
+    }
+    fn renew_checkpoint_pin<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, pin: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointPinInput>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointPin> {
+        Box::pin(observe::measure(TaskOperation::CheckpointPin, checkpoint::renew(self, lease, checkpoint, pin, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("renew_checkpoint_pin", lease_id = lease.lease_id.as_str())))
+    }
+    fn commit_checkpoint<'a>(&'a self, lease: TaskLease<'a>, checkpoint: &'a Uuid7, input: &'a garde::Valid<afd_wire::task::CheckpointCommitInput>)
+        -> TaskFuture<'a, afd_wire::task::CheckpointPlan> {
+        Box::pin(observe::measure(TaskOperation::CheckpointCommit, checkpoint::publish(self, lease, checkpoint, input), |_| TaskOutcome::Accepted)
+            .instrument(tracing::info_span!("commit_checkpoint", lease_id = lease.lease_id.as_str())))
+    }
+    fn maintain_effects(&self) -> TaskFuture<'_, EffectMaintenance> { Box::pin(observe::measure(TaskOperation::EffectSweep, effects::maintain(self), |_| TaskOutcome::Accepted)) }
+    fn accept_input<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskInputReceiptInput>)
+        -> TaskFuture<'a, afd_wire::task::TaskInputReceiptResult> {
+        Box::pin(observe::measure(TaskOperation::InputReceipt, input_receipt::accept(self, lease, input), |_| TaskOutcome::Accepted))
+    }
+    fn interpret<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskBindingsInput>)
+        -> TaskFuture<'a, afd_wire::task::TaskBindingsResponse<'static>> {
+        Box::pin(bindings::accept(self, lease, input))
+    }
+    fn publish_effect<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskEffectInput>)
+        -> TaskFuture<'a, (afd_wire::task::TaskEffect, bool)> {
+        Box::pin(observe::measure(TaskOperation::EffectPublish, effects::publish(self, lease, input), |_| TaskOutcome::Accepted))
+    }
+
+    fn effect<'a>(&'a self, lease: TaskLease<'a>, id: &'a Uuid7) -> TaskFuture<'a, afd_wire::task::TaskEffect> {
+        Box::pin(observe::measure(TaskOperation::EffectRead, effects::one(self, lease, id), |_| TaskOutcome::Accepted))
+    }
+
+    fn effects<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskEffectsQuery>)
+        -> TaskFuture<'a, afd_wire::task::TaskEffectsPage> {
+        Box::pin(observe::measure(TaskOperation::EffectRead, effects::list(self, lease, input), |_| TaskOutcome::Accepted))
+    }
+    fn inputs<'a>(&'a self, lease: TaskLease<'a>, input: &'a garde::Valid<afd_wire::task::TaskInputsQuery>)
+        -> TaskFuture<'a, afd_wire::task::TaskInputsResponse<'static>> {
+        Box::pin(observe::measure(TaskOperation::Read, inputs::read(self, lease, input), |_| TaskOutcome::Accepted))
+    }
+
+    fn adopt_goal<'a>(
+        &'a self,
+        scope: &'a TaskScope,
+        task_id: &'a Uuid7,
+        expected_tag: &'a str,
+        adoption: &'a TaskAdoption,
+    ) -> TaskFuture<'a, TaskSnapshot> {
+        let span = tracing::info_span!("task_goal_adoption", task_id = task_id.as_str());
+        Box::pin(observe::measure(TaskOperation::AdoptGoal,
+            adoption::apply(self, scope, task_id, expected_tag, adoption),
+            |_| TaskOutcome::Accepted).instrument(span))
+    }
+
     fn maintain_decisions<'a>(
         &'a self,
         cursor: &'a mut DecisionMaintenanceCursor,
@@ -258,7 +331,8 @@ impl TaskLifecycle for Tasks {
         &'a self,
         scope: &'a TaskScope,
         task_id: &'a Uuid7,
-        expected_version: u64,
+        expected_tag: &'a str,
+        expected_generation: u64,
         control: TaskControl,
     ) -> TaskFuture<'a, TaskSnapshot> {
         let operation = match control {
@@ -270,7 +344,14 @@ impl TaskLifecycle for Tasks {
         Box::pin(
             observe::measure(
                 operation,
-                control::apply(self, scope, task_id, expected_version, control),
+                control::apply(
+                    self,
+                    scope,
+                    task_id,
+                    expected_tag,
+                    expected_generation,
+                    control,
+                ),
                 |_| TaskOutcome::Accepted,
             )
             .instrument(span),

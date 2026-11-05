@@ -118,7 +118,10 @@ pub(super) async fn execution(
                 .map_err(query("lock decision execution stamp"))?
                 .ok_or(TaskRefusal::StaleState)?;
             let task = read::on(connection, scope, &guard::id(id, "task_id")?).await?;
-            if task.context.generation != expected.generation {
+            if task.context.generation != expected.generation
+                || current.task_generation != i64::try_from(task.context.generation).ok()
+                || current.task_stop_generation != i64::try_from(task.context.stop_generation).ok()
+                || task.context.state != afd_wire::task::TaskState::Running {
                 return Err(TaskRefusal::StaleState.into());
             }
             Ok(Some(Execution {
@@ -147,13 +150,19 @@ pub(super) async fn authorize_source(
     source::check_human(input)?;
     if source_id.as_str() != current.source_admission_id {
         sqlx::query_scalar::<_, String>(sql::CLAIM_SOURCE)
-            .bind(source_id.as_str())
+            .bind(&current.fleet_id)
+            .bind(&current.workspace_id)
+            .bind(&current.source_admission_id)
+            .bind(afd_admission::Producer::Steer.as_str())
+            .bind(afd_events::ACTOR_MACHINE)
+            .bind(format!("{}%", afd_events::ACTOR_PREFIX))
+            .bind(0_i64)
+            .bind(1_i64)
             .bind(lease.lease_id.as_str())
             .bind(current.fence)
             .bind(LEASE_STATUS_ACTIVE)
-            .bind(afd_admission::Producer::Steer.as_str())
-            .bind(afd_events::ACTOR_MACHINE)
-            .bind(&current.source_admission_id)
+            .bind(source_id.as_str())
+            .bind(false)
             .fetch_optional(connection)
             .await
             .map_err(query("claim the next native human decision source"))?

@@ -16,6 +16,10 @@ pub struct TaskDependencies {
     pub biller: Arc<dyn Biller>,
     /// Fresh platform-admin provider-secret resolution.
     pub providers: Providers,
+    /// Native branch publication using the same credential plane and guarded client.
+    pub github: Option<super::Github>,
+    /// Private platform-owned checkpoint storage, absent until activation is configured.
+    pub storage: Option<super::storage::R2CheckpointStore>,
 }
 
 impl From<&Plane> for TaskDependencies {
@@ -24,6 +28,8 @@ impl From<&Plane> for TaskDependencies {
             admin_workspace: None,
             biller: Arc::clone(&plane.biller),
             providers: plane.providers.clone(),
+            github: None,
+            storage: None,
         }
     }
 }

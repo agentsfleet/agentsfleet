@@ -120,6 +120,7 @@ async fn test_window_read_failure_issues_without_a_window() {
         .ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
     let forgetful = Plane {
+        task_reports: None,
         memories: Memories::new(unreachable_db(), Entropy::new()),
         ..chat.fixtures.plane()
     };

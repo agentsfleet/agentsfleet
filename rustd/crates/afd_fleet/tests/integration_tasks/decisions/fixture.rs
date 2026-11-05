@@ -197,7 +197,9 @@ impl<'a> Decisions<'a> {
             (*goal).to_owned(),
             questions,
             sha256_hex(goal.as_bytes()),
-            json!({"repository":"linkwarden","pull_request":101}).to_string(),
+            json!({"repository":"example/linkwarden","repository_id":101,"installation_id":1,"number":101,
+                "branch":"repair","base":"main","head":"0".repeat(40),"tree":"1".repeat(40),
+                "url":"https://github.com/example/linkwarden/pull/101","workflows":[]}).to_string(),
             limits,
         );
         let plan = PreparedPlan::from_parts(

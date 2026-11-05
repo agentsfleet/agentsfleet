@@ -12,6 +12,12 @@ pub struct Network {
 }
 
 impl Network {
+    /// Shares guarded DNS, verified TLS and disabled redirects/retries with native decisions.
+    #[must_use]
+    pub fn guarded_client(&self) -> reqwest::Client {
+        self.client.clone()
+    }
+
     /// Builds the shared guarded client once at daemon boot.
     ///
     /// # Errors

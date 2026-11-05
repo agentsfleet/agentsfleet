@@ -48,6 +48,9 @@ pub struct TaskSummary<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskResponse<'a> {
+    /// Strong version shared with the response header and conditional writes.
+    #[serde(borrow)]
+    pub etag: Cow<'a, str>,
     /// User-facing title.
     #[serde(borrow)]
     pub title: Cow<'a, str>,
@@ -58,4 +61,45 @@ pub struct TaskResponse<'a> {
     /// Accepted objective, questions, cursors and remaining limits.
     #[serde(borrow)]
     pub context: TaskContext<'a>,
+}
+
+/// Explicit human lifecycle control; completion requires native goal proof.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskControlState {
+    /// Stop new work while retaining progress.
+    Paused,
+    /// Resume paused or blocked work within its remaining allowance.
+    Ready,
+    /// Stop new work permanently, retaining uncertain effects for reconciliation.
+    Cancelled,
+}
+
+/// A conditional lifecycle control or explicit adoption of reviewed goal wording.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum PatchTaskRequest {
+    /// Pause, resume or cancel without changing the accepted objective.
+    Control {
+        /// Requested native lifecycle state.
+        #[garde(skip)]
+        state: TaskControlState,
+        /// Generation from the task's current native context.
+        #[garde(range(min = 1))]
+        expected_generation: u64,
+    },
+    /// Adopt the completion criteria from an explicitly reviewed fleet revision.
+    AdoptGoal {
+        /// Existing immutable setup revision belonging to this fleet.
+        #[garde(length(bytes, min = 36, max = 36))]
+        goal_revision_id: String,
+        /// Generation read before requesting adoption.
+        #[garde(range(min = 1))]
+        expected_generation: u64,
+        /// Stable retry identity for the same adoption.
+        #[garde(length(bytes, min = 36, max = 36))]
+        operation_id: String,
+    },
 }

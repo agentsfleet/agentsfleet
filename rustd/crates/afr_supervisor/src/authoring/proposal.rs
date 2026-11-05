@@ -72,6 +72,9 @@ fn feedback(reason: ProposalRejection) -> &'static str {
         ProposalRejection::InstructionsAmbiguous => {
             "No changes were applied. The old_text matches more than one position in instructions_md. Include enough exact surrounding text to identify one position. Return a corrected propose_setup call."
         }
+        ProposalRejection::EditNotRequested => {
+            "No changes were applied. The newest message does not ask to change the setup. Answer the question without proposing an edit."
+        }
         ProposalRejection::StaleCandidate => {
             "No changes were applied. Use the current candidate identifier and decimal revision from the current candidate or most recent accepted proposal receipt. Return a corrected propose_setup call."
         }

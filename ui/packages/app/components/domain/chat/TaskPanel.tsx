@@ -37,7 +37,7 @@ function CurrentWork({workspaceId, fleetId, revision}: Props) {
             <span className="min-w-0 flex-1 break-words">{task.title}</span>
             <span className={task.status === "running" ? "shrink-0 text-info" : "shrink-0 text-muted-foreground"}>{LABELS[task.status]}</span>
           </AccordionTrigger>
-          <AccordionContent className="pr-sm"><TaskDetail workspaceId={workspaceId} fleetId={fleetId} task={task} /></AccordionContent>
+          <AccordionContent className="pr-sm"><TaskDetail workspaceId={workspaceId} fleetId={fleetId} task={task} onChanged={retry} /></AccordionContent>
         </AccordionItem>)}
       </Accordion>
       <p className="py-sm text-eyebrow text-muted-foreground">Expand work for its saved criteria.</p>

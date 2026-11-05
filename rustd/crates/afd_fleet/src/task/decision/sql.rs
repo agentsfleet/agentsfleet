@@ -1,7 +1,7 @@
 //! Decision statements stay with the existing task lifecycle owner.
 
 pub(super) const CANDIDATES: &str = include_str!("sql/candidates.sql");
-pub(super) const CLAIM_SOURCE: &str = include_str!("sql/claim_source.sql");
+pub(super) const CLAIM_SOURCE: &str = include_str!("../sql/pending_inputs.sql");
 pub(super) const LOCK_TASK: &str = include_str!("sql/lock_task.sql");
 pub(super) const PROFILE: &str = include_str!("sql/profile.sql");
 pub(super) const PEEK_CALL: &str = include_str!("sql/find_call.sql");

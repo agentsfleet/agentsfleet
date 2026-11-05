@@ -93,13 +93,13 @@ impl FleetRoute {
         match self {
             Self::AuthoringContext
             | Self::Tasks
-            | Self::Task
             | Self::Events
             | Self::EventsStream
             | Self::Event
             | Self::ToolCall
             | Self::Memories
             | Self::Grants => &[Verb::Get],
+            Self::Task => &[Verb::Get, Verb::Patch],
             Self::Memory | Self::Grant => &[Verb::Delete],
             Self::ScheduleSync | Self::Revisions => &[Verb::Post],
             Self::MemoryAccess => &[Verb::Patch],
@@ -190,11 +190,10 @@ impl FleetRoute {
             Self::Revisions | Self::Memory | Self::MemoryAccess | Self::AuthoringContext => {
                 Scopes::Always(FLEET_WRITE)
             }
-            Self::Messages => Scopes::rw(FLEET_READ, FLEET_WRITE),
+            Self::Messages | Self::Task => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Schedules | Self::Schedule => Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             Self::ScheduleSync => Scopes::Always(SCHEDULE_WRITE),
             Self::Tasks
-            | Self::Task
             | Self::Events
             | Self::EventsStream
             | Self::Event

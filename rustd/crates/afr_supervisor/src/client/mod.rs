@@ -30,6 +30,7 @@ mod authoring;
 mod context;
 mod http;
 mod lease_verbs;
+mod task;
 mod verb;
 
 pub(crate) use self::http::HttpRunnerApi;

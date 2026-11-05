@@ -26,6 +26,30 @@ pub enum RunnerRoute {
     ContextCheckpoint,
     /// Reserve a physical decision with accepted native questions and credit.
     TaskDecisions,
+    /// Read complete pending human messages without consuming them.
+    TaskInputs,
+    /// Accept complete message interpretation and native objective associations.
+    TaskBindings,
+    /// Native exact-head publication and recovery pages.
+    TaskEffects,
+    /// Read and reconcile one immutable publication.
+    TaskEffect,
+    /// Source-bound input application and reply receipts.
+    TaskInputReceipts,
+    /// Native immutable capture plans.
+    TaskCheckpoints,
+    /// Complete verified manifest publication.
+    TaskCheckpoint,
+    /// Immutable bounded manifest pages.
+    TaskCheckpointPage,
+    /// Object registration and bounded restore reads.
+    TaskCheckpointObjects,
+    /// Frozen ciphertext descriptors and conditional PUT authorization.
+    TaskCheckpointUploads,
+    /// Restore bootstrap and bounded transfer refresh.
+    TaskCheckpointAuthorizations,
+    /// Native capture/restore pin renewal.
+    TaskCheckpointPin,
     /// Record one original-owner decision result, including late usage.
     TaskDecision,
     /// The runner's heartbeat.
@@ -73,6 +97,18 @@ impl RunnerRoute {
         Self::SelfRecord,
         Self::ContextCheckpoint,
         Self::TaskDecisions,
+        Self::TaskInputs,
+        Self::TaskBindings,
+        Self::TaskEffects,
+        Self::TaskEffect,
+        Self::TaskInputReceipts,
+        Self::TaskCheckpoints,
+        Self::TaskCheckpoint,
+        Self::TaskCheckpointPage,
+        Self::TaskCheckpointObjects,
+        Self::TaskCheckpointUploads,
+        Self::TaskCheckpointAuthorizations,
+        Self::TaskCheckpointPin,
         Self::TaskDecision,
         Self::Heartbeat,
         Self::Lease,
@@ -104,11 +140,11 @@ impl RunnerRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::ContextCheckpoint => &[Verb::Get, Verb::Put],
-            Self::Schedules | Self::ScheduleRuns => &[Verb::Get, Verb::Post],
+            Self::ContextCheckpoint | Self::TaskCheckpointPage => &[Verb::Get, Verb::Put],
+            Self::Schedules | Self::ScheduleRuns | Self::TaskEffects | Self::TaskCheckpointObjects => &[Verb::Get, Verb::Post],
             Self::Schedule => &[Verb::Patch, Verb::Delete],
-            Self::TaskDecision => &[Verb::Patch],
-            Self::SelfRecord | Self::MemoryHydrate => &[Verb::Get],
+            Self::TaskDecision | Self::TaskCheckpoint | Self::TaskCheckpointPin => &[Verb::Patch],
+            Self::SelfRecord | Self::MemoryHydrate | Self::TaskInputs | Self::TaskEffect => &[Verb::Get],
             Self::Heartbeat
             | Self::Lease
             | Self::Report
@@ -123,6 +159,11 @@ impl RunnerRoute {
             | Self::MemoryRecall
             | Self::ToolCalls
             | Self::TaskDecisions
+            | Self::TaskBindings
+            | Self::TaskInputReceipts
+            | Self::TaskCheckpoints
+            | Self::TaskCheckpointUploads
+            | Self::TaskCheckpointAuthorizations
             | Self::Messages => &[Verb::Post],
         }
     }
@@ -137,6 +178,18 @@ impl RunnerRoute {
             Self::SelfRecord => paths::RUNNER_SELF,
             Self::ContextCheckpoint => paths::LEASE_CONTEXT,
             Self::TaskDecisions => paths::LEASE_TASK_DECISIONS,
+            Self::TaskInputs => paths::LEASE_TASK_INPUTS,
+            Self::TaskBindings => paths::LEASE_TASK_BINDINGS,
+            Self::TaskEffects => paths::LEASE_TASK_EFFECTS,
+            Self::TaskEffect => paths::LEASE_TASK_EFFECT,
+            Self::TaskInputReceipts => paths::LEASE_TASK_INPUT_RECEIPTS,
+            Self::TaskCheckpoints => paths::LEASE_TASK_CHECKPOINTS,
+            Self::TaskCheckpoint => paths::LEASE_TASK_CHECKPOINT,
+            Self::TaskCheckpointPage => paths::LEASE_TASK_CHECKPOINT_PAGE,
+            Self::TaskCheckpointObjects => paths::LEASE_TASK_CHECKPOINT_OBJECTS,
+            Self::TaskCheckpointUploads => paths::LEASE_TASK_CHECKPOINT_UPLOADS,
+            Self::TaskCheckpointAuthorizations => paths::LEASE_TASK_CHECKPOINT_AUTHORIZATIONS,
+            Self::TaskCheckpointPin => paths::LEASE_TASK_CHECKPOINT_PIN,
             Self::TaskDecision => paths::LEASE_TASK_DECISION,
             Self::Heartbeat => paths::RUNNER_HEARTBEATS,
             Self::Lease => paths::RUNNER_LEASES,

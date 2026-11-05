@@ -55,12 +55,16 @@ pub struct Billed<'a> {
 }
 
 /// The issued lease.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Issued {
     /// The lease's durable identifier, which the runner reports against.
     pub lease_id: Uuid7,
     /// The exact non-secret selection committed with this lease.
     pub decision: Option<Box<DecisionAssignment>>,
+    /// Frozen native task and recovery state.
+    pub task: Option<afd_wire::task::TaskContext<'static>>,
+    /// Actual slot deadline after task limits were applied.
+    pub expires_at: Timestamp,
 }
 
 impl Leases {
@@ -86,8 +90,16 @@ impl Leases {
         billed: Billed<'_>,
         now: Timestamp,
     ) -> Result<Option<Issued>> {
+        self.issue_for_revision(runner_id, acquired, billed, now, None).await
+    }
+
+    pub(crate) async fn issue_for_revision(
+        &self, runner_id: &Uuid7, acquired: &Acquired, billed: Billed<'_>, now: Timestamp,
+        revision: Option<&crate::lease::installed::IssueRevision>,
+    ) -> Result<Option<Issued>> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
+        if !crate::task::lease::parents(&mut transaction, acquired).await? { return Ok(None); }
         let Some(capacity) = afd_runner::capacity::lock(&mut transaction, runner_id).await? else {
             return Ok(None);
         };
@@ -132,10 +144,13 @@ impl Leases {
         {
             return Ok(None);
         }
+        let Some((task, expires_at)) = crate::task::lease::attach(&mut transaction, acquired, runner_id, &lease_id, revision).await? else {
+            return Ok(None);
+        };
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
         record_issued(&lease_id, runner_id, acquired, decision.as_deref());
-        Ok(Some(Issued { lease_id, decision }))
+        Ok(Some(Issued { lease_id, decision, task, expires_at }))
     }
 
     /// Draw the independent lease and audit identities.

@@ -110,6 +110,12 @@ pub(crate) struct Runtime {
     /// How far those credentials reach. Set together with `repositories`.
     #[garde(skip)]
     pub(crate) repository_access: Option<Access>,
+    /// Reviewed write mode; existing_pr reserves branch publication for native tasks.
+    #[garde(skip)]
+    pub(crate) repository_publication: Option<crate::config::RepositoryPublication>,
+    /// Exact owner-reviewed validation-only workflows for existing PR publication.
+    #[garde(inner(length(min = 1, max = 16), dive))]
+    pub(crate) repository_validation_workflows: Option<Vec<crate::config::repository::ValidationWorkflow>>,
     /// The branch every pull request opens against. Required with `write`, refused with `read`.
     #[garde(inner(length(chars, min = 1, max = MAX_BASE_BRANCH_LEN), custom(is_branch_name)))]
     pub(crate) repository_base: Option<String>,
