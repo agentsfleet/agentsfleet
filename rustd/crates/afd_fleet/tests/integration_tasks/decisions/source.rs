@@ -38,7 +38,11 @@ async fn selected(case: &Case) {
     let request = request(&body);
     assert_item(&request, &source);
     settled_replay(&fixture, &input, &request).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn refused_ranges(fixture: &Decisions<'_>, source: &Uuid7) {

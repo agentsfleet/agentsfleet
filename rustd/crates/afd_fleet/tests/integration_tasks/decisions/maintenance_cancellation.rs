@@ -62,7 +62,11 @@ async fn cancelled(case: &Case) {
     );
     assert_eq!(fixture.counts().await, (2, 2, 0));
     database.close().await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn cancel_at_parent(

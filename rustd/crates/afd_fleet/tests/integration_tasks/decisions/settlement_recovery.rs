@@ -80,7 +80,11 @@ async fn recovery(case: &Case) {
     late_usage(&fixture, &second, &task, balance, fee).await;
     assert_eq!(hold_identity(&fixture).await, retained);
     original_attribution(&fixture).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {

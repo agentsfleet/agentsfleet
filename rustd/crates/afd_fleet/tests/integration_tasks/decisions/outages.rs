@@ -52,7 +52,11 @@ async fn funding(case: &Case, capture: &Capture) {
     );
     assert_eq!(fixture.counts().await, (1, 1, 0));
     disabled_after_issue(&mut fixture, &input, &body).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn rotate_key(fixture: &Decisions<'_>) {
@@ -194,7 +198,11 @@ async fn disabled_after_issue(
     input: &garde::Valid<DecisionReservationInput>,
     body: &serde_json::Value,
 ) {
-    fixture.model.disable().await;
+    fixture
+        .model
+        .disable()
+        .await
+        .expect("decision model fixture lifecycle");
     let call = body
         .get("call_id")
         .and_then(serde_json::Value::as_str)

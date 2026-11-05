@@ -65,7 +65,11 @@ async fn capacity(case: &Case) {
     assert_pending_states(&fixture, &expired, &source, &future, paid, &task.task_id).await;
     index_bound(&fixture).await;
     replay_and_late_usage(&fixture, &abandoned, &expired, &issued, &task.task_id).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn assert_pending_states(
@@ -168,7 +172,11 @@ async fn erased(case: &Case) {
     assert!(!issued);
     assert_eq!(replay.get("state"), Some(&serde_json::json!("not_sent")));
     assert!(replay.get("recorded").is_none());
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 #[tokio::test]
@@ -225,7 +233,11 @@ async fn blocked(case: &Case) {
     let terminal = ("not_sent".into(), false, true, Some(0));
     assert_eq!(state(&fixture, &call).await, terminal);
     database.close().await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 pub(super) async fn unissued(

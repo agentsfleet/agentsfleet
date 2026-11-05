@@ -56,7 +56,11 @@ async fn capacity(case: &Case) {
     let outstanding: (i64,i64) = sqlx::query_as("SELECT count(*),SUM(reserved_nanos)::bigint FROM runner.decision_calls WHERE original_lease_id=$1::uuid AND accounted_at IS NULL")
         .bind(case.held.lease_key.as_str()).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("source reservation observer")).await.expect("five uncertain original sends");
     assert_eq!(outstanding, (5, 100_000_000));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn attempts(fixture: &Decisions<'_>, input: garde::Valid<DecisionReservationInput>) {

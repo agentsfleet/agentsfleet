@@ -19,14 +19,18 @@ use afd_runner::Runners;
 use afd_vault::{Deleted, SecretBody, SecretName};
 use afd_wire::{
     event::EventType,
-    runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier},
+    runner::{
+        AssignedPolicy, CapabilityReport, HeartbeatRequest, NetworkPolicy, RegisterRequest,
+        SandboxTier,
+    },
     task::{DecisionAssessment, DecisionReservationInput},
 };
 use axum::Router;
 use serde_json::{json, value::RawValue};
 
 use super::setup::{self, Owner};
-use crate::{decision_model_fixture::DecisionModelFixture, harness};
+use crate::harness;
+use afd_admin::test_util::DecisionModelFixture;
 
 pub(super) struct Runner {
     pub id: Uuid7,
@@ -74,7 +78,9 @@ impl Fixture {
             owner.coding_id.as_str(),
         );
         owner.seed(&database).await;
-        let model = DecisionModelFixture::create(&database).await;
+        let model = DecisionModelFixture::create(&database)
+            .await
+            .expect("reviewed decision model fixture");
         model_cleanup.record(
             "DELETE FROM model.platform_models WHERE id=$1::uuid",
             model.model.id.as_str(),
@@ -152,7 +158,10 @@ impl Fixture {
             .await
             .expect("remove only owned retained and parent rows");
         drop(self.router);
-        self.model.finish().await;
+        self.model
+            .finish()
+            .await
+            .expect("remove decision model fixture");
         self.model_cleanup
             .finish()
             .await
@@ -184,15 +193,29 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
             )
             .await
             .expect("native runner registration");
-        store
+        // Decision-enabled fleets require explicit durable-task support even
+        // before their human admission has been bound to a task.
+        let beat = store
             .heartbeat(
                 &registered.runner_id,
-                &afd_runner::NO_REPORT,
+                &HeartbeatRequest {
+                    capability_report: Some(CapabilityReport {
+                        durable_tasks_v1: true,
+                        build_id: None,
+                        landlock: false,
+                        seccomp: false,
+                        cgroup_controllers: Vec::new(),
+                        bubblewrap: false,
+                        egress_enforcement: false,
+                    }),
+                    ..afd_runner::NO_REPORT
+                },
                 None,
                 clock::now(),
             )
             .await
-            .expect("native liveness beat");
+            .expect("native durable-task capability beat");
+        assert_eq!(beat.verdict, afd_runner::Verdict::Healthy);
         enrolled.push(Runner {
             id: registered.runner_id,
             token: registered.token.expose().to_owned(),

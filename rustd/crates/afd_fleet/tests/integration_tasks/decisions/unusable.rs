@@ -66,7 +66,11 @@ async fn unusable(case: &Case) {
     assert_eq!(fixture.counts().await, (5, 5, 5));
     assert_eq!(fixture.wallet().await, balance - 15);
     ledger(&fixture).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn semantic(

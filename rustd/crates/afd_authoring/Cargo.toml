@@ -62,7 +62,7 @@ zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-afd_admin.workspace = true
+afd_admin = { workspace = true, features = ["test-util"] }
 rcgen.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true

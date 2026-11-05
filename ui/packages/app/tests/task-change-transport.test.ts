@@ -18,7 +18,9 @@ it("requires confirmed version and generation and never retries uncertain mutati
     headers: {"If-Match": TAG}, body: JSON.stringify({state: "paused", expected_generation: 1})});
   network.mockResolvedValueOnce(Response.json(task, {headers: {etag: TAG}}));
   expect((await adoptTaskGoal("w", "f", task, TASK_IDS[1], TASK_IDS[2], signal)).kind).toBe("confirmed");
-  expect(JSON.parse(String(network.mock.calls[1]?.[1]?.body))).toEqual({goal_revision_id: TASK_IDS[1], operation_id: TASK_IDS[2], expected_generation: 1});
+  const body = network.mock.calls[1]?.[1]?.body;
+  if (typeof body !== "string") throw new Error("Expected a JSON request body");
+  expect(JSON.parse(body)).toEqual({goal_revision_id: TASK_IDS[1], operation_id: TASK_IDS[2], expected_generation: 1});
 });
 
 it("keeps refusal, stale state, limits, malformed confirmation and transport uncertainty distinct", async () => {

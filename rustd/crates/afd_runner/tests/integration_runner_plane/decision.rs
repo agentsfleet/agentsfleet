@@ -1,5 +1,6 @@
 //! One selection survives every runner projection and respects catalogue changes.
 
+use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
 use afd_admin::DeleteModel;
@@ -8,13 +9,15 @@ use afd_db::test_util::mint_id;
 use afd_runner::{KeysetCursor, NO_REPORT, RunnerEdit};
 use afd_wire::runner::{AssignedPolicy, BindMode, ExtraBind};
 
-use super::{Fixture, decision_fixture::DecisionModelFixture, enrolment};
+use super::{Fixture, enrolment};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn selection_round_trips_and_clearing_releases_the_catalogue_reference() {
     let mut fixture = Fixture::create().await;
-    let model = DecisionModelFixture::create(&fixture.database).await;
+    let model = DecisionModelFixture::create(&fixture.database)
+        .await
+        .expect("reviewed decision model fixture");
     let mut request = enrolment();
     request.assigned_policy.decision_model_id = Some(Cow::Borrowed(model.model.id.as_str()));
     request.assigned_policy.extra_binds.push(ExtraBind {
@@ -48,7 +51,10 @@ async fn selection_round_trips_and_clearing_releases_the_catalogue_reference() {
     request.assigned_policy.decision_model_id = None;
     assign(&fixture, &runner, &request.assigned_policy).await;
     assert_cleared(&fixture, &runner, before).await;
-    model.finish().await;
+    model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     fixture.cleanup().await;
 }
 
@@ -56,12 +62,17 @@ async fn selection_round_trips_and_clearing_releases_the_catalogue_reference() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn unavailable_selections_cannot_partially_edit_a_runner() {
     let mut fixture = Fixture::create().await;
-    let mut model = DecisionModelFixture::create(&fixture.database).await;
+    let mut model = DecisionModelFixture::create(&fixture.database)
+        .await
+        .expect("reviewed decision model fixture");
     let runner = fixture.enrol().await;
     let mut policy = enrolment().assigned_policy;
     policy.decision_model_id = Some(Cow::Owned(model.model.id.as_str().to_owned()));
     assign(&fixture, &runner, &policy).await;
-    model.disable().await;
+    model
+        .disable()
+        .await
+        .expect("decision model fixture lifecycle");
     policy.worker_count = 2;
     assign(&fixture, &runner, &policy).await;
     assert_readers(&fixture, &runner, Some(model.model.id.as_str())).await;
@@ -89,7 +100,10 @@ async fn unavailable_selections_cannot_partially_edit_a_runner() {
     );
     policy.decision_model_id = None;
     assign(&fixture, &runner, &policy).await;
-    model.finish().await;
+    model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     fixture.cleanup().await;
 }
 

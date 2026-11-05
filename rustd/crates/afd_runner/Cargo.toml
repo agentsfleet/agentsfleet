@@ -64,7 +64,7 @@ test-util = [
 ]
 
 [dev-dependencies]
-afd_admin.workspace = true
+afd_admin = { workspace = true, features = ["test-util"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }

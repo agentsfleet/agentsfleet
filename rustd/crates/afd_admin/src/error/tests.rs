@@ -115,3 +115,35 @@ fn assert_error(error: &Error, code: afd_core::error_code::ErrorCode, detail: &'
     assert!(error.source().is_some());
     assert!(error.to_string().contains(code.as_str()));
 }
+
+// Value: protects=shared fixture failures remain internal and preserve JSON causes;
+// fails_when=fixture failures masquerade as datastore outages or discard parse diagnostics;
+// why_new=the shared fixture introduces invariant and definition error kinds;
+// seam=none; no_claim=live catalogue creation, update or deletion.
+#[cfg(feature = "test-util")]
+#[test]
+fn fixture_failures_keep_safe_classification_and_original_json_cause() -> Result<(), &'static str> {
+    let invariant = super::fixture("model disappeared before disable");
+    assert_eq!(invariant.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(invariant.detail(), "Catalogue fixture failed");
+    assert!(!invariant.is_datastore_unavailable());
+    assert!(invariant.source().is_none());
+
+    let cause = serde_json::from_str::<serde_json::Value>("{")
+        .err()
+        .ok_or("the malformed fixture definition unexpectedly parsed")?;
+    let position = (cause.line(), cause.column());
+    let definition = super::fixture_definition(cause);
+    assert_error(
+        &definition,
+        error_code::INTERNAL_OPERATION_FAILED,
+        "Catalogue fixture failed",
+    );
+    let retained = definition
+        .source()
+        .and_then(|source| source.downcast_ref::<serde_json::Error>())
+        .ok_or("the fixture definition lost its typed JSON cause")?;
+    assert_eq!((retained.line(), retained.column()), position);
+    assert!(retained.is_eof());
+    Ok(())
+}

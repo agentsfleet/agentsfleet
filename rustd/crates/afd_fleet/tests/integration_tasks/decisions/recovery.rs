@@ -56,7 +56,11 @@ async fn erased(case: &Case) {
         .expect("ordinary fleet deletion cascades private task data");
     assert_eq!(fixture.counts().await, (1, 0, 0));
     late_accounting(&fixture, call, &request, &input).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn late_accounting(

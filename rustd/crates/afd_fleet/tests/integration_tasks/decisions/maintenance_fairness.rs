@@ -49,8 +49,16 @@ async fn later_fleet(case: &Case) {
     assert_eq!(oldest.counts().await, (1, 1, 0));
     assert_eq!(later.counts().await, (2, 2, 0));
     retried_pair(&oldest, &later, &first, &arriving, &mut cursor).await;
-    oldest.model.finish().await;
-    later.model.finish().await;
+    oldest
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
+    later
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     other.held.fixtures.cleanup().await;
 }
 
@@ -208,7 +216,11 @@ async fn malformed(case: &Case) {
     );
     assert_eq!(state(&fixture, &first).await, terminal);
     assert_eq!(fixture.counts().await, (2, 2, 0));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn replace_profile(fixture: &Decisions<'_>, call: &str, value: &serde_json::Value) {

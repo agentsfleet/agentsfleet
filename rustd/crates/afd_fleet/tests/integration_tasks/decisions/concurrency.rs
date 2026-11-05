@@ -58,7 +58,11 @@ async fn replays(case: &Case, operations: Operations) {
     let request = compiled_request(&fixture, body);
     accounted(&fixture, call, &request).await;
     saved_replay(&fixture, &input, &request).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 fn compiled_request(fixture: &Decisions<'_>, body: &Value) -> afd_wire::decision::DecisionRequest {

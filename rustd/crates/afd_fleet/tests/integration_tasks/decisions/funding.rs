@@ -60,7 +60,11 @@ async fn refused(case: &Case, funding: Funding) {
     if matches!(funding, Funding::Short) {
         recover(&fixture, &call, balance).await;
     }
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn original_hold(fixture: &Decisions<'_>) -> WorkKey {

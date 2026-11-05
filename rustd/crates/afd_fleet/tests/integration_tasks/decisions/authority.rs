@@ -38,7 +38,11 @@ async fn ownership(case: &Case) {
     refused(&fixture, &task, &other, &before).await;
     sibling.held.fixtures.cleanup().await;
     late(&fixture, &task, balance).await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn late(fixture: &Decisions<'_>, task: &DecisionTaskVersion, balance: i64) {

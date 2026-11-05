@@ -58,7 +58,7 @@ pub struct LeasePayload<'a> {
     #[serde(with = "crate::instant")]
     pub lease_expires_at: jiff::Timestamp,
     /// Immutable native runtime ceiling, including a bound task's shorter slice.
-    /// Absent on older daemons; task execution must not guess this deadline.
+    /// Absent on older daemons; task work must not guess this deadline.
     #[serde(
         default,
         with = "crate::instant::option",

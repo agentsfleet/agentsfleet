@@ -13,6 +13,8 @@ mod model;
 mod model_validation;
 mod platform_key;
 mod sql;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 
 pub use error::{Error, Result};
 pub use model::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};

@@ -28881,7 +28881,7 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Immutable native runtime ceiling, including a bound task's shorter slice.\nAbsent on older daemons; task execution must not guess this deadline."
+            "description": "Immutable native runtime ceiling, including a bound task's shorter slice.\nAbsent on older daemons; task work must not guess this deadline."
           },
           "fencing_token": {
             "type": "integer",

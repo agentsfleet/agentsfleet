@@ -86,10 +86,28 @@ def contents(path):
         os.close(directory)
 
 
+def unchanged_gitlink(path, expected, staged):
+    # A populated submodule has its own untrusted index/config. Only an empty,
+    # uninitialized checkout can be proved unchanged without consulting either.
+    if staged.get(path) != [("160000", expected, "0")]:
+        raise ValueError("Staged submodule changes are unsupported")
+    directory = os.open(".", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in path_parts(path):
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        with os.scandir(directory) as entries:
+            if next(entries, None) is not None:
+                raise ValueError("Populated submodule publication is unsupported")
+    finally:
+        os.close(directory)
+
+
 def snapshot(base):
     if len(base) != 40 or any(c not in "0123456789abcdef" for c in base):
         raise ValueError("Invalid native tree")
-    previous = {}
+    previous, gitlinks = {}, {}
     for row in git("ls-tree", "-rz", "--full-tree", base).split(b"\0"):
         if not row:
             continue
@@ -97,35 +115,48 @@ def snapshot(base):
         mode, kind, oid = metadata.decode("ascii").split(" ")
         path = raw_path.decode("utf-8", "strict")
         path_parts(path)
-        if kind != "blob":
-            raise ValueError("Submodule publication is unsupported")
+        if (mode, kind) == ("160000", "commit"):
+            gitlinks[path] = oid
+        elif kind != "blob":
+            raise ValueError("Unsupported native tree entry")
         previous[path] = (mode, oid)
     extra = git("ls-files", "--others", "--exclude-standard", "-z").split(b"\0")
     paths = set(previous) | {path.decode("utf-8", "strict") for path in extra if path}
     # Include newly staged files as well as untracked ones; never trust the
     # tenant index to describe native base contents or pre-existing modes.
-    paths.update(path.decode("utf-8", "strict") for path in git("ls-files", "--cached", "-z").split(b"\0") if path)
+    staged = {}
+    for row in git("ls-files", "--stage", "-z").split(b"\0"):
+        if row:
+            metadata, raw_path = row.split(b"\t", 1)
+            path = raw_path.decode("utf-8", "strict")
+            staged.setdefault(path, []).append(tuple(metadata.decode("ascii").split(" ")))
+    paths.update(staged)
     if len(paths) > MAX_ENTRIES:
         raise ValueError("Candidate entry limit exceeded")
     updates, changes, total = [], [], 0
     for path in sorted(paths):
+        parts = path_parts(path)
+        if any("/".join(parts[:depth]) in gitlinks for depth in range(1, len(parts))):
+            raise ValueError("Submodule descendant changes are unsupported")
+        if path in gitlinks:
+            unchanged_gitlink(path, gitlinks[path], staged)
+            continue
         current = contents(path)
         old = previous.get(path)
         if current is not None and current[:2] == old:
             continue
         if current is None and old is None:
             continue
-        parts = path_parts(path)
         if parts[0].lower() == ".gitmodules" or [p.lower() for p in parts[:2]] == [".github", "workflows"]:
             raise ValueError("Workflow and submodule changes are unsupported")
         if current is None:
-            if old[0] not in ("100644", "100755"):
+            if old[0] != "100644":
                 raise ValueError("Only regular-file deletions are supported")
             updates.append(b"0 " + b"0" * 40 + b"\t" + path.encode() + b"\0")
             changes.append({"path": path, "contents": None})
         else:
             mode, oid, body = current
-            if mode not in ("100644", "100755") or mode != (old[0] if old else "100644") or body is None:
+            if mode != "100644" or mode != (old[0] if old else "100644") or body is None:
                 raise ValueError("Unsupported changed-file mode or size")
             total += len(body)
             if total > MAX_FILE:

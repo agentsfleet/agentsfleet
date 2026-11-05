@@ -48,7 +48,11 @@ async fn fleet(case: &Case) {
     unsent(&fixture, &second.call_id).await;
     assert_eq!(fixture.wallet().await, balance);
     assert_eq!(fixture.counts().await, (2, 2, 0));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn task_money(case: &Case) {
@@ -76,7 +80,11 @@ async fn task_money(case: &Case) {
     assert_eq!(fixture.goal_snapshot(&task).await, expected);
     assert_eq!(fixture.wallet().await, balance);
     assert_eq!(fixture.counts().await, (2, 2, 0));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn task_calls(case: &Case) {
@@ -99,7 +107,11 @@ async fn task_calls(case: &Case) {
     assert_eq!(fixture.goal_snapshot(&task).await, expected);
     assert_eq!(fixture.wallet().await, balance);
     assert_eq!(fixture.counts().await, (1, 1, 0));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn denied(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReservationInput>) {

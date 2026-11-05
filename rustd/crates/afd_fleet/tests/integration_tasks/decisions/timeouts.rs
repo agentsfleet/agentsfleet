@@ -58,7 +58,11 @@ async fn blocked(case: &Case, capture: &Capture) {
     assert!(result.into_parts().0);
     assert_eq!(fixture.counts().await, (1, 1, 0));
     database.close().await;
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {

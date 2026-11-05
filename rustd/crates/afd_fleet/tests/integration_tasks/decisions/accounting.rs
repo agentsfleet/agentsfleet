@@ -55,7 +55,11 @@ async fn uncertain(case: &Case) {
     );
     assert!(fixture.record(call, receipt).await.replayed);
     assert_eq!(fixture.counts().await, (1, 1, 1));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 async fn immutable_uncertainty(
@@ -147,7 +151,11 @@ async fn throttled(case: &Case) {
         .expect("second call");
     fixture.record(second_id, known(&request(&second))).await;
     assert_eq!(fixture.counts().await, (2, 2, 1));
-    fixture.model.finish().await;
+    fixture
+        .model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
 }
 
 fn same_assessment(initial: &Value, second: &Value) {

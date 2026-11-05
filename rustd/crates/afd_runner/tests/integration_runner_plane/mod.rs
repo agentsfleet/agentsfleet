@@ -11,7 +11,6 @@
 )]
 
 mod decision;
-mod decision_fixture;
 mod decision_races;
 mod faults;
 mod lifecycle;

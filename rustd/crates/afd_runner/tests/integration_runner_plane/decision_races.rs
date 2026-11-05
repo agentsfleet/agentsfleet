@@ -1,5 +1,6 @@
 //! Actual catalogue lock contention, without sleeps as ordering assertions.
 
+use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
 use afd_core::{clock, id::Uuid7};
@@ -7,7 +8,7 @@ use afd_db::{Db, test_util::mint_id};
 use afd_runner::RunnerEdit;
 use sqlx::{Acquire as _, PgConnection};
 
-use super::{Fixture, decision_fixture::DecisionModelFixture, enrolment};
+use super::{Fixture, enrolment};
 
 #[derive(Clone, Copy)]
 enum CatalogueChange {
@@ -20,7 +21,9 @@ enum CatalogueChange {
 async fn assignment_observes_committed_catalogue_changes_after_lock_contention() {
     for change in [CatalogueChange::Disable, CatalogueChange::Revise] {
         let mut fixture = Fixture::create().await;
-        let model = DecisionModelFixture::create(&fixture.database).await;
+        let model = DecisionModelFixture::create(&fixture.database)
+            .await
+            .expect("reviewed decision model fixture");
         let runner = fixture.enrol().await;
         let mut connection = fixture.owner.acquire().await.expect("catalogue writer");
         let mut transaction = connection.begin().await.expect("hold model lock");
@@ -62,7 +65,10 @@ async fn finish_case(fixture: Fixture, model: DecisionModelFixture, runner: Uuid
         )
         .await
         .expect("release selected catalogue identity");
-    model.finish().await;
+    model
+        .finish()
+        .await
+        .expect("decision model fixture lifecycle");
     fixture.cleanup().await;
 }
 
