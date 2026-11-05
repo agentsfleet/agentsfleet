@@ -95,11 +95,7 @@ pub(super) async fn running_sequence(
         .map_err(query(super::CONTEXT))
 }
 
-pub(super) async fn messages(
-    connection: &mut PgConnection,
-    draft: &Uuid7,
-    cancelled_through: i64,
-) -> Result<Vec<Notice>> {
+pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Result<Vec<Notice>> {
     let rows: Vec<Stored> = sqlx::query_as(sql::message::NOTICES)
         .bind(draft.as_str())
         .bind(LIMIT)
@@ -139,9 +135,7 @@ pub(super) async fn messages(
                     .as_deref()
                     .map(word::<FailureReason>)
                     .transpose()?
-                    .map(|reason| {
-                        Failure::for_message(reason, stored.sequence, cancelled_through, cause)
-                    }),
+                    .map(|reason| Failure::for_message(reason, cause)),
             })
         })
         .collect()

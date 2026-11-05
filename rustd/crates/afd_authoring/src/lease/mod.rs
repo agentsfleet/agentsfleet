@@ -27,6 +27,14 @@ pub(crate) enum Status {
     Settled,
 }
 
+/// Statuses of an attempt that no longer holds its draft: finished, whether or
+/// not its usage is accounted. Bound as one array so the draft's sequence index,
+/// not the status index, answers "is a turn still running here".
+pub(crate) const FINISHED: [&str; 2] = [
+    Status::AwaitingAccounting.as_str(),
+    Status::Settled.as_str(),
+];
+
 impl Status {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {

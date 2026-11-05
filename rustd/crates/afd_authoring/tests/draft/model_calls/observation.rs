@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn uncertain_failure_notice_preserves_cause_and_stop_changes_only_recovery() {
+async fn uncertain_failure_notice_preserves_cause_and_offers_a_retry_before_and_after_stop() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let mut provider = Provider::known();
@@ -42,7 +42,7 @@ async fn uncertain_failure_notice_preserves_cause_and_stop_changes_only_recovery
         .await
         .expect("unknown report acknowledgement");
     assert!(!acknowledged.settled);
-    assert_failure(&f, &attempt, "await_accounting").await;
+    assert_failure(&f, &attempt, "retry_message").await;
     f.drafts
         .cancel(f.access(), &attempt.draft.id, 1)
         .await
