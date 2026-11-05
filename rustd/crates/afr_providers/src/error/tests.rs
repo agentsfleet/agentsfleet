@@ -22,6 +22,28 @@ fn should_name_a_refusals_status_in_its_detail_with_no_class() {
 }
 
 #[test]
+fn should_name_a_silent_turn_as_the_fleets_error_and_say_when_it_was_cut() {
+    let finished = Error::silent(false);
+    let cut = Error::silent(true);
+
+    assert_eq!(
+        finished.detail(),
+        "the model provider finished the turn with no answer"
+    );
+    assert_eq!(
+        cut.detail(),
+        "the model provider stopped the turn early with no answer"
+    );
+    assert_eq!(finished.failure_class(), None);
+    assert_eq!(cut.failure_class(), None);
+    assert_eq!(finished.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert!(
+        std::error::Error::source(&finished).is_none(),
+        "a silent turn has no underlying cause"
+    );
+}
+
+#[test]
 fn should_class_a_lost_connection_and_an_early_end_as_transport_loss() {
     let lost = Error::lost(std::io::Error::other("reset"));
     let ended = raise::ended("overloaded_error", ProviderError::Truncated);
