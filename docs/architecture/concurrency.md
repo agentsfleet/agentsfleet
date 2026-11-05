@@ -101,11 +101,12 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | owed-answer producer (`connector:outbound-producer`) | `agentsfleetd::outbound::spawn`, beside the worker | `fleet.obligations` through its own pool handle; re-appends owed answers on the shared Dragonfly handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | SSE hub control task (`hub/pump/mod.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `hub_pump`, which `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
 | SSE hub dispatch task (`hub/dispatch.rs`) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
-| admission doorbell listeners (sixteen, `doorbell/mod.rs`) | `Doorbell::listen`, from `ServingPlane::new` | one hub subscription each; shared buffer of at most 64 fleet hints | leaf mutex; never held across an await | hub shutdown closes the subscriptions; listeners return and release their buffer |
+| admission doorbell listeners (sixteen, `doorbell/mod.rs`) | `Doorbell::listen`, from `ServingPlane::new` | one hub subscription each; one shared `Notify`, where a ring completes one held beat | no lock; `notify_one` and `notify_waiters` only | hub shutdown closes the subscriptions; listeners return and release the doorbell |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
 | fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through its own pool handle, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
-| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured — a normal boot without one supervises ten tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
+| park sweeper (`sweeper:parks`) | `sweepers::spawn` | Postgres and a ring through its own lease store; locks each affected fleet's slot, in fleet order, before it unparks | none shared | as above |
+| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured — a normal boot without one supervises eleven tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
 A sweep that fails is reported and retried on the next pass: every pass here is
@@ -147,7 +148,7 @@ below are the concurrency view.
 | `fleet.admissions` | PostgreSQL queue | producers commit admissions; lease polls claim the oldest unsettled row per eligible fleet | slot and admission fences; reports settle in the usage transaction |
 | `connector:outbound` | Dragonfly stream + consumer group `connector_workers` | the report path after its commit, and the owed-answer producer → dedicated blocking outbound reader | durable queue; the worker acknowledges each job it finishes, delivered or exhausted |
 | `fleet:{id}:activity` | Dragonfly sharded pub/sub (ephemeral) | `agentsfleetd` `SPUBLISH` (+ runner-forwarded frames) → the hub's one shared connection, one `SSUBSCRIBE` per channel, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
-| `fleet:wake:{shard}` (sixteen) | Dragonfly sharded pub/sub | admission and gate-answer commits publish hints to each replica | ephemeral; every poll still probes PostgreSQL |
+| `fleet:wake:{shard}` (sixteen) | Dragonfly sharded pub/sub | admission and gate-answer commits ring each replica, completing one held beat there | ephemeral; every poll still claims from PostgreSQL |
 | `fleet:control` | **removed at the M80 cutover** | — | — |
 
 The hub holds exactly **one** pub/sub connection for all viewers, refcounting
@@ -173,7 +174,6 @@ constraint. Each is documented at its declaration (C4).
 | hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await — the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
 | outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
 | runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
-| doorbell hint buffer | `afd_dragonfly::Doorbell` | at most 64 distinct recent fleet IDs | leaf mutex; no database or network calls while held |
 | metric instruments | `afd_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf — held alone |
 | Capability caches | `afd_identity`'s `ProviderCapabilities` | separate Moka stores for fresh claims and last confirmed claims; each is bounded to 4096 subjects | conditional per-key invalidation precedes `try_get_with`, which coalesces concurrent fetches; failed refreshes retain the original stale timestamp, and unknown subjects clear the fallback |
 | JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
@@ -310,6 +310,17 @@ Verify two-replica expiry races and lock-order timeouts before claiming these gu
 No setup chat path locks the wallet row. The claim gate reads the balance less every open hold, without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`).
 
 Stop and delete take draft → attempt and never later take the runner guard.
+
+### The fleet slot comes before its admissions
+
+Every statement that updates an existing `fleet.admissions` row locks that fleet's `runner.fleet_slots` row first. The admission trigger (`schema/2190_runner_fleet_slots_ready.sql`) writes the slot's `ready_at` on every insert, park, unpark and settle, so a writer that took an admission first and the slot second would deadlock against one that took them the other way.
+
+- The claim locks the slot, then the head admission, both with `SKIP LOCKED`, so it never waits.
+- Park (`lock_admission.sql`), a refusal or terminal ending (`end_refused.sql`, `settle_terminal.sql`), a report and a renewal (`meter_lease.sql`) lock the slot in their first step.
+- Gate resolution and gate expiry run their slot lock as a statement of its own, before the statement that unparks (`lock_gate_fleet_slot.sql`, `lock_expiring_fleet_slots.sql`). Under READ COMMITTED the unpark then reads a snapshot taken after any wait, so a park that committed meanwhile is cleared rather than missed. The expiry sweep locks its fleets' slots in fleet order, so two replicas' sweeps cannot deadlock.
+- The admission insert is the one exception: it reaches the slot through its trigger after inserting its row. That row is invisible to every other transaction until commit, so nothing can be waiting on it.
+
+The proof is `test_gate_resolution_locks_the_slot_before_any_admission` (a resolution and an expiry each racing an uncommitted park) and `test_claim_report_park_and_admit_never_deadlock` (claims, endings, resolutions and admissions over ten fleets released together), in `afd_fleet/tests/integration_lease_queue/`. If the pool's default isolation ever changes from READ COMMITTED, rerun the first.
 
 ### The setup chat claim never waits on a row
 

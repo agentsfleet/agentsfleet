@@ -189,6 +189,23 @@ pub(crate) async fn select_fleet(leases: &Leases, runner: &Uuid7, fleet: &str) -
     acquired
 }
 
+/// Gives `runner` `fleet`'s placement tag, so it may run that fleet too.
+///
+/// The claim honours placement tags. A suite about holds or slots that has
+/// one runner take another seed's fleet gives it that fleet's tag first, so it
+/// reads the rule it is about rather than the tag rule.
+pub(crate) async fn carry_tag(fixtures: &Fixtures, runner: &Uuid7, fleet: &str) {
+    sqlx::query(
+        "UPDATE runner.runners SET labels = labels || to_jsonb($2::text) \
+         WHERE id = $1::uuid AND NOT labels ? $2",
+    )
+    .bind(runner.as_str())
+    .bind(placement_tag(fleet))
+    .execute(&mut *fixtures.database.acquire().await.expect("a connection"))
+    .await
+    .expect("the runner carries the fleet's tag");
+}
+
 /// The production claim, answering only for `fleet`.
 ///
 /// The claim takes no fleet id: it takes the runner's held fleets first, then

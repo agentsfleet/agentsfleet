@@ -6,6 +6,7 @@ use crate::report_seed::{Held, held, held_in};
 use crate::rows::{LAPSE, Row};
 use crate::support::Fixtures;
 use afd_core::id::Uuid7;
+use afd_fleet::lease::{Acquired, Delivery};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -74,28 +75,21 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
             afd_core::event::status::PROCESSED,
         )
         .await;
-    let owner = run.fixtures.open(afd_db::config::DbRole::Migrator).await;
-    let mut connection = owner.acquire().await.expect("owner");
-    sqlx::raw_sql(
-        "CREATE FUNCTION fleet.supersede_delivered_claim() RETURNS trigger \
-         LANGUAGE plpgsql AS $$ BEGIN \
-           UPDATE runner.fleet_slots SET fencing_token=fencing_token+1 WHERE fleet_id=NEW.fleet_id; \
-           NEW.lease_fence=NEW.lease_fence+1; RETURN NEW; END $$; \
-         CREATE TRIGGER supersede_delivered_claim BEFORE UPDATE OF delivered_at ON fleet.admissions \
-         FOR EACH ROW EXECUTE FUNCTION fleet.supersede_delivered_claim()",
-    ).execute(&mut *connection).await.expect("supersede between receive and settlement");
+    // The slot moves past the held claim before its terminal ending lands.
+    let live = run.supersede().await;
+    let stale = Acquired {
+        delivery: Delivery::Terminal,
+        ..run.acquired.clone()
+    };
     let answer = run
         .fixtures
         .plane()
-        .lease_claimed(run.acquired.clone(), &run.runner, run.now)
+        .lease_claimed(stale, &run.runner, run.now)
         .await
         .expect("stale terminal completion is harmless");
     assert!(answer.contains("\"lease\":null"));
-    assert_superseded_claim_retained(&run).await;
-    sqlx::raw_sql("DROP TRIGGER supersede_delivered_claim ON fleet.admissions; DROP FUNCTION fleet.supersede_delivered_claim()")
-        .execute(&mut *connection).await.expect("remove fault");
-    drop(connection);
-    owner.close().await;
+    assert_superseded_claim_retained(&run, live).await;
+
     run.fixtures
         .age(
             Row::Lease(run.lease_key.as_str()),
@@ -122,18 +116,20 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     run.fixtures.cleanup().await;
 }
 
-async fn assert_superseded_claim_retained(run: &Held) {
+/// The superseded ending wrote nothing: the admission is unsettled under the
+/// held claim's fence, the slot keeps the newer one, and one lease exists.
+async fn assert_superseded_claim_retained(run: &Held, live: u64) {
     let state: (bool, Option<i64>, i64, i64) = sqlx::query_as(
         "SELECT a.settled_at IS NOT NULL,a.lease_fence,s.fencing_token, \
          (SELECT count(*) FROM runner.leases WHERE fleet_id=a.fleet_id) \
          FROM fleet.admissions a JOIN runner.fleet_slots s ON s.fleet_id=a.fleet_id \
-         WHERE a.id=$1::uuid AND s.last_runner_id=$2::uuid",
+         WHERE a.id=$1::uuid",
     )
     .bind(&run.event_id)
-    .bind(run.runner.as_str())
     .fetch_one(&mut *run.fixtures.database.acquire().await.expect("observer"))
     .await
-    .expect("superseded claim still exists");
-    let fence = run.fence.as_i64() + 1;
-    assert_eq!(state, (false, Some(fence), fence, 1));
+    .expect("the admission and its slot exist");
+    let held = run.fence.as_i64();
+    let live = i64::try_from(live).expect("a fence fits");
+    assert_eq!(state, (false, Some(held), live, 1));
 }

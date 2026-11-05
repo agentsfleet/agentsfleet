@@ -81,7 +81,7 @@ impl Running {
             )
             .await
             .expect("issue reaches Postgres")
-        .issued()
+            .issued()
             .expect("capacity is available");
         Self {
             fixtures,

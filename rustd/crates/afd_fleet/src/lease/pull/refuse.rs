@@ -14,8 +14,8 @@ use afd_core::error_code::{Coded as _, Logged};
 use afd_core::event::label;
 use afd_core::id::Uuid7;
 
-use super::held::{Ending, Step, waited};
-use super::{Admission2, Plane};
+use super::held::{Ending, waited};
+use super::{Gated, Plane};
 use crate::error::{Error, Result};
 use crate::lease::admit::{Declined, Refusal};
 use crate::lease::affinity::Backoff;
@@ -33,14 +33,14 @@ impl Plane {
     /// The installed fleet behind a claim, or the answer that ends the pass.
     ///
     /// Three of the four arms end it, which is why this is a
-    /// [`Step`](super::held::Step) rather than an `Option`: a paused fleet, an
+    /// `ControlFlow` rather than an `Option`: a paused fleet, an
     /// unreadable document and a datastore outage are different endings, and
     /// the caller should not have to tell them apart to know the pass is over.
     pub(super) async fn resolve_installed(
         &self,
         acquired: &Acquired,
         runner_id: &Uuid7,
-    ) -> Result<Step<Installed>> {
+    ) -> Result<ControlFlow<Ending, Installed>> {
         match self.leases.installed(&acquired.fleet_id).await {
             Ok(Some(installed)) => Ok(ControlFlow::Continue(installed)),
             // The claim filters on status, so reaching here with a stopped
@@ -68,7 +68,7 @@ impl Plane {
         acquired: &Acquired,
         declined: Declined,
         runner_id: &Uuid7,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<ControlFlow<Ending, Gated>> {
         match declined {
             Declined::Await(waiting) => waited(runner_id, waiting),
             Declined::Refuse(refusal) => self

@@ -7,6 +7,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use std::fmt::Write as _;
+
 use afd_fleet::lease::sql::queue::CLAIM_HEAD;
 use sqlx::{AssertSqlSafe, PgConnection, Row as _};
 
@@ -14,10 +16,10 @@ use crate::support::Fixtures;
 
 #[path = "integration_lease_plan/claim.rs"]
 mod claim;
-#[path = "integration_lease_plan/ready.rs"]
-mod ready;
 #[path = "integration_lease_plan/meter.rs"]
 mod meter;
+#[path = "integration_lease_plan/ready.rs"]
+mod ready;
 
 /// Plans every prepared statement once for all binds, as a cached plan does.
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
@@ -95,6 +97,11 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
             .collect();
         sqlx::query("INSERT INTO fleet.admissions (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, request_json, event_created_at, created_at, updated_at) SELECT id::uuid,$1::uuid,$2::uuid,'steer',id,'fixture','fixture','chat','{}',now(),now(),now() FROM unnest($3::text[]) id")
             .bind(&fleet).bind(&workspace).bind(&ids).execute(&mut *tx).await.expect("grow backlog");
+        // A plan claim rests on current statistics (SQL-PLAN); the rows are
+        // this transaction's own, which `ANALYZE` counts.
+        for table in ["fleet.admissions", "runner.fleet_slots"] {
+            run(&mut tx, &format!("ANALYZE {table}")).await;
+        }
         // The plan runs the claim, so each reading is rolled back to keep the
         // fleet claimable for the next size.
         run(&mut tx, "SAVEPOINT head_probe").await;
@@ -112,8 +119,18 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
         assert_eq!(
             head["Actual Loops"].as_f64(),
             Some(1.0),
-            "only the one ready fleet: {plan}"
+            "only the one ready fleet:\n{}",
+            tree(&plan, 0)
         );
+        for scan in read_scans(&plan, "admissions") {
+            let read = scan["Actual Rows"].as_f64().unwrap_or(f64::MAX)
+                * scan["Actual Loops"].as_f64().unwrap_or(f64::MAX);
+            assert!(
+                read <= 1.0,
+                "backlog {size}: no admissions scan reads past one row:\n{}",
+                tree(&plan, 0)
+            );
+        }
         previous = size;
     }
     tx.rollback().await.expect("remove backlog");
@@ -152,6 +169,45 @@ fn read_scans<'a>(plan: &'a serde_json::Value, relation: &str) -> Vec<&'a serde_
                 .is_some_and(|kind| kind.ends_with("Scan"))
         })
         .collect()
+}
+
+/// The plan as one line per node: type, relation, index, estimated and actual
+/// rows, and loops.
+fn tree(plan: &serde_json::Value, depth: usize) -> String {
+    match plan {
+        serde_json::Value::Object(fields) => {
+            let mut out = String::new();
+            if let Some(kind) = fields.get("Node Type").and_then(serde_json::Value::as_str) {
+                let field = |name: &str| {
+                    fields
+                        .get(name)
+                        .map(ToString::to_string)
+                        .unwrap_or_default()
+                };
+                let _written = writeln!(
+                    out,
+                    "{}{kind} {} {} {} est={} rows={} loops={}",
+                    "  ".repeat(depth),
+                    field("Subplan Name"),
+                    field("Relation Name"),
+                    field("Index Name"),
+                    field("Plan Rows"),
+                    field("Actual Rows"),
+                    field("Actual Loops"),
+                );
+            }
+            for (key, child) in fields {
+                if key == "Plans" || key == "Plan" {
+                    out.push_str(&tree(child, depth + 1));
+                }
+            }
+            out
+        }
+        serde_json::Value::Array(children) => {
+            children.iter().map(|child| tree(child, depth)).collect()
+        }
+        _ => String::new(),
+    }
 }
 
 fn relation_scans<'a>(plan: &'a serde_json::Value, relation: &str) -> Vec<&'a serde_json::Value> {

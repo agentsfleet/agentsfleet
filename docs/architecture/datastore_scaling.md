@@ -229,7 +229,7 @@ The census publishes `agentsfleet_admission_backlog` and `agentsfleet_admission_
 
 The live tail uses sharded publish and subscribe on `fleet:<id>:activity`. A restored subscription reports a gap so viewers can reload durable history.
 
-The doorbell uses sixteen `fleet:wake:{shard}` channels and a bounded local hint buffer. Every replica subscribes through its existing hub.
+The doorbell uses sixteen `fleet:wake:{shard}` channels. Every replica subscribes through its existing hub, and each ring completes one held heartbeat on each replica.
 
 Outbound work stays on its stream. PostgreSQL records the obligation before append, and the rebuild pass repairs missing entries.
 

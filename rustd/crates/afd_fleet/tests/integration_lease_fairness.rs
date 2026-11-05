@@ -82,7 +82,7 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
     fixtures.cleanup().await;
 }
 
-/// Dimension 2.6: three ready fleets armed at ascending instants, written in
+/// Three ready fleets armed at ascending instants, written in
 /// another order, with no hold and no affinity: the claim takes the oldest.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]

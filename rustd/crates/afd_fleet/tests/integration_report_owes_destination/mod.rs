@@ -281,7 +281,10 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
     let request = ReportRequest {
         lease_id: Cow::Borrowed(&lease_id),
         event_id: Cow::Borrowed(&lease.event_id),
-        fencing_token: lease.fence.as_u64().expect("a claimed fence is not negative"),
+        fencing_token: lease
+            .fence
+            .as_u64()
+            .expect("a claimed fence is not negative"),
         outcome: Outcome::Processed,
         failure_reason: None,
         failure_detail: Cow::Borrowed(""),

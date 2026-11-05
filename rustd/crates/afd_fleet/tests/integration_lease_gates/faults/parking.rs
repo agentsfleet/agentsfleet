@@ -65,12 +65,13 @@ async fn assert_failed_park_recovers(injection: &'static str) {
         admission_state(&fixtures, &seeded.event_id).await,
         (false, false, Some(fence))
     );
-    assert!(
-        fixtures.slot_is_free(&seeded.fleet).await,
-        "a failed park must free its committed claim immediately"
-    );
+    // A failed park is a datastore fault: the claim goes back behind the
+    // retry backoff, so the next poll does not take the same fault straight
+    // back.
+    super::super::assert_freed_behind_the_backoff(&fixtures, &seeded.fleet).await;
 
     approve(&fixtures, &seeded, &action).await;
+    super::super::pass_the_backoff(&fixtures, &seeded.fleet).await;
     let retry = claim(&fixtures, &seeded).await;
     assert_eq!(retry.event_id, seeded.event_id);
     assert!(

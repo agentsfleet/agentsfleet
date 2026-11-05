@@ -72,7 +72,7 @@ mod tests {
     use axum::response::IntoResponse as _;
     use http::{HeaderMap, HeaderValue, StatusCode};
 
-    use super::{POLL_KEY, poll_key};
+    use super::{POLL_KEY, POLL_KEY_MALFORMED, poll_key};
 
     fn headers(values: &[&'static str]) -> HeaderMap {
         let mut headers = HeaderMap::new();
@@ -82,10 +82,10 @@ mod tests {
         headers
     }
 
-    /// Dimension 5.5: a key that is not a `UUIDv7` is the standard 400
-    /// problem, before any claim runs.
-    #[test]
-    fn test_lease_poll_rejects_a_malformed_idempotency_key() {
+    /// A key that is not a `UUIDv7` is the standard 400 problem, naming the
+    /// invalid-request code and what to send, before any claim runs.
+    #[tokio::test]
+    async fn test_lease_poll_rejects_a_malformed_idempotency_key() {
         for sent in [
             &["not-a-uuid"][..],
             // A version-4 UUID: well-formed, but not a key a worker mints.
@@ -95,10 +95,28 @@ mod tests {
                 "0195b4ba-8d3a-7000-8abc-000000000002",
             ][..],
         ] {
-            let refused = poll_key(&headers(sent)).expect_err("a malformed key is refused");
+            let response = poll_key(&headers(sent))
+                .expect_err("a malformed key is refused")
+                .into_response();
+            let status = response.status();
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("the problem body reads");
+            let problem: serde_json::Value =
+                serde_json::from_slice(&body).expect("the problem is JSON");
             assert_eq!(
-                refused.into_response().status(),
-                StatusCode::BAD_REQUEST,
+                (
+                    status,
+                    problem
+                        .get("error_code")
+                        .and_then(serde_json::Value::as_str),
+                    problem.get("detail").and_then(serde_json::Value::as_str),
+                ),
+                (
+                    StatusCode::BAD_REQUEST,
+                    Some(afd_core::error_code::INVALID_REQUEST.as_str()),
+                    Some(POLL_KEY_MALFORMED),
+                ),
                 "{sent:?}"
             );
         }

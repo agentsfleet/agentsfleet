@@ -16,11 +16,11 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Dragonfly client owners | 3·R at normal boot | shared commands, hub and outbound reader each own a cluster client; physical sockets depend on connected nodes | §Connection budget after the cutover |
-| Idle request volume | `idle_workers / poll_s` requests/sec | one Postgres fleet-discovery statement per poll; authentication and accepted-kind placement reads are additional | §Idle request volume |
+| Idle request volume | `idle_workers / poll_s` requests/sec | one Postgres claim statement per poll; authentication and accepted-kind placement reads are additional | §Idle request volume |
 | Idle-cost knob | `NO_WORK_RETRY_AFTER` = 1000 | trades idle bill against idle pickup latency; single-sourced in `rustd/crates/afd_core/src/timing.rs` | §Tuneup knobs |
-| Candidate result ceiling | `MAX_CANDIDATES_PER_POLL` = 64 | bounds returned fleet identifiers and claim attempts; discovery still examines eligible active fleets | §Candidate and claim bounds |
+| Claim work per poll | the ready, free slots | the claim drives from the partial ready index; running and idle fleets are not visited | §Candidate and claim bounds |
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Idle request volume |
-| Fleet count in discovery work | eligible active fleets when unsettled admissions exist | an empty ledger skips fleet scans; otherwise one oldest-unsettled lookup per eligible fleet | §Candidate and claim bounds |
+| Fleet count in claim work | none | readiness lives on the slot; one head lookup per ready, free slot the claim considers | §Candidate and claim bounds |
 | Server-Sent Events (SSE) ceiling | `SSE_MAX_STREAMS` = 256 per replica, bound by file descriptors | async response bodies own semaphore permits; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
 | Dragonfly timeout | `DRAGONFLY_REQUEST_TIMEOUT_MS` = 5000 — do not raise | above 5 s is failure, not slowness | §Tuneup knobs |
 | Dragonfly connect timeout | `DRAGONFLY_CONNECT_TIMEOUT_MS` = 5000 | bounds establishment, not just commands; a dead endpoint refuses inside the budget instead of holding boot open | §Tuneup knobs |
@@ -38,7 +38,7 @@ Every row is extracted from the sections below; the owner column names the secti
 The nine sizing anti-patterns ARE the trap list — read §Anti-patterns (do NOT do these) before any sizing conversation. Three more that live elsewhere:
 
 - Statement count alone hides server work: measure discovery latency at the intended active fleet count (§Idle request volume).
-- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a traffic increase and a fan-out regression look identical (§Candidate and claim bounds).
+- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a traffic increase and a per-poll cost regression look identical (§Candidate and claim bounds).
 - Fleet-memory hydration still sorts, and correctly so — an index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
 
 ## Topology
@@ -51,7 +51,7 @@ No standalone diagram; the sizing procedure block in §"Sizing procedure" is the
 |---|---|---|
 | Auth memo removed — read the runner row every request | revocation must be deterministic fleet-wide, not per-machine | §Idle request volume; M143_001, [`../AUTH.md`](../AUTH.md) §"Runner token" |
 | Commit the admission before notification | lost notifications cannot lose accepted work | §Idle request volume |
-| Randomize candidates after notification and affinity priority | spread competing polls across eligible fleets; no strict fairness bound | §Candidate and claim bounds |
+| Claim the oldest ready fleet after held and affinity priority | serve waiting work in age order; a failing fleet backs off so it cannot starve the rest | §Candidate and claim bounds |
 | Async SSE bodies share one subscription pump | waiting for frames does not reserve an operating-system thread per viewer | §2; `afd_sse` |
 | Multiplex ordinary Dragonfly commands | cloned handles share one socket; blocking consumers own separate sockets | §Connection budget after the cutover |
 
@@ -130,49 +130,36 @@ Source: [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs),
 
 Each enabled idle worker polls independently (`afr_supervisor/src/worker_pool/mod.rs`). Idle request rate is approximately `idle_workers / poll_seconds`, reduced by request duration and failure backoff.
 
-The fleet scheduler makes one Postgres discovery statement per idle poll and no Dragonfly command.
+The fleet scheduler makes one Postgres claim statement per idle poll and no Dragonfly command.
 This is the scheduler probe; authentication and accepted-kind placement reads are additional work on the HTTP request.
 
 Runner authentication reads `runner.runners` on every request.
 Reading the row makes cordon, drain, revoke and delete effective across replicas after commit
 ([runner token](../AUTH.md#runner-token)).
 
-For 20 hosts with one idle worker each, one poll per second gives approximately 72,000 fleet-discovery statements per hour.
+For 20 hosts with one idle worker each, one poll per second gives approximately 72,000 claim statements per hour.
 
 **Held heartbeats.** An idle host's heartbeat is held until the next ring or 10 s ([Runner Fleet](./runner_fleet.md) §"The held heartbeat"). It beats at its usual cadence while idle, and keeps one in-flight permit per host.
 
-Every admission, gate confirmation and approval resolution rings, and each ring wakes every held beat. Per ring, each idle host makes one immediate poll, and one re-beat after at least 250 ms.
-
-At 20 idle hosts and one ring a second, that adds about 40 requests a second. The idle poll volume above is unchanged, because `NO_WORK_RETRY_AFTER` stays 1 s. Revisit the ring-everyone wake above about 50 runner hosts.
-
-An empty ledger skips fleet scans. When unsettled admissions exist, server work grows with eligible active fleet population, including when all heads are parked.
-Measure that cost separately from the number of statements.
+Every admission, gate confirmation and approval resolution rings, and each ring completes one held beat on each replica. Per ring, one idle host per replica makes one immediate poll, and one re-beat after at least 250 ms. The ring's cost no longer grows with the number of idle hosts.
 
 ### Candidate and claim bounds
 
-Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers
-([assignment](../../rustd/crates/afd_fleet/src/lease/assign/mod.rs)).
-The query first checks for any unsettled admission, then checks placement labels and the oldest unsettled admission of each eligible fleet before applying that limit.
+The claim is one statement ([assignment](../../rustd/crates/afd_fleet/src/lease/assign/mod.rs)).
+It drives from the partial index `idx_fleet_slots_lease_expires_at_ready_at` (slot 2190): only slots with work waiting, and of those only slots whose lease has passed, are read.
+A running fleet's slot holds a future `lease_expires_at`, and an idle fleet's slot has no `ready_at`, so neither is visited.
+For each slot it considers, one lookup through the partial `(fleet_id, sequence)` admission index finds the head.
 
-The partial `(fleet_id, sequence)` admission index serves each head lookup; the limit bounds returned candidates and subsequent claim attempts.
-It does not bound the number of active fleets examined inside Postgres.
+The claim orders held fleets first, then this runner's last fleets, then the oldest `ready_at`. It takes the first slot it can lock with `SKIP LOCKED`, then that slot's head by primary key, so a contended slot is passed over rather than waited on and no backlog is read.
+A pass that ends on a retry frees its slot `CLAIM_RETRY_BACKOFF` (5 s) in the future: the oldest-first order would otherwise hand a failing fleet to every poll and starve the fleets behind it.
+A parked head clears its fleet's `ready_at`, so parked work costs the claim nothing until a person answers or, once every event card on the head has lapsed, the park sweep re-arms it (every 5 s; it expires no card, and standing access still waits for an answer).
 
-An isolated plan probe with 20,001 active fleets and no admissions performed zero fleet scans after the empty-ledger check.
-The single local samples took 19.702 ms before and 0.079 ms after; these are query-plan observations, not throughput or chat-latency measurements.
-The real-database test is `afd_fleet/tests/integration_lease_plan/idle.rs`; its assertion requires every fleet scan to have zero actual loops.
+The plan test seeds 10,000 active fleets, 2,000 running and 3 ready, runs `ANALYZE`, and requires the ready index and no sequential scan of `fleet.fleets` or `runner.fleet_slots` in `EXPLAIN (ANALYZE, BUFFERS)` (`afd_fleet/tests/integration_lease_plan/ready.rs`).
 
-The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
-An absent or stale notification cannot strand work because every poll still queries Postgres.
-A parked oldest admission blocks later admissions while standing access awaits an answer or an event approval remains within its deadline.
-The partial `(fleet_id, event_id, expires_at)` gate index serves both probes over unresolved rows.
-The approval-history plan test grows resolved, expired and unrelated gates from 2,000 to 16,000 rows and runs both statements through `EXPLAIN (ANALYZE, BUFFERS)` with custom and generic prepared plans.
-It checks fleet and event index bounds, deadline bounds for event approvals, and early stopping when many gates match. Total discovery still grows with the eligible fleet population.
+The same statement stamps the head admission's fence and `delivered_at` and opens its event row; an uncontended successful claim is that one statement in autocommit.
 
-The claim locks the slot and exact head, stamps their fence, and commits before returning it.
-An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.
-
-Watch candidate, database-round-trip and Dragonfly-command counters divided by `agentsfleet_lease_polls_total`.
-Use query latency and query plans alongside these ratios: one slow discovery statement still counts as one statement.
+Watch database-round-trip and Dragonfly-command counters divided by `agentsfleet_lease_polls_total`.
+Use query latency and query plans alongside these ratios: one slow claim statement still counts as one statement.
 
 #### Which recurring Postgres reads are index-served
 
@@ -188,7 +175,7 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 | Fleet list page | Unserved — the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
 | Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (`schema/1800_runner_runners.sql`), and `identity.api_keys` keeps only `idx_api_keys_tenant_id_live` (`schema/1150_identity_api_keys.sql`) |
 
-**Queue discovery:** the unsettled partial index avoids completed admission history. Each probe still examines eligible active fleets; size Postgres against both fleet count and poll rate.
+**Queue claim:** the ready partial index on `runner.fleet_slots` holds only fleets with work waiting, and the unsettled admission index avoids completed history. Size Postgres against poll rate and the number of fleets waiting, not the estate.
 
 **What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/afd_memory/src/sql/mod.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
 
@@ -203,7 +190,7 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 | `DRAGONFLY_REQUEST_TIMEOUT_MS` | 5000 | Datastore tail-latency tolerance | No healthy datastore's p99 round-trip approaches 4 s, and in-region 6PN is far below that. **Do not raise it** — >5 s is failure, not slowness. |
 | `DRAGONFLY_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `DRAGONFLY_REQUEST_TIMEOUT_MS` never covered — that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
 | `NO_WORK_RETRY_AFTER` | 1000 | Idle lease-poll request volume **and** idle pickup latency. **Not busy-fleet delivery latency.** | On self-hosted Dragonfly the idle loop costs CPU on a machine already paid for, not a per-request charge; it sizes the machine rather than an invoice. Raise to 2000–5000 to cut idle load proportionally; idle pickup latency rises by the same factor. Single-sourced in `rustd/crates/afd_core/src/timing.rs`. |
-| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one poll. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet/src/lease/assign/mod.rs`. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per poll. |
+| `CLAIM_RETRY_BACKOFF` | 5000 | How long a fleet whose pass ended on a retry stays out of claims. | Compile-time in `rustd/crates/afd_core/src/timing.rs`, asserted below `LEASE_TTL`. Lower it only with evidence that failing fleets recover faster; a shorter backoff hands the failing fleet back to the head of every poll sooner. |
 | `LEASE_TTL` | 30000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`rustd/crates/afr_supervisor/src/renew/mod.rs`, `rustd/crates/afd_core/src/timing.rs`). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
 | `SSE_MAX_STREAMS` | 256 | Concurrent asynchronous SSE bodies per replica; shared by fleet, workspace and draft-progress tails. Zero is rejected at boot. Each stream holds a socket, and the daemon neither raises `RLIMIT_NOFILE` nor checks the knob against it: about 300 descriptors go to admitted requests, Postgres and Dragonfly first, so 256 is what a stock 1,024 soft limit leaves room for. | Raise only on a host whose descriptor limit is raised to match, after measuring stream refusals, memory, CPU, and proxy capacity. The tail itself held 4,096 streams inside every bound (below). Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
 | `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | `rustd/crates/agentsfleetd/src/serve/mod.rs` passes this constant (declared in `afd_http`'s `admission/mod.rs`) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
@@ -402,8 +389,8 @@ Step 4: Emit configuration
 4. **Raise `DRAGONFLY_REQUEST_TIMEOUT_MS` above 5000.** A healthy datastore's p99 is single-digit-ms, and in-region 6PN is below that; >5 s is failure, not slowness.
 5. **Put `SUBSCRIBE` on the shared command socket.** The hub owns a separate connection and fans out locally; request-path commands keep their multiplexed socket.
 6. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
-7. **Ignore active fleet count in the Postgres budget.** One discovery statement per poll can still perform many indexed head lookups. Measure at the intended fleet population.
-8. **Replace randomized candidate ordering with a fixed prefix.** A bounded result with a fixed order can repeatedly exclude eligible fleets. Notification and affinity priority do not provide a strict fairness guarantee.
+7. **Ignore the number of fleets waiting in the Postgres budget.** The claim reads only ready, free slots, but each one it considers costs a head lookup. Measure at the intended backlog.
+8. **Drop the retry backoff to serve a failing fleet sooner.** The claim is oldest-first, so a failing fleet with no backoff sits at the head of every poll and starves the fleets behind it.
 9. **Sum admission backlog gauges across replicas.** Each census reads the same deployment-wide ledger. Use the maximum; summing duplicates the same work.
 
 ---

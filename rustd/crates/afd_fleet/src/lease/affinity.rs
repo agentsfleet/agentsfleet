@@ -63,7 +63,11 @@ impl Fence {
     /// plausible wrong answer, which is the worse failure.
     #[must_use]
     pub const fn as_u64(self) -> Option<u64> {
-        if self.0 < 0 { None } else { Some(self.0.unsigned_abs()) }
+        if self.0 < 0 {
+            None
+        } else {
+            Some(self.0.unsigned_abs())
+        }
     }
 
     /// A token as read back from a row.
@@ -235,11 +239,7 @@ pub(crate) fn count_resumed(acquired: &Acquired) {
 /// the slot's prior `hold_expires_at` and `last_runner_id`, or `None` when it held
 /// none. A hold at or past its deadline binds nobody at the claim's own
 /// predicate, so it is no hold here either.
-pub(crate) fn held_claim(
-    held: bool,
-    holder: Option<&str>,
-    runner_id: &Uuid7,
-) -> Option<HeldClaim> {
+pub(crate) fn held_claim(held: bool, holder: Option<&str>, runner_id: &Uuid7) -> Option<HeldClaim> {
     held.then(|| {
         if holder == Some(runner_id.as_str()) {
             HeldClaim::Holder

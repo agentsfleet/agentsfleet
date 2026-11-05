@@ -14,7 +14,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use super::{Plane, Ungranted, answers, written};
+use super::Plane;
+use super::ungranted::{Ungranted, answers, written};
 use afd_approval::Requested;
 use afd_core::id::Uuid7;
 use afd_core::money::NANOS_PER_USD;
@@ -104,7 +105,7 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
     let log = afd_core::test_util::trace::Capture::install();
     assert_eq!(written(Err(unwritable()), &fleet(), "github"), None);
 
-    let line = log.only(super::EVENT_REQUEST_FAILED).fields;
+    let line = log.only(super::ungranted::EVENT_REQUEST_FAILED).fields;
     assert_eq!(
         line.get("error_code").map(String::as_str),
         Some(unwritable().code().as_str()),
@@ -130,7 +131,8 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
 /// hand the same failing fleet straight back.
 #[test]
 fn only_an_open_card_turns_the_answer_into_a_park() {
-    use super::{Backoff, Ending};
+    use crate::lease::affinity::Backoff;
+    use crate::lease::pull::Ending;
 
     let answer = || "no work".to_owned();
     assert_eq!(Ungranted::Parks.ending(answer()), Ending::Park(answer()));

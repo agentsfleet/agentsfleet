@@ -59,6 +59,7 @@ async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
         .await;
 
     assert!(!resumes(&leases, &fleet, &holder).await, "lapsed");
+    crate::seed::carry_tag(&fixtures, &holder, &never_held).await;
     assert!(
         !resumes(&leases, &never_held, &holder).await,
         "a slot whose last report recorded no hold"

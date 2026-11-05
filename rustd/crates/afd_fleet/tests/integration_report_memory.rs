@@ -115,7 +115,13 @@ async fn test_report_memory_lands_before_the_settle() {
         .plane()
         .report(
             &held.runner,
-            &report(&held, held.fence.as_u64().expect("a claimed fence is not negative"), learned()),
+            &report(
+                &held,
+                held.fence
+                    .as_u64()
+                    .expect("a claimed fence is not negative"),
+                learned(),
+            ),
             held.now,
         )
         .await
@@ -153,7 +159,13 @@ async fn test_superseded_report_writes_no_memory() {
         .plane()
         .report(
             &held.runner,
-            &report(&held, held.fence.as_u64().expect("a claimed fence is not negative"), learned()),
+            &report(
+                &held,
+                held.fence
+                    .as_u64()
+                    .expect("a claimed fence is not negative"),
+                learned(),
+            ),
             held.now,
         )
         .await
@@ -192,7 +204,13 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
         .plane()
         .report(
             &held.runner,
-            &report(&held, held.fence.as_u64().expect("a claimed fence is not negative"), oversize),
+            &report(
+                &held,
+                held.fence
+                    .as_u64()
+                    .expect("a claimed fence is not negative"),
+                oversize,
+            ),
             held.now,
         )
         .await
@@ -231,7 +249,13 @@ async fn test_failed_capture_still_settles() {
     forgetful
         .report(
             &held.runner,
-            &report(&held, held.fence.as_u64().expect("a claimed fence is not negative"), learned()),
+            &report(
+                &held,
+                held.fence
+                    .as_u64()
+                    .expect("a claimed fence is not negative"),
+                learned(),
+            ),
             held.now,
         )
         .await
@@ -273,7 +297,13 @@ async fn test_failed_capture_still_settles() {
 async fn test_a_repeated_report_skips_its_memory_capture() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let body = report(&held, held.fence.as_u64().expect("a claimed fence is not negative"), learned());
+    let body = report(
+        &held,
+        held.fence
+            .as_u64()
+            .expect("a claimed fence is not negative"),
+        learned(),
+    );
     plane
         .report(&held.runner, &body, held.now)
         .await

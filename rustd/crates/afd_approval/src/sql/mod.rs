@@ -126,6 +126,10 @@ pub(crate) const RESOLVE_GATE: &str = include_str!("resolve_gate.sql");
 /// `$1` action, `$2` fleet filter (empty disables).
 pub(crate) const LOCK_GATE_FLEET_SLOT: &str = include_str!("lock_gate_fleet_slot.sql");
 
+/// Bound the transaction a resolve or a sweep opens: `$1` lock timeout, `$2`
+/// statement timeout, both local to the transaction.
+pub(crate) const BOUND_TRANSACTION: &str = include_str!("bound_transaction.sql");
+
 /// The gate an action already holds, newest first.
 ///
 /// Read only when [`RESOLVE_GATE`] updated nothing, to tell a gate somebody
@@ -158,6 +162,7 @@ pub(crate) const EXPIRE_GATES: &str = include_str!("expire_gates.sql");
 /// past its deadline, and name those fleets.
 ///
 /// [`LOCK_GATE_FLEET_SLOT`]'s shape for the sweep. Fleet order keeps two
-/// replicas' sweeps from deadlocking each other, and `now()` is the
-/// transaction's, so [`EXPIRE_GATES`] reads the same deadline.
+/// replicas' sweeps from deadlocking each other. A card that lapses between
+/// this and [`EXPIRE_GATES`] is expired only when its fleet's slot is held
+/// here; any other waits for the next sweep.
 pub(crate) const LOCK_EXPIRING_FLEET_SLOTS: &str = include_str!("lock_expiring_fleet_slots.sql");

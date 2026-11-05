@@ -183,7 +183,7 @@ async fn test_claims_on_an_unheld_fleet_count_nothing() {
     let rounds = usize::try_from(CLAIMS_IN_A_ROW).expect("sixteen fits a usize");
     for runner in runners.iter().cycle().take(rounds) {
         let claimed = crate::seed::claim_fleet(&leases, runner, &fleet)
-        .await
+            .await
             .expect("a free slot is won");
         leases
             .release(&id(&fleet), claimed.fence)

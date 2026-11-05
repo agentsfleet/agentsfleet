@@ -28,36 +28,48 @@ WITH replay AS MATERIALIZED (
   FROM jsonb_array_elements_text(
     (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
      FROM runner.runners WHERE id = $1::uuid)) AS e
-), pick AS MATERIALIZED (
-  SELECT s.fleet_id, a.id AS admission_id, a.workspace_id, a.actor, a.event_type,
-         a.request_json, a.event_created_at, a.created_at, a.producer, a.delivered_at
+), chosen AS MATERIALIZED (
+  SELECT s.fleet_id, head.id AS head_id
   FROM runner.fleet_slots s
-  JOIN fleet.fleets f ON f.id = s.fleet_id
+  CROSS JOIN LATERAL (
+    SELECT z.status, z.required_tags FROM fleet.fleets z WHERE z.id = s.fleet_id LIMIT 1
+  ) f
   CROSS JOIN LATERAL (
     SELECT h.id FROM fleet.admissions h
     WHERE h.fleet_id = s.fleet_id AND h.settled_at IS NULL
     ORDER BY h.sequence LIMIT 1
   ) head
-  JOIN fleet.admissions a ON a.id = head.id
   WHERE NOT EXISTS (SELECT 1 FROM replay)
     AND s.ready_at IS NOT NULL
     AND s.lease_expires_at < statement_timestamp()
     AND f.status = $8
     AND f.required_tags <@ (SELECT tags FROM labels)
-    AND a.settled_at IS NULL AND a.parked_at IS NULL
     AND (s.hold_expires_at IS NULL
          OR s.hold_expires_at <= statement_timestamp()
          OR s.last_runner_id = $1::uuid
          OR NOT EXISTS (
-           SELECT 1 FROM runner.runners r
-           WHERE r.id = s.last_runner_id
-             AND r.last_seen_at > statement_timestamp() - $4::interval
-             AND r.status = $5 AND r.degraded_reason IS NULL))
+           SELECT 1 FROM runner.runners rr
+           WHERE rr.id = s.last_runner_id
+             AND rr.last_seen_at > statement_timestamp() - $4::interval
+             AND rr.status = $5 AND rr.degraded_reason IS NULL))
   ORDER BY s.fleet_id = ANY((SELECT ($2::text[])::uuid[])::uuid[]) DESC,
            (s.last_runner_id = $1::uuid) DESC NULLS LAST,
            s.ready_at
   LIMIT 1
-  FOR UPDATE OF s, a SKIP LOCKED
+  FOR UPDATE OF s SKIP LOCKED
+), head AS MATERIALIZED (
+  SELECT a.id, a.workspace_id, a.actor, a.event_type, a.request_json,
+         a.event_created_at, a.created_at, a.producer, a.delivered_at,
+         a.settled_at, a.parked_at
+  FROM fleet.admissions a
+  WHERE a.id = (SELECT c.head_id FROM chosen c)
+  FOR UPDATE OF a SKIP LOCKED
+), pick AS MATERIALIZED (
+  SELECT c.fleet_id, h.id AS admission_id, h.workspace_id, h.actor, h.event_type,
+         h.request_json, h.event_created_at, h.created_at, h.producer, h.delivered_at
+  FROM chosen c
+  JOIN head h ON h.id = c.head_id
+  WHERE h.settled_at IS NULL AND h.parked_at IS NULL
 ), instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at FROM pick
 ), slot AS (

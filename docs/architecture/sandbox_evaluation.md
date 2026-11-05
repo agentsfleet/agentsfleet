@@ -474,7 +474,7 @@ Each bounded monitoring sweep reads scoped evidence windows and saves progress a
 Keep evidence references and bounded excerpts in each incident conversation instead of appending the whole log stream.
 
 After recording a diagnosis and proposal, finish the responder admission and release its lease.
-Waiting for approval must not park the responder's queue head, which can [block later admissions](../../rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql).
+Waiting for approval must not park the responder's queue head, which can [block later admissions](../../rustd/crates/afd_fleet/src/lease/sql/lease/claim_admission_head.sql).
 The saved proposal waits independently; approval admits the configured repairer's work.
 
 ```text

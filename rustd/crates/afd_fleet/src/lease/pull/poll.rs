@@ -5,9 +5,9 @@ use afd_runner::capacity::choice::Ticket;
 use jiff::Timestamp;
 
 use super::Plane;
+use crate::Result;
 use crate::lease::answer::{no_work, replay_now};
 use crate::lease::assign::{Taken, record_polled};
-use crate::Result;
 
 /// A complete poll response with its placement decision preserved.
 #[derive(Debug)]

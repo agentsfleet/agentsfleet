@@ -33,7 +33,7 @@ const EVENT: &str = "runner_lease_failed";
         "happen before assignment. An optional `Idempotency-Key` names one poll attempt: ",
         "send the same key again only when the earlier reply never arrived. A repeated ",
         "key frees the fleet assignment that reply carried and answers no work with ",
-        "`retry_after_ms` 0, so the next poll, under a new key, receives it again.",
+        "`retry_after_ms` 0. The next poll, under a new key, receives it again.",
     ),
     params(
         ("Idempotency-Key" = Option<String>, Header, description = "Optional UUIDv7 naming this poll attempt; reused only to repeat a poll whose reply was lost."),

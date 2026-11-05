@@ -1,7 +1,7 @@
 //! Racing claims on one ready fleet: one wins, and every loser writes nothing
 //! and waits on nothing.
 //!
-//! The claim takes the slot and its head admission with `SKIP LOCKED`, so a
+//! The claim takes the slot, then its head admission, with `SKIP LOCKED`, so a
 //! claim that meets a slot another claim holds moves past it rather than
 //! queueing behind it, and every write in the statement joins the pick, so a
 //! claim that took nothing changed no row.
@@ -14,6 +14,7 @@
 )]
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afd_core::id::Uuid7;
@@ -59,17 +60,16 @@ async fn slot(fixtures: &Fixtures, fleet: &str) -> Slot {
         .expect("the slot reads back")
 }
 
-/// Dimension 2.2: a hundred polls released together against one ready fleet.
+/// A hundred polls released together against one ready fleet.
 /// One claims it, ninety-nine answer nothing, and the fence moved once.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_hundred_pollers_claim_one_fleet_once() {
     let fixtures = Fixtures::create_with_queue().await;
-    let Seeded {
-        runners, fleet, ..
-    } = seeded::<4>(&fixtures).await;
+    let Seeded { runners, fleet, .. } = seeded::<4>(&fixtures).await;
     let before = slot(&fixtures, &fleet).await;
     let barrier = Arc::new(tokio::sync::Barrier::new(POLLS));
+    let (in_flight, peak) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
     let polls: Vec<_> = (0..POLLS)
         .map(|index| {
             let leases = fixtures.leases();
@@ -77,10 +77,18 @@ async fn test_hundred_pollers_claim_one_fleet_once() {
                 .get(index % runners.len())
                 .expect("a runner per slot in the rotation")
                 .clone();
-            let barrier = Arc::clone(&barrier);
+            let (barrier, in_flight, peak) = (
+                Arc::clone(&barrier),
+                Arc::clone(&in_flight),
+                Arc::clone(&peak),
+            );
             tokio::spawn(async move {
                 barrier.wait().await;
-                leases.select(&runner, &[]).await
+                let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(now, Ordering::SeqCst);
+                let claimed = leases.select(&runner, &[]).await;
+                in_flight.fetch_sub(1, Ordering::SeqCst);
+                claimed
             })
         })
         .collect();
@@ -98,6 +106,10 @@ async fn test_hundred_pollers_claim_one_fleet_once() {
     }
     let after = slot(&fixtures, &fleet).await;
 
+    assert!(
+        peak.load(Ordering::SeqCst) > 1,
+        "the claims were in flight together"
+    );
     assert_eq!(
         (claimed.len(), empty),
         (1, POLLS - 1),
@@ -109,13 +121,15 @@ async fn test_hundred_pollers_claim_one_fleet_once() {
         "the fence moved once: no loser bumped it"
     );
     assert_eq!(
-        claimed.first().map(|acquired| acquired.fleet_id.as_str().to_owned()),
+        claimed
+            .first()
+            .map(|acquired| acquired.fleet_id.as_str().to_owned()),
         Some(fleet.clone())
     );
     fixtures.cleanup().await;
 }
 
-/// Dimension 2.3: a ready slot whose head admission an open transaction holds
+/// A ready slot whose head admission an open transaction holds
 /// is skipped, and the claim that skipped it changed nothing on the slot.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]

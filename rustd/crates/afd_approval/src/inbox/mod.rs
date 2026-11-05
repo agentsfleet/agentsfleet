@@ -31,6 +31,31 @@ mod resolve;
 mod row;
 mod sweep;
 
+/// How long a resolve or a sweep waits on a fleet's slot lock before it gives
+/// up with SQLSTATE `55P03`: a writer holding a slot holds it for one short
+/// statement or transaction, so a longer wait is a stalled holder.
+pub(crate) const LOCK_TIMEOUT: &str = "2000ms";
+
+/// How long any one statement of a resolve or a sweep may run.
+pub(crate) const STATEMENT_TIMEOUT: &str = "5000ms";
+
+/// Bounds the transaction just opened on `connection`.
+///
+/// # Errors
+/// Reports a datastore that would not answer.
+pub(crate) async fn bound(
+    connection: &mut sqlx::PgConnection,
+    context: &'static str,
+) -> crate::Result<()> {
+    sqlx::query(crate::sql::BOUND_TRANSACTION)
+        .bind(LOCK_TIMEOUT)
+        .bind(STATEMENT_TIMEOUT)
+        .execute(&mut *connection)
+        .await
+        .map_err(crate::error::query(context))?;
+    Ok(())
+}
+
 use afd_admission::Admissions;
 use afd_api_wire::approval::GateStatus;
 use afd_core::id::Uuid7;

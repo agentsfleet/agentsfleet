@@ -77,7 +77,13 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
         memory: Vec::new(),
     };
     plane.heartbeat(&heartbeat).await.unwrap();
-    plane.lease(&[], &Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").unwrap()).await.unwrap();
+    plane
+        .lease(
+            &[],
+            &Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(
         plane
             .renew(&lease, &RenewRequest::default())
@@ -116,7 +122,13 @@ async fn a_reply_decodes_borrowing_or_refuses_as_malformed() {
         _other => Answer::Reply(Bytes::from_static(b"[")),
     });
 
-    let good = plane.lease(&[], &Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").unwrap()).await.unwrap();
+    let good = plane
+        .lease(
+            &[],
+            &Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").unwrap(),
+        )
+        .await
+        .unwrap();
     let bad = plane
         .hydrate(&Uuid7::parse(FLEET_ID).unwrap())
         .await

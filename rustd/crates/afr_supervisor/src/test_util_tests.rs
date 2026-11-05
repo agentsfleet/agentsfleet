@@ -63,7 +63,13 @@ async fn test_each_route_answers_as_its_verb() {
     };
 
     plane.heartbeat(&beat).await.unwrap();
-    plane.lease(&[], &Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").unwrap()).await.unwrap();
+    plane
+        .lease(
+            &[],
+            &Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").unwrap(),
+        )
+        .await
+        .unwrap();
     plane.renew(&lease, &RenewRequest::default()).await.unwrap();
     plane.hydrate(&fleet).await.unwrap();
     plane.capture(&fleet, &push).await.unwrap();

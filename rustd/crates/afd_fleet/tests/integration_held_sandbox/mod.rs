@@ -87,6 +87,7 @@ async fn beats_at(
 /// `runner` claims `fleet`, and its report releases the slot holding the
 /// sandbox until `until`.
 async fn hold(leases: &Leases, fixtures: &Fixtures, fleet: &str, runner: &Uuid7, until: Timestamp) {
+    crate::seed::carry_tag(fixtures, runner, fleet).await;
     let claimed = crate::seed::claim_fleet(leases, runner, fleet)
         .await
         .expect("a free slot is won");

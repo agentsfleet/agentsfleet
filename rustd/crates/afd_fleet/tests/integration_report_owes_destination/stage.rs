@@ -121,7 +121,7 @@ impl Stage {
             )
             .await
             .expect("the lease row must be written")
-        .issued()
+            .issued()
             .expect("the claim is still held");
         let lease = self
             .leases

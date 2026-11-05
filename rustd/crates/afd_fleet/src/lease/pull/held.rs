@@ -22,9 +22,6 @@ use crate::lease::affinity::{Backoff, Fence};
 use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
 
-/// One step of the pass: carry on with `T`, or end with an [`Ending`].
-pub(in crate::lease) type Step<T> = ControlFlow<Ending, T>;
-
 /// How a pass that issued no lease ends, and what it still owes the slot.
 #[derive(Debug, PartialEq, Eq)]
 pub(in crate::lease) enum Ending {
@@ -72,7 +69,9 @@ impl Plane {
             event_id: acquired.event_id.clone(),
         };
         let pass = match self.admit_claimed(acquired, runner_id, now).await {
-            Ok(ControlFlow::Continue(admitted)) => self.deliver(runner_id, admitted, now, began).await,
+            Ok(ControlFlow::Continue(admitted)) => {
+                self.deliver(runner_id, admitted, now, began).await
+            }
             Ok(ControlFlow::Break(ending)) => Ok(ControlFlow::Break(ending)),
             Err(fault) => Err(fault),
         };
@@ -104,7 +103,9 @@ impl Plane {
     /// Frees the claim through the one best-effort release every
     /// lease-less ending shares.
     async fn let_go(&self, held: &Held, backoff: Backoff) {
-        self.leases.let_go(&held.fleet_id, held.fence, backoff).await;
+        self.leases
+            .let_go(&held.fleet_id, held.fence, backoff)
+            .await;
     }
 }
 
@@ -120,7 +121,7 @@ const AWAITING_APPROVAL: &str = "a human owes an answer";
 ///
 /// # Errors
 /// Reports an answer that would not render.
-pub(super) fn waited<T>(runner_id: &Uuid7, waiting: Waiting) -> Result<Step<T>> {
+pub(super) fn waited<T>(runner_id: &Uuid7, waiting: Waiting) -> Result<ControlFlow<Ending, T>> {
     let answer = no_work(runner_id, AWAITING_APPROVAL)?;
     Ok(ControlFlow::Break(match waiting {
         Waiting::Parked | Waiting::Pending => Ending::Park(answer),
@@ -140,7 +141,10 @@ const EVENT_ISSUE_DENIED: &str = "lease_issue_denied";
 /// A stop with no backoff: the release is fenced on this pass's token, so it
 /// cannot free the slot a new holder won, and a slot still under this fence
 /// goes straight back for the next poll.
-pub(in crate::lease) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> Result<Step<T>> {
+pub(in crate::lease) fn claim_lost<T>(
+    runner_id: &Uuid7,
+    acquired: &Acquired,
+) -> Result<ControlFlow<Ending, T>> {
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let runner = runner_id.as_str();
@@ -155,7 +159,8 @@ pub(in crate::lease) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) ->
         fencing_token = fence,
         "the pass outlived its claim; no lease was written"
     );
-    no_work(runner_id, CLAIM_LOST_REASON).map(|answer| ControlFlow::Break(Ending::Stop(answer, Backoff::None)))
+    no_work(runner_id, CLAIM_LOST_REASON)
+        .map(|answer| ControlFlow::Break(Ending::Stop(answer, Backoff::None)))
 }
 
 /// The no-work answer for a claim the runner's host refused at issue.
@@ -166,7 +171,7 @@ pub(in crate::lease) fn issue_denied<T>(
     runner_id: &Uuid7,
     acquired: &Acquired,
     reason: IssueDenied,
-) -> Result<Step<T>> {
+) -> Result<ControlFlow<Ending, T>> {
     producers::fleet::lease_issue_denied(reason);
     let runner = runner_id.as_str();
     let fleet_id = acquired.fleet_id.as_str();
@@ -180,7 +185,8 @@ pub(in crate::lease) fn issue_denied<T>(
         reason = why,
         "the runner's host refused the work it claimed; the fleet goes back"
     );
-    no_work(runner_id, ISSUE_DENIED_REASON).map(|answer| ControlFlow::Break(Ending::Stop(answer, Backoff::None)))
+    no_work(runner_id, ISSUE_DENIED_REASON)
+        .map(|answer| ControlFlow::Break(Ending::Stop(answer, Backoff::None)))
 }
 
 /// The no-work reason a lost claim answers with.
@@ -202,7 +208,7 @@ mod tests {
     use afd_gate::gate::Waiting;
     use jiff::Timestamp;
 
-    use super::{Ending, Step, waited};
+    use super::{Ending, waited};
     use crate::lease::affinity::Backoff;
 
     fn runner() -> Uuid7 {
@@ -215,7 +221,8 @@ mod tests {
     #[test]
     fn a_wait_on_a_recorded_question_parks() {
         for waiting in [Waiting::Parked, Waiting::Pending] {
-            let step: Step<()> = waited(&runner(), waiting).expect("the answer renders");
+            let step: ControlFlow<Ending, ()> =
+                waited(&runner(), waiting).expect("the answer renders");
             assert!(
                 matches!(step, ControlFlow::Break(Ending::Park(_))),
                 "{waiting:?} must park"
@@ -228,7 +235,8 @@ mod tests {
     /// oldest-first claim must not hand it straight back.
     #[test]
     fn an_unreadable_wait_stops_behind_the_backoff() {
-        let step: Step<()> = waited(&runner(), Waiting::Unreadable).expect("the answer renders");
+        let step: ControlFlow<Ending, ()> =
+            waited(&runner(), Waiting::Unreadable).expect("the answer renders");
         assert!(matches!(
             step,
             ControlFlow::Break(Ending::Stop(_, Backoff::Retry))
@@ -265,8 +273,9 @@ mod tests {
         use crate::lease::test_dead;
 
         let runner = runner();
-        let step = super::issue_denied::<()>(&runner, &test_dead::acquired(), IssueDenied::Capacity)
-            .expect("the answer renders");
+        let step =
+            super::issue_denied::<()>(&runner, &test_dead::acquired(), IssueDenied::Capacity)
+                .expect("the answer renders");
         let expected = no_work(&runner, super::ISSUE_DENIED_REASON).expect("the answer renders");
         assert_eq!(
             step,

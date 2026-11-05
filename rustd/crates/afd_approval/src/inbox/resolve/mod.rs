@@ -85,6 +85,7 @@ impl Inbox {
             .begin()
             .await
             .map_err(error::query(CONTEXT_RESOLVE))?;
+        super::bound(&mut transaction, CONTEXT_RESOLVE).await?;
         sqlx::query(sql::LOCK_GATE_FLEET_SLOT)
             .bind(action)
             .bind(scope)

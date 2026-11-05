@@ -19,7 +19,7 @@
 //!
 //! # The deadline is the database's
 //!
-//! A gate lapses when `expires_at <= now()` on the database clock, the same
+//! A gate lapses when `expires_at <= statement_timestamp()` on the database clock, the same
 //! clock that stamped `expires_at` when the gate was raised. The sweep reads no
 //! clock of its own, so a daemon whose host clock drifts cannot expire a gate
 //! early or hold one past its window.
@@ -81,6 +81,7 @@ impl Inbox {
             .begin()
             .await
             .map_err(error::query(CONTEXT_EXPIRE))?;
+        super::bound(&mut transaction, CONTEXT_EXPIRE).await?;
         let fleets: Vec<String> = sqlx::query_scalar(sql::LOCK_EXPIRING_FLEET_SLOTS)
             .fetch_all(&mut *transaction)
             .await

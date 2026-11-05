@@ -71,7 +71,10 @@ async fn a_failed_delivery_stamp_writes_nothing_then_the_claim_lands_once() {
         .await
         .expect("the claim is freed");
     let again = next(&leases, &runner).await.expect("the same admission");
-    assert_eq!((again.event_id.as_str(), again.delivery), (event.as_str(), Delivery::Repeat));
+    assert_eq!(
+        (again.event_id.as_str(), again.delivery),
+        (event.as_str(), Delivery::Repeat)
+    );
     assert_eq!(delivery_state(&fixtures, &event).await, (1, true));
     assert_eq!(
         afd_events::fleet_counters(&fixtures.database, &fleet)
@@ -154,13 +157,21 @@ async fn a_claim_skips_a_fleet_a_producer_is_admitting_to_and_never_waits() {
         .expect("the claim does not wait on the producer");
     assert!(skipped.is_none(), "the slot the producer holds is skipped");
     pending.rollback().await.expect("discard pending producer");
-    let acquired = next(&leases, &runner).await.expect("the fleet is free again");
-    assert_eq!((acquired.event_id, acquired.delivery), (event, Delivery::First));
+    let acquired = next(&leases, &runner)
+        .await
+        .expect("the fleet is free again");
+    assert_eq!(
+        (acquired.event_id, acquired.delivery),
+        (event, Delivery::First)
+    );
     drop((connection, leases, admissions));
     fixtures.cleanup().await;
 }
 
-async fn claim(leases: &Leases, runner: &afd_core::id::Uuid7) -> Option<afd_fleet::lease::Acquired> {
+async fn claim(
+    leases: &Leases,
+    runner: &afd_core::id::Uuid7,
+) -> Option<afd_fleet::lease::Acquired> {
     leases.select(runner, &[]).await.expect("valid claim")
 }
 

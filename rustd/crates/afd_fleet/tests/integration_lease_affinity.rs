@@ -173,8 +173,7 @@ async fn test_reclaim_bumps_fence() {
         .expect("an unclaimed slot is winnable");
 
     // A live holder blocks the slot, whoever asks.
-    let blocked = crate::seed::claim_fleet(&leases, &second_runner, &ids.fleet)
-        .await;
+    let blocked = crate::seed::claim_fleet(&leases, &second_runner, &ids.fleet).await;
     assert!(
         blocked.is_none(),
         "a live claim must not be displaceable before it lapses"

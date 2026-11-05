@@ -37,12 +37,16 @@ Sections 6 and 7 cover the sandbox and host.
                              SPUBLISH fleet:wake:{shard} (best effort)    Dragonfly
                          6 202 {matched, enqueued}
 
- RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
-                         a Postgres: oldest unsettled head per eligible fleet
-                         b prefer held fleets, wake hints and previous placement; ≤64
-                         c lock slot and exact head with SKIP LOCKED
-                         d advance slot + admission fences; decode before commit
-                         e INSERT fleet.events status=received (+ stamp admission delivered)
+ RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker,
+                           Idempotency-Key: one UUIDv7 per poll attempt)
+                         a ONE claim statement, autocommit:                     Postgres
+                             oldest ready, free slot (partial ready index), held
+                             fleets first, then this runner's last fleets;
+                             slot + head admission locked with SKIP LOCKED;
+                             fence +1, delivered_at stamped,
+                             INSERT fleet.events status=received
+                           (a repeated key instead frees the lease its lost
+                            reply carried and answers retry_after_ms 0)
                          f SPUBLISH event_received bracket on fleet:{id}:activity
                          g gates: payer → balance → budget → approval (nothing charged)
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
@@ -89,17 +93,18 @@ The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler
 
 Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
 
-Repeated producer identities return the existing admission. After commit, a bounded wake publish can prioritize its fleet on the next poll.
+Repeated producer identities return the existing admission. A trigger on `fleet.admissions` keeps the fleet's place in the queue on its slot: `runner.fleet_slots.ready_at` is the `created_at` of the oldest unsettled admission while it is unparked, and `NULL` otherwise. After commit, one ring on `fleet:wake:{shard}` completes one held heartbeat on each daemon replica.
 
 ### The poll claims an admission and its fleet slot
 
-1. Read the oldest unsettled admission for each eligible fleet through `idx_admissions_unsettled`.
-2. Prefer held fleets and recent hints, then try a bounded candidate set.
-3. Lock a candidate's slot and exact oldest admission with `SKIP LOCKED`. A locked or parked head blocks later rows.
-4. Advance the slot and admission fences together. Decode the envelope before committing, so malformed stored data rolls back both fences.
-5. Open runtime history and stamp `delivered_at` under the same current fences.
-6. Read installed configuration, resolve billing and check approval gates. Parked work frees the slot and retains its place in the queue.
-7. Assemble credentials and policy, then issue `runner.leases` under the claimed fence.
+1. One statement takes the oldest ready, free slot this runner may run: `ready_at` set, `lease_expires_at` passed, the fleet active, its required tags among the runner's labels, and no live hold of another runner. Held fleets come first, then fleets this runner ran last.
+2. It locks that slot with `SKIP LOCKED`, then its head admission by primary key, also `SKIP LOCKED`. A slot another transaction holds is passed over; a head that is held, or that settled or parked since the statement began, leaves this poll empty. The claim never waits.
+3. In the same statement it advances the fence, stamps `delivered_at` and opens the event row. Every write joins the pick, so a claim that took nothing wrote nothing.
+4. The statement reads back whether the event is new, still open, or already ended. An ended event settles in one fenced statement and issues nothing.
+5. Read installed configuration, resolve billing and check approval gates. A refusal ends the event, settles the admission and frees the slot in one statement. Parked work frees the slot; the trigger clears the fleet's readiness until the card is answered, or until the park sweep finds every event card on the head lapsed.
+6. Assemble credentials and policy, then issue `runner.leases` under the claimed fence, recording the poll's key.
+
+A pass that ends on a retry frees its slot behind a short backoff, so the oldest-first order cannot keep handing a failing fleet to every poll.
 
 An expired slot exposes the same unsettled row. Redelivery preserves its event identity, original time and prior billing identity.
 
@@ -323,7 +328,7 @@ Every pull-request action wakes the fleet under `Policy::AppIngress`. Actions su
 
 The affinity slot allows one active lease per fleet. On the runner, `FleetTurns` allows one run per fleet ([Runner loop](./runner_execution.md) §"One lease, end to end"). The second event waits until the first reports and the settle transaction frees the slot.
 
-**Same runner?** The candidate scan prefers the last runner, and the claim records the hint (`afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`). Any eligible runner can win.
+**Same runner?** The claim prefers the fleets this runner ran last, and records the hint (`afd_fleet/src/lease/sql/lease/claim_admission_head.sql`). Any eligible runner can win.
 
 A runner with a held sandbox checks that fleet first. Other runners skip the fleet while the hold lasts ([Runner fleet holds](./runner_fleet.md#cold-and-warm-execution)).
 
@@ -348,7 +353,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 - Workers per host: default 1, between 1 and 64 (`afd_core/src/limits.rs`).
 - Activity: 64 KiB batches, 4 held (`afr_supervisor/src/activity/mod.rs`). Memory: a 256 KiB hydrate window (`afd_wire/src/memory.rs`).
 - Timers: lease TTL 30 s, renew every 5 s, max runtime 12 h, runner offline after 90 s, heartbeat 10 s, empty-poll hint 1 s, sandbox hold 10 min (`afd_core/src/timing.rs`).
-- Poll and admission: at most 64 candidate fleets per poll; 10,000 unsettled admissions per fleet. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
+- Poll and admission: one claim statement per poll, driven from the ready slots; 10,000 unsettled admissions per fleet. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
 
 ---
 

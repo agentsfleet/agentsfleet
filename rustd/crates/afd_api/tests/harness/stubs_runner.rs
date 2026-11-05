@@ -70,7 +70,10 @@ impl Leasing for NoWork {
         _now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
         let named = asked
-            .held.iter().map(|fleet| fleet.as_str().to_owned()).collect();
+            .held
+            .iter()
+            .map(|fleet| fleet.as_str().to_owned())
+            .collect();
         self.polled
             .lock()
             .expect("the poll log is healthy")

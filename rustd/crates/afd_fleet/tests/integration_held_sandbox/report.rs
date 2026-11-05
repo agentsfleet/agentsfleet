@@ -25,7 +25,10 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
     ReportRequest {
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),
-        fencing_token: held.fence.as_u64().expect("a claimed fence is not negative"),
+        fencing_token: held
+            .fence
+            .as_u64()
+            .expect("a claimed fence is not negative"),
         outcome: Outcome::Processed,
         failure_reason: None,
         failure_detail: Cow::Borrowed(""),

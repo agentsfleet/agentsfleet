@@ -40,10 +40,10 @@ use jiff::Timestamp;
 
 use crate::error::Result;
 use afd_billing::biller::{Account, Biller};
-use futures_util::future;
 use afd_billing::rates::Posture;
 use afd_billing::{Accounts, Nanos};
 use afd_gate::gate::Waiting;
+use futures_util::future;
 
 use self::fault::PAYER;
 
@@ -252,6 +252,9 @@ fn unowned_workspace(workspace_id: &Uuid7) -> Declined {
         afd_core::event::label::TENANT_RESOLVE_FAILED,
     ))
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod overlap_tests;
 
 #[cfg(test)]
 mod tests;

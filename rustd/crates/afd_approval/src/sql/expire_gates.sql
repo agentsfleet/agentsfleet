@@ -2,7 +2,7 @@ WITH swept AS (
   UPDATE fleet.approval_gates
   SET status = $1, resolved_by = $2, detail = $3,
       resolved_at = now(), updated_at = now(), active_grant_id = NULL
-  WHERE resolved_at IS NULL AND expires_at <= now()
+  WHERE resolved_at IS NULL AND expires_at <= statement_timestamp()
     AND fleet_id = ANY($4::uuid[])
   RETURNING id, fleet_id, event_id
 ), unparked AS (

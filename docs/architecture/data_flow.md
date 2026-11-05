@@ -37,7 +37,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet.events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
 | Cancel latency | none: a running lease is never cancelled | kill and pause write only `fleet.fleets.status`; the run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
-| Lease ownership | at most one active lease per fleet | atomic `runner.fleet_slots` claim + monotonic `fencing_token` | §One active lease per fleet |
+| Lease ownership | at most one active lease per fleet | one-statement `runner.fleet_slots` claim (`SKIP LOCKED`) + monotonic `fencing_token` | §One active lease per fleet |
 | Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 4 |
 | Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; Dragonfly keys namespaced by unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |
 
@@ -260,7 +260,7 @@ The admissions queue lives in Postgres. Dragonfly carries outbound delivery, liv
 | `fleet.admissions` | Postgres ledger | Admission and lease/report paths | Durable inbound queue, ordered by admission `sequence` within a fleet. |
 | `connector:outbound` | Stream and consumer group | Outbound worker | Delivers replies backed by `fleet.obligations`. |
 | `fleet:{id}:activity` | Sharded publish/subscribe channel | Activity hub | Live frames; reconnect recovers durable history through the events list. |
-| `fleet:wake:{shard}` | Sixteen sharded publish/subscribe channels | Doorbell listeners | Prioritizes fleets on subsequent polls. The local hint buffer holds at most 64 distinct fleets. |
+| `fleet:wake:{shard}` | Sixteen sharded publish/subscribe channels | Doorbell listeners | Completes one held heartbeat on each replica; the woken host's poll claims from PostgreSQL. |
 
 Activity and wake notifications are ephemeral. Their loss cannot remove accepted work from the ledger.
 
@@ -574,11 +574,11 @@ consulted on `/v1/webhooks/…` routes. See
 The lease call prepares work for the runner. The report call commits its terminal outcome.
 
 1. Refuse placement when the runner's isolation verdict is degraded or unreadable.
-2. Probe eligible active fleets and each fleet's oldest unsettled admission through `idx_admissions_unsettled`.
-3. Prefer held fleets, recent hints and previous placement; randomize the remaining candidates. Try at most 64 candidates per poll.
-4. Lock a fleet slot and its exact oldest admission with `SKIP LOCKED`. A locked or parked head cannot be skipped within that fleet.
-5. Advance the slot and admission fences together. Decode before committing; malformed stored data rolls back both fences.
-6. Open `fleet.events` and stamp admission delivery in one transaction under those fences. Terminal refusals settle the admission without issuing a lease.
+2. Claim in one statement: the oldest ready, free slot this runner may run, held fleets first, then its last fleets. Readiness is the slot's `ready_at`, which a trigger on `fleet.admissions` keeps.
+3. Lock that slot and its exact oldest admission with `SKIP LOCKED`; a slot or head held elsewhere is passed over. A parked head has no readiness, so it is never picked.
+4. In the same statement advance the slot and admission fences, stamp delivery and open `fleet.events`. Every write joins the pick, so an empty claim writes nothing. A claim whose row this daemon cannot decode frees the slot behind the retry backoff.
+5. A redelivery of an event that already ended settles in one fenced statement without issuing a lease. A repeated `Idempotency-Key` frees the lease its lost reply carried and answers `retry_after_ms` 0.
+6. Every refusal ends the event, settles the admission and frees the slot in one statement under the claim's fence.
 7. Resolve the payer, balance, budget, approvals and installed policy. A wait for a person parks the head and releases the unissued slot.
 8. Resolve declared tool secrets separately from the model provider key. Build `ExecutionPolicy` and issue `runner.leases` under the claimed fence.
 9. Run the lease in the supervisor and sandbox. Forward activity over HTTP; report the outcome and measured usage when the turn ends.
@@ -712,9 +712,11 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
 Before the cutover, a single worker thread owned all events for a Fleet, and the concern was round-robin across worker replicas breaking per-fleet continuity. That model is gone. Ownership is now a **durable lease**, not a thread:
 
-- `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically and bumps a monotonic `fencing_token`; a runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently.
-- The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
-- A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
+- `runner.fleet_slots` holds one slot per fleet, and the slot is the fleet's place in the queue. A trigger on `fleet.admissions` keeps `ready_at` equal to the `created_at` of the fleet's oldest unsettled admission while that admission is unparked, and `NULL` otherwise. Readiness and occupancy stay apart: a lease never touches `ready_at`, so a lease that lapses silently is claimable at its deadline with no writer.
+- `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) runs one statement. It takes the oldest ready slot whose `lease_expires_at` has passed, locks it and its head admission with `SKIP LOCKED`, bumps the monotonic `fencing_token`, stamps `delivered_at` and opens the event row. A runner wins only a slot that is free or whose prior lease has expired. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently.
+- The claim is the only writer that advances `fencing_token`, so every fencing token a lease carries is a value a claim returned.
+- A runner that loses the race for a Fleet passes over it in the same statement and takes the next ready fleet, or gets nothing. Every write in the statement joins the pick, so a claim that took nothing wrote nothing.
+- A worker names each poll attempt with an `Idempotency-Key`. When the reply to an issued lease is lost, the worker repeats the key, the claim frees that lease at once, and the next poll takes the admission back as a repeat.
 - Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement remains a hint, never ownership.
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency and its bound: [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model".

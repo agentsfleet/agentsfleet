@@ -58,52 +58,9 @@ pub const INSERT_FLEET_EVENT: &str = include_str!("insert_fleet_event.sql");
 /// Access receipts: workspace, required service, actor, type, status, metadata.
 pub(crate) const INSERT_ACCESS_ACTIVITY: &str = include_str!("insert_access_activity.sql");
 
-/// [`INSERT_FLEET_EVENT`] as the lease path runs it: a steer's row is stamped
-/// with the instant it was ADMITTED, not the instant a runner took it.
-///
-/// A thread page merges history with the ledger's waiting steers on one key,
-/// `(created_at, event_id)`, and a waiting steer sits at its admission time.
-/// Stamped at lease, the same message jumped above a page cursor already
-/// handed out. Stamped at admission, the row keeps the key it was listed under.
-///
-/// The instant is the admission row's stored `created_at`, looked up by its
-/// primary key — an admitted event's id IS that row's id — while the ledger
-/// has not yet stamped it delivered, which a first delivery always matches:
-/// the stamp follows this insert. Anything else — a webhook, a schedule, an id
-/// that is not a UUID (bound as NULL) — keeps `now()`. Returns the stored
-/// `created_at` as well, so the received frame announces the row's own instant.
-///
-/// `$1`–`$8` as [`INSERT_FLEET_EVENT`], then `$9` the admission row's id, or
-/// NULL when the event id is not one, `$10` the steer producer.
-pub const INSERT_LEASED_FLEET_EVENT: &str = include_str!("insert_leased_fleet_event.sql");
-
-/// End an event at a gate, naming what refused it.
-///
-/// Guarded on `status = $5` — always [`status::RECEIVED`] — so a terminal row
-/// is NEVER reopened. A request arriving after a `gate_blocked` is a new
-/// delivery with its own row (RULE IDMP), not a resurrection of this one.
-///
-/// No row is not an error: it means the row was already terminal, which
-/// happens when a refused delivery's earlier acknowledgement was lost. When the
-/// guard matched, the closing carries the terminal row and the fleet facts the
-/// live tail's completion frame publishes — its status, its pending gate
-/// count, and its two activity counters — so ending a run costs one statement.
-/// [`Closed`](crate::Closed) decodes it.
-///
-/// `NULLIF($6, '')` keeps an empty detail `NULL`, so a consumer testing
-/// `IS NULL` cannot be fooled by an empty string.
-///
-/// `$1` fleet, `$2` event, `$3` new status, `$4` failure reason, `$5` the
-/// status this transition is guarded on, `$6` detail, `$7` the gate status that
-/// counts as pending.
-///
-/// [`status::RECEIVED`]: afd_core::event::status::RECEIVED
-pub const UPDATE_FLEET_EVENT_FAILURE: &str = include_str!("update_fleet_event_failure.sql");
-
 /// End an event with the runner's verdict.
 ///
-/// The sibling of [`UPDATE_FLEET_EVENT_FAILURE`] and guarded the same way, on
-/// `status = $8`. A terminal row is never reopened, so a redelivery whose
+/// Guarded on `status = $8`, as the lease plane's refusal ending is. A terminal row is never reopened, so a redelivery whose
 /// acknowledgement was lost yields no row and the settled result stands. A
 /// check-then-write would let two reports of one event race, and the second
 /// would overwrite the first.
@@ -129,17 +86,6 @@ pub const UPDATE_FLEET_EVENT_RESULT: &str = include_str!("update_fleet_event_res
 ///
 /// `$1` fleet.
 pub const SELECT_FLEET_COUNTERS: &str = include_str!("select_fleet_counters.sql");
-
-/// One event's current status.
-///
-/// Read on ONE path only: a redelivery whose insert hit the conflict arm. The
-/// question it answers is whether that redelivery is a legitimate re-poll (the
-/// row is still `received`) or an already settled event whose acknowledgement
-/// was lost. Re-running the second would double-fire side effects and re-meter
-/// tokens, so the two must not be guessed between.
-///
-/// `$1` fleet, `$2` event.
-pub const SELECT_FLEET_EVENT_STATUS: &str = include_str!("select_fleet_event_status.sql");
 
 /// The byte ceiling on a stored failure cause.
 ///

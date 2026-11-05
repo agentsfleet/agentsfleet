@@ -196,7 +196,7 @@ statements; it removes the whole row-collision class.
 
 A lease poll can choose any eligible fleet in its database.
 A test that asserts absence or exact placement needs a private database or uniquely required runner labels.
-A minted fleet identity alone cannot isolate a global candidate scan.
+A minted fleet identity alone cannot isolate a claim that takes any ready fleet.
 
 **ISO-3. Exclude global work by design.** `Inbox::expire` uses
 `UPDATE … WHERE status = pending AND timeout_at <= $5` without a workspace or fleet filter because the sweeper is system-wide.

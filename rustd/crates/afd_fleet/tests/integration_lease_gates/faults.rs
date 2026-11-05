@@ -74,12 +74,9 @@ fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
     }
 }
 
-/// Asserts the fleet's claim was handed back, so the next poll may take it.
+/// Asserts the fleet's claim was handed back behind the retry backoff.
 async fn assert_claim_freed(fixtures: &Fixtures, fleet: &str) {
-    assert!(
-        fixtures.slot_is_free(fleet).await,
-        "the retry freed the claim"
-    );
+    super::assert_freed_behind_the_backoff(fixtures, fleet).await;
 }
 
 #[tokio::test]
@@ -165,7 +162,7 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     let claimed = claim(&fixtures, &seeded).await;
     let owner = fixtures.open(afd_db::config::DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
-    sqlx::raw_sql("CREATE FUNCTION fleet.refuse_narrative() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected narrative failure'; END $$; CREATE TRIGGER refuse_narrative BEFORE INSERT ON fleet.events FOR EACH ROW EXECUTE FUNCTION fleet.refuse_narrative()")
+    sqlx::raw_sql("CREATE FUNCTION fleet.refuse_narrative() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected narrative failure'; END $$; CREATE TRIGGER refuse_narrative BEFORE UPDATE ON fleet.events FOR EACH ROW EXECUTE FUNCTION fleet.refuse_narrative()")
         .execute(&mut *connection).await.expect("inject narrative failure");
     drop(connection);
     let log = Capture::install();
@@ -181,9 +178,10 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     assert_eq!(line.get("agentsfleet_event_id"), Some(&seeded.event_id));
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
-        None,
-        "no row was written for an event whose refusal could not be recorded"
+        Some((STATUS_RECEIVED_ROW.to_owned(), String::new())),
+        "the claim's open row stays open when its refusal cannot be recorded"
     );
+    super::assert_freed_behind_the_backoff(&fixtures, &seeded.fleet).await;
 
     owner.close().await;
     fixtures.cleanup().await;
@@ -203,8 +201,7 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     let claimed = claim(&fixtures, &seeded).await;
     let slot = Row::Slot(claimed.fleet_id.as_str());
     fixtures.age(slot, "lease_expires_at", LAPSE).await;
-    let won = crate::seed::claim_fleet(&fixtures.leases(), &rival, claimed.fleet_id.as_str())
-        .await;
+    let won = crate::seed::claim_fleet(&fixtures.leases(), &rival, claimed.fleet_id.as_str()).await;
     assert!(won.is_some(), "the rival takes the lapsed slot");
 
     let log = Capture::install();

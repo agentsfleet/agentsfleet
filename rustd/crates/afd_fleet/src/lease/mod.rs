@@ -55,6 +55,7 @@ pub mod write_fence;
 
 pub use self::activity::Target;
 pub use self::affinity::Fence;
+pub use self::claim::Asked;
 pub use self::commit::{Committed, TerminalReport};
 pub use self::envelope::{Acquired, Kind};
 pub use self::event::{Delivery, Ended};
@@ -63,7 +64,6 @@ pub use self::installed::{FRESH_CONTEXT, Installed};
 pub use self::issue::{Billed, Issue, Issued};
 pub use self::obligation::{Owing, ReplyDestination};
 pub use self::pull::Plane;
-pub use self::claim::Asked;
 pub use self::reclaim::Reused;
 pub use self::renew::{Renewed, Renewing};
 pub use self::scope::MintScope;

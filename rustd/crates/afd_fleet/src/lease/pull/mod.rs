@@ -61,7 +61,7 @@ mod refuse;
 #[cfg(all(test, feature = "test-util"))]
 mod tests;
 
-pub(in crate::lease) use self::held::{Ending, Leased, Step, claim_lost, issue_denied};
+pub(in crate::lease) use self::held::{Ending, Leased, claim_lost, issue_denied};
 pub use poll::Polled;
 
 /// What the money gates read: the estimate, the balance and the fleet's spend.
@@ -124,8 +124,9 @@ pub struct Plane {
     pub thread: std::sync::Arc<dyn crate::lease::Thread>,
 }
 
-/// What the claim and the gates settled, before the policy is built.
-pub(super) struct Admission2 {
+/// What the claim and the gates settled, before the policy is built: the
+/// work, cleared by every gate.
+pub(super) struct Gated {
     /// The work, and the fleet it belongs to.
     pub(super) acquired: Acquired,
     /// That fleet as installed.
@@ -174,7 +175,7 @@ impl Plane {
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<ControlFlow<Ending, Gated>> {
         if acquired.delivery == Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
         }
@@ -198,7 +199,7 @@ impl Plane {
         installed: Installed,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<ControlFlow<Ending, Gated>> {
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             let label = label::EVENT_TYPE_UNSUPPORTED;
@@ -226,7 +227,7 @@ impl Plane {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
-        Ok(ControlFlow::Continue(Admission2 {
+        Ok(ControlFlow::Continue(Gated {
             acquired,
             installed,
             event_type,
@@ -237,7 +238,11 @@ impl Plane {
 
     /// A durable ending suppresses execution, settling the admission and
     /// freeing the slot in one statement under the claim's fence.
-    async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<Admission2>> {
+    async fn finished(
+        &self,
+        acquired: &Acquired,
+        runner_id: &Uuid7,
+    ) -> Result<ControlFlow<Ending, Gated>> {
         self.leases.settle_terminal(acquired).await?;
         let fleet_id = acquired.fleet_id.as_str();
         let agentsfleet_event_id = acquired.event_id.as_str();
@@ -247,7 +252,8 @@ impl Plane {
             event = EVENT_TERMINAL_SUPPRESSED,
             "the redelivered event already has a durable ending"
         );
-        no_work(runner_id, REDELIVERED_FINISHED).map(|answer| ControlFlow::Break(Ending::Ended(answer)))
+        no_work(runner_id, REDELIVERED_FINISHED)
+            .map(|answer| ControlFlow::Break(Ending::Ended(answer)))
     }
 
     /// The money gates over the tenant the payer gate found, then — once they

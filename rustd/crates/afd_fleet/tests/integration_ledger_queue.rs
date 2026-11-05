@@ -14,7 +14,6 @@ use sqlx::Connection as _;
 
 use crate::{seed::seeded_parts, support::Fixtures};
 
-mod contention;
 mod deadlines;
 mod delivery;
 mod ordering;
@@ -105,7 +104,11 @@ async fn test_fleet_rows_lease_in_order_behind_a_park() {
         next(&leases, &runner).await.is_none(),
         "park holds later rows"
     );
-    assert_eq!(stamps(&fixtures, head).await, (None, None));
+    assert_eq!(
+        stamps(&fixtures, head).await,
+        (None, Some(0)),
+        "the slot exists from the first admission, and nothing claimed it"
+    );
     sqlx::query(PARK)
         .bind(head)
         .bind(false)
@@ -161,8 +164,8 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
     assert!(next(&leases, &runner).await.is_none());
     assert_eq!(
         stamps(&fixtures, &head).await,
-        (None, None),
-        "empty claim rolls the slot back"
+        (None, Some(0)),
+        "an empty claim writes nothing on the slot"
     );
     transaction.rollback().await.expect("unlock head");
     assert_eq!(
@@ -179,12 +182,14 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
+async fn test_claim_decode_fault_frees_the_claim_behind_the_backoff() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     // Postgres accepts this timestamp, while the application timestamp bridge
-    // refuses it. Failure occurs after slot and admission updates in the query.
+    // refuses it. The claim is one autocommit statement, so its writes stand:
+    // the fault frees the slot behind the retry backoff rather than holding
+    // it for a lease, or handing the same fault to the very next poll.
     let mut connection = fixtures
         .database
         .acquire()
@@ -204,18 +209,32 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
         refused.to_string().contains("admissions ledger claim"),
         "{refused}"
     );
-    assert_eq!(stamps(&fixtures, &event).await, (None, None));
+    assert_eq!(stamps(&fixtures, &event).await, (Some(1), Some(1)));
+    assert!(
+        next(&leases, &runner).await.is_none(),
+        "the faulted fleet waits out its backoff"
+    );
     sqlx::query("UPDATE fleet.admissions SET event_created_at = $2 WHERE id = $1::uuid")
         .bind(&event)
         .bind(fixtures.enrolled_at().to_sqlx())
         .execute(&mut *connection)
         .await
         .expect("remove injected fault");
+    fixtures
+        .age(
+            crate::rows::Row::Slot(&fleet),
+            "lease_expires_at",
+            afd_core::timing::CLAIM_RETRY_BACKOFF,
+        )
+        .await;
     let acquired = next(&leases, &runner)
         .await
         .expect("no leaked lock or slot");
-    assert_eq!(acquired.fence.as_i64(), 1);
-    assert_eq!(stamps(&fixtures, &event).await, (Some(1), Some(1)));
+    assert_eq!(
+        (acquired.fence.as_i64(), acquired.delivery),
+        (2, afd_fleet::lease::Delivery::Repeat)
+    );
+    assert_eq!(stamps(&fixtures, &event).await, (Some(2), Some(2)));
     drop(connection);
     drop(leases);
     fixtures.cleanup().await;

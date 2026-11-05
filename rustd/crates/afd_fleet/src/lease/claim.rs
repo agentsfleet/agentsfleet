@@ -58,9 +58,16 @@ impl Plane {
                     }
                 }
                 LeaseKind::Fleet => {
-                    if let Polled::Lease(body) =
-                        self.poll(runner, asked.held, false, now, Some(ticket), asked.key.cloned())
-                            .await?
+                    if let Polled::Lease(body) = self
+                        .poll(
+                            runner,
+                            asked.held,
+                            false,
+                            now,
+                            Some(ticket),
+                            asked.key.cloned(),
+                        )
+                        .await?
                     {
                         return Ok(body);
                     }

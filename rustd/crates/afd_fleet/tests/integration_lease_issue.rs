@@ -219,8 +219,7 @@ async fn test_a_stale_claim_writes_no_lease() {
         .expect("the fenced insert answers");
     assert_eq!(expired, Issue::Lost, "a lapsed claim writes no lease");
 
-    let won = crate::seed::claim_fleet(&leases, &second, held.fleet_id.as_str())
-        .await;
+    let won = crate::seed::claim_fleet(&leases, &second, held.fleet_id.as_str()).await;
     assert!(
         won.is_some(),
         "the lapsed slot is winnable by another runner"
@@ -229,7 +228,11 @@ async fn test_a_stale_claim_writes_no_lease() {
         .issue(&first, &held, billed, now)
         .await
         .expect("the fenced insert answers");
-    assert_eq!(superseded, Issue::Lost, "a superseded fence writes no lease");
+    assert_eq!(
+        superseded,
+        Issue::Lost,
+        "a superseded fence writes no lease"
+    );
     let mut connection = fixtures.database.acquire().await.expect("database");
     let active: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM runner.leases WHERE fleet_id = $1::uuid AND status = 'active'",

@@ -86,10 +86,9 @@ pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<
     for _ in 0..SAMPLES {
         let mut transaction = connection.begin().await?;
         let started = Instant::now();
-        let _claimed: Option<Option<String>> =
-            claim(sqlx::query_scalar(CLAIM_HEAD), runner)
-                .fetch_optional(&mut *transaction)
-                .await?;
+        let _claimed: Option<Option<String>> = claim(sqlx::query_scalar(CLAIM_HEAD), runner)
+            .fetch_optional(&mut *transaction)
+            .await?;
         samples.push(started.elapsed());
         transaction.rollback().await?;
     }

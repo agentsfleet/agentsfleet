@@ -28,10 +28,16 @@ async fn test_a_fleet_paused_after_its_event_was_claimed_issues_no_lease() {
         answer.contains(NO_LEASE),
         "a paused fleet issued a lease: {answer}"
     );
+    // The claim opened the row before the pause was read; the event stays
+    // open and is redelivered once the fleet runs again.
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
-        None,
-        "a fleet paused mid-claim must not open a narrative row for the event"
+        Some((afd_core::event::status::RECEIVED.to_owned(), String::new())),
+        "a fleet paused mid-claim leaves its event open, ending nothing"
+    );
+    assert!(
+        fixtures.slot_is_free(&seeded.fleet).await,
+        "the pause frees the claim at once"
     );
 
     fixtures.cleanup().await;

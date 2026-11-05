@@ -112,7 +112,7 @@ async fn until_held(bell: &Doorbell, count: usize) {
     }
 }
 
-/// Dimension 3.1: with three beats held, one ring completes exactly one; the
+/// With three beats held, one ring completes exactly one; the
 /// other two are still held after it has answered.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_a_ring_completes_exactly_one_held_beat() {
@@ -128,14 +128,18 @@ async fn test_a_ring_completes_exactly_one_held_beat() {
     let (rung, _index, rest) = futures_util::future::select_all(waits.drain(..)).await;
     tokio::time::sleep(SHORT).await;
     assert_eq!(
-        (rung.ok(), bell.held(), rest.iter().filter(|wait| wait.is_finished()).count()),
+        (
+            rung.ok(),
+            bell.held(),
+            rest.iter().filter(|wait| wait.is_finished()).count()
+        ),
         (Some(super::Waited::Rung), 2, 0),
         "one ring answers one beat and leaves the other two held"
     );
     bell.close();
 }
 
-/// Dimension 3.2: closing ends every held beat at once, and a wait after the
+/// Closing ends every held beat at once, and a wait after the
 /// close is not held at all.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_close_ends_every_held_beat() {
@@ -168,7 +172,7 @@ async fn test_close_ends_every_held_beat() {
     );
 }
 
-/// Dimension 3.3: past the cap a beat answers `Capped` at once, and a held
+/// Past the cap a beat answers `Capped` at once, and a held
 /// beat dropped mid-wait gives its place back to a new one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_held_beats_past_the_cap_answer_capped() {

@@ -15,6 +15,7 @@
 //!
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
+use afd_dragonfly::Dragonfly;
 use afd_observability::Analytics;
 use afd_runner::sweep::{self, census::Census, liveness::Liveness, retention::Retention};
 
@@ -22,6 +23,7 @@ use crate::supervisor::Supervisor;
 
 mod authoring;
 mod billing;
+mod parks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
 // asserts the supervisor's INVENTORY, and a test spelling these as literals
@@ -43,12 +45,15 @@ pub const AUTHORING: &str = "sweeper:authoring";
 /// The supervised name of the billing sweeper.
 pub const BILLING: &str = "sweeper:billing";
 
+/// The supervised name of the lapsed-park sweeper.
+pub const PARKS: &str = "sweeper:parks";
+
 /// Starts every background sweeper under `supervisor`.
 ///
 /// Called after the datastores are open and before the listener binds: a
 /// sweeper touching a pool that is not yet connected would fail its first pass
 /// for a reason that has nothing to do with the rows it reads.
-pub fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
+pub fn spawn(supervisor: &mut Supervisor, database: &Db, queue: &Dragonfly, analytics: &Analytics) {
     let liveness = Liveness::new(database.clone(), Entropy::new());
     supervisor.spawn(LIVENESS, move |token| sweep::run(liveness, token));
 
@@ -65,4 +70,8 @@ pub fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) 
     // Usage logged without its settlement, and holds outlived by their lease:
     // money the request path owes and could not finish.
     billing::spawn(supervisor, database);
+
+    // Heads parked behind cards that have all lapsed: the one way such a head
+    // becomes claimable again without an answer.
+    parks::spawn(supervisor, database, queue);
 }

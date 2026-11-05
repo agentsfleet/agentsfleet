@@ -74,7 +74,7 @@ CLAIM (one statement, autocommit)
             JOIN fleet.admissions a (a.id = the head)
             WHERE s.ready_at IS NOT NULL AND s.lease_expires_at < now AND hold rule admits me
             ORDER BY sandbox_held_by_me DESC, last_runner_id = me DESC, s.ready_at
-            FOR UPDATE OF s, a SKIP LOCKED LIMIT 1
+            FOR UPDATE OF s SKIP LOCKED LIMIT 1, then the head by id, SKIP LOCKED
   write     only FROM pick: fence+1, lease_expires_at = now+TTL, admission lease_fence and
             delivered_at = COALESCE(delivered_at, now), prior lease expired + tallied,
             INSERT fleet.events (status received, ON CONFLICT keeps the row)
@@ -127,12 +127,14 @@ The admission insert is the one writer that reaches the slot after an admission 
 |------|--------|-----|
 | `docs/v2/pending/M240_001_P1_API_DOCS_INFRA_OBS_LEASE_QUEUE_ONE_STATEMENT_CLAIM.md` | CREATE then MOVE to `active/`, then `done/` | this spec |
 | `docs/v2/pending/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md` | MOVE to `done/` as DEFERRED | owner's request at CHORE(open), quoted in Discovery; one Pull Request carries both |
-| `schema/2190_runner_fleet_slots_ready.sql` | CREATE | §1: `ready_at`, the partial index, the trigger and its function on `fleet.admissions`, and the backfill of slot rows and `ready_at` |
+| `schema/2190_runner_fleet_slots_ready.sql` | CREATE | §1: `ready_at`, the partial index, the trigger and its function on `fleet.admissions`, the parked-head index the park sweep reads, and the backfill of slot rows and `ready_at` |
 | `schema/2200_runner_leases_poll_key.sql` | CREATE | §5: `poll_key` on `runner.leases`, unique per runner |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | registers both slots |
 | `rustd/crates/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | EDIT | §2, §5: the one-statement claim with its replay arm |
 | `rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`, `stamp_delivery.sql`, `claim_fleet_slot.sql` | DELETE | §2: the scan, the separate stamp and the slot claim with no production caller |
-| `rustd/crates/afd_fleet/src/lease/sql/lease/settle_terminal.sql`, `afd_events/src/sql/` statement used by `block` | EDIT | §4: the one-statement ending |
+| `rustd/crates/afd_fleet/src/lease/sql/lease/settle_terminal.sql`, `sql/lease/end_refused.sql` | EDIT, CREATE | §4: the one-statement endings; `end_refused.sql` replaces `afd_events`'s `update_fleet_event_failure.sql` |
+| `rustd/crates/afd_events/src/sql/{insert_leased_fleet_event,update_fleet_event_failure,select_fleet_event_status}.sql`, `afd_events/src/sql/mod.rs` | DELETE, EDIT | §2, §4: the receive and refusal statements the claim and `end_refused.sql` replace; no caller is left (NLR) |
+| `rustd/crates/afd_fleet/src/lease/sql/lease/{lock_lapsed_park_slots,unpark_lapsed_heads}.sql`, `park.rs`, `store.rs`; `agentsfleetd/src/sweepers/{parks,mod}.rs`, `serve/mod.rs`, `tests/integration_serve.rs` | CREATE, EDIT | §1 deviation: the park sweep, run every 5 s as `sweeper:parks` (Discovery) |
 | `rustd/crates/afd_fleet/src/lease/sql/queue.rs`, `sql/lease/mod.rs` | EDIT | statement registry follows the deletions |
 | `rustd/crates/afd_fleet/src/lease/assign/ledger.rs`, `assign/mod.rs`, `assign/measured.rs` | EDIT | §2, §6: one statement, no loop, honest counts |
 | `rustd/crates/afd_fleet/src/lease/event.rs` | EDIT | §2, §4: `record_received` and `redelivery_of` go; `block` is one statement |
@@ -147,15 +149,21 @@ The admission insert is the one writer that reaches the slot after an admission 
 | `rustd/crates/afd_fleet/src/lease/pull/step.rs` | DELETE | §4: `std::ops::ControlFlow` |
 | `rustd/crates/afd_fleet/src/lease/admit/gates.rs`, `admit/mod.rs` | EDIT | §4: estimate, balance and spend overlapped |
 | `rustd/crates/afd_fleet/src/lease/deliver/mod.rs`, `deliver/queue_wait.rs` | EDIT | §4, §6: declared names and grants overlapped; queue wait from `delivered_at` |
-| `rustd/crates/afd_fleet/src/lease/issue.rs`, `rustd/crates/afd_fleet/src/lease/claim.rs` | EDIT | §5: `Lost` and `Denied` apart; the poll key reaches the claim |
+| `rustd/crates/afd_fleet/src/lease/issue.rs`, `rustd/crates/afd_fleet/src/lease/claim.rs`, `sql/lease/{insert_lease_with_event.sql,row.rs}`, `envelope.rs`, `answer/mod.rs`, `report/memory.rs` | EDIT | §5: `Lost` and `Denied` apart; the poll key reaches the claim through `Asked`; the issue records it; `Acquired` carries the claim's delivery reading |
+| `rustd/crates/afd_http/src/services/leasing/{mod,plane}.rs`, `afd_api/tests/harness/stubs_runner.rs` | EDIT | §5: `Leasing::lease` takes the runner's `Asked` (held fleets, accepted kinds, poll key) |
 | `rustd/crates/afd_dragonfly/src/doorbell/mod.rs`, `rustd/crates/afd_admission/src/wake.rs` | EDIT | §3: one beat per ring; the hint buffer goes |
 | `rustd/crates/afd_api_runner/src/handler/runner/lease/mod.rs`, `afd_api_runner/src/openapi.rs` | EDIT | §5: the optional `Idempotency-Key` header, annotated |
 | `public/openapi.json` | EDIT | regenerated from `rustd/` with `--no-banner` |
-| `rustd/crates/afr_supervisor/src/client/lease_verbs/mod.rs`, `afr_supervisor/src/worker_pool/mod.rs` | EDIT | §5: one key per poll attempt, kept until a decoded answer |
+| `rustd/crates/afr_supervisor/src/client/{mod,http}.rs`, `afr_supervisor/src/worker_pool/{mod,tests}.rs`, client tests | EDIT | §5: one key per poll attempt, kept until a decoded answer, sent as `Idempotency-Key` |
 | `rustd/crates/afd_observability/src/producers/fleet/mod.rs`, `afd_observability/src/metrics/declared/fleet.rs`, `afd_observability/src/metrics/label/fleet.rs`, `afd_bench/src/instrument/mod.rs`, `docs/metrics.census.tsv` | EDIT | §6: `candidates_scanned` goes; `lease_issue_denied` and `lease_poll_replayed` arrive |
-| `rustd/crates/agentsfleetd/tests/integration_lease_queue.rs` | CREATE | §1, §2, §5: trigger, contention, plan, replay, kill |
-| `rustd/crates/agentsfleetd/tests/integration_runner_wake.rs`, `afd_fleet/tests/integration_lease_claim_race.rs`, `afd_fleet/tests/integration_held_sandbox/{mod,report,resume}.rs`, `afd_fleet/src/lease/pull/tests.rs`, `afd_fleet/src/lease/admit/tests.rs`, `afd_dragonfly/src/doorbell/tests.rs` | EDIT | tests follow the mechanisms; callers of `Leases::claim` move to the plane |
+| `rustd/crates/afd_fleet/src/lease/{bracket,installed,deliver/mod}.rs`, `pull/mod.rs`, `assign/mod.rs` | EDIT | §6: each pass step adds what it sent to the poll's `Tally` |
+| `rustd/crates/afd_bench/src/lane/cardinality/probe.rs`, `afd_bench/src/lane/lease/{seed/tests.rs,saturation/production.rs}`, `afd_bench/tests/lease_instrument.rs` | EDIT | the cardinality probe measures the claim statement in a rolled-back transaction; the bench follows the retired scan and counter |
+| `rustd/crates/afd_fleet/tests/integration_lease_queue.rs`, `integration_lease_queue/{readiness,approvals,contention,endings,replay}.rs` | CREATE | §1, §2, §4, §5: trigger, gate ordering, contention, endings, replay, kill. In `afd_fleet`'s suite, beside the fixtures every case needs, rather than `agentsfleetd` |
+| `rustd/crates/afd_fleet/tests/integration_lease_plan{.rs,/ready.rs,/claim.rs}`, `integration_lease_plan/{gates,prepared,idle}.rs` | EDIT, CREATE, DELETE | §2: Dimension 2.5 and the claim's plan cases; the scan's gate-history and idle-fleet plans go with the scan |
+| `rustd/crates/afd_fleet/tests/integration_ledger_queue{.rs,/*}` (`contention.rs` deleted), `afd_db/tests/integration_admissions_queue.rs` | EDIT, DELETE | the ledger suites follow the claim, the scan-era contention case giving way to Dimension 2.2; the slot-order assertions name 2190 and 2200 (MIG) |
+| `rustd/crates/agentsfleetd/tests/integration_runner_wake.rs`, `afd_fleet/tests/integration_lease_claim_race.rs`, `afd_fleet/tests/integration_held_sandbox/{mod,report,resume}.rs`, `afd_fleet/src/lease/pull/tests.rs`, `afd_fleet/src/lease/admit/{tests,overlap_tests}.rs`, `afd_dragonfly/src/doorbell/tests.rs` | EDIT, CREATE | tests follow the mechanisms; callers of `Leases::claim` move to the plane |
 | `docs/architecture/lease_flow.md`, `data_flow.md`, `runner_fleet.md`, `scaling.md`, `concurrency.md` | EDIT | §7 |
+| `docs/architecture/datastore_scaling.md`, `testing.md`, `sandbox_evaluation.md` | EDIT | §7: three more pages named the hint buffer, the candidate scan or the deleted statement |
 | `~/Projects/docs` branch `chore/m240-lease-queue-changelog` | EDIT (other repository) | the runner API header; committed after this Pull Request merges |
 
 ## Applicable Rules
@@ -212,19 +220,19 @@ A lease taking or extending the slot leaves `ready_at` alone. Readiness and occu
 
 **Implementation default:** a trigger over arming in each writer. Seven writers in three crates would each need the same rule, and a missed one strands a fleet. Rejected alternative: driving the claim from `idx_admissions_unsettled` with no new column. Every running fleet's head stays unsettled until its report, so that drive still visits every running fleet on every poll.
 
-- **Dimension 1.1** — a new admission arms its fleet → Test `test_admission_insert_sets_ready_at_to_the_head` (integration): admitting on a fleet with no slot creates the slot with fence 0 and `ready_at` equal to the admission's `created_at`. A second admission leaves `ready_at` unchanged.
-- **Dimension 1.2** — park disarms, resolution re-arms → Test `test_parked_head_disarms_and_gate_resolution_rearms` (integration): `park_waiting` sets `ready_at` `NULL`, and `afd_approval`'s approve sets it back to the head's `created_at`.
-- **Dimension 1.6** — gate resolution waits on the slot and still unparks a concurrent park → Test `test_gate_resolution_locks_the_slot_before_any_admission` (integration). A test transaction holds the fleet's slot `FOR UPDATE`, then stamps `parked_at` on the head without committing, as `park` does. A gate resolution started beside it waits on the slot and holds no admission row while it waits. The held transaction commits, and the resolution finishes with no `40P01`. Afterwards the head's `parked_at` is `NULL` and `ready_at` equals the head's `created_at`. The same sequence is checked for gate expiry. Two false passes are rejected: a test that only checks for no deadlock, and a test whose timing never interleaves the two locks.
-- **Dimension 1.7** — a card on a fleet with no admission still resolves and expires → Test `test_setup_card_on_a_fleet_without_admissions_expires` (integration): a fleet with a pending setup card, no admission and no slot row. A sweep past the card's `expires_at` marks it timed out and creates the fleet's slot row with fence 0 and `ready_at` `NULL`. A second card on another such fleet, approved by a person, resolves the same way. The false pass this rejects is a sweep test seeded only with fleets that already have admissions.
-- **Dimension 1.3** — settling the head moves readiness to the next → Test `test_settling_the_head_moves_ready_at_to_the_next_admission` (integration): with two admissions, a report settles the first and `ready_at` becomes the second's `created_at`. Settling the second sets `NULL`.
-- **Dimension 1.4** — a silent lapse needs no writer → Test `test_lapsed_lease_is_claimable_without_any_write` (integration): a lease whose runner stops renewing is claimed by another runner once `LEASE_TTL` passes, with no sweep run.
-- **Dimension 1.5** — the backfill is exact → Test `test_ready_backfill_matches_unsettled_heads` (integration): three fleets are seeded, one with an unsettled unparked head and one with a parked head. After the migration, only the first has `ready_at`.
+- **Dimension 1.1** — **DONE** — a new admission arms its fleet → Test `test_admission_insert_sets_ready_at_to_the_head` (integration): admitting on a fleet with no slot creates the slot with fence 0 and `ready_at` equal to the admission's `created_at`. A second admission leaves `ready_at` unchanged.
+- **Dimension 1.2** — **DONE** — park disarms, resolution re-arms → Test `test_parked_head_disarms_and_gate_resolution_rearms` (integration): `park_waiting` sets `ready_at` `NULL`, and `afd_approval`'s approve sets it back to the head's `created_at`.
+- **Dimension 1.6** — **DONE** — gate resolution waits on the slot and still unparks a concurrent park → Test `test_gate_resolution_locks_the_slot_before_any_admission` (integration). A test transaction holds the fleet's slot `FOR UPDATE`, then stamps `parked_at` on the head without committing, as `park` does. A gate resolution started beside it waits on the slot and holds no admission row while it waits. The held transaction commits, and the resolution finishes with no `40P01`. Afterwards the head's `parked_at` is `NULL` and `ready_at` equals the head's `created_at`. The same sequence is checked for gate expiry. Two false passes are rejected: a test that only checks for no deadlock, and a test whose timing never interleaves the two locks.
+- **Dimension 1.7** — **DONE** — a card on a fleet with no admission still resolves and expires → Test `test_setup_card_on_a_fleet_without_admissions_expires` (integration): a fleet with a pending setup card, no admission and no slot row. A sweep past the card's `expires_at` marks it timed out and creates the fleet's slot row with fence 0 and `ready_at` `NULL`. A second card on another such fleet, approved by a person, resolves the same way. The false pass this rejects is a sweep test seeded only with fleets that already have admissions.
+- **Dimension 1.3** — **DONE** — settling the head moves readiness to the next → Test `test_settling_the_head_moves_ready_at_to_the_next_admission` (integration): with two admissions, a report settles the first and `ready_at` becomes the second's `created_at`. Settling the second sets `NULL`.
+- **Dimension 1.4** — **DONE** — a silent lapse needs no writer → Test `test_lapsed_lease_is_claimable_without_any_write` (integration): a lease whose runner stops renewing is claimed by another runner once `LEASE_TTL` passes, with no sweep run.
+- **Dimension 1.5** — **DONE** — the backfill is exact → Test `test_ready_backfill_matches_unsettled_heads` (integration): three fleets are seeded, one with an unsettled unparked head and one with a parked head. After the migration, only the first has `ready_at`.
 
 ### §2 — One statement claims the oldest ready fleet and opens its event
 
 Prerequisite: §1. `claim_admission_head.sql` takes the runner, its labels, its sandbox-held fleets and the poll key, and no fleet id. The pick joins `runner.fleet_slots s` to `fleet.fleets f` (status active, `required_tags` contained in the runner's labels) and to `fleet.admissions a`, where `a.id` is the fleet's oldest unsettled admission and `a.parked_at IS NULL`. It requires `s.ready_at IS NOT NULL`, `s.lease_expires_at < statement_timestamp()` and today's hold rule.
 
-It orders by sandbox-held-by-me, then `last_runner_id = me`, then `s.ready_at`, and takes `FOR UPDATE OF s, a SKIP LOCKED LIMIT 1`. A slot or head locked elsewhere is skipped and the next candidate is tried. The clock is read once in a `MATERIALIZED` step after the lock (SQL-LOCKCLOCK).
+It orders by sandbox-held-by-me, then `last_runner_id = me`, then `s.ready_at`, and takes `FOR UPDATE OF s SKIP LOCKED LIMIT 1`; the head is then locked by primary key, `SKIP LOCKED`, and its marks read from the locked row. A slot locked elsewhere is skipped and the next candidate is tried; a held or moved head empties this poll. The clock is read once in a `MATERIALIZED` step after the lock (SQL-LOCKCLOCK).
 
 Every write joins the pick, so an empty pick writes nothing:
 - The slot's fence advances and its `lease_expires_at` becomes now plus `LEASE_TTL`.
@@ -236,14 +244,14 @@ The statement returns what `Acquired` carries and the delivery reading: `First` 
 
 `Terminal` ends in §4's one-statement ending, with the event row left as it is. `record_received`, `redelivery_of`, `STAMP_DELIVERY`, `SELECT_CANDIDATES`, `MAX_CANDIDATES_PER_POLL`, `CLAIM_FLEET_SLOT` and `Leases::claim` go (NLR). The `event_received` frame publishes on `First`, after the claim, as today.
 
-- **Dimension 2.1** — the Goal → Test `test_one_admission_claims_in_one_statement_and_wakes_one_beat_per_replica` (integration): one admission across 1 000 fleets and two replicas. Each replica completes at most one held beat, and the `pg_stat_statements` delta shows one claim statement for the winning poll and one write-free claim statement for any losing poll. The false pass this rejects is a claim that commits a fence bump with no lease.
-- **Dimension 2.2** — exactly one winner → Test `test_hundred_pollers_claim_one_fleet_once` (integration, TEST-CONTEND): 100 polls released from a barrier against one ready fleet. There is one claimed row and 99 empty answers, the fence advanced by one, and the slot is untouched by the losers.
-- **Dimension 2.3** — an empty claim writes nothing → Test `test_empty_claim_writes_nothing` (integration): a ready slot whose head is locked by an open transaction. The claim returns no row and leaves the slot's fence, `lease_expires_at` and `ready_at` unchanged.
-- **Dimension 2.4** — labels and status are respected → Test `test_claim_respects_required_tags_and_fleet_status` (integration): a ready fleet with `required_tags = {gpu}` is not claimed by a runner without `gpu`, and a paused fleet's ready slot is claimed by no runner.
-- **Dimension 2.5** — the plan holds at scale → Test `test_claim_plan_uses_ready_index` (integration, SQL-PLAN): 10 000 active fleets, 2 000 with live leases and 3 ready and free, after `ANALYZE`. `EXPLAIN (ANALYZE, BUFFERS)` shows the partial index and no sequential scan of `fleet.fleets` or `runner.fleet_slots`.
-- **Dimension 2.6** — oldest first → Test `test_claim_takes_the_oldest_ready_fleet` (integration): with three ready fleets armed at ascending instants and no hold or affinity, the claim takes the oldest.
-- **Dimension 2.7** — redelivery and terminal readings → Test `test_reclaim_reports_repeat_and_terminal_correctly` (integration): a lapsed `received` event reads `Repeat` with `redelivered = true`, and a lapsed `processed` event reads `Terminal`. That admission settles with no lease, and `delivered_at` keeps its first instant in both.
-- **Dimension 2.8** — no deadlock with the trigger → Test `test_claim_report_park_and_admit_never_deadlock` (integration, RS-RACE): 50 claims, 50 reports, 50 gate resolutions and 50 admissions over 10 fleets released together produce zero `40P01`.
+- **Dimension 2.1** — **DONE** — the Goal → Test `test_one_admission_claims_in_one_statement_and_wakes_one_beat_per_replica` (integration): one admission across 1 000 fleets and two replicas. Each replica completes at most one held beat, and the `pg_stat_statements` delta shows one claim statement for the winning poll and one write-free claim statement for any losing poll. The false pass this rejects is a claim that commits a fence bump with no lease.
+- **Dimension 2.2** — **DONE** — exactly one winner → Test `test_hundred_pollers_claim_one_fleet_once` (integration, TEST-CONTEND): 100 polls released from a barrier against one ready fleet. There is one claimed row and 99 empty answers, the fence advanced by one, and the slot is untouched by the losers.
+- **Dimension 2.3** — **DONE** — an empty claim writes nothing → Test `test_empty_claim_writes_nothing` (integration): a ready slot whose head is locked by an open transaction. The claim returns no row and leaves the slot's fence, `lease_expires_at` and `ready_at` unchanged.
+- **Dimension 2.4** — **DONE** — labels and status are respected → Test `test_claim_respects_required_tags_and_fleet_status` (integration): a ready fleet with `required_tags = {gpu}` is not claimed by a runner without `gpu`, and a paused fleet's ready slot is claimed by no runner.
+- **Dimension 2.5** — **DONE** — the plan holds at scale → Test `test_claim_plan_uses_ready_index` (integration, SQL-PLAN): 10 000 active fleets, 2 000 with live leases and 3 ready and free, after `ANALYZE`. `EXPLAIN (ANALYZE, BUFFERS)` shows the partial index and no sequential scan of `fleet.fleets` or `runner.fleet_slots`.
+- **Dimension 2.6** — **DONE** — oldest first → Test `test_claim_takes_the_oldest_ready_fleet` (integration): with three ready fleets armed at ascending instants and no hold or affinity, the claim takes the oldest.
+- **Dimension 2.7** — **DONE** — redelivery and terminal readings → Test `test_reclaim_reports_repeat_and_terminal_correctly` (integration): a lapsed `received` event reads `Repeat` with `redelivered = true`, and a lapsed `processed` event reads `Terminal`. That admission settles with no lease, and `delivered_at` keeps its first instant in both.
+- **Dimension 2.8** — **DONE** — no deadlock with the trigger → Test `test_claim_report_park_and_admit_never_deadlock` (integration, RS-RACE): 50 claims, 50 reports, 50 gate resolutions and 50 admissions over 10 fleets released together produce zero `40P01`.
 
 ### §3 — One ring wakes one held beat per replica
 
@@ -253,10 +261,10 @@ Prerequisite: §2. The `Rings` `watch` generation becomes a `tokio::sync::Notify
 
 The hint buffer and its consumer go, because the claim orders by age. Each replica still hears every ring, so an admission completes at most one beat per replica. The payload and the heartbeat reply are unchanged.
 
-- **Dimension 3.1** — one ring, one beat → Test `test_a_ring_completes_exactly_one_held_beat` (unit): with three held waiters, one ring returns one waiter `Rung` while two still wait.
-- **Dimension 3.2** — drain ends every hold → Test `test_close_ends_every_held_beat` (unit): with three waiters, `close()` returns all three and a later wait returns at once.
-- **Dimension 3.3** — the cap and the drop still hold → Test `test_held_beats_past_the_cap_answer_capped` (unit): 65 waiters; the 65th is `Capped`, and dropping one waiter lets a new one hold.
-- **Dimension 3.4** — a lost ring costs only the hold → Test `test_a_held_heartbeat_is_woken_by_admitted_work` (integration, existing): the held beat is woken, and with publishing disabled the worker still leases on the 1 s retry.
+- **Dimension 3.1** — **DONE** — one ring, one beat → Test `test_a_ring_completes_exactly_one_held_beat` (unit): with three held waiters, one ring returns one waiter `Rung` while two still wait.
+- **Dimension 3.2** — **DONE** — drain ends every hold → Test `test_close_ends_every_held_beat` (unit): with three waiters, `close()` returns all three and a later wait returns at once.
+- **Dimension 3.3** — **DONE** — the cap and the drop still hold → Test `test_held_beats_past_the_cap_answer_capped` (unit): 65 waiters; the 65th is `Capped`, and dropping one waiter lets a new one hold.
+- **Dimension 3.4** — **DONE** — a lost ring costs only the hold → Test `test_a_held_heartbeat_is_woken_by_admitted_work` (integration, existing): the held beat is woken, and with publishing disabled the worker still leases on the 1 s retry; the lost ring's fallback is `test_lost_ring_falls_back_to_the_hint` (unit, `afr_supervisor`).
 
 ### §4 — A refusal ends in one statement, and independent reads overlap
 
@@ -276,11 +284,11 @@ A pass that ends without settling or parking the admission frees the slot with a
 
 Without the backoff, the oldest-first order would pick a failing fleet first on every poll and starve the fleets behind it. Today's `random()` order hides that. `CLAIM_RETRY_BACKOFF` is a new `afd_core::timing` constant of 5 s, asserted below `LEASE_TTL` at compile time. Endings that free the fleet for another runner, `Denied` and `Lost` in §5, keep the past instant.
 
-- **Dimension 4.1** — a refusal is one statement → Test `test_refused_event_ends_in_one_statement` (integration): a balance-gate refusal. The event is `gate_blocked`, the admission is settled, the slot is free, `ready_at` moved to the next admission, and the request's `pg_stat_statements` delta holds one ending statement.
-- **Dimension 4.2** — the money reads overlap → Test `test_money_gate_reads_start_together` (unit): with recording accounts doubles that block until released, all three reads have started before any completes.
-- **Dimension 4.3** — a fault frees the fleet after the backoff → Test `test_pass_fault_releases_the_slot_after_the_backoff` (integration, TEST-INJECT): a refused statement is injected at the grants read. The poll answers the error, a poll inside `CLAIM_RETRY_BACKOFF` does not claim that fleet, and a poll after it claims the same admission as `Repeat`.
-- **Dimension 4.5** — a failing fleet does not starve a healthy one → Test `test_a_failing_fleet_does_not_starve_a_healthy_one` (integration, TEST-INJECT): two ready fleets, the older one's provider read failing on every pass. Two sequential polls lease the younger fleet on the second, and the older fleet is retried only after the backoff. The false pass this rejects is a test with two runners polling concurrently, which would lease the younger fleet without any backoff.
-- **Dimension 4.4** — a stale refusal writes nothing → Test `test_refusal_under_a_stale_fence_reads_already` (integration): after the fence advanced, `block` returns `Already` and changes no row.
+- **Dimension 4.1** — **DONE** — a refusal is one statement → Test `test_refused_event_ends_in_one_statement` (integration): a balance-gate refusal. The event is `gate_blocked`, the admission is settled, the slot is free, `ready_at` moved to the next admission, and the request's `pg_stat_statements` delta holds one ending statement.
+- **Dimension 4.2** — **DONE** — the money reads overlap → Test `test_money_gate_reads_start_together` (unit): with recording accounts doubles that block until released, all three reads have started before any completes.
+- **Dimension 4.3** — **DONE** — a fault frees the fleet after the backoff → Test `test_pass_fault_releases_the_slot_after_the_backoff` (integration, TEST-INJECT): a refused statement is injected at the grants read. The poll answers the error, a poll inside `CLAIM_RETRY_BACKOFF` does not claim that fleet, and a poll after it claims the same admission as `Repeat`.
+- **Dimension 4.5** — **DONE** — a failing fleet does not starve a healthy one → Test `test_a_failing_fleet_does_not_starve_a_healthy_one` (integration, TEST-INJECT): two ready fleets, the older one's provider read failing on every pass. Two sequential polls lease the younger fleet on the second, and the older fleet is retried only after the backoff. The false pass this rejects is a test with two runners polling concurrently, which would lease the younger fleet without any backoff.
+- **Dimension 4.4** — **DONE** — a stale refusal writes nothing → Test `test_refusal_under_a_stale_fence_reads_already` (integration): after the fence advanced, `block` returns `Already` and changes no row.
 
 ### §5 — A lost lease reply frees the fleet at once
 
@@ -298,11 +306,11 @@ A worker never shares a key, so a replay can only free the lease that worker's o
 
 Both call `let_go`, which frees a slot still under this fence so another runner claims at once. Each logs its own event and counts `lease_issue_denied{reason}` or the existing `lease_claim_lost`.
 
-- **Dimension 5.1** — a lost reply is freed, not stalled → Test `test_lost_lease_reply_is_freed_by_the_repeated_key` (integration, TEST-ACKLOSS): issue commits and the harness drops the response. The repeated poll answers `retry_after_ms = 0`, the next poll leases the same admission as `Repeat` within one round trip, and `expired_count` is unchanged.
-- **Dimension 5.2** — an ended key does nothing → Test `test_key_of_an_ended_lease_answers_no_work` (integration): a key whose lease reported answers no work and writes no row.
-- **Dimension 5.3** — a denial frees the fleet → Test `test_capacity_denial_releases_the_slot` (integration): a host at its worker count claims, issue answers `Denied`, `lease_issue_denied{reason=capacity}` counts, and another runner claims the fleet on its next poll.
-- **Dimension 5.4** — a killed runner's lease runs once → Test `test_sigkill_mid_lease_reclaims_once_and_refuses_the_late_report` (integration, TEST-KILL): the runner is killed after issue. After `LEASE_TTL` another runner claims the admission as `Repeat`, and a report under the dead fence is refused `RUN_STALE_FENCING_TOKEN`.
-- **Dimension 5.5** — a malformed key is refused → Test `test_lease_poll_rejects_a_malformed_idempotency_key` (unit, `afd_api_runner`): a non-UUID header answers the standard 400 problem.
+- **Dimension 5.1** — **DONE** — a lost reply is freed, not stalled → Test `test_lost_lease_reply_is_freed_by_the_repeated_key` (integration, TEST-ACKLOSS): issue commits and the harness drops the response. The repeated poll answers `retry_after_ms = 0`, the next poll leases the same admission as `Repeat` within one round trip, and `expired_count` is unchanged.
+- **Dimension 5.2** — **DONE** — an ended key does nothing → Test `test_key_of_an_ended_lease_answers_no_work` (integration): a key whose lease reported answers no work and writes no row.
+- **Dimension 5.3** — **DONE** — a denial frees the fleet → Test `test_capacity_denial_releases_the_slot` (integration): a host at its worker count claims, issue answers `Denied`, `lease_issue_denied{reason=capacity}` counts, and another runner claims the fleet on its next poll.
+- **Dimension 5.4** — **DONE** — a killed runner's lease runs once → Test `test_sigkill_mid_lease_reclaims_once_and_refuses_the_late_report` (integration, TEST-KILL): the runner is killed after issue. After `LEASE_TTL` another runner claims the admission as `Repeat`, and a report under the dead fence is refused `RUN_STALE_FENCING_TOKEN`.
+- **Dimension 5.5** — **DONE** — a malformed key is refused → Test `test_lease_poll_rejects_a_malformed_idempotency_key` (unit, `afd_api_runner`): a non-UUID header answers the standard 400 problem.
 
 ### §6 — The poll reports its real cost
 
@@ -310,7 +318,7 @@ Prerequisite: §2. `PollCost` counts every statement the claim and pass ran, and
 
 `queue_wait_ms` on the issue log line becomes `delivered_at` minus `event_created_at`, clamped at zero as today. `lease_poll_replayed` counts §5's replays, so the lost-reply rate becomes a measured number.
 
-- **Dimension 6.1** — counts are real → Test `test_lease_polled_counts_every_statement` (unit, `measured`): a recorded poll with one claim and seven pass reads reports `database_roundtrips = 8` and `dragonfly_commands = 2`.
+- **Dimension 6.1** — **DONE** — counts are real → Test `test_lease_polled_counts_every_statement` (unit, `measured`): a recorded poll with one claim and seven pass reads reports `database_roundtrips = 8` and `dragonfly_commands = 2`.
 
 ### §7 — The pages say what the code does
 
@@ -320,12 +328,14 @@ Prerequisite: §1 to §6.
 - `scaling.md` §"Idle request volume" and §"Candidate and claim bounds" replace the 64-candidate bound with the index-driven claim.
 - `concurrency.md` keeps its renewal and report rows, drops the hint-buffer row, and adds the slot-first rule for every update of an existing admission, with the admission insert as its one documented exception, naming Dimensions 1.6 and 2.8 as the proof.
 
-- **Dimension 7.1** — the pages pass the gate → Test `orly gate verify` (manual, evidence in the Pull Request Session Notes): `docs.language` reports zero findings on the changed pages.
+- **Dimension 7.1** — **DONE** — the pages pass the gate → Test `orly gate verify` (manual, evidence in the Pull Request Session Notes): `docs.language` reports zero findings on the changed pages.
 
 ## Interfaces
 
 - `POST /v1/runners/me/leases` accepts an optional `Idempotency-Key` header (UUIDv7). The body and response shapes are unchanged. A replay answers the existing no-work body with `retry_after_ms = 0`.
-- `afd_dragonfly::Doorbell`: `ring(fleet)` and `wait_for_ring(deadline: Duration, cap: usize) -> Waited` keep their signatures. `take()` goes.
+- `afd_dragonfly::Doorbell`: `wait_for_ring(deadline: Duration, cap: usize) -> Waited` keeps its signature. `ring()` takes no fleet, since nothing reads it once the hint buffer is gone; the listener still drops a payload that is not a fleet id. `take()` goes.
+- `afd_http::services::Leasing::lease` and `afd_fleet::lease::Plane::claim` take `afd_fleet::lease::Asked { held, accepted, key }`, the runner's request, in place of separate `held` and `accepted` arguments (clippy's seven-argument cap).
+- `afd_fleet::lease::Leases`: `select` keeps its signature; `issue` answers `Issue::{Issued, Lost, Denied}`; `block` answers `Ended::Already` for a stale fence instead of an error; `with_poll_key` and `resume_lapsed_parks` are new.
 - `runner.fleet_slots.ready_at` and `runner.leases.poll_key` are new nullable columns with no `DEFAULT`, plus the trigger on `fleet.admissions`.
 
 ## Failure Modes
@@ -476,6 +486,15 @@ Prerequisite: §1 to §6.
     - The read-only connection invariant dropped with the executor threading.
 
     The majors are applied: initial slot values, the writer list replaced by the trigger, fleet status in the pick, the `redelivered` and `delivered_at` rules, the terminal ending, the refusal's fence and `Now`/`Already` reading, the fault path, the key's unique index and its ended-lease answer, replay without re-rendering, the `Ok(None)` split with slot release, and the lock-order scope. The rest were made moot by the scope cuts. Nits are applied.
+- **Implementation notes (Claude Opus 5.5, Nov 06, 2026)** — what the code taught, and where the build departs from the text above:
+  - **No sweep re-armed a parked head.** The spec's design clears `ready_at` while a head is parked, and §1 says a gate that expires "waits for the next sweep". No production code called `Inbox::expire`: the old claim re-read gate deadlines itself. Wiring `Inbox::expire` would have timed out every lapsed card, breaking two tested contracts: event cards stay answerable after their deadline, and standing access waits for a person. So a new park sweep (`Leases::resume_lapsed_parks`, `sweeper:parks`, every 5 s) re-arms a head when no standing card is pending and every event card on it has lapsed, and expires nothing. It locks slots in fleet order before its unpark statement, as §1's gate paths do. A lapsed card now re-arms its head within 5 s rather than at the next poll. `Inbox::expire` keeps the slot-first transaction §1 asks for, with no production caller as before.
+  - **`Idempotency-Key` had no runner precedent.** `report.rs` and its siblings document that they accept no `Idempotency-Key`. The reader follows `afd_http`'s `setup_input::operation`, made optional.
+  - **The claim reaches the fleet row through a `LATERAL ... LIMIT 1` lookup.** A plain join let the planner hash-join all 10 000 fleets in Dimension 2.5. The limit keeps the drive on the ready index. The head is locked by primary key in a level of its own, after the slot: joined into the slot's lock, the planner reached it through `idx_admissions_unsettled` on stale statistics and read the whole backlog. The backlog plan test fails on any admissions scan past one row. A head that moved since the statement began leaves that one poll empty.
+  - **A claim row this daemon cannot decode** was rolled back under the old transaction. The claim is autocommit now, so its writes stand and the slot is freed behind `CLAIM_RETRY_BACKOFF`; the next claim reads `Repeat`.
+  - **The approval slot locks and the trigger** create a missing slot at `to_timestamp(0)`: the schema-literal rule refuses `interval '1 millisecond'` inside a function body.
+  - **The suites live in `afd_fleet/tests`** (`integration_lease_queue`), beside the fixtures every case needs. Dimension 2.1's two replicas are two `SubscriptionHub`s and doorbells over the lane's cluster, in a namespace of their own: rings name no fleet, and the suite shares one Dragonfly. `Accounts` is concrete, so Dimension 4.2 proves the overlap with a silent local listener for the ledger reads: both are open at once while the balance read is held, and sequential reads fail it. Dimension 2.8 uses the refusal ending for "reports": it takes the same slot-then-admission order. Dimension 4.1 refuses an unknown event type, which ends through the same statement as a balance refusal. Dimensions 4.3 and 4.5 fail the payer read, which ends the pass on the same retry as a failing grants or provider read. Dimension 5.3 proves `Denied(Capacity)` at the issue and the slot's release. Dimension 5.4 proves the kill through a lapsed holder and `Committed::Fenced`.
+  - **Fixtures that used `Leases::claim`** to own a slot with no work now claim through the production statement (`seed::claim_fleet`, `seeded_waiting`, `carry_tag`), or steer affinity with the test-only `Leases::prefer` (`sql/lease/prefer_runner.sql`).
 - **Open blockers** — none.
 - **Deferrals and transfers** — none for this spec. M222_001 is deferred to `done/` in this Pull Request:
   > Indy (Nov 05, 2026: 10:51 PM): "Also can you park the @docs/v2/pending/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md and move it to done? saying we wont implement this now." then "make sure it goes in your PR" and "i need 1 PR".
+  > Indy (Nov 05, 2026): "Ensure you send a PR with governance done, review compelte, and are able to ensure the CI jobs on the PR is green, with greptile closed. Ensure you have all the commits from main, since there is another agent working on the another PR. One of you may go first. If all are green merge (CI, greptile closed) Before merging see if the previous PRs CI action for acceptance-e2e, acceptance-cli have succeeded." — context: the merge authority for this Pull Request.

@@ -224,6 +224,34 @@ async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(S
     })
 }
 
+/// Asserts a pass that ended on a retry freed its fleet behind the retry
+/// backoff: not at once, where the oldest-first claim would hand it straight
+/// back, and not for a lease's lifetime.
+async fn assert_freed_behind_the_backoff(fixtures: &Fixtures, fleet: &str) {
+    let ahead: f64 = fixtures
+        .value(
+            crate::rows::Row::Slot(fleet),
+            "EXTRACT(EPOCH FROM lease_expires_at - clock_timestamp())::float8",
+        )
+        .await
+        .expect("the fleet has a slot");
+    assert!(
+        ahead > 0.0 && ahead <= afd_core::timing::CLAIM_RETRY_BACKOFF.as_secs_f64(),
+        "freed behind the retry backoff: {ahead}s"
+    );
+}
+
+/// Lets the retry backoff pass, as that much time would.
+async fn pass_the_backoff(fixtures: &Fixtures, fleet: &str) {
+    fixtures
+        .age(
+            crate::rows::Row::Slot(fleet),
+            "lease_expires_at",
+            afd_core::timing::CLAIM_RETRY_BACKOFF,
+        )
+        .await;
+}
+
 /// Replaces a seeded fleet's status.
 async fn set_status(fixtures: &Fixtures, fleet: &str, status: &str) {
     execute(

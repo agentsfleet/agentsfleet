@@ -151,6 +151,12 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     sqlx::query("UPDATE fleet.approval_gates SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1")
         .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("deadline"))
         .await.expect("elapsed approval deadline");
+    // The park sweep re-arms the head whose card lapsed; the card stays open.
+    fixtures
+        .leases()
+        .resume_lapsed_parks()
+        .await
+        .expect("the park sweep runs");
     let resumed = claim(&fixtures, &seeded).await;
     assert_eq!(resumed.event_id, seeded.event_id);
     assert!(drive(&fixtures, &seeded, resumed).await.contains(NO_LEASE));
@@ -158,7 +164,7 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     let next = claim(&fixtures, &seeded).await;
     assert_eq!(
         next.event_id, later,
-        "expiry released the tail without a sweeper"
+        "the lapsed card released the tail through the park sweep"
     );
     fixtures.cleanup().await;
 }

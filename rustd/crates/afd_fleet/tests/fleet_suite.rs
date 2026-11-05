@@ -86,6 +86,8 @@ mod integration_lease_issue;
 mod integration_lease_issue_refusals;
 #[path = "integration_lease_plan.rs"]
 mod integration_lease_plan;
+#[path = "integration_lease_queue.rs"]
+mod integration_lease_queue;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
 #[path = "integration_lease_usage_flush.rs"]

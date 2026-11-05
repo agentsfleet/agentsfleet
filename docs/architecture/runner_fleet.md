@@ -216,6 +216,8 @@ The daemon records liveness, capability and holds as for any beat. It then waits
 
 A ring answers `woken: true`, and the runner ends one idle worker's pause. Fresh work then waits one round trip, not the idle hint. The ring is the doorbell's sharded publish, which every replica hears (`afd_dragonfly/src/doorbell/mod.rs`, `afd_api_runner/src/handler/runner/wake.rs`).
 
+One ring completes one held beat per replica, the one held longest. One admission is one unit of work, and the claim takes the oldest ready fleet for whichever host polls, so waking every idle host would send all of them to claim one admission. A ring that finds no beat held is kept, and the next beat to arrive answers at once.
+
 One process holds at most `HELD_BEATS_MAX` (64) beats. A beat past the cap answers `woken: false` at once, counted under `agentsfleet_runner_wake_answers_total{reason="capped"}`. A held beat keeps one in-flight permit, so the cap keeps three quarters of `DEFAULT_MAX_IN_FLIGHT` for requests.
 
 A lost ring costs only the hold: the worker still polls on the 1 s `NO_WORK_RETRY_AFTER`. This is one held request per runner host, on the heartbeat it already sends. It is not the per-worker long poll M225 rejected.
@@ -558,7 +560,7 @@ The report writes `runner.fleet_slots.hold_expires_at` during its fencing-guarde
 
 A `closing` heartbeat also clears those recently reported holds because the runner's list is final. The heartbeat response names holds whose fleet became inactive or was leased elsewhere. An unreadable, out-of-bounds or empty list holds nothing.
 
-The lease poll carries the same list. The holder checks those fleets before its ledger candidate scan. Both the candidate scan and claim skip a fleet held by another eligible runner with an unexpired hold.
+The lease poll carries the same list. The claim orders those fleets first. It passes over a fleet held by another eligible runner with an unexpired hold.
 
 Eligibility requires that holder to be active, not degraded, and seen within `RUNNER_OFFLINE_AFTER`. Another runner's claim clears `hold_expires_at`; the holder's own claim keeps it.
 
@@ -579,12 +581,12 @@ The gates run before the lease is issued and charge nothing; the issued lease's 
 PostgreSQL owns the inbound admissions queue. Dragonfly carries activity, wake notifications, session state and outbound delivery.
 The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
 
-A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in one transaction.
+A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in the one claim statement.
 
-Locked or parked heads cannot expose later admissions. A gate answer clears the park stamp and publishes a best-effort wake.
+Locked or parked heads cannot expose later admissions. A parked head clears its fleet's readiness. A gate answer clears the park stamp, re-arms the fleet and publishes a best-effort wake; so does the park sweep (`sweeper:parks`, every 5 s) once every event card on the head has lapsed. The sweep expires no card: a late answer stays possible, and standing access still waits for one.
 
-The candidate query prefers held fleets and a recent wake hint, then the runner's previous fleet, with random ordering for the rest.
-It checks runner labels and live sandbox holds before attempting a claim. Every poll probes PostgreSQL; missing notifications cannot hide accepted work.
+The claim prefers held fleets, then the runner's previous fleets, then the oldest ready fleet.
+It checks runner labels and live sandbox holds in the same statement. Every poll claims from PostgreSQL; missing notifications cannot hide accepted work.
 
 ## Sandbox tiers
 

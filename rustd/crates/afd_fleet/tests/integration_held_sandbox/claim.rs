@@ -63,8 +63,7 @@ async fn test_other_runner_skips_held_fleet() {
     .await;
 
     let skipped = seed::select_fleet(&leases, &other, &fleet).await;
-    let refused = crate::seed::claim_fleet(&leases, &other, &fleet)
-        .await;
+    let refused = crate::seed::claim_fleet(&leases, &other, &fleet).await;
     let held = seed::select_fleet(&leases, &holder, &fleet).await;
 
     assert!(
@@ -93,15 +92,14 @@ async fn test_lapsed_hold_is_claimable() {
     fixtures
         .age(Row::Slot(&expired), "hold_expires_at", lapse)
         .await;
-    let past_the_hold = crate::seed::claim_fleet(&leases, &other, &expired)
-        .await;
+    let past_the_hold = crate::seed::claim_fleet(&leases, &other, &expired).await;
     // Then the holder falls silent with the second hold still in date.
     let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
     fixtures
         .age(Row::Runner(holder.as_str()), "last_seen_at", silence)
         .await;
-    let past_the_silence = crate::seed::claim_fleet(&leases, &other, &silent)
-        .await;
+    crate::seed::carry_tag(&fixtures, &other, &silent).await;
+    let past_the_silence = crate::seed::claim_fleet(&leases, &other, &silent).await;
 
     assert!(
         past_the_hold.is_some(),
@@ -181,15 +179,13 @@ async fn test_unheld_fleet_claims_as_before() {
     let claimed = crate::seed::claim_fleet(&leases, &first, &fleet)
         .await
         .expect("a free slot is won");
-    let contended = crate::seed::claim_fleet(&leases, &second, &fleet)
-        .await;
+    let contended = crate::seed::claim_fleet(&leases, &second, &fleet).await;
     leases
         .release(&id(&fleet), claimed.fence)
         .await
         .expect("lets go");
     let after = slot(&fixtures, &fleet).await;
-    let reclaimed = crate::seed::claim_fleet(&leases, &second, &fleet)
-        .await;
+    let reclaimed = crate::seed::claim_fleet(&leases, &second, &fleet).await;
 
     assert!(contended.is_none(), "one live holder per fleet, as before");
     assert_eq!(

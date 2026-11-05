@@ -110,7 +110,11 @@ async fn a_poll_key_is_kept_until_an_answer_is_decoded() {
             }
         })
     });
-    let rig = Rig::new(answer, FakeEngine::default(), FakeAgent::new(Behaviour::Answer));
+    let rig = Rig::new(
+        answer,
+        FakeEngine::default(),
+        FakeAgent::new(Behaviour::Answer),
+    );
     let (published, watching) = watch::channel(assigned(1));
     let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
 
@@ -127,7 +131,12 @@ async fn a_poll_key_is_kept_until_an_answer_is_decoded() {
     let keys = keys.lock().unwrap().clone();
     let key = |index: usize| keys.get(index).cloned().flatten().unwrap();
     assert_eq!(
-        (key(0) == key(1), key(1) == key(2), key(2) != key(3), key(3) != key(4)),
+        (
+            key(0) == key(1),
+            key(1) == key(2),
+            key(2) != key(3),
+            key(3) != key(4)
+        ),
         (true, true, true, true),
         "kept across two 503s, ended by a decoded answer and by a refusal: {keys:?}"
     );

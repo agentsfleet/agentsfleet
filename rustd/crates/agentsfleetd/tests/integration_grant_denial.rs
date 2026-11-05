@@ -119,9 +119,9 @@ where
 
 /// The fleet's monotonic claim counter.
 ///
-/// `CLAIM_FLEET_SLOT` bumps it on every won claim, and this suite expires
-/// the deadline before each poll, so a poll that reaches this fleet's partition
-/// always wins the claim and always moves this number. That makes it the one
+/// The claim statement bumps it on every won claim, and this suite expires
+/// the deadline before each poll, so a poll that reaches this fleet always
+/// wins the claim and always moves this number. That makes it the one
 /// observable meaning "the daemon looked here" — as opposed to the rows the
 /// callers assert on, which say what it decided once it did.
 async fn fencing_token(run: &Scenario) -> i64 {

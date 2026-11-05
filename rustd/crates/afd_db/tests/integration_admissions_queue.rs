@@ -15,6 +15,9 @@ const GATE_DEADLINE_MIGRATION: i64 = 2150;
 const CONTEXT_CHECKPOINT_MIGRATION: i64 = 2160;
 const MESSAGE_SAVE_MIGRATION: i64 = 2170;
 const EVENT_TYPE_INDEX_MIGRATION: i64 = 2180;
+const READY_MIGRATION: i64 = 2190;
+const POLL_KEY_MIGRATION: i64 = 2200;
+const PARKED_INDEX_MIGRATION: i64 = 2230;
 
 // M230 can land before M226: its higher slot must not hide the queue upgrade.
 static DISPATCH_ONLY: std::sync::LazyLock<Vec<afd_db::migration::Migration>> =
@@ -28,6 +31,9 @@ static DISPATCH_ONLY: std::sync::LazyLock<Vec<afd_db::migration::Migration>> =
                     RECEIPT_DROP_MIGRATION,
                     CLAIM_ORDER_MIGRATION,
                     GATE_DEADLINE_MIGRATION,
+                    // Readiness and the parked index read the queue's stamps.
+                    READY_MIGRATION,
+                    PARKED_INDEX_MIGRATION,
                 ]
                 .contains(&migration.version())
             })
@@ -137,6 +143,9 @@ async fn test_receipt_drop_migration_applies_populated() {
             CONTEXT_CHECKPOINT_MIGRATION,
             MESSAGE_SAVE_MIGRATION,
             EVENT_TYPE_INDEX_MIGRATION,
+            READY_MIGRATION,
+            POLL_KEY_MIGRATION,
+            PARKED_INDEX_MIGRATION,
         ]
     );
     let mut connection = db.acquire().await.expect("database");
@@ -178,7 +187,9 @@ async fn test_queue_upgrade_after_dispatch_deadline_preserves_admission() {
             QUEUE_MIGRATION,
             RECEIPT_DROP_MIGRATION,
             CLAIM_ORDER_MIGRATION,
-            GATE_DEADLINE_MIGRATION
+            GATE_DEADLINE_MIGRATION,
+            READY_MIGRATION,
+            PARKED_INDEX_MIGRATION,
         ]
     );
     assert!(outcome.skipped.contains(&DISPATCH_DEADLINE_MIGRATION));

@@ -9,8 +9,11 @@ use crate::{seed::seeded_parts, support::Fixtures};
 
 const HOLD: &str = "SELECT pg_backend_pid() FROM runner.fleet_slots
     WHERE fleet_id = $1::uuid FOR UPDATE";
-const BLOCKED: &str = "SELECT EXISTS (SELECT 1 FROM pg_stat_activity
-    WHERE $1 = ANY(pg_blocking_pids(pid)))";
+/// Sessions of this private database waiting on a lock. A second waiter on one
+/// row queues behind the first waiter rather than the holder, so the holder's
+/// own blocked list would never count it.
+const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity
+    WHERE datname = current_database() AND wait_event_type = 'Lock'";
 const GATE: &str = "INSERT INTO fleet.approval_gates
     (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type,
      proposed_action, evidence, blast_radius, expires_at, status, detail,
@@ -19,9 +22,10 @@ const GATE: &str = "INSERT INTO fleet.approval_gates
       'open a pull request', '{}'::jsonb, 'one repository', now()+interval '1 hour',
       $4, '', now(), now(), NULL, 0, 32)";
 
-// Value: protects=answer-first park ordering; fails_when=park uses a stale gate;
-// why_new=the resolver must now wait for an admission lock, so hold the earlier slot;
-// seam=none; no_claim=park-first ordering, covered separately.
+// Value: protects=park and answer serialize on the fleet slot; fails_when=either
+// slips past the other's slot lock and strands the head parked; why_new=the
+// answer now takes the slot first, so both queue behind the held slot;
+// seam=none; no_claim=which of the two wins the slot.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
@@ -36,14 +40,14 @@ async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
         .begin()
         .await
         .expect("hold slot before admission lock");
-    let pid: i32 = sqlx::query_scalar(HOLD)
+    let _holder: i32 = sqlx::query_scalar(HOLD)
         .bind(&fleet)
         .fetch_one(&mut *blocker)
         .await
         .expect("fleet slot locked");
     let (parked, ()) = tokio::join!(
         leases.park(&acquired.fleet_id, &event, acquired.fence),
-        answer_while_blocked(&fixtures, &action, pid, blocker)
+        answer_while_blocked(&fixtures, &action, blocker)
     );
     parked.expect("delayed park completes");
     let is_parked: bool =
@@ -125,39 +129,47 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
 async fn answer_while_blocked(
     fixtures: &Fixtures,
     action: &str,
-    pid: i32,
     blocker: sqlx::Transaction<'_, sqlx::Postgres>,
 ) {
-    wait_for_park(fixtures, pid).await;
+    wait_for_waiters(fixtures, 1).await;
     let queue = crate::queue::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
         queue.clone(),
         Admissions::for_tests(fixtures.database.clone(), queue),
     );
-    let answer = inbox
-        .resolve(action, Decision::Approved, "fixture:human", "", None)
+    let action = action.to_owned();
+    let answer = tokio::spawn(async move {
+        inbox
+            .resolve(&action, Decision::Approved, "fixture:human", "", None)
+            .await
+    });
+    // The answer queues behind the same slot rather than slipping past the
+    // park: whichever then takes the slot first, the head ends unparked.
+    wait_for_waiters(fixtures, 2).await;
+    blocker.rollback().await.expect("release the slot");
+    let answer = answer
         .await
-        .expect("answer commits while park waits");
+        .expect("the answer joins")
+        .expect("the answer commits once the slot is free");
     assert!(matches!(answer, Resolution::Resolved(_)));
-    blocker.rollback().await.expect("release park");
 }
 
-pub(super) async fn wait_for_park(fixtures: &Fixtures, pid: i32) {
+/// Waits until `count` sessions queue on a lock.
+async fn wait_for_waiters(fixtures: &Fixtures, count: i64) {
     let mut observer = fixtures.database.acquire().await.expect("observer");
     tokio::time::timeout(WITHIN, async {
         loop {
-            let blocked: bool = sqlx::query_scalar(BLOCKED)
-                .bind(pid)
+            let waiting: i64 = sqlx::query_scalar(WAITERS)
                 .fetch_one(&mut *observer)
                 .await
-                .expect("observe park lock");
-            if blocked {
+                .expect("observe the slot queue");
+            if waiting >= count {
                 break;
             }
             tokio::task::yield_now().await;
         }
     })
     .await
-    .expect("park reaches the held admission");
+    .expect("the writers queue behind the held slot");
 }

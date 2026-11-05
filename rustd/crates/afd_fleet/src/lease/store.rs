@@ -63,7 +63,8 @@ impl Leases {
     /// The same store, answering one worker poll that carried `key` as its
     /// `Idempotency-Key`: the claim's replay arm reads it, and the issued lease
     /// records it.
-    pub(super) fn with_poll_key(mut self, key: Option<Uuid7>) -> Self {
+    #[must_use]
+    pub fn with_poll_key(mut self, key: Option<Uuid7>) -> Self {
         self.poll_key = key;
         self
     }
@@ -111,6 +112,11 @@ impl Leases {
     /// process hears of it, or `deadline`, unless `max` beats are held.
     pub async fn wait_for_work(&self, deadline: std::time::Duration, max: usize) -> Waited {
         self.doorbell.wait_for_ring(deadline, max).await
+    }
+
+    /// The datastore connection rings are published on.
+    pub(crate) const fn queue(&self) -> &Dragonfly {
+        &self.queue
     }
 
     /// The fleet event streams, bound to this store's connection.

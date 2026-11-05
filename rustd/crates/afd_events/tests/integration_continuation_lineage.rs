@@ -43,9 +43,9 @@ const PREDECESSOR: &str = "0195b4ba-8d3a-7a11-8abc-0000000000a1";
 
 /// Runs the shared narrative insert and answers whether it inserted a row.
 ///
-/// The binds mirror the two production callers exactly — `afd_fleet`'s
-/// `record_received` and `afd_approval`'s `continue_from` — because a fixture
-/// that bound its own column order would prove something about itself.
+/// The binds mirror the production caller exactly — `afd_approval`'s
+/// `continue_from` — because a fixture that bound its own column order would
+/// prove something about itself.
 async fn insert(lane: &EventsLane, event_id: &str, resumes: Option<&str>) -> bool {
     let mut connection = lane.connection().await;
     sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)

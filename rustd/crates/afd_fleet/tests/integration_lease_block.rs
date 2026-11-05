@@ -69,10 +69,7 @@ async fn received(fixtures: &Fixtures) -> afd_fleet::lease::Acquired {
     let held = crate::seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
-    assert_eq!(
-        held.delivery,
-        Delivery::First
-    );
+    assert_eq!(held.delivery, Delivery::First);
     held
 }
 
@@ -145,11 +142,11 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     let second = leases
         .block(&acquired, Refusal::labelled(SECOND_LABEL))
         .await
-        .expect_err("a settled admission refuses another mutation");
+        .expect("a second ending under a settled admission is not a fault");
 
     assert!(matches!(first, Ended::Now(_)));
-    // The settled admission refuses a second terminal mutation.
-    assert_eq!(second.code(), afd_core::error_code::RUN_STALE_FENCING_TOKEN);
+    // The settled admission matches no ending: the second pass wrote nothing.
+    assert_eq!(second, Ended::Already);
     let (label, detail) = failure_of(&fixtures, fleet.as_str(), event).await;
     assert_eq!(label, FIRST_LABEL, "the first refusal must stand");
     assert_eq!(detail.as_deref(), Some(DETAIL));

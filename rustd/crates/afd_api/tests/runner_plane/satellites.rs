@@ -4,7 +4,7 @@ use afd_auth::directory::Liveness;
 use http::{Method, StatusCode};
 
 use super::{FLEET_ID, LEASE_ID, RUNNER_TOKEN, code_of};
-use crate::harness::{Fleet, json_body, runner_id, send};
+use crate::harness::{Fleet, json_body, runner_id, send, send_with_headers};
 
 #[tokio::test]
 async fn runner_lease_satellite_routes_parse_and_render() {
@@ -220,6 +220,48 @@ async fn runner_lease_poll_refuses_a_body_without_kinds_or_with_unreadable_holds
     )
     .await;
     assert_eq!(polled.status(), StatusCode::OK, "{held}");
+}
+
+/// A poll's `Idempotency-Key` is optional, and one that is not a single
+/// `UUIDv7` is the invalid-request problem before placement runs; a
+/// well-formed key polls as any poll does.
+#[tokio::test]
+async fn runner_lease_poll_refuses_a_malformed_idempotency_key() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let body = format!("{{{ACCEPTED_KINDS}}}");
+    let key = http::HeaderName::from_static("idempotency-key");
+
+    let refused = send_with_headers(
+        &router,
+        Method::POST,
+        afd_wire::paths::RUNNER_LEASES,
+        Some(RUNNER_TOKEN),
+        &body,
+        &[(key.clone(), "not-a-uuid")],
+    )
+    .await;
+    let status = refused.status();
+    let code = code_of(refused).await;
+    let polled = send_with_headers(
+        &router,
+        Method::POST,
+        afd_wire::paths::RUNNER_LEASES,
+        Some(RUNNER_TOKEN),
+        &body,
+        &[(key, "0195b4ba-8d3a-7000-8abc-000000000001")],
+    )
+    .await;
+
+    assert_eq!(
+        (status, code.as_str(), polled.status()),
+        (
+            StatusCode::BAD_REQUEST,
+            afd_core::error_code::INVALID_REQUEST.as_str(),
+            StatusCode::OK,
+        )
+    );
 }
 
 /// The fleets a poll's body names reach the lease plane as the runner's holds,

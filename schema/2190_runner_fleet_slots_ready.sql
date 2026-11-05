@@ -20,7 +20,8 @@ CREATE INDEX idx_fleet_slots_lease_expires_at_ready_at
 -- an existing admission already holds the slot (the lock order in
 -- `docs/architecture/concurrency.md`); an admission insert waits here, holding
 -- only a row no other transaction can see. A slot the trigger creates starts at
--- fence 0 with its deadline passed, so the first claim carries fence 1.
+-- fence 0 with its deadline at the epoch, never taken, so the first claim
+-- carries fence 1.
 CREATE FUNCTION fleet.admissions_mark_ready() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO pg_catalog, fleet, runner
@@ -31,8 +32,7 @@ BEGIN
     INSERT INTO runner.fleet_slots AS s
         (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
          ready_at, created_at, updated_at)
-    VALUES (NEW.fleet_id, NULL, 0, clock_timestamp() - interval '1 millisecond', NULL,
-            NULL, now(), now())
+    VALUES (NEW.fleet_id, NULL, 0, to_timestamp(0), NULL, NULL, now(), now())
     ON CONFLICT (fleet_id) DO NOTHING;
     PERFORM 1 FROM runner.fleet_slots s WHERE s.fleet_id = NEW.fleet_id FOR UPDATE;
     SELECT CASE WHEN a.parked_at IS NULL THEN a.created_at END INTO head_ready
@@ -57,8 +57,8 @@ CREATE TRIGGER trg_admissions_mark_ready
 INSERT INTO runner.fleet_slots
     (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
      ready_at, created_at, updated_at)
-SELECT DISTINCT a.fleet_id, NULL::uuid, 0, clock_timestamp() - interval '1 millisecond',
-       NULL::timestamptz, NULL::timestamptz, now(), now()
+SELECT DISTINCT a.fleet_id, NULL::uuid, 0, to_timestamp(0), NULL::timestamptz,
+       NULL::timestamptz, now(), now()
   FROM fleet.admissions a
  WHERE a.settled_at IS NULL
 ON CONFLICT (fleet_id) DO NOTHING;

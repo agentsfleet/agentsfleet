@@ -5021,8 +5021,22 @@
           "Runners"
         ],
         "summary": "Request the next work assignment",
-        "description": "Returns the next work assignment, or how long to wait before polling again. Previously held fleet sandboxes are preferred. Required `accepted_kinds` selects fleet work, private setup work, or both. Budget, approval, and policy checks happen before assignment.",
+        "description": "Returns the next work assignment, or how long to wait before polling again. Previously held fleet sandboxes are preferred. Required `accepted_kinds` selects fleet work, private setup work, or both. Budget, approval, and policy checks happen before assignment. An optional `Idempotency-Key` names one poll attempt: send the same key again only when the earlier reply never arrived. A repeated key frees the fleet assignment that reply carried and answers no work with `retry_after_ms` 0. The next poll, under a new key, receives it again.",
         "operationId": "runner_lease",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Optional UUIDv7 naming this poll attempt; reused only to repeat a poll whose reply was lost.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5045,7 +5059,7 @@
             }
           },
           "400": {
-            "description": "Invalid polling body or kind selection",
+            "description": "Invalid polling body, kind selection or `Idempotency-Key`",
             "content": {
               "application/problem+json": {
                 "schema": {
