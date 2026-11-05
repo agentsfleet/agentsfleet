@@ -24,7 +24,7 @@ mod settle;
 mod sweep;
 
 pub use self::lines::log_lines;
-pub use self::sweep::{GRACE, Resettled, charged_so_far, resettle, unsettled};
+pub use self::sweep::{Resettled, charged_so_far, resettle, unsettled};
 
 const LOCK_WALLET: &str = include_str!("sql/lock_wallet.sql");
 const SELECT_HOLD: &str = include_str!("sql/select_hold.sql");

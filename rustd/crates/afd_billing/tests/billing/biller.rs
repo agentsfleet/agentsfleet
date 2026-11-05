@@ -12,7 +12,7 @@ use afd_billing::biller::{
     Account, Attribution, Biller, Hold, OutagePolicy, RecordingBiller, Reservation, Settlement,
     WithOutagePolicy, WorkKey,
 };
-use afd_billing::ledger::{GRACE, LedgerBiller, log_lines, resettle};
+use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
 use afd_billing::limits::fleet_spend;
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
@@ -181,17 +181,6 @@ async fn test_unsettled_lines_are_resettled() {
         .expect("logs the line");
     transaction.commit().await.expect("the work commits");
     drop(connection);
-    // The crash outlived the sweeper's grace: the line is old enough to sweep.
-    sqlx::query(
-        "UPDATE billing.usage_lines SET created_at = created_at - $3::interval \
-          WHERE work_type = $1 AND work_id = $2::uuid",
-    )
-    .bind(work.work_type())
-    .bind(work.id().as_str())
-    .bind(GRACE * 2)
-    .execute(&mut *lane.pool.acquire().await.expect("the lane answers"))
-    .await
-    .expect("ages the line");
     assert_eq!(
         settled_at(&lane, &work).await,
         vec![None],

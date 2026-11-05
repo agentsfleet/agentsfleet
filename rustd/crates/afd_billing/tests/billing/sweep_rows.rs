@@ -81,7 +81,7 @@ async fn a_foreign_line_is_skipped_and_an_unread_debt_fails_the_pass() {
     seed(&database, FOREIGN_WORK, None).await;
 
     let mut connection = database.acquire().await.expect("a private connection");
-    let read = unsettled(&mut *connection, std::time::Duration::ZERO, READ_LIMIT)
+    let read = unsettled(&mut *connection, READ_LIMIT)
         .await
         .expect("the log reads");
     assert!(
@@ -119,7 +119,7 @@ async fn a_malformed_price_reference_refuses_the_read() {
     .await;
 
     let mut connection = database.acquire().await.expect("a private connection");
-    let refused = unsettled(&mut *connection, std::time::Duration::ZERO, READ_LIMIT)
+    let refused = unsettled(&mut *connection, READ_LIMIT)
         .await
         .expect_err("a malformed price reference refuses");
     assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);

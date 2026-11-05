@@ -1,14 +1,14 @@
-//! The billing sweeper's pass over setup chat: release the holds of attempts
-//! that ended without releasing them.
+//! The billing relay's pass over setup chat: release the holds of attempts
+//! that settled.
 //!
-//! A report settles and releases after its transaction commits (billing §11),
-//! so a crash or a biller that could not answer leaves a settled attempt's hold
-//! open, and an open hold still counts against the tenant's balance. Unsettled
-//! lines are the line sweep's (`afd_billing::ledger::resettle`), which covers
-//! every work type; this pass only frees what finished attempts still hold.
+//! A report logs its lines and returns; it never settles or releases (billing
+//! §11). The line sweep (`afd_billing::ledger::resettle`) settles every work
+//! type's lines, and this pass frees what a settled attempt still holds. A
+//! release charges anything still unsettled first, so the order of the two
+//! passes cannot leave a line unpaid.
 //!
 //! An attempt awaiting accounting keeps its hold: its usage is not known yet,
-//! and the replay that learns it settles and releases.
+//! and the replay that learns it settles the attempt.
 
 use afd_billing::biller::{Biller, Release, WorkKey};
 use afd_core::id::Uuid7;
@@ -23,8 +23,7 @@ const CONTEXT: &str = "billing sweep finished setup chat holds";
 /// Holds one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
 
-/// `$1` the attempt work type, `$2` the settled status, `$3` the grace,
-/// `$4` the batch limit.
+/// `$1` the attempt work type, `$2` the settled status, `$3` the batch limit.
 const SELECT_FINISHED_HOLDS: &str = include_str!("finished_holds.sql");
 
 /// What one pass released.
@@ -44,8 +43,8 @@ struct FinishedHold {
     outcome: Option<String>,
 }
 
-/// One pass: release every open hold whose attempt settled more than the
-/// line sweep's grace ago, or whose attempt no longer exists.
+/// One pass: release every open hold whose attempt settled, or whose attempt
+/// no longer exists.
 ///
 /// # Errors
 /// Reports a datastore that would not answer the read. A biller that refuses
@@ -54,7 +53,6 @@ pub async fn release_finished(database: &Db, biller: &dyn Biller) -> Result<Rele
     let finished: Vec<FinishedHold> = sqlx::query_as(SELECT_FINISHED_HOLDS)
         .bind(afd_billing::sql::work::AUTHORING_ATTEMPT)
         .bind(Status::Settled.as_str())
-        .bind(afd_billing::ledger::GRACE)
         .bind(BATCH_LIMIT)
         .fetch_all(&mut *database.acquire().await?)
         .await

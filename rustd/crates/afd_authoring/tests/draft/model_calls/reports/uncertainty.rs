@@ -81,6 +81,7 @@ async fn settled_by_the_same_report(f: &Fixture, a: &Attempt, before: i64, reque
         assert!(ack.settled && ack.replayed);
         assert_eq!(ack.state, Outcome::Failed);
     }
+    f.relay(a.id.as_str()).await;
     assert_eq!(counts(f, a).await, (1, 1, 0));
     assert_eq!(balance(f).await, before - RUNTIME_DEBIT);
     assert!(

@@ -152,6 +152,10 @@ async fn differently_priced_turns_dispatch_and_settle_concurrently_at_their_own_
         tokio::join!(settle(&f, &cheap_lease), settle(&f, &dear_lease));
     assert!(cheap_report.settled && dear_report.settled);
     assert!(!cheap_report.replayed && !dear_report.replayed);
+    tokio::join!(
+        f.relay(&cheap_lease.attempt_id),
+        f.relay(&dear_lease.attempt_id)
+    );
     assert_eq!(
         fixture_balance(&f).await,
         before - 2 * RUNTIME_DEBIT,

@@ -1,14 +1,13 @@
 //! The usage log read back: what a piece of work has cost so far, and the
 //! lines that committed without a settlement.
 //!
-//! A work's own transaction logs its lines and a biller settles them after
-//! commit (billing §11). A crash, an outage or a lost response between the two
-//! leaves lines logged and unsettled; [`unsettled`] hands them back as the same
-//! [`Settlement`]s the work would have sent, so a retry through any biller is
-//! the original call again and `(work, seq)` keeps it from charging twice.
+//! A work's own transaction logs its lines and returns; the billing relay
+//! settles them (billing §11). [`unsettled`] hands them back as one
+//! [`Settlement`] per work, and [`resettle`] passes each to a biller, so a
+//! biller in another process sees the same calls an in-process one does and
+//! `(work, seq)` keeps a retried or repeated pass from charging twice.
 
 use std::collections::BTreeMap;
-use std::time::Duration;
 
 use afd_core::id::Uuid7;
 use afd_wire::usage::UsageLine;
@@ -32,12 +31,6 @@ const CONTEXT_UNSETTLED: &str = "read unsettled usage lines";
 const CONTEXT_CHARGED: &str = "read a work's charged usage";
 const CONTEXT_OWED: &str = "read what is still owed";
 
-/// How long a line waits before the sweeper settles it.
-///
-/// Long enough that the work's own post-commit settle has had its chance, so
-/// the sweeper repairs failures rather than racing successes.
-pub const GRACE: Duration = Duration::from_secs(120);
-
 /// Lines one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
 
@@ -48,10 +41,12 @@ pub struct Resettled {
     pub settled: u64,
     /// Works it could not settle; they wait for the next pass.
     pub failed: u64,
+    /// Whether the pass read a whole batch, so more lines may be waiting.
+    pub full: bool,
 }
 
-/// Settles every work with lines logged more than [`GRACE`] ago and never
-/// settled, through `biller`, and publishes what is still owed.
+/// Settles up to one batch of unsettled lines through `biller`, one call per
+/// work, and publishes what is still owed.
 ///
 /// # Errors
 /// The datastore would not answer a read. A biller refusing one settlement is
@@ -60,9 +55,13 @@ pub struct Resettled {
 pub async fn resettle(database: &afd_db::Db, biller: &dyn Biller) -> Result<Resettled> {
     let settlements = {
         let mut connection = database.acquire().await?;
-        unsettled(&mut *connection, GRACE, BATCH_LIMIT).await?
+        unsettled(&mut *connection, BATCH_LIMIT).await?
     };
-    let mut done = Resettled::default();
+    let read: usize = settlements.iter().map(|work| work.lines.len()).sum();
+    let mut done = Resettled {
+        full: i64::try_from(read).unwrap_or(i64::MAX) >= BATCH_LIMIT,
+        ..Resettled::default()
+    };
     for settlement in &settlements {
         match biller.settle(settlement).await {
             Ok(_receipt) => {
@@ -131,21 +130,16 @@ pub async fn charged_so_far<'e>(executor: impl PgExecutor<'e>, work: &WorkKey) -
     Ok(Nanos::from_i64(charged))
 }
 
-/// Up to `limit` lines logged more than `grace` ago and never settled, grouped
-/// into one [`Settlement`] per work.
-///
-/// `grace` leaves the work's own post-commit settle its chance first; settling
-/// is idempotent either way, so the grace only spares duplicate work.
+/// Up to `limit` unsettled lines, oldest first, grouped into one
+/// [`Settlement`] per work.
 ///
 /// # Errors
 /// The statement would not run, or a stored identifier is not one.
 pub async fn unsettled<'e>(
     executor: impl PgExecutor<'e>,
-    grace: Duration,
     limit: i64,
 ) -> Result<Vec<Settlement>> {
     let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED)
-        .bind(grace)
         .bind(limit)
         .fetch_all(executor)
         .await

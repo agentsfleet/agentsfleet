@@ -45,7 +45,6 @@ use crate::lease::tool_trace::{self, TraceOwner};
 use crate::lease::usage::{self, Pricing};
 use crate::lease::verdict::{Terminal, Verdict};
 use afd_billing::Nanos;
-use afd_billing::biller::Release;
 use afd_billing::rates::Posture;
 
 pub use tokens::RunTokens;
@@ -186,10 +185,6 @@ impl Plane {
                 owed,
             } => {
                 let charged = usage::charged(settlement.as_deref());
-                if let Some(settled) = settlement.as_deref() {
-                    self.settle_usage(settled).await;
-                }
-                self.release_usage(&lease_key, release_of(request)).await;
                 let completed_at = self
                     .announce(runner_id, request, &lease, closed, charged, now)
                     .await;
@@ -202,21 +197,6 @@ impl Plane {
                 Ok(reconciled(lease, charged, false, tokens, completed_at))
             }
         }
-    }
-}
-
-/// Why a reported lease's hold is released.
-fn release_of(request: &ReportRequest<'_>) -> Release {
-    if Verdict::of(
-        request.outcome,
-        request.failure_reason,
-        request.failure_detail.as_ref(),
-    )
-    .succeeded()
-    {
-        Release::Completed
-    } else {
-        Release::Failed
     }
 }
 

@@ -5,6 +5,6 @@ SELECT work_type, work_id::text AS work_id, seq, tenant_id::text AS tenant_id,
        output_token_count, runtime_ms, platform_model_price_id::text AS price_id,
        unpriced_token_count, charged_nanos
 FROM billing.usage_lines
-WHERE settled_at IS NULL AND created_at < now() - $1::interval
+WHERE settled_at IS NULL
 ORDER BY created_at, id
-LIMIT $2
+LIMIT $1

@@ -264,7 +264,7 @@ pub(crate) async fn orphan(held: &Held, biller: &LedgerBiller) {
 }
 
 /// One runtime-only line of `held`'s lease, attributed to its fleet.
-async fn settlement(held: &Held) -> Settlement {
+pub(crate) async fn settlement(held: &Held) -> Settlement {
     let workspace: String =
         sqlx::query_scalar("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
             .bind(&held.fleet)

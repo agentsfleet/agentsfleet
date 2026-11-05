@@ -106,7 +106,8 @@ async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
 }
 
 /// An abandoned lease's last slice is logged even when the biller cannot
-/// settle it; the pass counts the miss and the line sweep settles it later.
+/// settle it; the pass counts the miss twice, once for the slice and once when
+/// the line pass meets the same line, and a later pass settles it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
@@ -128,6 +129,7 @@ async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
     assert_eq!(
         swept,
         BillingSwept {
+            settle_failures: 1,
             expired_settle_failures: 1,
             ..BillingSwept::default()
         }
