@@ -130,7 +130,7 @@ fn summary(label: &str, mut waited: Vec<Duration>, drain: Duration) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires live Postgres"]
-async fn many_tenants_settle_exactly_once_and_callers_stop_waiting_on_the_ledger() {
+async fn many_tenants_settle_exactly_once_with_or_without_the_queue() {
     let direct_tenants = tenants().await;
     let first = direct_tenants.first().expect("a tenant");
     let direct: Arc<dyn Biller> = Arc::new(ledger(&first.lane));

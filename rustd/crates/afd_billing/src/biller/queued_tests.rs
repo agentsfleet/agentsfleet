@@ -25,6 +25,7 @@ struct Ledger {
     gate: Option<Arc<Notify>>,
     failures_left: Mutex<u32>,
     short: bool,
+    permanent: bool,
 }
 
 impl Ledger {
@@ -36,11 +37,22 @@ impl Ledger {
             let mut left = self.failures_left.lock().unwrap();
             if *left > 0 {
                 *left -= 1;
-                return Err(ErrorKind::WalletMissing.into());
+                return Err(self.fault());
             }
         }
         self.moved.lock().unwrap().push(name);
         Ok(())
+    }
+
+    /// An outage, which the queue retries, unless the ledger was built to refuse for good.
+    fn fault(&self) -> crate::Error {
+        if self.permanent {
+            return ErrorKind::WalletMissing.into();
+        }
+        ErrorKind::Datastore {
+            source: afd_db::error::invalid_bool_knob("QUEUED_TEST"),
+        }
+        .into()
     }
 
     fn moved(&self) -> Vec<&'static str> {
@@ -222,5 +234,51 @@ async fn a_plain_biller_waits_for_a_detached_hold_like_any_reserve() {
     assert!(
         matches!(hold, Hold::Short { .. }),
         "the default answers what reserve answers"
+    );
+}
+
+#[tokio::test]
+async fn a_permanent_refusal_is_not_retried_and_moves_nothing() {
+    let ledger = Arc::new(Ledger {
+        failures_left: Mutex::new(1),
+        permanent: true,
+        ..Ledger::default()
+    });
+    let queued = Queued::in_memory(Arc::clone(&ledger) as Arc<dyn Biller>);
+
+    queued.settle(&settlement()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    assert_eq!(
+        *ledger.failures_left.lock().unwrap(),
+        0,
+        "the one refusal was seen"
+    );
+    assert_eq!(
+        ledger.moved(),
+        Vec::<&str>::new(),
+        "a refusal is left to the sweeper, not retried"
+    );
+}
+
+#[test]
+fn a_refused_offer_whose_inline_move_fails_still_answers_and_moves_nothing() {
+    let ledger = Arc::new(Ledger {
+        failures_left: Mutex::new(1),
+        ..Ledger::default()
+    });
+    let queued = Queued::in_memory(Arc::clone(&ledger) as Arc<dyn Biller>);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap();
+
+    let receipt = runtime.block_on(queued.settle(&settlement())).unwrap();
+
+    assert_eq!(receipt, Receipt::default());
+    assert_eq!(
+        ledger.moved(),
+        Vec::<&str>::new(),
+        "one inline attempt, then the sweeper's"
     );
 }

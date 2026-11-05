@@ -8,8 +8,8 @@
 //!
 //! The sink is a seam. [`Queued::in_memory`] carries jobs on a channel inside
 //! the daemon; a broker (Amazon SQS, Cloudflare Queues, Upstash `QStash`,
-//! Kafka) is another [`afd_queue::Sink`] handed to [`Queued::new`], with
-//! [`Mover`] as its consumer. Nothing is lost when a job is: the work's own
+//! Kafka) is another [`afd_queue::Sink`] placed where `in_memory` places
+//! [`Memory`], with [`Mover`] as its consumer. Nothing is lost when a job is: the work's own
 //! transaction already wrote its usage lines, and the billing sweepers settle
 //! unsettled lines and release finished holds, exactly as they repair a biller
 //! that was down. Every call is idempotent on its key, so a retried or
@@ -35,7 +35,9 @@ const RETRY: &[Duration] = &[
     Duration::from_secs(1),
     Duration::from_secs(5),
 ];
-const EVENT_GAVE_UP: &str = "billing_queue_deferred";
+const EVENT_GAVE_UP: &str = "billing_queue_abandoned";
+const EVENT_DEFERRED: &str = "billing_queue_deferred";
+const EVENT_HOLD_UNPLACED: &str = "billing_hold_unplaced";
 
 /// One money movement waiting to be made.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,15 +70,6 @@ pub struct Queued {
 }
 
 impl Queued {
-    /// Money moved by whatever consumes `sink`, normally [`Mover`] over `inner`.
-    #[must_use]
-    pub fn new(inner: Arc<dyn Biller>, sink: Arc<dyn Sink<BillingJob>>) -> Self {
-        Self {
-            mover: Arc::new(Mover { inner }),
-            sink,
-        }
-    }
-
     /// Money moved by a worker in this process. Outside a Tokio runtime there
     /// is no worker, and every movement happens before the call returns.
     #[must_use]
@@ -152,34 +145,48 @@ pub struct Mover {
     inner: Arc<dyn Biller>,
 }
 
-impl Mover {
-    /// Moves money through `inner`.
-    #[must_use]
-    pub const fn new(inner: Arc<dyn Biller>) -> Self {
-        Self { inner }
-    }
-}
-
 #[async_trait::async_trait]
 impl Consumer<BillingJob> for Mover {
     async fn consume(&self, message: &BillingJob) -> Outcome {
+        let work_id = message.work().id().as_str();
         let moved = match message {
-            BillingJob::Reserve(ask) => self.inner.reserve(ask).await.map(drop),
+            BillingJob::Reserve(ask) => self.inner.reserve(ask).await.map(|hold| {
+                if !hold.admits() {
+                    tracing::warn!(
+                        work_id,
+                        hold = ?hold,
+                        event = EVENT_HOLD_UNPLACED,
+                        "the queued hold was not placed; the next balance check decides"
+                    );
+                }
+            }),
             BillingJob::Settle(settlement) => self.inner.settle(settlement).await.map(drop),
             BillingJob::Release(work, why) => self.inner.release(work, *why).await,
         };
-        if moved.is_ok() {
-            Outcome::Done
-        } else {
-            Outcome::Retry
-        }
+        let Err(fault) = moved else {
+            return Outcome::Done;
+        };
+        // Only a biller that could not answer is worth asking again; any other
+        // refusal stays for the sweeper, which reads the same logged lines.
+        let retry = fault.is_unanswered();
+        let error_code = fault.code().as_str();
+        tracing::warn!(
+            error = %fault,
+            error_code,
+            work_id,
+            retry,
+            event = EVENT_DEFERRED,
+            "the billing queue could not move this money"
+        );
+        if retry { Outcome::Retry } else { Outcome::Done }
     }
 
     fn abandoned(&self, message: &BillingJob) {
+        let work_id = message.work().id().as_str();
         tracing::warn!(
-            work_id = message.work().id().as_str(),
+            work_id,
             event = EVENT_GAVE_UP,
-            "the billing queue could not move this money; the billing sweeper will"
+            "the billing queue stopped retrying; the billing sweeper will move this money"
         );
     }
 }
