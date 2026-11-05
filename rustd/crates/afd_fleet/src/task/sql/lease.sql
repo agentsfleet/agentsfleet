@@ -23,3 +23,4 @@ SELECT held.lease_id, held.fleet_id, held.workspace_id, held.tenant_id, held.sou
        held.decision_snapshot, held.capable, instant.checked_at, held.lease_expires_at, held.slot_expires_at
 FROM held CROSS JOIN instant
 WHERE held.lease_expires_at > instant.checked_at AND held.slot_expires_at > instant.checked_at
+  AND (held.task_id IS NULL OR fleet.task_person_allowed(held.task_id::uuid))

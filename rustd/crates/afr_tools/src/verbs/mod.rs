@@ -220,6 +220,12 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
         Err(Unanswered::Refused(None))
     }
 
+    /// Read back one original publication; this never authorizes a new write.
+    async fn task_effect(&self, _effect_id: &str)
+        -> Result<afd_wire::task::TaskEffect, Unanswered> {
+        Err(Unanswered::Refused(None))
+    }
+
     /// Recover all effects beyond a checkpoint's confirmed watermark.
     async fn task_effects(&self, _query: afd_wire::task::TaskEffectsQuery)
         -> Result<afd_wire::task::TaskEffectsPage, Unanswered> {

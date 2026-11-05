@@ -3,7 +3,7 @@
 mod cipher;
 mod drain;
 mod entry;
-mod files;
+pub(super) mod files;
 
 use crate::{Result, error, storage_home::StorageHome};
 use afd_core::{clock::Clock, id::Uuid7, timing::DAY};

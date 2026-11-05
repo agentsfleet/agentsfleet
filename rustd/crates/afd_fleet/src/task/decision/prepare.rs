@@ -94,7 +94,7 @@ impl super::ownership::NativeContext {
         let request = super::request::compile(
             call,
             input,
-            &self.source.request_json,
+            &self.source.message()?,
             &context,
             self.task.as_ref().map(|task| &task.snapshot),
             &candidates,

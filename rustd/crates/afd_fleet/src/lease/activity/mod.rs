@@ -192,6 +192,13 @@ impl crate::lease::pull::Plane {
         else {
             return Err(crate::error::lease_not_found());
         };
+        let retained: Vec<_> = frames.iter().filter_map(ActivityFrame::task_activity).collect();
+        if !retained.is_empty() && target.timing_eligible {
+            let mut connection = self.leases.pool().acquire().await?;
+            sqlx::query(include_str!("task_history.sql")).bind(target.fleet_id.as_str()).bind(&target.event_id)
+                .bind(sqlx::types::Json(retained)).execute(&mut *connection).await
+                .map_err(query("retain bounded task progress before live publication"))?;
+        }
         record_first_chunk(&target, frames);
         self.leases.publish_activity(&target, frames).await;
         Ok(())

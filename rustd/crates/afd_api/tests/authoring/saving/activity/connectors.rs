@@ -82,6 +82,7 @@ fn grants(saved: &Saved) -> Grants {
 
 fn grant_for(id: &Uuid7) -> Grant {
     Grant {
+        external_person_id: None,
         handle: json!({"integration":"github", "installation_id":id.as_str()})
             .as_object()
             .expect("fixture handle")

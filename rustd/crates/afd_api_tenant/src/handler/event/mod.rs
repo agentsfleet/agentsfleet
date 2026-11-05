@@ -284,6 +284,7 @@ pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
             .tool_calls
             .as_deref()
             .and_then(|stored| serde_json::from_str(stored).ok()),
+        task_activity: event.task_activity.clone(),
         tokens: row.tokens,
         wall_ms: row.wall_ms,
         failure_label: row.failure_label.as_deref().map(Cow::Borrowed),

@@ -1,3 +1,5 @@
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Fiber, Layer, Option, Redacted } from "effect";
 import { TestClock } from "effect/testing";
@@ -17,7 +19,7 @@ test.each([401, 403, 404])("event polling surfaces HTTP %s without another read"
     },
   });
   const result = await Effect.runPromiseExit(
-    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(Effect.provide(http)),
+    pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
   );
   expect(Exit.isFailure(result)).toBe(true);
   const error = Exit.isFailure(result) ? Option.getOrNull(Cause.findErrorOption(result.cause)) : null;
@@ -37,7 +39,7 @@ test("event polling interrupts a stalled read at the overall deadline", async ()
     );
     yield* TestClock.adjust("61 seconds");
     return yield* Fiber.await(fiber);
-  }).pipe(Effect.provide(Layer.merge(http, TestClock.layer()))));
+  }).pipe(Effect.provide(Layer.mergeAll(http, TestClock.layer(), Layer.succeed(Output, outputDouble())))));
   expect(Exit.isSuccess(result)).toBe(true);
   if (Exit.isSuccess(result)) expect(result.value).toEqual({kind: STATUS_TIMEOUT});
   expect(released).toBe(true);
@@ -52,7 +54,7 @@ test.each(["CERT_HAS_EXPIRED", "ERR_INVALID_URL"])("event polling surfaces perma
   }});
   const result = await Effect.runPromiseExit(
     pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
-      Effect.provide(httpClientLayer), Effect.provide(config),
+      Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
   expect(Exit.isFailure(result)).toBe(true);
@@ -71,7 +73,7 @@ test("event polling recovers from a transient transport failure", async () => {
   }});
   const result = await Effect.runPromise(
     pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
-      Effect.provide(httpClientLayer), Effect.provide(config),
+      Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
   expect(result).toEqual({kind: "complete", status: "processed"});
@@ -86,7 +88,7 @@ test("event polling respects the server's retry opt-out", async () => {
   }});
   const result = await Effect.runPromiseExit(
     pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
-      Effect.provide(httpClientLayer), Effect.provide(config),
+      Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
   expect(Exit.isFailure(result)).toBe(true);
@@ -106,7 +108,7 @@ test("event polling waits for an admitted event to reach the read store", async 
   }});
   const result = await Effect.runPromise(
     pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
-      Effect.provide(httpClientLayer), Effect.provide(config),
+      Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
   expect(result).toEqual({kind: "complete", status: "processed"});
@@ -123,7 +125,7 @@ test("event polling surfaces disappearance after observing the admitted event", 
   }});
   const result = await Effect.runPromiseExit(
     pollEventTerminal(WS_ID, FLEET_ID, EVENT_ID, Redacted.make(TOKEN)).pipe(
-      Effect.provide(httpClientLayer), Effect.provide(config),
+      Effect.provide(httpClientLayer), Effect.provide(config), Effect.provide(Layer.succeed(Output, outputDouble())),
     ),
   );
   const error = Exit.isFailure(result) ? Option.getOrNull(Cause.findErrorOption(result.cause)) : null;

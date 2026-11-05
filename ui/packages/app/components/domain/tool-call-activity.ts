@@ -61,6 +61,7 @@ function describe(name: string, args: ToolArgs | undefined): Description {
     case TOOL_NAME.MEMORY_STORE: return {running: "Saving memory", done: "Saved memory", target: first(stringArg(args, "key")), kind: "tool"};
     case TOOL_NAME.MEMORY_FORGET: return {running: "Forgetting memory", done: "Forgot memory", target: first(stringArg(args, "key")), kind: "tool"};
     case TOOL_NAME.GIT: return git(args);
+    case TOOL_NAME.PROPOSE_CHANGE: return {running: "Validating and publishing changes", done: "Published tested changes", target: "Accepted pull request", kind: "pull-request"};
     default: {
       if (!KNOWN.has(name)) return {running: "Using", done: "Used", target: name, kind: "tool"};
       return {...toolCopy(name, undefined).verbs, target: name, kind: "tool"};

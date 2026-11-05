@@ -18,7 +18,7 @@ WITH origin AS MATERIALIZED (
       AND a.reply_provider IS NULL AND a.reply_address IS NULL
       AND a.settled_at IS NULL AND ($13 OR a.interpreted_at IS NULL)
 ), candidates AS MATERIALIZED (
-    SELECT a.id, a.sequence, a.request_json,
+    SELECT a.id, a.sequence, a.request_json, a.producer,
            (a.input_claim_lease_id IS NULL
             OR (a.input_claim_lease_id = $9::uuid AND a.input_claim_fence = $10)
             OR NOT EXISTS (
@@ -30,11 +30,12 @@ WITH origin AS MATERIALIZED (
                   AND s.last_runner_id = claimed.runner_id AND s.fencing_token = claimed.fencing_token
             )) AS claimable
     FROM conversation a
-    WHERE a.producer = $4 AND a.actor <> $5 AND a.actor LIKE $6
+    WHERE ((a.producer = $4 AND a.actor <> $5 AND a.actor LIKE $6)
+        OR (a.producer = 'slack_mention' AND connector.slack_person_allowed($2::uuid, a.actor)))
       AND a.id <> $3::uuid AND a.sequence > $7
     ORDER BY a.sequence LIMIT $8
 ), eligible AS MATERIALIZED (
-    SELECT id, sequence, request_json FROM candidates
+    SELECT id, sequence, request_json, producer FROM candidates
     WHERE claimable AND NOT EXISTS (
         SELECT 1 FROM candidates barrier WHERE NOT barrier.claimable AND barrier.sequence <= candidates.sequence)
 ), claimed AS (
@@ -43,9 +44,9 @@ WITH origin AS MATERIALIZED (
     FROM eligible e
     WHERE a.id = e.id AND a.id = $12::uuid
       AND e.sequence = (SELECT min(sequence) FROM eligible)
-    RETURNING e.id, e.sequence, e.request_json
+    RETURNING e.id, e.sequence, e.request_json, e.producer
 )
-SELECT id::text, sequence, request_json FROM eligible WHERE $12::uuid IS NULL
+SELECT id::text, sequence, request_json, producer FROM eligible WHERE $12::uuid IS NULL
 UNION ALL
-SELECT id::text, sequence, request_json FROM claimed
+SELECT id::text, sequence, request_json, producer FROM claimed
 ORDER BY sequence

@@ -1,3 +1,5 @@
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Redacted } from "effect";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
@@ -23,7 +25,7 @@ describe("steer recovery reads the admitted event directly", () => {
       }),
     });
     const outcome = await Effect.runPromise(
-      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(http)),
+      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
     );
     expect(outcome).toEqual({ kind: STATUS_COMPLETE, status: EVENT_STATUS.PROCESSED });
     expect(requests).toHaveLength(1);
@@ -44,7 +46,7 @@ describe("steer recovery reads the admitted event directly", () => {
       }),
     });
     const outcome = await Effect.runPromise(
-      pollEventTerminal(WORKSPACE, FLEET, event, TOKEN, abort.signal).pipe(Effect.provide(http)),
+      pollEventTerminal(WORKSPACE, FLEET, event, TOKEN, abort.signal).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
     );
     expect(outcome.kind).toBe(STATUS_COMPLETE);
     expect(requests[0]?.path).toBe(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET}/events/provider%2Fretry%3Fattempt%3D2`);
@@ -64,7 +66,7 @@ describe("steer recovery reads the admitted event directly", () => {
       },
     });
     const outcome = await Effect.runPromise(
-      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(http)),
+      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
     );
     expect(outcome.kind).toBe(STATUS_COMPLETE);
     expect(paths).toEqual([EVENT_PATH, EVENT_PATH]);
@@ -80,7 +82,7 @@ describe("steer recovery reads the admitted event directly", () => {
       request: <T>() => Effect.sync(() => { abort.abort(); return row as T; }),
     });
     const outcome = await Effect.runPromise(
-      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(http)),
+      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
     );
     expect(outcome).toEqual({ kind: STATUS_TIMEOUT });
   });
@@ -93,7 +95,7 @@ describe("steer recovery reads the admitted event directly", () => {
       request: <T>() => Effect.sync(() => { requests += 1; return {} as T; }),
     });
     const outcome = await Effect.runPromise(
-      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(http)),
+      pollEventTerminal(WORKSPACE, FLEET, EVENT, TOKEN, abort.signal).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
     );
     expect(outcome).toEqual({ kind: STATUS_TIMEOUT });
     expect(requests).toBe(0);

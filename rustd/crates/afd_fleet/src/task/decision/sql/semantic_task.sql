@@ -4,3 +4,4 @@ SELECT id::text AS task_id, generation, stop_generation, accepted_revision_id::t
 FROM fleet.tasks
 WHERE id = $1::uuid AND fleet_id = $2::uuid AND workspace_id = $3::uuid
   AND expires_at > clock_timestamp()
+  AND fleet.task_person_allowed(id)

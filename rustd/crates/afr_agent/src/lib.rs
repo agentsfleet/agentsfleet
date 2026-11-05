@@ -14,6 +14,7 @@
 pub mod error;
 
 mod context;
+mod decision;
 mod engine;
 mod events;
 #[cfg(test)]
@@ -45,3 +46,5 @@ pub use self::router::Router;
 pub use afr_tools::{LeaseVerbs, ScheduleCall, Unanswered};
 
 pub use engine::ContextCheckpoints;
+pub use engine::TaskRecovery;
+pub use decision::PreparedTask;

@@ -20,6 +20,7 @@ const EVENT_REPLAY_FAILED: &str = "report_spool_replay_failed";
 const EVENT_MEMORY_DROPPED: &str = "report_memory_dropped";
 const EVENT_RESHAPE_UNSPOOLED: &str = "report_reshape_unspooled";
 const EVENT_REJECTED_KEPT: &str = "report_spool_rejected_kept";
+const RECEIPT_RECHECK: Duration = Duration::from_secs(30);
 
 /// The drain, over one spool.
 #[derive(Debug)]
@@ -65,7 +66,14 @@ impl Drainer<'_> {
                 return true;
             }
         };
-        let mut still_held = false;
+        let mut still_held = match self.spool.drain_decisions(self.plane).await {
+            Ok(retained) => retained,
+            Err(failure) => {
+                self.halt.stops_on(&failure);
+                replay_failed(&failure);
+                true
+            }
+        };
         for spooled in pending {
             // A reshaped report's own answer goes through the same branches,
             // so one the daemon keeps is backed off and retried like any other.
@@ -159,8 +167,8 @@ impl Drainer<'_> {
 /// Sleeps for `pause`, or until woken when there is nothing to retry.
 async fn sleep_or_wait(pause: Option<Duration>) {
     match pause {
-        Some(pause) => tokio::time::sleep(pause).await,
-        None => std::future::pending().await,
+        Some(pause) => tokio::time::sleep(pause.min(RECEIPT_RECHECK)).await,
+        None => tokio::time::sleep(RECEIPT_RECHECK).await,
     }
 }
 

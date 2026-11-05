@@ -1,7 +1,11 @@
 //! The seam between the supervisor and whatever runs a turn.
 
 mod context;
+mod recovery;
+#[cfg(test)]
+mod recovery_tests;
 pub use context::ContextCheckpoints;
+pub use recovery::TaskRecovery;
 
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -63,6 +67,10 @@ pub trait Checkpoint: Send + Sync + fmt::Debug {
 
 /// Everything one run is given.
 pub struct AgentRun<'run> {
+    /// Authenticated history restored with the same frozen file generation.
+    pub recovered_task: Option<&'run TaskRecovery>,
+    /// Native intent and recovery read completed before sandbox construction.
+    pub prepared_task: Option<&'run crate::PreparedTask>,
     /// The lease being run.
     pub lease: &'run LeasePayload<'run>,
     /// The fleet's memory, hydrated before the run started, and where a
@@ -239,6 +247,11 @@ fn narrow(count: u64) -> u32 {
 /// What a finished run hands back to the supervisor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOutput {
+    /// Private history paired with frozen files by the supervisor's recovery owner.
+    pub recovery: Option<TaskRecovery>,
+    /// Native decision-backed disposition at the last completed safe boundary.
+    /// A conversational answer alone never supplies a durable task outcome.
+    pub task: Option<afd_wire::task::TaskReport>,
     /// The result the report carries.
     pub result: ExecutionResult<'static>,
     /// The memory to push, fenced, before the report.
@@ -261,6 +274,13 @@ pub struct Needs {
 /// Runs one lease's turn.
 #[async_trait::async_trait]
 pub trait AgentEngine: Send + Sync + fmt::Debug {
+    /// Establishes native intent before provisioning any sandbox or checkout.
+    /// Engines without durable coordination refuse durable leases explicitly.
+    async fn prepare_task(&self, lease: &LeasePayload<'_>, _verbs: &dyn LeaseVerbs,
+        _meter: &Meter, _stop: &CancellationToken) -> Result<Option<crate::PreparedTask>> {
+        if lease.durable_tasks { return Err(crate::decision::unavailable()); }
+        Ok(None)
+    }
     /// Says what a lease under `policy` needs, before anything is prepared
     /// for it.
     ///

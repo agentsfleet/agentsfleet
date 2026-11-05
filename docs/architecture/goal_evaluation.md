@@ -60,7 +60,13 @@ Nullable `decision_model_id` in the existing runner assignment selects reviewed 
 Runner enrollment, edit and heartbeat carry the catalogue identity; lease issue freezes `DecisionAssignment` in its payload and `runner.leases.decision_snapshot`.
 Unconfigured hosts skip the catalogue read.
 
-Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::task::decision`; runtime integration and acceptance remain pending.
+Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::task::decision`.
+The November 5 source continuation connects `afr_supervisor::verbs::decision` to the
+physical client. It fsyncs encrypted uncertainty before dispatch, retains the actual
+receipt and requires native acknowledgement before returning usable answers. The
+existing report drainer replays original-owner receipts without provider redispatch.
+One native-approved 429/529 retry retains the original logical deadline and quote.
+These changes are uncompiled and unverified; live provider proof and runtime acceptance remain pending.
 
 Decision-only entries carry their own price schedule and no fabricated coding rates.
 The current model selects an immutable reviewed revision; enabling or disabling it preserves that definition and prior call accounting.
@@ -225,7 +231,11 @@ The model catalogue supplies supported types and evaluated model thresholds; fle
 
 The native policy parser, proposal-tool schema and UI/CLI question review are written; full runtime acceptance remains pending.
 Native decision requests compile the accepted policy and complete task/source state.
-Task adoption and the runtime decision loop remain pending; the typed client and catalogue are separate implemented components.
+Task adoption and the root decision loop have source implementations. Restored history
+is authenticated task data; current native adopted criteria control the next assessment.
+Large complete groups use the existing context owner and a bounded semantic summary,
+with the complete-group digest retained. Summaries cannot satisfy native publication
+or exact-head validation checks. Runtime acceptance remains pending.
 
 `DecisionPolicy` resolves `RoutingQuestions` and `CompletionQuestions` through the existing serde/garde parser.
 Each role requires its exact native criterion keys; all wording and criterion text are owner-editable.
@@ -242,7 +252,8 @@ Show the saved setup revision, current revision, question changes and the revisi
 Use the existing numeric fleet revision and history rather than creating another question-version counter.
 
 The browser task view shows accepted success criteria and the saved setup revision.
-Latest assessments and assessed evidence identity remain targets pending task-runtime integration.
+Latest assessments and assessed evidence identity have native read projections;
+their connected runtime behavior remains unverified.
 
 Label Noul values as probability of yes; they are neither a separate confidence value nor a percentage of work completed.
 Preserve readable CLI output alongside the existing machine-readable representation.
@@ -447,7 +458,9 @@ Reuse `afd_billing::price::{PriceBook, Rater}` with frozen decision tiers and pl
 Do not pass decision usage through the coding lease's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
 The existing billing sweeper groups those three attributes with work identity.
 
-Native reservations and PATCH receipts retain original ownership; renew/report receipt integration remains pending.
+Native reservations and PATCH receipts retain original ownership. The source continuation
+uses the existing report drainer for encrypted late decision receipts; renew/report
+settlement retains the existing accounting path. Crash and acknowledgement-loss acceptance remain pending.
 
 The existing thirty-second billing loop also calls the native task owner's decision maintenance.
 Its local typed cursor seeks by deadline and call UUID, advances before each attempt, and wraps after exhaustion.

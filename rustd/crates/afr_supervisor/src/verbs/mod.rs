@@ -11,6 +11,8 @@ use afr_agent::{ScheduleCall, Unanswered};
 
 use crate::client::ControlPlane;
 
+mod decision;
+
 /// The verbs of one held lease, over the control plane, each call carrying
 /// the lease's fence: [`afr_agent::LeaseVerbs`] as the supervisor serves it.
 #[derive(Debug)]
@@ -18,6 +20,9 @@ pub(crate) struct FencedVerbs<'a> {
     plane: &'a ControlPlane,
     lease_id: &'a Uuid7,
     fencing_token: u64,
+    spool: &'a crate::report_spool::ReportSpool,
+    held: &'a tokio::sync::Notify,
+    stop: &'a tokio_util::sync::CancellationToken,
 }
 
 impl<'a> FencedVerbs<'a> {
@@ -26,17 +31,28 @@ impl<'a> FencedVerbs<'a> {
         plane: &'a ControlPlane,
         lease_id: &'a Uuid7,
         fencing_token: u64,
+        spool: &'a crate::report_spool::ReportSpool,
+        held: &'a tokio::sync::Notify,
+        stop: &'a tokio_util::sync::CancellationToken,
     ) -> Self {
         Self {
             plane,
             lease_id,
             fencing_token,
+            spool,
+            held,
+            stop,
         }
     }
 }
 
 #[async_trait::async_trait]
 impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
+    async fn task_decision(&self, input: afd_wire::task::DecisionReservationInput)
+        -> Result<afr_tools::verbs::DecisionEvaluation, Unanswered> {
+        self.evaluate(input).await.map_err(|failure| unanswered(&failure))
+    }
+
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered> {
         self.plane
             .schedules(self.lease_id, self.fencing_token, call)
@@ -78,6 +94,11 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
         -> Result<afd_wire::task::TaskEffect, Unanswered> {
         input.fencing_token = self.fencing_token;
         self.plane.task_publish(self.lease_id, &input).await.map_err(|failure| unanswered(&failure))
+    }
+
+    async fn task_effect(&self, effect_id: &str) -> Result<afd_wire::task::TaskEffect, Unanswered> {
+        let id = Uuid7::parse(effect_id).map_err(|_| Unanswered::Refused(None))?;
+        self.plane.task_effect(self.lease_id, &id, self.fencing_token).await.map_err(|failure| unanswered(&failure))
     }
 
     async fn task_effects(&self, mut query: afd_wire::task::TaskEffectsQuery)

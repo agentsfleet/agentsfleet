@@ -8,6 +8,7 @@ import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
 import { hideContextProgress } from "./fleet-stream-context";
 import {
   dispatchReplyFrame,
+  recoverRunningReplies,
   settleRepliesFromBackfill,
   watchRunningRows,
   type ApplyEvents,
@@ -27,7 +28,7 @@ export type LiveEntry = Entry & { apply: ApplyEvents; isCurrent: () => boolean }
 const RUNNER_ACTIVITY_KINDS: ReadonlySet<string> = new Set([
   FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED,
   FRAME_KIND.TOOL_CALL_PROGRESS, FRAME_KIND.TOOL_CALL_COMPLETED,
-  FRAME_KIND.CONTEXT_PROGRESS,
+  FRAME_KIND.CONTEXT_PROGRESS, FRAME_KIND.TASK_DECISION_STARTED, FRAME_KIND.TASK_DECISION_COMPLETED, FRAME_KIND.TASK_TRANSFER_PROGRESS,
 ]);
 const TaskChange = z.object({task_id: z.uuidv7(), resource_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)});
 
@@ -38,6 +39,7 @@ export function recoverGap(entry: LiveEntry, fleetId: string): void {
   setEvents(entry, hideContextProgress);
   void backfillEntry(entry, fleetId, {
     stillCurrent: entry.isCurrent,
+    onComplete: () => recoverRunningReplies(entry, fleetId, entry.apply, entry.isCurrent),
     onPage: (rows) => {
       // A held turn the page settles lands its live frames first, as if never
       // held: the durable row then settles it and keeps the tools and text

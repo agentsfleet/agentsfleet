@@ -58,7 +58,7 @@ async fn source(tasks: &Tasks, lease: TaskLease<'_>, plan: &PreparedPlan) -> Res
     if current.revision_id.as_deref() != Some(plan.accepted_revision_id.as_str()) { return Err(TaskRefusal::StaleState.into()); }
     let config = Leases::stored_config_on(&mut tx, &current.fleet_id, Some(plan.accepted_revision_id.as_str())).await?
         .ok_or(TaskRefusal::InvalidTarget)?;
-    let message = afd_wire::event::message_of(&source.request_json).into_owned();
+    let message = source.message()?.into_owned();
     tx.commit().await.map_err(crate::error::query("finish native interpretation preflight"))?;
     transaction::recycle(connection);
     Ok((config, message))

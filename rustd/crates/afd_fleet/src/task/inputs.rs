@@ -13,6 +13,7 @@ struct Human {
     id: String,
     sequence: i64,
     request_json: String,
+    producer: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -38,6 +39,11 @@ pub(super) async fn read(tasks: &Tasks, lease: TaskLease<'_>, input: &garde::Val
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::lease(&mut tx, lease).await?;
     let current_task = guard::context(&mut tx, &current).await?;
+    let source = super::admit::source::load(&mut tx, &current,
+        &guard::id(&current.source_admission_id, "source_admission_id")?).await?;
+    let current_message = if super::admit::source::check_human(&source).is_ok() {
+        Some(source.message()?.into_owned())
+    } else { None };
     let accepted: Vec<Accepted> = sqlx::query_as(include_str!("sql/accepted_inputs.sql")).bind(&current.task_id)
         .bind(&current.fleet_id).bind(&current.workspace_id).bind(afd_wire::task::INPUT_BATCH_MAX as i64)
         .bind(input.after_input_sequence.map(i64::try_from).transpose().map_err(|_overflow| super::TaskRefusal::StaleState)?)
@@ -72,7 +78,7 @@ pub(super) async fn read(tasks: &Tasks, lease: TaskLease<'_>, input: &garde::Val
     if candidates.len() > afd_wire::task::UNFINISHED_MAX as usize { return Err(super::TaskRefusal::LimitExhausted.into()); }
     let inputs = humans.into_iter().map(|source| Ok(TaskHumanInput {
         accepted: recovered.remove(&source.id), source_admission_id: source.id, sequence: row::counter(source.sequence, "input sequence")?,
-        message: afd_wire::event::message_of(&source.request_json).into_owned(),
+        message: super::admit::source::message_for(&source.producer, &source.request_json)?.into_owned(),
     })).collect::<Result<Vec<_>>>()?;
     let candidates = candidates.into_iter().map(|candidate| Ok(TaskInputCandidate {
         task_id: candidate.id, title: candidate.title, state: row::state(&candidate.state)?,
@@ -80,7 +86,10 @@ pub(super) async fn read(tasks: &Tasks, lease: TaskLease<'_>, input: &garde::Val
     })).collect::<Result<Vec<_>>>()?;
     tx.commit().await.map_err(query("finish task input read"))?;
     transaction::recycle(connection);
-    Ok(TaskInputsResponse { inputs, accepted_inputs, current_task, current_interpretation, tasks: candidates, next_cursor })
+    Ok(TaskInputsResponse { source_admission_id: current.source_admission_id,
+        accepted_revision_id: current.revision_id,
+        current_message,
+        inputs, accepted_inputs, current_task, current_interpretation, tasks: candidates, next_cursor })
 }
 
 fn cursor(value: Option<&str>) -> Result<i64> {

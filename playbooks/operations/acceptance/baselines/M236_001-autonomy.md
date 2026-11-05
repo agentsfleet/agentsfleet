@@ -2,6 +2,121 @@
 
 ## Current continuation point
 
+### Continuation source work — Nov 05, 2026
+
+**Requested Git checkpoint:** Kishore asked to commit and push the current files
+after a status report. This checkpoint saves the entire continuation source,
+including unrun fixtures. It is not implementation signoff or permission to run
+gates. Continue on `feat/m236-durable-tasks` and existing undrafted PR #803;
+M236 remains `IN_PROGRESS`. Do not merge. No archive restoration is needed.
+Companion documentation is checkpointed at `b535f3a` in `agentsfleet/docs`, on
+the existing `chore/m236-durable-tasks-changelog` branch; no new PR was created.
+
+**Latest instruction: finish all implementation before running any gates.** The
+latest delegation names Kishore as the explicit gate-signoff owner. Indy must
+receive the detailed implementation report. Tests, builds, lint, Clippy, formatting
+and coverage remain paused; no signoff has been received.
+Do not mistake the source inventory below for completion or passing evidence.
+
+Implementation source added since the previous checkpoint:
+
+- Physical decisions now reserve through native authority, persist encrypted
+  uncertainty before dispatch, and retain known receipts before exposing an answer.
+  The existing report drainer replays original-owner receipts. A bounded 429/529
+  retry retains the original logical deadline and native quote.
+- The root coordinator prepares complete intent before sandbox creation, recovers
+  accepted plans, applies queued input in order, acknowledges original sources,
+  reconciles publication receipts, and assesses complete action groups. Unavailable
+  initial intent reads back native binding before returning clarification without
+  tools. Large groups use the existing private context owner and a bounded coding
+  summary with a complete-group digest; native completion checks remain independent.
+- Root-only `propose_change` validates a complete candidate tree in the sandbox,
+  compares it before and after validation, and uses the existing native exact-head
+  publisher. Children cannot select publication authority. Subsequent publication
+  waits for original-effect reconciliation at the next complete action boundary.
+- Supervisor recovery is wired into exact-target checkout, frozen initial-base
+  capture, fresh-workspace restore, private conversation restoration and final
+  snapshot handoff. Uploads share native authorization for up to 256 small objects
+  within a four-chunk byte budget; physical concurrency and restore batches stay at four.
+  Capture verifies native acknowledgements. Failed runs can save recovery before
+  teardown; failed freeze/history/capture cannot retain completion authority.
+  Durable workspaces are destroyed after capture, rather than retained as warm holds.
+- Retained bases remain usable after publication advances the native head. A
+  reused base supplies its authenticated manifest paths and dimensions. Adopted
+  goals retain authenticated task history as data while current native criteria
+  control subsequent execution. Current secret policy scrubs restored history.
+- Subject-checked Slack OAuth links a proved external person to a current workspace
+  member. Signed sender text stays separate from quoted thread context. Native
+  execution checks membership, current installation and retained source authority.
+  Disconnect cascades person links; provider display names and quoted text grant
+  no authority. Slots 2610 and 2620 are registered; the role inventory has 79 rows.
+- Public decision/recovery activity has typed bounded frames, bounded persistence
+  on the existing event, chat expansion and CLI command/result/readback output.
+  Native private reasoning, prompts, credentials and checkpoint keys are excluded.
+  Reconnect merges saved progress while preserving newer live counters.
+
+The final source review also changed these boundaries:
+
+- The root rereads the oldest unsettled source page until mixed-item replies are
+  acknowledged; advancing its message cursor could previously strand a reply.
+  The separate task-input incorporation sequence still advances monotonically.
+  A final reply-acknowledgement failure clears any goal completion request.
+- Slack task authorization deduplicates original and incorporated senders before
+  consulting current membership/installation. Existing task/sequence indexes scope
+  that read. Actual PostgreSQL query plans and measurements remain unrun.
+- Manifest construction counts each encoded entry once per layout pass instead of
+  repeatedly serializing the growing page. R2 transport failures retain their
+  causal error after removing the presigned URL; failed PUTs still require native
+  reconciliation. Receipt directory and parent fsyncs precede physical dispatch.
+- Coalesced stream-gap recovery reads running-event detail even when its event
+  predates the list watermark or resumed traffic prevents the silence sweep.
+  It shares in-flight detail reads and preserves newer live progress.
+- Added unrun regressions for uncertain intent, original-source reply ordering,
+  decision replay without redispatch, crash receipts, scoped checkpoint encryption,
+  large manifests, hostile file/link replacement, retained bases after publication,
+  Slack revocation/reinstall, and chat/CLI progress readback.
+
+Implementation review and fixture work are still in progress. Remaining work includes
+source-level compatibility review, adversarial scenarios, companion documentation,
+and verification-only generated artifacts (Cargo lockfile/OpenAPI) after approval.
+Do not report this inventory as completion, resolve Greptile, enable the capability,
+or merge. No build, test, lint, Clippy, formatting or other gate has run.
+Latest delegated instruction names Kishore as the explicit gate signoff owner and
+prohibits merging. Indy still needs the implementation report once the source batch
+is complete. Preserve all historical evidence below independently of this batch.
+
+The current checkout is `/workspace/agentsfleet` on `feat/m236-durable-tasks`.
+Fetched the branch and verified the starting HEAD was `6cacc80c8cb28ca3863faa31793697838fd8712b`.
+The requested continuation checkpoint descends from that commit.
+`orly doctor` passed: installed rules match and Codex agent tooling is present.
+The runtime initially refused shell access while starting; it is now connected.
+The existing clones and user-authored setup were preserved. No archive was restored.
+
+The starting head's `gh run list` returned only three skipped post-deploy smoke runs:
+`42032502470`, `42032424354` and `42032388350`. This is not green full verification.
+Greptile reviewed that starting head and left unresolved thread `PRRT_kwDOReIoss60FGFr`
+on retained-base selection after publication. The two historical threads remain resolved.
+PR #803 is attached to this chat and remains open and undrafted.
+
+Local source now separates retained-base selection from the current checkpoint head.
+Selection retains workspace, repository, format, toolbox, readiness and retirement checks;
+the existing descriptor still returns the independently stored `base_commit_oid`.
+Plan creation now requires the current native repository head for incremental captures too.
+The existing report head predicate is unchanged.
+
+An unrun native storage scenario under `integration_tasks/decisions/checkpoint.rs`
+allocates and commits an empty retained base, simulates a confirmed publication's head
+update, commits/replays an incremental checkpoint and checks the real report predicate.
+It also checks missing/incompatible bases and missing/stale captured heads, with no
+checkpoint allocation on refusals. This fixture does not prove physical publication,
+file transfer or restore. Its bounded HTTP client is configured but makes no storage call.
+
+These checkpoint edits are uncompiled and unverified. The Cargo lockfile still needs
+regeneration for the added test dependency alongside the checkpoint's other dependency changes.
+No broad lint, formatter, build, unit or integration lane has run. PostgreSQL review,
+meaningful runtime proof and the remaining implementation below are still due.
+Do not resolve the Greptile thread or treat this source correction as passing evidence yet.
+
 ### Branch checkpoint for a new cloud session — Nov 05, 2026
 
 Indy requested all files committed and pushed so a new agent can start from this branch.

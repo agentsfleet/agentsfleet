@@ -70,7 +70,7 @@ The following module boundaries and interface definitions scope implementation; 
 Topic mechanisms are linked instead of copied into additional scenario documents.
 | Files | Action | Role |
 | --- | --- | --- |
-| `schema/{2190–2600}_*.sql` (explicit registered slots only); `rustd/crates/afd_db/src/{migration.rs,test_util/}`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection, retained decision/effect and checkpoint retry receipts, private storage/quota/pins, test cleanup ownership and explicit migration/schema/role inventories, signed completion/wait ownership and task-aware lease/report cursors |
+| `schema/{2190–2620}_*.sql` (explicit registered slots only); `rustd/crates/afd_db/src/{migration.rs,test_util/}`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection, retained decision/effect and checkpoint retry receipts, private storage/quota/pins, test cleanup ownership and explicit migration/schema/role inventories, signed completion/wait ownership and task-aware lease/report cursors |
 | `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,commit,context,decision,coverage,billing_sweep,holds,money,installed,mod}.rs`, `lease/{report,renew,usage,answer,deliver,assign,pull,mint}/`, `lease/sql/`; tests | CREATE / EDIT | guarded DT ownership, lifecycle scenarios with gated accepted-plan fixtures, bounded reads, effects, snapshots and settlement integration |
 | `rustd/crates/afd_wire/src/{decision,lease,policy,report,task}/`; matching wire tests | EDIT | explicit task generation, goal revision and decision/evidence boundaries |
 | `rustd/crates/afr_agent/src/{prompt,loop}/`; matching agent tests | EDIT | current intent, consumed human input and goal-aware action/decision loop |
@@ -97,6 +97,12 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | `rustd/crates/afr_tools/src/verbs/`; `afr_supervisor/src/{verbs/,client/{lease_verbs/,task/,mod.rs,verb.rs}}`; matching tests | EDIT / CREATE | extend existing native LeaseVerbs for typed task calls and the existing closed runner transport vocabulary; keep physical decision keys and checkpoint transfers outside model/sandbox custody |
 | `rustd/crates/afd_runner/{Cargo.toml,src/{store,edit,record,decision,decision_profile}.rs,src/{capacity,policy,heartbeat,view,validate,error,sql}/,tests/}`; `afd_wire/src/runner/`; `afd_api_operator/src/handler/operator/`; `afd_api_wire/src/admin/`; runner edit/catalogue UI codecs and tests | EDIT / CREATE | reviewed decision-model selection through existing enrolment/edit/heartbeat, native catalogue checks and frozen lease profile |
 | `rustd/crates/afd_wire/src/{inference.rs,decision/}`; `afd_admin/src/{model.rs,model_validation.rs,catalogue.rs,decision_revision.rs,sql/}`; `afd_api_wire/src/admin_catalogue.rs`; `afd_api_operator/src/handler/admin/models/`; `afd_api/tests/integration_admin{.rs,/}`; model-catalogue readers/writers, fixtures and tests (`scripts/model-catalogue/`, `afd_db/src/test_util/sql/`), plus shared metadata; `afd_inference/src/`; `afd_credential/src/{provider/{mod.rs,decision.rs},vault/mod.rs,error/mod.rs}` and `tests/integration_rotation/decision_keys.rs`; `schema/{2230_model_decision_revisions,2240_model_decisions,2250_model_decision_prices}.sql` | EDIT / CREATE | reviewed profiles and protocol-specific rates; existing vault resolves platform-admin keys freshly for reserved calls |
+
+Continuation source additions remain within the approved implementation: `afr_agent/src/engine/recovery.rs`,
+root publication/evidence helpers, `afr_supervisor/src/recovery/` and `report_spool/decision/`,
+`afd_connector` subject-checked person linkage, slot 2610, and slot 2620's bounded event activity.
+Matching event-detail readers, wire decoders, CLI/chat presentation and adversarial fixtures share those owners.
+Kishore's latest instruction pauses every gate until the implementation report and explicit signoff; do not merge.
 
 ## Applicable Rules
 

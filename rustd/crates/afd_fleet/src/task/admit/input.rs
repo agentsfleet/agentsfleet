@@ -43,7 +43,7 @@ pub(super) async fn accept(connection: &mut PgConnection, current: &guard::Lease
     let (sequence, generation): (i64, i64) = sqlx::query_as(include_str!("sql/input_cursor.sql"))
         .bind(id.as_str()).bind(queue).bind(TaskState::Ready.as_str()).fetch_one(&mut *connection).await.map_err(query("allocate accepted input sequence"))?;
     if queue { super::super::continuation::retire(connection, id.as_str()).await?; }
-    let message = afd_wire::event::message_of(&source.request_json);
+    let message = source.message()?;
     let span = item.span().start.unsigned_abs() as usize..item.span().end.unsigned_abs() as usize;
     sqlx::query(include_str!("sql/input.sql")).bind(binding.item_id.as_str()).bind(id.as_str())
         .bind(&current.fleet_id).bind(&current.workspace_id).bind(sequence).bind(message.get(span).ok_or(TaskRefusal::InputAmbiguous)?)

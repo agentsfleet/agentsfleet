@@ -31,6 +31,8 @@ impl LeaseRun<'_> {
         memory: Seed<'_>,
         executor: &dyn ExecutorSource,
         sink: ActivitySink,
+        prepared_task: Option<&afr_agent::PreparedTask>,
+        recovered_task: Option<&afr_agent::TaskRecovery>,
     ) -> Ending {
         let mint = LeaseMint::new(&self.lessee.plane, &self.ids.lease);
         let checkpoint = LeaseCheckpoint::new(&self.lessee.plane, &self.ids.fleet, self.lease);
@@ -43,8 +45,13 @@ impl LeaseRun<'_> {
             &self.lessee.plane,
             &self.ids.lease,
             self.lease.fencing_token,
+            &self.lessee.spool,
+            &self.lessee.held,
+            &self.interrupt,
         );
         let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
+            recovered_task,
+            prepared_task,
             lease: self.lease,
             memory,
             executor,

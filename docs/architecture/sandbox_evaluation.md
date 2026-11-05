@@ -2,7 +2,18 @@
 
 > Read this to evaluate SPACE (`Sandboxed Platform for Agentic Code Execution`) approaches and source for an `agentsfleet`-owned coding sandbox. The [working concept brief](../../concepts_brief.md) records the brainstorming scope. [Runner behavior](runner_execution.md) owns implemented runtime behavior; [conversation compaction](context_lifecycle.md) owns model context. 
 
-Native sandbox changes and durable workspace recovery remain proposals.
+Native sandbox alternatives below remain proposals. M236's November 5 source
+continuation adds durable workspace recovery to the existing supervisor and
+bubblewrap boundary; it has not been compiled or verified and remains disabled.
+Capture freezes the workspace, reads regular files through directory descriptors,
+validates complete relative-symlink graphs and publishes authenticated manifests.
+Restore validates base/overlay roots before writing a fresh workspace. Private
+conversation bytes share the saved generation; unknown effects require native
+readback. Uploads authorize up to 256 small objects per native page while bounding
+memory to four maximum-size ciphertexts and physical transfers to four concurrent
+requests. Restore reads at most four objects per batch. Manifest layout accounts
+bytes per entry. This source is not a benchmark or
+host-loss acceptance result.
 
 ## Recommendation and decision criteria
 

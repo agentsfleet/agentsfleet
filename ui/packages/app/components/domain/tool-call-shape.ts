@@ -23,6 +23,7 @@ export const TOOL_NAME = {
   WRITE_STDIN: "write_stdin",
   APPLY_PATCH: "apply_patch",
   GIT: "git",
+  PROPOSE_CHANGE: "propose_change",
   IMAGE: "image",
   BROWSER: "browser",
   BROWSER_OPEN: "browser_open",

@@ -35,8 +35,7 @@ pub(super) async fn create(tasks: &Tasks, lease: TaskLease<'_>, input: &garde::V
         return Ok(response);
     }
     let owned = execution::on_current(&mut tx, current, &input.task).await?;
-    let (repository, commit) = target(&mut tx, &input.task.task_id, &owned.current.fleet_id, input.commit_oid.as_deref(),
-        input.mode == CheckpointMode::RetainBase).await?;
+    let (repository, commit) = target(&mut tx, &input.task.task_id, &owned.current.fleet_id, input.commit_oid.as_deref()).await?;
     if input.mode == CheckpointMode::RetainBase && input.base_id.is_some()
         || input.upload_budget_bytes > match input.mode { CheckpointMode::RetainBase => super::BASE_BYTES, CheckpointMode::Incremental => super::INCREMENTAL_BYTES } {
         return Err(TaskRefusal::CheckpointIncompatible.into());
@@ -59,7 +58,8 @@ pub(super) async fn create(tasks: &Tasks, lease: TaskLease<'_>, input: &garde::V
         .bind(base.as_ref().map(|base| base.id.as_str())).bind(commit).bind(i32::try_from(input.format_version).map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?)
         .bind(&input.toolbox_digest).bind(i32::try_from(pages.len()).map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?)
         .bind(&pages).bind(i64::try_from(input.upload_budget_bytes).map_err(|_overflow| TaskRefusal::LimitExhausted)?)
-        .bind(i64::try_from(input.logical_bytes).map_err(|_overflow| TaskRefusal::LimitExhausted)?).bind(i32::try_from(input.entry_count).map_err(|_overflow| TaskRefusal::LimitExhausted)?)
+        .bind(ready_base.map(|base| base.logical_bytes).unwrap_or(i64::try_from(input.logical_bytes).map_err(|_overflow| TaskRefusal::LimitExhausted)?))
+        .bind(ready_base.map(|base| base.entry_count).unwrap_or(i32::try_from(input.entry_count).map_err(|_overflow| TaskRefusal::LimitExhausted)?))
         .bind(lease.lease_id.as_str()).bind(owned.current.fence).bind(super::TRANSFER_SECONDS)
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
         .execute(&mut *tx).await.map_err(query("persist native checkpoint plan"))?;
@@ -75,7 +75,7 @@ pub(super) async fn create(tasks: &Tasks, lease: TaskLease<'_>, input: &garde::V
     Ok(response)
 }
 
-pub(super) async fn target(connection: &mut PgConnection, task: &str, fleet: &str, commit: Option<&str>, retain_base: bool) -> Result<(String, Option<String>)> {
+async fn target(connection: &mut PgConnection, task: &str, fleet: &str, commit: Option<&str>) -> Result<(String, Option<String>)> {
     let Json(target): Json<serde_json::Value> = sqlx::query_scalar(include_str!("sql/task_target.sql")).bind(task)
         .fetch_one(connection).await.map_err(query("read native recovery repository authority"))?;
     if target.get("kind").and_then(serde_json::Value::as_str) == Some("api_only") {
@@ -83,15 +83,17 @@ pub(super) async fn target(connection: &mut PgConnection, task: &str, fleet: &st
         return Ok((format!("api:{fleet}"), None));
     }
     let target: BoundPr = serde_json::from_value(target).map_err(afd_core::json::Unreadable::from)?;
-    if retain_base && commit != Some(target.head.as_str()) { return Err(TaskRefusal::InvalidTarget.into()); }
+    if commit != Some(target.head.as_str()) { return Err(TaskRefusal::InvalidTarget.into()); }
     Ok((format!("github:{}", target.repository_id), commit.map(str::to_owned)))
 }
 
 async fn base(tasks: &Tasks, connection: &mut PgConnection, input: &CheckpointPlanInput, workspace: &str,
     repository: &str, commit: Option<&str>, pages: &mut Vec<String>) -> Result<Option<Base>> {
     if let Some(base) = &input.base_id {
+        // The retained base can precede publication; the checkpoint stores the
+        // current head separately and report/checkpoint.sql validates that head.
         let base: Base = sqlx::query_as(include_str!("sql/base_selected.sql")).bind(base).bind(workspace).bind(repository)
-            .bind(input.format_version as i32).bind(&input.toolbox_digest).bind(commit)
+            .bind(input.format_version as i32).bind(&input.toolbox_digest)
             .fetch_optional(connection).await.map_err(query("prove exact retained repository base"))?.ok_or(TaskRefusal::CheckpointIncompatible)?;
         if input.mode != CheckpointMode::Incremental || !base.ready { return Err(TaskRefusal::CheckpointIncompatible.into()); }
         return Ok(Some(base));
@@ -105,9 +107,8 @@ async fn base(tasks: &Tasks, connection: &mut PgConnection, input: &CheckpointPl
         .bind(input.format_version as i32).bind(&input.toolbox_digest).fetch_optional(&mut *connection).await.map_err(query("read reusable exact repository base"))?;
     if let Some(base) = existing {
         if !base.ready { return Err(TaskRefusal::StorageUnavailable.into()); }
-        if base.logical_bytes != input.logical_bytes as i64 || base.entry_count != input.entry_count as i32 {
-            return Err(TaskRefusal::CheckpointIncompatible.into());
-        }
+        // Checkout metadata may differ despite an identical Git commit. Reuse
+        // the immutable base dimensions; the next overlay describes this tree.
         *pages = base.page_ids.clone();
         return Ok(Some(base));
     }

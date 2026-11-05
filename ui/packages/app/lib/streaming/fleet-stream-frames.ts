@@ -1,3 +1,5 @@
+import { applyTaskActivity } from "./fleet-stream-task-activity";
+import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
 import { instantMs, isInstant } from "@/lib/api/decode";
 import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
@@ -53,6 +55,10 @@ export function applyLiveFrame(
   nowMs: number = Date.now(),
 ): FleetEvent[] {
   switch (frame.kind) {
+    case FRAME_KIND.TASK_DECISION_STARTED:
+    case FRAME_KIND.TASK_DECISION_COMPLETED:
+    case FRAME_KIND.TASK_TRANSFER_PROGRESS:
+      return applyTaskActivity(prev, frame);
     case FRAME_KIND.CONTEXT_PROGRESS:
       return applyContextProgress(prev, frame);
     case FRAME_KIND.EVENT_ADMITTED:
@@ -276,6 +282,7 @@ export function mergeBackfill(
   // The one exception moves forward only: a "received" row starts a live row
   // still waiting, whose received frame fell in the gap the page recovers.
   const authoritative = new Map<string, EventRow>();
+  const progress = new Map(rows.map(row => [row.event_id, readTaskActivityHistory("task_activity" in row ? row.task_activity : undefined)]));
   const started = new Set<string>();
   for (const r of rows) {
     if (!seen.has(r.event_id)) continue;
@@ -284,7 +291,11 @@ export function mergeBackfill(
   }
   const kept = prev.map((e) => {
     const replacement = authoritative.get(e.id);
-    if (!replacement) return started.has(e.id) ? startWaiting(e) : e;
+    if (!replacement) {
+      const running = started.has(e.id) ? startWaiting(e) : e;
+      const taskActivity = mergeTaskActivity(e.taskActivity, progress.get(e.id));
+      return taskActivity === running.taskActivity ? running : {...running, taskActivity};
+    }
     const reconciled = rowToEvent(replacement);
     // The reasoning span is the browser's own measure — no row carries it — so
     // it is kept, and a span still open closes here once: a terminal row is
@@ -293,6 +304,7 @@ export function mergeBackfill(
       ...reconciled,
       text: reconciled.text.length > 0 ? reconciled.text : e.text,
       reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
+      taskActivity: mergeTaskActivity(e.taskActivity, reconciled.taskActivity),
       reasoning: e.reasoning,
       reasoningStartedAtMs: e.reasoningStartedAtMs,
       reasoningEndedAtMs: e.reasoningEndedAtMs,

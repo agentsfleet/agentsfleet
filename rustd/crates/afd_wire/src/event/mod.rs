@@ -237,6 +237,9 @@ pub struct EventDetail<'a> {
     #[serde(borrow)]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
     pub tool_calls: Option<RawToolTrace<'a>>,
+    /// Retained public task progress, separate from private conversation state.
+    #[serde(default)]
+    pub task_activity: crate::activity::TaskActivityHistory,
     /// Tokens the run spent, absent until a runner reports.
     pub tokens: Option<i64>,
     /// Wall milliseconds the run took, absent until a runner reports.

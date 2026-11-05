@@ -2,8 +2,12 @@
 
 ## Status and ownership
 
-This page defines the proposed M236 Durable Task (DT) lifecycle.
-Indy approved implementation on November 3, 2026; runtime acceptance remains pending.
+This page defines the approved M236 Durable Task (DT) lifecycle.
+Indy approved implementation on November 3, 2026. The November 5 continuation
+connects the native task owner, root coordinator and supervisor recovery in source;
+that batch is uncompiled and unverified. Runtime acceptance remains pending and
+`durable_tasks_v1` remains disabled. The [continuation record](../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md)
+separates this source inventory from historical passing evidence.
 [Goal evaluation](goal_evaluation.md) owns decision-provider questions; [sandbox evaluation](sandbox_evaluation.md#durable-task-checkpoints-in-r2) owns saved files.
 
 The mechanisms below define the approved implementation target, including the concrete limits and protocol in the final sections.
@@ -127,8 +131,13 @@ R2 holds encrypted immutable checkpoint bytes and does not decide current owners
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
 
 The branch defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; authenticated list/detail reads share the daemon task owner.
-Native bind/control and authenticated reads are implemented; public control routes and task-bound runtime integration remain pending.
-Native decision reservation and receipt handlers use the same task owner; [goal evaluation](goal_evaluation.md) records their accounting and remaining runtime boundaries.
+Native bind/control, authenticated reads and public control routes have source implementations.
+The root prepares intent before sandbox creation, reads the oldest unsettled human
+source page, incorporates accepted inputs by their separate task sequence, reconciles
+original publication receipts and assesses complete action groups. Unanswered items
+in a mixed request cannot be skipped by advancing the source-page cursor.
+Native decision reservation and receipt handlers use the same task owner;
+[goal evaluation](goal_evaluation.md) records physical execution and accounting.
 
 List reads return unfinished work, while detail retains terminal outcomes.
 
@@ -136,10 +145,11 @@ The inline chat panel reads these native rows and lazy-loads saved criteria; com
 Initial stream readiness, reconnect and gap recovery trigger readback; frames carry no authority.
 Failed refreshes preserve labelled confirmed progress until access is lost.
 
-Wait, effect, decision and checkpoint storage below describe proposed additions, with exact scope in the [active spec](../v2/active/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
+Wait, effect, decision and checkpoint storage below describe the approved design,
+with exact scope and pending verification in the [active spec](../v2/active/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
 
 The daemon binds admissions and leases to a nullable task identity; ordinary exchanges retain the existing path.
-Schema numbering must be rechecked against main before implementation.
+Registered schema slots currently extend through 2620; merge-time inventory checks remain required.
 
 Each DT binds its workspace, fleet, accepted instruction revision, objective, approved target and cumulative limits.
 One current generation guards changes; input sequence, checkpoint generation and lease fencing remain distinct counters.

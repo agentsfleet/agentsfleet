@@ -14,6 +14,7 @@ import { STATUS_AGENT_ERROR } from "./fleetMessageStatus";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
+import { TaskActivityTimeline } from "./TaskActivityTimeline";
 import { ContextProgressStatus } from "./ContextProgressStatus";
 import { readContextProgress } from "@/lib/context-progress";
 
@@ -53,6 +54,7 @@ export function FleetReply({
       messageRole="assistant"
       failed={errored}
     >
+      <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} />
       <FleetReplyParts errored={errored} running={running} queued={queued} eventId={eventId}
         reasoning={reasoningText(message)} span={span} content={message.content}
         startedAtMs={message.createdAt.getTime()} contextProgress={context} />

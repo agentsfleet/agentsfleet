@@ -1,3 +1,5 @@
+import { ActivityPrinter, activityText } from "./task-activity.ts";
+import { ToolActivityPrinter } from "./tool-activity.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { Effect, Option, Redacted } from "effect";
 import { CLI_ERROR_TAG, type CliError } from "../errors/index.ts";
@@ -18,14 +20,10 @@ import {
 } from "../lib/api-paths.ts";
 import { isString, isRecord } from "../lib/guards.ts";
 
-const MS_FIELD = "ms";
-
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
 const EVENT_NOT_FOUND_CODE = "UZ-AGT-015";
-const TOOL_PREFIX_LABEL = "[tool]" as const;
 export const STATUS_COMPLETE = "complete" as const;
-const FIELD_NAME = "name" as const;
 export const STATUS_SSE_DISCONNECTED = "sse_disconnected" as const;
 export const STATUS_SSE_ERROR = "sse_error" as const;
 const FIELD_STATUS = "status" as const;
@@ -79,7 +77,10 @@ interface SteerFrameHandlers {
 const makeFrameCallback = (
   handlers: SteerFrameHandlers,
   setOutcome: (next: SteerOutcome) => void,
-): StreamGetCallback => (event) => {
+): StreamGetCallback => {
+  const activity = new ActivityPrinter(handlers.printLine);
+  const tools = new ToolActivityPrinter(handlers.printLine);
+  return (event) => {
   const payload = event.data as Record<string, unknown> | null | undefined;
   if (!isRecord(payload)) return undefined;
   // Frames without an event_id are dropped too: the daemon stamps every
@@ -87,25 +88,21 @@ const makeFrameCallback = (
   // unknown and rendering it would break the one-event-only invariant.
   const frameEventId = payload["event_id"];
   if (frameEventId !== handlers.eventId) return undefined;
+  if (activity.frame(event.type, payload)) return undefined;
+  if (tools.frame(event.type, payload)) return undefined;
+  if (event.type === KIND_CHUNK && payload["text_kind"] === "reasoning") return undefined;
   if (event.type === KIND_CHUNK && isString(payload[FIELD_TEXT])) {
-    handlers.printLine(`${ui.dim("[claw]")} ${payload[FIELD_TEXT]}`);
-    return undefined;
-  }
-  if (event.type === KIND_TOOL_CALL_STARTED && isString(payload[FIELD_NAME])) {
-    handlers.printLine(`${ui.dim(TOOL_PREFIX_LABEL)} ${payload[FIELD_NAME]} starting`);
-    return undefined;
-  }
-  if (event.type === KIND_TOOL_CALL_COMPLETED && isString(payload[FIELD_NAME])) {
-    const ms = typeof payload[MS_FIELD] === "number" ? `${payload[MS_FIELD] as number}ms` : "";
-    handlers.printLine(`${ui.dim(TOOL_PREFIX_LABEL)} ${payload[FIELD_NAME]} done ${ms}`);
+    handlers.printLine(`${ui.dim("[claw]")} ${activityText(payload[FIELD_TEXT])}`);
     return undefined;
   }
   if (event.type === KIND_EVENT_COMPLETE) {
+    if (isString(payload["final_reply"]) && payload["final_reply"]) handlers.printLine(`Final reply:\n${activityText(payload["final_reply"])}`);
     const status = isString(payload[FIELD_STATUS]) ? payload[FIELD_STATUS] : "unknown";
     setOutcome({ kind: STATUS_COMPLETE, status });
     return false;
   }
   return undefined;
+  };
 };
 
 // How the pre-send wait ended. A timed-out tail is untrusted for the turn:
@@ -262,9 +259,13 @@ export const pollEventTerminal = (
   eventId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
-): Effect.Effect<PolledSteerOutcome, CliError, HttpClient> =>
+): Effect.Effect<PolledSteerOutcome, CliError, HttpClient | Output> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
+    const output = yield* Output;
+    const activity = new ActivityPrinter(line => Effect.runSync(output.info(line)));
+    const tools = new ToolActivityPrinter(line => Effect.runSync(output.info(line)));
+    yield* output.info("Reading saved activity after the live stream ended.");
     // Event IDs are opaque. The owned detail read avoids inferring a clock
     // from an ID or losing this event behind a busy fleet's newest page.
     const path = wsFleetEventPath(wsId, fleetId, eventId);
@@ -281,7 +282,10 @@ export const pollEventTerminal = (
       );
       if (Option.isNone(read)) return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
       const res = read.value;
+      if (isRecord(res) && res.event_id === eventId) activity.history(res["task_activity"]);
       if (isRecord(res) && res.event_id === eventId && isString(res.status) && isTerminal(res.status)) {
+        tools.history(res["tool_calls"]);
+        if (isString(res["response_text"]) && res["response_text"]) yield* output.info(`Final reply:\n${activityText(res["response_text"])}`);
         return { kind: STATUS_COMPLETE, status: res.status } as PolledSteerOutcome;
       }
       if (isRecord(res) && res.event_id === eventId) observed = true;

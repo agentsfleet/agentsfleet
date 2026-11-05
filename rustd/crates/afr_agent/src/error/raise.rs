@@ -8,6 +8,9 @@ afd_core::error_lifts!(Error, ErrorKind:
     afr_providers::Error => Provider,
     afr_tools::Error => Tools,
     afr_secrets::Error => Scrub,
+    serde_json::Error => TaskJson,
+    afd_crypto::Error => TaskCrypto,
+    afd_context::Error => TaskContext,
 );
 
 // The scripted engine's one lift, compiled only with it. In a module of its

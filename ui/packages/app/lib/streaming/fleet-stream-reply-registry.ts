@@ -11,7 +11,7 @@ import {
   type ApplyEvents,
   type EventDetailReader,
 } from "./fleet-stream-detail-recovery";
-import { applyLiveFrame } from "./fleet-stream-frames";
+import { applyLiveFrame, mergeBackfill } from "./fleet-stream-frames";
 import { applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
@@ -183,6 +183,7 @@ export function disposeReplyStreams(entry: Entry): void {
   entry.replyRecoveries.clear();
   entry.replyHeard.clear();
   entry.replyExists.clear();
+  entry.runningReads.clear();
   entry.bodyReads.clear();
   entry.traceReads.clear();
 }
@@ -235,6 +236,20 @@ export function readStalledReplies(entry: Entry, fleetId: string, apply: ApplyEv
   }
 }
 
+/** A running event can predate the list watermark. Read its persisted progress
+ * after each coalesced gap recovery, even when new frames keep it from stalling.
+ * One read at a time bounds the gap's detail traffic. */
+export async function recoverRunningReplies(entry: Entry, fleetId: string, apply: ApplyEvents, isCurrent: () => boolean): Promise<void> {
+  const ids = entry.snapshot.events.filter((event) => event.status === AGENTSFLEET_EVENT_STATUS.RECEIVED).map((event) => event.id);
+  for (const eventId of ids) {
+    if (!isCurrent()) return;
+    // An older silence read may predate this gap. Wait for it, then read the
+    // newly persisted progress under the same coalesced recovery owner.
+    await entry.runningReads.get(eventId);
+    await settleFromDetail(entry, fleetId, eventId, apply, isCurrent);
+  }
+}
+
 // One read of an event this tab still shows running. An ended run settles its
 // row — status and figures from the row, the answer from its text, its live
 // pass closed — and leaves the watch, as does a row something else settled or
@@ -249,6 +264,19 @@ async function settleFromDetail(
   apply: ApplyEvents,
   isCurrent: () => boolean,
 ): Promise<void> {
+  if (!isCurrent()) return;
+  const pending = entry.runningReads.get(eventId);
+  if (pending !== undefined) return pending;
+  const reading = readRunningDetail(entry, fleetId, eventId, apply, isCurrent);
+  entry.runningReads.set(eventId, reading);
+  try {
+    await reading;
+  } finally {
+    entry.runningReads.delete(eventId);
+  }
+}
+
+async function readRunningDetail(entry: Entry, fleetId: string, eventId: string, apply: ApplyEvents, isCurrent: () => boolean): Promise<void> {
   const shown = entry.snapshot.events.find((event) => event.id === eventId);
   if (shown?.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED) {
     endWatch(entry, eventId);
@@ -270,6 +298,7 @@ async function settleFromDetail(
   }
   if (result.data.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) {
     entry.replyExists.add(eventId);
+    apply((prev) => mergeBackfill(prev, [result.data]), {});
     return;
   }
   const detail = result.data;

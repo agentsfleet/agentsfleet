@@ -37,6 +37,7 @@ struct StoredDetail {
     request_json: String,
     response_text: Option<String>,
     tool_calls: Option<String>,
+    task_activity: sqlx::types::Json<afd_wire::activity::TaskActivityHistory>,
 }
 
 /// One event with everything recorded about it.
@@ -58,6 +59,8 @@ pub struct EventDetailRow {
     /// runner that sent no trace, or a trace the daemon dropped. Never read as
     /// "no tools ran".
     pub tool_calls: Option<String>,
+    /// Bounded public decision/recovery stages retained before live publication.
+    pub task_activity: afd_wire::activity::TaskActivityHistory,
 }
 
 impl EventDetailRow {
@@ -73,6 +76,7 @@ impl EventDetailRow {
             request_json: stored.request_json,
             response_text: stored.response_text,
             tool_calls: stored.tool_calls,
+            task_activity: stored.task_activity.0,
         })
     }
 }
@@ -136,6 +140,7 @@ impl EventDetailRow {
             request_json: FIXTURE_REQUEST_JSON.to_owned(),
             response_text: Some(response_text),
             tool_calls: None,
+            task_activity: afd_wire::activity::TaskActivityHistory::default(),
         }
     }
 
