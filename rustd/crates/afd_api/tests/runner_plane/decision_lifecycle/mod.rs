@@ -69,6 +69,7 @@ async fn issue_and_replay(
     afd_wire::decision::DecisionRequest,
 ) {
     let input = fixture.reservation();
+    refuse_scalar_evidence(fixture, &input).await;
     let initial = success(
         fixture,
         Method::POST,
@@ -96,6 +97,7 @@ async fn issue_and_replay(
 }
 
 async fn settle_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, call: &str) {
+    refuse_invalid_receipts(fixture, receipt, call).await;
     let recorded = success(
         fixture,
         Method::PATCH,
@@ -116,6 +118,63 @@ async fn settle_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, ca
     .await;
     assertions::recorded(&repeated, call, true);
     assertions::one_charge(fixture).await;
+}
+
+async fn refuse_scalar_evidence(fixture: &Fixture, input: &DecisionReservationInput) {
+    for evidence in [Value::Null, json!(42), json!(true)] {
+        let mut malformed = input.clone();
+        malformed.evidence = evidence;
+        let response = send(
+            &fixture.router,
+            Method::POST,
+            &fixture.collection(),
+            Some(&fixture.runner.token),
+            &serde_json::to_string(&malformed).expect("unsupported scalar evidence"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(code_of(response).await, "UZ-REQ-001");
+        assertions::unallocated(fixture).await;
+    }
+}
+
+async fn refuse_invalid_receipts(fixture: &Fixture, receipt: &DecisionReceiptInput, call: &str) {
+    let before = assertions::retained(fixture).await;
+    for malformed in malformed_receipts(receipt) {
+        let response = send(
+            &fixture.router,
+            Method::PATCH,
+            &fixture.item(call),
+            Some(&fixture.runner.token),
+            &serde_json::to_string(&malformed).expect("invalid native receipt"),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(code_of(response).await, "UZ-REQ-001");
+        assertions::unaccounted(fixture).await;
+        assert_eq!(assertions::retained(fixture).await, before);
+    }
+}
+
+fn malformed_receipts(receipt: &DecisionReceiptInput) -> Vec<Value> {
+    let original = serde_json::to_value(receipt).expect("complete receipt JSON");
+    let mut oversized = original.clone();
+    *oversized
+        .pointer_mut("/receipt/result/reported_model")
+        .expect("provider model field") = json!("x".repeat(70 * 1024));
+    std::iter::once(oversized)
+        .chain(["00", "+0"].map(|alias| {
+            let mut malformed = original.clone();
+            let answer = malformed
+                .pointer_mut("/receipt/result/result/answers")
+                .and_then(Value::as_object_mut)
+                .and_then(|answers| answers.values_mut().next())
+                .expect("one complete answer");
+            *answer = json!({"type":"score","score":0.4,"confidence":0.8,
+                "probabilities":{"0":0.8,(alias):0.6,"1":0.4}});
+            malformed
+        }))
+        .collect()
 }
 
 fn reordered_receipt(receipt: &DecisionReceiptInput) -> String {

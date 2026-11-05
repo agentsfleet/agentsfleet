@@ -241,7 +241,7 @@ impl Models {
             return Ok(false);
         };
         current.validate_replacement(&details)?;
-        let done = sqlx::query(sql::UPDATE_PLATFORM_MODEL)
+        sqlx::query(sql::UPDATE_PLATFORM_MODEL)
             .bind(id.as_str())
             .bind(&details.metadata.display_name)
             .bind(details.metadata.context_cap_tokens)
@@ -252,9 +252,6 @@ impl Models {
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_UPDATE))?;
-        if done.rows_affected() == 0 {
-            return Ok(false);
-        }
         replace_schedules(
             &mut transaction,
             &self.entropy,

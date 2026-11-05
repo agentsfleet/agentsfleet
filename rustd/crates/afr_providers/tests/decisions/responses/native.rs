@@ -71,6 +71,16 @@ fn primitive_faults(original: &Value) -> Vec<Fault> {
             json!({"low":"Low","1":"High"}),
         ),
         ("unreadable legend", "/answers/risk/legend/0", Value::Null),
+        (
+            "incomplete score distribution",
+            "/answers/risk/probabilities",
+            json!({"0":1.0}),
+        ),
+        (
+            "invalid score distribution total",
+            "/answers/risk/probabilities",
+            json!({"0":0.4,"1":0.4}),
+        ),
     ]
     .into_iter()
     .map(|(name, path, replacement)| (name, replaced(original, path, replacement), invalid()))

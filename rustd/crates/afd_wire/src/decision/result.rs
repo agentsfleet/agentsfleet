@@ -57,6 +57,9 @@ pub enum DecisionAnswer {
         /// Provider-native confidence, absent when unavailable.
         confidence: Option<f64>,
         /// Distribution over zero-based levels.
+        #[serde(
+            with = "serde_with::As::<serde_with::MapPreventDuplicates<serde_with::DisplayFromStr, serde_with::Same>>"
+        )]
         probabilities: BTreeMap<u32, f64>,
     },
 }

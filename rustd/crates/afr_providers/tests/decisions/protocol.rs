@@ -76,6 +76,35 @@ async fn openai_uses_native_named_arrays_and_retains_cache_subsets() {
     assert_assessment(&result.result);
     assert_eq!(server.unconsumed(), 0);
     server.shutdown().await;
+    openai_text_uses_direct_input(seen.body, &result).await;
+}
+
+async fn openai_text_uses_direct_input(
+    mut expected: serde_json::Value,
+    expected_result: &afd_wire::decision::DecisionResult,
+) {
+    let mut server = Server::start(vec![Reply::Json(fixture::openai_reply())]).await;
+    let state = json!("Repair the importer — 東京\nPreserve the accepted scope.");
+    let mut request = fixture::request().into_inner();
+    request.state = state.clone();
+    let request = garde::Unvalidated::new(request)
+        .validate()
+        .expect("bounded text state");
+    let result = DecisionClient::with_client(
+        server.client.clone(),
+        fixture::profile(&server, DecisionApi::Openai),
+        fixture::credential(),
+    )
+    .evaluate(&request)
+    .await
+    .expect("text uses the same reviewed decision protocol");
+    expected["input"] = state;
+    let seen = server.next().await;
+    assert_eq!(seen.body, expected);
+    assert_eq!(&result, expected_result);
+    assert_eq!(seen.path, "/v1/decisions");
+    assert_eq!(server.unconsumed(), 0, "text evaluation sends exactly once");
+    server.shutdown().await;
 }
 
 fn assert_native_exchange(

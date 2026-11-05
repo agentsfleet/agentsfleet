@@ -10,6 +10,12 @@ use afd_wire::{
 };
 
 pub(crate) fn known(request: &DecisionRequest) -> DecisionReceipt {
+    DecisionReceipt::Provider {
+        result: known_result(request),
+    }
+}
+
+pub(crate) fn known_result(request: &DecisionRequest) -> DecisionResult {
     use afd_wire::decision::{DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionUsage};
     let answers = request
         .questions
@@ -44,16 +50,14 @@ pub(crate) fn known(request: &DecisionRequest) -> DecisionReceipt {
             (named.name.clone(), answer)
         })
         .collect();
-    DecisionReceipt::Provider {
-        result: DecisionResult {
-            reported_model: Some("evaluated-fixture-model".to_owned()),
-            usage: Some(DecisionUsage {
-                input_tokens: 1000,
-                cached_input_tokens: 200,
-                cache_write_tokens: 0,
-                output_tokens: 100,
-            }),
-            result: DecisionOutcome::Answered { answers },
-        },
+    DecisionResult {
+        reported_model: Some("evaluated-fixture-model".to_owned()),
+        usage: Some(DecisionUsage {
+            input_tokens: 1000,
+            cached_input_tokens: 200,
+            cache_write_tokens: 0,
+            output_tokens: 100,
+        }),
+        result: DecisionOutcome::Answered { answers },
     }
 }

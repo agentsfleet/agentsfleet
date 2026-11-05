@@ -3,12 +3,14 @@
 use afd_core::id::Uuid7;
 use afd_wire::{
     decision::DecisionPurpose,
-    task::{DecisionCallState, DecisionReservationInput, TaskContext},
+    task::{DecisionCallState, DecisionReservationInput},
 };
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{PgConnection, types::Json};
 
-use super::{attempt::Attempt, budget, prepare::Prepared, quote::FrozenQuote, sql};
+use super::{
+    attempt::Attempt, budget, ownership::Execution, prepare::Prepared, quote::FrozenQuote, sql,
+};
 use crate::{
     Result,
     error::{query, sequence_corrupt},
@@ -33,7 +35,7 @@ impl Intent<'_> {
         self.payload(connection).await?;
         if let Some(goal) = self.goal() {
             sqlx::query(sql::RESERVE_TASK)
-                .bind(goal.task_id.as_ref())
+                .bind(goal.snapshot.context.task_id.as_ref())
                 .bind(&self.prepared.current.fleet_id)
                 .bind(&self.prepared.current.workspace_id)
                 .bind(budget::CALL_NANOS)
@@ -44,12 +46,11 @@ impl Intent<'_> {
         Ok(())
     }
 
-    fn goal(&self) -> Option<&TaskContext<'_>> {
+    fn goal(&self) -> Option<&Execution> {
         self.prepared
             .task
             .as_ref()
             .filter(|_task| self.prepared.request.purpose == DecisionPurpose::Goal)
-            .map(|task| &task.context)
     }
 
     async fn sequence(&self, connection: &mut PgConnection) -> Result<i64> {
@@ -69,16 +70,7 @@ impl Intent<'_> {
     async fn header(&self, connection: &mut PgConnection, sequence: i64) -> Result<()> {
         let prepared = self.prepared;
         let attempt = self.attempt;
-        let generation = self
-            .goal()
-            .map(|task| i64::try_from(task.generation))
-            .transpose()
-            .map_err(|source| {
-                crate::error::Error::from(crate::error::ErrorKind::TaskCounter {
-                    column: "task_generation",
-                    source,
-                })
-            })?;
+        let generation = self.goal().map(|task| task.generation);
         sqlx::query(sql::INSERT_CALL)
             .bind(self.id.as_str())
             .bind(self.lease.runner_id.as_str())
@@ -87,7 +79,10 @@ impl Intent<'_> {
             .bind(&prepared.current.fleet_id)
             .bind(&prepared.current.workspace_id)
             .bind(&prepared.current.tenant_id)
-            .bind(self.goal().map(|task| task.task_id.as_ref()))
+            .bind(
+                self.goal()
+                    .map(|task| task.snapshot.context.task_id.as_ref()),
+            )
             .bind(generation)
             .bind(prepared.current.fence)
             .bind(&self.input.operation_id)
@@ -126,7 +121,10 @@ impl Intent<'_> {
             .bind(&self.prepared.current.fleet_id)
             .bind(&self.prepared.current.workspace_id)
             .bind(&self.prepared.current.tenant_id)
-            .bind(self.goal().map(|task| task.task_id.as_ref()))
+            .bind(
+                self.goal()
+                    .map(|task| task.snapshot.context.task_id.as_ref()),
+            )
             .bind(Json(self.attempt.request(&self.prepared.request)))
             .execute(connection)
             .await

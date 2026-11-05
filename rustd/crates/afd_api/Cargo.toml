@@ -134,6 +134,7 @@ afd_tenant = { workspace = true, features = ["test-util"] }
 afd_vault = { workspace = true, features = ["test-util"] }
 serde.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 # The envelope suite renders through axum's own IntoResponse and reads the body
 # back, and the admission suite needs REAL parallelism to put more requests in
 # flight at once than the ceiling admits.

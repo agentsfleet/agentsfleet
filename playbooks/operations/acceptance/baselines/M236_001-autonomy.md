@@ -1005,4 +1005,111 @@ Its parents and tree match main `27deff642` and the published feature head.
 Their partial union observes 191 uncovered changed Rust lines; the absent kernel report prevents a complete grade.
 
 The existing Rust patch floor remains 99.51%, with no new exclusions, suppressions or threshold changes.
-The proposed daemon-library resource settings are in `/tmp/m236-unit-worker-resources.diff` and await Indy's explicit workflow approval.
+The original daemon-library resource proposal is in `/tmp/m236-unit-worker-resources.diff`; its later approval and applied settings are recorded below.
+
+## Complete four-report grade and supplied build stamps
+
+Published `0d11c16d1` passes every Rust unit job, including the daemon-library job that previously exhausted hosted disk.
+All four coverage jobs pass; the aggregate fails its changed-line and touched-file coverage floors.
+At that head, the unit-worker proposal was unapplied and did not block the run.
+
+Run `41925170490`, aggregate job `126916074123`, reports 83,085 of 83,459 workspace lines covered: 99.5519%, above the existing 99.5% floor.
+Changed lines reach 5,451 of 5,626: 96.8894%, below the required 99.51%; 175 changed lines remain uncovered.
+Forty-seven of 194 measured touched files also miss the existing 99% whole-file floor.
+
+The downloaded four-report set is in `/tmp/m236-coverage-0d11c16d1/`, including `unhit.json`.
+Its revision is `c1efb431e08803dcb8f29fc91b9879f5ab67efca`; the parents and tree match the pushed feature head and main.
+This supersedes the earlier partial-report diagnosis without changing any coverage threshold or exclusion.
+
+Greptile reviewed that exact feature head successfully; both earlier inline findings remain answered and resolved.
+Test success and workspace coverage do not satisfy the missing changed-line floor or finish M236.
+
+Astra identified an unused build dependency in `afd_api/build.rs`: its Git-path watch precedes the supplied `GIT_COMMIT` return.
+In a linked checkout, `.git` is a file, so that watched child is absent and Cargo invalidates the build script repeatedly.
+The correction registers the environment watch first and returns a supplied revision before registering the unused Git path.
+
+The regression compiles the actual script and uses a real linked Git worktree and a directory without Git metadata.
+It checks the complete Cargo output with Git unavailable and both plain and whitespace-padded supplied revisions.
+Child Git environments are cleared; temporary repository operations cannot inherit the real checkout's index or worktree settings.
+
+The scoped parent-code Make run fails at the intended metadata assertion in `/tmp/m236-build-stamp-parent-red.log`.
+With the correction, `make lint-rustd` passes and `make test-unit-rustd-daemon-libs` passes 3,413 tests.
+Logs: `/tmp/m236-build-stamp-lint-final.log` and `/tmp/m236-build-stamp-unit.log`.
+
+Astra's source review finds no material issue in this supplied-revision correction.
+The scenario proves emitted instructions; no measured rebuild-time saving or broader raw-Cargo fallback freshness is claimed.
+
+## Native authority and accounting boundary follow-through
+
+Preparation now retains the signed generation returned by its existing task lock alongside the checked wire snapshot.
+The ordinary and nonblocking accounting locks decode that same generation; no second lookup or public snapshot change is added.
+Native insertion reuses the locked value, removing the unreachable reverse-conversion error without an unchecked cast.
+
+The new scenario bundle covers refused ownership/generation/source associations, late billing after pause, unusable answers and uncertain usage.
+It also covers exact fleet/task money limits, unsent refunds without call-counter resets, and ten source calls including permitted retries.
+HTTP input scenarios reject unsupported scalar evidence and oversized receipts before valid reservation and settlement.
+
+The latest lint, full Rust unit and clean storage gates pass, as recorded below.
+Further reviewed work groups cover served model administration, booted task readback, provider response normalization, atomic owner edits and late schedule confirmations.
+
+The first native storage run stops with three new scenario failures; the previously extended HTTP decision lifecycle passes.
+Two failures are fixture mistakes: a missing goal identity correctly answers InvalidTarget, and outstanding reservations use `accounted_at IS NULL`.
+The third reveals a real persisted-score defect: Serde's nested tagged enums cannot decode the numeric distribution keys with the original map adapter.
+
+`serde_with` 3.24.0, the latest stable version inspected for this batch, supplies the standard string-key adapter with only its `std` feature enabled.
+The public numeric map type and canonical JSON remain unchanged; no manual parser is added.
+A complete receipt scenario covers all three answer types, usage, text/JSON round trips and invalid integral keys.
+
+The native unusable-result scenario now compares the entire frozen request and saved provider result through credential-free replay.
+Astra's source review finds no material issue in the correction; its function-length finding is fixed by reusing the existing snapshot helper.
+Later verification below covers the corrected source.
+
+Additional provider scenarios cover direct text input, encoded-question expansion, conflicting cache representations and invalid score totals.
+Owner-edit scenarios retain the accepted definition and digest after same-sized role substitution or combined-question overflow.
+Schedule scenarios cover repeated retirement and late confirmations after parent deletion while another owner's full state and history remain unchanged.
+
+Targeted `cargo clean` removed 1,688 old package build files, reclaiming 6.4 GiB in this worktree.
+The output is recorded in `/tmp/m236-native-boundaries-clean.log`; dependency caches and other worktrees remain untouched.
+
+The served model-administration lifecycle now covers unsafe creation, complete decision-only readback, immutable-revision refusal and a reviewed replacement.
+It then installs a distinct coding schedule, refuses its removal while omitted inference remains configured, disables decisions and deletes the owned model.
+An independent native model keeps its complete public view throughout; normal-path cleanup removes both identities.
+
+The existing administration fixture moves into its own test module, leaving the parent below the repository's file limit.
+Astra's source review finds no material issue in these HTTP/storage checks.
+
+The native update drops a redundant zero-row fallback.
+Its prior `FOR UPDATE` locks the same existing model; the update has no additional predicate or suppressing trigger.
+
+The full `make test-unit-rustd` gate passes 5,161 tests: 1,604 runner, 143 daemon and 3,414 daemon-library tests.
+This includes the provider scenarios and the complete nested receipt regression; the earlier 3,413 count does not cover this later source.
+Logs: `/tmp/m236-score-recovery-unit.log` and `/tmp/m236-score-recovery-lint.log`.
+
+The clean `make test-integration-rustd` run passes 1,538 regular scenarios and 3 exclusive scenarios.
+The new fleet boundaries, complete HTTP decision lifecycle, served model administration and deleted-owner schedule cases all pass.
+Log: `/tmp/m236-score-recovery-integration-final.log`.
+
+Astra also found colliding numeric score keys: `"0"` and `"00"` could replace one another after conversion.
+The same standard crate now rejects duplicate converted keys, with no manual parser or additional dependency.
+Wire and HTTP scenarios cover both `"00"` and `"+0"` collisions before stored or financial changes.
+
+The scoped Make mutation proof removes only duplicate protection and fails at the intended receipt assertion.
+Its output shows the overwritten distribution, `{0: 0.6, 1: 0.4}`; the exact guarded source is restored and hash-checked afterward.
+Log: `/tmp/m236-score-collision-mutation-red.log`; the full Rust unit run supplies the green result.
+
+Astra's final source pass finds no remaining issue in this correction batch.
+Coherent test helpers also fix the reviewed function-length findings, including the older owner-policy round-trip function.
+
+Indy approved the daemon-library workflow resource proposal: "Approve these resource settings".
+Only that job gains `CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0` and `CARGO_BUILD_JOBS=2`.
+Its tests, cache rules and coverage thresholds remain unchanged.
+
+`make check-gh-actions-valid` passes actionlint, referenced Make targets and 22 release-candidate checks.
+Log: `/tmp/m236-unit-resources-actions-check.log`.
+
+The preceding storage build filled the local filesystem and failed during linking, before testcase results.
+A full `cargo clean` removed 19,422 build files and reclaimed 19.4 GiB in this worktree.
+Only the failed storage gate was rerun; the already-passing source and unit evidence remains valid.
+
+`orly gate verify` passes all declared non-test checks, including `make lint-all` and `make check-version`.
+Log: `/tmp/m236-score-recovery-verify.log`; the pinned product versions match 0.73.0.

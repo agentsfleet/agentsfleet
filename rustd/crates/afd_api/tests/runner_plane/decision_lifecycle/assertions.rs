@@ -74,6 +74,18 @@ pub(super) async fn unaccounted(fixture: &Fixture) {
     assert_eq!(balance(fixture).await, BALANCE);
 }
 
+pub(super) async fn unallocated(fixture: &Fixture) {
+    assert_eq!(counts(fixture).await, (0, 0, 0));
+    assert_eq!(balance(fixture).await, BALANCE);
+}
+
+pub(super) async fn retained(fixture: &Fixture) -> (Value, Value) {
+    sqlx::query_as("SELECT to_jsonb(c),to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1::uuid")
+        .bind(fixture.lease.id.as_str())
+        .fetch_one(&mut *fixture.database.acquire().await.expect("complete native decision observer"))
+        .await.expect("retained call and payload")
+}
+
 pub(super) async fn one_charge(fixture: &Fixture) {
     assert_eq!(counts(fixture).await, (1, 1, 1));
     assert_eq!(balance(fixture).await, BALANCE - 3);

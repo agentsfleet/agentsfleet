@@ -34,11 +34,15 @@ pub(super) struct Decisions<'a> {
 
 impl<'a> Decisions<'a> {
     pub(super) async fn create(case: &'a Case) -> Self {
+        Self::with_daily_budget(case, 1_000_000_000).await
+    }
+
+    pub(super) async fn with_daily_budget(case: &'a Case, daily: i64) -> Self {
         case.held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
         let model = DecisionModelFixture::create(&case.held.fixtures.database).await;
         let assignment = assignment(case, &model).await;
         let config = json!({"name":"pull-request-repair", "x-agentsfleet":{"tools":[], "triggers":[],
-            "budget":{"daily_nanos":"1000000000"}, "decision_policy": policy()}});
+            "budget":{"daily_nanos":daily.to_string()}, "decision_policy": policy()}});
         case.held
             .fixtures
             .native_config(&case.held.fleet, &config.to_string())
@@ -172,6 +176,10 @@ impl<'a> Decisions<'a> {
     }
 
     pub(super) async fn bind_goal(&self) -> DecisionTaskVersion {
+        self.bind_goal_with_limits(TaskLimits::default()).await
+    }
+
+    pub(super) async fn bind_goal_with_limits(&self, limits: TaskLimits) -> DecisionTaskVersion {
         let goal = GOALS.first().expect("accepted fixture objective");
         let questions = serde_json::from_value(json!([
             {"name":"goal.defect-fixed","question":{"type":"noul",
@@ -190,7 +198,7 @@ impl<'a> Decisions<'a> {
             questions,
             sha256_hex(goal.as_bytes()),
             json!({"repository":"linkwarden","pull_request":101}).to_string(),
-            TaskLimits::default(),
+            limits,
         );
         let plan = PreparedPlan::from_parts(
             id(&self.case.held.event_id),
@@ -219,6 +227,18 @@ impl<'a> Decisions<'a> {
             .bind(self.case.held.lease_key.as_str()).bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
             .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("financial counts"))
             .await.expect("retained financial and private row counts")
+    }
+
+    pub(super) fn goal_reservation(
+        &self,
+        task: &DecisionTaskVersion,
+    ) -> garde::Valid<DecisionReservationInput> {
+        self.reservation(
+            DecisionAssessment::Goal {
+                action_group_id: mint_id(),
+            },
+            Some(task.clone()),
+        )
     }
 
     pub(super) async fn call_snapshot(&self) -> (Value, Value) {

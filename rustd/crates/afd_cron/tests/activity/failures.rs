@@ -175,3 +175,57 @@ async fn refused_schedule_changes_leave_history_and_state_unchanged() {
     assert_eq!(receipts(&foreign).await, Vec::<serde_json::Value>::new());
     no_work(&lane).await;
 }
+
+// Value: protects=late results cannot recreate a deleted fleet's schedules or history;
+// fails_when=confirmation writes survive parent deletion or reach another owner;
+// seam=real parent deletion cascades through the stored schema; no_claim=upstream removal.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn deleted_schedule_owners_ignore_late_results_without_touching_live_history() {
+    let removed = CronLane::open().await;
+    let live = CronLane::open().await;
+    let token = CronLane::token();
+    let pending = create(&removed, &token).await;
+    let unaffected = registered(&live).await;
+    let history = receipts(&live).await;
+    let deleted =
+        sqlx::query("DELETE FROM fleet.fleets WHERE id=$1::uuid AND workspace_id=$2::uuid")
+            .bind(removed.fleet.as_str())
+            .bind(removed.workspace.as_str())
+            .execute(&mut *removed.connection().await)
+            .await
+            .expect("delete only this fixture's parent");
+    assert_eq!(deleted.rows_affected(), 1);
+    assert_eq!(
+        removed
+            .store
+            .finalize_synced(&pending, &token, None)
+            .await
+            .expect("late success"),
+        None
+    );
+    assert_eq!(
+        removed
+            .store
+            .finalize_failed(&pending, &token, "The scheduler timed out.")
+            .await
+            .expect("late failure"),
+        None
+    );
+    assert!(
+        !removed
+            .store
+            .delete_claimed(&pending, &token)
+            .await
+            .expect("late removal")
+    );
+    assert_eq!(stored(&removed, &pending.schedule_id).await, None);
+    assert_eq!(receipts(&removed).await, Vec::<serde_json::Value>::new());
+    assert_eq!(
+        stored(&live, &unaffected.schedule_id).await,
+        Some(unaffected)
+    );
+    same_facts(receipts(&live).await, history);
+    no_work(&removed).await;
+    no_work(&live).await;
+}

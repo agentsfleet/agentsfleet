@@ -19,8 +19,14 @@ use crate::{
 pub(super) struct NativeContext {
     pub current: guard::LeaseRow,
     pub scope: TaskScope,
-    pub task: Option<TaskSnapshot>,
+    pub task: Option<Execution>,
     pub source: source::Source,
+}
+
+/// The locked database generation stays signed until its next native write.
+pub(super) struct Execution {
+    pub snapshot: TaskSnapshot,
+    pub generation: i64,
 }
 
 impl NativeContext {
@@ -62,7 +68,7 @@ impl NativeContext {
         if purpose == DecisionPurpose::Goal {
             self.task
                 .as_ref()
-                .map(|task| task.context.accepted_revision_id.as_ref())
+                .map(|task| task.snapshot.context.accepted_revision_id.as_ref())
         } else {
             self.current.revision_id.as_deref()
         }
@@ -82,7 +88,10 @@ impl NativeContext {
             accepted_revision_id: self.revision(input.assessment.purpose())?.to_owned(),
             profile_revision_id: profile_revision.to_owned(),
             questions_digest,
-            execution: self.task.as_ref().map(|task| TaskStamp::of(&task.context)),
+            execution: self
+                .task
+                .as_ref()
+                .map(|task| TaskStamp::of(&task.snapshot.context)),
             candidates: candidates
                 .iter()
                 .map(|candidate| candidate.stamp.clone())
@@ -96,11 +105,11 @@ pub(super) async fn execution(
     current: &guard::LeaseRow,
     scope: &TaskScope,
     input: &DecisionReservationInput,
-) -> Result<Option<TaskSnapshot>> {
+) -> Result<Option<Execution>> {
     match (&current.task_id, &input.task) {
         (None, None) => Ok(None),
         (Some(id), Some(expected)) if *id == expected.task_id => {
-            sqlx::query_scalar::<_, String>(sql::LOCK_TASK)
+            let generation = sqlx::query_scalar::<_, i64>(sql::LOCK_TASK)
                 .bind(id)
                 .bind(&current.fleet_id)
                 .bind(&current.workspace_id)
@@ -112,7 +121,10 @@ pub(super) async fn execution(
             if task.context.generation != expected.generation {
                 return Err(TaskRefusal::StaleState.into());
             }
-            Ok(Some(task))
+            Ok(Some(Execution {
+                snapshot: task,
+                generation,
+            }))
         }
         _ => Err(TaskRefusal::StaleState.into()),
     }

@@ -62,6 +62,7 @@ async fn setup_schedule_revisions_commit_their_activity_atomically() {
         vec![changed(id, "created", "active", MESSAGE)],
     );
     save(&lane, 3, &[]).await;
+    save(&lane, 4, &[]).await;
     same_facts(
         receipts(&lane).await,
         vec![

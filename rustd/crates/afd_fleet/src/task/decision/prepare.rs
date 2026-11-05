@@ -12,6 +12,7 @@ use sqlx::{PgConnection, types::Json};
 use super::{
     compile,
     context::{AssessedContext, TaskStamp},
+    ownership::Execution,
     quote::FrozenQuote,
     sql,
 };
@@ -39,7 +40,7 @@ pub(super) struct Prepared {
     pub context: AssessedContext,
     pub request: DecisionRequest,
     pub provider: String,
-    pub task: Option<TaskSnapshot>,
+    pub task: Option<Execution>,
 }
 
 pub(super) async fn on(
@@ -78,7 +79,7 @@ impl super::ownership::NativeContext {
         let questions = questions(
             policy,
             input,
-            self.task.as_ref(),
+            self.task.as_ref().map(|task| &task.snapshot),
             &candidates,
             self.current.checked_at,
         )?;
@@ -95,7 +96,7 @@ impl super::ownership::NativeContext {
             input,
             &self.source.request_json,
             &context,
-            self.task.as_ref(),
+            self.task.as_ref().map(|task| &task.snapshot),
             &candidates,
             questions,
         )?;

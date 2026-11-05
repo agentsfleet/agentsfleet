@@ -46,6 +46,68 @@ pub(super) async fn escaped_state_and_complete_questions_keep_their_bounds() {
         "rejected data never becomes another request"
     );
     server.shutdown().await;
+    encoded_question_refuses_before_connect().await;
+}
+
+async fn encoded_question_refuses_before_connect() {
+    use afr_telemetry::{
+        labels::decision::DecisionOutcome as MeasuredOutcome,
+        testing::{Recorded, Tally, scoped},
+    };
+    let mut server = Server::start(vec![]).await;
+    let request = expanded_score_request();
+    let (tally, received) = Tally::new();
+    let fault = scoped(
+        tally,
+        DecisionClient::with_client(
+            server.client.clone(),
+            fixture::profile(&server, DecisionApi::Openai),
+            fixture::credential(),
+        )
+        .evaluate(&request),
+    )
+    .await
+    .expect_err("native encoding proves the complete question bound");
+    assert_eq!(
+        fault.code(),
+        afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
+    );
+    assert!(fault.decision_not_sent());
+    assert_eq!(
+        (fault.decision_status(), fault.decision_retry_after()),
+        (None, None)
+    );
+    assert!(matches!(
+        received.try_iter().collect::<Vec<_>>().as_slice(),
+        [Recorded::Decision(_, _, MeasuredOutcome::NotSent, _)]
+    ));
+    assert_eq!((server.connections(), server.unconsumed()), (0, 0));
+    server.shutdown().await;
+}
+
+fn expanded_score_request() -> garde::Valid<afd_wire::decision::DecisionRequest> {
+    let mut request = fixture::request().into_inner();
+    request.questions.truncate(1);
+    let question = request
+        .questions
+        .first_mut()
+        .expect("complete score question");
+    "risk".clone_into(&mut question.name);
+    let mut levels = vec!["\u{001f}".repeat(512); 5];
+    levels.push("r".repeat(422));
+    question.question = DecisionQuestion::Score {
+        instructions: "q".repeat(512),
+        levels,
+    };
+    assert_eq!(
+        serde_json::to_vec(question)
+            .expect("complete compiled question")
+            .len(),
+        16_384
+    );
+    Unvalidated::new(request)
+        .validate()
+        .expect("typed request fits before native label expansion")
 }
 
 fn complete_questions_keep_their_bound() {

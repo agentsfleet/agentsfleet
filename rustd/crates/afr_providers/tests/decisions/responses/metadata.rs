@@ -46,7 +46,7 @@ async fn every_protocol_keeps_model_identity_and_unknown_accounting_in_intent_re
     }
 }
 
-fn metadata_faults() -> [MetadataFault; 5] {
+fn metadata_faults() -> [MetadataFault; 6] {
     [
         (
             "unreviewed model",
@@ -64,29 +64,29 @@ fn metadata_faults() -> [MetadataFault; 5] {
             true,
             None,
         ),
-        (
-            "missing usage",
+        usage_fault("missing usage", "/usage", Value::Null),
+        usage_fault("negative usage", "/usage/input_tokens", json!(-1)),
+        usage_fault(
+            "conflicting cache representations",
             "/usage",
-            Value::Null,
-            DecisionInvalid::Usage,
-            false,
-            Some("evaluated-model-1"),
+            json!({"input_tokens":100,"output_tokens":3,"cached_input_tokens":10,
+                "input_tokens_details":{"cached_tokens":20,"cache_write_tokens":10}}),
         ),
-        (
-            "negative usage",
-            "/usage/input_tokens",
-            json!(-1),
-            DecisionInvalid::Usage,
-            false,
-            Some("evaluated-model-1"),
-        ),
-        (
+        usage_fault(
             "cache exceeds input",
             "/usage",
             json!({"input_tokens":10,"output_tokens":3,"cached_input_tokens":11}),
-            DecisionInvalid::Usage,
-            false,
-            Some("evaluated-model-1"),
         ),
     ]
+}
+
+fn usage_fault(name: &'static str, path: &'static str, value: Value) -> MetadataFault {
+    (
+        name,
+        path,
+        value,
+        DecisionInvalid::Usage,
+        false,
+        Some("evaluated-model-1"),
+    )
 }

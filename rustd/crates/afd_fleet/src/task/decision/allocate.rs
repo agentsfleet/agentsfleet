@@ -147,7 +147,7 @@ impl Reservation<'_> {
             connection,
             &prepared.current,
             &prepared.context,
-            prepared.task.as_ref(),
+            prepared.task.as_ref().map(|task| &task.snapshot),
             true,
         )
         .await
