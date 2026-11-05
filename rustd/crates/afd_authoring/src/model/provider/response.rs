@@ -134,7 +134,7 @@ fn content(
         match item {
             AssistantContent::Text(part) => text.push_str(&part.text),
             AssistantContent::ToolCall(call) if !cut => {
-                proposal_calls.push(proposal(call, candidate)?);
+                proposal_calls.push(proposal(call, candidate, latest_said(request))?);
             }
             AssistantContent::ToolCall(_) | AssistantContent::Reasoning(_) => {}
             _unexpected => return Err(ErrorKind::Provider.into()),
@@ -186,9 +186,23 @@ fn unique_calls(
     Ok(())
 }
 
+/// The person's newest message, whose wording an inserted instruction keeps.
+fn latest_said(request: &garde::Valid<ModelCallInput>) -> Option<&str> {
+    request
+        .request
+        .messages
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            afd_wire::authoring::ModelMessage::User { text } => Some(text.as_str()),
+            _ => None,
+        })
+}
+
 fn proposal(
     item: &ToolCall,
     candidate: Option<&crate::types::Candidate>,
+    said: Option<&str>,
 ) -> Result<
     ProposalCall<
         afd_fleet_runtime::Definition,
@@ -208,7 +222,7 @@ fn proposal(
             item.function.arguments.clone(),
         ))
         .map_err(|_untrusted| ProposalRejection::InvalidArguments)
-        .and_then(|arguments| super::edits::native(arguments.proposal, candidate))
+        .and_then(|arguments| super::edits::native(arguments.proposal, candidate, said))
     };
     let call = match converted {
         Ok(proposal) => ProposalCall::Proposed {
