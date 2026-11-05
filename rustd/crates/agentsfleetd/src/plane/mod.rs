@@ -140,9 +140,8 @@ impl ServingPlane {
         let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
         let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
         // One biller for every money path: fleet leases and setup chat reserve
-        // against the same holds and settle into the same ledger (billing §11),
-        // off the request path through one queue.
-        let biller = crate::billing::queued_biller(database.clone());
+        // against the same holds and settle into the same ledger (billing §11).
+        let biller = crate::billing::biller(database.clone());
         let drafts =
             afd_authoring::Drafts::new(database.clone(), Entropy::new(), Arc::clone(&biller))
                 .with_analytics(analytics.clone());

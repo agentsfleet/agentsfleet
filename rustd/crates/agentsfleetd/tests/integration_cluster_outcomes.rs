@@ -43,10 +43,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{Scenario, dragonfly_config, scenario};
-use crate::reads::{
-    SETTLEMENT_GRACE, balance, counter_column, lease_column, ledger_rows, queue_settled,
-    unsettled_lines,
-};
+use crate::reads::{balance, counter_column, lease_column, ledger_rows, unsettled_lines};
 use crate::tail::{next_frame, settle};
 use crate::wire::{
     capable_beat, field, json, poll_for_lease, poll_for_seeded_lease, post, report_body,
@@ -217,20 +214,20 @@ async fn a_report_settles_once_across_both_stores(
         "the lease is terminal, which is what stops the reclaim sweep re-issuing it"
     );
 
-    let logged = ledger_rows(run).await;
-    assert!(
-        logged >= 1,
-        "the run's usage is logged in the report's own transaction, at least its final slice"
-    );
-    let after = queue_settled(run, before).await;
+    let after = balance(run).await;
     assert!(
         after < before,
         "a priced run draws the wallet down: {before:?} → {after:?}"
     );
+    let logged = ledger_rows(run).await;
+    assert!(
+        logged >= 1,
+        "the run's usage is logged, at least its final slice"
+    );
     assert_eq!(
         unsettled_lines(run).await,
         0,
-        "and the billing queue settles it shortly after the report answered"
+        "and settled before the report answered"
     );
 
     let repeated = post(http, run, "/v1/runners/me/reports", &report).await;
@@ -240,8 +237,6 @@ async fn a_report_settles_once_across_both_stores(
         "a repeat is acknowledged rather than refused — a runner replays because \
          it did not hear the first answer, and refusing teaches it to retry forever"
     );
-    // The repeat's settlement, had it charged, would land on the same queue.
-    tokio::time::sleep(SETTLEMENT_GRACE).await;
     assert_eq!(
         balance(run).await,
         after,

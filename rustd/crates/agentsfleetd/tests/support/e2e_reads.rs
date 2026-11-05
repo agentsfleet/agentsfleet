@@ -202,9 +202,9 @@ pub(crate) async fn line_output_tokens(run: &Scenario) -> i64 {
 
 /// How many of those lines the biller has not yet settled.
 ///
-/// Zero shortly after a report answers: the billing queue settles its lines
-/// after the reply, and [`queue_settled`] waits for that; only a failed settle
-/// leaves one for the billing sweeper.
+/// Zero once a report has answered: the lease path settles its lines after
+/// commit and before it replies, and only a failed settle leaves one for the
+/// billing sweeper.
 pub(crate) async fn unsettled_lines(run: &Scenario) -> i64 {
     count_lines(
         run,
@@ -273,24 +273,4 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
     .expect("the lease count must run")
     .try_get(0)
     .expect("a count is a bigint")
-}
-
-/// How long the billing queue may take to move a report's money.
-const SETTLEMENT_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
-/// How often the wallet is read while waiting, and how long a repeated report's
-/// queued settlement is given before its absence is asserted.
-pub(crate) const SETTLEMENT_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
-
-/// The wallet once the billing queue has settled every logged line, or as it
-/// stands at the limit, so the caller's assertion names what was charged.
-pub(crate) async fn queue_settled(run: &Scenario, before: Option<i64>) -> Option<i64> {
-    let deadline = tokio::time::Instant::now() + SETTLEMENT_LIMIT;
-    loop {
-        let now = balance(run).await;
-        let done = now < before && unsettled_lines(run).await == 0;
-        if done || tokio::time::Instant::now() >= deadline {
-            return now;
-        }
-        tokio::time::sleep(SETTLEMENT_GRACE).await;
-    }
 }
