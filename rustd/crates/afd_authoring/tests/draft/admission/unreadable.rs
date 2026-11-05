@@ -6,6 +6,7 @@ use super::mint;
 use afd_authoring::Setup;
 use afd_core::error_code;
 use afd_crypto::secret::Kek;
+use sqlx::Connection as _;
 use std::sync::Arc;
 
 /// An unsettled line no `BIGINT` can sum with a second like it.
@@ -48,10 +49,14 @@ async fn a_ledger_that_cannot_sum_its_unsettled_lines_refuses_the_claim_and_the_
         .expect_err("the wallet check cannot read the balance");
     assert_eq!(review.code(), error_code::INTERNAL_OPERATION_FAILED);
     // The corrupt lines are on the shared database and name no fleet or
-    // attempt the cleanup would reach: they go here, before the relay meets them.
+    // attempt the cleanup would reach: the owner removes them here, since the
+    // runtime role may not delete usage lines.
+    let mut owner = sqlx::PgConnection::connect(&f.owner_url())
+        .await
+        .expect("an owner connection");
     sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1::uuid")
         .bind(f.tenant.as_str())
-        .execute(&mut *f.connection().await)
+        .execute(&mut owner)
         .await
         .expect("the corrupt lines are removed");
     f.cleanup().await;
