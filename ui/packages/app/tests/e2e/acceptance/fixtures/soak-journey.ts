@@ -7,7 +7,7 @@ import { draftHistory, runtimeHistory } from "./soak-history";
 import { SOAK, SOAK_KIND, SOAK_STEPS, UNICODE_SAVED } from "./soak-scenario";
 import { CHAT_COPY, NEW_FLEET, draftHref, editSetupLink, openSavedFleet } from "./private-chat";
 import { writeFile } from "node:fs/promises";
-import { trackRequests } from "./soak-outage";
+import { APPLICATION_FAILURE, outageLedger, trackRequests } from "./soak-outage";
 import { workspaceHref } from "./nav";
 import { purgeFixtureFleet } from "./teardown";
 
@@ -72,6 +72,8 @@ export class SoakJourney {
     const start = from ? {step: from.step, turn: from.turn} : {step: AUTHOR_STEP, turn: 0};
     if (start.step === AUTHOR_STEP) await this.author(start.turn);
     if (start.step >= 0 && !this.fleetId) throw new Error(`${this.name} has no saved fleet; later steps cannot run`);
+    // A resumed process starts on a blank page; every later step begins on the saved fleet.
+    if (from && start.step >= 0) await this.page.goto(workspaceHref(this.workspace, `fleets/${this.fleetId}`));
     for (let index = Math.max(start.step, 0); index < SOAK_STEPS.length; index++) {
       const step = SOAK_STEPS[index]!;
       const turn = index === start.step ? start.turn : 0;
@@ -88,6 +90,9 @@ export class SoakJourney {
     for (const draft of this.drafts) await draft.assertHistory();
     await this.assertSaved(4);
     await this.assertUnicodeSaved();
+    // Failed turns were moved past so the run could finish; only outages are excused.
+    const failed = outageLedger.filter(entry => entry.fleet === this.name && entry.classification === APPLICATION_FAILURE);
+    expect(failed, `${this.name} recorded failed turns that no outage explains`).toEqual([]);
   }
 
   /** Read from the saved definition itself, never from a model reply. */

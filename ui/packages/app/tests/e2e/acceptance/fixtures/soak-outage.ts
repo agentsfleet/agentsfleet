@@ -79,8 +79,11 @@ export const outageLedger: Record<string, unknown>[] = [];
 /** Consecutive failed turns after which a journey stops and the supervisor moves it on. */
 export const MAX_CONSECUTIVE_FAILURES = 5;
 
+/** A failed turn no outage explains: recorded and moved past, but the run still fails. */
+export const APPLICATION_FAILURE = "application-provider-or-unknown";
+
 export function classify(outage: Outage | null): string {
-  return outage ? outage.kind : "application-provider-or-unknown";
+  return outage ? outage.kind : APPLICATION_FAILURE;
 }
 
 /** Keep the screen as the failure left it, before the page is reloaded. */
