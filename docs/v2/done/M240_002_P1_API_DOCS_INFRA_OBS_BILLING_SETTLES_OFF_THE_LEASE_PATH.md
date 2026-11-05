@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 05, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, every report took a tenant's wallet row lock twice after it committed, so one slow billing statement delayed every runner of that tenant
 
@@ -158,7 +158,7 @@ Lines settle with no age filter. An expired, unreported lease keeps `GRACE`, own
 
 ### §4 — The pages say what the code does
 
-- **Dimension 4.1** — DONE: `git grep -n -e billing.holds -e settle_usage -e release_usage -e hold_issued -- rustd/crates docs/architecture` prints only the migration list's historical slot.
+- **Dimension 4.1** — DONE: `git grep -n -e billing.holds -e settle_usage -e release_usage -e hold_issued -- rustd/crates docs/architecture` prints only the migration list's historical slots.
 
 ## Interfaces
 
@@ -193,7 +193,7 @@ Lines settle with no age filter. An expired, unreported lease keeps `GRACE`, own
 | `billing_sweep_refused` log | operator | a pass the biller refused part of | `error_code`, count | none | `a_refused_pass_warns_with_its_code` |
 | `billing_relay_refused` log | operator | one refused work | `work_id`, `error_code` at `debug` | ids only | exercised by the fault tests |
 
-`agentsfleet_billing_reserve_total` and `agentsfleet_billing_held_nanos` are removed.
+`agentsfleet_billing_reserve_total` and `agentsfleet_billing_held_nanos` are removed. The outage log event `billing_reserve_unconfirmed` is renamed `billing_check_unconfirmed`; no dashboard in this repository matches on it.
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -259,5 +259,7 @@ Lines settle with no age filter. An expired, unreported lease keeps `GRACE`, own
 - **Destructive change approval:** dropping `billing.holds` (slot 2210) rests on "Remove holds in this PR" above (SQL standard: a `DROP TABLE` needs the owner's approval).
 - **Datastore decision:** Postgres stays the system of record. PostHog moved its analytics warehouse off DuckDB on Nov 02, 2026, and that workload was analytics, not billing (https://posthog.com/blog/moving-off-duckdb).
 - **Greptile findings on #807 (the old draft):** the balance-read test, the double-counted renewal and the balance correction belonged to designs this spec no longer has; backlog recovery is the relay's drain.
-- **Standards review (zero-context, Nov 05):** 20 findings on the relay; all applied, and the refusal-window finding was first accepted, then made moot by §3.
+- **Standards reviews (`orly-standards-reviewer`, zero context, Claude Opus 5.5, Nov 05):**
+  - On the relay: 20 findings, all applied; the refusal-window finding was first accepted, then made moot by §3.
+  - On the hold removal: 1 P1 and 15 P2. The P1 (a payer in debt still covered for a zero ask, which every self-managed renewal makes) is fixed with `Balance::left` and `Funds::of`, and conformance asks for zero in debt. Deferred under the owner's "focus on making billing simple and performant. I am OK to see negative billed customers or leaks for now untill i test": a `statement_timeout` around the one lock-free funds read (main's admission read already ran without one), and an `EXPLAIN (ANALYZE, BUFFERS)` record for `idx_usage_lines_tenant_id_unsettled`. Every other finding is applied.
 - **Consults:** `main` at `66059667b`. Before this spec, a report awaited `settle_usage` and `release_usage` before announcing completion (`afd_fleet/src/lease/report/mod.rs`).

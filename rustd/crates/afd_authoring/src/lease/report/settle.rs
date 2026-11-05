@@ -99,8 +99,7 @@ async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<
 ///
 /// Usage the daemon knows is what settles: one line per known dispatch and
 /// one for the runtime, logged once per attempt (`(work, seq)` is unique, so a
-/// replay that reaches here again logs nothing new). The relay settles them
-/// and releases the attempt's hold once the attempt reads settled.
+/// replay that reaches here again logs nothing new). The relay settles them.
 async fn log(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
     let lines = usage::settlement(connection, s.attempt, s.verified, s.now).await?;
     afd_billing::ledger::log_lines(&mut *connection, &drafts.entropy, s.now, &lines).await?;

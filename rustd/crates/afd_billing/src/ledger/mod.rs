@@ -6,7 +6,6 @@
 //! lines.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use afd_core::clock::Clock;
 use afd_core::id::Uuid7;
@@ -25,14 +24,7 @@ mod sweep;
 pub use self::lines::log_lines;
 #[cfg(feature = "test-util")]
 pub use self::sweep::unsettled_work;
-pub use self::sweep::{Resettled, charged_so_far, resettle, unsettled};
-
-/// The ledger's bounds, for integration tests that measure against them.
-#[cfg(feature = "test-util")]
-pub mod test_util {
-    /// How long a billing statement waits for the wallet row lock.
-    pub const LOCK_TIMEOUT: std::time::Duration = super::LOCK_TIMEOUT;
-}
+pub use self::sweep::{Resettled, resettle, unsettled};
 
 const LOCK_WALLET: &str = include_str!("sql/lock_wallet.sql");
 const INSERT_LINES: &str = include_str!("sql/insert_lines.sql");
@@ -47,7 +39,7 @@ const BOUND_TRANSACTION: &str = include_str!("sql/bound_transaction.sql");
 /// stalls would stall the tenant's whole fleet. Past this the statement gives
 /// up with SQLSTATE `55P03`, which [`crate::Error::is_contended`] names and the
 /// outage policy treats as a biller that could not answer.
-const LOCK_TIMEOUT: Duration = Duration::from_secs(2);
+const LOCK_TIMEOUT: &str = "2000ms";
 
 /// How long any one billing statement may run.
 const STATEMENT_TIMEOUT: &str = "5000ms";
@@ -95,7 +87,7 @@ impl LedgerBiller {
 /// setting ends with the transaction it bounds.
 async fn bound(connection: &mut sqlx::PgConnection, context: &'static str) -> Result<()> {
     sqlx::query(BOUND_TRANSACTION)
-        .bind(format!("{}ms", LOCK_TIMEOUT.as_millis()))
+        .bind(LOCK_TIMEOUT)
         .bind(STATEMENT_TIMEOUT)
         .execute(&mut *connection)
         .await
@@ -106,10 +98,10 @@ async fn bound(connection: &mut sqlx::PgConnection, context: &'static str) -> Re
 /// `tenant`'s wallet, locked for the rest of the transaction, or `None` when
 /// the tenant has no wallet row.
 ///
-/// Settling and releasing take this rather than [`lock_wallet`]: usage that
+/// Settling takes this rather than refusing a missing wallet: usage that
 /// already happened must settle even for a tenant whose wallet was never
-/// provisioned, or its lines would stay unsettled forever and hold every
-/// newer line behind them in the sweeper's oldest-first scan. With no wallet
+/// provisioned, or its lines would stay unsettled forever and stall every
+/// newer line behind them in the relay's oldest-first scan. With no wallet
 /// nothing is debited, and the settlement logs that it was not.
 async fn lock_wallet_if_any(
     connection: &mut sqlx::PgConnection,
@@ -137,21 +129,7 @@ impl Biller for LedgerBiller {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
         let mut connection = self.database.acquire().await?;
         let funds = balance(connection.as_mut(), &ask.payer.tenant).await?;
-        let available = Nanos::from_i64(
-            funds
-                .balance
-                .as_i64()
-                .saturating_sub(funds.unsettled.as_i64())
-                .max(0),
-        );
-        Ok(if available.covers(ask.next) {
-            Funds::Covered
-        } else {
-            Funds::Short {
-                available,
-                asked: ask.next,
-            }
-        })
+        Ok(Funds::of(funds.left(), ask.next))
     }
 
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {

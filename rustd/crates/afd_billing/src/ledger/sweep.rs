@@ -26,12 +26,10 @@ use crate::{Nanos, Result, sql};
 const SELECT_UNSETTLED: &str = include_str!("sql/select_unsettled.sql");
 #[cfg(feature = "test-util")]
 const SELECT_UNSETTLED_WORK: &str = include_str!("sql/select_unsettled_work.sql");
-const SELECT_WORK_CHARGED: &str = include_str!("sql/select_work_charged.sql");
 const SELECT_OWED: &str = include_str!("sql/select_owed.sql");
 
 /// What each statement here was doing, for [`query`].
 const CONTEXT_UNSETTLED: &str = "read unsettled usage lines";
-const CONTEXT_CHARGED: &str = "read a work's charged usage";
 const CONTEXT_OWED: &str = "read what is still owed";
 
 /// Lines one pass reads; bounds the pass's work.
@@ -131,23 +129,6 @@ const TABLE_LINES: &str = "billing.usage_lines";
 /// A work whose settlement the biller refused this pass; the next pass retries.
 const EVENT_REFUSED: &str = "billing_relay_refused";
 
-/// What `work`'s logged lines cost in total, settled or not.
-///
-/// A renewal raises its hold to this plus the next slice's floor, so the hold
-/// tracks what the work has actually used rather than how often it renewed.
-///
-/// # Errors
-/// The statement would not run.
-pub async fn charged_so_far<'e>(executor: impl PgExecutor<'e>, work: &WorkKey) -> Result<Nanos> {
-    let charged: i64 = sqlx::query_scalar(SELECT_WORK_CHARGED)
-        .bind(work.work_type())
-        .bind(work.id().as_str())
-        .fetch_one(executor)
-        .await
-        .map_err(query(CONTEXT_CHARGED))?;
-    Ok(Nanos::from_i64(charged))
-}
-
 /// Up to `limit` unsettled lines, oldest first, grouped into one
 /// [`Settlement`] per work.
 ///
@@ -179,9 +160,10 @@ pub async fn unsettled<'e>(executor: impl PgExecutor<'e>, limit: i64) -> Result<
     Ok(works.into_values().collect())
 }
 
-/// `work`'s unsettled lines as the one [`Settlement`] a relay pass hands the
-/// biller for it, or `None` when it has none: for a test that settles one work
-/// on a shared database without a pass over every other work's lines.
+/// `work`'s unsettled lines as one [`Settlement`], or `None` when it has none.
+///
+/// What a relay pass hands the biller for that work, for a test that settles
+/// one work on a shared database without a pass over every other work's lines.
 ///
 /// # Errors
 /// The statement would not run, or a stored identifier is not one.

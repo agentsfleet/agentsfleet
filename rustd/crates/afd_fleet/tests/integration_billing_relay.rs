@@ -13,9 +13,9 @@
 )]
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
-use afd_billing::ledger::test_util::LOCK_TIMEOUT;
 use afd_billing::ledger::{LedgerBiller, log_lines};
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::sweep;
@@ -32,6 +32,13 @@ use crate::support::Fixtures;
 /// `(lines, unsettled lines, charged nanos)` logged for one lease.
 const LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NULL), \
      COALESCE(sum(charged_nanos), 0)::BIGINT FROM billing.usage_lines WHERE work_id = $1::uuid";
+
+/// Sessions waiting on a lock the session `$1` holds.
+const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
+     WHERE $1::integer = ANY(pg_blocking_pids(pid))";
+
+/// How often the watcher looks for a session waiting on the wallet row.
+const WATCH: Duration = Duration::from_millis(5);
 
 async fn isolated() -> Held {
     held_in(Fixtures::create_isolated_with_queue().await).await
@@ -74,16 +81,38 @@ async fn report_returns_while_the_wallet_row_is_locked() {
 
     let mut locker = database.acquire().await.expect("a pooled connection");
     let mut lock = locker.begin().await.expect("a transaction opens");
-    sqlx::query("SELECT 1 FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE")
-        .bind(&held.tenant)
-        .fetch_one(&mut *lock)
-        .await
-        .expect("the wallet row locks");
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE",
+    )
+    .bind(&held.tenant)
+    .fetch_one(&mut *lock)
+    .await
+    .expect("the wallet row locks");
 
-    tokio::time::timeout(LOCK_TIMEOUT, plane.report(&held.runner, &report, held.now))
-        .await
-        .expect("the report never waits on the wallet lock")
-        .expect("the report settles the lease");
+    let done = AtomicBool::new(false);
+    let mut watcher = database.acquire().await.expect("a pooled connection");
+    let watch = async {
+        let mut most: i64 = 0;
+        while !done.load(Ordering::SeqCst) {
+            let waiting: i64 = sqlx::query_scalar(WAITERS)
+                .bind(pid)
+                .fetch_one(&mut *watcher)
+                .await
+                .expect("the waiters count");
+            most = most.max(waiting);
+            tokio::time::sleep(WATCH).await;
+        }
+        most
+    };
+    let run = async {
+        let reported = plane.report(&held.runner, &report, held.now).await;
+        done.store(true, Ordering::SeqCst);
+        reported
+    };
+    let (reported, most) = tokio::join!(run, watch);
+    drop(watcher);
+    reported.expect("the report settles the lease");
+    assert_eq!(most, 0, "the report never waited on the wallet row");
     let (logged, unsettled, charged) = lines(&held).await;
     assert!(logged > 0, "the report logs its runtime line");
     assert_eq!(unsettled, logged, "the report charges nothing itself");
@@ -176,34 +205,34 @@ async fn one_pass_settles_a_reported_lease() {
     held.fixtures.cleanup().await;
 }
 
-/// Many relays (two daemons, or a pass that overlapped the next) pass over
-/// the same line at once, and it is charged exactly once.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn concurrent_passes_charge_each_line_once() {
-    const PASSES: usize = 100;
-    let held = isolated().await;
-    let database = &held.fixtures.database;
-    let work = settlement(&held).await;
-    let charged = work
-        .lines
-        .iter()
-        .map(|line| line.charged.as_i64())
-        .sum::<i64>();
+/// Logs one line on `held`'s lease, as its report would, and answers what it
+/// charges.
+async fn log_one_line(held: &Held) -> i64 {
+    let work = settlement(held).await;
     log_lines(
-        &mut *database.acquire().await.expect("a pooled connection"),
+        &mut *held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection"),
         &Entropy::new(),
         held.now,
         &work,
     )
     .await
     .expect("the line is logged");
+    work.lines.iter().map(|line| line.charged.as_i64()).sum()
+}
 
-    let start = Arc::new(tokio::sync::Barrier::new(PASSES));
+/// Releases `passes` relay passes over `held`'s database at once; answers the
+/// works they settled between them and how many ran at the same time.
+async fn race_passes(held: &Held, passes: usize) -> (u64, usize) {
+    let start = Arc::new(tokio::sync::Barrier::new(passes));
     let (in_flight, peak) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
-    let passes: Vec<_> = (0..PASSES)
+    let tasks: Vec<_> = (0..passes)
         .map(|_| {
-            let (database, start) = (database.clone(), Arc::clone(&start));
+            let (database, start) = (held.fixtures.database.clone(), Arc::clone(&start));
             let (in_flight, peak, now) = (Arc::clone(&in_flight), Arc::clone(&peak), held.now);
             tokio::spawn(async move {
                 let biller = LedgerBiller::on_system_clock(database.clone());
@@ -219,10 +248,23 @@ async fn concurrent_passes_charge_each_line_once() {
         })
         .collect();
     let mut settled = 0;
-    for pass in passes {
-        settled += pass.await.expect("the pass task finishes");
+    for task in tasks {
+        settled += task.await.expect("the pass task finishes");
     }
-    assert!(peak.load(Ordering::SeqCst) > 1, "the passes overlapped");
+    (settled, peak.load(Ordering::SeqCst))
+}
+
+/// Many relays (two daemons, or a pass that overlapped the next) pass over
+/// the same line at once, and it is charged exactly once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn concurrent_passes_charge_each_line_once() {
+    const PASSES: usize = 100;
+    let held = isolated().await;
+    let charged = log_one_line(&held).await;
+
+    let (settled, peak) = race_passes(&held, PASSES).await;
+    assert!(peak > 1, "the passes overlapped");
     assert!(settled >= 1, "at least one pass settles the work");
     assert_eq!(lines(&held).await.1, 0, "the line is settled");
     assert_eq!(

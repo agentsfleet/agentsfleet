@@ -47,5 +47,12 @@ async fn a_ledger_that_cannot_sum_its_unsettled_lines_refuses_the_claim_and_the_
         .await
         .expect_err("the wallet check cannot read the balance");
     assert_eq!(review.code(), error_code::INTERNAL_OPERATION_FAILED);
+    // The corrupt lines are on the shared database and name no fleet or
+    // attempt the cleanup would reach: they go here, before the relay meets them.
+    sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1::uuid")
+        .bind(f.tenant.as_str())
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("the corrupt lines are removed");
     f.cleanup().await;
 }

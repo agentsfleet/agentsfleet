@@ -1,5 +1,5 @@
 //! A setup chat's report logs its usage lines and returns; the billing relay
-//! settles them once and releases the hold, whether the report races the
+//! settles them once, whether the report races the
 //! expiry sweep or the relay's biller cannot answer on its first pass.
 
 use super::{Attempt, Fixture, accounting, balance, fixture, report};
@@ -83,8 +83,7 @@ async fn a_report_racing_the_expiry_sweep_settles_once() {
 }
 
 /// A setup chat report logs its lines, settles the attempt and
-/// returns, and moves no money: the lines wait unsettled and the hold stays
-/// open for the relay.
+/// returns, and moves no money: the lines wait unsettled for the relay.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn a_report_logs_its_lines_and_leaves_them_to_the_relay() {

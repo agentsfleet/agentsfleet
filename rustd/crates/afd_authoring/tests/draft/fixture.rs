@@ -300,7 +300,7 @@ impl Fixture {
     }
 }
 
-/// The built-in biller over the suite's database: setup chat reserves, logs and
+/// The built-in biller over the suite's database: setup chat checks, logs and
 /// settles through it exactly as the daemon's does.
 pub(crate) fn ledger(db: &Db) -> Arc<dyn afd_billing::biller::Biller> {
     Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(

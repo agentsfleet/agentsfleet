@@ -111,7 +111,7 @@ The relay moves money in separate transactions, locking wallet → lines.
 
 Charge cumulative known usage once, with monotone counters and exact replay identity. Provider timeout/crash without trusted usage records `knowledge:"unknown"`, never an estimated zero; its lines are logged once accounting resolves, including after Stop.
 
-Current chat blocking considers attempts whose message sequence exceeds the draft's `cancelled_through_sequence`. Discovery and admission under the draft lock use that same rule. Stop releases publication authority for covered sequences, while their content-free attempts and holds retain accounting liability.
+Current chat blocking considers attempts whose message sequence exceeds the draft's `cancelled_through_sequence`. Discovery and admission under the draft lock use that same rule. Stop releases publication authority for covered sequences, while their content-free attempts retain accounting liability.
 
 A later message can claim only through normal runner capacity and balance checks. Retained liability can still consume either limit. Fence expiry alone never authorizes replacement or proves that provider billing stopped.
 

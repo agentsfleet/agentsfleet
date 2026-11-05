@@ -9,7 +9,7 @@
 use afd_billing::Nanos;
 use afd_billing::biller::conformance;
 use afd_billing::biller::{Account, Ask, Biller, Funds, WorkKey};
-use afd_billing::ledger::{log_lines, resettle};
+use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
 use afd_crypto::entropy::Entropy;
 use afd_db::test_util::mint_uuid7;
 use jiff::Timestamp;
@@ -203,11 +203,43 @@ const PARALLEL_RUNS: usize = 10;
 /// The balance those ten runs start against: three slices' worth.
 const THREE_SLICES: i64 = 3;
 
+/// A check of one slice for `work`.
+fn slice(payer: &Account, work: &WorkKey) -> Ask {
+    Ask {
+        work: work.clone(),
+        payer: payer.clone(),
+        next: LINE,
+    }
+}
+
+/// Every work's start check, made at once.
+async fn start_together(biller: &LedgerBiller, payer: &Account, works: &[WorkKey]) -> Vec<Funds> {
+    futures_util::future::join_all(works.iter().map(|work| {
+        let (biller, ask) = (biller.clone(), slice(payer, work));
+        async move { biller.check(&ask).await.expect("the start check answers") }
+    }))
+    .await
+}
+
+/// Each work logs the one slice it spent before its next check.
+async fn spend_a_slice_each(lane: &Lane, payer: &Account, works: &[WorkKey]) {
+    for work in works {
+        log_lines(
+            &mut *lane.pool.acquire().await.expect("the lane answers"),
+            &Entropy::new(),
+            Timestamp::now(),
+            &settlement(lane, payer, work, vec![rated(0)]),
+        )
+        .await
+        .expect("each run logs the slice it spent");
+    }
+}
+
 /// Ten runs start at the same moment against a balance that funds three of
 /// their slices. Nothing is set aside, so every start check is covered. Each
 /// run then spends one slice before its next check: the relay charges them
-/// all, the balance goes below zero by at most one slice per run, and every
-/// next check is refused until a grant repays the debt.
+/// all, the balance ends seven slices below zero, and every next check is
+/// refused until a grant repays the debt.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
@@ -222,33 +254,15 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
     let works: Vec<WorkKey> = (0..PARALLEL_RUNS)
         .map(|_| WorkKey::FleetLease(mint_uuid7()))
         .collect();
-    let ask = |work: &WorkKey| Ask {
-        work: work.clone(),
-        payer: payer.clone(),
-        next: LINE,
-    };
 
-    let starts = futures_util::future::join_all(works.iter().map(|work| {
-        let (biller, ask) = (biller.clone(), ask(work));
-        async move { biller.check(&ask).await.expect("the start check answers") }
-    }))
-    .await;
+    let starts = start_together(&biller, &payer, &works).await;
     assert!(
         starts.iter().all(|funds| *funds == Funds::Covered),
         "nothing is set aside, so every run starts: {starts:?}"
     );
-
-    for work in &works {
-        log_lines(
-            &mut *lane.pool.acquire().await.expect("the lane answers"),
-            &Entropy::new(),
-            Timestamp::now(),
-            &settlement(&lane, &payer, work, vec![rated(0)]),
-        )
-        .await
-        .expect("each run logs the slice it spent");
-    }
-    let before_relay = biller.check(&ask(&works[0])).await.expect("answers");
+    spend_a_slice_each(&lane, &payer, &works).await;
+    let first = works.first().expect("ten runs");
+    let before_relay = biller.check(&slice(&payer, first)).await.expect("answers");
     assert!(
         matches!(before_relay, Funds::Short { .. }),
         "the logged slices count before the relay charges them: {before_relay:?}"
@@ -264,13 +278,9 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
         start - spent,
         "every slice is charged once"
     );
-    assert!(
-        -owed.balance.as_i64() <= spent,
-        "the debt is at most one slice per run"
-    );
     for work in &works {
         assert_eq!(
-            biller.check(&ask(work)).await.expect("answers"),
+            biller.check(&slice(&payer, work)).await.expect("answers"),
             Funds::Short {
                 available: Nanos::ZERO,
                 asked: LINE
