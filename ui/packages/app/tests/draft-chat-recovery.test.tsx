@@ -47,6 +47,29 @@ it("keeps the composer open after a failure whose usage is unaccounted, and offe
   expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
 });
 
+it.each([false, true])("stops queued work from the composer's Stop button (cancellation fails: %s)", async (fails) => {
+  fixture.messages = [{...MESSAGE, state: "queued"}];
+  const base = fixture.fetch.getMockImplementation()!;
+  const cancellations: unknown[] = [];
+  fixture.fetch.mockImplementation(async (input, init) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (path.endsWith("/cancellations")) {
+      if (typeof init?.body !== "string") throw new Error("Expected cancellation JSON");
+      cancellations.push(JSON.parse(init.body));
+      if (fails) return response({user_message: "Stop could not be saved."}, 503);
+      fixture.draft = {...fixture.draft, cancelled_through: "1"};
+      fixture.messages = [{...MESSAGE, state: "cancelled"}];
+      return response({cancelled_through: "1", stopped: [{sequence: "1", state: "cancelled"}]});
+    }
+    return base(input, init);
+  });
+  await client.resume(DRAFT.id); render(<Live />);
+  fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
+  await waitFor(() => expect(cancellations).toEqual([{through_sequence: "1"}]));
+  if (fails) await waitFor(() => expect(client.getSnapshot().error).toBe("Stop could not be saved."));
+  else await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
+});
+
 it("persists cancellation requested through the assistant runtime", async () => {
   fixture.messages = [{...MESSAGE, state: "running"}];
   const base = fixture.fetch.getMockImplementation()!;
