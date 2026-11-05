@@ -83,6 +83,12 @@ pub struct LeasePayload<'a> {
     /// Absent on older leases or hosts without an enabled reviewed selection.
     #[serde(default)]
     pub decision: Option<Box<crate::decision::DecisionAssignment>>,
+    /// Native task ownership and saved recovery cursors, frozen at issuance.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<crate::task::TaskContext<'a>>,
+    /// Owner-authored task policy requires intent before any investigation or checkout.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub durable_tasks: bool,
     /// The fleet's memory window, as `GET /v1/runners/me/memory/{fleet_id}`
     /// returns it. A daemon that reads a report's `memory` sends it on every
     /// lease, an empty window included. It is absent when the read failed; the

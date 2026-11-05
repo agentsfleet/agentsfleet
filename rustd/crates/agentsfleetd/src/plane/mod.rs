@@ -136,6 +136,7 @@ impl ServingPlane {
             signup_writeback,
             broker,
             platform_admin_workspace,
+            checkpoint_storage,
             live,
             analytics,
             login,
@@ -145,6 +146,8 @@ impl ServingPlane {
             authoring_transport,
         } = parts;
         let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
+        let github_client = authoring_transport.guarded_client();
+        let task_master = Arc::clone(&kek);
         let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
         // One biller for every money path: fleet leases and setup chat reserve
         // against the same holds and settle into the same ledger (billing §11).
@@ -159,6 +162,7 @@ impl ServingPlane {
             &providers,
             &admissions,
             authoring_transport,
+            platform_admin_workspace.as_ref(),
         );
         let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
@@ -177,7 +181,7 @@ impl ServingPlane {
                 slack_api_base,
             },
         );
-        let leases = lease_plane(
+        let mut leases = lease_plane(
             database.clone(),
             queue.clone(),
             kek,
@@ -186,14 +190,20 @@ impl ServingPlane {
             broker,
             biller,
         );
+        let storage = checkpoint_storage.zip(platform_admin_workspace.clone()).map(|(config, admin)|
+            afd_fleet::task::storage::R2CheckpointStore::new(config, admin,
+                Vault::new(database.clone(), Arc::clone(&task_master), Entropy::new()), Arc::clone(&task_master), github_client.clone()));
         let tasks = afd_fleet::task::Tasks::new(
             leases.leases.clone(),
             task_admissions,
             afd_fleet::task::TaskDependencies {
                 admin_workspace: platform_admin_workspace.clone(),
+                storage,
+                github: Some(afd_fleet::task::Github::new(leases.clone(), github_client, task_master)),
                 ..afd_fleet::task::TaskDependencies::from(&leases)
             },
         );
+        leases.task_reports = Some(Arc::new(tasks.clone()));
         Self {
             authoring,
             tenant,
@@ -239,6 +249,7 @@ fn lease_plane(
 ) -> Plane {
     let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
     Plane {
+        task_reports: None,
         leases: Leases::new(database.clone(), queue.clone(), Entropy::new())
             .with_doorbell(doorbell),
         gates: Gates::new(database.clone(), queue, Entropy::new()),

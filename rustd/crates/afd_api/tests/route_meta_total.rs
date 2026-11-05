@@ -89,7 +89,7 @@ const AUTHORING_CONTEXT_ADDITIONS: usize = 1;
 const RETIRED_WEBHOOK_ROUTES: usize = 1;
 
 /// Current-work collection/detail and lease-scoped decision reservation/receipt.
-const DURABLE_TASK_ADDITIONS: usize = 4;
+const DURABLE_TASK_ADDITIONS: usize = 16;
 
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES

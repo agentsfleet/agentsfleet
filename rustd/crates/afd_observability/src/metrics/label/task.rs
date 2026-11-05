@@ -7,6 +7,8 @@ closed_set! {
     TaskOperation {
         /// Atomically accept or replay a complete interpretation.
         Bind => "bind",
+        /// Accept explicitly reviewed completion wording for existing work.
+        AdoptGoal => "adopt_goal",
         /// Read an authorized task snapshot.
         Read => "read",
         /// Suspend future work.
@@ -21,6 +23,38 @@ closed_set! {
         DecisionRecord => "decision_record",
         /// Release reservations natively proved unsent after their deadline.
         DecisionSweep => "decision_sweep",
+        /// Acknowledge accepted input at its original obligation.
+        InputReceipt => "input_receipt",
+        /// Allocate and issue one native exact-head publication.
+        EffectPublish => "effect_publish",
+        /// Reconcile/read immutable publication history.
+        EffectRead => "effect_read",
+        /// Reconcile admitted writes with expiring read custody.
+        EffectSweep => "effect_sweep",
+        /// Allocate a complete checkpoint plan.
+        CheckpointPlan => "checkpoint_plan",
+        /// Read or freeze an immutable bounded manifest page.
+        CheckpointPage => "checkpoint_page",
+        /// Reserve unique native object ownership and quota.
+        CheckpointRegister => "checkpoint_register",
+        /// Authorize, verify or page private object transfers.
+        CheckpointTransfer => "checkpoint_transfer",
+        /// Renew capture or restore ownership.
+        CheckpointPin => "checkpoint_pin",
+        /// Commit a complete recoverable generation.
+        CheckpointCommit => "checkpoint_commit",
+        /// Retain private owners and reconcile remote purges.
+        CheckpointSweep => "checkpoint_sweep",
+        /// Prepare recorded goal and independently read dependency evidence.
+        ReportPrepare => "report_prepare",
+        /// Commit a native task disposition beside its financial report.
+        ReportCommit => "report_commit",
+        /// Observe one native dependency without allocating agent work.
+        WaitRead => "wait_read",
+        /// Advance bounded native wait maintenance.
+        WaitSweep => "wait_sweep",
+        /// Retain and match a verified workflow completion.
+        CompletionMatch => "completion_match",
     }
 }
 

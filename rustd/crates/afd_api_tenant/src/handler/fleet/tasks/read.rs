@@ -90,10 +90,7 @@ pub(crate) async fn one<D: Services>(
         .read(&scope, &task)
         .await
         .map_err(Refusal::at(EVENT_READ))?;
-    let tag = afd_core::etag::compute(&[
-        Some(task.as_str().as_bytes()),
-        Some(&saved.resource_version.to_be_bytes()),
-    ]);
+    let tag = saved.etag();
     let unchanged = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|value| value.to_str().ok())
@@ -101,13 +98,7 @@ pub(crate) async fn one<D: Services>(
     let response = if unchanged {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
-        Json(TaskResponse {
-            title: Cow::Owned(saved.title),
-            resource_version: saved.resource_version,
-            setup_revision: saved.accepted_revision_number,
-            context: saved.context,
-        })
-        .into_response()
+        render_one(saved)
     };
     Ok((
         [
@@ -146,4 +137,22 @@ fn render(page: TaskPage) -> TasksResponse<'static> {
             .collect(),
         next_cursor,
     }
+}
+
+pub(super) fn render_one(saved: afd_fleet::task::TaskSnapshot) -> Response {
+    let tag = saved.etag();
+    (
+        [
+            (header::ETAG, tag.clone()),
+            (header::CACHE_CONTROL, "private, no-cache".to_owned()),
+        ],
+        Json(TaskResponse {
+            etag: Cow::Owned(tag),
+            title: Cow::Owned(saved.title),
+            resource_version: saved.resource_version,
+            setup_revision: saved.accepted_revision_number,
+            context: saved.context,
+        }),
+    )
+        .into_response()
 }

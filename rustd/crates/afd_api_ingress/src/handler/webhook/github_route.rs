@@ -32,7 +32,7 @@ use crate::services::{Services, WebhookIngress as _};
 use afd_http::handler::{FleetPath, parse_fleet_id};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
-use super::github::{Ingest, Policy, classify};
+use super::github::{Ingest, Policy};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_github_append_failed";
@@ -120,10 +120,13 @@ pub(crate) async fn receive<D: Services>(
         return Ok(ignored(webhook::REASON_FLEET_PAUSED));
     }
 
-    let ingest =
-        classify(Policy::Manual, &event, &proven.body, services.now()).map_err(|_unreadable| {
-            Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER)
-        })?;
+    let delivery = super::github::Delivery::read(&event, &proven.body).map_err(|_unreadable|
+        Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?;
+    let scope = afd_fleet::task::TaskScope { fleet_id: fleet.clone(), workspace_id: proven.binding.workspace().clone() };
+    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Fleet(scope), delivery_id.clone()) {
+        services.tasks().record_github_completion(&completion).await.map_err(Refusal::at(EVENT_APPEND))?;
+    }
+    let ingest = delivery.classify(Policy::Manual, services.now());
 
     let digest = match ingest {
         Ingest::Accept(digest) => digest,

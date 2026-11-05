@@ -50,4 +50,31 @@ pub(super) const TASK: &[Problem] = &[
             "The fleet could not assess this request. Your message has been retained.",
         ),
     },
+    Problem {
+        code: error_code::TASK_PRECONDITION_FAILED,
+        status: 412,
+        title: "Task version changed",
+        hint: "Read the current task and retry the control with its strong ETag and generation.",
+        user_message: Some("This task changed. Refresh its progress before applying your control."),
+    },
+    Problem {
+        code: error_code::TASK_CHECKPOINT_INCOMPATIBLE, status: 409, title: "Checkpoint is incompatible",
+        hint: "Retain the prior checkpoint. Restore only a verified compatible complete generation.",
+        user_message: Some("Saved work could not be restored safely. The previous checkpoint is retained."),
+    },
+    Problem {
+        code: error_code::TASK_INPUT_AMBIGUOUS, status: 409, title: "Input needs clarification",
+        hint: "Retain the original complete message. Ask the person to clarify before changing work.",
+        user_message: Some("The fleet needs clarification before changing that work."),
+    },
+    Problem {
+        code: error_code::TASK_STORAGE_UNAVAILABLE, status: 503, title: "Checkpoint storage unavailable",
+        hint: "Retry the authorized transfer within its original deadline. Do not mark incomplete work saved.",
+        user_message: Some("Work could not be saved to storage yet."),
+    },
+    Problem {
+        code: error_code::TASK_EFFECT_UNCERTAIN, status: 409, title: "Publication needs reconciliation",
+        hint: "Read the saved effect. Never repeat an uncertain publication as a new operation.",
+        user_message: Some("The publication result is being checked before work continues."),
+    },
 ];

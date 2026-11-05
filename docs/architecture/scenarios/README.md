@@ -11,6 +11,7 @@ Each scenario follows one user outcome from its trigger to its result. Each page
 | [`slack-incident-responder.md`](./slack-incident-responder.md) | A mention in a failed Continuous Integration (CI) run's Slack thread reaches exactly one fleet, which answers in that thread with GitHub and Grafana evidence; asked to, the channel's repairer opens one draft fix Pull Request (PR). Zero, one, and several fleets per channel. Built in M206; the live drill is pending. |
 | [`durable-repair.md`](./durable-repair.md) | Approved Durable Task design: configurable intent/goal decisions, authorized existing-PR repairs, later-CI continuation and worker recovery. Grafana monitoring supplies the incident variant; runtime integration and acceptance remain pending. |
 | [`durable-tasks-three-prs.md`](./durable-tasks-three-prs.md) | Three proposed Linkwarden tasks across caller messages, human steering, unknown publication, worker loss and signed/fallback triggers; maps existing/proposed Rust types and APIs. |
+| [`fleet-to-fleet.md`](./fleet-to-fleet.md) | Proposed: one fleet steers another by id through the existing steer path, and reads other fleets' status and answers with no API key. A chief-of-staff fleet and the responder-to-repairer crew. M239_001 owns the proofs. |
 
 The durable-repair scenario extends the current manual Slack/draft path; it does not mark that extension shipped.
 Production launch follows written M23x specifications and demonstrated development autonomy.

@@ -2,6 +2,7 @@
 
 import { Option } from "effect";
 import { Command, Flag } from "effect/cli";
+import { taskCommand } from "./task.command.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { OPT_TTY } from "../../constants/cli-flags.ts";
 import {
@@ -106,7 +107,7 @@ export const fleetCommand = Command.make("fleet").pipe(
     "Lifecycle commands are listed by agentsfleet --help.",
   ),
   Command.withShortDescription("Fleet management subcommands"),
-  Command.withSubcommands([fleetShowCommand]),
+  Command.withSubcommands([fleetShowCommand, taskCommand]),
 );
 
 // ── lifecycle verbs ─────────────────────────────────────────────────

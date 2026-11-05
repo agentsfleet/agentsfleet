@@ -6,7 +6,7 @@ use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
 
 use super::INSERT_LINES;
-use crate::Result;
+use crate::{Result, Nanos};
 use crate::biller::{Attribution, Settlement};
 use crate::error::{charge_overflow, query};
 use crate::price::RatedLine;
@@ -20,6 +20,9 @@ const CONTEXT_LOG: &str = "log usage lines";
 /// roll back together; a biller settles them after commit. A line already
 /// logged under its `(work, seq)` is left as it is, so a retried report and the
 /// built-in biller's own call both land each line once.
+/// Returns only newly inserted coding-request cost, excluding runtime and
+/// decision sequence ranges. Task accounting can consume this exact delta
+/// without rescanning history or assuming requests finish in sequence order.
 ///
 /// # Errors
 /// The statement would not run, or a row id could not be minted.
@@ -28,9 +31,9 @@ pub async fn log_lines<'e>(
     entropy: &Entropy,
     now: Timestamp,
     settlement: &Settlement,
-) -> Result<()> {
+) -> Result<Nanos> {
     if settlement.lines.is_empty() {
-        return Ok(());
+        return Ok(Nanos::ZERO);
     }
     let ids = settlement
         .lines
@@ -55,7 +58,7 @@ pub async fn log_lines<'e>(
         .iter()
         .map(|line| i64::try_from(line.unpriced_tokens).map_err(|_overflow| charge_overflow()))
         .collect::<Result<Vec<i64>>>()?;
-    sqlx::query(INSERT_LINES)
+    let model_nanos: i64 = sqlx::query_scalar(INSERT_LINES)
         .bind(ids)
         .bind(settlement.work.work_type())
         .bind(settlement.work.id().as_str())
@@ -90,10 +93,11 @@ pub async fn log_lines<'e>(
         }))
         .bind(unpriced)
         .bind(column(lines, |line| line.charged.as_i64()))
-        .execute(executor)
+        .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+        .fetch_one(executor)
         .await
         .map_err(query(CONTEXT_LOG))?;
-    Ok(())
+    Ok(Nanos::from_i64(model_nanos))
 }
 
 /// One column of `lines`, for an `unnest` bind.

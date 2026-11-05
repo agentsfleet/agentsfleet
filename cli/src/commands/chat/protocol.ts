@@ -71,7 +71,7 @@ export const ScheduleSchema = Schema.Struct({
 });
 export const FleetSchema = Schema.Struct({
   id: Schema.String, name: Schema.String, status: Schema.String, etag: Schema.String,
-  setup_etag: Schema.String, setup_revision: decimal,
+  setup_etag: Schema.String, setup_revision: decimal, setup_revision_id: Schema.String,
   setup: Schema.Struct({state: Schema.String, checks: Schema.Array(check)}),
   start: object, schedules: Schema.Array(ScheduleSchema),
 });

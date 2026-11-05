@@ -45,7 +45,7 @@ pub(super) fn routing(
     Ok(questions)
 }
 
-pub(super) fn completion(policy: &DecisionPolicy) -> Result<Vec<NamedQuestion>> {
+pub(in crate::task) fn completion(policy: &DecisionPolicy) -> Result<Vec<NamedQuestion>> {
     policy
         .completion()
         .statements()

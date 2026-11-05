@@ -39,7 +39,7 @@ pub use self::decision::DecisionPolicy;
 pub use self::gates::{Behavior, DEFAULT_TIMEOUT, GatePolicy, GateRule};
 pub use self::policy::http_egress::HttpEgress;
 pub use self::policy::{ContextBudget, Network};
-pub use self::repository::{Access, Reach, Recorded, RepositoryBinding};
+pub use self::repository::{Access, Reach, Recorded, RepositoryBinding, RepositoryPublication, ValidationWorkflow};
 pub use self::trigger::{
     ChannelId, Cron, KIND_CRON, KIND_MENTION, KIND_WEBHOOK, Mention, TRIGGER_KINDS, Trigger,
     VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WEBHOOK_SOURCE_GITHUB,
@@ -65,7 +65,7 @@ const REASON_UNSUPPORTED_KEY: &str = "unsupported configuration key";
 /// [`raw::Runtime`] struct, so there is no second copy of these twelve strings
 /// to drift into disagreement with it.
 /// `every_runtime_key_is_accepted_by_the_schema` proves this list still agrees.
-const RUNTIME_KEYS: [&str; 12] = [
+const RUNTIME_KEYS: [&str; 14] = [
     TRIGGERS,
     TOOLS,
     "credentials",
@@ -77,6 +77,8 @@ const RUNTIME_KEYS: [&str; 12] = [
     "repositories",
     "repository_access",
     "repository_base",
+    "repository_publication",
+    "repository_validation_workflows",
     "decision_policy",
 ];
 
@@ -111,6 +113,15 @@ pub struct FleetConfig {
 }
 
 impl FleetConfig {
+    /// Goal adoption can change owner wording while retaining every execution policy bound.
+    #[must_use]
+    pub fn same_task_authority(&self, other: &Self) -> bool {
+        let mut compared = self.clone();
+        compared.name = other.name.clone();
+        compared.decision_policy = other.decision_policy.clone();
+        compared == *other
+    }
+
     /// Reads a document being authored now.
     ///
     /// # Errors

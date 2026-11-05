@@ -62,7 +62,8 @@ pub fn build<'a>(
         .flat_map(|repository| read::rules(repository))
         .collect();
 
-    if let Reach::Write { base } = binding.reach() {
+    if let Reach::Write { base } = binding.reach()
+        && binding.publication() == afd_fleet_runtime::config::RepositoryPublication::EventDraft {
         requests.extend(write::rules(binding, base, repair_branch)?);
     }
 

@@ -21,6 +21,7 @@
 //! opened a listening socket.
 
 mod config;
+mod checkpoint;
 #[cfg(test)]
 mod knob_tests;
 mod knobs;
@@ -30,6 +31,7 @@ mod read;
 mod stream_ceiling_tests;
 
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
+pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
 pub use afd_otlp::{
     OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
 };
@@ -89,6 +91,7 @@ struct Readings {
     deployment: Box<str>,
     identity: Option<IdentityConfig>,
     platform_admin_workspace: Option<Uuid7>,
+    checkpoint_storage: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
 }
 
 /// Reads every knob in fault order, pushing a fault for each one that is
@@ -119,6 +122,7 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     // only the second pushed a fault — which is why `Readings::admit` reads the
     // fault list rather than this value to decide whether boot proceeds.
     let platform_admin_workspace = read::platform_admin_workspace(env, faults);
+    let checkpoint_storage = checkpoint::read(env, faults, platform_admin_workspace.as_ref());
     Readings {
         api_pool,
         redis,
@@ -132,6 +136,7 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
         deployment,
         identity,
         platform_admin_workspace,
+        checkpoint_storage,
     }
 }
 
@@ -203,6 +208,7 @@ impl Readings {
             deployment,
             identity,
             platform_admin_workspace,
+            checkpoint_storage,
         } = self;
         match (
             api_pool,
@@ -228,6 +234,7 @@ impl Readings {
                 api_url: deployment,
                 identity,
                 platform_admin_workspace,
+                checkpoint_storage,
                 qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
                 qstash_url: optional(env, QSTASH_URL_KNOB),
                 slack_api_url,

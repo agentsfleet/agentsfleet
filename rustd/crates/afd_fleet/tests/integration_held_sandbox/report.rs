@@ -23,6 +23,7 @@ use crate::support::Fixtures;
 /// `held_until`.
 pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportRequest<'_> {
     ReportRequest {
+        task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),
         fencing_token: held.fence.as_u64(),

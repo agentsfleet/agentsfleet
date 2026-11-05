@@ -14,3 +14,14 @@ pub const TASK_INVALID_TARGET: ErrorCode = ErrorCode::declare("UZ-DT-004");
 pub const TASK_LIMIT_EXHAUSTED: ErrorCode = ErrorCode::declare("UZ-DT-005");
 /// A reviewed decision profile, confirmed funding or its platform key is unavailable.
 pub const TASK_DECISION_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-DT-006");
+/// Ambiguous intent or association requires clarification before changing work.
+pub const TASK_INPUT_AMBIGUOUS: ErrorCode = ErrorCode::declare("UZ-DT-007");
+/// The retained checkpoint cannot safely restore this task generation.
+pub const TASK_CHECKPOINT_INCOMPATIBLE: ErrorCode = ErrorCode::declare("UZ-DT-008");
+/// Checkpoint storage or a registered immutable object is unavailable.
+pub const TASK_STORAGE_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-DT-009");
+/// Publication may have happened; reconcile its immutable intent before continuing.
+pub const TASK_EFFECT_UNCERTAIN: ErrorCode = ErrorCode::declare("UZ-DT-010");
+
+/// A conditional task mutation named an old resource version.
+pub const TASK_PRECONDITION_FAILED: ErrorCode = ErrorCode::declare("UZ-DT-013");

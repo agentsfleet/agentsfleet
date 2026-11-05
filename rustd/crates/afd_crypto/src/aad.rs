@@ -31,6 +31,28 @@ const SEPARATOR: u8 = 0x1f;
 pub struct Aad(Vec<u8>);
 
 impl Aad {
+    /// Separately wrapped content-identity key; repository bytes are length-safe hex.
+    #[must_use]
+    pub fn checkpoint_identity(workspace: &afd_core::id::Uuid7, identity: &afd_core::id::Uuid7,
+        repository: &str, key_version: i32, kek_version: i32) -> Self {
+        let mut bytes = b"\0agentsfleet.checkpoint-identity.v1\0".to_vec();
+        for field in [workspace.as_str().to_owned(), identity.as_str().to_owned(), hex::encode(repository),
+            key_version.to_string(), kek_version.to_string()] {
+            bytes.extend_from_slice(field.as_bytes()); bytes.push(0);
+        }
+        Self(bytes)
+    }
+
+    /// Domain-separated ephemeral read custody for one issued external effect.
+    #[must_use]
+    pub fn effect_recovery(workspace: &afd_core::id::Uuid7, effect: &afd_core::id::Uuid7) -> Self {
+        let mut bytes = b"\0agentsfleet.effect-recovery.v1\0".to_vec();
+        bytes.extend_from_slice(workspace.as_str().as_bytes()); bytes.push(0);
+        bytes.extend_from_slice(effect.as_str().as_bytes()); bytes.push(0);
+        bytes.extend_from_slice(KEK_VERSION.to_string().as_bytes());
+        Self(bytes)
+    }
+
     /// Builds associated data for the current KEK version.
     #[must_use]
     pub fn new(workspace_id: &str, key_name: &str) -> Self {

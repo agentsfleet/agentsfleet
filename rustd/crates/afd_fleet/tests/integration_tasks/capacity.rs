@@ -62,7 +62,8 @@ async fn capacity(case: &Case) {
         .control(
             scope,
             queued,
-            queued_snapshot.resource_version,
+            &queued_snapshot.etag(),
+            queued_snapshot.context.generation,
             TaskControl::Cancel,
         )
         .await

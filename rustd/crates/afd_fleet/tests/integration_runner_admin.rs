@@ -250,6 +250,7 @@ async fn assert_degraded(fixtures: &Fixtures, runner: &str, degraded: &str, reas
 /// heartbeat from a fully capable host would.
 async fn store_full_capability(fixtures: &Fixtures, runner: &str) {
     let capability = serde_json::to_string(&CapabilityReport {
+        durable_tasks_v1: false,
         build_id: None,
         landlock: true,
         seccomp: true,

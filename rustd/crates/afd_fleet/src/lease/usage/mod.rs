@@ -8,6 +8,8 @@
 //! as the [`Settlement`] the lease's transaction logs and its biller settles
 //! after commit (billing §11).
 
+mod original;
+
 use afd_billing::Nanos;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
@@ -239,11 +241,12 @@ pub(crate) async fn log_measured(
     entropy: &afd_crypto::entropy::Entropy,
     now: Timestamp,
     settlement: Option<&Settlement>,
-) -> Result<()> {
+) -> Result<bool> {
     if let Some(settled) = settlement {
-        afd_billing::ledger::log_lines(connection, entropy, now, settled).await?;
+        let fresh = afd_billing::ledger::log_lines(&mut *connection, entropy, now, settled).await?;
+        return crate::task::usage::record(connection, settled.work.id().as_str(), fresh).await;
     }
-    Ok(())
+    Ok(true)
 }
 
 /// A non-negative count as the line type holds it, saturating rather than

@@ -44,6 +44,7 @@ pub struct BootConfig {
     pub(super) api_url: Box<str>,
     pub(super) identity: IdentityConfig,
     pub(super) platform_admin_workspace: Option<Uuid7>,
+    pub(super) checkpoint_storage: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
     pub(super) qstash_token: Option<afd_crypto::secret::SecretString>,
     pub(super) qstash_url: Option<Box<str>>,
     pub(super) slack_api_url: Option<Box<str>>,
@@ -74,6 +75,12 @@ pub struct PostHogConfig {
 }
 
 impl BootConfig {
+    /// Private storage configuration resolved before opening any connection.
+    #[must_use]
+    pub const fn checkpoint_storage(&self) -> Option<&garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>> {
+        self.checkpoint_storage.as_ref()
+    }
+
     /// Settings for the API role's Postgres pool.
     #[must_use]
     pub const fn api_pool(&self) -> &PoolConfig {

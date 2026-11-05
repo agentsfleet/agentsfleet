@@ -33,6 +33,7 @@
 
 pub mod aad;
 pub mod checkpoint;
+pub mod checkpoint_digest;
 pub mod entropy;
 pub mod envelope;
 pub mod error;

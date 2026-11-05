@@ -67,6 +67,15 @@ The proposed limits and performance still need workload measurements before any 
 
 ## Setup and request interpretation
 
+Setup wording is user-authored through chat. Selecting a starter inserts editable text into the composer; daemon-owned Markdown templates do not supply fleet instructions or decision criteria.
+The setup tool schema describes native fields and supported values. A short system envelope carries current candidate/save state and the distinction between conversation and a requested edit.
+Before returning an edit proposal, the daemon evaluates the newest persisted user message with the runner's configured decision model. It asks only: “Does this message ask to change the fleet's setup (instructions, configuration, name, schedule or access)?”
+A no answer uses `ProposalRejection::EditNotRequested`; yes permits ordinary validation. Unavailable, stale or malformed decisions record a bounded fallback and retain current chat behavior.
+The existing `DecisionEvaluator`/`DecisionClient` handles the physical request; the runner catalogue resolver supplies its reviewed profile, and platform-admin Secrets supply fresh credentials.
+A native `authoring.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text. It commits physical intent before sending and preserves frozen decision pricing and usage independently of private chat deletion.
+The per-call reservation is provisional, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum; actual provider usage remains authoritative. Further decision checks stop on unresolved usage or overage. Decision charges use the existing biller, `AuthoringAttempt` work key and `SetupChat` attribution, with a distinct usage-line sequence. An unresolved physical check retains its reservation without blocking the conversational reply.
+No new task scheduler, setup-chat admission SQL or question-authoring decision path is introduced.
+
 Setup chat or CLI authoring drafts `instructions_md` and the fleet owner's editable `decision_policy` through the existing private flow.
 Saving setup establishes a fleet revision and capability ceiling; it does not create arbitrary future repair work.
 An explicit initial-work request can enter admission after activation under the existing start rules.
@@ -187,7 +196,7 @@ Fleet deletion fences access immediately; checkpoint cleanup follows the authori
 
 ## Existing pull request publication
 
-The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base.
+The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base. The reviewed setup explicitly selects `repository_publication: existing_pr`; omission retains event-owned draft publication. Model-visible GitHub egress remains read-only in existing-PR mode; the native publisher alone may advance its bound branch. Native target preparation reuses the current lease-plane credential mint, standing grants and repository binding.
 It refuses fork heads, default/protected target branches and workflow edits.
 Repository workflow review must establish validation-only push effects for the controlled demonstration.
 
@@ -418,11 +427,11 @@ Every task API has served-route ownership, stale-fence, replay, malformed-body a
 Generate OpenAPI from wire/source definitions after route inventory and route-count tests are updated.
 
 Use new public error family `UZ-DT`: 001 not found, 002 stale state, 003 replay conflict, 004 invalid target and 005 exhausted limits.
-Use 006 ambiguous input, 007 decision unavailable, 008 incompatible checkpoint, 009 storage unavailable and 010 publication uncertain.
-Use 011 busy control boundary and 012 protocol incompatible; register codes and problem types only with their implementation.
+Use 006 decision unavailable, 007 ambiguous input, 008 incompatible checkpoint, 009 storage unavailable and 010 publication uncertain.
+Use 011 busy control boundary and 012 protocol incompatible; register codes and problem types only with their implementation. Task controls use 013 for a stale resource tag (412) and the existing shared `UZ-AUTHOR-004` precondition code for a missing tag (428).
 
 Map missing children to 404, stale/replay/target/checkpoint/protocol conflicts to 409, limits to 429 and unavailable decision/storage to 503.
-Ambiguous input is a normal clarification response; code 006 is reserved for malformed explicit association requests with HTTP 409.
+Ambiguous input is a normal clarification response; code 007 is reserved for malformed explicit association requests with HTTP 409.
 Publication uncertainty returns 409 with code 010 and a recorded unknown effect; a later authorized read can report its reconciliation result.
 
 ### What the runner uses each collection for
@@ -463,6 +472,7 @@ Wire records remain validated data rather than gaining a trait for each field.
 |---|---|
 | `afd_fleet/src/task/{mod,admit,input,wait,effect,limits}.rs` | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native admission staging and lease fences with real database tests. |
 | `afr_providers/src/decision/{mod,client,wire,types}.rs` | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
+| `afr_tools/src/verbs/`; `afr_supervisor/src/{verbs/,client/task/}` | Extend the existing `LeaseVerbs` with bounded native input/binding/receipt/decision/effect calls. `FencedVerbs` supplies its own lease fence. The root receives an accounted `DecisionEvaluation`, never dispatch keys. Native checkpoint calls stay with supervisor recovery. The existing closed `Verb` vocabulary owns methods and diagnostic names; calls reuse `ControlPlane` and `RunnerApi`. |
 | `afr_supervisor/src/recovery/{mod,capture,restore,manifest}.rs` | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
 | Planned `storage` module under `afd_fleet/src/task/` | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
 | `afd_wire/src/task/`, `afd_wire/src/decision/` | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
@@ -528,6 +538,8 @@ Never exhaust the development host's memory or disk to simulate a workload failu
 Kernel-only proof remains explicitly separate when its required host capability is unavailable.
 
 ### Durable performance investigations
+
+New task reads pair their actual scope and keyset ordering with indexes: pending input seeks the existing unsettled fleet/sequence index, and unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history. Setup edit checks use their existing unique attempt/usage-sequence index; a duplicate attempt-only index is unnecessary. Account and replay lookups stay point or bounded per-attempt reads. Query-plan measurements, queue-depth cases and hostile-history cases remain part of final verification; adding LIMIT does not prove a bounded scan.
 
 A later DT can investigate an `agentsfleet` performance regression through bounded Grafana reads and authorized repository work.
 Keep this evidence available while implementing M236; a duration total alone cannot explain where work slowed.
@@ -700,6 +712,15 @@ The cap of 16 unfinished DTs bounds stored work and intent candidates, not simul
 It is a proposed initial product limit and needs workload evidence before any claim that it is optimal.
 
 ### User-visible decisions and transfer progress
+
+Indy requires chat and CLI activity comparable to the Codex app's readable work timeline.
+Show concise progress explanations and distinct action/result rows, with expandable command output, file diffs and supporting evidence.
+Keep local edits separate from confirmed publication, and show the exact commit whose checks are pending.
+Capture progresses through scanning, encryption, upload and verification; only a committed manifest permits a saved label.
+Restore names the selected checkpoint and verifies compatibility before reporting readiness.
+Retries preserve native activity identity and do not inflate transfer counters; reconnects recover confirmed history.
+Keep unchanged waits quiet, surface meaningful state changes and name the next recovery action after failure or uncertainty.
+Credentials and private internal reasoning stay outside this presentation; bounded explanations describe decisions and observable work.
 
 Show activity in browser chat and the attached command-line interface (CLI), with the same native task/admission identities.
 Decision dispatch emits a started state; validated routing, failure or goal assessment emits the corresponding completed state.

@@ -19,9 +19,9 @@ pub(super) async fn prepare(
     continuations: Vec<continuation::Continuation>,
     editing: bool,
 ) -> Result<(Prepared, Snapshot)> {
-    let save =
-        crate::message::save_requested(connection, &attempt.draft_id, attempt.message_sequence)
-            .await?;
+    let save = crate::message::accepted(connection, &attempt.draft_id, attempt.message_sequence)
+        .await?
+        .save_requested;
     let model = &attempt.model_snapshot;
     let settings = model.inference.as_ref().ok_or(ErrorKind::Model)?;
     let context =

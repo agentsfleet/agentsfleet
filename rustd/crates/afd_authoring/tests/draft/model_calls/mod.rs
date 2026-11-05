@@ -8,6 +8,7 @@ mod concurrency;
 mod corrections;
 mod counting;
 mod deadline;
+mod edit_intent;
 mod fixture;
 mod lapse;
 mod late_results;

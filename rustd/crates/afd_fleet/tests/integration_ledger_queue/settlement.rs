@@ -71,7 +71,7 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
         .expect("supersede admission");
     assert!(matches!(
         commit(&held).await.expect("fenced report"),
-        Committed::Fenced
+        Committed::Fenced { .. }
     ));
     assert_nothing_landed(&held, "the admission fence changed").await;
     assert!(

@@ -89,6 +89,7 @@ pub(crate) fn report<'a>(
     });
     let tokens = result.map_or_else(|| meter.read().total(), |result| result.token_count);
     ReportRequest {
+        task: None,
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),
         fencing_token: lease.fencing_token,

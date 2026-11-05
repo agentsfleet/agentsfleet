@@ -49,6 +49,7 @@ const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a work
 #[must_use]
 pub fn capability_report(probe: &HostProbe) -> CapabilityReport<'_> {
     CapabilityReport {
+        durable_tasks_v1: false,
         build_id: afd_core::build::SOURCE_ID.map(Cow::Borrowed),
         landlock: probe.landlock,
         seccomp: probe.seccomp,

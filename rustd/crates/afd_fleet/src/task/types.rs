@@ -20,6 +20,43 @@ pub struct DecisionMaintenance {
     pub oldest_overdue_ms: u64,
 }
 
+/// Native exact-effect evidence reads never create another publication or agent lease.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EffectMaintenance {
+    /// Retained read capabilities examined by this pass.
+    pub scanned: u64,
+    /// Exact marker, parent and tree confirmed by GitHub.
+    pub confirmed: u64,
+    /// Absence retained as uncertainty.
+    pub unknown: u64,
+    /// Expired encrypted read capabilities erased without a false refusal.
+    pub expired: u64,
+    /// Deferred read/record failures.
+    pub failed: u64,
+}
+
+/// Bounded private retention and acknowledged storage cleanup.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CheckpointMaintenance {
+    /// Obsolete private checkpoint generations removed.
+    pub owners: u64,
+    /// Unreferenced retained bases removed.
+    pub bases: u64,
+    /// Unreferenced object keys erased into durable purge custody.
+    pub objects: u64,
+    /// Remote deletions acknowledged and quota released once.
+    pub purged: u64,
+    /// Remote cleanup attempts deferred for later reconciliation.
+    pub deferred: u64,
+}
+
+/// Local fairness cursor; it carries no task authority or queued work.
+#[derive(Debug, Default)]
+pub struct CheckpointMaintenanceCursor {
+    pub(super) after: Option<(jiff::Timestamp, String)>,
+    pub(super) cutoff: Option<jiff::Timestamp>,
+}
+
 /// Local scan progress, retained by the existing supervised billing loop.
 ///
 /// This carries no task authority. Advancing before an attempt allows the next
@@ -71,7 +108,8 @@ pub struct PreparedPlan {
     pub(super) source_admission_id: Uuid7,
     pub(super) accepted_revision_id: Uuid7,
     pub(super) digest: String,
-    pub(super) items: Vec<PreparedTask>,
+    pub(super) items: Vec<super::PreparedItem>,
+    pub(super) authorization: Option<afd_wire::task::TaskBindingsInput>,
 }
 
 /// One atomic plan's native item identities in their original order.
@@ -79,6 +117,8 @@ pub struct PreparedPlan {
 pub struct TaskBindings {
     /// Stable task and item associations for every accepted action.
     pub items: Vec<TaskBinding>,
+    /// Native objective attached to this lease after the complete binding.
+    pub current_task: Option<TaskContext<'static>>,
     /// True when the complete original interpretation was recovered.
     pub replayed: bool,
 }
@@ -89,7 +129,15 @@ pub struct TaskBinding {
     /// Stable identity of the interpreted source item.
     pub item_id: Uuid7,
     /// Stable objective owner across all its execution leases.
-    pub task_id: Uuid7,
+    pub task_id: Option<Uuid7>,
+    /// Current generation, without granting execution of another task.
+    pub task_generation: Option<u64>,
+    /// Native route, without inventing a task for conversational input.
+    pub action: afd_wire::task::TaskInputAction,
+    /// Current execution may apply the accepted item at its next safe boundary.
+    pub applies_here: bool,
+    /// Per-task accepted input order, absent for a new goal or conversation.
+    pub input_sequence: Option<u64>,
 }
 
 /// A native workspace read, including the version used by public `ETags`.
@@ -103,6 +151,17 @@ pub struct TaskSnapshot {
     pub resource_version: u64,
     /// Human-readable immutable setup revision number.
     pub accepted_revision_number: u64,
+}
+
+impl TaskSnapshot {
+    /// Strong resource tag shared by reads and conditional controls.
+    #[must_use]
+    pub fn etag(&self) -> String {
+        afd_core::etag::compute(&[
+            Some(self.context.task_id.as_bytes()),
+            Some(&self.resource_version.to_be_bytes()),
+        ])
+    }
 }
 
 /// One bounded page of unfinished work, newest creation time and identity first.
@@ -163,4 +222,15 @@ impl TaskControl {
             Self::Cancel => TaskState::Cancelled,
         }
     }
+}
+
+/// An explicit human adoption, separate from lifecycle state and execution authority.
+#[derive(Debug, Clone)]
+pub struct TaskAdoption {
+    /// Reviewed immutable fleet setup containing the new completion wording.
+    pub goal_revision_id: Uuid7,
+    /// Stable operation identity for idempotent adoption.
+    pub operation_id: Uuid7,
+    /// Generation the person read before choosing the new goal revision.
+    pub expected_generation: u64,
 }

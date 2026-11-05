@@ -5,19 +5,34 @@
 
 mod assessment;
 mod context;
+mod target;
 mod decision;
 mod limits;
+mod input;
+mod effect;
+mod binding;
+mod input_receipt;
+mod checkpoint;
 mod state;
+mod report;
 
 pub use assessment::{DecisionAssessment, DecisionRetryDelay, DecisionUnavailableCause};
 pub use context::TaskContext;
+pub use target::{TaskTarget, TaskWorkflow};
 pub use decision::{
     DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt,
     DecisionReceiptInput, DecisionReceiptResult, DecisionRecordDisposition, DecisionRecorded,
     DecisionReservationInput, DecisionReservationResult, DecisionTaskVersion,
 };
+pub use input::{TaskHumanInput, TaskInputCandidate, TaskInputsQuery, TaskInputsResponse, TaskAcceptedInput,
+    TaskAcceptedInterpretation, TaskRecoveredItem};
+pub use effect::{TaskEffect, TaskEffectInput, TaskEffectQuery, TaskEffectState, TaskEffectsPage, TaskEffectsQuery, TaskFileChange};
+pub use binding::{TaskBindingItem, TaskBindingsInput, TaskBindingsResponse, TaskInputAction, TaskItemBinding, TaskProposedItem, TaskRequestedTarget};
+pub use input_receipt::{TaskInputMode, TaskInputReceiptInput, TaskInputReceiptResult};
+pub use checkpoint::*;
 pub use limits::{TaskLimits, TaskUsage};
 pub use state::TaskState;
+pub use report::{TaskDisposition, TaskReport};
 
 /// Maximum unfinished objectives a fleet can retain.
 pub const UNFINISHED_MAX: u32 = 16;

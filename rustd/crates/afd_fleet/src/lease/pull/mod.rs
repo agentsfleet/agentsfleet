@@ -78,6 +78,8 @@ const REDELIVERED_FINISHED: &str = "the redelivered event had already finished";
 pub struct Plane {
     /// Claims, rows, and the narrative log.
     pub leases: Leases,
+    /// Native task report evidence, sharing the request-path task owner.
+    pub task_reports: Option<std::sync::Arc<dyn crate::task::TaskReportOwner>>,
     /// Approval gates and standing integration grants.
     pub gates: Gates,
     /// The payer, the issue-time floor and a fleet's spend: the reads a money

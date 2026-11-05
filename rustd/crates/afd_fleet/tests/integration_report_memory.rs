@@ -56,6 +56,7 @@ pub(crate) fn report<'a>(
     memory: Vec<MemoryDelta<'a>>,
 ) -> ReportRequest<'a> {
     ReportRequest {
+        task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),
         fencing_token: token,
@@ -227,6 +228,7 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
 async fn test_failed_capture_still_settles() {
     let held = held().await;
     let forgetful = Plane {
+        task_reports: None,
         memories: Memories::new(unreachable_db(), Entropy::new()),
         ..held.fixtures.plane()
     };

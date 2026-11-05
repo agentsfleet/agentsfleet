@@ -43,7 +43,13 @@ async fn refused_resume(case: &Case, task: &Uuid7, resource: &str) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let initial = tasks.read(scope, task).await.expect("accepted goal");
     tasks
-        .control(scope, task, initial.resource_version, TaskControl::Pause)
+        .control(
+            scope,
+            task,
+            &initial.etag(),
+            initial.context.generation,
+            TaskControl::Pause,
+        )
         .await
         .expect("pause before exhaustion");
     sqlx::query("UPDATE fleet.tasks SET used_model_nanos=CASE WHEN $2='model' THEN max_model_nanos-100 ELSE 50 END, reserved_model_nanos=CASE WHEN $2='model' THEN 100 ELSE 0 END, used_running_nanos=CASE WHEN $2='running' THEN max_running_nanos ELSE 10 END, used_leases=CASE WHEN $2='leases' THEN max_leases ELSE used_leases END, created_at=CASE WHEN $2='wall' THEN created_at-interval '8 days' ELSE created_at END, expires_at=CASE WHEN $2='wall' THEN expires_at-interval '8 days' ELSE expires_at END WHERE id=$1::uuid")
@@ -60,7 +66,13 @@ async fn refused_resume(case: &Case, task: &Uuid7, resource: &str) {
     let counts = case.counts().await;
     for _attempt in 0..2 {
         let failure = tasks
-            .control(scope, task, before.resource_version, TaskControl::Resume)
+            .control(
+                scope,
+                task,
+                &before.etag(),
+                before.context.generation,
+                TaskControl::Resume,
+            )
             .await
             .expect_err("resume cannot replenish this resource");
         assert_eq!(
@@ -92,7 +104,13 @@ async fn cancel_exhausted(
 ) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let cancelled = tasks
-        .control(scope, task, before.resource_version, TaskControl::Cancel)
+        .control(
+            scope,
+            task,
+            &before.etag(),
+            before.context.generation,
+            TaskControl::Cancel,
+        )
         .await
         .expect("exhausted work can still be stopped");
     let mut expected = before;

@@ -79,6 +79,11 @@ pub enum Renewed {
     },
     /// Still the live holder, but the hard runtime ceiling is reached.
     MaxRuntime,
+    /// Accounting committed, but task authority stopped during this measurement.
+    Stopped {
+        /// Known usage still settles through the original biller.
+        settlement: Option<Box<Settlement>>,
+    },
     /// The lease is no longer this runner's, or only half the extend applied.
     Lost,
 }
@@ -135,13 +140,13 @@ impl Leases {
     ) -> Result<Renewed> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_RENEW))?;
-        let Some(capacity) = afd_runner::capacity::lock(&mut transaction, lease.runner_id).await?
-        else {
-            return Ok(Renewed::Lost);
+        let capacity = afd_runner::capacity::lock(&mut transaction, lease.runner_id).await?;
+        let Some(capacity) = capacity.filter(|capacity| capacity.can_renew()) else {
+            let settlement = pricing.original_requests(&mut transaction, lease_key, lease.runner_id, lease.requests).await?;
+            usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
+            transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
+            return Ok(Renewed::Stopped { settlement: settlement.map(Box::new) });
         };
-        if !capacity.can_renew() {
-            return Ok(Renewed::Lost);
-        }
         let row = lease
             .bind(Ending::Renew)
             .fetch_one(&mut *transaction)
@@ -150,16 +155,22 @@ impl Leases {
         let answer = RenewAnswer::from_row(&row).map_err(query(CONTEXT_RENEW))?;
         let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_RENEW))?;
         let Some(expires_at) = answer.extended() else {
+            let settlement = pricing.original_requests(&mut transaction, lease_key, lease.runner_id, lease.requests).await?;
+            usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
             transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
-            return Ok(answer.verdict(capacity.now()));
+            return Ok(match settlement {
+                Some(settlement) => Renewed::Stopped { settlement: Some(Box::new(settlement)) },
+                None => answer.verdict(capacity.now()),
+            });
         };
         // Extended means the guard row matched, and the slice is read off that
         // same row, so it is always present here.
         let settlement = slice.into_slice().map_or(Ok(None), |slice| {
             pricing.settlement(lease_key, slice, lease.requests)
         })?;
-        usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
+        let allowed = usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
         transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
+        if !allowed { return Ok(Renewed::Stopped { settlement: settlement.map(Box::new) }); }
         Ok(Renewed::Extended {
             expires_at,
             settlement: settlement.map(Box::new),
@@ -258,13 +269,11 @@ impl Plane {
         let Some(lease) = self.leases.load_for_renew(lease_id, runner_id).await? else {
             return Err(crate::error::lease_not_found());
         };
-        if lease.status != sql::LEASE_STATUS_ACTIVE {
-            return Err(lease_lost());
-        }
         let lease_key =
             afd_core::id::Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
-        self.gate_renewal(&lease, &lease_key, lease_id, now).await?;
-
+        let admission = if lease.status == sql::LEASE_STATUS_ACTIVE {
+            self.gate_renewal(&lease, &lease_key, lease_id, now).await
+        } else { Err(lease_lost()) };
         let pricing = Pricing::load(
             self.leases.pool(),
             posture_of(&lease),
@@ -273,6 +282,11 @@ impl Plane {
             lease_id,
         )
         .await;
+        if let Err(refusal) = admission {
+            let known = self.leases.record_known_requests(runner_id, &lease_key, &pricing, &request.requests.0, now).await?;
+            if let Some(settled) = known.as_ref() { self.settle_usage(settled).await; }
+            return Err(refusal);
+        }
         let metering = Metering {
             lease_id,
             runner_id,
@@ -292,6 +306,10 @@ impl Plane {
                     self.settle_usage(settled).await;
                 }
                 Ok((expires_at, charged))
+            }
+            Renewed::Stopped { settlement } => {
+                if let Some(settled) = settlement.as_deref() { self.settle_usage(settled).await; }
+                Err(lease_lost())
             }
             Renewed::MaxRuntime => Err(lease_max_runtime()),
             Renewed::Lost => Err(lease_lost()),

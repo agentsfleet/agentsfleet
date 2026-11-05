@@ -6,25 +6,38 @@ WITH locked_slot AS MATERIALIZED (
 ), probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, e.event_id,
            l.fencing_token, l.created_at, l.lease_expires_at, l.last_metered_at,
-           a.fencing_token AS live_fence, a.lease_expires_at AS slot_expires_at
+           a.fencing_token AS live_fence, a.lease_expires_at AS slot_expires_at,
+           l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline,
+           l.task_runtime_accounted_at
     FROM runner.leases l
     JOIN locked_slot a ON a.fleet_id = l.fleet_id
     JOIN fleet.events e ON e.id = l.fleet_event_id
     WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $4
     FOR UPDATE OF l
+), held_task AS MATERIALIZED (
+    SELECT t.id, t.status, t.generation, t.stop_generation, t.expires_at,
+           t.max_model_nanos, t.used_model_nanos, t.reserved_model_nanos,
+           t.max_running_nanos, t.used_running_nanos
+    FROM fleet.tasks t JOIN probe p ON p.task_id = t.id
+      AND t.fleet_id = p.fleet_id AND t.workspace_id = p.workspace_id
+    FOR UPDATE OF t
 ), instant AS MATERIALIZED (
-    SELECT clock_timestamp() AS checked_at FROM probe
+    SELECT clock_timestamp() AS checked_at FROM probe CROSS JOIN (SELECT count(*) FROM held_task) held
 ), metered AS (
     -- The run time since the lease's cursor, never past the deadline it was
     -- granted: a report that lands after its lease lapsed bills no time beyond it.
-    SELECT p.*, i.checked_at,
+    SELECT p.*, i.checked_at, t.status AS task_status, t.generation AS live_task_generation,
+           t.stop_generation AS live_stop_generation, t.expires_at AS task_expires_at,
+           t.used_model_nanos, t.max_model_nanos, t.reserved_model_nanos,
+           t.max_running_nanos - t.used_running_nanos AS remaining_running_nanos,
            GREATEST(p.last_metered_at, LEAST(i.checked_at, p.lease_expires_at)) AS metered_until
-    FROM probe p CROSS JOIN instant i
+    FROM probe p CROSS JOIN instant i LEFT JOIN held_task t ON t.id = p.task_id
 ), guard AS (
     -- `$5` chooses the ending. A renewal must still be the live holder before
     -- either deadline and below the hard cap; a settle needs only that no
     -- reclaim has superseded it, because a report may land after its lease lapsed.
-    SELECT *, LEAST(checked_at + $6::interval, created_at + $7::interval) AS capped,
+    SELECT *, LEAST(checked_at + $6::interval, created_at + $7::interval, task_execution_deadline,
+                    task_expires_at, task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000)) AS capped,
            (EXTRACT(EPOCH FROM metered_until - last_metered_at) * $3::bigint)::bigint AS d_ms
     FROM metered
     WHERE CASE WHEN $5::boolean
@@ -32,6 +45,12 @@ WITH locked_slot AS MATERIALIZED (
                ELSE fencing_token = live_fence
                     AND LEAST(checked_at + $6::interval, created_at + $7::interval) > checked_at
                     AND lease_expires_at > checked_at AND slot_expires_at > checked_at
+                    AND (task_id IS NULL OR (
+                        task_status = $13 AND task_generation = live_task_generation
+                        AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
+                        AND used_model_nanos < max_model_nanos - reserved_model_nanos
+                        AND task_execution_deadline > checked_at
+                        AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
           END
       AND EXISTS (
           SELECT 1 FROM fleet.admissions a
@@ -78,7 +97,7 @@ SELECT
     (SELECT count(*) FROM probe)::bigint          AS probe_found,
     (SELECT count(*) FROM moved)::bigint          AS claimed,
     (SELECT capped FROM moved)                    AS new_until,
-    (SELECT created_at + $7::interval FROM probe) AS hard_cap,
+    (SELECT LEAST(created_at + $7::interval, task_execution_deadline) FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at, g.d_ms,
     g.tenant_id::text AS tenant_id, g.workspace_id::text AS workspace_id,
     g.fleet_id::text AS fleet_id, g.event_id,

@@ -2,6 +2,7 @@
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
+mod control;
 mod deadline;
 mod fixture;
 mod revision;

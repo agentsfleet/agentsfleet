@@ -93,7 +93,7 @@ async fn assert_the_retry_commits_all_four(
     let Committed::Settled {
         settlement,
         closed,
-        owed,
+        owed, ..
     } = committed
     else {
         unreachable!("the only holder of this fleet cannot be fenced out of its own retry")
@@ -199,7 +199,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     let Committed::Settled {
         settlement,
         closed,
-        owed,
+        owed, ..
     } = committed
     else {
         unreachable!("the lease is this runner's and still active, so the claim wins")

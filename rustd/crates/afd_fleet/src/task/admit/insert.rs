@@ -4,19 +4,18 @@ use afd_wire::task::{TaskState, UNFINISHED_MAX};
 use sqlx::PgConnection;
 
 use super::super::{
-    PreparedPlan, PreparedTask, TaskBinding, TaskLease, TaskRefusal, guard::LeaseRow, sql,
+    PreparedItem, PreparedPlan, PreparedTask, TaskBinding, TaskLease, TaskRefusal, guard::LeaseRow, sql,
 };
 use super::source::Source;
 use crate::error::{Error, ErrorKind, Result, query};
 
 const CONTEXT: &str = "write durable task binding";
-const ACTION_NEW: &str = "new_work";
 
 pub(super) async fn item(
     connection: &mut PgConnection,
     current: &LeaseRow,
     plan: &PreparedPlan,
-    item: &PreparedTask,
+    item: &PreparedItem,
     binding: &TaskBinding,
     ordinal: usize,
 ) -> Result<()> {
@@ -33,10 +32,10 @@ pub(super) async fn item(
         .bind(plan.source_admission_id.as_str())
         .bind(ordinal)
         .bind(&plan.digest)
-        .bind(ACTION_NEW)
-        .bind(item.source_span.start)
-        .bind(item.source_span.end)
-        .bind(binding.task_id.as_str())
+        .bind(item.action().as_str())
+        .bind(item.span().start)
+        .bind(item.span().end)
+        .bind(binding.task_id.as_ref().map(afd_core::id::Uuid7::as_str))
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -60,7 +59,7 @@ pub(super) async fn task(
     let questions =
         serde_json::to_string(&item.questions).map_err(afd_core::json::Unreadable::from)?;
     sqlx::query_scalar::<_, String>(sql::INSERT_TASK)
-        .bind(binding.task_id.as_str())
+        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?.as_str())
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(&current.tenant_id)
@@ -96,9 +95,13 @@ pub(super) async fn lease(
     binding: &TaskBinding,
 ) -> Result<()> {
     sqlx::query(sql::BIND_LEASE)
-        .bind(binding.task_id.as_str())
+        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?.as_str())
         .bind(lease.lease_id.as_str())
         .bind(lease.runner_id.as_str())
+        .bind(afd_billing::biller::WorkKey::FleetLease(lease.lease_id.clone()).work_type())
+        .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+        .bind(super::super::lease::SLICE_SECONDS)
+        .bind(1_000_000_000_i64)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -111,7 +114,7 @@ pub(super) async fn admission(
     binding: &TaskBinding,
 ) -> Result<()> {
     sqlx::query(sql::BIND_ADMISSION)
-        .bind(binding.task_id.as_str())
+        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?.as_str())
         .bind(binding.item_id.as_str())
         .bind(admission)
         .execute(connection)

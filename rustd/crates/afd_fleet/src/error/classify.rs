@@ -25,6 +25,26 @@ use super::{
 };
 
 impl Error {
+    /// Lifecycle state observed under the lock that refused a task control.
+    #[must_use]
+    pub const fn task_current_state(&self) -> Option<&'static str> {
+        match &self.inner.kind {
+            ErrorKind::TaskControlConflict { state }
+            | ErrorKind::TaskControlAdmission { state, .. }
+            | ErrorKind::TaskMutation { state, .. } => Some(state.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Current resource tag when a conditional task mutation lost its version.
+    #[must_use]
+    pub fn task_precondition_tag(&self) -> Option<&str> {
+        match &self.inner.kind {
+            ErrorKind::TaskPrecondition { current_etag } => Some(current_etag),
+            _ => None,
+        }
+    }
+
     pub(crate) fn is_decision_lock_busy(&self) -> bool {
         let ErrorKind::Query { source, .. } = &self.inner.kind else {
             return false;
@@ -63,6 +83,8 @@ impl Error {
             ErrorKind::Datastore { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. } => true,
+            ErrorKind::TaskControlAdmission { ref source, .. } => source.is_datastore_unavailable(),
+            ErrorKind::TaskMutation { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
@@ -71,12 +93,20 @@ impl Error {
     }
 
     /// Bounded diagnostic for task-read performance, without query text.
-    pub(crate) const fn task_timeout_reason(&self) -> Option<&'static str> {
+    pub(crate) fn task_timeout_reason(&self) -> Option<&'static str> {
         match self.inner.kind {
             ErrorKind::TaskReadTimeout { .. } => Some("read_deadline"),
             ErrorKind::TaskStatementCancelled { .. } => Some("statement_deadline"),
+            ErrorKind::TaskStorageDeadline { .. } => Some("storage_deadline"),
+            ErrorKind::TaskRemoteDeadline { .. } => Some("remote_deadline"),
+            ErrorKind::TaskRemote { ref source } if source.is_timeout() => Some("remote_deadline"),
             _ => None,
         }
+    }
+
+    /// A provider cooldown is a native deadline, never an immediate retry hint.
+    pub(crate) const fn remote_cooldown(&self) -> Option<jiff::Timestamp> {
+        match self.inner.kind { ErrorKind::TaskRemoteCooldown { until, .. } => Some(until), _ => None }
     }
 
     /// Whether the caller sent something this plane will not accept.
@@ -133,6 +163,8 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
+            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageDeadline { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
+            ErrorKind::TaskRemote { .. } | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteDeadline { .. } | ErrorKind::TaskRemoteCooldown { .. } => error_code::TASK_EFFECT_UNCERTAIN,
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => {
                 error_code::TASK_DECISION_UNAVAILABLE
             }
@@ -142,7 +174,8 @@ impl Error {
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Authoring { ref source } => source.code(),
-            ErrorKind::Admission { ref source } => source.code(),
+            ErrorKind::Admission { ref source }
+            | ErrorKind::TaskControlAdmission { ref source, .. } => source.code(),
             ErrorKind::Context { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
@@ -156,6 +189,9 @@ impl Error {
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::SequenceCorrupt => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::TaskPrecondition { .. } => error_code::TASK_PRECONDITION_FAILED,
+            ErrorKind::TaskMutation { ref source, .. } => source.code(),
+            ErrorKind::TaskControlConflict { .. } => error_code::TASK_STALE_STATE,
             ErrorKind::TaskRefused { reason } => reason.code(),
             ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
             ErrorKind::Mint { .. }
@@ -198,17 +234,22 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> &'static str {
         match self.inner.kind {
+            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageDeadline { .. } => crate::task::TaskRefusal::StorageUnavailable.detail(),
+            ErrorKind::TaskRemote { .. } | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteDeadline { .. } | ErrorKind::TaskRemoteCooldown { .. } => crate::task::TaskRefusal::EffectUncertain.detail(),
+            ErrorKind::TaskMutation { ref source, .. } => source.detail(),
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::task::TaskRefusal::DecisionUnavailable.detail(),
             // The one kind whose sentence the CALL SITE chose: a rejection
             // names the field it refused. Every other kind's sentence is
             // decided here or by the crate it delegates to, so no handler can
             // describe one failure two ways.
             ErrorKind::Rejected { detail } => detail,
+            ErrorKind::TaskPrecondition { .. } => "the task resource version changed",
+            ErrorKind::TaskControlConflict { .. } => crate::task::TaskRefusal::StaleState.detail(),
             ErrorKind::TaskRefused { reason } => reason.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Authoring { ref source } => source.detail(),
-            ErrorKind::Admission { ref source } => source.detail(),
+            ErrorKind::Admission { ref source } | ErrorKind::TaskControlAdmission { ref source, .. } => source.detail(),
             ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller

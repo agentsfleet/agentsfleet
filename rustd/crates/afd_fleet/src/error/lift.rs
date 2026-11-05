@@ -28,6 +28,8 @@
 use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
+    object_store::Error => TaskStorage,
+    reqwest::Error => TaskRemote,
     garde::Report => DecisionRequest,
     tokio::time::error::Elapsed => TaskReadTimeout,
     afd_core::json::Unreadable => TaskDocument,

@@ -96,5 +96,6 @@ impl<'a> Metering<'a> {
             .bind(afd_billing::sql::work::FLEET_LEASE)
             .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
             .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+            .bind(afd_wire::task::TaskState::Running.as_str())
     }
 }

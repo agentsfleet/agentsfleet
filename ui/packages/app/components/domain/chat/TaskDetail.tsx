@@ -3,12 +3,14 @@
 import { useCallback } from "react";
 import { Button, SignalSpinner } from "@agentsfleet/design-system";
 import { readTask, type TaskSummary } from "@/lib/api/tasks";
+import { TaskGoalAdoption } from "./TaskGoalAdoption";
+import { TaskControls } from "./TaskControls";
 import { QuestionDetails } from "./SetupQuestions";
 import { confirmed, useTaskRead } from "./use-task-read";
 
-type Props = {workspaceId: string; fleetId: string; task: TaskSummary};
+type Props = {workspaceId: string; fleetId: string; task: TaskSummary; onChanged: () => void};
 
-export function TaskDetail({workspaceId, fleetId, task}: Props) {
+export function TaskDetail({workspaceId, fleetId, task, onChanged}: Props) {
   const load = useCallback((signal: AbortSignal) => readTask(workspaceId, fleetId, task.id, signal), [workspaceId, fleetId, task.id]);
   const {resource, retry} = useTaskRead(load, task.resource_version);
   const detail = confirmed(resource);
@@ -19,10 +21,12 @@ export function TaskDetail({workspaceId, fleetId, task}: Props) {
       <Button variant="ghost" size="sm" onClick={retry}>Retry details</Button>
     </div> : null}
     {detail ? <>
+      <TaskControls workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={() => {retry(); onChanged();}} />
       <p className="whitespace-pre-wrap break-words">{detail.context.objective}</p>
       <div className="space-y-sm">
         <h3 className="font-medium">What counts as done?</h3>
         <p className="text-eyebrow text-muted-foreground">Uses the success criteria saved in setup v{detail.setup_revision}.</p>
+        <TaskGoalAdoption workspaceId={workspaceId} fleetId={fleetId} detail={detail} enabled={resource.kind === "ready"} onChanged={() => {retry(); onChanged();}} />
         {detail.context.questions.map(({name, question}, index) => <QuestionDetails key={name} number={index + 1} question={{question: question.instructions, criteria: question.criteria}} />)}
       </div>
       <p className="text-eyebrow text-muted-foreground">{detail.context.usage.leases} of {detail.context.limits.leases} attempts used. {detail.context.checkpoint_id ? "Saved recovery point available." : "No recovery point has been saved."}</p>

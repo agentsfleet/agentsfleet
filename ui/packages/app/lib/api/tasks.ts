@@ -23,6 +23,7 @@ const Summary = z.object({
 const Page = z.object({items: z.array(Summary).max(100), next_cursor: z.null()});
 const Detail = z.object({
   title: z.string().min(1), resource_version: Count, setup_revision: Count,
+  etag: z.string().regex(/^"[0-9a-f]{64}"$/u).optional(),
   context: z.object({
     task_id: Identity, generation: Count, stop_generation: Count,
     accepted_revision_id: Identity, objective: z.string(), goal_digest: z.string(),
@@ -40,6 +41,8 @@ export type TaskStatus = z.infer<typeof Status>;
 export type TaskSummary = z.infer<typeof Summary>;
 export type TaskPage = z.infer<typeof Page>;
 export type TaskDetail = z.infer<typeof Detail>;
+export type TaskControl = "paused" | "ready" | "cancelled";
+export type TaskChange = {kind: "confirmed"; value: TaskDetail} | {kind: "failed"; reason: "access" | "changed" | "limited" | "unconfirmed" | "invalid"};
 export type TaskReadFailure = "access" | "missing" | "timeout" | "unreachable" | "invalid";
 export type TaskRead<T> = {kind: "ready"; value: T} | {kind: "failed"; reason: TaskReadFailure};
 
@@ -49,10 +52,10 @@ export function readTasks(workspaceId: string, fleetId: string, signal: AbortSig
 }
 
 export function readTask(workspaceId: string, fleetId: string, taskId: string, signal: AbortSignal): Promise<TaskRead<TaskDetail>> {
-  return read(`/live${fleetPath(workspaceId, fleetId)}/tasks/${encodeURIComponent(taskId)}`, Detail, signal);
+  return read(`/live${fleetPath(workspaceId, fleetId)}/tasks/${encodeURIComponent(taskId)}`, Detail, signal, true);
 }
 
-async function read<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal): Promise<TaskRead<T>> {
+async function read<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, tagged = false): Promise<TaskRead<T>> {
   const timeout = AbortSignal.timeout(10_000);
   const bounded = AbortSignal.any([signal, timeout]);
   let response: Response;
@@ -67,6 +70,41 @@ async function read<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal):
   let value: unknown;
   try { value = await response.json(); }
   catch { return {kind: "failed", reason: timeout.aborted ? "timeout" : "invalid"}; }
+  if (tagged && typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const etag = response.headers.get("etag");
+    value = {...value, etag: etag ?? undefined};
+  }
   const result = schema.safeParse(value);
   return result.success ? {kind: "ready", value: result.data} : {kind: "failed", reason: "invalid"};
+}
+
+/** Mutations use the exact read version, never retry automatically, and wait for native confirmation. */
+export function controlTask(workspace: string, fleet: string, task: TaskDetail, state: TaskControl,
+  signal: AbortSignal): Promise<TaskChange> {
+  return changeTask(workspace, fleet, task, {state}, signal);
+}
+
+export function adoptTaskGoal(workspace: string, fleet: string, task: TaskDetail, revision: string, operation: string,
+  signal: AbortSignal): Promise<TaskChange> {
+  return changeTask(workspace, fleet, task, {goal_revision_id: revision, operation_id: operation}, signal);
+}
+
+async function changeTask(workspace: string, fleet: string, task: TaskDetail,
+  mutation: {state: TaskControl} | {goal_revision_id: string; operation_id: string}, signal: AbortSignal): Promise<TaskChange> {
+  if (!task.etag) return {kind: "failed", reason: "changed"};
+  try {
+    const response = await fetch(`/live${fleetPath(workspace, fleet)}/tasks/${encodeURIComponent(task.context.task_id)}`, {
+      method: "PATCH", redirect: "manual", cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+      headers: {"Content-Type": "application/json", "If-Match": task.etag},
+      body: JSON.stringify({...mutation, expected_generation: task.context.generation}),
+    });
+    if (response.status === 401 || response.status === 403 || response.type === "opaqueredirect") return {kind: "failed", reason: "access"};
+    if ([404, 409, 412, 428].includes(response.status)) return {kind: "failed", reason: "changed"};
+    if (response.status === 429) return {kind: "failed", reason: "limited"};
+    if (!response.ok) return {kind: "failed", reason: "unconfirmed"};
+    const value: unknown = await response.json();
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return {kind: "failed", reason: "invalid"};
+    const result = Detail.safeParse({...value, etag: response.headers.get("etag")});
+    return result.success ? {kind: "confirmed", value: result.data} : {kind: "failed", reason: "invalid"};
+  } catch { return {kind: "failed", reason: "unconfirmed"}; }
 }

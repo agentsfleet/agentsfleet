@@ -2,9 +2,198 @@
 
 ## Current continuation point
 
+### Branch checkpoint for a new cloud session — Nov 05, 2026
+
+Indy requested all files committed and pushed so a new agent can start from this branch.
+This checkpoint saves **unfinished, uncompiled and unverified source**. M236 remains `IN_PROGRESS`.
+Indy also directed: "undraft it. Indy knows its a draft". Remove draft status after pushing this checkpoint.
+Full source, acceptance, coverage and final checks remain due.
+
+**Resume from the branch checkpoint containing this record.** Use `feat/m236-durable-tasks`, existing
+PR `https://github.com/agentsfleet/agentsfleet/pull/803`. Fetch and confirm the latest branch head before editing.
+The predecessor published head was `ebfb3b722a911600bb00e9677e4f2b003e2169c7`.
+This checkpoint includes all local implementation files and the pending merge from
+`65372f50551c1585afdc499e2db7a833c58d98c9`.
+The merge's sole documentation conflict was resolved before this checkpoint.
+Keep its M239 spec and fleet-to-fleet scenario alongside the M236 changes.
+The old worktree was `/workspace/agentsfleet-m236-design`; use the new session's actual checkout path.
+A fresh checkout of this checkpoint needs no source recovery archive or unfinished-merge restoration.
+The earlier archive remains an optional backup of predecessor source and historical logs.
+
+**Read next:** `AGENTS.md`, `.orly/LOCAL.md`, `.orly/AGENTS.md`, the active
+`docs/v2/active/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md`,
+this continuation point, and the latest source inventories at the end of this file.
+Read the owning Rust/error/SQL/HTTP/auth/architecture standards and `orly-build` skill before edits.
+Read the managed cloud environment runtime skill before environment work in a new session.
+Then check exact-head Continuous Integration (CI) and Greptile without re-running unchanged tests.
+
+**Owner instructions that remain binding:**
+
+- Finish the full approved M236 scope in PR #803. One existing admission/lease/report path,
+  one Rust lane; no new PR, duplicate task queue, weakened gate, hook bypass or force push.
+- "i need the code complete first" and "Yes don't runt he gates now, run it after the PostgreSQL is done."
+  Broad lint/unit/format/integration loops remain paused. Complete the source batch before final gates.
+- After each fix, adversarially reconsider correctness, simplicity, performance, concurrency,
+  ownership, traits/trait objects, callbacks, tracing and causal `error_shell!` errors.
+  Avoid adding shared mutexes. SQL performance requires actual statistics and
+  `EXPLAIN (ANALYZE, BUFFERS)` evidence; source/index inspection is not a benchmark.
+- User-authored setup: the five `afd_authoring/src/model/provider/prompt/*.md` files are deleted.
+  Do not relocate their full prose into static Rust strings or another template directory.
+  User text remains in immutable accepted setup revisions; Review pull requests supplies an
+  editable, unsent starter in the chat composer. Minimal native protocol/schema guidance remains.
+- Setup questions must not propose edits. The native configured decision model asks the exact
+  newest-message yes/no edit-intent question; no rejects through `ProposalRejection`.
+  Unavailable/stale/malformed decisions retain chat behavior and record the fallback/SetupChat usage.
+  The decision model never authors setup questions. Existing source/soak regressions are unrun.
+- Do not edit setup-chat admission SQL: `fix/soak-findings` owns its usage-reconciliation correction.
+  Fleet admission SQL under `afd_admission` is a different owner and is in scope here.
+- Chat and CLI must show detailed readable activity like the Codex app: progress explanations,
+  expandable commands/output/diffs, checks, publication/waits, transfer/recovery and reconnect state.
+  Source for that complete activity presentation is still missing.
+- Merge only after full scope/acceptance, Rust diff coverage **above 99.5%** (configured gate 99.51),
+  TypeScript **100%**, green exact-head CI and resolved Greptile. Deliver Indy a detailed final report.
+
+**Exact source boundary at handoff:**
+
+| Owner | Written source | Still missing / unverified |
+|---|---|---|
+| PostgreSQL and admission | Slots through 2600 are explicitly registered; role inventory has 78 rows. Native generations, cumulative usage, current lease deadlines, report transitions, wait ownership, immutable receipts and bounded completion delivery are written. | All new migrations/queries are unexecuted. Historical generation-null row recovery must not guess authority. Real plans, contention, cancellation and financial cases remain due. |
+| Automatic task runtime | Native binding/input/receipt/decision/effect APIs and typed supervisor calls exist. | No automatic root intent/action/goal coordinator. `afr_agent/src/engine/mod.rs::RunOutput` carries no task outcome; supervisor report still sets `task: None`. |
+| Decision execution | Existing `afr_providers::decision::DecisionClient` implements four guarded native protocols; native reservations and original-owner receipt accounting exist. | `FencedVerbs` has no physical decision implementation; its trait default refuses. Known receipt durability/replay and root connection remain unfinished. `afr_providers` is still a supervisor dev dependency, not a normal dependency. |
+| GitHub | `afd_fleet/src/task/{github,effects,waits}/` contains native exact existing-PR authority, reviewed workflows, tested-tree/expected-head publication, retained effects, read-only uncertain-write reconciliation and signed completion matching. | Automatic runtime integration and adversarial execution/acceptance proof. Preserve human pushes, one physical mutation, one wake and no restart after stop. |
+| R2 | `afd_fleet/src/task/{storage,checkpoint}/`, `afd_wire/src/task/checkpoint/` and runner APIs contain SDK transport, encryption, registration, quotas, manifests, verification, pins, retention and collection. | No actual supervisor capture/restore. No live R2 activation, hostile restore, large-repository or performance acceptance. |
+| Inputs and authority | Mixed-message binding, accepted interpretation recovery and per-item reply/application receipts exist. Goal adoption and controls retain native generations. | Slack person-link authorization still missing. Use existing identity/link approval storage; do not fabricate a person or add keyword routing. |
+| Browser and CLI | Conditional task controls and explicit immutable-goal adoption are written. | Detailed activity, updated decoding/fixtures and current TypeScript coverage/acceptance. |
+
+The runner deliberately still advertises `durable_tasks_v1: false` in
+`afr_supervisor/src/capability/mod.rs`. Keep it false until its real coordinator and recovery work.
+New API source does not prove a running durable task.
+
+**Latest reviewed corrections; source-only evidence:**
+
+- Admission slot 2590 freezes task generation. Discovery, claim and issue require it; the retained
+  marker prevents a deleted task's old admission becoming ordinary work. Never-issued obsolete
+  native continuations retire atomically. Backlog budget/telemetry queries exclude issued obsolete
+  native continuations while retaining their unsettled admission marker for final billing/report
+  settlement. Human reply sources remain counted. The reviewer confirmed why retiring all issued
+  markers would break ordinary final metering.
+- Setup mismatch blocking re-runs `installed_on` under existing parent/slot locks. Actual setup
+  writers hold the corresponding parent lock; a restored compatible setup avoids stale blocking.
+- Slot 2600 retains a progress cursor over immutable completion evidence. Signed HTTP ingress only
+  inserts receipt/cursor. Maintenance examines at most 64 scoped waits per pass and locks one wait
+  per transaction. It advances over irrelevant workflows/fleet scopes too. Scope predicates apply
+  to the signal mutation. Its index includes the equality prefix plus `id`; keyset range uses the
+  saved wait identity or UUID's lower bound. A busy wait cannot be skipped and lose its signal.
+- Wait claims use a separate `claim_expires_at`, not the due time a signal can move. Signal and
+  observed-signal counters are monotonic, avoiding same-millisecond wake loss. New workflow run
+  numbers and same-run non-older attempts match; native independent reads remain authoritative.
+- Effects now retain the complete private canonical request whose exact serialized bytes form
+  the immutable digest. No arbitrary acknowledgement means a second write is safe.
+- `afr_supervisor/src/client/task/{mod,checkpoint}.rs` adds the 17 approved typed task method/path
+  calls through existing `ControlPlane` / `RunnerApi`; the closed `Verb` list has 41 entries.
+  `FencedVerbs` implements inputs/bindings/input-receipt/publication/effect-list with its own fence.
+  `LeaseVerbs::task_decision` remains a refusing default. `DecisionEvaluation` carries no key.
+  Input/binding `into_owned` helpers preserve native recovery fields after the private body drops.
+- The read-only standards reviewer found **no remaining actionable findings in those corrections
+  and typed-call additions**. That is a limited source review, not a whole-diff or runtime pass.
+  No build, formatter, lint, unit, integration or acceptance command ran in this final source batch.
+
+**Resume implementation in this order:**
+
+1. Inspect the actual source at the listed boundary, keep the reviewed PostgreSQL corrections,
+   and finish any concrete schema/query/constructor issues without broad gate loops.
+2. Implement physical decision execution plus durable original-owner receipt delivery through
+   existing supervisor boundaries. Reuse `DecisionClient`, guarded transport, private wiping
+   buffers and existing report-spool conventions; no second decision SDK or runtime interface.
+3. Connect root intent before checkout/sandbox creation and action/goal checks at safe boundaries.
+   `afr_supervisor/src/lease_loop/mod.rs::work` currently admits tools, claims the fleet turn,
+   hydrates memory and builds/checks out beside the agent. Routing solely inside `Loop::run`
+   is too late to avoid a sandbox for conversation. Extend the actual existing engine/LeaseVerbs
+   seams. Children never own task state. Recover accepted meanings/replies without reclassification.
+4. Implement quiescent incremental capture and verified supervisor restore. Reuse the existing
+   executor capability-directory/no-follow protections. Preserve Git/index, staged/unstaged and
+   untracked changes, deletes, modes, safe relative symlinks and compatible history as one state.
+   Check all roots/format/toolbox/repository/base/digests, authenticated encryption and plaintext sizes before writable
+   attachment. Existing file RPCs are whole-file and listing truncates at 4096: a safe trusted
+   bounded snapshot/transfer seam still needs implementation. Recover native effects beyond the
+   saved watermark before another publication. Prove partial/stale/hostile restores fail safely.
+5. Close Slack linked-person authority and chat/CLI activity gaps, propagate actual task reports,
+   route/OpenAPI/fixture inventories and source conformance. Update the owning public docs.
+6. Complete meaningful adversarial coverage and declared acceptance. Then run final repository
+   commands with complete exit codes/counts: `make lint-all`, `make test-unit-all`,
+   `make test-integration-rustd`, version/dry/browser checks and exact-head hosted coverage/review.
+   Preserve every historical result below; repeat unchanged successful lanes only for a relevant
+   source change, concrete failure or required final gate. No readiness or merge claim beforehand.
+
+**Historical evidence to carry into the new environment:**
+
+- Exact published head `ebfb3b722` still has successful governance `41948469226`, gitleaks
+  `41948469131`, lint `41948469170`, dry-smoke `41948469255`, dry `41948469204` and test
+  `41948469238`. Rust unit `41948469205` is red because daemon-library startup found an occupied
+  daemon port; runner/daemon/lint/secret-wiping shards passed. Integration `41948469274` is red
+  because the kernel builder received Debian Snapshot HTTP 504; runner/daemon/substrate jobs
+  passed, but no complete combined exact-head Rust grade exists. Do not call this green CI.
+- Both existing Greptile inline threads are resolved. Latest recorded summary is for `c8937f369`,
+  not proof of review on unpublished work. Fresh review is required after the eventual push.
+- Recovered historical coverage is `/tmp/m236-coverage-c8937f369/`: patch 5506/5623 = 97.9193%,
+  117 unhit changed lines; workspace 83137/83452 = 99.6225%; 32/194 files below their file floor.
+  All four revision sidecars name `d12a443729916f22f8c667afca8062974a8c8f0b`; its tree matches
+  `c8937f369`. The original parser reproduced the grade. Current source is ungraded.
+- Historical TypeScript 100% is preserved; it does not grade current changed TypeScript.
+- `/tmp/m236-controls-lint-final.log` passed on older source; `/tmp/m236-controls-unit.log`
+  records 3415 passed. The focused core run `/tmp/m236-controls-focused-unit.log` had 76 passed,
+  1 failed from adding a duplicate 428 code; that duplicate was removed in favor of the existing
+  shared precondition code, without weakening the registry. No passing rerun is claimed.
+- `/tmp/m236-controls-full-rust-unit.log` has runner 1604 passed, daemon 143 passed, then a
+  daemon-library linker disk-full failure. `/tmp/m236-prompts-lint-rustd.log` was deliberately
+  stopped on Indy's instruction: partial output is not a check result. Kernel failure log is
+  `/tmp/m236-head-kernel.log.gz`. Recovery archives retain the available files separately.
+
+**Environment and process handoff:**
+
+- Shell commands use `login:false`. One Rust lane: `CARGO_PROFILE_DEV_DEBUG=0`,
+  `CARGO_PROFILE_TEST_DEBUG=0`, `CARGO_INCREMENTAL=0`, `CARGO_BUILD_JOBS=2`.
+  The approved workflow resource changes are already published; do not broaden CI edits.
+- Current process inspection found no live cargo/make/rustfmt/clippy/test command. Only existing
+  datastore/dev containers remain. There is no build or background implementation to await.
+  The source reviewer is idle/completed and holds no implementation lane.
+- The old environment has 32 GiB disk. Targeted worktree `cargo clean` reclaimed disk earlier;
+  preserve logs and dependency caches. Do not assume caches/datastores survive a new session.
+- Before final gates, follow the repository's Make targets and ports script. The last local
+  infrastructure used base port 27836. Source `scripts/test-infra-ports.sh` once in the actual
+  gate shell; do not print secrets. The QStash CA workaround is an environment-only compose
+  overlay `/tmp/m236-compose-ca.yml`; it is not a repository compose change. Use umask 022.
+  The child-reaping helper is `/workspace/.cloud-tools/reap-command.py`; cargo-shear 1.14 was
+  installed at `/tmp/m236-tools/bin/cargo-shear`. Recreate environment tools if missing.
+- Root/CLI/UI Bun installs/build were done in this environment. A fresh environment must follow
+  `.orly/LOCAL.md` setup; do not count dependency bootstrap as a product test.
+- `/workspace/docs` is clean on its own `chore/m236-task-controls-changelog` branch. No new public
+  docs were written in this continuation. Preserve the docs repository's own-branch rule.
+- No resolved platform/GitHub/R2 secrets belong in a handoff archive. The private development
+  bucket is `agentsfleet-checkpoints-dev`; resolve authorized secret references at runtime.
+  Native activation and acceptance remain unproved. Re-check tools/credentials in the next cloud.
+- Attaching PR #803 with the app tool has encountered transport failures; no successful app
+  attachment is claimed. GitHub metadata/status/review reads work through the connector.
+
+The rest of this continuation point and historical sections describe earlier local checkpoints.
+Their uncommitted-state and running-command statements are historical; the branch checkpoint above owns the current resume instructions.
+
+The current user direction is **finish source before broad gates**. Do not restart unit/lint/format/integration loops for each edit.
+Indy subsequently specified: "Yes don't runt he gates now, run it after the PostgreSQL is done."
+Complete PostgreSQL schema/query/index and concurrency corrections before any gate. Each completed item receives adversarial source review for simpler ownership, performance, recovery, traits/callback boundaries, tracing and causal errors; avoid adding shared mutexes.
+The last lint process was deliberately stopped on that instruction; its partial log is not a check result.
+All historical passing evidence below remains intact and does not grade the current uncommitted implementation.
+The checkout has an uncommitted merge from `origin/main` (`65372f505`) with its sole documentation conflict resolved.
+New source now includes deleted setup prompt markdown, the native edit-intent veto and setup usage journal,
+goal-revision adoption, conversation input reads, chat/CLI task controls and reviewed-goal adoption.
+Native GitHub publication, task-aware lease/report transitions and signed wait source are being implemented under `afd_fleet/src/task/` with wire/API resources.
+It is **uncompiled and unverified**. Native mixed-input binding/receipts and R2 storage/manifest APIs now have source; automatic execution and supervisor capture/restore remain unfinished; native wait/report code is also unverified. The latest source-only reviews found no remaining actionable findings in generation/backlog/setup/completion corrections or the 17 typed supervisor task calls. Physical decision execution and durable receipt recovery still need connection to the root coordinator. Read the newest source inventory at the end before resuming.
+Continue the code; preserve one Rust lane and run the complete required checks after the implementation batch is complete.
+
 Continue branch `feat/m236-durable-tasks` in `/workspace/agentsfleet-m236-design`, updating existing draft PR #803 only.
 The published production correction is `c8937f3692b7b3691fdd6e87e1858c94c9477871`; it contains current main `27deff642`.
 Subsequent recovery scenarios and their verified results are recorded below; read the branch's latest commit before restarting work.
+The opening check in the resumed environment confirms published head `ebfb3b722a911600bb00e9677e4f2b003e2169c7`; see the resumed control API section below.
 
 The implemented foundation includes native task binding/control, authenticated task reads, customer-owned question revisions, runner decision profiles and four provider adapters.
 Decision reservation, fresh platform-admin Secrets, original-owner accounting, fair financial maintenance, metrics and privacy corrections are also implemented.
@@ -1185,3 +1374,165 @@ The continuation point above preserves unfinished scope for the fresh session In
 
 Final `orly gate verify` passes the declared non-test checks, including lint and version validation.
 Log: `/tmp/m236-recovery-bundles-verify.log`; all pinned product versions match 0.73.0.
+
+
+## Resumed control API slice
+
+The restored environment contained only `/workspace/agentsfleet` at `27deff642`.
+The requested `/workspace/agentsfleet-m236-design` worktree was recreated from the published feature branch at `ebfb3b722`.
+`orly doctor` passed with matching installed rules and declared verification commands.
+Fresh main is `65372f505`; its six commits contain the M239 documentation merge.
+The local merge retains both Durable Task scenario entries and the new fleet-to-fleet entry; its commit remains pending component verification.
+
+The opening GitHub check uses the exact published head, not a previous run:
+
+| Evidence | Opening observation |
+|---|---|
+| `get_pr_info`, PR #803 | Draft; head `ebfb3b722a911600bb00e9677e4f2b003e2169c7`. |
+| Workflow `41948469205`, job `126986426824` | Daemon-library unit job failed in `test_migrations_precede_serving_and_refusal_preserves_running_daemons`: daemon port occupied. Rust tests did not run in that job. |
+| Workflow `41948469274`, job `126986426534` | Kernel measurement failed fetching a Debian Snapshot package with HTTP 504. The full log is `/tmp/m236-head-kernel.log.gz`; no complete kernel report or combined grade was produced. |
+| Workflow `41948469274` | Runner, daemon and substrate coverage jobs passed. Those partial reports do not establish a complete current-head Rust grade. |
+| Other exact-head workflows | Governance, secret scanning, lint, test, dry and dry-smoke passed. Runner, daemon and secret-wiping unit jobs also passed. |
+| Greptile | Both inline threads are resolved. The latest summary names `c8937f369`; it does not establish review of `ebfb3b722`. A fresh pushed-head review remains required. |
+
+The predecessor environment's `/tmp/m236-coverage-c8937f369/` directory is absent from this restored environment.
+Its recorded passing results and provenance above remain historical evidence; retrieve matching artifacts through workflow `41945042540` before using its gap list.
+No previous passing gate was discarded or represented as a current-source result.
+
+The local control slice adds `PATCH F/tasks/{task_id}` through the existing `TaskLifecycle` owner.
+It requires FleetWrite, a strong current resource tag and the expected task generation, checked while holding the native task row lock.
+Native controls preserve accepted questions, objective, cumulative usage and deadline; resume uses the existing admission queue.
+The new HTTP body is bounded to 128 KiB, and malformed private field names are not logged.
+Reviewed goal-revision adoption, browser/CLI controls and the remaining runtime owners are still unfinished.
+
+New composed scenarios assert one winner among 100 overlapping original-tag controls, unchanged work after stale or invalid controls, one continuation after resume retries, foreign-child refusal and retained exhausted allowances.
+These assertions remain unverified until their integration lane completes.
+The existing native control scenarios now use the same resource-tag and generation interface as the public route.
+
+`make lint-rustd` passed source rules, formatting, workspace Clippy and dependency checks before the last negative scenario and test-helper refinement.
+The first attempt stopped on missing pinned cargo-shear; installing 1.14.0 under `/tmp/m236-tools` repaired local tooling without repository changes.
+The first compile found three new test-code lint errors; explicit Arc cloning and an assertion corrected them without suppressions.
+Final test-source lint, unit, integration, generated OpenAPI and publication remain pending.
+The initial daemon-library lane completed at `/tmp/m236-controls-unit.log`; its deciding count was 3,415 Rust tests passed.
+Its launcher/bootstrap prechecks passed 25, 14, 5 and 7 tests; that local pass does not resolve the hosted port-collision failure.
+
+GNU Make's exported computed ports caused repeated shell expansion before any recipe started.
+Commands use the exact ports returned by `scripts/test-infra-ports.sh` and the existing documented offsets as environment values; no Make recipe or gate was edited.
+One Rust lane runs at a time with the declared cloud Cargo settings, umask 022 and the supplied child-reaping wrapper.
+TypeScript source remains unchanged; the previous 100% results retain their recorded scope.
+
+The remaining delivery sequence is controls and reviewed adoption; production bindings and input receipts; automatic intent/goal execution and task-aware report settlement; GitHub effects and waits; incremental R2 recovery; browser/CLI integration; complete coverage, review and live acceptance.
+PR #803 remains draft. No milestone completion, final PR gate or merge readiness is claimed.
+
+
+Indy's Nov 05 clarification requires a Codex-style activity timeline in both chat and CLI, beyond a compact Current work summary.
+The active specification and activity owner now name concise progress explanations, expandable commands/output/diffs, check results, exact-head publication/waits, capture/restore stages and truthful recovery.
+These UI/CLI behaviors remain acceptance requirements, not implemented or observed outcomes.
+
+The initial `make test-unit-rustd-daemon-libs` run passed 3,415 Rust tests; log `/tmp/m236-controls-unit.log`.
+Its source predates the newly identified precondition-status correction, so it is preserved as component evidence rather than final-source verification.
+Source inspection found that the shared conditional refusal renderer uses each code's registered status and returns the fresh tag in the problem body.
+Task preconditions need registered 412/428 statuses; exhausted allowances retain their existing 429 behavior.
+
+The first precondition correction attempted `UZ-DT-013` (412) and `UZ-DT-014` (428), including native problem entries and stale-outcome metrics.
+The shared conditional renderer carries the fresh tag in the problem body; tests follow that existing representation.
+The correction is under focused unit verification for `afd_core`, `afd_fleet`, `afd_api`, `afd_http`, `afd_api_tenant` and `afd_api_wire`, through the existing Make lane.
+That focused selection does not establish a new full-workspace unit result.
+Worktree-scoped `cargo clean` reclaimed 21.7 GiB before the next lane; third-party build caches and passing logs remain available.
+
+
+The focused unit run exposed the existing registry invariant that only `UZ-AUTHOR-004` owns HTTP 428.
+It finished red with 76 passed and one failed core test; `/tmp/m236-controls-focused-unit.log` is retained.
+The duplicate 428 code was removed and task controls reuse the shared precondition code; `UZ-DT-013` retains 412.
+The registry assertion, allowed status set and all test/coverage floors remain unchanged.
+Following the repository's wider-retry rule, the full `make test-unit-rustd` lane is running at `/tmp/m236-controls-full-rust-unit.log`.
+
+The component standards review found three concrete issues: sequential-only resume replay, missing declared validation sentences and oversized changed test functions.
+The corrections add 100-caller resume and cancel races through the served route, a constant validation sentence table, and smaller replay/terminal helpers using the shared resource tag.
+A source-only follow-up review and clean native integration results remain pending.
+
+All four historical coverage archives were recovered through GitHub's exported artifact references after the direct CLI redirect was refused.
+Their SHA-256 digests match the artifact metadata, and all four revision sidecars name `d12a443729916f22f8c667afca8062974a8c8f0b`.
+That measured revision and `c8937f369` share tree `31fe7522c1a821e191859067c3dc689a6d44a436`.
+The unchanged repository parser reproduces 5,506/5,623 changed lines, all 117 unhit locations and 32/194 touched files below 99%.
+Local copies, the original grade log, `reproduced-grade.json` and the complete gap list are now restored under `/tmp/m236-coverage-c8937f369/`.
+This is recovered historical evidence, not a new test run or a current-source grade.
+
+## User-authored setup correction
+
+Indy clarified: "user will author" and "my vision was to have the user chat and provide the input. The initial prompt templates as i told you will be available in `Review Pull requests` when user selects that a template text will popup on the chat box." He then authorized the correction with "Yes go".
+Delete the five provider `prompt/*.md` files and their loaders; do not relocate their full text into another static prompt. Preserve the editable starter catalog and native authorization, tool validation and owner-approved setup revisions. Add the exact requested newest-message decision check, no-edit rejection, bounded fallback recording and setup-chat billing. Preserve the separate soak branch's setup-chat admission SQL. Required final commands are `make lint-all`, `make test-unit-all` and `make test-integration-rustd`, with exits and counts.
+
+Indy directed code completion before repeated broad checks. The in-progress `make lint-rustd` was terminated on that instruction; `/tmp/m236-prompts-lint-rustd.log` is preserved and is not a passing result. Final required checks remain due after implementation.
+
+The code-first continuation removes the five compiled Markdown prompts, adds a native setup edit-intent journal/check and source/soak regressions, and shares the existing runner decision resolver. Known decision charges retain `SetupChat` attribution; unknown decisions keep their holds and accounting remains explicitly unresolved while a known chat answer can publish. A no-edit refusal refreshes the native continuation digest before replay. Source-review corrections are applied; none of this continuation's new source has passed verification yet.
+The next native controls work adds explicit goal-revision adoption on the existing PATCH route and its retry receipt, with unchanged execution policy/target/limits and invalidated assessment generation. A complete pending-input read route is wired under `L/tasks/inputs`, including conversation scope, live lease/fence, ascending human FIFO, candidate summaries and keyset paging. Binding/input-receipt mutations, automatic runtime loop, GitHub effects/waits, R2 and CLI/browser activity remain unfinished. No broad check is running. No commit or push has been made in this continuation.
+
+Browser task detail now wires conditional Pause/Resume/Cancel through the existing authenticated same-origin proxy; controls await confirmed daemon results and refresh on stale/uncertain results. The task detail response carries its native ETag in the body as well as its header for the existing body-only CLI transport. CLI source adds `agentsfleet fleet tasks list/show/pause/resume/cancel/adopt`, with typed response validation, readable saved questions and no mutation retry. TypeScript source has now changed, so historical 100% coverage remains historical and cannot grade this continuation. New UI/CLI tests and the final full gate pass remain due after code completion.
+
+The browser also now has an explicit saved-criteria review/apply flow: it reads the shared fleet's immutable setup identity, displays the proposed completion questions, and sends the selected revision only after the person chooses “Use these criteria”. Shared fleet output now includes `setup_revision_id`; the existing stored setup resolver supplies it rather than introducing another lookup. Native adoption refuses changed execution policy and leaves task target, cumulative limits and usage intact. This is source implementation, not passing browser or integration evidence.
+
+Indy added: "Also try and see how the postgres queries can be made optimal when you design them." and "and be adversarial on the file written". Source design now pairs pending-input reads with the existing unsettled fleet/sequence index and adds a forward partial unfinished-task ordering index. The new edit-decision DDL omits an attempt-only index because the unique attempt/usage-sequence index already serves that prefix. Adversarial read-only source review is active. Do not claim query performance before final EXPLAIN/measurement evidence, and do not restart broad checks during code completion.
+
+
+## Native PostgreSQL, publication and checkpoint source continuation
+
+Indy directed PostgreSQL completion before gates and an adversarial simplification/concurrency review after each item. No build, test, lint, formatting lane, commit or push has run during this batch. Published head remains `ebfb3b722`; these changes are uncompiled and unverified.
+
+Native GitHub source now includes explicit existing-PR mode, reviewed workflow digests, narrowly scoped minting, guarded fixed-origin HTTP, tested-tree reconstruction and one expected-head mutation. Immutable effects reserve their ordinal before dispatch; uncertain outcomes never repeat the mutation. Bounded encrypted read-only reconciliation custody can outlive task/workspace deletion and is supervised separately from coding execution. Remaining publication corrections include default-branch workflow review, clipping the physical mutation to remaining native/token deadlines, and a coded 409 uncertainty body. Signed completion matching and wait ownership are still absent.
+
+Mixed-input source includes native whole-message/item proof checks, one atomic binding path, task-local input sequencing and immutable apply/queued/answered receipts. GET inputs now also recovers already accepted meaning beyond the incorporated cursor, so accepted-but-unapplied work is not hidden by interpreted admission filtering. The receipt replay query checks both item/mode and operation identity. Native generation/current context in binding/input responses, task-aware lease/report transitions, Slack linked-person authorization and the automatic supervisor/agent loop remain unfinished.
+
+Checkpoint source now lives under `afd_fleet/src/task/{checkpoint,storage}` with supervisor-only `afd_wire::task::checkpoint` types and nine runner method/path adapters from the approved API. R2 uses `object_store` 0.14.2 with the guarded reqwest transport, one vault/SDK session per batch, disabled SDK retries, create-only activation proof and absolute whole-operation deadlines. Credentials remain in the platform vault. Optional `R2_CHECKPOINT_STORAGE` contains only endpoint, bucket and `credential_name`, and requires `PLATFORM_ADMIN_WORKSPACE_ID`; no live bucket activation has been performed.
+
+Slots 2410–2530 register identity keys, quota, retained bases, private capture plans/pages, opaque purge receipts, encrypted objects, scoped refs/pins, the deferred task checkpoint pointer, retained plan-operation receipts and an indexed owner-cleanup deadline. Slot 2520 retry identities survive private-plan retention. Task checkpoint allocation increments its native sequence rather than scanning/depending on retained private generations. Role and immutability inventories were extended with the tables. Final statement preparation, grants, migration execution and realistic plans remain due.
+
+Registration serializes workspace quota before ordered object locks and uses bounded set reads/inserts. It creates one native random object identity, wrapped key and fixed nonce per missing keyed-content identity. Ciphertext descriptors freeze before signed URL exposure. Transfer verification checks ciphertext SHA-256, authenticated decryption, plaintext size and SHA-256 before one batched quota transition. Four independent storage operations run concurrently outside SQL transactions; no new shared mutex was introduced.
+
+Immutable manifest pages validate paths and chunk sizes. Manifest commit streams retained base plus overlay pages, verifies expanded counts, parent collisions and chained symlink resolution with cycle bounds, and binds ordered conversation objects to the file generation. Durable refs protect objects until owner retention removes them under the same task lock used by pin acquisition/commit. Object collection rechecks refs after acquiring object locks; quota stays charged until remote DELETE is acknowledged. Opaque purge custody retains charged bytes/accounting disposition across metadata deletion and lost acknowledgements. Bucket references bind account endpoint plus bucket, so a configuration change cannot silently redirect old purges.
+
+Read-only review found and source corrections addressed: missing purge accounting, cross-workspace refs, an unfinished base stranded after task deletion, delta totals checked without base expansion, and chained symlink escape. These are reviewed source corrections, not passing adversarial execution scenarios. Pin expiry/retention and batch cancellation still need executable race coverage. Owner-retention error isolation, combined manifest bounds, source-size/mechanical conformance and current TypeScript fixtures/coverage also need final review.
+
+Supervised private collection has its own cancellation-bound pass so slow R2 deletion cannot delay GitHub evidence reads. The daemon boot inventory names both task maintenance and storage collection. Its implementation and the new native API source have not been compiled. Public schema/topic/API docs, OpenAPI generation, compatibility fixtures, meaningful scenario coverage and all acceptance remain due. Preserve every historical result above; none grades this source.
+
+## Task lease, report and wait source continuation
+
+Source work continued without running a build, lint, formatter, unit or integration gate, following Indy's PostgreSQL-first/code-first direction.
+This section is an implementation inventory, **not passing evidence**. The published head remains `ebfb3b722`; no new commit/push is claimed.
+
+- `task/lease.rs`, ordinary issue/installed/delivery and schema 2570 now freeze task generation/stop generation, accepted/current setup revision and the actual bounded execution deadline. The initial binding clips both lease and slot to the same deadline. Task resources require the existing `durable_tasks_v1` capability; the runner still advertises false until its automatic coordinator is implemented.
+- Discovery and claim both retain unsettled interpreted work subject to native task eligibility. Supplemental sources settle only after all-item response receipts; unanswered sources recover their accepted meanings and recorded responses rather than classifying again. The reviewer withdrew the suspected duplicate-settlement finding after inspecting that path.
+- The ledger returns newly inserted coding charges. Original-lease request accounting now survives denied renewal, stopped task authority and fenced reports; it does not extend execution. Current task runtime uses a lease-owned cursor. Final verification must cover late receipts, repeated/out-of-order request sequences and final expired runtime.
+- `task/report/` joins task state to the ordinary report transaction before slot release. Native preparations require recorded accounted goal answers, reviewed thresholds, current task/input/effect stamps and independent GitHub status. Continue/wait requires a complete compatible current checkpoint. Current profile activation, live repository authority and grants are checked again at commit. Expected continuation admission refusals use a savepoint and become Blocked without discarding known accounting. A native notice replaces unverified completion text in event history, session state, completion frames and outbound delivery.
+- `task/waits/` and slots 2540–2560 now have native source for arming, claimed reads, signal matching, one ordinary continuation, cooldown, expiration and short-lived inbox collection. Four native dependency readers run without an agent, restore or decision call. A dependency observation reads the PR and latest workflow runs through the existing read-only credential broker; the fallback allowance counts these logical observations, each bounded to two status requests plus the existing scoped mint. Backoff is 60/120/240/300 seconds, with the task's cumulative limit retained across waits. Actual transport/latency proof remains due.
+- App signature verification and installation/workspace mapping precede completion recording. Fleet hooks stay restricted to their verified fleet. Completion matching precedes ordinary investigation filtering and does not broaden that fanout. Missing manual-hook installation identity is not fabricated; independent reads remain the backup.
+- Completion matching accepts a pending placeholder, a newer workflow run number, or the same run with a non-older attempt. Independent latest-status reads decide actionability. Unchanged/pending progress keeps the wait; closed PRs or external head changes block without overwriting human commits.
+- Adversarial review caught conflated due/claim deadlines and millisecond signal-cursor loss. Source now separates `claim_expires_at` and uses monotonic `signal_sequence` / `observed_signal_sequence`; a racing signal cannot steal an active read or disappear at the same timestamp. Source scenarios and real contention proof remain due.
+- Slot 2580 adds bounded transition reasons plus partial native-target containment and spent-attempt indexes. It preserves the target JSON as one source. Proposed generated projections were removed before verification; no schema vocabulary/role gate was changed. The inbox only retains completions relevant to unfinished exact native targets. Query plans, write amplification, fanout bounds and realistic cardinality measurements remain unverified.
+- Report preparations and wait/read/completion operations now have bounded tracing/metric labels; the closed task-operation census is 25 × 11 outcomes (275 combinations). Runtime instrumentation/coverage proof remains due.
+
+Remaining source work includes automatic intent/goal execution in the existing Root/lease loop, task-aware supervisor capture/verified restore and file safety, production input/Slack authority gaps, browser/CLI activity and all public documentation/acceptance coverage. Constructor/golden/DTO propagation, mechanical source conformance and meaningful adversarial scenarios are unfinished. Do not run the broad gates until PostgreSQL and the implementation batch are complete. Preserve every historical result above; none grades these new files.
+
+## Generation ownership and bounded completion delivery
+
+Source corrections only; no build, formatter, lint, unit, integration or acceptance run accompanies this section.
+Exact-head GitHub reads still report `ebfb3b722`: governance, gitleaks, lint, dry-smoke, dry and test succeed; Rust unit and integration are red. Both existing inline Greptile threads remain resolved. These results do not cover the local implementation.
+
+- Slot 2590 freezes each bound admission's task generation. Discovery, claim and issue require that generation; a retained marker prevents task deletion from turning bound work into ordinary work. No historical generation is guessed. Historical-row migration/recovery scenarios remain due.
+- Native transitions retire never-issued obsolete task continuations. Fleet and deployment backlog queries also exclude bound obsolete native continuations, including previously issued continuations whose original accounting rows remain needed. Human sources continue to consume capacity until their separately owed replies settle. Usage and report recovery still use original lease/event ownership; they do not inherit a newer task's execution authority.
+- Setup blocking now re-reads setup compatibility under the existing parent/slot locks. A stale refusal cannot by itself block a restored compatible setup. The read-only reviewer found this correction consistent with actual setup writers' parent locks.
+- Effect allocation retains the complete canonical private request whose exact serialized bytes form its immutable digest; lease fences and retry identities do not become a different effect meaning.
+- Slot 2600 is a durable projection cursor over immutable signed completion receipts. HTTP ingress only inserts the receipt/cursor. Maintenance examines at most 64 scoped waits per pass, one wait lock per transaction, advancing over irrelevant workflows as well as matches. Matching remains fleet-scoped when the signed hook is fleet-scoped. Its active-wait index includes the full equality prefix and `id` keyset order. The first page uses UUID's lower bound; later pages use the saved native wait identity.
+- Completion delivery keeps the progress lock until the one wait update and cursor commit. A busy wait cannot be skipped; a failed cursor is deferred so later evidence can advance. Unfinished completion projections are retained beyond ordinary inbox collection. Wait consumption remains the only path that appends execution to existing admissions.
+
+The 78-row role inventory and explicit slot registration include completion fanout. SQL execution, realistic `EXPLAIN (ANALYZE, BUFFERS)`, statistics, query latency, grants and concurrency scenarios remain unverified. No performance result is claimed.
+
+The source-only reviewer reports no remaining actionable findings in these generation/backlog/setup/fanout corrections. Retaining issued admissions is intentional: ordinary final metering requires their unsettled marker, whereas queue capacity no longer counts an obsolete native continuation. This does not constitute executable financial or concurrency proof.
+
+## Typed supervisor task integration source
+
+The existing `ControlPlane` / `RunnerApi` transport now has typed task methods for the 17 approved runner method/path pairs: inputs, bindings, input receipts, decision reservation/receipt, effect publication/read/list and the nine checkpoint operations. The closed `Verb` list carries 41 entries with explicit methods and diagnostic names. Calls do not add a dispatch retry loop. Native paths use checked UUIDv7 identities and encoded cursor queries; dispatch replies retain the existing wiping `Body` owner.
+
+`LeaseVerbs` now exposes native input/binding/receipt/decision/effect behavior; `FencedVerbs` supplies its own lease fence to implemented calls. `DecisionEvaluation` exposes only accounted evidence, never physical-call credentials. Physical decision execution/receipt recovery remains to be connected, so its default refuses rather than claiming a result. The runner capability remains false. Native input/binding responses can move their owned recovery context out of the private transport buffer without retaining it.
+
+Checkpoint request bodies now support the same serialization their API input types already deserialize. Supervisor capture/restore is still absent: adding typed calls does not implement quiescent file capture, hostile restore checks or a functioning automatic root coordinator. The read-only standards reviewer found no actionable findings in this integration: methods/paths match the served resources, the supervisor supplies fences, ownership helpers preserve fields and the existing transport/error mapping is reused. This source has not been compiled or tested; runtime, coverage and final verification remain pending. No gate was run.

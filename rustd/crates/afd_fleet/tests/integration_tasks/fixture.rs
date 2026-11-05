@@ -193,7 +193,7 @@ pub(super) fn items(count: usize, limits: TaskLimits) -> Vec<PreparedTask> {
                 (*goal).to_owned(),
                 questions(),
                 sha256_hex(goal.as_bytes()),
-                json!({"fixture_goal": goal}).to_string(),
+                json!({"kind":"api_only"}).to_string(),
                 limits,
             )
         })
