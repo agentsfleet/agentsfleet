@@ -598,7 +598,7 @@ For each, one transaction moves the lease's cursor to its deadline and logs the 
 
 **The relay and metrics.** `sweeper:billing` runs every 2 seconds, and up to ten passes back to back while a pass fills its batch. It bills expired leases' last slices, then settles every unsettled line (`afd_billing::ledger::resettle`). A balance trails the charges a person reads by about one pass.
 
-Each pass resumes after the last line the previous one read, and laps back to the oldest. A work the biller keeps refusing never blocks newer charges.
+Each tick starts at the oldest unsettled line, so a refused line is retried every tick. Within a tick, each pass resumes after the last, so a refused batch never blocks newer charges.
 
 `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy. It records the `agentsfleet_billing_*` families and `agentsfleet.billing.credit.consumed` (`docs/metrics.census.tsv`). The relay publishes the unsettled gauges.
 

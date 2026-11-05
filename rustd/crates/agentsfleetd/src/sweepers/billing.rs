@@ -39,9 +39,6 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
     let biller: Arc<dyn Biller> = crate::billing::biller(database.clone());
     let entropy = Entropy::new();
     supervisor.spawn(super::BILLING, move |stop| async move {
-        // Where the next pass's line read resumes, kept across ticks so a work
-        // the biller keeps refusing never holds every newer line behind it.
-        let resume = Mutex::new(None);
         let mut interval = tokio::time::interval(INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -49,6 +46,10 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db) {
                 () = stop.cancelled() => return,
                 _ = interval.tick() => {},
             }
+            // Each tick starts at the oldest unsettled line, so every refused
+            // line is retried once a tick; within the tick, each pass resumes
+            // after the last, so a refused batch never holds newer lines.
+            let resume = Mutex::new(None);
             drain(
                 || sweep_leases(&database, biller.as_ref(), &entropy, &resume),
                 &stop,
@@ -111,11 +112,11 @@ async fn sweep_leases(
     }
 }
 
-/// A pass that read a whole batch of lines and settled some runs again at once,
-/// so a backlog drains at the biller's pace rather than one batch per tick. A
-/// full batch that settled nothing waits for the tick: the biller is refusing.
+/// A pass that read a whole batch runs again at once, resuming after it, so a
+/// backlog drains at the biller's pace and a batch the biller refused never
+/// holds newer lines. [`DRAIN_PASSES`] bounds the passes one tick makes.
 fn drains(swept: &BillingSwept) -> bool {
-    swept.lines_full && swept.resettled > 0
+    swept.lines_full
 }
 
 /// Logs a lease pass's end. Every pass is one iteration of a 2 s poll, so its
@@ -199,33 +200,34 @@ mod tests {
         );
     }
 
-    /// A pass that read a whole batch and settled some of it runs again at
-    /// once, so a backlog drains without waiting a tick per batch.
+    /// A pass that read a whole batch runs again at once, settled or refused,
+    /// so a batch the biller refused never holds newer lines behind it.
     #[test]
-    fn a_full_pass_that_settled_something_drains_again() {
-        let swept = BillingSwept {
-            resettled: 3,
-            lines_full: true,
-            ..BillingSwept::default()
-        };
-        assert!(drains(&swept));
+    fn a_full_pass_drains_again_whether_or_not_it_settled() {
+        for swept in [
+            BillingSwept {
+                resettled: 3,
+                lines_full: true,
+                ..BillingSwept::default()
+            },
+            BillingSwept {
+                settle_failures: 500,
+                lines_full: true,
+                ..BillingSwept::default()
+            },
+        ] {
+            assert!(drains(&swept), "{swept:?}");
+        }
     }
 
-    /// A full batch the biller refused waits for the tick: running again at
-    /// once would only hammer a biller that is not answering.
+    /// A pass that read less than a batch left nothing waiting: the tick ends.
     #[test]
-    fn a_full_pass_that_settled_nothing_waits_for_the_tick() {
-        let refused = BillingSwept {
-            settle_failures: 500,
-            lines_full: true,
-            ..BillingSwept::default()
-        };
-        assert!(!drains(&refused));
+    fn a_partial_pass_waits_for_the_tick() {
         let partial = BillingSwept {
             resettled: 3,
             ..BillingSwept::default()
         };
-        assert!(!drains(&partial), "a partial batch left nothing waiting");
+        assert!(!drains(&partial));
     }
 
     /// A lease pass whose datastore is gone says it is waiting, under the
