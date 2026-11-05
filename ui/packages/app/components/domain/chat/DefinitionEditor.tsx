@@ -24,7 +24,7 @@ export function DefinitionEditor({client, view, onUpdated, onDirtyChange, onCanc
   const retryApply = view.pending && savePending;
   useEffect(() => {onDirtyChange?.(hasWork);}, [hasWork, onDirtyChange]);
   const recovery = chatRecovery(view);
-  const locked = form.conflict || view.busy || (view.pending && !retryApply) || recovery.pending || recovery.blocked
+  const locked = form.conflict || view.busy || (view.pending && !retryApply) || recovery.pending
     || Boolean(view.draft && (!view.draft.candidate || view.draft.state !== DRAFT_STATE.editing && !savedDraft(view)));
   const apply = async (): Promise<void> => {
     setError(null);

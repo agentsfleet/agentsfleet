@@ -4,7 +4,7 @@ import { followDraft, type DraftProgressCallbacks } from "./draft-events";
 const FOLLOW_LIMIT_MS = 330_000;
 type Following = {
   readonly id: string; readonly path: string; readonly owner: AbortSignal; readonly view: AbortSignal;
-  readonly reconcile: (signal: AbortSignal) => Promise<boolean>; readonly needsPolling: () => boolean;
+  readonly reconcile: (signal: AbortSignal) => Promise<boolean>; readonly needsPolling?: () => boolean;
   readonly progress: DraftProgressCallbacks;
   readonly finished: () => void; readonly failed: (cause: unknown) => void;
 };

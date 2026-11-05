@@ -115,15 +115,15 @@ Reports cannot supply diagnostic text, URLs, credentials, or actions.
 | `model_unavailable` | `UZ-AUTHOR-008` | `choose_authoring_model` |
 | `context_too_large` | `UZ-AUTHOR-010` | `reduce_context` |
 | `provider_failed` | `UZ-AUTHOR-014` | `retry_message` |
-| `provider_usage_unknown` | `UZ-AUTHOR-015` | `await_accounting` |
+| `provider_usage_unknown` | `UZ-AUTHOR-015` | `retry_message` |
 | `attempt_timed_out` | `UZ-AUTHOR-016` | `retry_message` |
 | `policy_changed` | `UZ-AUTHOR-009` | `review_setup` |
 
-An uncancelled provider obligation takes precedence over a retry action. After Stop covers its sequence, `provider_usage_unknown` keeps its reason and reports `retry_message` as the recovery action. Its accounting hold remains independent of chat recovery.
+An attempt whose provider usage is unknown no longer holds the draft: only a running attempt does. `provider_usage_unknown` keeps its reason, reports `retry_message`, and keeps its accounting hold until the billing sweep settles it.
 
-Stop/delete/revocation fences text writes; revoked callers receive no private failure detail. Fresh Send refuses unresolved, uncancelled unknown usage with `UZ-AUTHOR-015` before accepting text or advancing sequence.
+Stop/delete/revocation fences text writes; revoked callers receive no private failure detail. Fresh Send is accepted while an earlier attempt awaits accounting.
 
-Exact accepted replay is checked first. Retrying uses an explicit new message/key after Stop or accounting clears the blocking condition.
+Exact accepted replay is checked first. Retrying uses an explicit new message and key.
 
 `Setup = {state:"checking"|"waiting"|"ready"|"cancelled",checks[]}`. Check = `{kind,subject,state:"pending"|"ready"|"blocked",next_action?}`. Check kinds: `source|policy|model|wallet|credentials|connections|grants|stream|activation`. Grant checks record actual approved access; missing approval cannot be logged as ready.
 

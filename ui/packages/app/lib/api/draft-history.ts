@@ -3,7 +3,7 @@
 import type { Draft, Message } from "./draft-types";
 import { DraftSchema, isRunning, MESSAGE_ROLE, MessagesSchema, PAGE_LIMIT } from "./draft-types";
 import { setupRequest, SetupUnavailable } from "./draft-request";
-import { isStopped, UNKNOWN_USAGE_REASON } from "./draft-recovery";
+import { isStopped } from "./draft-recovery";
 
 type DraftRead = {draft: Draft; messages: readonly Message[]};
 
@@ -59,8 +59,7 @@ export class DraftHistory {
       ]);
       for (const message of result.items) this.#remember(message);
       const cutoff = draft?.cancelled_through ?? "0";
-      if (result.items.some((message) => !isStopped(message, cutoff)
-        && (isRunning(message) || message.failure?.reason === UNKNOWN_USAGE_REASON))) canAdvance = false;
+      if (result.items.some((message) => !isStopped(message, cutoff) && isRunning(message))) canAdvance = false;
       if (!result.next_cursor) return [...this.#rows.values()].sort(ordered);
       if (canAdvance) this.#cursor = result.next_cursor;
       cursor = result.next_cursor;
