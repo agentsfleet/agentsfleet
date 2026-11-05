@@ -411,6 +411,7 @@ dependencies = [
  "afd_db",
  "afd_fleet_runtime",
  "afd_observability",
+ "afd_queue",
  "afd_wire",
  "async-trait",
  "base64 0.23.1",
@@ -978,6 +979,15 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "afd_queue"
+version = "0.73.0"
+dependencies = [
+ "async-trait",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

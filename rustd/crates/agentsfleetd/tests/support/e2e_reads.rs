@@ -274,3 +274,23 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
     .try_get(0)
     .expect("a count is a bigint")
 }
+
+/// How long the billing queue may take to move a report's money.
+const SETTLEMENT_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+/// How often the wallet is read while waiting, and how long a repeated report's
+/// queued settlement is given before its absence is asserted.
+pub(crate) const SETTLEMENT_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// The wallet once the billing queue has settled every logged line, or as it
+/// stands at the limit, so the caller's assertion names what was charged.
+pub(crate) async fn queue_settled(run: &Scenario, before: Option<i64>) -> Option<i64> {
+    let deadline = tokio::time::Instant::now() + SETTLEMENT_LIMIT;
+    loop {
+        let now = balance(run).await;
+        let done = now < before && unsettled_lines(run).await == 0;
+        if done || tokio::time::Instant::now() >= deadline {
+            return now;
+        }
+        tokio::time::sleep(SETTLEMENT_GRACE).await;
+    }
+}

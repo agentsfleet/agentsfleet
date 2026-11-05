@@ -21,9 +21,11 @@ use crate::{Nanos, Posture, Result, sql};
 
 pub(crate) mod observed;
 mod outage;
+mod queued;
 
 pub use self::observed::Observed;
 pub use self::outage::{OutagePolicy, WithOutagePolicy};
+pub use self::queued::{BillingJob, Mover, Queued};
 
 #[cfg(feature = "test-util")]
 pub mod conformance;
@@ -207,6 +209,16 @@ pub trait Biller: Send + Sync + std::fmt::Debug {
     /// The biller could not answer. [`WithOutagePolicy`] decides what the work
     /// does then.
     async fn reserve(&self, ask: &Reservation) -> Result<Hold>;
+
+    /// Places `ask`'s hold where nothing waits on the answer, such as a claim
+    /// its gate already admitted. A queueing biller answers
+    /// [`Hold::Unconfirmed`] at once; any other waits for [`Self::reserve`].
+    ///
+    /// # Errors
+    /// As [`Self::reserve`], for a biller that waits.
+    async fn reserve_detached(&self, ask: &Reservation) -> Result<Hold> {
+        self.reserve(ask).await
+    }
 
     /// Charges `settlement`'s lines that were not charged before.
     ///

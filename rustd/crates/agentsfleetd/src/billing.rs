@@ -32,3 +32,13 @@ pub fn biller(database: Db) -> Arc<dyn Biller> {
         OUTAGE_POLICY,
     )))
 }
+
+/// [`biller`] for the request path, with money moved on a queue.
+///
+/// Holds at claim, settlements and releases never make a person or runner
+/// wait on the ledger; budget checks still do. The sweepers keep the unqueued
+/// [`biller`]: they repair anything the queue drops.
+#[must_use]
+pub fn queued_biller(database: Db) -> Arc<dyn Biller> {
+    Arc::new(afd_billing::biller::Queued::in_memory(biller(database)))
+}

@@ -44,7 +44,8 @@ use serde_json::{Value, json};
 
 use crate::e2e::{Scenario, scenario};
 use crate::reads::{
-    balance, counter_column, event_column, lease_column, lease_rows, ledger_rows, unsettled_lines,
+    SETTLEMENT_GRACE, balance, counter_column, event_column, lease_column, lease_rows, ledger_rows,
+    queue_settled, unsettled_lines,
 };
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
@@ -237,7 +238,7 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
         Some("reported"),
         "the lease is flipped, which is what stops the reclaim sweep re-issuing it"
     );
-    let after = balance(run).await;
+    let after = queue_settled(run, before).await;
     assert!(
         after < before,
         "a priced run draws the tenant's wallet down: {before:?} → {after:?}"
@@ -249,7 +250,7 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
     assert_eq!(
         unsettled_lines(run).await,
         0,
-        "and every line is settled before the report answers"
+        "and the billing queue settles every line shortly after the report answers"
     );
     assert_eq!(
         counter_column(run, "succeeded_count").await.as_deref(),
@@ -299,6 +300,8 @@ async fn assert_replay_returns_the_stored_outcome(
         logged,
         "and logs no line: nothing claimed, so nothing charged"
     );
+    // A charge, had the replay made one, would land on the billing queue.
+    tokio::time::sleep(SETTLEMENT_GRACE).await;
     assert_eq!(
         balance(run).await,
         drawn,
