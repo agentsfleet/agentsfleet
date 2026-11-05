@@ -246,7 +246,9 @@ async fn test_unsettled_lines_are_resettled() {
     );
 
     // The relay's own pass, not a hand-rolled retry.
-    let swept = resettle(&lane.pool, &biller).await.expect("the pass reads");
+    let swept = resettle(&lane.pool, &biller, None)
+        .await
+        .expect("the pass reads");
     assert!(swept.settled >= 1, "{swept:?}");
     let stamped = settled_at(&lane, &work).await;
     assert!(
@@ -259,7 +261,9 @@ async fn test_unsettled_lines_are_resettled() {
         "the logged line is charged once"
     );
 
-    resettle(&lane.pool, &biller).await.expect("the pass reads");
+    resettle(&lane.pool, &biller, None)
+        .await
+        .expect("the pass reads");
     assert_eq!(
         settled_at(&lane, &work).await,
         stamped,

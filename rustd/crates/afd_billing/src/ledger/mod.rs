@@ -24,7 +24,7 @@ mod sweep;
 pub use self::lines::log_lines;
 #[cfg(feature = "test-util")]
 pub use self::sweep::unsettled_work;
-pub use self::sweep::{Resettled, resettle, unsettled};
+pub use self::sweep::{Resettled, Resume, resettle, unsettled};
 
 const LOCK_WALLET: &str = include_str!("sql/lock_wallet.sql");
 const INSERT_LINES: &str = include_str!("sql/insert_lines.sql");

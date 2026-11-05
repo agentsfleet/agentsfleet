@@ -268,7 +268,7 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
         "the logged slices count before the relay charges them: {before_relay:?}"
     );
 
-    resettle(&lane.pool, &biller)
+    resettle(&lane.pool, &biller, None)
         .await
         .expect("the relay passes");
     let owed = biller.balance(&payer).await.expect("answers");
