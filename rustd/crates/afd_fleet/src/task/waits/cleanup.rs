@@ -20,9 +20,9 @@ struct Expired {
 
 pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
     let mut connection = tasks.leases.pool().acquire().await?;
-    sqlx::query(include_str!("sql/collect_completions.sql"))
+    sqlx::query(super::super::sql::COLLECT_COMPLETIONS)
         .bind(COMPLETION_RETENTION)
-        .bind(256_i64)
+        .bind(COMPLETION_BATCH)
         .execute(&mut *connection)
         .await
         .map_err(query("collect bounded verified-completion inbox rows"))?;
@@ -93,3 +93,5 @@ async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
 }
 
 const COMPLETION_RETENTION: Duration = Duration::from_hours(72);
+
+const COMPLETION_BATCH: i64 = 256;

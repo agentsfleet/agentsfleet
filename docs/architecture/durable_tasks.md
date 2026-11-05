@@ -322,7 +322,9 @@ Workspace deletion records durable storage-purge receipts before deleting owners
 Receipts contain only random object identities, bucket references and wrapped-key deletion state, and survive owner-row removal until cleanup completes.
 Proposed `task_storage_purges` rows in the fleet schema track independent cleanup; deleting ownership cannot strand an untracked private object.
 
-Task mutations lock the fleet parent against deletion, then its slot, admissions by sequence, lease, tasks by identity and subordinate rows by identity.
+Task mutations lock workspace and fleet parents against deletion, then the slot, admissions by sequence, lease, tasks by identity and subordinate rows by identity.
+Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public execute grant; callers still prove fleet and lease authority.
+Completion collection uses a similarly restricted helper to lock expired, finished parent receipts before their fanout children, retaining `SKIP LOCKED`. Its intrinsic minimum retention is 72 hours and its maximum batch is 256; no update privilege is granted on immutable completion rows.
 Checkpoint commit locks task before objects; collection locks candidate tasks before objects in the same order.
 Network calls, encryption, scanning and object transfer happen outside database transactions.
 

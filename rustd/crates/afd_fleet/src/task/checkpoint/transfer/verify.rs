@@ -92,7 +92,7 @@ pub(super) async fn record(tasks: &Tasks, workspace: &Uuid7, receipts: &[Receipt
     }
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let parent: Option<String> = sqlx::query_scalar(include_str!("../sql/lock_workspace.sql"))
+    let parent: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_WORKSPACE)
         .bind(workspace.as_str())
         .fetch_optional(&mut *tx)
         .await

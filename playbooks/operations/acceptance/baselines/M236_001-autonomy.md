@@ -2,11 +2,47 @@
 
 ## Current continuation point
 
+### Latest live result — Nov 05, 2026
+
+The tenant task-read, control and all three resume scenarios now pass after the
+valid api_only target and served-ETag fixture corrections. The full integration
+run then stopped in afd_authoring: 261 passed, seven failed. Source investigation
+found edit-intent fixtures mutate the global model catalogue after pinning an
+attempt, invalidating both that attempt and concurrent shared-database scenarios.
+Fixture isolation/order correction is pending; production generation fences must
+remain strict. The new lock migrations applied and the original API decision
+lifecycle passed, but new lock-specific tests were not reached before this stop.
+Full integration, Rust merged coverage, final PR gate and exact-head green CI remain
+outstanding. No merge. This is a source checkpoint, not a verification claim.
+
+### Live verification continuation — Nov 05, 2026, 21:00 UTC
+
+Current pushed head remains 11b7def1f639fa3afd32522c777cfb9d59a351ae. Uncommitted
+corrections add migrations 2630/2640 and shared production SQL lock constants.
+Full lint passed on the lock correction. Local integration proved the original
+decision lifecycle now succeeds under the API role, then exposed two fixture
+issues: invalid `{}` task targets (now canonical `api_only`) and a hardcoded old
+ETag (now obtained from the served GET). Strict production validation and stale-tag
+rejection remain unchanged. Full integration is rerunning; no overall pass claimed.
+
+Local integration requires the managed session CA mounted read-only into QStash.
+The task-local override is `/workspace/scratch/m236-compose-ca.yml`, selected with
+`COMPOSE_FILE=/workspace/agentsfleet/docker-compose.yml:/workspace/scratch/m236-compose-ca.yml`.
+TLS remains enabled; repository/user setup files were not changed. Use command-local
+`tini -s`, `umask 0022`, unset the three inherited nonexistent AGENTSFLEET_*_ENV_FILE
+pointers and NEXT_PUBLIC_POSTHOG_ENABLED/HOST for gates. One local verification lane.
+
+Next: finish integration and correct remaining findings, repeat affected lint,
+run version/required orly PR boundary, staged secret scan, commit/push existing803,
+then inspect exact-head CI and Greptile. The pinned snapshot original URLs recovered
+without source changes. Full merged Rust coverage remains unproven. Do not merge
+unless exact-head CI is green and every Greptile thread resolved. Feature stays off.
+
 ### Latest verification update — Nov 05, 2026
 
 This table supersedes older pending results below. The current pushed source is
-`cc4c460a74e2cfc06ec529843b672d5a51436203`; subsequent fixture and typed-error
-corrections are being verified before the next push. Main was fetched again and
+`11b7def1f639fa3afd32522c777cfb9d59a351ae`; subsequent native database-lock
+privilege corrections are being verified before the next push. Main was fetched again and
 remains `66059667bb8d2b12b9f6fb3a63a65a660789dca7`, already integrated.
 
 | Work / evidence | Result | Limits and next action |
@@ -18,15 +54,17 @@ remains `66059667bb8d2b12b9f6fb3a63a65a660789dca7`, already integrated.
 | Live decision fixture | Runner now reports required durable_tasks_v1 capability before leasing decision work | Test runner capability only; production feature stays false |
 | Full local lint | make lint-all passed after shared-fixture, API wording, target-error and publication corrections | Full source rules, format, Clippy, dependencies, TypeScript, scripts and deploy checks; no suppression or threshold edits |
 | App coverage | 483 suites, 4,702 tests; 100% statements, branches, functions and lines | Working-tree result, not browser acceptance |
-| Website coverage | 20 suites, 133 tests; 100% in all four categories | Working-tree result |
+| Website coverage | 20 suites, 133 tests; 100% in all four categories | Passed at 11b7def1f |
+| Design-system coverage | 68 suites, 522 tests; 100% in all four categories | Passed at 11b7def1f |
 | CLI coverage | 2,025 passed, 16 existing live-target skips, zero failures; 100% lines and functions | Skips are missing acceptance evidence, not passes |
-| Full local unit | Runner shard passed 1,632 tests and daemon shard passed 143 under tini and command-local umask 0022; stopped during library build for publication correction | Initial failures were unreaped zombies under PID 1 tail and unchanged toolbox permission expectations under inherited umask 0077; no test edits for those failures |
-| Exact cc4 CI | Rust runner/daemon/library unit jobs, runner and daemon coverage, app/CLI/website/design-system tests, dry lanes, bundles and governance passed | Aggregate CI red; not mergeable |
-| CI source failures | API wording lint, hidden fixture dependency and decision fixture capability corrected locally | New pushed head must verify corrections |
-| CI toolbox / kernel | Pinned Debian snapshot package downloads returned 404 repeatedly; later independent HTTP/HTTPS probes returned identical 200 content | Transient upstream failure suspected, not proven; no pin/transport/gate edits; kernel coverage missing |
-| Greptile at cc4 | Six threads, all resolved; review status SUCCESS | Recheck every new pushed head |
+| Full local unit | make test-unit-all passed at 11b7def1f: Rust runner 1,633, daemon 143, libraries 3,428 (5,204 total); all package coverage gates passed | Command-local tini and umask 0022 address container reaping/permissions; no test edits for those environment failures |
+| Exact 11b7 CI | Lint, Rust unit jobs, runner and daemon coverage, app/CLI/website/design-system tests, dry lanes, bundles, governance and Greptile passed | Substrate plus toolbox/kernel failed; aggregate CI red, not mergeable |
+| CI source failures | API wording, fixture dependency and durable capability corrections verified; live substrate then exposed workspace parent locking without required UPDATE privilege | Real production role mismatch; do not grant UPDATE on immutable rows |
+| Native privilege correction | Exact-key workspace lock and bounded expired-completion selector use restricted security-definer functions; preserve workspace/fleet ordering and completion-parent before fanout-child locking | Independent source review passed; migration and API-role regressions pending runtime execution |
+| CI toolbox / kernel | Repeated pinned-package 404s traced to cached snapshot HTML errors despite existing package bytes; all three original sampled URLs recovered at 20:22:34 UTC | No snapshot, transport or gate changes; next exact-head run must still verify kernel coverage |
+| Greptile at 11b7 | Six threads, all resolved; review status SUCCESS | Recheck every new pushed head |
 | Gate integrity | Independent focused configuration review found no weakened checks, new production exclusions or test suppressions | Rust patch floor 99.51%; TypeScript floors remain 100%; formal full gstack workflow is incomplete |
-| Adversarial publication review | Fixed unchanged empty base gitlink blocking unrelated edits; preserve exact base gitlink/executable and refuse populated/deleted/replaced/staged-changed submodules or executable edits | Independently reread; 11 real-Git regression cases pending execution; production and tests share the actual embedded capture program |
+| Adversarial publication review | Fixed unchanged empty base gitlink blocking unrelated edits; preserve exact base gitlink/executable and refuse populated/deleted/replaced/staged-changed submodules or executable edits | Independently reread; all 11 real-Git cases passed within runner unit suite; tests execute the actual production capture program |
 | Formal review boundary | gstack checklist/preamble and source subsets reviewed; audit records mark completed:false | Full 1,196-file diff, all specialists and runtime probes were not completed; no whole-diff certification claimed |
 | Companion docs | 437f9c1952dd5203ab2e48cdcec5249786038676 pushed; docs make lint passed | Existing docs PR 241 predates continuation; no new PR created |
 | Merge / milestone | No merge; M236 IN_PROGRESS | Requires green exact-head CI and all Greptile threads resolved; full Rust patch coverage still unproven |

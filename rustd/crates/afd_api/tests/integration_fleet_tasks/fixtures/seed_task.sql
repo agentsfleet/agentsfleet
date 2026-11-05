@@ -9,7 +9,7 @@ INSERT INTO fleet.tasks
    expires_at, terminal_at, created_at, updated_at)
 SELECT $1::uuid, f.id, f.workspace_id, f.tenant_id, $3::uuid, f.head_revision_id,
        $4, 'Repair the accepted redirect defect.', $5::jsonb, repeat('b', 64),
-       '{}'::jsonb, $6, 1, 1, 0, 0, 0, 0, 0,
+       '{"kind":"api_only"}'::jsonb, $6, 1, 1, 0, 0, 0, 0, 0,
        5000000000, 12000000, 20000000, 7200000000000, 1000000000,
        12, 1, 8, 0, 128, 1, 24, 0,
        now() + interval '7 days' - $8::bigint * interval '1 millisecond',
