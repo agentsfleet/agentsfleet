@@ -8,7 +8,11 @@ use crate::{
     Result,
     error::query,
     task::{
-        TaskLease, TaskRefusal, Tasks, execution, github::BoundPr, guard as task_guard, transaction,
+        TaskLease, TaskRefusal, Tasks, execution,
+        github::BoundPr,
+        guard as task_guard,
+        row::{sql_counter, sql_small_counter},
+        transaction,
     },
 };
 use afd_core::clock;
@@ -33,22 +37,7 @@ pub(in crate::task) async fn create(
     // Replay and plan allocation need no remote round trip; upload activation
     // is proved before coding admission and again before the first signed PUT.
     let _configured = guard::storage(tasks)?;
-    let digest = afd_core::etag::sha256_hex(
-        &serde_json::to_vec(&(
-            &input.task,
-            &input.operation_id,
-            input.mode,
-            &input.base_id,
-            &input.commit_oid,
-            input.format_version,
-            &input.toolbox_digest,
-            input.page_count,
-            input.upload_budget_bytes,
-            input.logical_bytes,
-            input.entry_count,
-        ))
-        .map_err(afd_core::json::Unreadable::from)?,
-    );
+    let digest = request_digest(input)?;
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = task_guard::lease(&mut tx, lease).await?;
@@ -115,6 +104,55 @@ pub(in crate::task) async fn create(
         .execute(&mut *tx)
         .await
         .map_err(query("retire abandoned unfinished repository bases"))?;
+    let id = allocate(
+        tasks,
+        &mut tx,
+        lease,
+        input,
+        &owned,
+        &digest,
+        (repository, commit),
+    )
+    .await?;
+    let plan = Plan::load(&mut tx, &id, &input.task.task_id).await?;
+    let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, lease, "writer").await?;
+    let response = plan.wire(&pin, false)?;
+    tx.commit()
+        .await
+        .map_err(query("commit checkpoint plan and writer pin"))?;
+    transaction::recycle(connection);
+    Ok(response)
+}
+
+fn request_digest(input: &CheckpointPlanInput) -> Result<String> {
+    Ok(afd_core::etag::sha256_hex(
+        &serde_json::to_vec(&(
+            &input.task,
+            &input.operation_id,
+            input.mode,
+            &input.base_id,
+            &input.commit_oid,
+            input.format_version,
+            &input.toolbox_digest,
+            input.page_count,
+            input.upload_budget_bytes,
+            input.logical_bytes,
+            input.entry_count,
+        ))
+        .map_err(afd_core::json::Unreadable::from)?,
+    ))
+}
+
+async fn allocate(
+    tasks: &Tasks,
+    connection: &mut PgConnection,
+    lease: TaskLease<'_>,
+    input: &CheckpointPlanInput,
+    owned: &execution::Owned,
+    digest: &str,
+    repository_target: (String, Option<String>),
+) -> Result<afd_core::id::Uuid7> {
+    let (repository, commit) = repository_target;
     let mut pages = (0..input.page_count)
         .map(|_page| {
             tasks
@@ -126,7 +164,7 @@ pub(in crate::task) async fn create(
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let base = base(
         tasks,
-        &mut tx,
+        connection,
         input,
         &owned.current.workspace_id,
         &repository,
@@ -166,35 +204,30 @@ pub(in crate::task) async fn create(
             i64::try_from(input.upload_budget_bytes)
                 .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
         )
-        .bind(ready_base.map(|base| base.logical_bytes).unwrap_or(
+        .bind(ready_base.map_or(
             i64::try_from(input.logical_bytes).map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+            |base| base.logical_bytes,
         ))
-        .bind(ready_base.map(|base| base.entry_count).unwrap_or(
+        .bind(ready_base.map_or(
             i32::try_from(input.entry_count).map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+            |base| base.entry_count,
         ))
         .bind(lease.lease_id.as_str())
         .bind(owned.current.fence)
         .bind(super::TRANSFER_SECONDS)
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
-        .execute(&mut *tx)
+        .execute(&mut *connection)
         .await
         .map_err(query("persist native checkpoint plan"))?;
     if input.mode == CheckpointMode::Incremental {
         sqlx::query(include_str!("sql/pages_allocate.sql"))
             .bind(id.as_str())
             .bind(&pages)
-            .execute(&mut *tx)
+            .execute(&mut *connection)
             .await
             .map_err(query("allocate immutable checkpoint page identities"))?;
     }
-    let plan = Plan::load(&mut tx, &id, &input.task.task_id).await?;
-    let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, lease, "writer").await?;
-    let response = plan.wire(&pin, false)?;
-    tx.commit()
-        .await
-        .map_err(query("commit checkpoint plan and writer pin"))?;
-    transaction::recycle(connection);
-    Ok(response)
+    Ok(id)
 }
 
 async fn target(
@@ -242,7 +275,10 @@ async fn base(
             .bind(base)
             .bind(workspace)
             .bind(repository)
-            .bind(input.format_version as i32)
+            .bind(sql_small_counter(
+                input.format_version,
+                "checkpoint format_version",
+            )?)
             .bind(&input.toolbox_digest)
             .fetch_optional(connection)
             .await
@@ -266,7 +302,10 @@ async fn base(
         .bind(workspace)
         .bind(repository)
         .bind(commit)
-        .bind(input.format_version as i32)
+        .bind(sql_small_counter(
+            input.format_version,
+            "checkpoint format_version",
+        )?)
         .bind(&input.toolbox_digest)
         .fetch_optional(&mut *connection)
         .await
@@ -277,7 +316,7 @@ async fn base(
         }
         // Checkout metadata may differ despite an identical Git commit. Reuse
         // the immutable base dimensions; the next overlay describes this tree.
-        *pages = base.page_ids.clone();
+        pages.clone_from(&base.page_ids);
         return Ok(Some(base));
     }
     let id = tasks.leases.entropy().uuid7(clock::now())?;
@@ -286,12 +325,24 @@ async fn base(
         .bind(workspace)
         .bind(repository)
         .bind(commit)
-        .bind(input.format_version as i32)
+        .bind(sql_small_counter(
+            input.format_version,
+            "checkpoint format_version",
+        )?)
         .bind(&input.toolbox_digest)
-        .bind(input.page_count as i32)
+        .bind(sql_small_counter(
+            input.page_count,
+            "checkpoint page_count",
+        )?)
         .bind(&*pages)
-        .bind(input.logical_bytes as i64)
-        .bind(input.entry_count as i32)
+        .bind(sql_counter(
+            input.logical_bytes,
+            "checkpoint logical_bytes",
+        )?)
+        .bind(sql_small_counter(
+            input.entry_count,
+            "checkpoint entry_count",
+        )?)
         .execute(&mut *connection)
         .await
         .map_err(query("allocate retained base identity"))?;
@@ -305,8 +356,8 @@ async fn base(
         id: id.as_str().to_owned(),
         page_ids: pages.clone(),
         manifest_root: None,
-        logical_bytes: input.logical_bytes as i64,
-        entry_count: input.entry_count as i32,
+        logical_bytes: sql_counter(input.logical_bytes, "checkpoint logical_bytes")?,
+        entry_count: sql_small_counter(input.entry_count, "checkpoint entry_count")?,
         ready: false,
     }))
 }

@@ -24,7 +24,7 @@ pub(super) fn validate<'a>(links: impl Iterator<Item = (&'a str, &'a str)>) -> R
                 ));
             }
             match part {
-                "" | "." => continue,
+                "" | "." => {}
                 ".." => {
                     if resolved.pop().is_none() {
                         return Err(error::config("checkpoint link chain escapes its workspace"));

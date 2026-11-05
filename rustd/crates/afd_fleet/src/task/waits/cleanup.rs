@@ -10,9 +10,12 @@ use std::time::Duration;
 
 #[derive(sqlx::FromRow)]
 struct Expired {
-    task_id: String,
-    fleet_id: String,
-    workspace_id: String,
+    #[sqlx(rename = "task_id")]
+    task: String,
+    #[sqlx(rename = "fleet_id")]
+    fleet: String,
+    #[sqlx(rename = "workspace_id")]
+    workspace: String,
 }
 
 pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
@@ -32,7 +35,7 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
     drop(connection);
     for owner in expired {
         if let Err(fault) = expire(tasks, &owner).await {
-            tracing::warn!(event = "dt_expiration_deferred", task_id = owner.task_id.as_str(), error_code = %fault.code());
+            tracing::warn!(event = "dt_expiration_deferred", task_id = owner.task.as_str(), error_code = %fault.code());
         }
     }
     Ok(())
@@ -40,22 +43,22 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
 
 async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
     let scope = TaskScope {
-        fleet_id: guard::id(&owner.fleet_id, "fleet_id")?,
-        workspace_id: guard::id(&owner.workspace_id, "workspace_id")?,
+        fleet_id: guard::id(&owner.fleet, "fleet_id")?,
+        workspace_id: guard::id(&owner.workspace, "workspace_id")?,
     };
-    let task = guard::id(&owner.task_id, "task_id")?;
+    let task = guard::id(&owner.task, "task_id")?;
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     guard::scope(&mut tx, &scope).await?;
     let _held: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_TASK)
-        .bind(&owner.task_id)
-        .bind(&owner.fleet_id)
-        .bind(&owner.workspace_id)
+        .bind(&owner.task)
+        .bind(&owner.fleet)
+        .bind(&owner.workspace)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("lock task for native wall expiration"))?;
     let reason: Option<String> = sqlx::query_scalar(include_str!("sql/expire.sql"))
-        .bind(&owner.task_id)
+        .bind(&owner.task)
         .bind(TaskState::Exhausted.as_str())
         .bind("wall_deadline_reached")
         .bind("lease_limit_reached")
@@ -66,8 +69,8 @@ async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
             "expire task against post-lock deadline or spent attempts",
         ))?;
     if reason.is_some() {
-        super::cancel(&mut tx, &owner.task_id).await?;
-        crate::task::continuation::retire(&mut tx, &owner.task_id).await?;
+        super::cancel(&mut tx, &owner.task).await?;
+        crate::task::continuation::retire(&mut tx, &owner.task).await?;
     }
     tx.commit()
         .await
@@ -81,7 +84,7 @@ async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
         }
         tracing::info!(
             event = "dt_transition",
-            task_id = owner.task_id.as_str(),
+            task_id = owner.task.as_str(),
             state = TaskState::Exhausted.as_str(),
             reason
         );
@@ -89,4 +92,4 @@ async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
     Ok(())
 }
 
-const COMPLETION_RETENTION: Duration = Duration::from_secs(3 * 24 * 60 * 60);
+const COMPLETION_RETENTION: Duration = Duration::from_hours(72);

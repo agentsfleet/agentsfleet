@@ -16,9 +16,9 @@ fn item(start: i32, end: i32) -> TaskProposedItem {
 }
 
 #[test]
-fn decomposition_preserves_utf8_boundaries_order_and_all_non_separator_text() {
+fn decomposition_preserves_utf8_boundaries_order_and_all_non_separator_text() -> crate::Result<()> {
     let message = "hi  réparé";
-    assert!(validate(&[item(0, 2), item(4, 12)], message, Multiplicity::Multiple).is_ok());
+    validate(&[item(0, 2), item(4, 12)], message, Multiplicity::Multiple)?;
     assert!(
         validate(&[item(0, 2)], message, Multiplicity::Single).is_err(),
         "cannot drop the actual work after a greeting"
@@ -34,4 +34,5 @@ fn decomposition_preserves_utf8_boundaries_order_and_all_non_separator_text() {
         validate(&[item(0, 12)], message, Multiplicity::Multiple).is_err(),
         "multiplicity is a recorded constraint"
     );
+    Ok(())
 }

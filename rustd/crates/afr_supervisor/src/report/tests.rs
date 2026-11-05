@@ -43,7 +43,7 @@ fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
 fn a_completed_run_reports_its_answer_tokens_and_timings() {
     let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Ran {
-        output: answer(),
+        output: Box::new(answer()),
         first_chunk: Some(Duration::from_millis(120)),
     };
 
@@ -84,7 +84,7 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
         ..output.result
     };
     let ending = Ending::Ran {
-        output,
+        output: Box::new(output),
         first_chunk: None,
     };
 
@@ -165,7 +165,7 @@ fn a_count_past_the_wire_width_saturates() {
 fn a_finished_run_bills_its_requests_and_reports_its_result_total() {
     let lease = lease(LEASE_ID, FLEET_ID);
     let ending = Ending::Ran {
-        output: answer(),
+        output: Box::new(answer()),
         first_chunk: None,
     };
 

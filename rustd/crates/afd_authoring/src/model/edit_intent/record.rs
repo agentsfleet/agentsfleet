@@ -68,7 +68,8 @@ impl ModelCalls {
         let settlement = usage.and_then(|usage| settlement(prepared, usage, sequence).ok());
         let charged = settlement
             .as_ref()
-            .map(|bill| bill.lines[0].charged.as_i64());
+            .and_then(|bill| bill.lines.first())
+            .map(|line| line.charged.as_i64());
         sqlx::query(include_str!("sql/record.sql"))
             .bind(&prepared.request.call_id)
             .bind(disposition.as_str())

@@ -119,6 +119,8 @@ pub struct TaskBindings {
     pub items: Vec<TaskBinding>,
     /// Native objective attached to this lease after the complete binding.
     pub current_task: Option<TaskContext<'static>>,
+    /// Immutable runtime ceiling read under the current lease ownership locks.
+    pub execution_deadline: jiff::Timestamp,
     /// True when the complete original interpretation was recovered.
     pub replayed: bool,
 }

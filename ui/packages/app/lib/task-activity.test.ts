@@ -93,6 +93,7 @@ it("keeps authoritative observations above legacy arrivals and carries truncatio
   const newer = stage("uploading", 2);
   newer.progress.sequence = 2;
   const withSequence = addTaskActivity({items: [newer], truncated: false}, legacy);
+  expect(addTaskActivity({items: [legacy], truncated: false}, newer)).toEqual(withSequence);
   expect(withSequence.items.map(item => item.progress.phase)).toEqual(["preparing", "uploading"]);
   expect(addTaskActivity(withSequence, {...newer, progress: {...newer.progress, sequence: undefined}})).toBe(withSequence);
   const saved = {items: [legacy], truncated: false};

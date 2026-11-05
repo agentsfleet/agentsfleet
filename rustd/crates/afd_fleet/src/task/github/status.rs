@@ -57,10 +57,10 @@ struct PullRequest {
 #[derive(Deserialize)]
 struct Runs {
     total_count: u64,
-    workflow_runs: Vec<Run>,
+    workflow_runs: Vec<Execution>,
 }
 #[derive(Deserialize)]
-struct Run {
+struct Execution {
     id: u64,
     workflow_id: u64,
     run_attempt: u32,
@@ -121,7 +121,7 @@ impl Session<'_> {
         if runs.total_count > 100 || runs.workflow_runs.len() as u64 != runs.total_count {
             return Err(TaskRefusal::InvalidTarget.into());
         }
-        let mut latest = BTreeMap::<u64, &Run>::new();
+        let mut latest = BTreeMap::<u64, &Execution>::new();
         for run in &runs.workflow_runs {
             if run.head_sha != target.head || run.id == 0 || run.run_attempt == 0 {
                 return Err(TaskRefusal::InvalidTarget.into());

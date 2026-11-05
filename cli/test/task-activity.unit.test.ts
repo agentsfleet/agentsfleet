@@ -73,3 +73,38 @@ test("older server observations cannot repeat changed missing-byte estimates", (
   printer.frame("task_transfer_progress", {progress: {...progress, sequence: 2, bytes: {...progress.bytes, missing: 256}}});
   expect(lines).toHaveLength(1);
 });
+
+test("patch previews stay local and expensive diffs fall back to a bounded replacement", () => {
+  expect(fileActivity("apply_patch", {patch: "*** Update File: x\n-old\n+new\u001b[31m"}, "succeeded"))
+    .toBe("Confirmed local edit · not a publication\n*** Update File: x\n-old\n+new");
+  const before = Array.from({length: 501}, (_, index) => `a${index}`).join("\n");
+  const after = Array.from({length: 501}, (_, index) => `b${index}`).join("\n");
+  const preview = fileActivity("file_edit", {path: "large", old_text: before, new_text: after}, "succeeded");
+  expect(preview).toContain("- a0\n- a1");
+  expect(preview).toContain("- a500\n+ b0");
+  expect(preview).toEndWith("+ b500");
+});
+
+test("long event streams bound replay memory while retaining recent stage deduplication", () => {
+  const lines: string[] = [];
+  const printer = new ActivityPrinter(line => lines.push(line));
+  const stage = (index: number) => ({progress: {activity_id: `019f0000-0000-7000-8000-${index.toString(16).padStart(12, "0")}`,
+    operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}});
+  for (let index = 0; index < 257; index++) printer.frame("task_transfer_progress", stage(index));
+  printer.frame("task_transfer_progress", stage(256));
+  expect(lines).toHaveLength(257);
+  printer.frame("task_transfer_progress", stage(0));
+  expect(lines).toHaveLength(258);
+});
+
+test("long tool streams retain bounded replay history without losing new command outcomes", () => {
+  const lines: string[] = [];
+  const printer = new ToolActivityPrinter(line => lines.push(line));
+  const call = (index: number) => ({call_id: `call-${index}`, name: "shell", status: "failed", exit_code: 2});
+  for (let index = 0; index < 601; index++) printer.frame("tool_call_completed", call(index));
+  printer.frame("tool_call_completed", call(600));
+  expect(lines).toHaveLength(601);
+  printer.frame("tool_call_completed", call(0));
+  expect(lines).toHaveLength(602);
+  expect(lines.at(-1)).toContain("Exit 2");
+});

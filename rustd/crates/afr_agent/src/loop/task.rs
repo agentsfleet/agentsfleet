@@ -36,7 +36,7 @@ impl Harness<'_, '_> {
                 let disposition = report.disposition;
                 self.task_report = Some(report);
                 match disposition {
-                    TaskDisposition::Continue if self.shared.started.elapsed() >= std::time::Duration::from_secs(10 * 60) =>
+                    TaskDisposition::Continue if self.task_yield_due() =>
                         Some(Ending::Answered("The task remains in progress. Its state will be saved before the next execution slice.".to_owned())),
                     TaskDisposition::Continue => None,
                     TaskDisposition::Complete | TaskDisposition::Waiting | TaskDisposition::Blocked =>
@@ -63,15 +63,12 @@ impl Harness<'_, '_> {
         // Always read the oldest unsettled source page. Advancing the message
         // cursor before all mixed-source replies are acknowledged can strand
         // an accepted conversation item while a later action completes.
-        let mut inputs = verbs
-            .task_inputs(TaskInputsQuery {
-                fencing_token: self.shared.fencing_token,
-                starting_after: None,
-                after_input_sequence: Some(self.incorporated_input_sequence),
-                limit: 4,
-            })
-            .await
-            .map_err(crate::decision::native)?;
+        let mut inputs = read_inputs(
+            verbs,
+            self.shared.fencing_token,
+            self.incorporated_input_sequence,
+        )
+        .await?;
         let pending: Vec<_> = inputs
             .inputs
             .iter()
@@ -79,7 +76,7 @@ impl Harness<'_, '_> {
             .cloned()
             .collect();
         for input in pending {
-            crate::decision::Intake {
+            let binding = crate::decision::Intake {
                 lease: self.shared.payload,
                 verbs,
                 provider: self.shared.provider,
@@ -88,17 +85,19 @@ impl Harness<'_, '_> {
             }
             .bind(&inputs, &input.source_admission_id, &input.message)
             .await?;
+            prepared.execution_deadline =
+                match (prepared.execution_deadline, binding.execution_deadline) {
+                    (Some(previous), Some(current)) => Some(previous.min(current)),
+                    _ => None,
+                };
             // Each atomic plan can advance the native generation. Never classify
             // another queued message against the previous generation's authority.
-            inputs = verbs
-                .task_inputs(TaskInputsQuery {
-                    fencing_token: self.shared.fencing_token,
-                    starting_after: None,
-                    after_input_sequence: Some(self.incorporated_input_sequence),
-                    limit: 4,
-                })
-                .await
-                .map_err(crate::decision::native)?;
+            inputs = read_inputs(
+                verbs,
+                self.shared.fencing_token,
+                self.incorporated_input_sequence,
+            )
+            .await?;
         }
         // A saved conversation can precede several native application receipts.
         // Read every immutable page before permitting another action; never jump
@@ -115,39 +114,22 @@ impl Harness<'_, '_> {
                 // Durable application follows incorporation. A replacement reconstructs
                 // already applied meaning from the same immutable native receipt.
                 if !input.applied {
-                    let receipt = verbs
-                        .task_input_receipt(TaskInputReceiptInput {
-                            fencing_token: self.shared.fencing_token,
-                            operation_id: crate::decision::identity()?,
-                            source_admission_id: input.source_admission_id.clone(),
-                            plan_digest: input.plan_digest.clone(),
-                            item_id: input.item_id.clone(),
-                            task: Some(input.task.clone()),
-                            mode: TaskInputMode::ApplyHere,
-                            response_text: None,
-                        })
-                        .await
-                        .map_err(crate::decision::native)?;
-                    if receipt.item_id != input.item_id
-                        || receipt.covered_input_sequence != Some(input.sequence)
-                    {
-                        return Err(crate::decision::unavailable());
-                    }
+                    record_input(
+                        verbs,
+                        self.shared.fencing_token,
+                        input,
+                        TaskInputMode::ApplyHere,
+                        None,
+                    )
+                    .await?;
                 }
                 self.incorporated_input_sequence = input.sequence;
                 if input.response_text.is_none() {
                     // This acknowledges incorporation, not a semantic completion.
                     // The ordinary report independently settles the final task
                     // outcome after capture and current native evidence checks.
-                    let receipt = verbs.task_input_receipt(TaskInputReceiptInput {
-                    fencing_token: self.shared.fencing_token, operation_id: crate::decision::identity()?,
-                    source_admission_id: input.source_admission_id.clone(), plan_digest: input.plan_digest.clone(),
-                    item_id: input.item_id.clone(), task: Some(input.task.clone()), mode: TaskInputMode::Answered,
-                    response_text: Some("Your input has been incorporated into the task's ongoing work. Its final status will follow the native completion and recovery checks.".to_owned()),
-                }).await.map_err(crate::decision::native)?;
-                    if receipt.item_id != input.item_id || receipt.mode != TaskInputMode::Answered {
-                        return Err(crate::decision::unavailable());
-                    }
+                    record_input(verbs, self.shared.fencing_token, input, TaskInputMode::Answered,
+                        Some("Your input has been incorporated into the task's ongoing work. Its final status will follow the native completion and recovery checks.")).await?;
                 }
             }
             let complete = inputs
@@ -160,16 +142,14 @@ impl Harness<'_, '_> {
             if inputs.accepted_inputs.is_empty() || page == 63 {
                 return Err(crate::decision::unavailable());
             }
-            inputs = verbs
-                .task_inputs(TaskInputsQuery {
-                    fencing_token: self.shared.fencing_token,
-                    starting_after: None,
-                    after_input_sequence: Some(self.incorporated_input_sequence),
-                    limit: 4,
-                })
-                .await
-                .map_err(crate::decision::native)?;
+            inputs = read_inputs(
+                verbs,
+                self.shared.fencing_token,
+                self.incorporated_input_sequence,
+            )
+            .await?;
         }
+        prepared.execution_deadline = inputs.execution_deadline;
         prepared.inputs = inputs;
         if let Some(task) = prepared.inputs.current_task.as_mut() {
             if self.incorporated_input_sequence < task.input_sequence {
@@ -180,4 +160,50 @@ impl Harness<'_, '_> {
         }
         Ok(())
     }
+}
+
+async fn record_input(
+    verbs: &dyn afr_tools::LeaseVerbs,
+    fencing_token: u64,
+    input: &afd_wire::task::TaskAcceptedInput,
+    mode: TaskInputMode,
+    response: Option<&str>,
+) -> crate::Result<()> {
+    let receipt = verbs
+        .task_input_receipt(TaskInputReceiptInput {
+            fencing_token,
+            operation_id: crate::decision::identity()?,
+            source_admission_id: input.source_admission_id.clone(),
+            plan_digest: input.plan_digest.clone(),
+            item_id: input.item_id.clone(),
+            task: Some(input.task.clone()),
+            mode,
+            response_text: response.map(str::to_owned),
+        })
+        .await
+        .map_err(crate::decision::native)?;
+    if receipt.item_id != input.item_id
+        || receipt.mode != mode
+        || mode == TaskInputMode::ApplyHere
+            && receipt.covered_input_sequence != Some(input.sequence)
+    {
+        return Err(crate::decision::unavailable());
+    }
+    Ok(())
+}
+
+async fn read_inputs(
+    verbs: &dyn afr_tools::LeaseVerbs,
+    fencing_token: u64,
+    incorporated: u64,
+) -> crate::Result<afd_wire::task::TaskInputsResponse<'static>> {
+    verbs
+        .task_inputs(TaskInputsQuery {
+            fencing_token,
+            starting_after: None,
+            after_input_sequence: Some(incorporated),
+            limit: 4,
+        })
+        .await
+        .map_err(crate::decision::native)
 }

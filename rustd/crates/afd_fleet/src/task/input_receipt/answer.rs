@@ -140,8 +140,8 @@ impl Completion {
                 .publish_completion(&closed, Some(&self.answer))
                 .await;
         }
-        if let (Some(owed), Some(reply)) = (self.owed, self.reply) {
-            if let Err(error) = tasks
+        if let (Some(owed), Some(reply)) = (self.owed, self.reply)
+            && let Err(error) = tasks
                 .leases
                 .queue_delivery(
                     &owed,
@@ -155,9 +155,8 @@ impl Completion {
                     },
                 )
                 .await
-            {
-                tracing::warn!(event = "dt_input_reply_deferred", error_code = %error.code());
-            }
+        {
+            tracing::warn!(event = "dt_input_reply_deferred", error_code = %error.code());
         }
     }
 }

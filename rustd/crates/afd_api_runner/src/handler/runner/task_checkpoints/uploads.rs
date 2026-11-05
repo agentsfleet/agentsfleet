@@ -16,7 +16,7 @@ use std::sync::Arc;
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = afd_wire::paths::LEASE_TASK_CHECKPOINT_UPLOADS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_checkpoint_uploads", summary = "Freeze exact ciphertext upload descriptors",
-    description = "Persists every ciphertext digest and length before signing create-only uploads. Exact replay cannot choose a new key, nonce or representation.",
+    description = "Records every ciphertext digest and length before signing create-only uploads. Exact replay cannot choose a new key, nonce or representation.",
     params(("lease_id" = String, Path, description = "Native lease UUIDv7."),
         ("checkpoint_id" = String, Path, description = "Native checkpoint UUIDv7.")), request_body = CheckpointUploadsInput,
     responses((status = 201, body = afd_wire::task::CheckpointObjectsPage, description = "Native checkpoint result"),

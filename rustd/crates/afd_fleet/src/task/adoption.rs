@@ -56,39 +56,14 @@ pub(super) async fn apply(
         TaskState::Running | TaskState::Ready | TaskState::Waiting
     );
     let changed = origin.accepted_revision_id != adoption.goal_revision_id.as_str();
-    let wake = if eligible && changed {
-        Some(
-            Continuation::new(
-                scope,
-                task,
-                row::counter(origin.generation, "generation")?
-                    .checked_add(1)
-                    .ok_or(TaskRefusal::LimitExhausted)?,
-                &guard::id(&origin.admission_id, "source_admission_id")?,
-            )
-            .with_reply(
-                origin.reply_provider.as_deref(),
-                origin.reply_address.as_deref(),
-            )?,
-        )
-    } else {
-        None
-    };
+    let wake = origin.wake(scope, task, eligible && changed)?;
     let prepared = match &wake {
         Some(wake) => Some(tasks.admissions.prepare(wake.admission()).await?),
         None => None,
     };
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    guard::scope(&mut tx, scope).await?;
-    let locked: Locked = sqlx::query_as(sql::LOCK_TASK)
-        .bind(task.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(query(CONTEXT))?
-        .ok_or(TaskRefusal::NotFound)?;
+    let locked = lock(&mut tx, scope, task).await?;
     let current = read::on(&mut tx, scope, task).await?;
     if replay(&mut tx, scope, task, adoption, &digest)
         .await
@@ -119,22 +94,7 @@ pub(super) async fn apply(
     let changed =
         current.context.accepted_revision_id.as_ref() != adoption.goal_revision_id.as_str();
     if changed {
-        super::waits::cancel(&mut tx, task.as_str()).await?;
-        let goal_digest = afd_core::etag::sha256_hex(
-            &serde_json::to_vec(&(&current.context.objective, &questions))
-                .map_err(afd_core::json::Unreadable::from)?,
-        );
-        sqlx::query(include_str!("sql/adopt_goal.sql"))
-            .bind(task.as_str())
-            .bind(adoption.goal_revision_id.as_str())
-            .bind(sqlx::types::Json(questions))
-            .bind(goal_digest)
-            .bind(TaskState::Ready.as_str())
-            .bind(eligible)
-            .execute(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-        super::continuation::retire(&mut tx, task.as_str()).await?;
+        update_goal(&mut tx, task, adoption, &current, &questions, eligible).await?;
         if eligible {
             let admitted = tasks
                 .admissions
@@ -278,4 +238,72 @@ async fn origin(
     .into_iter()
     .next()
     .ok_or_else(|| TaskRefusal::NotFound.into())
+}
+
+impl Origin {
+    fn wake(
+        &self,
+        scope: &TaskScope,
+        task: &Uuid7,
+        eligible: bool,
+    ) -> Result<Option<Continuation>> {
+        let wake = if eligible {
+            Some(
+                Continuation::new(
+                    scope,
+                    task,
+                    row::counter(self.generation, "generation")?
+                        .checked_add(1)
+                        .ok_or(TaskRefusal::LimitExhausted)?,
+                    &guard::id(&self.admission_id, "source_admission_id")?,
+                )
+                .with_reply(
+                    self.reply_provider.as_deref(),
+                    self.reply_address.as_deref(),
+                )?,
+            )
+        } else {
+            None
+        };
+        Ok(wake)
+    }
+}
+
+async fn update_goal(
+    connection: &mut PgConnection,
+    task: &Uuid7,
+    adoption: &TaskAdoption,
+    current: &TaskSnapshot,
+    questions: &[afd_wire::decision::NamedQuestion],
+    eligible: bool,
+) -> Result<()> {
+    super::waits::cancel(connection, task.as_str()).await?;
+    let goal_digest = afd_core::etag::sha256_hex(
+        &serde_json::to_vec(&(&current.context.objective, &questions))
+            .map_err(afd_core::json::Unreadable::from)?,
+    );
+    sqlx::query(include_str!("sql/adopt_goal.sql"))
+        .bind(task.as_str())
+        .bind(adoption.goal_revision_id.as_str())
+        .bind(sqlx::types::Json(questions))
+        .bind(goal_digest)
+        .bind(TaskState::Ready.as_str())
+        .bind(eligible)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    super::continuation::retire(connection, task.as_str()).await?;
+    Ok(())
+}
+
+async fn lock(connection: &mut PgConnection, scope: &TaskScope, task: &Uuid7) -> Result<Locked> {
+    guard::scope(connection, scope).await?;
+    sqlx::query_as(sql::LOCK_TASK)
+        .bind(task.as_str())
+        .bind(scope.fleet_id.as_str())
+        .bind(scope.workspace_id.as_str())
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))?
+        .ok_or_else(|| TaskRefusal::NotFound.into())
 }

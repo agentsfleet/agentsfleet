@@ -65,6 +65,8 @@ pub struct Issued {
     pub task: Option<afd_wire::task::TaskContext<'static>>,
     /// Actual slot deadline after task limits were applied.
     pub expires_at: Timestamp,
+    /// Immutable native runtime ceiling, including any shorter task slice.
+    pub execution_deadline: Timestamp,
 }
 
 impl Leases {
@@ -157,6 +159,7 @@ impl Leases {
         else {
             return Ok(None);
         };
+        let execution_deadline = super::deadline::read(&mut transaction, lease_id.as_str()).await?;
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
         record_issued(&lease_id, runner_id, acquired, decision.as_deref());
@@ -165,6 +168,7 @@ impl Leases {
             decision,
             task,
             expires_at,
+            execution_deadline,
         }))
     }
 

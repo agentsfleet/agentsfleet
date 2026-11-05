@@ -72,7 +72,7 @@ impl Case {
         credential(&f).await;
         let mut stub = Provider::known();
         let base = attempt.draft.candidate.as_ref().expect("source candidate");
-        stub.response["output"] = json!([
+        *stub.response.get_mut("output").expect("fixture output") = json!([
             {"type":"message","content":[{"type":"output_text","text":"Choose the clearer implementation, weighing maintainability, correctness, and operational risk. Measure again only if those trade-offs remain unresolved."}]},
             {"type":"function_call","name":"propose_setup","call_id":"unasked-edit","arguments":json!({"proposal":{
                 "kind":"edit","base_candidate_id":base.id,"base_candidate_revision":base.revision,

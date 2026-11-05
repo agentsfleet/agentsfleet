@@ -184,15 +184,15 @@ impl Plane {
         // the connector set to be described.
         let connector = self.broker.connectors().resolve(integration);
 
-        self.admit_mint(&scope, integration, connector).await?;
+        self.admit_mint(scope, integration, connector).await?;
 
-        let handle = self.handle(&scope, integration).await?;
+        let handle = self.handle(scope, integration).await?;
         if expected_installation.is_some_and(|expected| {
             afd_credential::credential::github::installation(&handle) != Some(expected)
         }) {
             return Err(crate::task::TaskRefusal::InvalidTarget.into());
         }
-        self.admit_handle(&scope, integration, &handle).await?;
+        self.admit_handle(scope, integration, &handle).await?;
         let outcome = self
             .broker
             .mint(Ask {
@@ -207,7 +207,7 @@ impl Plane {
         // The exchange consumed the posted refresh token, so the replacement is
         // written back BEFORE the caller is handed anything. A failure here is
         // reported and dropped: the access token in hand is valid either way.
-        self.persist_rotation(&scope, integration, &handle, &minted)
+        self.persist_rotation(scope, integration, &handle, &minted)
             .await;
         Ok(minted)
     }

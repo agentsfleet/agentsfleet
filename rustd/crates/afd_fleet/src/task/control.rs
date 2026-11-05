@@ -180,7 +180,7 @@ async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Re
     let generation = row::counter(origin.generation, "generation")?
         .checked_add(1)
         .ok_or(TaskRefusal::LimitExhausted)?;
-    Ok(Continuation::new(
+    Continuation::new(
         scope,
         task_id,
         generation,
@@ -189,7 +189,7 @@ async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Re
     .with_reply(
         origin.reply_provider.as_deref(),
         origin.reply_address.as_deref(),
-    )?)
+    )
 }
 
 async fn update(

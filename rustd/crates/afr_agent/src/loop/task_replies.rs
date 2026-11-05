@@ -55,31 +55,7 @@ impl Harness<'_, '_> {
                 } else {
                     continue;
                 };
-                let task = binding
-                    .task_id
-                    .as_ref()
-                    .map(|id| {
-                        let generation = prepared
-                            .inputs
-                            .current_task
-                            .as_ref()
-                            .filter(|task| task.task_id == *id)
-                            .map(|task| task.generation)
-                            .or_else(|| {
-                                prepared
-                                    .inputs
-                                    .tasks
-                                    .iter()
-                                    .find(|task| task.task_id == *id)
-                                    .map(|task| task.generation)
-                            })
-                            .ok_or_else(crate::decision::unavailable)?;
-                        Ok::<_, crate::Error>(DecisionTaskVersion {
-                            task_id: id.clone(),
-                            generation,
-                        })
-                    })
-                    .transpose()?;
+                let task = reply_task(&prepared.inputs, binding)?;
                 let saved = intake
                     .verbs
                     .task_input_receipt(TaskInputReceiptInput {
@@ -111,6 +87,7 @@ impl Harness<'_, '_> {
                 })
                 .await
                 .map_err(crate::decision::native)?;
+            prepared.execution_deadline = prepared.inputs.execution_deadline;
             if let Some(task) = prepared.inputs.current_task.as_mut() {
                 task.covered_input_sequence = self.incorporated_input_sequence;
                 task.confirmed_effect_watermark = self.confirmed_effect_watermark;
@@ -174,4 +151,33 @@ impl Harness<'_, '_> {
         }
         parts.join("\n\n")
     }
+}
+
+fn reply_task(
+    inputs: &afd_wire::task::TaskInputsResponse<'_>,
+    binding: &afd_wire::task::TaskItemBinding,
+) -> crate::Result<Option<DecisionTaskVersion>> {
+    binding
+        .task_id
+        .as_ref()
+        .map(|id| {
+            let generation = inputs
+                .current_task
+                .as_ref()
+                .filter(|task| task.task_id == *id)
+                .map(|task| task.generation)
+                .or_else(|| {
+                    inputs
+                        .tasks
+                        .iter()
+                        .find(|task| task.task_id == *id)
+                        .map(|task| task.generation)
+                })
+                .ok_or_else(crate::decision::unavailable)?;
+            Ok(DecisionTaskVersion {
+                task_id: id.clone(),
+                generation,
+            })
+        })
+        .transpose()
 }

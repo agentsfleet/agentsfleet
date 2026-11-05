@@ -145,6 +145,7 @@ async fn source(
 fn response(accepted: super::TaskBindings) -> TaskBindingsResponse<'static> {
     TaskBindingsResponse {
         replayed: accepted.replayed,
+        execution_deadline: Some(accepted.execution_deadline),
         current_task: accepted.current_task,
         items: accepted
             .items

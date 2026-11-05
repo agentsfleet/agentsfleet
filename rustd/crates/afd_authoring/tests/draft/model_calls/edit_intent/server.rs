@@ -82,9 +82,14 @@ async fn read(stream: &mut tokio_rustls::server::TlsStream<tokio::net::TcpStream
         let mut buffer = [0; 4096];
         let count = stream.read(&mut buffer).await.expect("request bytes");
         assert_ne!(count, 0, "complete HTTP request");
-        request.extend_from_slice(&buffer[..count]);
+        request.extend_from_slice(buffer.get(..count).expect("read count fits buffer"));
         if let Some(offset) = request.windows(4).position(|window| window == b"\r\n\r\n") {
-            let header = std::str::from_utf8(&request[..offset]).expect("HTTP header");
+            let header = std::str::from_utf8(
+                request
+                    .get(..offset)
+                    .expect("header boundary found in request"),
+            )
+            .expect("HTTP header");
             let length = header
                 .lines()
                 .find_map(|line| {
@@ -100,9 +105,14 @@ async fn read(stream: &mut tokio_rustls::server::TlsStream<tokio::net::TcpStream
         let mut buffer = [0; 4096];
         let count = stream.read(&mut buffer).await.expect("remaining body");
         assert_ne!(count, 0, "complete request body");
-        request.extend_from_slice(&buffer[..count]);
+        request.extend_from_slice(buffer.get(..count).expect("read count fits buffer"));
     }
-    serde_json::from_slice(&request[offset..offset + length]).expect("daemon decision request")
+    serde_json::from_slice(
+        request
+            .get(offset..offset + length)
+            .expect("complete bounded body"),
+    )
+    .expect("daemon decision request")
 }
 
 impl Drop for Server {

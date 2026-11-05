@@ -324,7 +324,7 @@ Native code validates every claim; duplicate physical call or effect identities 
 
 The daemon alone creates native continuation admissions through `Producer::TaskContinuation` and task event kind.
 The [input/scheduling protocol](../../architecture/durable_tasks.md#proposed-input-claims-and-scheduling) fixes FIFO boundaries, four-message claims and immutable mixed-action identities.
-A ten-minute slice yields at a completed group and saves before release; issued uncertain effects retain reconciliation ownership.
+A slice of at most ten minutes uses the persisted native deadline, reserves assessment and capture/report time, and yields at a completed group before release; issued uncertain effects retain reconciliation ownership.
 
 The [relational model](../../architecture/durable_tasks.md#proposed-relational-model-for-signoff) defines tables, uniqueness, ownership and lock order.
 The UZ-DT family fixes not-found/stale/replay/target/limit/decision/checkpoint/storage/effect/protocol outcomes with mapped HTTP status.

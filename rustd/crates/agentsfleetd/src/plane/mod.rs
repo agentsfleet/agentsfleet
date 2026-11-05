@@ -190,32 +190,14 @@ impl ServingPlane {
             broker,
             biller,
         );
-        let storage = checkpoint_storage
-            .zip(platform_admin_workspace.clone())
-            .map(|(config, admin)| {
-                afd_fleet::task::storage::R2CheckpointStore::new(
-                    config,
-                    admin,
-                    Vault::new(database.clone(), Arc::clone(&task_master)),
-                    Arc::clone(&task_master),
-                    github_client.clone(),
-                )
-            });
-        let tasks = afd_fleet::task::Tasks::new(
-            leases.leases.clone(),
+        let tasks = task_plane(
+            &mut leases,
             task_admissions,
-            afd_fleet::task::TaskDependencies {
-                admin_workspace: platform_admin_workspace.clone(),
-                storage,
-                github: Some(afd_fleet::task::Github::new(
-                    leases.clone(),
-                    github_client,
-                    task_master,
-                )),
-                ..afd_fleet::task::TaskDependencies::from(&leases)
-            },
+            platform_admin_workspace.clone(),
+            checkpoint_storage,
+            task_master,
+            github_client,
         );
-        leases.task_reports = Some(Arc::new(tasks.clone()));
         Self {
             authoring,
             tenant,
@@ -309,3 +291,37 @@ pub type Shared = Arc<ServingPlane>;
 
 #[cfg(test)]
 mod tests;
+
+/// One native task owner attaches reporting to the existing lease plane.
+fn task_plane(
+    leases: &mut Plane,
+    admissions: Admissions,
+    admin_workspace: Option<Uuid7>,
+    storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
+    master: Arc<afd_crypto::secret::Kek>,
+    client: reqwest::Client,
+) -> afd_fleet::task::Tasks {
+    let storage = storage_config
+        .zip(admin_workspace.clone())
+        .map(|(config, admin)| {
+            afd_fleet::task::storage::R2CheckpointStore::new(
+                config,
+                admin,
+                leases.vault.clone(),
+                Arc::clone(&master),
+                client.clone(),
+            )
+        });
+    let tasks = afd_fleet::task::Tasks::new(
+        leases.leases.clone(),
+        admissions,
+        afd_fleet::task::TaskDependencies {
+            admin_workspace,
+            storage,
+            github: Some(afd_fleet::task::Github::new(leases.clone(), client, master)),
+            ..afd_fleet::task::TaskDependencies::from(&*leases)
+        },
+    );
+    leases.task_reports = Some(Arc::new(tasks.clone()));
+    tasks
+}

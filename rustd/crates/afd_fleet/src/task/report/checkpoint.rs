@@ -1,6 +1,9 @@
 //! One checkpoint guard shared by native settlement and its regression fixtures.
 
 /// Exact checkpoint ownership and coverage required by an execution report.
+///
+/// This predicate reads on the caller's already-authorized report transaction;
+/// it does not grant lease custody or settle the task.
 #[derive(Debug)]
 pub struct CheckpointGuard<'a> {
     /// Recovery pointer supplied by the report.

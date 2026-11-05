@@ -127,9 +127,10 @@ impl Transfers {
         );
         for (name, value) in &transfer.headers {
             let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| error::config("checkpoint signed header is invalid"))?;
-            let mut value = reqwest::header::HeaderValue::from_str(value)
-                .map_err(|_| error::config("checkpoint signed header value is invalid"))?;
+                .map_err(|source| error::boundary("checkpoint signed header is invalid", source))?;
+            let mut value = reqwest::header::HeaderValue::from_str(value).map_err(|source| {
+                error::boundary("checkpoint signed header value is invalid", source)
+            })?;
             value.set_sensitive(true);
             request = request.header(name, value);
         }
@@ -185,9 +186,11 @@ pub(super) fn open(
         .len()
         .checked_sub(afd_crypto::TAG_LEN)
         .ok_or_else(|| error::config("checkpoint authentication tag is absent"))?;
-    let tag: [u8; afd_crypto::TAG_LEN] = ciphertext[tag_at..]
+    let tag: [u8; afd_crypto::TAG_LEN] = ciphertext
+        .get(tag_at..)
+        .ok_or_else(|| error::config("checkpoint authentication tag is absent"))?
         .try_into()
-        .map_err(|_| error::config("checkpoint authentication tag is invalid"))?;
+        .map_err(|source| error::boundary("checkpoint authentication tag is invalid", source))?;
     ciphertext.truncate(tag_at);
     let id = Uuid7::parse(&object.object_id)?;
     let (key, nonce) = material(object)?;
@@ -221,7 +224,7 @@ fn material(object: &mut CheckpointObject) -> Result<(SecretBytes, [u8; afd_cryp
     let key = SecretBytes::new(
         base64::prelude::BASE64_STANDARD
             .decode(key.as_bytes())
-            .map_err(|_| error::config("checkpoint data key encoding is invalid"))?,
+            .map_err(|source| error::boundary("checkpoint data key encoding is invalid", source))?,
     );
     let nonce = base64::prelude::BASE64_STANDARD
         .decode(
@@ -230,9 +233,10 @@ fn material(object: &mut CheckpointObject) -> Result<(SecretBytes, [u8; afd_cryp
                 .as_deref()
                 .ok_or_else(|| error::config("checkpoint nonce is absent"))?,
         )
-        .map_err(|_| error::config("checkpoint nonce encoding is invalid"))?;
+        .map_err(|source| error::boundary("checkpoint nonce encoding is invalid", source))?;
     let nonce = nonce
+        .as_slice()
         .try_into()
-        .map_err(|_| error::config("checkpoint nonce length is invalid"))?;
+        .map_err(|source| error::boundary("checkpoint nonce length is invalid", source))?;
     Ok((key, nonce))
 }

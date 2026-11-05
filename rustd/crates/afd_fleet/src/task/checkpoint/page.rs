@@ -20,7 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(sqlx::FromRow)]
 pub(super) struct Page {
     pub id: String,
-    pub page_number: i32,
+    #[sqlx(rename = "page_number")]
+    pub number: i32,
     pub digest: Option<String>,
     pub body: Option<Vec<u8>>,
 }

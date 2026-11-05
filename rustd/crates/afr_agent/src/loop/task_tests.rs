@@ -73,6 +73,10 @@ impl LeaseVerbs for Native {
 
 fn inputs() -> TaskInputsResponse<'static> {
     TaskInputsResponse {
+        execution_deadline: Some(afd_core::clock::after(
+            afd_core::clock::now(),
+            std::time::Duration::from_mins(10),
+        )),
         source_admission_id: SOURCE.to_owned(),
         accepted_revision_id: Some(SOURCE.to_owned()),
         current_message: None,
@@ -103,10 +107,43 @@ fn task() -> TaskContext<'static> {
         confirmed_effect_watermark: 0,
         checkpoint_id: None,
         checkpoint_generation: None,
-        expires_at: jiff::Timestamp::UNIX_EPOCH,
+        expires_at: afd_core::clock::after(
+            afd_core::clock::now(),
+            std::time::Duration::from_hours(1),
+        ),
         limits: TaskLimits::default(),
         usage: TaskUsage::default(),
     }
+}
+
+fn pending_inputs() -> TaskInputsResponse<'static> {
+    let mut input = inputs();
+    input.current_task = Some(task());
+    input.next_cursor = Some("a later source page".to_owned());
+    input.inputs.push(TaskHumanInput {
+        source_admission_id: PENDING.to_owned(),
+        sequence: 1,
+        message: "hello".to_owned(),
+        accepted: Some(TaskAcceptedInterpretation {
+            source_admission_id: PENDING.to_owned(),
+            plan_digest: "b".repeat(64),
+            message: "hello".to_owned(),
+            items: vec![TaskRecoveredItem {
+                binding: TaskItemBinding {
+                    item_id: ITEM.to_owned(),
+                    task_id: None,
+                    task_generation: None,
+                    action: TaskInputAction::Conversation,
+                    applies_here: false,
+                    input_sequence: None,
+                },
+                accepted_text: "hello".to_owned(),
+                interpretation: "Greet the person".to_owned(),
+                response_text: None,
+            }],
+        }),
+    });
+    input
 }
 
 async fn run(
@@ -180,37 +217,19 @@ async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_pa
     let engine = super::tests::engine(vec![Canned::boxed(tool, "Plan updated")], &script);
     let mut lease = lease(&[tool.name()], unbounded());
     lease.durable_tasks = true;
-    let mut input = inputs();
-    input.current_task = Some(task());
-    input.next_cursor = Some("a later source page".to_owned());
-    input.inputs.push(TaskHumanInput {
-        source_admission_id: PENDING.to_owned(),
-        sequence: 1,
-        message: "hello".to_owned(),
-        accepted: Some(TaskAcceptedInterpretation {
-            source_admission_id: PENDING.to_owned(),
-            plan_digest: "b".repeat(64),
-            message: "hello".to_owned(),
-            items: vec![TaskRecoveredItem {
-                binding: TaskItemBinding {
-                    item_id: ITEM.to_owned(),
-                    task_id: None,
-                    task_generation: None,
-                    action: TaskInputAction::Conversation,
-                    applies_here: false,
-                    input_sequence: None,
-                },
-                accepted_text: "hello".to_owned(),
-                interpretation: "Greet the person".to_owned(),
-                response_text: None,
-            }],
-        }),
-    });
+    // A resolved physical model context is required for the original-source reply.
+    // The fixture's unlimited operating cap does not resolve this provider bound.
+    lease.policy.model_context_tokens = 16_384;
+    let input = pending_inputs();
     let native = Native {
         inputs: input.clone(),
         answered: AtomicBool::new(false),
     };
     let prepared = PreparedTask {
+        execution_deadline: Some(afd_core::clock::after(
+            afd_core::clock::now(),
+            std::time::Duration::from_mins(10),
+        )),
         inputs: input,
         allow_actions: true,
     };
@@ -218,8 +237,11 @@ async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_pa
     assert!(native.answered.load(Ordering::Relaxed));
     let sent = script.sent();
     assert_eq!(sent.len(), 2);
-    assert!(sent[0].tools.is_empty());
-    assert!(sent[1].tools.iter().any(|name| name == tool.name()));
+    let [reply, action] = sent.as_slice() else {
+        return Err(crate::decision::unavailable());
+    };
+    assert_eq!(reply.tools, Vec::<String>::new());
+    assert!(action.tools.iter().any(|name| name == tool.name()));
     assert!(
         output.task.is_none(),
         "no decision assignment can authorize a goal result"
@@ -228,5 +250,76 @@ async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_pa
         output.recovery.is_some(),
         "an unavailable judgment still retains complete private work"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() -> crate::Result<()>
+{
+    let tool = &afr_tools::catalog::UPDATE_PLAN;
+    let script = Script::new([]);
+    let engine = super::tests::engine(vec![Canned::boxed(tool, "Plan updated")], &script);
+    let mut lease = lease(&[tool.name()], unbounded());
+    lease.durable_tasks = true;
+    lease.policy.model_context_tokens = 0;
+    let input = pending_inputs();
+    let native = Native {
+        inputs: input.clone(),
+        answered: AtomicBool::new(false),
+    };
+    let prepared = PreparedTask {
+        inputs: input,
+        allow_actions: true,
+        execution_deadline: Some(afd_core::clock::after(
+            afd_core::clock::now(),
+            std::time::Duration::from_mins(10),
+        )),
+    };
+    let output = run(&engine, &lease, &native, &prepared).await?;
+    assert!(!native.answered.load(Ordering::Relaxed));
+    assert!(
+        script.sent().is_empty(),
+        "unresolved context permits neither a reply nor an action request"
+    );
+    assert!(
+        output.task.is_none(),
+        "an unanswered source cannot authorize task completion"
+    );
+    assert!(
+        output.recovery.is_some(),
+        "pending obligations remain recoverable"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn missing_or_spent_native_deadline_blocks_actions_but_retains_recovery() -> crate::Result<()>
+{
+    for deadline in [None, Some(afd_core::clock::now())] {
+        let script = Script::new([]);
+        let engine = super::tests::engine(Vec::new(), &script);
+        let mut lease = lease(&[], unbounded());
+        lease.durable_tasks = true;
+        lease.policy.model_context_tokens = 16_384;
+        let mut input = pending_inputs();
+        input.execution_deadline = deadline;
+        let native = Native {
+            inputs: input.clone(),
+            answered: AtomicBool::new(false),
+        };
+        let prepared = PreparedTask {
+            inputs: input,
+            allow_actions: true,
+            execution_deadline: deadline,
+        };
+        let output = run(&engine, &lease, &native, &prepared).await?;
+        assert!(!native.answered.load(Ordering::Relaxed));
+        assert!(
+            script.sent().is_empty(),
+            "a new agent clock cannot extend native custody"
+        );
+        assert!(output.task.is_none());
+        assert!(output.recovery.is_some());
+    }
     Ok(())
 }

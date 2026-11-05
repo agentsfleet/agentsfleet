@@ -33,7 +33,8 @@ pub(super) struct Object {
     pub tombstoned: bool,
     #[sqlx(flatten)]
     pub envelope: StoredEnvelope,
-    pub object_nonce: Vec<u8>,
+    #[sqlx(rename = "object_nonce")]
+    pub nonce: Vec<u8>,
 }
 
 impl Object {
@@ -54,7 +55,7 @@ impl Object {
         let workspace = guard::id(&plan.workspace_id, "workspace_id")?;
         let id = guard::id(&self.id, "object_id")?;
         let nonce: [u8; afd_crypto::NONCE_LEN] = self
-            .object_nonce
+            .nonce
             .as_slice()
             .try_into()
             .map_err(|_invalid| TaskRefusal::CheckpointIncompatible)?;

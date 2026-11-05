@@ -46,8 +46,8 @@ pub struct R2CheckpointStore {
 }
 
 impl std::fmt::Debug for R2CheckpointStore {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("R2CheckpointStore(private)")
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("R2CheckpointStore(private)")
     }
 }
 

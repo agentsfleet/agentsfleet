@@ -113,7 +113,7 @@ pub struct TaskBindingsInput {
     /// Reviewed setup used for the message's questions and new objectives.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub accepted_revision_id: String,
-    /// SHA-256 of interpretation(), computed independently by the daemon.
+    /// SHA-256 of `interpretation()`, computed independently by the daemon.
     #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]{64}$"))]
     pub plan_digest: String,
     /// Paid, accounted, current complete-message routing decision.
@@ -126,6 +126,7 @@ pub struct TaskBindingsInput {
 
 impl TaskBindingsInput {
     /// Stable meaning excludes call IDs and lease fences, which grant no replay authority.
+    #[must_use]
     pub fn interpretation(&self) -> impl Serialize + '_ {
         (
             &self.source_admission_id,
@@ -142,7 +143,7 @@ impl TaskBindingsInput {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskItemBinding {
-    /// Native immutable item UUIDv7.
+    /// Native immutable item `UUIDv7`.
     pub item_id: String,
     /// Native objective, absent for conversation or clarification.
     pub task_id: Option<String>,
@@ -150,7 +151,7 @@ pub struct TaskItemBinding {
     pub task_generation: Option<u64>,
     /// Accepted routing meaning.
     pub action: TaskInputAction,
-    /// Whether current execution may apply this input at its next safe boundary.
+    /// Whether the current run may apply this input at its next safe boundary.
     pub applies_here: bool,
     /// Native FIFO cursor for an accepted existing-task input.
     pub input_sequence: Option<u64>,
@@ -165,6 +166,13 @@ pub struct TaskBindingsResponse<'a> {
     /// Current lease objective after binding, with native target and recovery state.
     #[serde(borrow)]
     pub current_task: Option<super::TaskContext<'a>>,
+    /// Current lease's immutable ceiling after native task binding.
+    #[serde(
+        default,
+        with = "crate::instant::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub execution_deadline: Option<jiff::Timestamp>,
     /// True when no new item, task, input or continuation was allocated.
     pub replayed: bool,
 }
@@ -176,6 +184,7 @@ impl TaskBindingsResponse<'_> {
         TaskBindingsResponse {
             items: self.items,
             current_task: self.current_task.map(super::TaskContext::into_owned),
+            execution_deadline: self.execution_deadline,
             replayed: self.replayed,
         }
     }

@@ -12,7 +12,7 @@ use crate::{
 };
 use futures_util::{StreamExt as _, stream};
 
-const CONCURRENT_READS: i64 = 4;
+const CONCURRENT_READS: usize = 4;
 const RECHECK_SECONDS: f64 = 60.0;
 
 #[derive(sqlx::FromRow)]
@@ -30,7 +30,10 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let rows: Vec<Claimed> = sqlx::query_as(include_str!("sql/claim_recovery.sql"))
-        .bind(CONCURRENT_READS)
+        .bind(crate::task::row::sql_counter(
+            CONCURRENT_READS,
+            "concurrent evidence reads",
+        )?)
         .bind(RECHECK_SECONDS)
         .fetch_all(&mut *tx)
         .await
@@ -58,9 +61,11 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
                         &opened.branch,
                         opened.repository_id,
                         opened.installation_id,
-                        &row.effect.id,
-                        &row.effect.expected_head,
-                        &row.effect.tested_tree,
+                        crate::task::github::ReceiptIdentity {
+                            effect: &row.effect.id,
+                            head: &row.effect.expected_head,
+                            tree: &row.effect.tested_tree,
+                        },
                     )
                     .await?
                 {
@@ -75,7 +80,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
         };
         (id, outcome)
     }))
-    .buffer_unordered(CONCURRENT_READS as usize);
+    .buffer_unordered(CONCURRENT_READS);
     while let Some((id, outcome)) = reads.next().await {
         result.scanned += 1;
         match outcome {

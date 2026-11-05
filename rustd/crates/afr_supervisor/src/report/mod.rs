@@ -17,7 +17,7 @@ pub(crate) enum Ending {
     /// the fleet caused.
     Ran {
         /// What the engine handed back.
-        output: RunOutput,
+        output: Box<RunOutput>,
         /// When the first answer chunk arrived, from the run's start.
         first_chunk: Option<Duration>,
     },

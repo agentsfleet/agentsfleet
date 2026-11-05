@@ -37,16 +37,16 @@ impl Aad {
         workspace: &afd_core::id::Uuid7,
         identity: &afd_core::id::Uuid7,
         repository: &str,
-        key_version: i32,
-        kek_version: i32,
+        identity_version: i32,
+        wrapping_version: i32,
     ) -> Self {
         let mut bytes = b"\0agentsfleet.checkpoint-identity.v1\0".to_vec();
         for field in [
             workspace.as_str().to_owned(),
             identity.as_str().to_owned(),
             hex::encode(repository),
-            key_version.to_string(),
-            kek_version.to_string(),
+            identity_version.to_string(),
+            wrapping_version.to_string(),
         ] {
             bytes.extend_from_slice(field.as_bytes());
             bytes.push(0);

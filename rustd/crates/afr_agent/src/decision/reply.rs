@@ -45,7 +45,7 @@ impl Intake<'_> {
             biased;
             () = self.stop.cancelled() => return Err(unavailable()),
             result = tokio::time::timeout(std::time::Duration::from_secs(30), interpretation::collect(self.provider, request, self.meter)) =>
-                result.map_err(|_| unavailable())??,
+                result.map_err(|source| crate::decision::boundary("task decision input or deadline", source))??,
         };
         let text = scrub.clean(text).into_inner();
         if text.trim().is_empty() {

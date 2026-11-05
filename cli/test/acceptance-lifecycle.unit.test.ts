@@ -6,7 +6,7 @@ import { getStatus } from "./acceptance/fixtures/lifecycle.ts";
 
 const FLEET = {
   id: FLEET_ID, name: "counter-probe", status: "active", etag: '"resource"',
-  setup_etag: '"setup"', setup_revision: "1", setup: {state: "ready", checks: []},
+  setup_etag: '"setup"', setup_revision: "1", setup_revision_id: "01910000-0000-7000-8000-000000000001", setup: {state: "ready", checks: []},
   start: {}, schedules: [],
 };
 const COUNTERS = {events_processed: "9007199254740993", budget_used_nanos: "9223372036854775807"};

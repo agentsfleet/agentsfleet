@@ -15,7 +15,7 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
     fs::write(root.path().join("first"), b"same contents")?;
     fs::write(root.path().join("second"), b"same contents")?;
     let catalog = Catalog::build(
-        Some(Arc::new(Workspace::open(root.path())?)),
+        Some(&Arc::new(Workspace::open(root.path())?)),
         Zeroizing::new(b"private history".to_vec()),
         vec!["removed".to_owned()],
         &tokio_util::sync::CancellationToken::new(),
@@ -48,7 +48,11 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
         .iter()
         .flat_map(|page| page.entries.iter().map(CheckpointEntry::path))
         .collect();
-    assert!(names.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(
+        names
+            .windows(2)
+            .all(|pair| matches!(pair, [left, right] if left < right))
+    );
     assert!(
         pages
             .iter()

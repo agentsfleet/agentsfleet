@@ -21,10 +21,10 @@
 //!
 //! # No datastore, and that is a property of the seam
 //!
-//! The route's every decision past the signature is a function of what the
-//! ingress seam answered — which installation maps to which workspace, which
-//! fleets subscribe — so the whole matrix is reachable with the store scripted
-//! and no Postgres or Dragonfly anywhere.
+//! Pull-request fanout uses the scripted installation and subscription answers.
+//! Workflow completions also write through the native task owner: the outage
+//! case keeps that store unreachable, while `integration_app_ingress_live.rs`
+//! proves completion retention and replay against the runtime database role.
 
 #![cfg(feature = "test-util")]
 
@@ -42,9 +42,8 @@ use serde_json::Value;
 
 /// A delivery an App sends for an installation, carrying its own id.
 ///
-/// The one fixture in the corpus written for this surface and, until now,
-/// referenced by nothing. Its `installation.id` is [`signed::INSTALLATION`],
-/// which is what lets the scripted lookup answer for it.
+/// Its `installation.id` is [`signed::INSTALLATION`], which lets the scripted
+/// lookup reach the native completion owner after signature verification.
 pub(crate) const APP_RUN_FAILURE: &str =
     include_str!("../../../../tests/fixtures/webhooks/github_run_failure_app.json");
 
@@ -91,6 +90,26 @@ pub(crate) fn deployment(subscribers: Vec<afd_ingress::Binding>) -> Arc<Scripted
     )
 }
 
+/// A pull-request event exercises routing without a durable completion write.
+#[expect(clippy::expect_used, reason = "captured fixture must be a JSON object")]
+pub(crate) fn app_pull_request() -> String {
+    let mut body: Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/webhooks/github_pull_request.json"
+    ))
+    .expect("captured pull request parses");
+    let fields = body
+        .as_object_mut()
+        .expect("delivery envelope is an object");
+    fields.insert("action".into(), serde_json::json!("opened"));
+    fields.insert(
+        "installation".into(),
+        serde_json::json!({"id": signed::INSTALLATION.parse::<u64>().expect("installation is numeric")}),
+    );
+    body.to_string()
+}
+
+pub(crate) const EVENT_PULL_REQUEST: &str = "pull_request";
+
 /// The fleets a delivery fans out to, each declaring GitHub with no allow-list.
 pub(crate) fn subscriber(fleet: &str) -> afd_ingress::Binding {
     signed::binding_of(fleet, signed::TRIGGER_GITHUB, "active")
@@ -124,9 +143,9 @@ async fn a_signed_delivery_wakes_every_subscribed_fleet_exactly_once() {
     let woken = deliver(
         &ingress,
         SHIPPED,
-        EVENT_WORKFLOW_RUN,
+        EVENT_PULL_REQUEST,
         APP_SECRET,
-        APP_RUN_FAILURE,
+        &app_pull_request(),
     )
     .await;
 
@@ -170,9 +189,9 @@ async fn a_redelivery_wakes_nobody_a_second_time() {
     let first = deliver(
         &ingress,
         SHIPPED,
-        EVENT_WORKFLOW_RUN,
+        EVENT_PULL_REQUEST,
         APP_SECRET,
-        APP_RUN_FAILURE,
+        &app_pull_request(),
     )
     .await;
     assert_eq!(first.status(), StatusCode::ACCEPTED);
@@ -180,9 +199,9 @@ async fn a_redelivery_wakes_nobody_a_second_time() {
     let again = deliver(
         &ingress,
         SHIPPED,
-        EVENT_WORKFLOW_RUN,
+        EVENT_PULL_REQUEST,
         APP_SECRET,
-        APP_RUN_FAILURE,
+        &app_pull_request(),
     )
     .await;
     let status = again.status();
@@ -244,9 +263,9 @@ async fn a_matched_set_past_the_ceiling_is_refused_rather_than_truncated() {
     let refused = deliver(
         &ingress,
         SHIPPED,
-        EVENT_WORKFLOW_RUN,
+        EVENT_PULL_REQUEST,
         APP_SECRET,
-        APP_RUN_FAILURE,
+        &app_pull_request(),
     )
     .await;
 

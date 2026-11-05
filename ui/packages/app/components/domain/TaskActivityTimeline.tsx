@@ -5,7 +5,7 @@ import { latestTaskActivity, readTaskActivityHistory, taskActivityLabel } from "
 /** Public progress stays separate from private model reasoning and native task status. */
 export function TaskActivityTimeline({value, running}: {value: unknown; running: boolean}) {
   const history = readTaskActivityHistory(value);
-  if (!history || history.items.length === 0) return null;
+  if (!history) return null;
   const latest = latestTaskActivity(history).at(-1);
   if (!latest) return null;
   const pending = ["starting", "preparing", "scanning", "uploading", "verifying", "restoring"].includes(latest.progress.phase);

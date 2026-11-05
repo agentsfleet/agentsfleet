@@ -28,7 +28,8 @@ async fn a_question_preserves_the_candidate_even_when_the_setup_model_proposes_a
         );
         assert!(!body.to_string().contains("Investigate the checkout"));
         assert_eq!(
-            body["questions"]
+            body.get("questions")
+                .expect("questions field")
                 .as_object()
                 .expect("named questions")
                 .len(),
@@ -40,7 +41,7 @@ async fn a_question_preserves_the_candidate_even_when_the_setup_model_proposes_a
     let (response, ()) = tokio::join!(response, observe);
     let response = response.expect("question answered");
     assert!(matches!(
-        &response.proposal_calls[..],
+        response.proposal_calls.as_slice(),
         [ProposalCall::Refused {
             reason: ProposalRejection::EditNotRequested,
             ..
@@ -72,7 +73,7 @@ async fn a_question_preserves_the_candidate_even_when_the_setup_model_proposes_a
         .expect("saved refusal");
     assert!(replay.replayed);
     assert!(matches!(
-        &replay.proposal_calls[..],
+        replay.proposal_calls.as_slice(),
         [ProposalCall::Refused {
             reason: ProposalRejection::EditNotRequested,
             ..

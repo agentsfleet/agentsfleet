@@ -63,7 +63,7 @@ impl Harness<'_, '_> {
                 };
                 match effect.state {
                     TaskEffectState::Confirmed if effect.commit.is_some() => {
-                        self.confirmed_effect_watermark = effect.ordinal
+                        self.confirmed_effect_watermark = effect.ordinal;
                     }
                     TaskEffectState::Refused if effect.commit.is_none() => {}
                     // An unknown remote outcome blocks further publication. It
@@ -105,6 +105,7 @@ impl Harness<'_, '_> {
         {
             return Err(unavailable());
         }
+        prepared.execution_deadline = inputs.execution_deadline;
         prepared.inputs = inputs;
         Ok(())
     }

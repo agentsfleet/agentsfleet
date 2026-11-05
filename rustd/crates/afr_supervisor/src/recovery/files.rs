@@ -151,8 +151,9 @@ impl Workspace {
                 let entry = entry?;
                 let name = entry
                     .file_name()
-                    .into_string()
-                    .map_err(|_| error::config("checkpoint path is not UTF-8"))?;
+                    .to_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| error::config("checkpoint path is not UTF-8"))?;
                 let relative = if path.is_empty() {
                     name.clone()
                 } else {
@@ -176,8 +177,9 @@ impl Workspace {
                     let target = directory
                         .read_link(&name)?
                         .into_os_string()
-                        .into_string()
-                        .map_err(|_| error::config("checkpoint link is not UTF-8"))?;
+                        .to_str()
+                        .map(str::to_owned)
+                        .ok_or_else(|| error::config("checkpoint link is not UTF-8"))?;
                     valid_link(&relative, &target)?;
                     names = names
                         .checked_add(target.len())
@@ -229,8 +231,8 @@ impl Workspace {
         let length = (identity.size - offset).min(CHUNK);
         let mut bytes = zeroize::Zeroizing::new(vec![
             0;
-            usize::try_from(length).map_err(|_| {
-                error::config("checkpoint chunk size overflow")
+            usize::try_from(length).map_err(|source| {
+                error::boundary("checkpoint chunk size overflow", source)
             })?
         ]);
         file.seek(SeekFrom::Start(offset))?;
@@ -346,7 +348,7 @@ struct PathText<'a> {
     value: &'a str,
 }
 
-fn path_characters(value: &str, _context: &()) -> garde::Result {
+fn path_characters<C>(value: &str, _context: &C) -> garde::Result {
     if value.contains('\\') || value.chars().any(char::is_control) {
         Err(garde::Error::new(
             "checkpoint paths cannot contain backslashes or control characters",

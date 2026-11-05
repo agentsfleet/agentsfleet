@@ -28,6 +28,13 @@ pub(crate) enum ErrorKind {
     /// No authoritative, bounded task decision is available at this boundary.
     #[error("durable task preparation could not establish current authority")]
     TaskDecision,
+    /// A bounded task operation failed with its original cause retained.
+    #[error("durable task boundary failed: {context}")]
+    TaskBoundary {
+        context: &'static str,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     /// The existing native verb already retains its refusal code.
     #[error("native task request was not answered: {reason:?}")]
     TaskNative {
@@ -115,7 +122,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::TaskDecision => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => {
+                error_code::INTERNAL_OPERATION_FAILED
+            }
             ErrorKind::TaskNative {
                 reason: afr_tools::verbs::Unanswered::Refused(Some(code)),
             } => *code,
@@ -138,7 +147,7 @@ impl Error {
     #[must_use]
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
         match self.kind() {
-            ErrorKind::TaskDecision => None,
+            ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => None,
             ErrorKind::TaskNative { .. }
             | ErrorKind::TaskJson { .. }
             | ErrorKind::TaskCrypto { .. }

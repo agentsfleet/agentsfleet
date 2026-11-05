@@ -57,6 +57,14 @@ pub struct LeasePayload<'a> {
     /// The instant after which the event becomes reclaimable.
     #[serde(with = "crate::instant")]
     pub lease_expires_at: jiff::Timestamp,
+    /// Immutable native runtime ceiling, including a bound task's shorter slice.
+    /// Absent on older daemons; task execution must not guess this deadline.
+    #[serde(
+        default,
+        with = "crate::instant::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub execution_deadline: Option<jiff::Timestamp>,
     /// How secrets reached this run.
     pub secret_delivery: SecretDelivery,
     /// The event to run.

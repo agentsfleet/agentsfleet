@@ -67,15 +67,18 @@ fn adopted_goal_restores_prior_work_as_scrubbed_data_but_cannot_change_task_iden
     assert_eq!(restored.len(), 3);
     assert_eq!(adopted.generation, 2);
     adopted.task_id = "019f0000-0000-7000-8000-000000000004".into();
-    assert!(
-        TaskRecovery::restore(
-            &saved.history,
-            &adopted,
-            "old-model",
-            "old-provider",
-            &crate::fixture::scrub()
-        )
-        .is_err()
+    let failure = TaskRecovery::restore(
+        &saved.history,
+        &adopted,
+        "old-model",
+        "old-provider",
+        &crate::fixture::scrub(),
+    )
+    .err()
+    .ok_or_else(crate::decision::unavailable)?;
+    assert_eq!(
+        failure.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
     );
     Ok(())
 }
@@ -90,19 +93,28 @@ fn incomplete_or_unknown_history_never_becomes_an_empty_successful_resume() -> c
         vec![Message::User("retained work".to_owned())],
     )?;
     let mut history: serde_json::Value = serde_json::from_slice(&saved.history)?;
-    history["format"] = serde_json::json!(2);
-    assert!(
-        TaskRecovery::restore(
-            &serde_json::to_vec(&history)?,
-            &task,
-            "model",
-            "provider",
-            &crate::fixture::scrub()
-        )
-        .is_err()
+    *history
+        .get_mut("format")
+        .ok_or_else(crate::decision::unavailable)? = serde_json::json!(2);
+    let failure = TaskRecovery::restore(
+        &serde_json::to_vec(&history)?,
+        &task,
+        "model",
+        "provider",
+        &crate::fixture::scrub(),
+    )
+    .err()
+    .ok_or_else(crate::decision::unavailable)?;
+    assert_eq!(
+        failure.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
     );
-    assert!(
-        TaskRecovery::restore(b"{", &task, "model", "provider", &crate::fixture::scrub()).is_err()
+    let failure = TaskRecovery::restore(b"{", &task, "model", "provider", &crate::fixture::scrub())
+        .err()
+        .ok_or_else(crate::decision::unavailable)?;
+    assert_eq!(
+        failure.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert!(!format!("{saved:?}").contains("retained work"));
     Ok(())

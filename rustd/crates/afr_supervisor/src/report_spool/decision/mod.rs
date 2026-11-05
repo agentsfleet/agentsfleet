@@ -171,8 +171,8 @@ impl Pending {
     }
 }
 
-fn load(directory: PathBuf, call: &str) -> Result<Receipt> {
-    let bytes = cipher::read(&directory, call)?;
+fn load(directory: &std::path::Path, call: &str) -> Result<Receipt> {
+    let bytes = cipher::read(directory, call)?;
     let receipt: Receipt = serde_json::from_slice(bytes.expose())
         .map_err(error::malformed(crate::client::Verb::TaskDecisionRecord))?;
     if receipt.call_id != call {
@@ -249,7 +249,7 @@ fn scan(directory: &std::path::Path) -> Result<Scanned> {
         .into_iter()
         .map(|(name, directory)| {
             let call = Uuid7::parse(&name)?;
-            let receipt = load(directory.clone(), &name)?;
+            let receipt = load(&directory, &name)?;
             Ok(Pending {
                 directory,
                 lease: Uuid7::parse(&receipt.lease_id)?,

@@ -52,7 +52,8 @@ pub(super) async fn issue<'a>(
     if i64::try_from(owned.snapshot.context.generation)
         .map_err(|_overflow| TaskRefusal::StaleState)?
         != effect.task_generation
-        || owned.snapshot.context.stop_generation as i64 != effect.stop_generation
+        || crate::task::row::sql_counter(owned.snapshot.context.stop_generation, "stop_generation")?
+            != effect.stop_generation
         || owned.snapshot.context.covered_input_sequence != input.covered_input_sequence
         || owned.snapshot.context.usage.publications >= owned.snapshot.context.limits.publications
     {

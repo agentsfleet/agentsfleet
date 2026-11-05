@@ -89,7 +89,7 @@ pub(in crate::task) async fn uploads(
             length,
         });
     }
-    sqlx::query(include_str!("sql/descriptors.sql"))
+    sqlx::query(include_str!("../sql/descriptors.sql"))
         .bind(Json(&descriptors))
         .bind(&plan.workspace_id)
         .execute(&mut *tx)
@@ -175,7 +175,7 @@ pub(in crate::task) async fn list(
     let mut tx = transaction::begin(&mut connection).await?;
     let owned = super::page::read_authority(&mut tx, lease, checkpoint, &input.pin_id).await?;
     let (_current, plan, pin) = owned;
-    let mut ids: Vec<String> = sqlx::query_scalar(include_str!("sql/object_ids.sql"))
+    let mut ids: Vec<String> = sqlx::query_scalar(include_str!("../sql/object_ids.sql"))
         .bind(&plan.id)
         .bind(&plan.base_id)
         .bind(&plan.workspace_id)
@@ -213,7 +213,7 @@ pub(super) async fn scoped(
     plan: &Plan,
     ids: &[String],
 ) -> Result<Vec<Object>> {
-    let objects: Vec<Object> = sqlx::query_as(include_str!("sql/objects_scope.sql"))
+    let objects: Vec<Object> = sqlx::query_as(include_str!("../sql/objects_scope.sql"))
         .bind(ids)
         .bind(&plan.workspace_id)
         .bind(&plan.id)
@@ -233,7 +233,7 @@ pub(super) async fn protect(
     ids: &[String],
     pin: &Pin,
 ) -> Result<()> {
-    sqlx::query(include_str!("sql/objects_protect.sql"))
+    sqlx::query(include_str!("../sql/objects_protect.sql"))
         .bind(ids)
         .bind(super::ORPHAN_SECONDS + 60)
         .bind(pin.expires_at.to_sqlx())
@@ -294,7 +294,7 @@ async fn issue(
             CheckpointTransferPurpose::Upload => Some(
                 session
                     .upload(
-                        &workspace,
+                        workspace,
                         &identity,
                         &id,
                         wire.ciphertext_sha256
@@ -308,7 +308,7 @@ async fn issue(
             ),
             CheckpointTransferPurpose::Restore => Some(
                 session
-                    .download(&workspace, &identity, &id, lifetime)
+                    .download(workspace, &identity, &id, lifetime)
                     .await?,
             ),
         };

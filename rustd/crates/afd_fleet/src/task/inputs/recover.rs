@@ -10,7 +10,7 @@ use sqlx::PgConnection;
 use std::collections::BTreeMap;
 
 #[derive(sqlx::FromRow)]
-struct Item {
+struct InterpretationRow {
     source_admission_id: String,
     plan_digest: String,
     message: String,
@@ -31,18 +31,19 @@ pub(super) async fn read(
     current: &LeaseRow,
     sources: &[String],
 ) -> Result<BTreeMap<String, TaskAcceptedInterpretation>> {
-    let rows: Vec<Item> = sqlx::query_as(include_str!("../sql/recovered_interpretations.sql"))
-        .bind(sources)
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .bind("items")
-        .bind("proposed")
-        .bind("interpretation")
-        .fetch_all(connection)
-        .await
-        .map_err(query(
-            "recover complete accepted source meanings and original replies",
-        ))?;
+    let rows: Vec<InterpretationRow> =
+        sqlx::query_as(include_str!("../sql/recovered_interpretations.sql"))
+            .bind(sources)
+            .bind(&current.fleet_id)
+            .bind(&current.workspace_id)
+            .bind("items")
+            .bind("proposed")
+            .bind("interpretation")
+            .fetch_all(connection)
+            .await
+            .map_err(query(
+                "recover complete accepted source meanings and original replies",
+            ))?;
     let mut interpretations: BTreeMap<String, TaskAcceptedInterpretation> = BTreeMap::new();
     for item in rows {
         let start =

@@ -112,6 +112,12 @@ impl Source {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct SlackPayload<'a> {
+    #[serde(borrow)]
+    human_message: std::borrow::Cow<'a, str>,
+}
+
 pub(in crate::task) fn message_for<'a>(
     producer: &str,
     body: &'a str,
@@ -119,12 +125,8 @@ pub(in crate::task) fn message_for<'a>(
     if producer != Producer::SlackMention.as_str() {
         return Ok(afd_wire::event::message_of(body));
     }
-    #[derive(serde::Deserialize)]
-    struct Human<'a> {
-        #[serde(borrow)]
-        human_message: std::borrow::Cow<'a, str>,
-    }
-    let human: Human<'_> = serde_json::from_str(body).map_err(afd_core::json::Unreadable::from)?;
+    let human: SlackPayload<'_> =
+        serde_json::from_str(body).map_err(afd_core::json::Unreadable::from)?;
     Ok(human.human_message)
 }
 

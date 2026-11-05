@@ -4,7 +4,11 @@ use super::{Session, catalog::Catalog, files::Workspace, transfer::Transfers};
 use crate::{Result, client::ControlPlane, error};
 use afd_core::id::Uuid7;
 use afd_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
-use afd_wire::task::*;
+use afd_wire::task::{
+    CHECKPOINT_BATCH, CHECKPOINT_FORMAT, CheckpointCommitInput, CheckpointMode,
+    CheckpointObjectStatus, CheckpointPageInput, CheckpointPlan, CheckpointPlanInput,
+    DecisionTaskVersion, TaskContext, TaskTarget,
+};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use zeroize::Zeroizing;
 
@@ -91,7 +95,7 @@ impl Capture<'_> {
             let root = root
                 .map(|path| Workspace::open(&path).map(Arc::new))
                 .transpose()?;
-            Catalog::build(root, history, base_paths, &stop)
+            Catalog::build(root.as_ref(), history, base_paths, &stop)
         })
         .await??;
         if self.stop.is_cancelled() {
@@ -128,7 +132,8 @@ impl Capture<'_> {
                     },
                     format_version: CHECKPOINT_FORMAT,
                     toolbox_digest: self.toolbox.to_owned(),
-                    page_count: catalog.pages(None)?.len() as u32,
+                    page_count: u32::try_from(catalog.pages(None)?.len())
+                        .map_err(|source| error::boundary("checkpoint count overflow", source))?,
                     upload_budget_bytes: bytes.min(allowance),
                     logical_bytes: catalog.logical_bytes,
                     entry_count: catalog.entry_count,
@@ -163,7 +168,10 @@ impl Capture<'_> {
             .progress(
                 Operation::Capture,
                 Phase::Verifying,
-                Some(catalog.chunks.len() as u32),
+                Some(
+                    u32::try_from(catalog.chunks.len())
+                        .map_err(|source| error::boundary("checkpoint count overflow", source))?,
+                ),
             )
             .await;
         session.commit_catalog(&catalog, &ids, self.task).await
@@ -195,7 +203,10 @@ impl Session<'_> {
             self.progress(
                 Operation::Capture,
                 Phase::Uploading,
-                Some(chunks.len() as u32),
+                Some(
+                    u32::try_from(chunks.len())
+                        .map_err(|source| error::boundary("checkpoint count overflow", source))?,
+                ),
             )
             .await;
             let mut pending = Vec::new();

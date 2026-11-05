@@ -15,7 +15,7 @@ use afd_core::clock;
 use afd_wire::credentials::MintCredentialRequest;
 use std::borrow::Cow;
 
-pub(super) use publish::Reconciled;
+pub(super) use publish::{ReceiptIdentity, Reconciled};
 pub(super) use types::{BoundPr, Workflow};
 
 /// Trusted publisher transport; credentials never reach the coding model.

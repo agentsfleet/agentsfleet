@@ -31,8 +31,9 @@ mod raise;
 #[cfg(test)]
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
-    checkpoint_transfer, client, config, egress, egress_blocked, egress_no_ipv4, egress_unresolved,
-    encode, git, malformed, refused_with_body, token_refused, transport, unavailable,
+    boundary, checkpoint_transfer, client, config, egress, egress_blocked, egress_no_ipv4,
+    egress_unresolved, encode, git, malformed, refused_with_body, token_refused, transport,
+    unavailable,
 };
 
 /// The daemon refused the runner's token.
@@ -74,6 +75,14 @@ pub(crate) enum ErrorKind {
     Config {
         /// Which setting, and what is wrong with it.
         detail: &'static str,
+    },
+
+    /// A bounded recovery operation failed while retaining its original cause.
+    #[error("{detail}")]
+    Boundary {
+        detail: &'static str,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     /// The daemon's address does not parse, or a path does not join it.

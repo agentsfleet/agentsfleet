@@ -80,33 +80,7 @@ pub(in crate::task) async fn publish(
     {
         return Err(TaskRefusal::StaleState.into());
     }
-    let manifest = scan(&mut tx, &plan).await?;
-    if afd_crypto::checkpoint_digest::manifest_root(
-        manifest
-            .pages
-            .iter()
-            .map(|(id, digest)| (id.as_str(), digest.as_str())),
-    ) != input.manifest_root
-    {
-        return Err(TaskRefusal::CheckpointIncompatible.into());
-    }
-    let history = history(&mut tx, &plan, &manifest.history).await?;
-    if history != input.history_digest {
-        return Err(TaskRefusal::CheckpointIncompatible.into());
-    }
-    let complete: bool = sqlx::query_scalar(include_str!("sql/objects_complete.sql"))
-        .bind(&plan.id)
-        .bind(&plan.base_id)
-        .bind(plan.mode()? == CheckpointMode::RetainBase)
-        .bind(&plan.workspace_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(query(
-            "prove every referenced object verified and not tombstoned",
-        ))?;
-    if !complete {
-        return Err(TaskRefusal::CheckpointIncompatible.into());
-    }
+    verify_manifest(&mut tx, &plan, input).await?;
     sqlx::query(include_str!("sql/plan_ready.sql"))
         .bind(&plan.id)
         .bind(&input.manifest_root)
@@ -157,6 +131,41 @@ pub(in crate::task) async fn publish(
             .await;
     }
     Ok(response)
+}
+
+async fn verify_manifest(
+    connection: &mut PgConnection,
+    plan: &Plan,
+    input: &CheckpointCommitInput,
+) -> Result<()> {
+    let manifest = scan(connection, plan).await?;
+    if afd_crypto::checkpoint_digest::manifest_root(
+        manifest
+            .pages
+            .iter()
+            .map(|(id, digest)| (id.as_str(), digest.as_str())),
+    ) != input.manifest_root
+    {
+        return Err(TaskRefusal::CheckpointIncompatible.into());
+    }
+    let history = history(connection, plan, &manifest.history).await?;
+    if history != input.history_digest {
+        return Err(TaskRefusal::CheckpointIncompatible.into());
+    }
+    let complete: bool = sqlx::query_scalar(include_str!("sql/objects_complete.sql"))
+        .bind(&plan.id)
+        .bind(&plan.base_id)
+        .bind(plan.mode()? == CheckpointMode::RetainBase)
+        .bind(&plan.workspace_id)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(query(
+            "prove every referenced object verified and not tombstoned",
+        ))?;
+    if !complete {
+        return Err(TaskRefusal::CheckpointIncompatible.into());
+    }
+    Ok(())
 }
 
 async fn scan(connection: &mut PgConnection, plan: &Plan) -> Result<Manifest> {
@@ -223,7 +232,7 @@ async fn scan_pages(
     {
         let position = manifest.pages.len();
         if ids.get(position) != Some(&page.id)
-            || usize::try_from(page.page_number).ok() != Some(position)
+            || usize::try_from(page.number).ok() != Some(position)
         {
             return Err(TaskRefusal::CheckpointIncompatible.into());
         }
@@ -278,13 +287,15 @@ async fn history(connection: &mut PgConnection, plan: &Plan, ids: &[String]) -> 
     if bytes > 64 * 1024 * 1024 {
         return Err(TaskRefusal::LimitExhausted.into());
     }
-    Ok(afd_crypto::checkpoint_digest::history_root(
-        rows.iter().map(|row| {
-            (
+    let chunks = rows
+        .iter()
+        .map(|row| {
+            Ok((
                 row.id.as_str(),
                 row.plaintext_digest.as_str(),
-                row.plaintext_size as u64,
-            )
-        }),
-    ))
+                counter(row.plaintext_size, "checkpoint history plaintext size")?,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(afd_crypto::checkpoint_digest::history_root(chunks))
 }

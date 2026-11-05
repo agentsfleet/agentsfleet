@@ -61,9 +61,7 @@ pub use types::{
 };
 
 pub use lifecycle::{TaskFuture, TaskLifecycle};
-#[cfg(feature = "test-util")]
-pub use report::CheckpointGuard;
-pub use report::{PreparedReport, TaskReportOwner, TaskSettlement};
+pub use report::{CheckpointGuard, PreparedReport, TaskReportOwner, TaskSettlement};
 pub(crate) use waits::ReadPermit;
 pub use waits::{CompletionScope, VerifiedCompletion, WaitMaintenance};
 pub(crate) async fn settle_report(

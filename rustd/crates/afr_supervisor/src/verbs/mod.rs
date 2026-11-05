@@ -121,7 +121,11 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     }
 
     async fn task_effect(&self, effect_id: &str) -> Result<afd_wire::task::TaskEffect, Unanswered> {
-        let id = Uuid7::parse(effect_id).map_err(|_| Unanswered::Refused(None))?;
+        let id = Uuid7::parse(effect_id).map_err(|source| {
+            let failure = crate::error::Error::from(source);
+            tracing::debug!(event = "task_effect_identity_refused", error_code = %failure.code());
+            Unanswered::Refused(Some(failure.code()))
+        })?;
         self.plane
             .task_effect(self.lease_id, &id, self.fencing_token)
             .await

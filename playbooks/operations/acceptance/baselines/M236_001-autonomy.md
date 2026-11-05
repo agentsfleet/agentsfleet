@@ -23,11 +23,11 @@ setup admission SQL comes from main without local edits. Fetch again before gate
 | Chat/CLI presentation | Dedicated local diffs, published-head receipt, active/saved check results; existing steer command only | Source complete; runtime verification pending |
 | Transfer progress | One concrete operation owner deduplicates missing/acknowledged/reused ciphertext bytes; terminal counters survive partial failure | Regression fixtures authored, not yet run |
 | Reconnect | Daemon observation sequence, canonical live frames, bounded saved history, shared CLI stream/poll printers | Ownership race corrected in write SQL; integration fixtures pending execution |
-| Publication/JSON | Private Selection method call replaced with public tool lookup; all CLI live progress suppressed in JSON output | Both initial Greptile P1 source fixes pending verification |
+| Publication/JSON | Private Selection method call replaced with public tool lookup; all CLI live progress suppressed in JSON output | Both initial Greptile P1 threads resolved on GitHub; exact-head gates still required |
 | Refactoring | Reuse jsdiff9 and Node terminal sanitizer; existing crypto, capability filesystem and native receipt helpers retained | Codex review found no justification for broad trait/generic indirection |
 | Native review | Decision receipts, execution, recovery, publication and authority reviewed; partial download successes now counted before returning error | Source review does not prove runtime behavior |
 | UI design | Existing separate setup/work chat, Save done/Open fleet, inline expanding Current work preserved | Original HTML approval visuals remain unverified |
-| Documentation | Architecture and companion CLI/fleet docs describe evidence semantics | Companion source changes uncommitted until gates |
+| Documentation | Architecture and companion CLI/fleet docs describe evidence semantics | Companion commit 437f9c1 pushed; docs lint passed |
 
 Current continuation verification (working tree; not exact-head CI):
 
@@ -65,6 +65,63 @@ Historical evidence, not verification of this branch:
   fixtures/bootstrap.ts:79: getaddrinfo ENOTFOUND api.agentsfleet.net.
   This is DNS setup evidence, not a tested M236 product defect.
 
+
+### Verification follow-up — Nov 05, 2026
+
+Implementation and main integration were committed and pushed as
+`8e013b683b87fb70f4a2b9aa67e46d9302b51cf0` to existing PR #803.
+A later fetch confirmed no additional main commits at that point. Companion docs
+were committed and pushed as `437f9c1`; `make lint` passed its 25 tests, OpenAPI
+drift, documentation, Mint validation and broken-link checks. Docs PR #241 was
+already merged before these continuation commits; no new PR was created.
+
+| Evidence at source checkpoint 8e013b6 | Result | Correction / remaining work |
+| --- | --- | --- |
+| Governance and staged secret scan | Passed | No bypass, allowlist or gate-threshold changes |
+| Exact-head continuous integration | Failed; do not merge | Working-tree corrections below need a new pushed head and green results |
+| CLI tests | Old fixtures failed after saved-work readback | Preserve exact POST and subsequent GET assertions; fixture corrections authored |
+| App route bundle | New-fleet route 102.84 kB, limit 102.4 kB | Load optional instructions editor dynamically; size rerun outstanding |
+| Event history integration | Tool-trace history request failed | Both admission UNION arms lacked task_activity; add empty history plus first/subsequent-page assertions |
+| Runner ordering regression | Reply unavailable before provider call | Successful fixture omitted resolved model context; supply it and separately prove zero-context fail-closed behavior |
+| App ingress unit / integration fixtures | Full workflow began reading real task store; stale Slack actor expectation | Use genuine pull-request fanout fixture, explicit completion-store outage and live replay evidence; assert team-scoped Slack actor |
+| Native Clippy | Source lint findings | Correct imports, typed errors, validation callbacks and focused abstractions without suppressions; rerun pending |
+| Greptile | Prior two threads resolved; new long-task handoff P1 open | Carry persisted execution deadline through delivery, binding and recovery; native reviewer implements bounded handoff reserve |
+| TypeScript coverage follow-up | 4692 passed, six failed before coverage emitted | Five editor-readiness fixtures and mutation-origin fixture corrected; rerun ongoing |
+
+The app rerun subsequently passed all 483 suites / 4,698 tests. Coverage reached
+100% lines and functions, 99.95% statements (12,866/12,872) and 99.92% branches
+(8,936/8,943). Added regressions target the remaining repeated-activation,
+subscriber-ownership, terminal-work and activity-order branches. A later run exposed
+one direct editor test still awaiting the dialog shell instead of the editor;
+that assertion now awaits the editor itself. No thresholds changed.
+
+The independent deadline review caught final reply delivery running outside the
+agent timeout. The final reply drain now uses the same remaining execution budget,
+keeps prior answer text and clears completion authority when acknowledgement fails.
+Release CI also exposed a test-feature-only export of the production checkpoint
+guard; its one public export now works in release builds without duplicated SQL.
+
+Latest native verification: `cargo clippy --workspace --all-targets --all-features
+--keep-going -- -D warnings` passed (12.50s). The daemon all-feature build and
+OpenAPI generation also passed after deadline wiring. The generated document
+still contains 123 paths. These are working-tree checks, not green exact-head CI.
+
+App coverage now passes every 100% threshold: 483 suites / 4,702 tests,
+12,872 statements, 8,941 branches, 3,430 functions and 10,622 lines.
+Website coverage also passes every 100% threshold: 20 suites / 133 tests.
+CLI's next stage had 2,019 passes, 16 existing live-target skips and two failures
+because its stream fixture counted the new saved-work readback as polling;
+the fixture now asserts separate readback and fallback-poll counts. Targeted
+regressions address the remaining 99.85% CLI line coverage; rerun is pending.
+
+The previous exact-head kernel coverage job 127443119458 was cancelled at its
+40-minute timeout during toolbox restore/build, before kernel measurement.
+That is missing verification, not a passing acceptance run.
+
+The deadline work has compiled and passed Clippy; runtime behavior is not yet verified. Exact-head
+CI, 100% TypeScript coverage, Rust diff coverage above 99.5%, generated OpenAPI
+after the new wire fields, full gates and Greptile resolution remain outstanding.
+The feature remains disabled. No merge has occurred.
 
 ### New cloud-agent handoff — Nov 05, 2026
 

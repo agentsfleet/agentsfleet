@@ -117,7 +117,7 @@ pub struct CheckpointPageInput {
     pub contents: CheckpointPage,
 }
 
-fn page_bound(page: &CheckpointPage, _context: &()) -> garde::Result {
+fn page_bound<C: ?Sized>(page: &CheckpointPage, _context: &C) -> garde::Result {
     if afd_validate::serialized_within(page, super::CHECKPOINT_PAGE_BYTES) {
         Ok(())
     } else {
@@ -125,7 +125,7 @@ fn page_bound(page: &CheckpointPage, _context: &()) -> garde::Result {
     }
 }
 
-fn relative_path(value: &str, _context: &()) -> garde::Result {
+fn relative_path<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
     if value.split('/').any(|part| matches!(part, "" | "." | ".."))
         || value.contains('\\')
         || value.chars().any(char::is_control)
@@ -136,7 +136,7 @@ fn relative_path(value: &str, _context: &()) -> garde::Result {
     }
 }
 
-fn relative_link(value: &str, _context: &()) -> garde::Result {
+fn relative_link<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
     if value.starts_with('/') || value.contains('\\') || value.chars().any(char::is_control) {
         Err(garde::Error::new("expected a relative symlink"))
     } else {

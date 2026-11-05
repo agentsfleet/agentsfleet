@@ -94,3 +94,37 @@ it("aborts pending adoption and cannot adopt without a confirmed version", async
   render(<TaskGoalAdoption {...p} enabled={false} />);
   expect(screen.getByRole("button", {name: "Review latest saved criteria"})).toHaveProperty("disabled", true);
 });
+
+it("serializes repeated review and apply activations before React renders their disabled states", async () => {
+  let finishRead!: (value: ReturnType<typeof saved>) => void;
+  request.mockImplementationOnce(() => new Promise(resolve => {finishRead = resolve;}));
+  let finishApply!: (result: TaskChange) => void;
+  adopt.mockImplementationOnce(() => new Promise(resolve => {finishApply = resolve;}));
+  const p = props();
+  render(<TaskGoalAdoption {...p} />);
+  const reviewButton = screen.getByRole("button", {name: "Review latest saved criteria"});
+  act(() => {
+    reviewButton.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+    reviewButton.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+  });
+  expect(request).toHaveBeenCalledTimes(1);
+  await act(async () => finishRead(saved()));
+  const applyButton = screen.getByRole("button", {name: "Use these criteria"});
+  act(() => {
+    applyButton.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+    applyButton.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+  });
+  expect(adopt).toHaveBeenCalledTimes(1);
+  await act(async () => finishApply({kind: "confirmed", value: p.detail}));
+  expect(p.onChanged).toHaveBeenCalledTimes(1);
+});
+
+it("offers no criteria adoption for terminal work", () => {
+  const p = props();
+  for (const state of ["done", "cancelled", "exhausted"] as const) {
+    const view = render(<TaskGoalAdoption {...p} detail={{...p.detail, context: {...p.detail.context, state}}} />);
+    expect(screen.queryByRole("button")).toBeNull();
+    view.unmount();
+  }
+  expect(request).not.toHaveBeenCalled();
+});

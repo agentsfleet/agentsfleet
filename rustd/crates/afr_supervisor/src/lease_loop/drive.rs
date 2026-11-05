@@ -80,7 +80,7 @@ impl LeaseRun<'_> {
         drop(sink);
         match output {
             Some(Ok(Ok(output))) => Ending::Ran {
-                output,
+                output: Box::new(output),
                 first_chunk,
             },
             Some(Ok(Err(failure))) => self.fail(

@@ -178,3 +178,17 @@ where
 {
     u32::try_from(stored).map_err(|source| Error::from(ErrorKind::TaskCounter { column, source }))
 }
+
+pub(super) fn sql_counter<T>(value: T, column: &'static str) -> Result<i64>
+where
+    i64: TryFrom<T, Error = std::num::TryFromIntError>,
+{
+    i64::try_from(value).map_err(|source| Error::from(ErrorKind::TaskCounter { column, source }))
+}
+
+pub(super) fn sql_small_counter<T>(value: T, column: &'static str) -> Result<i32>
+where
+    i32: TryFrom<T, Error = std::num::TryFromIntError>,
+{
+    i32::try_from(value).map_err(|source| Error::from(ErrorKind::TaskCounter { column, source }))
+}

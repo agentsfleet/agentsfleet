@@ -173,5 +173,8 @@ fn queried(
         &fence.to_string(),
     );
     extend(&mut encoded);
-    Cow::Owned(format!("{path}?{}", encoded.finish()))
+    let mut path = path.into_owned();
+    path.push('?');
+    path.push_str(&encoded.finish());
+    Cow::Owned(path)
 }

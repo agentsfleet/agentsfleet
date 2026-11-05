@@ -25,7 +25,7 @@ pub(in crate::task) async fn maintain(
     result.deferred = deferred;
     result.bases = owners::bases(tasks).await?;
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
-    let candidates: Vec<Candidate> = sqlx::query_as(include_str!("sql/orphans.sql"))
+    let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/orphans.sql"))
         .bind(super::ORPHAN_SECONDS)
         .bind(super::GC_BATCH)
         .fetch_all(&mut **connection)
@@ -44,20 +44,20 @@ pub(in crate::task) async fn maintain(
         let mut tx = transaction::begin(&mut connection).await?;
         if lock(&mut tx, &workspace).await? {
             // A second statement observes refs committed while the first waited for object locks.
-            let _locked: Vec<String> = sqlx::query_scalar(include_str!("sql/orphan_lock.sql"))
+            let _locked: Vec<String> = sqlx::query_scalar(include_str!("../sql/orphan_lock.sql"))
                 .bind(&workspace)
                 .bind(&ids)
                 .fetch_all(&mut *tx)
                 .await
                 .map_err(query("serialize object tombstones against new references"))?;
             let tombstoned: Vec<String> =
-                sqlx::query_scalar(include_str!("sql/orphan_tombstone.sql"))
+                sqlx::query_scalar(include_str!("../sql/orphan_tombstone.sql"))
                     .bind(&workspace)
                     .bind(&ids)
                     .fetch_all(&mut *tx)
                     .await
                     .map_err(query("tombstone only the freshly rechecked orphan set"))?;
-            result.objects += sqlx::query(include_str!("sql/orphan_delete.sql"))
+            result.objects += sqlx::query(include_str!("../sql/orphan_delete.sql"))
                 .bind(&workspace)
                 .bind(&tombstoned)
                 .execute(&mut *tx)
@@ -85,7 +85,7 @@ struct Candidate {
 }
 
 async fn lock(connection: &mut PgConnection, workspace: &str) -> Result<bool> {
-    let parent: Option<String> = sqlx::query_scalar(include_str!("sql/lock_workspace.sql"))
+    let parent: Option<String> = sqlx::query_scalar(include_str!("../sql/lock_workspace.sql"))
         .bind(workspace)
         .fetch_optional(&mut *connection)
         .await

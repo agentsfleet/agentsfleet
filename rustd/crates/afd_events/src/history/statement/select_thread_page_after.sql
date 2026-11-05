@@ -20,7 +20,8 @@ UNION ALL
        NULL::text AS failure_reason, NULL::text AS failure_detail,
        NULL::text AS resumes_event_id, a.created_at, a.created_at AS updated_at,
        NULL::bigint AS cost_nanos, a.request_json, NULL::text AS response_text,
-       NULL::text AS tool_calls
+       NULL::text AS tool_calls,
+       jsonb_build_object('items', '[]'::jsonb, 'truncated', false) AS task_activity
 FROM fleet.admissions a
 WHERE a.workspace_id = $1::uuid AND a.fleet_id = $2::uuid
   AND a.producer = ANY($6) AND a.delivered_at IS NULL AND a.settled_at IS NULL

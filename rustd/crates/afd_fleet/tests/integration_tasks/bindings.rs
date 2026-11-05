@@ -28,6 +28,12 @@ async fn bind_and_replay(case: &Case) {
     let first = replies.first().expect("100 replies");
     assert_eq!(first.items.len(), 3);
     assert!(replies.iter().all(|reply| reply.items == first.items));
+    assert!(
+        replies
+            .iter()
+            .all(|reply| reply.execution_deadline == first.execution_deadline)
+    );
+    stored_deadline(case, first).await;
     let unique: BTreeSet<_> = first
         .items
         .iter()
@@ -131,6 +137,7 @@ async fn replay_after_revision(case: &Case, plan: &PreparedPlan, first: &TaskBin
         .expect("accepted identity survives a newer setup");
     assert!(replay.replayed);
     assert_eq!(replay.items, first.items);
+    assert_eq!(replay.execution_deadline, first.execution_deadline);
     let changed = case.plan("changed-meaning", 3);
     let refusal = tasks
         .bind(case.lease(), &changed)
@@ -209,4 +216,39 @@ async fn ownership(case: &Case) {
             .state,
         TaskState::Running
     );
+}
+
+/// Native receipts preserve the database ceiling rather than restarting a slice on replay.
+async fn stored_deadline(case: &Case, reply: &TaskBindings) {
+    let stored: jiff_sqlx::Timestamp =
+        sqlx::query_scalar("SELECT task_execution_deadline FROM runner.leases WHERE id=$1::uuid")
+            .bind(case.lease().lease_id.as_str())
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("deadline connection"),
+            )
+            .await
+            .expect("bound lease deadline");
+    assert_eq!(reply.execution_deadline, stored.to_jiff());
+    let input = case
+        .tasks
+        .inputs(
+            case.lease(),
+            &garde::Unvalidated::new(afd_wire::task::TaskInputsQuery {
+                fencing_token: case.lease().fencing_token,
+                starting_after: None,
+                after_input_sequence: None,
+                limit: 4,
+            })
+            .validate()
+            .expect("input query"),
+        )
+        .await
+        .expect("recovery input read");
+    assert_eq!(input.execution_deadline, Some(reply.execution_deadline));
 }

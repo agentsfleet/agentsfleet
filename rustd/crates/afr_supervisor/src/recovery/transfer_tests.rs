@@ -48,46 +48,54 @@ fn ciphertext_authenticates_scope_even_when_its_transport_digest_matches() -> cr
         transfer::open(&workspace, &mut registered(&bytes), bytes.clone())?.expose(),
         CONTENT
     );
-    assert!(
-        transfer::open(
-            &Uuid7::parse(OTHER)?,
-            &mut registered(&bytes),
-            bytes.clone()
-        )
-        .is_err()
-    );
+    transfer::open(
+        &Uuid7::parse(OTHER)?,
+        &mut registered(&bytes),
+        bytes.clone(),
+    )
+    .err()
+    .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     let mut wrong_repository = registered(&bytes);
     wrong_repository.repository = "another/repository".to_owned();
-    assert!(transfer::open(&workspace, &mut wrong_repository, bytes.clone()).is_err());
+    transfer::open(&workspace, &mut wrong_repository, bytes.clone())
+        .err()
+        .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     let mut wrong_object = registered(&bytes);
     wrong_object.object_id = OTHER.to_owned();
-    assert!(transfer::open(&workspace, &mut wrong_object, bytes.clone()).is_err());
+    transfer::open(&workspace, &mut wrong_object, bytes.clone())
+        .err()
+        .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     let mut corrupt = bytes;
     let last = corrupt
         .last_mut()
         .ok_or_else(|| crate::error::config("fixture ciphertext is empty"))?;
     *last ^= 1;
-    assert!(transfer::open(&workspace, &mut registered(&corrupt), corrupt).is_err());
+    transfer::open(&workspace, &mut registered(&corrupt), corrupt)
+        .err()
+        .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     Ok(())
 }
 
 #[test]
 fn plaintext_and_transport_descriptors_cannot_be_substituted() -> crate::Result<()> {
     let workspace = Uuid7::parse(ID)?;
-    assert!(
-        transfer::seal(
-            &workspace,
-            &mut object(),
-            Zeroizing::new(b"different content".to_vec())
-        )
-        .is_err()
-    );
+    transfer::seal(
+        &workspace,
+        &mut object(),
+        Zeroizing::new(b"different content".to_vec()),
+    )
+    .err()
+    .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     let bytes = transfer::seal(&workspace, &mut object(), Zeroizing::new(CONTENT.to_vec()))?;
     let mut truncated = registered(&bytes);
     truncated.ciphertext_length = Some(17);
-    assert!(transfer::open(&workspace, &mut truncated, bytes.clone()).is_err());
+    transfer::open(&workspace, &mut truncated, bytes.clone())
+        .err()
+        .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     let mut wrong_plaintext = registered(&bytes);
     wrong_plaintext.plaintext.sha256 = "0".repeat(64);
-    assert!(transfer::open(&workspace, &mut wrong_plaintext, bytes).is_err());
+    transfer::open(&workspace, &mut wrong_plaintext, bytes)
+        .err()
+        .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     Ok(())
 }

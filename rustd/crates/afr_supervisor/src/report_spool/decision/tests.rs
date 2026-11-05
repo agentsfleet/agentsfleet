@@ -18,7 +18,7 @@ async fn a_duplicate_cannot_release_another_dispatch_and_completed_receipts_keep
     let (lease, call) = (id(1)?, id(2)?);
     let pending = spool.begin_decision(&lease, &call, 17).await?;
     let directory = root.path().join(DIRECTORY);
-    let receipt = load(pending.directory.clone(), call.as_str())?;
+    let receipt = load(&pending.directory, call.as_str())?;
     assert_eq!(receipt.lease_id, lease.as_str());
     assert!(matches!(
         receipt.input.receipt,
@@ -28,7 +28,11 @@ async fn a_duplicate_cannot_release_another_dispatch_and_completed_receipts_keep
         scan(&directory)?.pending.is_empty(),
         "an active call cannot be drained online"
     );
-    assert!(spool.begin_decision(&lease, &call, 17).await.is_err());
+    spool
+        .begin_decision(&lease, &call, 17)
+        .await
+        .err()
+        .ok_or_else(|| crate::error::config("unsafe operation was accepted"))?;
     assert!(
         pending.directory.join(ACTIVE).exists(),
         "a duplicate owns no active marker"
@@ -43,7 +47,7 @@ async fn a_duplicate_cannot_release_another_dispatch_and_completed_receipts_keep
     assert!(!String::from_utf8_lossy(&bytes).contains(lease.as_str()));
     let scanned = scan(&directory)?;
     assert_eq!(scanned.pending.len(), 1);
-    let recovered = load(pending.directory.clone(), call.as_str())?;
+    let recovered = load(&pending.directory, call.as_str())?;
     assert_eq!(recovered.input.fencing_token, 17);
     assert!(matches!(
         recovered.input.receipt,

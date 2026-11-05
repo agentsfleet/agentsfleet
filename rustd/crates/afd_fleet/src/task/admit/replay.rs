@@ -74,10 +74,12 @@ pub(super) async fn read(
         .collect::<Result<Vec<_>>>()?;
     // Reading a receipt grants no execution and changes no terminal state,
     // generation or allowance. Continuation claim owns attempt attachment.
-    let current_task = guard::context(connection, current).await?;
+    let current_task = guard::context(&mut *connection, current).await?;
+    let execution_deadline = crate::lease::deadline::read(connection, &current.lease_id).await?;
     Ok(Some(TaskBindings {
         items,
         current_task,
+        execution_deadline,
         replayed: true,
     }))
 }
