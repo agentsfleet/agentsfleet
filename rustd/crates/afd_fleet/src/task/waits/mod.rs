@@ -34,9 +34,15 @@ pub(in crate::task) async fn arm(
         .bind(id.as_str())
         .bind(task)
         .bind(lease.as_str())
-        .bind(i64::try_from(target.installation_id).map_err(|_| super::TaskRefusal::InvalidTarget)?)
-        .bind(i64::try_from(target.repository_id).map_err(|_| super::TaskRefusal::InvalidTarget)?)
-        .bind(i32::try_from(target.number).map_err(|_| super::TaskRefusal::InvalidTarget)?)
+        .bind(super::row::sql_counter(
+            target.installation_id,
+            "installation_id",
+        )?)
+        .bind(super::row::sql_counter(
+            target.repository_id,
+            "repository_id",
+        )?)
+        .bind(super::row::sql_small_counter(target.number, "number")?)
         .bind(&target.head)
         .bind(Json(&dependency.checks))
         .bind(dependency.digest()?)

@@ -134,9 +134,9 @@ describe("steerEffectFromArgs REPL dispatch", () => {
 
     const exit = await Effect.runPromiseExit(effect);
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.requests).toHaveLength(1);
-    expect(rec.requests[0]?.method).toBe(POST);
-    expect(rec.requests[0]?.body).toEqual({ message: "howdy" });
+    expect(rec.requests.filter(request => request.method === POST).map(request => request.body)).toEqual([{ message: "howdy" }]);
+    expect(rec.requests.map(request => request.method ?? "GET")).toEqual([POST, "GET"]);
+    expect(rec.requests[1]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`);
     // Subscribe-first: even a single-shot turn opens its tail before the
     // POST, and the tail always carries an abort signal for close ownership.
     expect(rec.streamSignals).toHaveLength(1);
@@ -153,10 +153,14 @@ describe("steerEffectFromArgs REPL dispatch", () => {
 
     const exit = await Effect.runPromiseExit(effect);
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.requests.map((request) => request.body)).toEqual([
+    expect(rec.requests.filter(request => request.method === POST).map(request => request.body)).toEqual([
       { message: "first" },
       { message: "second" },
     ]);
+    expect(rec.requests.map(request => request.method ?? "GET")).toEqual([POST, "GET", POST, "GET"]);
+    expect(rec.requests.filter(request => request.method !== POST).map(request => request.path)).toEqual(
+      Array(2).fill(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`),
+    );
     expect(rec.streamSignals).toHaveLength(2);
   });
 
@@ -171,8 +175,9 @@ describe("steerEffectFromArgs REPL dispatch", () => {
 
     const exit = await Effect.runPromiseExit(effect);
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.requests).toHaveLength(1);
-    expect(rec.requests[0]?.body).toEqual({ message: "explicit" });
+    expect(rec.requests.filter(request => request.method === POST).map(request => request.body)).toEqual([{ message: "explicit" }]);
+    expect(rec.requests.map(request => request.method ?? "GET")).toEqual([POST, "GET"]);
+    expect(rec.requests[1]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`);
   });
 
   test("REPL turn failure is reported and later turns continue", async () => {

@@ -39,50 +39,7 @@ pub(super) async fn accept(
         return Ok(result);
     }
     row::current(&item, input)?;
-    let response = match input.mode {
-        TaskInputMode::ApplyHere => {
-            if input.response_text.is_some() {
-                return Err(TaskRefusal::ReplayConflict.into());
-            }
-            let version = input.task.as_ref().ok_or(TaskRefusal::InvalidTarget)?;
-            execution::load(&mut tx, lease, version).await?;
-            let sequence = item.sequence.ok_or(TaskRefusal::InvalidTarget)?;
-            let applied = sqlx::query(include_str!("sql/apply.sql"))
-                .bind(&version.task_id)
-                .bind(sequence)
-                .execute(&mut *tx)
-                .await
-                .map_err(query("advance exactly one accepted input boundary"))?;
-            if applied.rows_affected() != 1 {
-                return Err(TaskRefusal::StaleState.into());
-            }
-            None
-        }
-        TaskInputMode::Queued => {
-            if input.response_text.is_some() || item.task_id.is_none() {
-                return Err(TaskRefusal::InvalidTarget.into());
-            }
-            if item
-                .state
-                .as_deref()
-                .map(super::row::state)
-                .transpose()?
-                .is_some_and(afd_wire::task::TaskState::is_terminal)
-            {
-                return Err(TaskRefusal::StaleState.into());
-            }
-            Some(format!(
-                "Queued: {}",
-                item.title.as_deref().ok_or(TaskRefusal::NotFound)?
-            ))
-        }
-        TaskInputMode::Answered => Some(
-            input
-                .response_text
-                .clone()
-                .ok_or(TaskRefusal::InputAmbiguous)?,
-        ),
-    };
+    let response = response(&mut tx, lease, input, &item).await?;
     if response.is_some() && row::has_answer(&mut tx, input).await? {
         return Err(TaskRefusal::ReplayConflict.into());
     }
@@ -134,4 +91,57 @@ pub(super) async fn accept(
         }
     }
     Ok(result)
+}
+
+async fn response(
+    connection: &mut sqlx::PgConnection,
+    lease: TaskLease<'_>,
+    input: &TaskInputReceiptInput,
+    item: &row::Item,
+) -> Result<Option<String>> {
+    let response = match input.mode {
+        TaskInputMode::ApplyHere => {
+            if input.response_text.is_some() {
+                return Err(TaskRefusal::ReplayConflict.into());
+            }
+            let version = input.task.as_ref().ok_or(TaskRefusal::InvalidTarget)?;
+            execution::load(connection, lease, version).await?;
+            let sequence = item.sequence.ok_or(TaskRefusal::InvalidTarget)?;
+            let applied = sqlx::query(include_str!("sql/apply.sql"))
+                .bind(&version.task_id)
+                .bind(sequence)
+                .execute(&mut *connection)
+                .await
+                .map_err(query("advance exactly one accepted input boundary"))?;
+            if applied.rows_affected() != 1 {
+                return Err(TaskRefusal::StaleState.into());
+            }
+            None
+        }
+        TaskInputMode::Queued => {
+            if input.response_text.is_some() || item.task_id.is_none() {
+                return Err(TaskRefusal::InvalidTarget.into());
+            }
+            if item
+                .state
+                .as_deref()
+                .map(super::row::state)
+                .transpose()?
+                .is_some_and(afd_wire::task::TaskState::is_terminal)
+            {
+                return Err(TaskRefusal::StaleState.into());
+            }
+            Some(format!(
+                "Queued: {}",
+                item.title.as_deref().ok_or(TaskRefusal::NotFound)?
+            ))
+        }
+        TaskInputMode::Answered => Some(
+            input
+                .response_text
+                .clone()
+                .ok_or(TaskRefusal::InputAmbiguous)?,
+        ),
+    };
+    Ok(response)
 }

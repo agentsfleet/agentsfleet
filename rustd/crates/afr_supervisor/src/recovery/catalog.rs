@@ -47,9 +47,12 @@ impl Chunk {
                 identity,
                 offset,
             } => root.chunk(path, identity, *offset),
-            Source::History { bytes, start, end } => {
-                Ok(Zeroizing::new(bytes[*start..*end].to_vec()))
-            }
+            Source::History { bytes, start, end } => Ok(Zeroizing::new(
+                bytes
+                    .get(*start..*end)
+                    .ok_or_else(|| error::config("checkpoint history chunk range is invalid"))?
+                    .to_vec(),
+            )),
         }
     }
 }
@@ -66,7 +69,7 @@ pub(super) struct Catalog {
 
 impl Catalog {
     pub(super) fn build(
-        root: Option<Arc<Workspace>>,
+        root: Option<&Arc<Workspace>>,
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
         stop: &tokio_util::sync::CancellationToken,
@@ -75,7 +78,6 @@ impl Catalog {
             return Err(error::config("checkpoint history exceeds its bound"));
         }
         let inventory = root
-            .as_ref()
             .map(|root| root.inventory(stop))
             .transpose()?
             .unwrap_or_default();
@@ -86,7 +88,7 @@ impl Catalog {
             history_chunks: Vec::new(),
             logical_bytes: 0,
             entry_count: u32::try_from(inventory.len())
-                .map_err(|_| error::config("checkpoint entry count overflow"))?,
+                .map_err(|source| error::boundary("checkpoint entry count overflow", source))?,
         };
         for (path, entry) in &inventory {
             if stop.is_cancelled() {
@@ -106,9 +108,8 @@ impl Catalog {
                     identity,
                     executable,
                 } => {
-                    let root = root
-                        .as_ref()
-                        .ok_or_else(|| error::config("checkpoint file has no workspace"))?;
+                    let root =
+                        root.ok_or_else(|| error::config("checkpoint file has no workspace"))?;
                     let keys = catalog.file(root, path, identity, files::size(entry), stop)?;
                     let file = CheckpointEntry::File(CheckpointFile {
                         path: path.clone(),
@@ -130,9 +131,12 @@ impl Catalog {
             }
         }
         let history = Arc::new(history);
-        for start in (0..history.len()).step_by(files::CHUNK as usize) {
-            let end = (start + files::CHUNK as usize).min(history.len());
-            let descriptor = descriptor(&history[start..end], "history");
+        let chunk_bytes = usize::try_from(files::CHUNK)
+            .map_err(|source| error::boundary("checkpoint chunk size overflow", source))?;
+        for (index, chunk) in history.chunks(chunk_bytes).enumerate() {
+            let start = index * chunk_bytes;
+            let end = start + chunk.len();
+            let descriptor = descriptor(chunk, "history");
             let key = key(&descriptor);
             catalog.chunks.entry(key.clone()).or_insert_with(|| Chunk {
                 descriptor,
@@ -158,7 +162,9 @@ impl Catalog {
         stop: &tokio_util::sync::CancellationToken,
     ) -> Result<Vec<String>> {
         let mut keys = Vec::new();
-        for offset in (0..size).step_by(files::CHUNK as usize) {
+        let chunk_bytes = usize::try_from(files::CHUNK)
+            .map_err(|source| error::boundary("checkpoint chunk size overflow", source))?;
+        for offset in (0..size).step_by(chunk_bytes) {
             if stop.is_cancelled() {
                 return Err(error::config("checkpoint hashing cancelled"));
             }
@@ -202,12 +208,13 @@ impl Catalog {
         &self,
         ids: Option<&BTreeMap<String, String>>,
     ) -> Result<Vec<CheckpointPage>> {
-        let mut pages = vec![CheckpointPage {
+        let initial = CheckpointPage {
             page_number: 0,
             entries: Vec::new(),
             history_objects: Vec::new(),
-        }];
-        let mut page_bytes = serde_json::to_vec(&pages[0]).map_err(error::encode)?.len();
+        };
+        let mut page_bytes = serde_json::to_vec(&initial).map_err(error::encode)?.len();
+        let mut pages = vec![initial];
         for (path, original) in &self.entries {
             let mut entry = original.clone();
             if let (Some(ids), CheckpointEntry::File(file)) = (ids, &mut entry) {
@@ -238,7 +245,8 @@ impl Catalog {
                 {
                     return Err(error::config("checkpoint manifest exceeds its page bound"));
                 }
-                let page_number = pages.len() as u32;
+                let page_number = u32::try_from(pages.len())
+                    .map_err(|source| error::boundary("checkpoint page count overflow", source))?;
                 let page = CheckpointPage {
                     page_number,
                     entries: Vec::new(),
@@ -269,7 +277,8 @@ impl Catalog {
         if !afd_wire::decision::serialized_within(page, afd_wire::task::CHECKPOINT_PAGE_BYTES) {
             let history_objects = std::mem::take(&mut page.history_objects);
             pages.push(CheckpointPage {
-                page_number: pages.len() as u32,
+                page_number: u32::try_from(pages.len())
+                    .map_err(|source| error::boundary("checkpoint page count overflow", source))?,
                 entries: Vec::new(),
                 history_objects,
             });

@@ -101,22 +101,7 @@ async fn slack_person_authority_is_scoped_revocable_and_does_not_follow_a_reinst
         !allowed(&round, &actor).await,
         "reinstall does not restore a deleted person proof"
     );
-    let mut connection = round
-        .database
-        .acquire()
-        .await
-        .expect("person cleanup connection");
-    sqlx::query("DELETE FROM identity.users WHERE id = $1::uuid")
-        .bind(&user)
-        .execute(&mut *connection)
-        .await
-        .expect("remove fixture person");
-    sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
-        .bind(&tenant)
-        .execute(&mut *connection)
-        .await
-        .expect("remove fixture home tenant");
-    drop(connection);
+    remove_person(&round, &user, &tenant).await;
     round.cleanup().await;
 }
 
@@ -137,7 +122,7 @@ async fn allowed(round: &Round, actor: &str) -> bool {
 
 async fn link(round: &Round, team: &str, person: &str, subject: &str) -> u64 {
     afd_connector::grant::link_person(
-        &mut *round.database.acquire().await.expect("proof connection"),
+        &mut round.database.acquire().await.expect("proof connection"),
         &round.workspace,
         team,
         person,
@@ -145,4 +130,23 @@ async fn link(round: &Round, team: &str, person: &str, subject: &str) -> u64 {
     )
     .await
     .expect("native verified-person insert")
+}
+
+async fn remove_person(round: &Round, user: &str, tenant: &str) {
+    let mut connection = round
+        .database
+        .acquire()
+        .await
+        .expect("person cleanup connection");
+    sqlx::query("DELETE FROM identity.users WHERE id = $1::uuid")
+        .bind(user)
+        .execute(&mut *connection)
+        .await
+        .expect("remove fixture person");
+    sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        .bind(tenant)
+        .execute(&mut *connection)
+        .await
+        .expect("remove fixture home tenant");
+    drop(connection);
 }

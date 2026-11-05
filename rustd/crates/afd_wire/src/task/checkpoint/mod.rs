@@ -26,7 +26,7 @@ pub const CHECKPOINT_PAGES: u32 = 64;
 /// Maximum objects registered or authorized in one request.
 pub const CHECKPOINT_BATCH: usize = 256;
 
-pub(super) fn digest(value: &str, _context: &()) -> garde::Result {
+pub(super) fn digest<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
     if value.len() == 64
         && value
             .bytes()

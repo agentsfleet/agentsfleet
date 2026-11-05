@@ -105,61 +105,9 @@ pub(crate) async fn apply(
         return Ok(Some(UNVERIFIED));
     };
     if state == TaskState::Ready {
-        let Some(admission) = settlement.admission else {
-            transition(
-                connection,
-                &current,
-                TaskState::Blocked,
-                Some("continuation_unavailable"),
-            )
-            .await?;
-            return Ok(Some(UNVERIFIED));
-        };
-        let mut savepoint = connection
-            .begin()
-            .await
-            .map_err(query("begin task continuation savepoint"))?;
-        let admitted = match settlement
-            .plan
-            .tasks
-            .admissions
-            .stage(&mut savepoint, admission)
-            .await
-        {
-            Ok(admitted) => admitted,
-            Err(fault)
-                if fault.is_over_capacity()
-                    || fault.code() == afd_core::error_code::AUTHORING_POLICY =>
-            {
-                savepoint.rollback().await.map_err(query(
-                    "roll back refused continuation without discarding measured usage",
-                ))?;
-                tracing::warn!(event = "dt_continuation_refused", task_id = current.task_id.as_str(), error_code = %fault.code());
-                transition(
-                    connection,
-                    &current,
-                    TaskState::Blocked,
-                    Some("continuation_unavailable"),
-                )
-                .await?;
-                return Ok(Some(UNVERIFIED));
-            }
-            Err(fault) => return Err(fault.into()),
-        };
-        transition(&mut savepoint, &current, state, reason).await?;
-        sqlx::query(crate::task::sql::CONTROL_ADMISSION)
-            .bind(&current.task_id)
-            .bind(&admitted.stored.id)
-            .execute(&mut *savepoint)
-            .await
-            .map_err(query("bind continuation before report releases its slot"))?;
-        savepoint
-            .commit()
-            .await
-            .map_err(query("commit staged task continuation"))?;
-    } else {
-        transition(connection, &current, state, reason).await?;
+        return continue_ready(connection, &current, settlement, reason).await;
     }
+    transition(connection, &current, state, reason).await?;
     if state == TaskState::Waiting {
         let plan = settlement.plan;
         waits::arm(
@@ -326,3 +274,64 @@ const UNVERIFIED: &str =
     "Work is blocked because its completion or recovery evidence could not be verified.";
 
 const LIMIT: &str = "Work stopped at the task limit. No further execution was admitted.";
+
+async fn continue_ready(
+    connection: &mut PgConnection,
+    current: &Current,
+    settlement: TaskSettlement<'_>,
+    reason: Option<&str>,
+) -> Result<Option<&'static str>> {
+    let Some(admission) = settlement.admission else {
+        transition(
+            connection,
+            current,
+            TaskState::Blocked,
+            Some("continuation_unavailable"),
+        )
+        .await?;
+        return Ok(Some(UNVERIFIED));
+    };
+    let mut savepoint = connection
+        .begin()
+        .await
+        .map_err(query("begin task continuation savepoint"))?;
+    let admitted = match settlement
+        .plan
+        .tasks
+        .admissions
+        .stage(&mut savepoint, admission)
+        .await
+    {
+        Ok(admitted) => admitted,
+        Err(fault)
+            if fault.is_over_capacity()
+                || fault.code() == afd_core::error_code::AUTHORING_POLICY =>
+        {
+            savepoint.rollback().await.map_err(query(
+                "roll back refused continuation without discarding measured usage",
+            ))?;
+            tracing::warn!(event = "dt_continuation_refused", task_id = current.task_id.as_str(), error_code = %fault.code());
+            transition(
+                connection,
+                current,
+                TaskState::Blocked,
+                Some("continuation_unavailable"),
+            )
+            .await?;
+            return Ok(Some(UNVERIFIED));
+        }
+        Err(fault) => return Err(fault.into()),
+    };
+    transition(&mut savepoint, current, TaskState::Ready, reason).await?;
+    sqlx::query(crate::task::sql::CONTROL_ADMISSION)
+        .bind(&current.task_id)
+        .bind(&admitted.stored.id)
+        .execute(&mut *savepoint)
+        .await
+        .map_err(query("bind continuation before report releases its slot"))?;
+    savepoint
+        .commit()
+        .await
+        .map_err(query("commit staged task continuation"))?;
+    Ok(None)
+}

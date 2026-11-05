@@ -212,8 +212,9 @@ impl RepositoryBinding {
         }
         if (publication == RepositoryPublication::ExistingPr) == workflows.is_empty()
             || workflows.iter().enumerate().any(|(index, entry)| {
-                workflows[..index]
+                workflows
                     .iter()
+                    .take(index)
                     .any(|other| other.path == entry.path)
             })
         {

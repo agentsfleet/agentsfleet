@@ -57,7 +57,7 @@ pub(super) async fn propose(
         biased;
         () = stop.cancelled() => return Err(unavailable()),
         result = tokio::time::timeout(std::time::Duration::from_secs(30), collect(provider, request, meter)) =>
-            result.map_err(|_| unavailable())??,
+            result.map_err(|source| crate::decision::boundary("task decision input or deadline", source))??,
     };
     let items: Vec<TaskProposedItem> = serde_json::from_str(&text)?;
     validate(&items, message, count)?;
@@ -115,9 +115,15 @@ pub(super) fn validate(
     }
     let mut end = 0;
     for item in items {
-        item.validate().map_err(|_| unavailable())?;
-        let start = usize::try_from(item.source_start).map_err(|_| unavailable())?;
-        let next = usize::try_from(item.source_end).map_err(|_| unavailable())?;
+        item.validate().map_err(|source| {
+            crate::decision::boundary("task decision input or deadline", source)
+        })?;
+        let start = usize::try_from(item.source_start).map_err(|source| {
+            crate::decision::boundary("task decision input or deadline", source)
+        })?;
+        let next = usize::try_from(item.source_end).map_err(|source| {
+            crate::decision::boundary("task decision input or deadline", source)
+        })?;
         if start < end || next <= start || message.get(start..next).is_none() {
             return Err(unavailable());
         }

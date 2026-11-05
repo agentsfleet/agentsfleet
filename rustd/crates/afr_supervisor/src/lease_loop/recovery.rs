@@ -50,7 +50,7 @@ impl LeaseRun<'_> {
         sandbox
             .freeze()
             .await
-            .map_err(|_| error::config("sandbox could not freeze for recovery"))?;
+            .map_err(|source| error::boundary("sandbox could not freeze for recovery", source))?;
         let restored: Result<State> = async {
             if task.checkpoint_id.is_some() {
                 let restored = Restore {
@@ -64,14 +64,8 @@ impl LeaseRun<'_> {
                 }
                 .run(Some((workspace.root.to_owned(), workspace.owner)))
                 .await?;
-                let mut recovered_task = task.clone();
-                recovered_task.covered_input_sequence = restored.plan.covered_input_sequence;
-                recovered_task.confirmed_effect_watermark = restored.plan.effect_watermark;
                 Ok(State {
-                    history: Some(TaskRecovery {
-                        task: recovered_task,
-                        history: Zeroizing::new(restored.history.expose().to_vec()),
-                    }),
+                    history: Some(recovered_history(task, &restored.plan, &restored.history)),
                     base: Some(restored.plan),
                     base_paths: restored.base_paths,
                 })
@@ -80,29 +74,7 @@ impl LeaseRun<'_> {
             } = &task.target
             {
                 let root = workspace.root.to_owned();
-                let name = repository
-                    .split_once('/')
-                    .map(|(_, name)| name)
-                    .filter(|name| {
-                        !name.is_empty() && !name.contains('/') && !matches!(*name, "." | "..")
-                    })
-                    .ok_or_else(|| error::config("native recovery repository name is invalid"))?;
-                let destination = root.join(name);
-                let expected = head.clone();
-                // Only this newly created checkout is read by Git on the host.
-                // Recovered or tenant-modified repositories never take this path.
-                tokio::task::spawn_blocking(move || {
-                    let repository = gix::open_opts(destination, gix::open::Options::isolated())
-                        .map_err(|_| error::config("fresh task checkout cannot be opened"))?;
-                    let actual = repository
-                        .head_id()
-                        .map_err(|_| error::config("fresh task checkout has no head"))?;
-                    if actual.to_string() != expected {
-                        return Err(error::config("task branch moved before initial capture"));
-                    }
-                    Ok::<_, crate::Error>(())
-                })
-                .await??;
+                verify_fresh_checkout(&root, repository, head).await?;
                 let base = Capture {
                     plane: &self.lessee.plane,
                     lease: &self.ids.lease,
@@ -146,13 +118,12 @@ impl LeaseRun<'_> {
         let thawed = sandbox
             .thaw()
             .await
-            .map_err(|_| error::config("sandbox could not thaw after recovery"));
+            .map_err(|source| error::boundary("sandbox could not thaw after recovery", source));
         let state: State = restored?;
         thawed?;
-        build
-            .recovery
-            .set(state)
-            .map_err(|_| error::config("sandbox recovery was prepared twice"))?;
+        if build.recovery.set(state).is_err() {
+            return Err(error::config("sandbox recovery was prepared twice"));
+        }
         Ok(())
     }
 
@@ -185,13 +156,11 @@ impl LeaseRun<'_> {
         }
         .run(None)
         .await?;
-        let mut task = task.clone();
-        task.covered_input_sequence = restored.plan.covered_input_sequence;
-        task.confirmed_effect_watermark = restored.plan.effect_watermark;
-        Ok(Some(TaskRecovery {
+        Ok(Some(recovered_history(
             task,
-            history: Zeroizing::new(restored.history.expose().to_vec()),
-        }))
+            &restored.plan,
+            &restored.history,
+        )))
     }
 
     pub(super) async fn capture_frozen(
@@ -305,5 +274,46 @@ pub(super) fn capture_unavailable(ending: &mut Ending) {
         }
         output.recovery = None;
         output.result.content = "The task is blocked because its durable state could not be saved. No automatic continuation was authorized.".into();
+    }
+}
+
+/// Only a newly created checkout may be read by Git on the host.
+/// Recovered or tenant-modified repositories never take this path.
+async fn verify_fresh_checkout(root: &std::path::Path, repository: &str, head: &str) -> Result<()> {
+    let name = repository
+        .split_once('/')
+        .map(|(_, name)| name)
+        .filter(|name| !name.is_empty() && !name.contains('/') && !matches!(*name, "." | ".."))
+        .ok_or_else(|| error::config("native recovery repository name is invalid"))?;
+    let destination = root.join(name);
+    let expected = gix::hash::ObjectId::from_hex(head.as_bytes()).map_err(|source| {
+        error::boundary("fresh task checkout expected head is invalid", source)
+    })?;
+    tokio::task::spawn_blocking(move || {
+        let repository = gix::open_opts(destination, gix::open::Options::isolated())
+            .map_err(|source| error::boundary("fresh task checkout cannot be opened", source))?;
+        let actual = repository
+            .head_id()
+            .map_err(|source| error::boundary("fresh task checkout has no head", source))?;
+        if actual.detach() != expected {
+            return Err(error::config("task branch moved before initial capture"));
+        }
+        Ok(())
+    })
+    .await?
+}
+
+/// A restored history carries the cursors authenticated by its saved manifest.
+fn recovered_history(
+    task: &afd_wire::task::TaskContext<'static>,
+    plan: &CheckpointPlan,
+    history: &afd_crypto::secret::SecretBytes,
+) -> TaskRecovery {
+    let mut task = task.clone();
+    task.covered_input_sequence = plan.covered_input_sequence;
+    task.confirmed_effect_watermark = plan.effect_watermark;
+    TaskRecovery {
+        task,
+        history: Zeroizing::new(history.expose().to_vec()),
     }
 }

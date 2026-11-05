@@ -83,7 +83,7 @@ impl TaskEffectState {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskEffect {
-    /// Native effect UUIDv7 discoverable after replacement-worker recovery.
+    /// Native effect `UUIDv7` discoverable after replacement-worker recovery.
     pub effect_id: String,
     /// Task-local publication order, independent of response delivery.
     pub ordinal: u64,
@@ -147,7 +147,7 @@ const fn default_limit() -> u32 {
     50
 }
 
-fn file_path(value: &str, _context: &()) -> garde::Result {
+fn file_path<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
     let parts: Vec<_> = value.split('/').collect();
     if parts.len() > 32
         || value.contains('\\')

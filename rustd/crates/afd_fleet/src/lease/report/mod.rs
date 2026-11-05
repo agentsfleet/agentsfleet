@@ -221,7 +221,14 @@ impl Plane {
                 self.release_usage(&lease_key, release_of(request)).await;
                 let answer = notice.unwrap_or(request.response_text.as_ref());
                 let completed_at = self
-                    .announce(runner_id, request, &lease, closed, charged, now, answer)
+                    .announce(
+                        runner_id,
+                        request,
+                        &lease,
+                        steps::Completion { closed, answer },
+                        charged,
+                        now,
+                    )
                     .await;
                 timing::completed(&lease, now, completed_at);
                 if let Some(owing) = owed {

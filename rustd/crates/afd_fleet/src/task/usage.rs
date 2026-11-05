@@ -10,9 +10,12 @@ const NANOS_PER_SECOND: i64 = 1_000_000_000;
 
 #[derive(sqlx::FromRow)]
 struct Owner {
-    task_id: String,
-    fleet_id: String,
-    workspace_id: String,
+    #[sqlx(rename = "task_id")]
+    task: String,
+    #[sqlx(rename = "fleet_id")]
+    fleet: String,
+    #[sqlx(rename = "workspace_id")]
+    workspace: String,
 }
 
 pub(crate) async fn record(
@@ -30,9 +33,9 @@ pub(crate) async fn record(
     };
     // Existing metering already owns slot/lease. No host or parent lock follows this task lock.
     let _task: Option<String> = sqlx::query_scalar(sql::LOCK_TASK)
-        .bind(&owner.task_id)
-        .bind(&owner.fleet_id)
-        .bind(&owner.workspace_id)
+        .bind(&owner.task)
+        .bind(&owner.fleet)
+        .bind(&owner.workspace)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(

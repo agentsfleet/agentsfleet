@@ -48,7 +48,7 @@ pub(super) async fn reproduce(
     let mut changes = Vec::with_capacity(input.changes.len());
     let mut bytes = 0_usize;
     for (index, change) in input.changes.iter().enumerate() {
-        if input.changes[..index].iter().any(|previous| {
+        if input.changes.iter().take(index).any(|previous| {
             previous.path == change.path
                 || previous.path.starts_with(&format!("{}/", change.path))
                 || change.path.starts_with(&format!("{}/", previous.path))

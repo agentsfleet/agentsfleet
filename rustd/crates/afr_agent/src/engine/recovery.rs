@@ -80,7 +80,7 @@ impl TaskRecovery {
         for message in &mut history.messages {
             match message {
                 Message::User(text) | Message::ToolResult { output: text, .. } => {
-                    *text = scrub.text(text).into_owned()
+                    *text = scrub.text(text).into_owned();
                 }
                 Message::Assistant {
                     text,

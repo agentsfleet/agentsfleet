@@ -8018,7 +8018,7 @@
           "Runners"
         ],
         "summary": "Freeze exact ciphertext upload descriptors",
-        "description": "Persists every ciphertext digest and length before signing create-only uploads. Exact replay cannot choose a new key, nonce or representation.",
+        "description": "Records every ciphertext digest and length before signing create-only uploads. Exact replay cannot choose a new key, nonce or representation.",
         "operationId": "runner_checkpoint_uploads",
         "parameters": [
           {
@@ -8630,7 +8630,7 @@
           "Runners"
         ],
         "summary": "Publish one tested exact-head repair",
-        "description": "Persists immutable expected-head and tested-tree authority before one native publication. Refuses workflow changes, unsupported file modes, stale ownership and unresolved effects. Unknown acknowledgements require reconciliation and never repeat the mutation.",
+        "description": "Records immutable expected-head and tested-tree authority before one native publication. Refuses workflow changes, unsupported file modes, stale ownership and unresolved effects. Unknown acknowledgements require reconciliation and never repeat the mutation.",
         "operationId": "runner_publish_task_effect",
         "parameters": [
           {
@@ -8916,7 +8916,7 @@
           "Runners"
         ],
         "summary": "Acknowledge accepted input and its original reply",
-        "description": "Fences apply-here and queued acknowledgements against immutable accepted meaning. Advances the current input cursor once, preserves original delivery obligations and never executes a different task under the current lease.",
+        "description": "Fences apply-here and queued acknowledgements against immutable accepted meaning. Advances the current input cursor once, preserves original delivery obligations and never runs a different task under the current lease.",
         "operationId": "runner_accept_task_input_receipt",
         "parameters": [
           {
@@ -22415,7 +22415,7 @@
           },
           "durable_tasks_v1": {
             "type": "boolean",
-            "description": "This build implements fenced task execution and workspace handoff."
+            "description": "This build supports fenced task work and workspace handoff."
           },
           "egress_enforcement": {
             "type": "boolean",
@@ -26774,7 +26774,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RepositoryPublication",
-                "description": "Reviewed write mode; existing_pr reserves branch publication for native tasks."
+                "description": "Reviewed write mode; `existing_pr` reserves branch publication for native tasks."
               },
               {
                 "type": "null"
@@ -28874,6 +28874,14 @@
           "event": {
             "$ref": "#/components/schemas/EventEnvelope",
             "description": "The event to run."
+          },
+          "execution_deadline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Immutable native runtime ceiling, including a bound task's shorter slice.\nAbsent on older daemons; task execution must not guess this deadline."
           },
           "fencing_token": {
             "type": "integer",
@@ -34271,7 +34279,7 @@
           },
           "plan_digest": {
             "type": "string",
-            "description": "SHA-256 of interpretation(), computed independently by the daemon."
+            "description": "SHA-256 of `interpretation()`, computed independently by the daemon."
           },
           "source_admission_id": {
             "type": "string",
@@ -34298,6 +34306,14 @@
                 "type": "null"
               }
             ]
+          },
+          "execution_deadline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Current lease's immutable ceiling after native task binding."
           },
           "items": {
             "type": "array",
@@ -34563,7 +34579,7 @@
           },
           "effect_id": {
             "type": "string",
-            "description": "Native effect UUIDv7 discoverable after replacement-worker recovery."
+            "description": "Native effect `UUIDv7` discoverable after replacement-worker recovery."
           },
           "expected_head": {
             "type": "string",
@@ -34702,7 +34718,7 @@
       },
       "TaskHumanInput": {
         "type": "object",
-        "description": "One complete persisted human message; reading never consumes it.",
+        "description": "One complete saved human message; reading never consumes it.",
         "required": [
           "source_admission_id",
           "sequence",
@@ -34931,6 +34947,14 @@
               }
             ]
           },
+          "execution_deadline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Immutable ceiling read with this lease's current native ownership."
+          },
           "inputs": {
             "type": "array",
             "items": {
@@ -34973,7 +34997,7 @@
           },
           "applies_here": {
             "type": "boolean",
-            "description": "Whether current execution may apply this input at its next safe boundary."
+            "description": "Whether the current run may apply this input at its next safe boundary."
           },
           "input_sequence": {
             "type": [
@@ -34986,7 +35010,7 @@
           },
           "item_id": {
             "type": "string",
-            "description": "Native immutable item UUIDv7."
+            "description": "Native immutable item `UUIDv7`."
           },
           "task_generation": {
             "type": [
@@ -35131,7 +35155,7 @@
           },
           "binding": {
             "$ref": "#/components/schemas/TaskItemBinding",
-            "description": "Native current association; no new execution is granted by reading it."
+            "description": "Native current association; no new work is authorized by reading it."
           },
           "interpretation": {
             "type": "string",

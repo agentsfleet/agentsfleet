@@ -94,10 +94,10 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(asked));
 
-    let (reported, window) = window_around(
+    let (reported, window) = Box::pin(window_around(
         &held.fixtures,
         plane.report(&held.runner, &request, reported_at),
-    )
+    ))
     .await;
     reported.expect("the plane settles the report");
 

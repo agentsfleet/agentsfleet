@@ -129,68 +129,7 @@ async fn apply(
             Ok(false)
         }
         Ok(snapshot) if actionable(snapshot, owner) => {
-            let Some(prepared) = prepared else {
-                return Err(crate::task::TaskRefusal::StaleState.into());
-            };
-            let mut savepoint = connection
-                .begin()
-                .await
-                .map_err(query("begin wait continuation savepoint"))?;
-            let admitted = match tasks.admissions.stage(&mut savepoint, prepared).await {
-                Ok(admitted) => admitted,
-                Err(fault)
-                    if fault.is_over_capacity()
-                        || fault.code() == afd_core::error_code::AUTHORING_POLICY =>
-                {
-                    savepoint
-                        .rollback()
-                        .await
-                        .map_err(query("retain wait evidence after admission refusal"))?;
-                    claim::stop(
-                        connection,
-                        owner,
-                        TaskState::Blocked,
-                        "continuation_unavailable",
-                    )
-                    .await?;
-                    return Ok(false);
-                }
-                Err(fault) => return Err(fault.into()),
-            };
-            sqlx::query(include_str!("sql/transition.sql"))
-                .bind(&owner.task_id)
-                .bind(TaskState::Ready.as_str())
-                .bind(None::<&str>)
-                .bind(false)
-                .execute(&mut *savepoint)
-                .await
-                .map_err(query("make consumed dependency continuation ready"))?;
-            crate::task::continuation::retire(&mut savepoint, &owner.task_id).await?;
-            sqlx::query(crate::task::sql::CONTROL_ADMISSION)
-                .bind(&owner.task_id)
-                .bind(&admitted.stored.id)
-                .execute(&mut *savepoint)
-                .await
-                .map_err(query("bind single native wait continuation"))?;
-            sqlx::query(include_str!("sql/consume.sql"))
-                .bind(&owner.id)
-                .bind(probe.claim.as_str())
-                .bind(&admitted.stored.id)
-                .bind(Json(&snapshot.checks))
-                .bind(snapshot.digest()?)
-                .execute(&mut *savepoint)
-                .await
-                .map_err(query("consume current wait exactly once"))?;
-            savepoint
-                .commit()
-                .await
-                .map_err(query("commit wait continuation savepoint"))?;
-            tracing::info!(
-                event = "dt_wait_consumed",
-                task_id = owner.task_id.as_str(),
-                wait_id = owner.id.as_str()
-            );
-            Ok(true)
+            consume(tasks, connection, owner, probe, prepared, snapshot).await
         }
         Ok(snapshot) => {
             update(connection, owner, probe, Some(snapshot), None).await?;
@@ -243,4 +182,76 @@ async fn update(
             "retain unchanged dependency without allocating agent work",
         ))?;
     Ok(())
+}
+
+async fn consume(
+    tasks: &Tasks,
+    connection: &mut PgConnection,
+    owner: &Wait,
+    probe: &Probe,
+    prepared: Option<afd_admission::PreparedAdmission<'_>>,
+    snapshot: &Snapshot,
+) -> Result<bool> {
+    let Some(prepared) = prepared else {
+        return Err(crate::task::TaskRefusal::StaleState.into());
+    };
+    let mut savepoint = connection
+        .begin()
+        .await
+        .map_err(query("begin wait continuation savepoint"))?;
+    let admitted = match tasks.admissions.stage(&mut savepoint, prepared).await {
+        Ok(admitted) => admitted,
+        Err(fault)
+            if fault.is_over_capacity()
+                || fault.code() == afd_core::error_code::AUTHORING_POLICY =>
+        {
+            savepoint
+                .rollback()
+                .await
+                .map_err(query("retain wait evidence after admission refusal"))?;
+            claim::stop(
+                connection,
+                owner,
+                TaskState::Blocked,
+                "continuation_unavailable",
+            )
+            .await?;
+            return Ok(false);
+        }
+        Err(fault) => return Err(fault.into()),
+    };
+    sqlx::query(include_str!("sql/transition.sql"))
+        .bind(&owner.task_id)
+        .bind(TaskState::Ready.as_str())
+        .bind(None::<&str>)
+        .bind(false)
+        .execute(&mut *savepoint)
+        .await
+        .map_err(query("make consumed dependency continuation ready"))?;
+    crate::task::continuation::retire(&mut savepoint, &owner.task_id).await?;
+    sqlx::query(crate::task::sql::CONTROL_ADMISSION)
+        .bind(&owner.task_id)
+        .bind(&admitted.stored.id)
+        .execute(&mut *savepoint)
+        .await
+        .map_err(query("bind single native wait continuation"))?;
+    sqlx::query(include_str!("sql/consume.sql"))
+        .bind(&owner.id)
+        .bind(probe.claim.as_str())
+        .bind(&admitted.stored.id)
+        .bind(Json(&snapshot.checks))
+        .bind(snapshot.digest()?)
+        .execute(&mut *savepoint)
+        .await
+        .map_err(query("consume current wait exactly once"))?;
+    savepoint
+        .commit()
+        .await
+        .map_err(query("commit wait continuation savepoint"))?;
+    tracing::info!(
+        event = "dt_wait_consumed",
+        task_id = owner.task_id.as_str(),
+        wait_id = owner.id.as_str()
+    );
+    Ok(true)
 }

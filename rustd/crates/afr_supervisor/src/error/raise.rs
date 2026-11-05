@@ -140,3 +140,15 @@ pub(crate) fn egress_blocked(host: &str) -> Error {
 pub(crate) fn egress(source: afr_sandbox::Error) -> Error {
     ErrorKind::Egress { source }.into()
 }
+
+/// Retains a native recovery failure with its operation and original cause.
+pub(crate) fn boundary(
+    detail: &'static str,
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> Error {
+    ErrorKind::Boundary {
+        detail,
+        source: Box::new(source),
+    }
+    .into()
+}

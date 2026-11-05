@@ -151,10 +151,10 @@ impl LeaseRun<'_> {
             // A held sandbox keeps the repositories its last lease left.
             Some(plan)
                 if !held
-                    && !build
+                    && build
                         .prepared_task
                         .and_then(|prepared| prepared.inputs.current_task.as_ref())
-                        .is_some_and(|task| task.checkpoint_id.is_some()) =>
+                        .is_none_or(|task| task.checkpoint_id.is_none()) =>
             {
                 let _checking_out = self.timeline.start(Segment::Checkout);
                 self.check_out(sandbox.as_ref(), plan, build.stop).await

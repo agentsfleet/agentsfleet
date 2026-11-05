@@ -13,12 +13,16 @@ pub(super) async fn run(
     limit: usize,
     machine: bool,
 ) -> Result<Vec<u8>, ToolOutput> {
-    let mut process = executor.spawn(&spawn.timeout(timeout)).await.map_err(|_| {
-        ToolOutput::failed(
-            ToolErrorCode::SandboxUnavailable,
-            "The validation workspace is unavailable.",
-        )
-    })?;
+    let mut process = executor
+        .spawn(&spawn.timeout(timeout))
+        .await
+        .map_err(|source| {
+            super::failed(
+                ToolErrorCode::SandboxUnavailable,
+                "The validation workspace is unavailable.",
+                source,
+            )
+        })?;
     let deadline = tokio::time::Instant::now() + timeout + Duration::from_secs(10);
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -38,7 +42,7 @@ pub(super) async fn run(
                     &mut stderr
                 };
                 let remaining = limit.saturating_sub(target.len());
-                target.extend_from_slice(&data[..data.len().min(remaining)]);
+                target.extend(data.iter().take(remaining).copied());
                 incomplete |= data.len() > remaining;
             }
             Some(ProcessEvent::Omitted { .. }) => incomplete = true,
@@ -62,8 +66,8 @@ pub(super) async fn run(
                     ToolErrorCode::AgentsfleetdRefused,
                     &format!(
                         "Validation or candidate capture was not confirmed ({ending:?}).\n{}\n{}",
-                        String::from_utf8_lossy(&stdout[..stdout.len().min(16 * 1024)]),
-                        String::from_utf8_lossy(&stderr[..stderr.len().min(16 * 1024)])
+                        String::from_utf8_lossy(stdout.get(..16 * 1024).unwrap_or(&stdout)),
+                        String::from_utf8_lossy(stderr.get(..16 * 1024).unwrap_or(&stderr))
                     ),
                 ));
             }

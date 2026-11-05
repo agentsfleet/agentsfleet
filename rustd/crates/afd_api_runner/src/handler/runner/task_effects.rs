@@ -20,7 +20,7 @@ const MALFORMED: &str = "Publication request exceeds its supported shape or boun
 #[cfg_attr(feature = "openapi", utoipa::path(
     post, path = afd_wire::paths::LEASE_TASK_EFFECTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_publish_task_effect", summary = "Publish one tested exact-head repair",
-    description = "Persists immutable expected-head and tested-tree authority before one native publication. Refuses workflow changes, unsupported file modes, stale ownership and unresolved effects. Unknown acknowledgements require reconciliation and never repeat the mutation.",
+    description = "Records immutable expected-head and tested-tree authority before one native publication. Refuses workflow changes, unsupported file modes, stale ownership and unresolved effects. Unknown acknowledgements require reconciliation and never repeat the mutation.",
     params(("lease_id" = String, Path, description = "Current lease UUIDv7.")), request_body = TaskEffectInput,
     responses((status = 201, body = afd_wire::task::TaskEffect, description = "Confirmed new publication"),
         (status = 200, body = afd_wire::task::TaskEffect, description = "Saved operation replay"),

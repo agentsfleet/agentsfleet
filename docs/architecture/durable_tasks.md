@@ -368,8 +368,9 @@ Claimed source admissions remain excluded from ordinary leasing until their nati
 After a claim owner expires, accepted items resume from task history; unaccepted items return to FIFO delivery without a fabricated applied receipt.
 
 FIFO order remains authoritative at task yield boundaries.
-After ten minutes of running time, a DT yields at the next completed action group; renewals reject further paid actions past its slice ceiling.
-An already-issued tool can finish within its existing timeout; do not kill and blindly repeat an uncertain effect to improve fairness.
+The daemon records a slice ceiling of at most ten minutes, further limited by the task and existing lease budgets. Lease delivery, binding acknowledgements and recovery reads expose that same persisted ceiling; checkout and restore do not restart it.
+The runner stops starting action groups with three minutes remaining, allowing one minute for the native assessment and two minutes for checkpoint capture and reporting. The agent drive is bounded by the ceiling minus the two-minute handoff reserve. A missing or exhausted ceiling refuses task actions.
+If a group overruns that bound, its earlier completion assessment is cleared. The supervisor retains custody for capture and reports the interrupted outcome; uncertain effects remain subject to native reconciliation and cannot be blindly repeated. The reserve does not guarantee a large checkpoint will finish; failed capture remains a blocked handoff.
 
 Checkpoint-capable tasks save before yielding; failed capture keeps the prior recoverable generation and reports the blocked handoff.
 Do not silently discard unsaved work to serve another queued task.

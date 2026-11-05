@@ -23,8 +23,8 @@ pub(in crate::task) struct Authorization {
 }
 
 impl std::fmt::Debug for Authorization {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("Authorization(redacted)")
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Authorization(redacted)")
     }
 }
 
@@ -90,7 +90,7 @@ impl StorageSession<'_> {
                     Ok(())
                 })
                 .await
-                .map(|()| ())
+                .copied()
         })
         .await
     }

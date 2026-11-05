@@ -13,17 +13,39 @@ pub(super) const DETAIL_STOPPED: &str = "the run was stopped before it finished"
 pub(super) const EVENT_SESSIONS_INTERRUPTED: &str = "sessions_interrupted";
 
 impl Harness<'_, '_> {
+    async fn finish_task_replies(&mut self) -> crate::Result<()> {
+        let pending = self.task.as_ref().is_some_and(|task| {
+            task.inputs
+                .current_interpretation
+                .iter()
+                .chain(
+                    task.inputs
+                        .inputs
+                        .iter()
+                        .filter_map(|input| input.accepted.as_ref()),
+                )
+                .any(|source| source.items.iter().any(|item| item.response_text.is_none()))
+        });
+        if !pending {
+            return Ok(());
+        }
+        let budget = self.task_execution_budget();
+        super::task_slice::within_budget(budget, self.answer_task_inputs()).await
+    }
+
     /// Closes every session the run's calls left open, then hands back the
     /// outcome, the answer and the tokens spent, with the calls and the memory
     /// the run leaves for the supervisor to post. The root's end; a child
     /// concludes instead.
     pub(super) async fn finish(mut self, mut ending: Ending) -> RunOutput {
         self.close_sessions().await;
-        if matches!(ending, Ending::Answered(_)) {
-            if let Err(failure) = self.answer_task_inputs().await {
-                tracing::warn!(event = "task_input_reply_pending", error_code = %failure.code());
-                self.task_report = None;
-                ending = Ending::Answered("The task paused because its input replies could not be acknowledged. Its final status has not been confirmed.".to_owned());
+        if matches!(ending, Ending::Answered(_))
+            && let Err(failure) = self.finish_task_replies().await
+        {
+            tracing::warn!(event = "task_input_reply_pending", error_code = %failure.code());
+            self.task_report = None;
+            if let Ending::Answered(text) = &mut ending {
+                text.push_str("\n\nThe task paused because its input replies could not be acknowledged. Its final status has not been confirmed.");
             }
         }
         if let Ending::Answered(text) = ending {

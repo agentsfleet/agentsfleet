@@ -214,21 +214,20 @@ impl Grants {
                 &self.entropy,
             )
             .await?;
-            if provider == Provider::Slack {
-                if let (Some(person), Some(subject)) =
+            if provider == Provider::Slack
+                && let (Some(person), Some(subject)) =
                     (grant.external_person_id.as_deref(), subject)
-                {
-                    let linked = link_person(
-                        &mut transaction,
-                        workspace,
-                        &install.external_account_id,
-                        person,
-                        subject,
-                    )
-                    .await?;
-                    if linked != 1 {
-                        return Err(crate::error::exchange_unreadable());
-                    }
+            {
+                let linked = link_person(
+                    &mut transaction,
+                    workspace,
+                    &install.external_account_id,
+                    person,
+                    subject,
+                )
+                .await?;
+                if linked != 1 {
+                    return Err(crate::error::exchange_unreadable());
                 }
             }
         }

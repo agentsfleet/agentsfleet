@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TASK_IDS, detail, summary } from "./helpers/task-reads";
 
@@ -41,7 +42,7 @@ it("forwards task mutations with exact concurrency preconditions through the aut
   vi.stubGlobal("fetch", network);
   const scope = {workspaceId: TASK_IDS[0], fleetId: TASK_IDS[1], taskId: TASK_IDS[2]};
   const response = await change(new Request("https://dashboard.test/live", {method: "PATCH",
-    headers: {"content-type": "application/json", "if-match": tag}, body: JSON.stringify({state: "paused", expected_generation: 1})}), {params: Promise.resolve(scope)});
+    headers: {Origin: "https://dashboard.test", "content-type": "application/json", "if-match": tag}, body: JSON.stringify({state: "paused", expected_generation: 1})}), {params: Promise.resolve(scope)});
   expect(response.status).toBe(200);
   expect(network.mock.calls[0]?.[0]).toContain(`/fleets/${TASK_IDS[1]}/tasks/${TASK_IDS[2]}`);
   expect(network.mock.calls[0]?.[1]?.method).toBe("PATCH");

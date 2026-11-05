@@ -5,7 +5,11 @@ use crate::{Result, client::ControlPlane, error};
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
-use afd_wire::task::*;
+use afd_wire::task::{
+    CHECKPOINT_FORMAT, CHECKPOINT_PAGE_BYTES, CHECKPOINT_PAGES, CheckpointAuthorizationInput,
+    CheckpointEntry, CheckpointMode, CheckpointPlan, CheckpointReadQuery,
+    CheckpointTransferPurpose, DecisionTaskVersion, TaskContext,
+};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use zeroize::Zeroizing;
 

@@ -48,24 +48,7 @@ pub(super) async fn bind(
         return Ok(bindings);
     }
     source::check(&source, &current, plan)?;
-    if let Some(authorization) = &plan.authorization {
-        decision::authorize::binding(&mut tx, lease, authorization).await?;
-        sqlx::query(include_str!("sql/interpretation.sql"))
-            .bind(plan.source_admission_id.as_str())
-            .bind(&current.fleet_id)
-            .bind(&current.workspace_id)
-            .bind(&current.tenant_id)
-            .bind(&plan.digest)
-            .bind(source.message()?.as_ref())
-            .bind(Json(authorization))
-            .bind(lease.lease_id.as_str())
-            .bind(current.fence)
-            .bind(&source.actor)
-            .bind(&source.producer)
-            .execute(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-    }
+    authorize(&mut tx, lease, &current, plan, &source).await?;
     let mut queued = Vec::new();
     let mut bound = current.task_id.clone();
     for (ordinal, ((item, binding), continuation)) in plan
@@ -111,15 +94,7 @@ pub(super) async fn bind(
             queued.push(ordinal);
         }
     }
-    if plan.authorization.is_some() {
-        sqlx::query(include_str!("sql/interpreted.sql"))
-            .bind(plan.source_admission_id.as_str())
-            .bind(&current.fleet_id)
-            .bind(&current.workspace_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
-    }
+    mark_interpreted(&mut tx, &current, plan).await?;
     let current_task = match bound {
         Some(id) => Some(
             super::read::on(&mut tx, &scope, &guard::id(&id, "task_id")?)
@@ -128,6 +103,7 @@ pub(super) async fn bind(
         ),
         None => None,
     };
+    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id.as_str()).await?;
     tx.commit().await.map_err(query(CONTEXT))?;
     transaction::recycle(connection);
     for ordinal in queued {
@@ -135,24 +111,11 @@ pub(super) async fn bind(
             wake.continuation.confirm(tasks).await;
         }
     }
-    for binding in &identities {
-        let Some(task) = &binding.task_id else {
-            continue;
-        };
-        let snapshot = super::read::read(tasks, &scope, task).await?;
-        tasks
-            .publish_changed(&scope, task, snapshot.resource_version)
-            .await;
-        tracing::info!(
-            event = "dt_transition",
-            task_id = task.as_str(),
-            lease_id = lease.lease_id.as_str(),
-            reason = "admitted"
-        );
-    }
+    announce(tasks, lease, &scope, &identities).await?;
     Ok(TaskBindings {
         items: identities,
         current_task,
+        execution_deadline,
         replayed: false,
     })
 }
@@ -169,4 +132,73 @@ pub(super) async fn existing(
     tx.commit().await.map_err(query(CONTEXT))?;
     transaction::recycle(connection);
     Ok(saved)
+}
+
+async fn authorize(
+    connection: &mut sqlx::PgConnection,
+    lease: TaskLease<'_>,
+    current: &guard::LeaseRow,
+    plan: &PreparedPlan,
+    source: &source::Source,
+) -> Result<()> {
+    if let Some(authorization) = &plan.authorization {
+        decision::authorize::binding(connection, lease, authorization).await?;
+        sqlx::query(include_str!("sql/interpretation.sql"))
+            .bind(plan.source_admission_id.as_str())
+            .bind(&current.fleet_id)
+            .bind(&current.workspace_id)
+            .bind(&current.tenant_id)
+            .bind(&plan.digest)
+            .bind(source.message()?.as_ref())
+            .bind(Json(authorization))
+            .bind(lease.lease_id.as_str())
+            .bind(current.fence)
+            .bind(&source.actor)
+            .bind(&source.producer)
+            .execute(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))?;
+    }
+    Ok(())
+}
+
+async fn announce(
+    tasks: &Tasks,
+    lease: TaskLease<'_>,
+    scope: &super::TaskScope,
+    identities: &[super::TaskBinding],
+) -> Result<()> {
+    for binding in identities {
+        let Some(task) = &binding.task_id else {
+            continue;
+        };
+        let snapshot = super::read::read(tasks, scope, task).await?;
+        tasks
+            .publish_changed(scope, task, snapshot.resource_version)
+            .await;
+        tracing::info!(
+            event = "dt_transition",
+            task_id = task.as_str(),
+            lease_id = lease.lease_id.as_str(),
+            reason = "admitted"
+        );
+    }
+    Ok(())
+}
+
+async fn mark_interpreted(
+    connection: &mut sqlx::PgConnection,
+    current: &guard::LeaseRow,
+    plan: &PreparedPlan,
+) -> Result<()> {
+    if plan.authorization.is_some() {
+        sqlx::query(include_str!("sql/interpreted.sql"))
+            .bind(plan.source_admission_id.as_str())
+            .bind(&current.fleet_id)
+            .bind(&current.workspace_id)
+            .execute(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))?;
+    }
+    Ok(())
 }

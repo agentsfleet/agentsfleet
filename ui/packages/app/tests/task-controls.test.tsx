@@ -63,3 +63,18 @@ it("cancels owned mutations on unmount and hides controls for terminal work", as
   expect(screen.getByRole("button", {name: "Pause"})).toHaveProperty("disabled", true);
   expect(screen.getByRole("button", {name: "Refresh progress"})).toBeTruthy();
 });
+
+it("admits only one control when two activations arrive before the disabled state renders", async () => {
+  let finish!: (result: TaskChange) => void;
+  change.mockImplementationOnce(() => new Promise(resolve => {finish = resolve;}));
+  const p = props();
+  render(<TaskControls {...p} />);
+  const button = screen.getByRole("button", {name: "Pause"});
+  act(() => {
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+    button.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+  });
+  expect(change).toHaveBeenCalledTimes(1);
+  await act(async () => finish({kind: "confirmed", value: p.detail}));
+  expect(p.onChanged).toHaveBeenCalledTimes(1);
+});

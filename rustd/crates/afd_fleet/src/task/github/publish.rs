@@ -13,6 +13,14 @@ pub(in crate::task) enum Reconciled {
     Unknown,
 }
 
+/// Exact receipt evidence shared by immediate and recovery reconciliation.
+#[derive(Clone, Copy)]
+pub(in crate::task) struct ReceiptIdentity<'a> {
+    pub effect: &'a str,
+    pub head: &'a str,
+    pub tree: &'a str,
+}
+
 impl Session<'_> {
     pub(in crate::task) async fn prepare_tree(
         &self,
@@ -82,9 +90,7 @@ impl Session<'_> {
             &target.branch,
             target.repository_id,
             target.installation_id,
-            effect,
-            head,
-            tree,
+            ReceiptIdentity { effect, head, tree },
         )
         .await
     }
@@ -95,10 +101,9 @@ impl Session<'_> {
         branch: &str,
         repository_id: u64,
         installation_id: u64,
-        effect: &str,
-        head: &str,
-        tree: &str,
+        receipt: ReceiptIdentity<'_>,
     ) -> Result<Reconciled> {
+        let ReceiptIdentity { effect, head, tree } = receipt;
         if self.installation_id != installation_id {
             return Err(TaskRefusal::InvalidTarget.into());
         }
@@ -159,6 +164,6 @@ fn matches(commit: &Value, parent: &str, tree: &str) -> bool {
             .pointer("/parents/nodes")
             .and_then(Value::as_array)
             .is_some_and(|parents| {
-                parents.len() == 1 && parents[0].get("oid").and_then(Value::as_str) == Some(parent)
+                matches!(parents.as_slice(), [only] if only.get("oid").and_then(Value::as_str) == Some(parent))
             })
 }

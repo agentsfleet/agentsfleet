@@ -25,6 +25,8 @@ async fn test_thread_read_includes_queued_steers() {
     assert_eq!(first.row.actor, ACTOR);
     assert_eq!(first.request_json, BODY);
     assert_eq!(first.response_text, None);
+    assert_eq!(first.task_activity.items, []);
+    assert!(!first.task_activity.truncated);
 
     lane.cleanup().await;
 }

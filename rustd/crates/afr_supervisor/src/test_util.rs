@@ -67,12 +67,9 @@ impl Healthy {
                 Verb::AuthoringModel
                 | Verb::AuthoringActivity
                 | Verb::AuthoringRenew
-                | Verb::AuthoringReport,
-            ) => Value::Null,
-            // Durable-task fixtures must supply native ownership, decision and
-            // checkpoint receipts explicitly; a generic acknowledgement is invalid.
-            Some(
-                Verb::TaskInputs
+                | Verb::AuthoringReport
+                // Durable-task fixtures also supply their native receipts explicitly.
+                | Verb::TaskInputs
                 | Verb::TaskBindings
                 | Verb::TaskInputReceipt
                 | Verb::TaskDecisionReserve

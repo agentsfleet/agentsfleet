@@ -224,7 +224,7 @@ pub(super) async fn exercise(scenario: impl AsyncFnOnce(&Case)) {
         .expect("owned database creation is bounded");
     let outcome = AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(45), async {
         let case = Case::create(&lane).await;
-        scenario(&case).await;
+        Box::pin(scenario(&case)).await;
         case.held.fixtures.cleanup().await;
     }))
     .catch_unwind()

@@ -4,8 +4,8 @@ use crate::supervisor::Supervisor;
 use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _, Tasks};
 use std::time::Duration;
 
-const INTERVAL: Duration = Duration::from_secs(5 * 60);
-const PASS_LIMIT: Duration = Duration::from_secs(4 * 60);
+const INTERVAL: Duration = Duration::from_mins(5);
+const PASS_LIMIT: Duration = Duration::from_mins(4);
 
 pub(super) fn spawn(supervisor: &mut Supervisor, tasks: Tasks) {
     supervisor.spawn(super::TASK_STORAGE, move |stop| async move {

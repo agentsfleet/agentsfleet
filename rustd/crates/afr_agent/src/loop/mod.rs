@@ -279,6 +279,23 @@ impl<'s, 'run> Harness<'s, 'run> {
 
     /// Runs the loop's turns to their end.
     pub(crate) async fn drive(&mut self) -> Ending {
+        if self.depth != 0 || !self.task.as_ref().is_some_and(|task| task.allow_actions) {
+            return self.drive_work().await;
+        }
+        let Some(budget) = self.task_execution_budget() else {
+            return Ending::Stopped;
+        };
+        match tokio::time::timeout(budget, self.drive_work()).await {
+            Ok(ending) => ending,
+            Err(_deadline) => {
+                // An interrupted group never carries a prior group's completion authority.
+                self.task_report = None;
+                Ending::Stopped
+            }
+        }
+    }
+
+    async fn drive_work(&mut self) -> Ending {
         let mut turns: u64 = 0;
         loop {
             turns += 1;
@@ -295,13 +312,21 @@ impl<'s, 'run> Harness<'s, 'run> {
             if let Some(answer) = self.accepted_answer() {
                 break Ending::Answered(answer);
             }
-            if turns == 1 && self.shared.recovered_task.is_some() {
-                if let Some(ending) = self
+            if turns == 1
+                && self.shared.recovered_task.is_some()
+                && let Some(ending) = self
                     .assess_task("Recovery reconciled; no new action has run.")
                     .await
-                {
-                    break ending;
-                }
+            {
+                break ending;
+            }
+            if self.task_yield_due() {
+                break self
+                    .assess_task(
+                        "Execution slice is ending; preserve current work for continuation.",
+                    )
+                    .await
+                    .unwrap_or(Ending::Stopped);
             }
             if let Err(error) = self.preflight().await {
                 if self.stop.is_cancelled() {
@@ -414,6 +439,7 @@ mod task;
 mod task_effects;
 mod task_evidence;
 mod task_replies;
+mod task_slice;
 
 #[cfg(test)]
 pub(crate) mod tests;

@@ -52,6 +52,23 @@ describe("running progress readback", () => {
     expect(current.runningReads.size).toBe(0);
   });
 
+  it("rechecks ownership after waiting for an older detail read", async () => {
+    const current = entry();
+    let answer!: (result: Awaited<ReturnType<EventDetailReader>>) => void;
+    const read = vi.fn<EventDetailReader>().mockReturnValue(new Promise(resolve => { answer = resolve; }));
+    setEventDetailReader(read);
+    let owned = true;
+    const isCurrent = () => owned;
+    watchReply(current, Z_A, EVENT, current.apply, isCurrent, true);
+    const recovery = recoverRunningReplies(current, Z_A, current.apply, isCurrent);
+    owned = false;
+    answer({ok: true, data: row({event_id: EVENT, status: "received", task_activity: progress})});
+    await recovery;
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(current.snapshot.events[0]?.taskActivity).toBeUndefined();
+    expect(current.runningReads.size).toBe(0);
+  });
+
   it("does not read or write for an entry whose subscriber is gone", async () => {
     const current = entry();
     const read = vi.fn<EventDetailReader>();

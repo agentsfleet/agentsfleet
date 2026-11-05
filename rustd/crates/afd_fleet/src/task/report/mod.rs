@@ -4,7 +4,6 @@ mod checkpoint;
 mod prepare;
 mod settle;
 
-#[cfg(feature = "test-util")]
 pub use checkpoint::CheckpointGuard;
 
 use super::{
@@ -89,10 +88,9 @@ impl PreparedReport {
             if snapshot.context.state == afd_wire::task::TaskState::Ready
                 && Some(snapshot.context.generation)
                     == self.snapshot.context.generation.checked_add(1)
+                && let Some(wake) = &self.wake
             {
-                if let Some(wake) = &self.wake {
-                    wake.confirm(&self.tasks).await;
-                }
+                wake.confirm(&self.tasks).await;
             }
             self.tasks
                 .publish_changed(&self.scope, &id, snapshot.resource_version)

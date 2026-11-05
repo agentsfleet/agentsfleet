@@ -53,16 +53,18 @@ pub(in crate::task) async fn maintain(tasks: &Tasks) -> Result<WaitMaintenance> 
                 Err(source) => Err(ErrorKind::TaskRemoteDeadline { source }.into()),
             }
         };
-        let result = super::super::observe::measure(
-            afd_observability::metrics::label::task::TaskOperation::WaitRead,
-            timed,
-            |_| afd_observability::metrics::label::task::TaskOutcome::Accepted,
+        let result = Box::pin(
+            super::super::observe::measure(
+                afd_observability::metrics::label::task::TaskOperation::WaitRead,
+                timed,
+                |_| afd_observability::metrics::label::task::TaskOutcome::Accepted,
+            )
+            .instrument(tracing::info_span!(
+                "task_dependency_read",
+                task_id = owner.task_id.as_str(),
+                wait_id = owner.id.as_str()
+            )),
         )
-        .instrument(tracing::info_span!(
-            "task_dependency_read",
-            task_id = owner.task_id.as_str(),
-            wait_id = owner.id.as_str()
-        ))
         .await;
         Ok::<_, crate::Error>(Some(Probe {
             owner,

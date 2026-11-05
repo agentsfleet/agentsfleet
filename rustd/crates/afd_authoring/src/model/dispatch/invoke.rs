@@ -122,15 +122,13 @@ impl ModelCalls {
         }
         if compaction.is_none()
             && let Ok(decoded) = &mut decoded
-        {
-            if let Err(fault) = self
+            && let Err(fault) = self
                 .check_edit_intent(runner, lease, request, counters, decoded)
                 .await
-            {
-                // The main response must still reach accounting after a stop or failed check.
-                tracing::warn!(event = "setup_edit_intent", dispatch_id = %request.dispatch_id,
+        {
+            // The main response must still reach accounting after a stop or failed check.
+            tracing::warn!(event = "setup_edit_intent", dispatch_id = %request.dispatch_id,
                     disposition = "unavailable", error_code = %fault.code());
-            }
         }
         receipt::finish(
             &self.drafts,

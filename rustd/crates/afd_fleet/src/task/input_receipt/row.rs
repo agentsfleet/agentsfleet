@@ -40,15 +40,14 @@ pub(super) async fn item(
 }
 
 pub(super) fn current(item: &Item, input: &TaskInputReceiptInput) -> Result<()> {
-    if let Some(task) = &input.task {
-        if item
+    if let Some(task) = &input.task
+        && item
             .generation
             .map(|generation| counter(generation, "generation"))
             .transpose()?
             != Some(task.generation)
-        {
-            return Err(TaskRefusal::StaleState.into());
-        }
+    {
+        return Err(TaskRefusal::StaleState.into());
     }
     Ok(())
 }

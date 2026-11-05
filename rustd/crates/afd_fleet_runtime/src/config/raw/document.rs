@@ -110,7 +110,7 @@ pub(crate) struct Runtime {
     /// How far those credentials reach. Set together with `repositories`.
     #[garde(skip)]
     pub(crate) repository_access: Option<Access>,
-    /// Reviewed write mode; existing_pr reserves branch publication for native tasks.
+    /// Reviewed write mode; `existing_pr` reserves branch publication for native tasks.
     #[garde(skip)]
     pub(crate) repository_publication: Option<crate::config::RepositoryPublication>,
     /// Exact owner-reviewed validation-only workflows for existing PR publication.

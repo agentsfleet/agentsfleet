@@ -13,9 +13,9 @@ async fn malformed_or_stale_provider_decisions_record_fallback_without_blocking_
     for reason in ["malformed", "stale"] {
         let mut body = reply(0.01);
         if reason == "malformed" {
-            body["answers"] = serde_json::json!({});
+            *body.get_mut("answers").expect("fixture answers") = serde_json::json!({});
         } else {
-            body["model"] = "an-unreviewed-model".into();
+            *body.get_mut("model").expect("fixture model") = "an-unreviewed-model".into();
         }
         let mut server = Server::start(body).await;
         let case = Case::create(&server, SOAK).await;
@@ -31,10 +31,10 @@ async fn malformed_or_stale_provider_decisions_record_fallback_without_blocking_
         let (response, ()) = tokio::join!(response, observe);
         let response = response.expect("fallback conversation");
         assert!(matches!(
-            &response.proposal_calls[..],
+            response.proposal_calls.as_slice(),
             [ProposalCall::Proposed { .. }]
         ));
-        assert!(!response.text.is_empty());
+        assert_ne!(response.text, "");
         assert_eq!(case.journal().await, (reason.into(), Some(112), true));
         let mut activity = case.attempt.initialize(1);
         activity.event = ActivityEvent::Proposal {
@@ -74,7 +74,7 @@ async fn a_revoked_profile_makes_the_inflight_answer_stale_but_retains_usage() {
     let (response, ()) = tokio::join!(response, observe);
     let response = response.expect("stale decision fallback");
     assert!(matches!(
-        &response.proposal_calls[..],
+        response.proposal_calls.as_slice(),
         [ProposalCall::Proposed { .. }]
     ));
     assert_eq!(case.journal().await, ("stale".into(), Some(112), true));
@@ -101,7 +101,7 @@ async fn missing_decision_configuration_preserves_the_existing_chat_path() {
         .await
         .expect("fallback without model call");
     assert!(matches!(
-        &response.proposal_calls[..],
+        response.proposal_calls.as_slice(),
         [ProposalCall::Proposed { .. }]
     ));
     assert_eq!(case.journal().await, ("unavailable".into(), None, true));

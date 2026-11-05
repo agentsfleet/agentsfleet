@@ -28,7 +28,7 @@ const fn input_page_size() -> u32 {
     4
 }
 
-/// One complete persisted human message; reading never consumes it.
+/// One complete saved human message; reading never consumes it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskHumanInput {
@@ -74,6 +74,13 @@ pub struct TaskInputsResponse<'a> {
     /// Current native objective and recovery pointer, including after interpretation replay.
     #[serde(borrow)]
     pub current_task: Option<super::TaskContext<'a>>,
+    /// Immutable ceiling read with this lease's current native ownership.
+    #[serde(
+        default,
+        with = "crate::instant::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub execution_deadline: Option<jiff::Timestamp>,
     /// Current admission's complete saved meaning, including a conversation-only replay.
     pub current_interpretation: Option<TaskAcceptedInterpretation>,
     /// At most sixteen unfinished native objectives.
@@ -93,6 +100,7 @@ impl TaskInputsResponse<'_> {
             inputs: self.inputs,
             accepted_inputs: self.accepted_inputs,
             current_task: self.current_task.map(super::TaskContext::into_owned),
+            execution_deadline: self.execution_deadline,
             current_interpretation: self.current_interpretation,
             tasks: self.tasks,
             next_cursor: self.next_cursor,
@@ -118,7 +126,7 @@ pub struct TaskAcceptedInterpretation {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRecoveredItem {
-    /// Native current association; no new execution is granted by reading it.
+    /// Native current association; no new work is authorized by reading it.
     pub binding: super::TaskItemBinding,
     /// Exact accepted byte slice.
     pub accepted_text: String,

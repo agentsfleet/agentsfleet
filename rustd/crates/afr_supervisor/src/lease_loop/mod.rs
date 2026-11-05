@@ -124,7 +124,7 @@ impl Lessee {
     ) -> Result<()> {
         let identity = self.whoami.get(&self.plane).await;
         let span = lease_span(identity, lease);
-        self.run_lease(turns, lease, egress).instrument(span).await
+        Box::pin(self.run_lease(turns, lease, egress).instrument(span)).await
     }
 
     async fn run_lease(
@@ -150,7 +150,7 @@ impl Lessee {
         let lease_id = run.ids.lease.as_str();
         let event = EVENT_ACQUIRED;
         tracing::info!(lease_id, event);
-        let ending = run.lease(turns).await;
+        let ending = Box::pin(run.lease(turns)).await;
         run.conclude(&ending);
         Ok(())
     }

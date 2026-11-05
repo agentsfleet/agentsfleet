@@ -207,13 +207,10 @@ async fn physical(
             cause: DecisionNotSentCause::Preflight,
         };
     };
-    let client = match DecisionClient::new(profile, credential) {
-        Ok(client) => client,
-        Err(_) => {
-            return DecisionReceipt::NotSent {
-                cause: DecisionNotSentCause::Build,
-            };
-        }
+    let Ok(client) = DecisionClient::new(profile, credential) else {
+        return DecisionReceipt::NotSent {
+            cause: DecisionNotSentCause::Build,
+        };
     };
     let now = afd_core::clock::now();
     if stop.is_cancelled() || dispatch.expires_at <= now {

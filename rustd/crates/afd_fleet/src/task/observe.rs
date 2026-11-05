@@ -51,7 +51,6 @@ fn failure(error: &Error) -> TaskOutcome {
         | error_code::TASK_PRECONDITION_FAILED
         | error_code::RUN_STALE_FENCING_TOKEN
         | error_code::RUN_LEASE_LOST => TaskOutcome::Stale,
-        error_code::TASK_REPLAY_CONFLICT => TaskOutcome::Conflict,
         error_code::TASK_INVALID_TARGET
         | error_code::TASK_INPUT_AMBIGUOUS
         | error_code::TASK_CHECKPOINT_INCOMPATIBLE => TaskOutcome::Invalid,
@@ -62,7 +61,9 @@ fn failure(error: &Error) -> TaskOutcome {
         error_code::TASK_EFFECT_UNCERTAIN if error.remote_cooldown().is_some() => {
             TaskOutcome::Unavailable
         }
-        error_code::TASK_EFFECT_UNCERTAIN => TaskOutcome::Conflict,
+        error_code::TASK_REPLAY_CONFLICT | error_code::TASK_EFFECT_UNCERTAIN => {
+            TaskOutcome::Conflict
+        }
         _ if error.is_datastore_unavailable() => TaskOutcome::Unavailable,
         _ => TaskOutcome::Failed,
     }

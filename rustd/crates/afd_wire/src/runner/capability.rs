@@ -23,7 +23,7 @@ use super::{CONTROLLER_NAME_MAX_BYTES, REPORT_CONTROLLERS_MAX};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilityReport<'a> {
-    /// This build implements fenced task execution and workspace handoff.
+    /// This build supports fenced task work and workspace handoff.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub durable_tasks_v1: bool,

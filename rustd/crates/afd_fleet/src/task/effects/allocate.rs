@@ -11,7 +11,7 @@ use afd_wire::task::TaskEffectInput;
 use sqlx::{PgConnection, types::Json};
 
 #[derive(sqlx::FromRow)]
-struct Target {
+struct PublicationContext {
     target: Json<BoundPr>,
     input_sequence: i64,
     accepted_item: bool,
@@ -60,44 +60,7 @@ pub(super) async fn reserve(
         return Ok((effect, true));
     }
     let owned = execution::on_current(&mut tx, current, &input.task).await?;
-    let target: Target = sqlx::query_as(include_str!("sql/target.sql"))
-        .bind(&input.task.task_id)
-        .bind(&input.source_item_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(query("read native publication target"))?;
-    if !target.accepted_item
-        || row::counter(target.input_sequence, "input sequence")? != input.covered_input_sequence
-        || owned.snapshot.context.covered_input_sequence != input.covered_input_sequence
-        || target.target.head != input.expected_head
-    {
-        return Err(TaskRefusal::StaleState.into());
-    }
-    let config = crate::lease::Leases::stored_config_on(&mut tx, &owned.current.fleet_id, None)
-        .await?
-        .ok_or(TaskRefusal::InvalidTarget)?;
-    target.target.within(&config)?;
-    let accepted = crate::lease::Leases::stored_config_on(
-        &mut tx,
-        &owned.current.fleet_id,
-        Some(owned.snapshot.context.accepted_revision_id.as_ref()),
-    )
-    .await?
-    .ok_or(TaskRefusal::InvalidTarget)?;
-    target.target.within(&accepted)?;
-    let free: bool = sqlx::query_scalar(include_str!("sql/available.sql"))
-        .bind(&input.task.task_id)
-        .bind("prepared")
-        .bind("issued")
-        .bind("unknown")
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(query("check unresolved publication barrier"))?;
-    if !free
-        || owned.snapshot.context.usage.publications >= owned.snapshot.context.limits.publications
-    {
-        return Err(TaskRefusal::EffectUncertain.into());
-    }
+    let target = publication_context(&mut tx, &owned, input).await?;
     let id = tasks.leases.entropy().uuid7(clock::now())?;
     let ordinal: i64 = sqlx::query_scalar(include_str!("sql/cursor.sql"))
         .bind(&input.task.task_id)
@@ -113,8 +76,14 @@ pub(super) async fn reserve(
         .bind(lease.lease_id.as_str())
         .bind(lease.runner_id.as_str())
         .bind(owned.current.fence)
-        .bind(owned.snapshot.context.generation as i64)
-        .bind(owned.snapshot.context.stop_generation as i64)
+        .bind(crate::task::row::sql_counter(
+            owned.snapshot.context.generation,
+            "generation",
+        )?)
+        .bind(crate::task::row::sql_counter(
+            owned.snapshot.context.stop_generation,
+            "stop_generation",
+        )?)
         .bind(ordinal)
         .bind(&input.operation_id)
         .bind(target.input_sequence)
@@ -170,4 +139,50 @@ async fn existing(
         .fetch_optional(connection)
         .await
         .map_err(query("read immutable effect operation"))
+}
+
+async fn publication_context(
+    connection: &mut PgConnection,
+    owned: &execution::Owned,
+    input: &TaskEffectInput,
+) -> Result<PublicationContext> {
+    let target: PublicationContext = sqlx::query_as(include_str!("sql/target.sql"))
+        .bind(&input.task.task_id)
+        .bind(&input.source_item_id)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(query("read native publication target"))?;
+    if !target.accepted_item
+        || row::counter(target.input_sequence, "input sequence")? != input.covered_input_sequence
+        || owned.snapshot.context.covered_input_sequence != input.covered_input_sequence
+        || target.target.head != input.expected_head
+    {
+        return Err(TaskRefusal::StaleState.into());
+    }
+    let config = crate::lease::Leases::stored_config_on(connection, &owned.current.fleet_id, None)
+        .await?
+        .ok_or(TaskRefusal::InvalidTarget)?;
+    target.target.within(&config)?;
+    let accepted = crate::lease::Leases::stored_config_on(
+        connection,
+        &owned.current.fleet_id,
+        Some(owned.snapshot.context.accepted_revision_id.as_ref()),
+    )
+    .await?
+    .ok_or(TaskRefusal::InvalidTarget)?;
+    target.target.within(&accepted)?;
+    let free: bool = sqlx::query_scalar(include_str!("sql/available.sql"))
+        .bind(&input.task.task_id)
+        .bind("prepared")
+        .bind("issued")
+        .bind("unknown")
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(query("check unresolved publication barrier"))?;
+    if !free
+        || owned.snapshot.context.usage.publications >= owned.snapshot.context.limits.publications
+    {
+        return Err(TaskRefusal::EffectUncertain.into());
+    }
+    Ok(target)
 }

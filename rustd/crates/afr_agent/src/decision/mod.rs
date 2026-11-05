@@ -8,12 +8,21 @@ mod reply;
 mod routing;
 
 use crate::{Meter, Result};
-use afd_wire::{lease::LeasePayload, task::*};
+use afd_wire::{
+    lease::LeasePayload,
+    task::{
+        DecisionAssessment, DecisionReservationInput, DecisionTaskVersion, TaskBindingItem,
+        TaskBindingsInput, TaskBindingsResponse, TaskContext, TaskInputAction, TaskInputsQuery,
+        TaskInputsResponse, TaskItemBinding,
+    },
+};
 use afr_tools::LeaseVerbs;
 
 /// Native inputs and accepted meaning prepared before any sandbox is built.
 #[derive(Debug, Clone)]
 pub struct PreparedTask {
+    /// Immutable native lease execution ceiling, narrowed by accepted task binding.
+    pub execution_deadline: Option<jiff::Timestamp>,
     /// Complete native read, including current ownership and recovery cursors.
     pub inputs: TaskInputsResponse<'static>,
     /// True only when native binding permits an action on this lease's task.
@@ -22,6 +31,17 @@ pub struct PreparedTask {
 
 pub(crate) fn unavailable() -> crate::Error {
     crate::error::ErrorKind::TaskDecision.into()
+}
+
+pub(crate) fn boundary(
+    context: &'static str,
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> crate::Error {
+    crate::error::ErrorKind::TaskBoundary {
+        context,
+        source: Box::new(source),
+    }
+    .into()
 }
 
 pub(crate) fn native(reason: afr_tools::verbs::Unanswered) -> crate::Error {
@@ -51,6 +71,7 @@ pub(crate) async fn prepare(
         .await
         .map_err(crate::decision::native)?;
     let mut prepared = PreparedTask {
+        execution_deadline: inputs.execution_deadline,
         allow_actions: inputs.current_message.is_none() && inputs.current_task.is_some(),
         inputs,
     };
@@ -74,6 +95,12 @@ pub(crate) async fn prepare(
         message,
     )
     .await;
+    if let Ok(binding) = &accepted {
+        prepared.execution_deadline = binding.execution_deadline;
+    } else {
+        // A lost binding acknowledgement cannot extend the native execution budget.
+        prepared.execution_deadline = None;
+    }
     if let Err(failure) = accepted {
         if stop.is_cancelled() {
             return Err(failure);
@@ -93,6 +120,7 @@ pub(crate) async fn prepare(
         })
         .await
         .map_err(crate::decision::native)?;
+    prepared.execution_deadline = prepared.inputs.execution_deadline;
     prepared.allow_actions = prepared
         .inputs
         .current_interpretation
@@ -171,7 +199,9 @@ impl Intake<'_> {
                         fencing_token: lease.fencing_token,
                         source_admission_id: binding.source_admission_id.clone(),
                         assessment: DecisionAssessment::Item {
-                            ordinal: u8::try_from(ordinal).map_err(|_| unavailable())?,
+                            ordinal: u8::try_from(ordinal).map_err(|source| {
+                                boundary("interpretation item ordinal", source)
+                            })?,
                             interpretation_digest: binding.plan_digest.clone(),
                             source_start: item.proposed.source_start,
                             source_end: item.proposed.source_end,

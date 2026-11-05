@@ -18,33 +18,33 @@ pub(in crate::task) async fn record(tasks: &Tasks, input: &VerifiedCompletion) -
         .bind(id.as_str())
         .bind(workspace.as_str())
         .bind(fleet.map(afd_core::id::Uuid7::as_str))
-        .bind(
-            i64::try_from(input.installation_id)
-                .map_err(|_| super::super::TaskRefusal::InvalidTarget)?,
-        )
-        .bind(
-            i64::try_from(input.repository_id)
-                .map_err(|_| super::super::TaskRefusal::InvalidTarget)?,
-        )
+        .bind(super::super::row::sql_counter(
+            input.installation_id,
+            "installation_id",
+        )?)
+        .bind(super::super::row::sql_counter(
+            input.repository_id,
+            "repository_id",
+        )?)
         .bind(&input.head)
-        .bind(
-            i64::try_from(input.workflow_id)
-                .map_err(|_| super::super::TaskRefusal::InvalidTarget)?,
-        )
-        .bind(i64::try_from(input.run_id).map_err(|_| super::super::TaskRefusal::InvalidTarget)?)
-        .bind(
-            i32::try_from(input.run_attempt)
-                .map_err(|_| super::super::TaskRefusal::InvalidTarget)?,
-        )
+        .bind(super::super::row::sql_counter(
+            input.workflow_id,
+            "workflow_id",
+        )?)
+        .bind(super::super::row::sql_counter(input.run_id, "run_id")?)
+        .bind(super::super::row::sql_small_counter(
+            input.run_attempt,
+            "run_attempt",
+        )?)
         .bind(&input.conclusion)
         .bind(&input.body_digest)
         .bind("installation_id")
         .bind("repository_id")
         .bind("head")
-        .bind(
-            i64::try_from(input.run_number)
-                .map_err(|_| super::super::TaskRefusal::InvalidTarget)?,
-        )
+        .bind(super::super::row::sql_counter(
+            input.run_number,
+            "run_number",
+        )?)
         .fetch_one(&mut *connection)
         .await
         .map_err(query(

@@ -120,7 +120,7 @@ impl FleetConfig {
     pub fn same_task_authority(&self, other: &Self) -> bool {
         let mut compared = self.clone();
         compared.name = other.name.clone();
-        compared.decision_policy = other.decision_policy.clone();
+        compared.decision_policy.clone_from(&other.decision_policy);
         compared == *other
     }
 

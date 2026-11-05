@@ -10,13 +10,15 @@ import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { CHAT_TITLE_LIMIT, chatTitle, firstChatRequest } from "@/lib/api/draft-summary";
-import { DefinitionEditor } from "./DefinitionEditor";
+import nextDynamic from "next/dynamic";
 import { PublicationActions } from "./FleetSetupActions";
 import { DraftSaveButton } from "./DraftSaveBar";
 import { EditSetupButton } from "./FleetSetupWorkspace";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 
 type Props = {client: DraftClient; view: DraftView; workspace: string; fleetPage?: boolean; menuItems?: ReactNode; onDirtyChange: (dirty: boolean) => void};
+// The instructions editor is only needed after its dialog opens.
+const DefinitionEditor = nextDynamic(() => import("./DefinitionEditor").then(module => module.DefinitionEditor));
 const INSTRUCTIONS = "Instructions";
 const PUBLISH = "Publish to Library";
 const ignore = (): void => undefined;

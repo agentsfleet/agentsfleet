@@ -31,7 +31,7 @@ struct Candidate {
 }
 
 #[derive(sqlx::FromRow)]
-struct Accepted {
+struct InputRow {
     source_admission_id: String,
     plan_digest: String,
     item_id: String,
@@ -69,50 +69,8 @@ pub(super) async fn read(
     } else {
         None
     };
-    let accepted: Vec<Accepted> = sqlx::query_as(include_str!("sql/accepted_inputs.sql"))
-        .bind(&current.task_id)
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .bind(afd_wire::task::INPUT_BATCH_MAX as i64)
-        .bind(
-            input
-                .after_input_sequence
-                .map(i64::try_from)
-                .transpose()
-                .map_err(|_overflow| super::TaskRefusal::StaleState)?,
-        )
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(query(
-            "recover accepted inputs beyond the incorporated cursor",
-        ))?;
-    let accepted_inputs = accepted
-        .into_iter()
-        .map(|item| {
-            Ok(TaskAcceptedInput {
-                source_admission_id: item.source_admission_id,
-                plan_digest: item.plan_digest,
-                item_id: item.item_id,
-                task: DecisionTaskVersion {
-                    task_id: item.task_id,
-                    generation: row::counter(item.generation, "task generation")?,
-                },
-                sequence: row::counter(item.sequence, "input sequence")?,
-                action: serde::Deserialize::deserialize(serde::de::value::StrDeserializer::new(
-                    item.action.as_str(),
-                ))
-                .map_err(|source: serde::de::value::Error| {
-                    crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
-                })?,
-                original_message: item.original_message,
-                accepted_text: item.accepted_text,
-                interpretation: item.interpretation,
-                applied: item.applied,
-                response_text: item.response_text,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let mut humans: Vec<Human> = sqlx::query_as(include_str!("sql/pending_inputs.sql"))
+    let accepted_inputs = accepted(&mut tx, &current, input).await?;
+    let mut humans: Vec<Human> = sqlx::query_as(include_str!("../sql/pending_inputs.sql"))
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(&current.source_admission_id)
@@ -147,16 +105,7 @@ pub(super) async fn read(
         .collect();
     let mut recovered = recover::read(&mut tx, &current, &sources).await?;
     let current_interpretation = recovered.remove(&current.source_admission_id);
-    let candidates: Vec<Candidate> = sqlx::query_as(include_str!("sql/input_candidates.sql"))
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .bind(i64::from(afd_wire::task::UNFINISHED_MAX) + 1)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(query("read native input association candidates"))?;
-    if candidates.len() > afd_wire::task::UNFINISHED_MAX as usize {
-        return Err(super::TaskRefusal::LimitExhausted.into());
-    }
+    let candidates = candidates(&mut tx, &current).await?;
     let inputs = humans
         .into_iter()
         .map(|source| {
@@ -169,17 +118,7 @@ pub(super) async fn read(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let candidates = candidates
-        .into_iter()
-        .map(|candidate| {
-            Ok(TaskInputCandidate {
-                task_id: candidate.id,
-                title: candidate.title,
-                state: row::state(&candidate.state)?,
-                generation: row::counter(candidate.generation, "generation")?,
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id.as_str()).await?;
     tx.commit().await.map_err(query("finish task input read"))?;
     transaction::recycle(connection);
     Ok(TaskInputsResponse {
@@ -189,6 +128,7 @@ pub(super) async fn read(
         inputs,
         accepted_inputs,
         current_task,
+        execution_deadline: Some(execution_deadline),
         current_interpretation,
         tasks: candidates,
         next_cursor,
@@ -210,4 +150,86 @@ fn cursor(value: Option<&str>) -> Result<i64> {
         .ok()
         .filter(|value| *value >= 0)
         .ok_or_else(|| rejected("Invalid task input cursor"))
+}
+
+async fn accepted(
+    connection: &mut sqlx::PgConnection,
+    current: &guard::LeaseRow,
+    input: &TaskInputsQuery,
+) -> Result<Vec<TaskAcceptedInput>> {
+    let accepted: Vec<InputRow> = sqlx::query_as(include_str!("../sql/accepted_inputs.sql"))
+        .bind(&current.task_id)
+        .bind(&current.fleet_id)
+        .bind(&current.workspace_id)
+        .bind(row::sql_counter(
+            afd_wire::task::INPUT_BATCH_MAX,
+            "input batch limit",
+        )?)
+        .bind(
+            input
+                .after_input_sequence
+                .map(i64::try_from)
+                .transpose()
+                .map_err(|_overflow| super::TaskRefusal::StaleState)?,
+        )
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(query(
+            "recover accepted inputs beyond the incorporated cursor",
+        ))?;
+    let accepted_inputs = accepted
+        .into_iter()
+        .map(|item| {
+            Ok(TaskAcceptedInput {
+                source_admission_id: item.source_admission_id,
+                plan_digest: item.plan_digest,
+                item_id: item.item_id,
+                task: DecisionTaskVersion {
+                    task_id: item.task_id,
+                    generation: row::counter(item.generation, "task generation")?,
+                },
+                sequence: row::counter(item.sequence, "input sequence")?,
+                action: serde::Deserialize::deserialize(serde::de::value::StrDeserializer::new(
+                    item.action.as_str(),
+                ))
+                .map_err(|source: serde::de::value::Error| {
+                    crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
+                })?,
+                original_message: item.original_message,
+                accepted_text: item.accepted_text,
+                interpretation: item.interpretation,
+                applied: item.applied,
+                response_text: item.response_text,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(accepted_inputs)
+}
+
+async fn candidates(
+    connection: &mut sqlx::PgConnection,
+    current: &guard::LeaseRow,
+) -> Result<Vec<TaskInputCandidate>> {
+    let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/input_candidates.sql"))
+        .bind(&current.fleet_id)
+        .bind(&current.workspace_id)
+        .bind(i64::from(afd_wire::task::UNFINISHED_MAX) + 1)
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(query("read native input association candidates"))?;
+    if candidates.len() > afd_wire::task::UNFINISHED_MAX as usize {
+        return Err(super::TaskRefusal::LimitExhausted.into());
+    }
+    let candidates = candidates
+        .into_iter()
+        .map(|candidate| {
+            Ok(TaskInputCandidate {
+                task_id: candidate.id,
+                title: candidate.title,
+                state: row::state(&candidate.state)?,
+                generation: row::counter(candidate.generation, "generation")?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(candidates)
 }

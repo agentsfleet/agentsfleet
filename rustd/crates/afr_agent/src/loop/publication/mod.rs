@@ -47,6 +47,36 @@ fn refused(detail: &str) -> ToolOutput {
     ToolOutput::failed(ToolErrorCode::AgentsfleetdRefused, detail)
 }
 
+// Tool output is the public boundary: retain the causal chain until this
+// translation, and log only the fixed context so private candidate text stays private.
+fn failed(
+    code: ToolErrorCode,
+    context: &'static str,
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> ToolOutput {
+    let error = crate::decision::boundary(context, source);
+    tracing::debug!(event = "task_publication_refused", error_code = %error.code(), reason = %error);
+    ToolOutput::failed(code, context)
+}
+
+fn invalid(arguments: &serde_json::Value) -> Result<Invocation, ToolOutput> {
+    let input: Invocation = serde_json::from_value(arguments.clone()).map_err(|source| {
+        failed(
+            ToolErrorCode::InvalidArguments,
+            "Provide a bounded validation command and timeout.",
+            source,
+        )
+    })?;
+    garde::Validate::validate(&input).map_err(|source| {
+        failed(
+            ToolErrorCode::InvalidArguments,
+            "Validation arguments exceed their bounds.",
+            source,
+        )
+    })?;
+    Ok(input)
+}
+
 impl Harness<'_, '_> {
     pub(super) fn publication_allowed(&self) -> bool {
         self.depth == 0
@@ -75,18 +105,7 @@ impl Harness<'_, '_> {
                 "Publication is unavailable for this task.",
             ));
         }
-        let input: Invocation = serde_json::from_value(arguments.clone()).map_err(|_| {
-            ToolOutput::failed(
-                ToolErrorCode::InvalidArguments,
-                "Provide a bounded validation command and timeout.",
-            )
-        })?;
-        garde::Validate::validate(&input).map_err(|_| {
-            ToolOutput::failed(
-                ToolErrorCode::InvalidArguments,
-                "Validation arguments exceed their bounds.",
-            )
-        })?;
+        let input = invalid(arguments)?;
         if self
             .shared
             .registry
@@ -126,7 +145,13 @@ impl Harness<'_, '_> {
                 limit: 1,
             })
             .await
-            .map_err(|_| refused("Publication receipts could not be reconciled."))?;
+            .map_err(|source| {
+                failed(
+                    ToolErrorCode::AgentsfleetdRefused,
+                    "Publication receipts could not be reconciled.",
+                    crate::decision::native(source),
+                )
+            })?;
         if !effects.effects.is_empty() {
             return Err(refused(
                 "A previous publication must be reconciled at the next completed action boundary before another attempt.",
@@ -145,12 +170,75 @@ impl Harness<'_, '_> {
             .split_once('/')
             .map(|(_, name)| name)
             .ok_or_else(|| refused("Native repository identity is invalid."))?;
+        let (before, output) = self
+            .validated_candidate(executor, name, tree, &input)
+            .await?;
+        let effect = self.submit_candidate(task, head, before).await?;
+        let confirmed =
+            effect.state == afd_wire::task::TaskEffectState::Confirmed && effect.commit.is_some();
+        let output = serde_json::json!({ "publication": effect,
+            "validation": { "argv": input.validation, "exit_code": 0, "output": String::from_utf8_lossy(&output) } }).to_string();
+        Ok(if confirmed {
+            ToolOutput::succeeded(output)
+        } else {
+            refused(&output)
+        })
+    }
+
+    async fn submit_candidate(
+        &self,
+        task: &afd_wire::task::TaskContext<'_>,
+        head: &str,
+        before: Candidate,
+    ) -> Result<afd_wire::task::TaskEffect, ToolOutput> {
+        let request = TaskEffectInput {
+            operation_id: crate::decision::identity().map_err(|source| {
+                failed(
+                    ToolErrorCode::AgentsfleetdRefused,
+                    "Publication identity is unavailable.",
+                    source,
+                )
+            })?,
+            fencing_token: self.shared.fencing_token,
+            task: afd_wire::task::DecisionTaskVersion {
+                task_id: task.task_id.to_string(),
+                generation: task.generation,
+            },
+            source_item_id: task.originating_item_id.to_string(),
+            covered_input_sequence: self.incorporated_input_sequence,
+            expected_head: head.to_owned(),
+            tested_tree: before.tested_tree,
+            changes: before.changes,
+        };
+        garde::Validate::validate(&request).map_err(|source| {
+            failed(
+                ToolErrorCode::AgentsfleetdRefused,
+                "The candidate exceeds supported publication paths or content bounds.",
+                source,
+            )
+        })?;
+        let effect = self.shared.lease.verbs.task_publish(request).await
+            .map_err(|source| failed(ToolErrorCode::AgentsfleetdRefused, "Publication did not return a confirmed outcome. Reconcile its native receipt before another attempt.", crate::decision::native(source)))?;
+        Ok(effect)
+    }
+
+    async fn validated_candidate(
+        &self,
+        executor: &dyn afr_executor::Executor,
+        name: &str,
+        tree: &str,
+        input: &Invocation,
+    ) -> Result<(Candidate, Vec<u8>), ToolOutput> {
         let before = self.candidate(executor, name, tree).await?;
         if before.changes.is_empty() {
             return Err(refused("There are no local changes to publish."));
         }
-        let validation = Spawn::program(&input.validation[0])
-            .args(&input.validation[1..])
+        let (program, args) = input
+            .validation
+            .split_first()
+            .ok_or_else(|| refused("Validation command is empty."))?;
+        let validation = Spawn::program(program)
+            .args(args)
             .cwd(name)
             .env("NO_COLOR", "1")
             .env("TERM", "dumb")
@@ -170,34 +258,7 @@ impl Harness<'_, '_> {
                 "Validation changed the candidate tree. Review those changes and validate again before publication.",
             ));
         }
-        let request = TaskEffectInput {
-            operation_id: crate::decision::identity()
-                .map_err(|_| refused("Publication identity is unavailable."))?,
-            fencing_token: self.shared.fencing_token,
-            task: afd_wire::task::DecisionTaskVersion {
-                task_id: task.task_id.to_string(),
-                generation: task.generation,
-            },
-            source_item_id: task.originating_item_id.to_string(),
-            covered_input_sequence: self.incorporated_input_sequence,
-            expected_head: head.clone(),
-            tested_tree: before.tested_tree,
-            changes: before.changes,
-        };
-        garde::Validate::validate(&request).map_err(|_| {
-            refused("The candidate exceeds supported publication paths or content bounds.")
-        })?;
-        let effect = self.shared.lease.verbs.task_publish(request).await
-            .map_err(|_| refused("Publication did not return a confirmed outcome. Reconcile its native receipt before another attempt."))?;
-        let confirmed =
-            effect.state == afd_wire::task::TaskEffectState::Confirmed && effect.commit.is_some();
-        let output = serde_json::json!({ "publication": effect,
-            "validation": { "argv": input.validation, "exit_code": 0, "output": String::from_utf8_lossy(&output) } }).to_string();
-        Ok(if confirmed {
-            ToolOutput::succeeded(output)
-        } else {
-            refused(&output)
-        })
+        Ok((before, output))
     }
 
     async fn candidate(
@@ -218,7 +279,12 @@ impl Harness<'_, '_> {
             true,
         )
         .await?;
-        serde_json::from_slice(&bytes)
-            .map_err(|_| refused("The sandbox did not return a complete supported candidate tree."))
+        serde_json::from_slice(&bytes).map_err(|source| {
+            failed(
+                ToolErrorCode::AgentsfleetdRefused,
+                "The sandbox did not return a complete supported candidate tree.",
+                source,
+            )
+        })
     }
 }

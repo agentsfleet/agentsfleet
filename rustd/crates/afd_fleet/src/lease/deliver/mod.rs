@@ -206,6 +206,7 @@ impl Plane {
                 decision: issued.decision,
                 task: issued.task,
                 expires_at: Some(issued.expires_at),
+                execution_deadline: Some(issued.execution_deadline),
             },
         )
         .map(|answer| Step::Go(Leased(answer)))
