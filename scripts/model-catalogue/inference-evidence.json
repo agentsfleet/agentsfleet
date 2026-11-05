@@ -250,5 +250,19 @@
       }
     ],
     "verified_at": "2026-10-19T18:05:29Z"
+  },
+  {
+    "provider": "fireworks",
+    "model_name": "accounts/fireworks/models/kimi-k3p1-pro",
+    "source_url": "https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3p1-pro#contextLength",
+    "response": {
+      "name": "accounts/fireworks/models/kimi-k3p1-pro",
+      "state": "READY",
+      "contextLength": 1048576,
+      "maxInputTokens": null,
+      "maxOutputTokens": null,
+      "maxTotalTokens": null
+    },
+    "verified_at": "2026-11-05T03:56:45Z"
   }
 ]

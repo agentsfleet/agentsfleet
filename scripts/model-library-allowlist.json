@@ -186,6 +186,19 @@
       ]
     },
     {
+      "provider": "fireworks", "model_name": "accounts/fireworks/models/kimi-k3p1-pro",
+      "display_name": "Kimi K3.1 Pro", "advanced": false,
+      "inference": {"api": "chat", "base_url": "https://api.fireworks.ai/inference/v1", "max_output_tokens": 943718},
+      "context": {"tokens":1048576,"source_url":"https://api.fireworks.ai/v1/accounts/fireworks/models/kimi-k3p1-pro#contextLength","verified_at":"2026-11-05T03:56:45Z"},
+      "context_unverified_reason": null,
+      "prices": [
+      { "effective_from": "2026-11-05T03:57:16Z", "effective_until": null, "prompt_tokens_above": 0,
+        "input": "2", "cached_input": "0.20", "cache_write": null, "cache_write_5m": null, "cache_write_1h": null, "output": "10",
+        "source_url": "https://fireworks.ai/models/fireworks/kimi-k3p1-pro", "verified_at": "2026-11-05T03:57:16Z",
+        "conditions": "Standard synchronous text inference; service-tier and regional modifiers excluded." }
+      ]
+    },
+    {
       "provider": "fireworks", "model_name": "accounts/fireworks/models/deepseek-v4p1-flash",
       "display_name": "DeepSeek V4.1 Flash", "advanced": false,
       "inference": {"api": "chat", "base_url": "https://api.fireworks.ai/inference/v1", "max_output_tokens": 943718},

@@ -40,7 +40,7 @@ describe("curated catalogue bounds", () => {
 
   test("membership and safe diagnostic names come from the allowlist", async () => {
     const catalogue = await readCatalogue(CATALOGUE_URL);
-    expect(catalogue.models).toHaveLength(20);
+    expect(catalogue.models).toHaveLength(21);
     expect(catalogue.models.every(isCuratedModel)).toBe(true);
     expect([...catalogueModelNames]).toEqual([...new Set(catalogue.models.map((model) => model.model_name))]);
     expect(() => parseCatalogue(catalogueFixture([modelFixture(), modelFixture()])))
