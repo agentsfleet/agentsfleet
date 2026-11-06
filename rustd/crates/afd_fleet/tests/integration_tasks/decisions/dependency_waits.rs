@@ -28,13 +28,44 @@ async fn authority(case: &Case) {
         .expect("revoked dependency maintenance");
     assert_eq!((result.checked, result.woken, result.deferred), (0, 0, 0));
     let row = task_snapshot(case, &task.task_id).await;
-    assert_eq!(row["status"], "blocked");
-    assert_eq!(row["status_reason"], "dependency_access_unavailable");
-    assert_eq!(row["generation"], 2);
-    assert_eq!(row["stop_generation"], 1);
-    assert_eq!(row["used_fallback_reads"], 0);
-    assert!(row["terminal_at"].is_null());
-    assert!(!wait_snapshot(case, &task.task_id).await["cancelled_at"].is_null());
+    assert_eq!(
+        (*row.pointer("/status").expect("fixture status")),
+        "blocked"
+    );
+    assert_eq!(
+        (*row
+            .pointer("/status_reason")
+            .expect("fixture status_reason")),
+        "dependency_access_unavailable"
+    );
+    assert_eq!(
+        (*row.pointer("/generation").expect("fixture generation")),
+        2
+    );
+    assert_eq!(
+        (*row
+            .pointer("/stop_generation")
+            .expect("fixture stop_generation")),
+        1
+    );
+    assert_eq!(
+        (*row
+            .pointer("/used_fallback_reads")
+            .expect("fixture used_fallback_reads")),
+        0
+    );
+    assert!(
+        row.pointer("/terminal_at")
+            .expect("fixture terminal_at")
+            .is_null()
+    );
+    assert!(
+        !wait_snapshot(case, &task.task_id)
+            .await
+            .get("cancelled_at")
+            .expect("wait cancellation")
+            .is_null()
+    );
     fixture
         .tasks
         .maintain_waits()
@@ -75,11 +106,32 @@ async fn expiration(case: &Case) {
         .await
         .expect("native wall enforcement");
     let row = task_snapshot(case, &task.task_id).await;
-    assert_eq!(row["status"], "exhausted");
-    assert_eq!(row["status_reason"], "wall_deadline_reached");
-    assert_eq!(row["generation"], 2);
-    assert!(!row["terminal_at"].is_null());
-    assert!(!wait_snapshot(case, &task.task_id).await["cancelled_at"].is_null());
+    assert_eq!(
+        (*row.pointer("/status").expect("fixture status")),
+        "exhausted"
+    );
+    assert_eq!(
+        (*row
+            .pointer("/status_reason")
+            .expect("fixture status_reason")),
+        "wall_deadline_reached"
+    );
+    assert_eq!(
+        (*row.pointer("/generation").expect("fixture generation")),
+        2
+    );
+    assert!(
+        !row.pointer("/terminal_at")
+            .expect("fixture terminal_at")
+            .is_null()
+    );
+    assert!(
+        !wait_snapshot(case, &task.task_id)
+            .await
+            .get("cancelled_at")
+            .expect("wait cancellation")
+            .is_null()
+    );
     fixture
         .tasks
         .maintain_waits()
@@ -114,8 +166,17 @@ async fn changed_head(case: &Case) {
     assert_eq!((result.checked, result.woken, result.deferred), (0, 0, 0));
     assert_eq!(task_snapshot(case, &task.task_id).await, before);
     let wait = wait_snapshot(case, &task.task_id).await;
-    assert!(!wait["cancelled_at"].is_null());
-    assert!(wait["claim_id"].is_null());
+    assert!(
+        !wait
+            .pointer("/cancelled_at")
+            .expect("fixture cancelled_at")
+            .is_null()
+    );
+    assert!(
+        wait.pointer("/claim_id")
+            .expect("fixture claim_id")
+            .is_null()
+    );
     assert_eq!(case.counts().await, counts);
     fixture.model.finish().await.expect("fixture cleanup");
 }
@@ -151,11 +212,34 @@ async fn cumulative_limit(case: &Case) {
         .expect("bounded cumulative enforcement");
     assert_eq!((result.checked, result.woken, result.deferred), (0, 0, 0));
     let row = task_snapshot(case, &task.task_id).await;
-    assert_eq!(row["status"], "exhausted");
-    assert_eq!(row["status_reason"], "cumulative_limit_reached");
-    assert_eq!(row["used_fallback_reads"], 0);
-    assert!(!row["terminal_at"].is_null());
-    assert!(!wait_snapshot(case, &task.task_id).await["cancelled_at"].is_null());
+    assert_eq!(
+        (*row.pointer("/status").expect("fixture status")),
+        "exhausted"
+    );
+    assert_eq!(
+        (*row
+            .pointer("/status_reason")
+            .expect("fixture status_reason")),
+        "cumulative_limit_reached"
+    );
+    assert_eq!(
+        (*row
+            .pointer("/used_fallback_reads")
+            .expect("fixture used_fallback_reads")),
+        0
+    );
+    assert!(
+        !row.pointer("/terminal_at")
+            .expect("fixture terminal_at")
+            .is_null()
+    );
+    assert!(
+        !wait_snapshot(case, &task.task_id)
+            .await
+            .get("cancelled_at")
+            .expect("wait cancellation")
+            .is_null()
+    );
     assert_eq!(case.counts().await, before);
     fixture.model.finish().await.expect("fixture cleanup");
 }

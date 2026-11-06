@@ -120,13 +120,13 @@ async fn read_pages(
         .checkpoint_page(
             case.lease(),
             &id(&plan.checkpoint_id),
-            &id(&plan.page_ids[0]),
+            &id(plan.page_ids.first().expect("checkpoint manifest page")),
             &query,
         )
         .await
         .expect("scoped manifest read");
     assert!(page.entries.is_empty());
-    assert!(page.history_objects.is_empty());
+    assert_eq!(page.history_objects.len(), 0);
     let objects = tasks
         .checkpoint_objects(case.lease(), &id(&plan.checkpoint_id), &query)
         .await

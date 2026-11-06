@@ -17,11 +17,27 @@ pub(super) async fn exercise(fixture: &Fixture, task: &Value) {
         "upload_budget_bytes":0,"logical_bytes":0,"entry_count":0});
     foreign_and_stale(fixture, &route, &input).await;
     let plan = call(fixture, Method::POST, &route, &input, StatusCode::CREATED).await;
-    assert_eq!(plan["replayed"], false);
+    assert_eq!(
+        plan.pointer("/replayed").expect("response field exists"),
+        false
+    );
     let replay = call(fixture, Method::POST, &route, &input, StatusCode::OK).await;
-    assert_eq!(replay["checkpoint_id"], plan["checkpoint_id"]);
-    assert_eq!(replay["replayed"], true);
-    let checkpoint = plan["checkpoint_id"].as_str().expect("native checkpoint");
+    assert_eq!(
+        replay
+            .pointer("/checkpoint_id")
+            .expect("response field exists"),
+        plan.pointer("/checkpoint_id")
+            .expect("response field exists")
+    );
+    assert_eq!(
+        replay.pointer("/replayed").expect("response field exists"),
+        true
+    );
+    let checkpoint = plan
+        .pointer("/checkpoint_id")
+        .expect("response field exists")
+        .as_str()
+        .expect("native checkpoint");
     let route = format!("{route}/{checkpoint}");
     renew_pin(fixture, task, &route, &plan).await;
     let (contents, digest) = write_page(fixture, task, &route, &plan).await;
@@ -33,8 +49,10 @@ pub(super) async fn exercise(fixture: &Fixture, task: &Value) {
 async fn register_and_refuse_bad_upload(fixture: &Fixture, task: &Value, original: &Value) {
     let collection = path(fixture, "checkpoints");
     let mut input = original.clone();
-    input["operation_id"] = json!(mint_uuid7());
-    input["upload_budget_bytes"] = json!(64);
+    *input.get_mut("operation_id").expect("fixture field exists") = json!(mint_uuid7());
+    *input
+        .get_mut("upload_budget_bytes")
+        .expect("fixture field exists") = json!(64);
     let plan = call(
         fixture,
         Method::POST,
@@ -45,10 +63,13 @@ async fn register_and_refuse_bad_upload(fixture: &Fixture, task: &Value, origina
     .await;
     let route = format!(
         "{collection}/{}",
-        plan["checkpoint_id"].as_str().expect("second capture")
+        plan.pointer("/checkpoint_id")
+            .expect("response field exists")
+            .as_str()
+            .expect("second capture")
     );
     let registration = json!({"fencing_token":fixture.lease.fence,"task":task,
-        "pin_id":plan["pin"]["id"],"objects":[{"sha256":sha256_hex(b"x"),"size":1,"kind":"file"}]});
+        "pin_id":plan.pointer("/pin/id").expect("response field exists"),"objects":[{"sha256":sha256_hex(b"x"),"size":1,"kind":"file"}]});
     let objects = call(
         fixture,
         Method::POST,
@@ -57,8 +78,18 @@ async fn register_and_refuse_bad_upload(fixture: &Fixture, task: &Value, origina
         StatusCode::CREATED,
     )
     .await;
-    assert_eq!(objects["items"][0]["status"], "missing");
-    assert!(objects["items"][0]["data_key"].is_string());
+    assert_eq!(
+        objects
+            .pointer("/items/0/status")
+            .expect("response field exists"),
+        "missing"
+    );
+    assert!(
+        objects
+            .pointer("/items/0/data_key")
+            .expect("response field exists")
+            .is_string()
+    );
     let replay = call(
         fixture,
         Method::POST,
@@ -68,17 +99,32 @@ async fn register_and_refuse_bad_upload(fixture: &Fixture, task: &Value, origina
     )
     .await;
     assert_eq!(
-        replay["items"][0]["object_id"],
-        objects["items"][0]["object_id"]
+        replay
+            .pointer("/items/0/object_id")
+            .expect("response field exists"),
+        objects
+            .pointer("/items/0/object_id")
+            .expect("response field exists")
     );
-    assert_eq!(replay["items"][0]["nonce"], objects["items"][0]["nonce"]);
+    assert_eq!(
+        replay
+            .pointer("/items/0/nonce")
+            .expect("response field exists"),
+        objects
+            .pointer("/items/0/nonce")
+            .expect("response field exists")
+    );
     refuse_upload(fixture, task, &route, &plan, &objects).await;
 }
 
 async fn renew_pin(fixture: &Fixture, task: &Value, route: &str, plan: &Value) {
-    let pin = plan["pin"]["id"].as_str().expect("writer pin");
+    let pin = plan
+        .pointer("/pin/id")
+        .expect("response field exists")
+        .as_str()
+        .expect("writer pin");
     let renewal = json!({"fencing_token":fixture.lease.fence,"task":task,
-        "resource_version":plan["pin"]["resource_version"]});
+        "resource_version":plan.pointer("/pin/resource_version").expect("response field exists")});
     let renewed = call(
         fixture,
         Method::PATCH,
@@ -88,8 +134,14 @@ async fn renew_pin(fixture: &Fixture, task: &Value, route: &str, plan: &Value) {
     )
     .await;
     assert!(
-        renewed["resource_version"].as_u64().expect("pin version")
-            > plan["pin"]["resource_version"]
+        renewed
+            .pointer("/resource_version")
+            .expect("response field exists")
+            .as_u64()
+            .expect("pin version")
+            > plan
+                .pointer("/pin/resource_version")
+                .expect("response field exists")
                 .as_u64()
                 .expect("original version")
     );
@@ -110,14 +162,22 @@ async fn write_page(
     route: &str,
     plan: &Value,
 ) -> (CheckpointPage, String) {
-    let pin = plan["pin"]["id"].as_str().expect("writer pin");
+    let pin = plan
+        .pointer("/pin/id")
+        .expect("response field exists")
+        .as_str()
+        .expect("writer pin");
     let contents = CheckpointPage {
         page_number: 0,
         entries: vec![],
         history_objects: vec![],
     };
     let digest = sha256_hex(&serde_json::to_vec(&contents).expect("canonical page"));
-    let page = plan["page_ids"][0].as_str().expect("allocated page");
+    let page = plan
+        .pointer("/page_ids/0")
+        .expect("response field exists")
+        .as_str()
+        .expect("allocated page");
     let page_route = format!("{route}/pages/{page}");
     let write = json!({"fencing_token":fixture.lease.fence,"task":task,"pin_id":pin,
         "digest":digest,"contents":contents});
@@ -129,7 +189,7 @@ async fn write_page(
         );
     }
     let mut corrupt = write.clone();
-    corrupt["digest"] = json!("f".repeat(64));
+    *corrupt.get_mut("digest").expect("fixture field exists") = json!("f".repeat(64));
     let refused = call(
         fixture,
         Method::PUT,
@@ -143,17 +203,38 @@ async fn write_page(
 }
 
 async fn commit(fixture: &Fixture, task: &Value, route: &str, plan: &Value, digest: &str) -> Value {
-    let pin = plan["pin"]["id"].as_str().expect("writer pin");
-    let page = plan["page_ids"][0].as_str().expect("allocated page");
+    let pin = plan
+        .pointer("/pin/id")
+        .expect("response field exists")
+        .as_str()
+        .expect("writer pin");
+    let page = plan
+        .pointer("/page_ids/0")
+        .expect("response field exists")
+        .as_str()
+        .expect("allocated page");
     let commit = json!({"fencing_token":fixture.lease.fence,"task":task,"pin_id":pin,
         "manifest_root":checkpoint_digest::manifest_root([(page,digest)]),
         "history_digest":checkpoint_digest::history_root([]),"covered_input_sequence":0,
         "effect_watermark":0});
     let saved = call(fixture, Method::PATCH, route, &commit, StatusCode::OK).await;
-    assert_eq!(saved["manifest_root"], commit["manifest_root"]);
-    assert_eq!(saved["replayed"], false);
+    assert_eq!(
+        saved
+            .pointer("/manifest_root")
+            .expect("response field exists"),
+        commit
+            .pointer("/manifest_root")
+            .expect("response field exists")
+    );
+    assert_eq!(
+        saved.pointer("/replayed").expect("response field exists"),
+        false
+    );
     let replay = call(fixture, Method::PATCH, route, &commit, StatusCode::OK).await;
-    assert_eq!(replay["replayed"], true);
+    assert_eq!(
+        replay.pointer("/replayed").expect("response field exists"),
+        true
+    );
     commit
 }
 
@@ -165,7 +246,11 @@ async fn restore(
     contents: &CheckpointPage,
     commit: &Value,
 ) {
-    let page = plan["page_ids"][0].as_str().expect("allocated page");
+    let page = plan
+        .pointer("/page_ids/0")
+        .expect("response field exists")
+        .as_str()
+        .expect("allocated page");
     let page_route = format!("{route}/pages/{page}");
     let restore = json!({"fencing_token":fixture.lease.fence,"task":task,
         "purpose":"restore","pin_id":null,"object_ids":[]});
@@ -177,9 +262,23 @@ async fn restore(
         StatusCode::OK,
     )
     .await;
-    assert_eq!(restored["plan"]["manifest_root"], commit["manifest_root"]);
-    assert_eq!(restored["objects"], json!([]));
-    let reader = restored["plan"]["pin"]["id"].as_str().expect("restore pin");
+    assert_eq!(
+        restored
+            .pointer("/plan/manifest_root")
+            .expect("response field exists"),
+        commit
+            .pointer("/manifest_root")
+            .expect("response field exists")
+    );
+    assert_eq!(
+        restored.pointer("/objects").expect("response field exists"),
+        &json!([])
+    );
+    let reader = restored
+        .pointer("/plan/pin/id")
+        .expect("response field exists")
+        .as_str()
+        .expect("restore pin");
     let query = format!("fencing_token={}&pin_id={reader}", fixture.lease.fence);
     let read = success(
         fixture,
@@ -189,10 +288,7 @@ async fn restore(
         StatusCode::OK,
     )
     .await;
-    assert_eq!(
-        read,
-        serde_json::to_value(&contents).expect("restored page")
-    );
+    assert_eq!(read, serde_json::to_value(contents).expect("restored page"));
     let objects = success(
         fixture,
         Method::GET,
@@ -212,7 +308,7 @@ async fn refuse_upload(
     objects: &Value,
 ) {
     let upload = json!({"fencing_token":fixture.lease.fence,"task":task,
-        "pin_id":plan["pin"]["id"],"objects":[{"object_id":objects["items"][0]["object_id"],
+        "pin_id":plan.pointer("/pin/id").expect("response field exists"),"objects":[{"object_id":objects.pointer("/items/0/object_id").expect("response field exists"),
         "ciphertext_sha256":"a".repeat(64),"ciphertext_length":18}]});
     // One plaintext byte requires exactly 17 ciphertext bytes; refuse before signing or I/O.
     let refused = call(

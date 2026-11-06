@@ -46,9 +46,9 @@ impl Server {
             .build()
             .expect("pinned HTTPS client");
         let replies = Arc::new(Mutex::new(VecDeque::from(replies)));
-        let owned = replies.clone();
+        let owned = Arc::clone(&replies);
         let exchange = Arc::new(Mutex::new(None));
-        let app = exchange.clone();
+        let app = Arc::clone(&exchange);
         let (stop, mut stopped) = oneshot::channel();
         let worker = tokio::spawn(async move {
             loop {
@@ -131,9 +131,23 @@ fn evidence(request: &Request, replies: &Mutex<VecDeque<Value>>) -> Value {
         .expect("replies")
         .pop_front()
         .expect("no extra network request");
-    let reply = if let Some(expected) = reply.get("fixture_request") {
-        assert_eq!(request.method, expected["method"].as_str().expect("method"));
-        assert_eq!(request.path, expected["path"].as_str().expect("path"));
+    if let Some(expected) = reply.get("fixture_request") {
+        assert_eq!(
+            request.method,
+            expected
+                .pointer("/method")
+                .expect("fixture method")
+                .as_str()
+                .expect("method")
+        );
+        assert_eq!(
+            request.path,
+            expected
+                .pointer("/path")
+                .expect("fixture path")
+                .as_str()
+                .expect("path")
+        );
         assert_eq!(request.authorization, "Bearer native-test-read-token");
         if let Some(body) = expected.get("body") {
             assert_eq!(
@@ -144,38 +158,48 @@ fn evidence(request: &Request, replies: &Mutex<VecDeque<Value>>) -> Value {
         if expected.get("publication").is_some() {
             publication_request(request);
         }
-        reply["response"].clone()
+        reply
+            .pointer("/response")
+            .expect("fixture response")
+            .clone()
     } else {
         history_request(request);
         reply
-    };
-    reply
+    }
 }
 
 fn publication_request(request: &Request) {
     let body: Value = serde_json::from_slice(&request.body).expect("mutation body");
     assert!(
-        body["query"]
+        body.pointer("/query")
+            .expect("fixture query")
             .as_str()
             .expect("mutation")
             .starts_with("mutation(")
     );
-    let input = &body["variables"]["input"];
-    assert_eq!(input["expectedHeadOid"], "0".repeat(40));
+    let input = body.pointer("/variables/input").expect("fixture input");
     assert_eq!(
-        input["branch"],
+        (*input
+            .pointer("/expectedHeadOid")
+            .expect("fixture expectedHeadOid")),
+        "0".repeat(40)
+    );
+    assert_eq!(
+        (*input.pointer("/branch").expect("fixture branch")),
         json!({"repositoryNameWithOwner":"example/linkwarden","branchName":"repair"})
     );
     assert_eq!(
-        input["fileChanges"],
+        (*input.pointer("/fileChanges").expect("fixture fileChanges")),
         json!({"additions":[{"path":"README.md","contents":"Zml4"}],"deletions":[]})
     );
-    let identity = input["clientMutationId"]
+    let identity = input
+        .pointer("/clientMutationId")
+        .expect("fixture clientMutationId")
         .as_str()
         .expect("native receipt identity");
     afd_core::id::Uuid7::parse(identity).expect("native UUID7");
     assert_eq!(
-        input["message"]["body"],
+        (*input.pointer("/message/body").expect("fixture body")),
         format!("agentsfleet-effect:{identity}")
     );
 }
@@ -186,10 +210,14 @@ fn history_request(request: &Request) {
     assert_eq!(request.authorization, "Bearer native-test-read-token");
     let body: Value = serde_json::from_slice(&request.body).expect("native GraphQL request");
     assert_eq!(
-        body["variables"],
+        (*body.pointer("/variables").expect("fixture variables")),
         json!({"owner":"example","name":"linkwarden","branch":"refs/heads/repair"})
     );
-    let query = body["query"].as_str().expect("query");
+    let query = body
+        .pointer("/query")
+        .expect("fixture query")
+        .as_str()
+        .expect("query");
     assert!(
         query.starts_with("query("),
         "reconciliation must not issue mutation"
@@ -209,10 +237,11 @@ async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Request {
         let mut chunk = [0; 4096];
         let count = stream.read(&mut chunk).await.expect("request bytes");
         assert!(count > 0, "complete request headers");
-        bytes.extend_from_slice(&chunk[..count]);
+        bytes.extend_from_slice(chunk.get(..count).expect("read stays within chunk"));
         assert!(bytes.len() < 32 * 1024, "fixture request bounded");
         if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
-            let (length, method, path, authorization) = headers(&bytes[..end]);
+            let (length, method, path, authorization) =
+                headers(bytes.get(..end).expect("located header delimiter"));
             break (end + 4, length, method, path, authorization);
         }
     };
@@ -220,13 +249,16 @@ async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Request {
         let mut chunk = [0; 4096];
         let count = stream.read(&mut chunk).await.expect("body bytes");
         assert!(count > 0, "complete request body");
-        bytes.extend_from_slice(&chunk[..count]);
+        bytes.extend_from_slice(chunk.get(..count).expect("read stays within chunk"));
     }
     Request {
         method,
         path,
         authorization,
-        body: bytes[end..end + length].to_vec(),
+        body: bytes
+            .get(end..end + length)
+            .expect("complete bounded request body")
+            .to_vec(),
     }
 }
 
@@ -248,8 +280,8 @@ fn headers(bytes: &[u8]) -> (usize, String, String, String) {
     assert!(length < 8192, "small real transport fixture");
     (
         length,
-        first[0].to_owned(),
-        first[1].to_owned(),
+        first.first().expect("request method").to_string(),
+        first.get(1).expect("request path").to_string(),
         headers
             .get("authorization")
             .cloned()

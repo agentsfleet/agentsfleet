@@ -150,7 +150,7 @@ Initial stream readiness, reconnect and gap recovery trigger readback; frames ca
 Failed refreshes preserve labelled confirmed progress until access is lost.
 
 Wait, effect, decision and checkpoint storage below describe the approved design,
-with exact scope and pending verification in the [active spec](../v2/active/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
+with exact scope and parked acceptance in the [milestone spec](../v2/done/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
 
 The daemon binds admissions and leases to a nullable task identity; ordinary exchanges retain the existing path.
 Registered schema slots currently extend through 2640; merge-time inventory checks remain required.

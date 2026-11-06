@@ -1,7 +1,7 @@
 //! S3 multi-object deletion acknowledges precisely the requested private keys.
 
 use super::protocol::Request;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Write as _};
 
 const NAMESPACE: &str = "http://s3.amazonaws.com/doc/2006-03-01/";
 
@@ -56,7 +56,8 @@ pub(super) fn objects(request: &Request, objects: &mut BTreeMap<String, Vec<u8>>
             "fixture native keys have no XML escapes or arbitrary path syntax"
         );
         objects.remove(&format!("/checkpoint-test/{key}"));
-        response.push_str(&format!("<Deleted><Key>{key}</Key></Deleted>"));
+        write!(response, "<Deleted><Key>{key}</Key></Deleted>")
+            .expect("write XML response to String");
     }
     response.push_str("</DeleteResult>");
     response.into_bytes()

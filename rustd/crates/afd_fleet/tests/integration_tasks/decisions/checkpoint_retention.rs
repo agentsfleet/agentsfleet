@@ -23,7 +23,7 @@ async fn retention(case: &Case) {
     let task = fixture.bind_goal().await;
     let tasks = configured(&fixture, &server).await;
     let (plan, objects) = capture(&tasks, case, &task).await;
-    let object = &objects.items[0].object_id;
+    let object = &objects.items.first().expect("registered object").object_id;
     let mut cursor = CheckpointMaintenanceCursor::default();
     let retained = tasks
         .maintain_checkpoints(&mut cursor)

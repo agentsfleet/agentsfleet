@@ -15,13 +15,18 @@ pub(super) async fn all(router: &Router, token: &str) -> Vec<Value> {
         assert_eq!(response.status(), StatusCode::OK);
         let body = json_body(response).await;
         models.extend(
-            body["models"]
+            body.get("models")
+                .expect("models field")
                 .as_array()
                 .expect("model page")
                 .iter()
                 .cloned(),
         );
-        cursor = body["next_cursor"].as_str().map(str::to_owned);
+        cursor = body
+            .get("next_cursor")
+            .expect("next_cursor field")
+            .as_str()
+            .map(str::to_owned);
         let Some(next) = &cursor else {
             return models;
         };
@@ -41,15 +46,27 @@ pub(super) async fn check(router: &Router, token: &str) {
     .await;
     assert_eq!(first.status(), StatusCode::OK);
     let body = json_body(first).await;
-    assert_eq!(body["models"].as_array().expect("one row").len(), 1);
-    let next = body["next_cursor"]
+    assert_eq!(
+        body.get("models")
+            .expect("models field")
+            .as_array()
+            .expect("one row")
+            .len(),
+        1
+    );
+    let next = body
+        .get("next_cursor")
+        .expect("next_cursor field")
         .as_str()
         .expect("fixture has multiple rows");
     let path = format!("/v1/admin/models?limit=1&starting_after={next}");
     let response = send(router, Method::GET, &path, Some(token), "").await;
     assert_eq!(response.status(), StatusCode::OK);
     let second = json_body(response).await;
-    assert_ne!(body["models"][0]["id"], second["models"][0]["id"]);
+    assert_ne!(
+        body.pointer("/models/0/id").expect("first model ID"),
+        second.pointer("/models/0/id").expect("first model ID")
+    );
     check_replay(router, token, &path, next, &second).await;
 }
 
@@ -70,10 +87,13 @@ async fn invalid_pages(router: &Router, token: &str) {
         .await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{query}");
         let body = json_body(response).await;
-        assert_eq!(body["error_code"], "UZ-REQ-001");
+        assert_eq!(
+            body.get("error_code").expect("error_code field"),
+            "UZ-REQ-001"
+        );
         if query.starts_with("limit=") {
             assert_eq!(
-                body["detail"],
+                body.get("detail").expect("detail field"),
                 afd_api_operator::test_util::MODEL_PAGE_LIMIT_DETAIL
             );
         }
@@ -82,7 +102,10 @@ async fn invalid_pages(router: &Router, token: &str) {
 
 async fn check_replay(router: &Router, token: &str, path: &str, next: &str, second: &Value) {
     let replay = json_body(send(router, Method::GET, path, Some(token), "").await).await;
-    assert_eq!(second["models"], replay["models"]);
+    assert_eq!(
+        second.get("models").expect("models field"),
+        replay.get("models").expect("models field")
+    );
     let refused = send(
         router,
         Method::GET,
@@ -92,5 +115,11 @@ async fn check_replay(router: &Router, token: &str, path: &str, next: &str, seco
     )
     .await;
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(json_body(refused).await["error_code"], "UZ-REQ-001");
+    assert_eq!(
+        json_body(refused)
+            .await
+            .get("error_code")
+            .expect("error code"),
+        "UZ-REQ-001"
+    );
 }

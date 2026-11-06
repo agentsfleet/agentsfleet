@@ -21,7 +21,7 @@ pub(super) async fn refuse(
         let mut stored = server.objects.lock().expect("remote fault control");
         let (path, bytes) = stored.iter_mut().next().expect("one ciphertext");
         let original = bytes.clone();
-        bytes[0] ^= 1;
+        *bytes.first_mut().expect("nonempty encrypted object") ^= 1;
         (path.clone(), original)
     };
     let failure = tasks

@@ -1,4 +1,4 @@
-//! The AWS signer binds physical length, which object_store excludes from signatures.
+//! The AWS signer binds physical length, which `object_store` excludes from signatures.
 
 use super::StorageSession;
 use crate::Result;

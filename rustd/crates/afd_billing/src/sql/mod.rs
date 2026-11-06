@@ -52,7 +52,6 @@ pub const SELECT_DECISION_PRICE_BOOK: &str = include_str!("select_decision_price
 
 /// The stored spellings of `billing.usage_lines.work_type` (RULE STS: the
 /// schema names none of them).
-
 pub mod work {
     /// A fleet run's lease.
     pub const FLEET_LEASE: &str = "fleet_lease";

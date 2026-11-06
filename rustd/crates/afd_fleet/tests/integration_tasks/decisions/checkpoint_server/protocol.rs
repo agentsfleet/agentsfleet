@@ -18,10 +18,11 @@ pub(super) async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Reque
         let mut chunk = [0; 4096];
         let count = stream.read(&mut chunk).await.expect("request bytes");
         assert!(count > 0, "complete request headers");
-        bytes.extend_from_slice(&chunk[..count]);
+        bytes.extend_from_slice(chunk.get(..count).expect("read fits buffer"));
         assert!(bytes.len() < 32 * 1024, "fixture request bounded");
         if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
-            let (length, method, path, create_only) = headers(&bytes[..end]);
+            let (length, method, path, create_only) =
+                headers(bytes.get(..end).expect("header boundary"));
             break (end + 4, length, method, path, create_only);
         }
     };
@@ -29,7 +30,7 @@ pub(super) async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Reque
         let mut chunk = [0; 4096];
         let count = stream.read(&mut chunk).await.expect("body bytes");
         assert!(count > 0, "complete request body");
-        bytes.extend_from_slice(&chunk[..count]);
+        bytes.extend_from_slice(chunk.get(..count).expect("read fits buffer"));
     }
     let (path, query) = path.split_once('?').unwrap_or((&path, ""));
     Request {
@@ -37,7 +38,10 @@ pub(super) async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Reque
         path: path.to_owned(),
         bulk_delete: query == "delete",
         create_only,
-        body: bytes[end..end + length].to_vec(),
+        body: bytes
+            .get(end..end + length)
+            .expect("complete bounded body")
+            .to_vec(),
     }
 }
 
@@ -59,8 +63,8 @@ fn headers(bytes: &[u8]) -> (usize, String, String, bool) {
     assert!(length < 8192, "small real transport fixture");
     (
         length,
-        first[0].to_owned(),
-        first[1].to_owned(),
+        first.first().expect("request method").to_string(),
+        first.get(1).expect("request path").to_string(),
         headers
             .get("if-none-match")
             .is_some_and(|value| value == "*"),

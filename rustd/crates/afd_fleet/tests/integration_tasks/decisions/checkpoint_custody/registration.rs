@@ -93,14 +93,24 @@ async fn refuse_batches(
     register: CheckpointObjectsInput,
 ) {
     let mut duplicate = register.clone();
-    duplicate.objects.push(duplicate.objects[0].clone());
+    duplicate.objects.push(
+        duplicate
+            .objects
+            .first()
+            .expect("registered object")
+            .clone(),
+    );
     let failure = tasks
         .register_checkpoint_objects(case.lease(), &id(&plan.checkpoint_id), &valid(duplicate))
         .await
         .expect_err("one physical content identity per batch");
     assert_eq!(failure.code(), error_code::TASK_REPLAY_CONFLICT);
     let mut over_budget = register;
-    over_budget.objects[0].sha256 = "b".repeat(64);
+    over_budget
+        .objects
+        .first_mut()
+        .expect("registered object")
+        .sha256 = "b".repeat(64);
     let failure = tasks
         .register_checkpoint_objects(case.lease(), &id(&plan.checkpoint_id), &valid(over_budget))
         .await

@@ -4,7 +4,7 @@
 **Milestone:** M236
 **Workstream:** 003
 **Date:** Nov 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — saved schedules lack readable lifecycle and sync history in fleet chat
 **Categories:** API, DOCS, OBS, UI
 **Branch:** feat/m236-durable-tasks
@@ -14,6 +14,11 @@
 **Depends on:** existing activity receipts and schedule ownership; no new scheduler service
 **Provenance:** Indy's explicit schedule-activity request; other event types remain inventory only
 **Canonical architecture:** docs/architecture/data_flow.md and its existing schedule/history owners
+
+## Owner closure — Nov 06, 2026
+
+Closed with M236 under the [owner closure decision](M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md#owner-closure--nov-06-2026).
+Source is in existing PR #803. Automated merge checks remain required; live acceptance is parked for the separate NATS revamp.
 
 ## Overview
 

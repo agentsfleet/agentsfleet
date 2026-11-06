@@ -42,17 +42,17 @@ async fn every_configured_api_preserves_user_context_without_baked_in_instructio
             .await
             .expect("configured API completion");
         assert_eq!(answer.text, "Ready");
-        {
+        let wire = {
             let bodies = provider.bodies.lock().expect("sent requests");
             let body = bodies.first().expect("one request");
             assert_no_baked_instructions(body, api);
-            let wire = serde_json::to_string(body).expect("provider JSON");
-            assert!(wire.contains("Investigate the checkout"), "{api:?}");
-            assert!(
-                wire.contains("propose_setup"),
-                "native proposal tool: {api:?}"
-            );
-        }
+            serde_json::to_string(body).expect("provider JSON")
+        };
+        assert!(wire.contains("Investigate the checkout"), "{api:?}");
+        assert!(
+            wire.contains("propose_setup"),
+            "native proposal tool: {api:?}"
+        );
         assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
         f.cleanup().await;
     }

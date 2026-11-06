@@ -64,22 +64,52 @@ async fn recovery_page(
 async fn pages(fixture: &Decisions<'_>, task: &str, first: &str, second: &str, third: &str) {
     let page = recovery_page(fixture, task, 0, None).await;
     assert_eq!(page.effects.len(), 1);
-    assert_eq!(page.effects[0].effect_id, first);
-    assert_eq!(page.effects[0].state, TaskEffectState::Refused);
+    assert_eq!(
+        page.effects.first().expect("one effect on page").effect_id,
+        first
+    );
+    assert_eq!(
+        page.effects.first().expect("one effect on page").state,
+        TaskEffectState::Refused
+    );
     assert_eq!(page.next_cursor.as_deref(), Some("1"));
     let page = recovery_page(fixture, task, 0, page.next_cursor.as_deref()).await;
-    assert_eq!(page.effects[0].effect_id, second);
-    assert_eq!(page.effects[0].state, TaskEffectState::Unknown);
-    assert!(page.effects[0].commit.is_none());
+    assert_eq!(
+        page.effects.first().expect("one effect on page").effect_id,
+        second
+    );
+    assert_eq!(
+        page.effects.first().expect("one effect on page").state,
+        TaskEffectState::Unknown
+    );
+    assert!(
+        page.effects
+            .first()
+            .expect("one effect on page")
+            .commit
+            .is_none()
+    );
     assert_eq!(page.next_cursor.as_deref(), Some("2"));
     // A stale pagination cursor must not reintroduce effects before a saved checkpoint watermark.
     let page = recovery_page(fixture, task, 2, Some("1")).await;
-    assert_eq!(page.effects[0].effect_id, third);
-    assert_eq!(page.effects[0].state, TaskEffectState::Issued);
-    assert!(page.effects[0].commit.is_none());
+    assert_eq!(
+        page.effects.first().expect("one effect on page").effect_id,
+        third
+    );
+    assert_eq!(
+        page.effects.first().expect("one effect on page").state,
+        TaskEffectState::Issued
+    );
+    assert!(
+        page.effects
+            .first()
+            .expect("one effect on page")
+            .commit
+            .is_none()
+    );
     assert!(page.next_cursor.is_none());
     let page = recovery_page(fixture, task, 3, None).await;
-    assert!(page.effects.is_empty());
+    assert_eq!(page.effects.len(), 0);
     assert!(page.next_cursor.is_none());
 }
 
@@ -160,8 +190,17 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &str, second: &str
         .effects(case.lease(), &query(case, task, 1, None))
         .await
         .expect("uncertainty retained");
-    assert_eq!(page.effects[0].state, TaskEffectState::Unknown);
-    assert!(page.effects[0].commit.is_none());
+    assert_eq!(
+        page.effects.first().expect("one effect on page").state,
+        TaskEffectState::Unknown
+    );
+    assert!(
+        page.effects
+            .first()
+            .expect("one effect on page")
+            .commit
+            .is_none()
+    );
 }
 
 pub(super) async fn seed(case: &Case, task: &str, ordinal: i64, state: &str) -> String {

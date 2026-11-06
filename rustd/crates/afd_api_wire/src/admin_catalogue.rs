@@ -248,7 +248,7 @@ pub struct AdminModelsResponse<'a> {
     /// One bounded page of priced rows.
     #[serde(borrow)]
     pub models: Vec<AdminModelItem<'a>>,
-    /// Continue with starting_after, or null at the end of this catalogue snapshot.
+    /// Continue with `starting_after`, or null at the end of this catalogue snapshot.
     #[serde(borrow)]
     pub next_cursor: Option<Cow<'a, str>>,
     /// Reference identifier to include when contacting support.

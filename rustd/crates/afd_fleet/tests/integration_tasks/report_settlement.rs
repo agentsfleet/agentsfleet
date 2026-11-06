@@ -8,7 +8,7 @@ use afd_wire::{
 };
 use std::{borrow::Cow, sync::Arc};
 
-pub(super) fn request<'a>(case: &'a Case, task: Option<TaskReport>) -> ReportRequest<'a> {
+pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_> {
     ReportRequest {
         task,
         lease_id: Cow::Borrowed(case.held.lease_key.as_str()),
@@ -207,7 +207,7 @@ async fn malformed_stale_and_unpaid_semantic_reports_never_prepare_a_permit() {
 
 fn invalid_reports(original: &TaskReport) -> Vec<TaskReport> {
     let mut malformed = original.clone();
-    malformed.task.task_id = "not-a-task-id".to_owned();
+    "not-a-task-id".clone_into(&mut malformed.task.task_id);
     let mut stale = original.clone();
     stale.task.generation = 2;
     let mut unpaid_complete = original.clone();

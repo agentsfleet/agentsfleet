@@ -21,19 +21,19 @@ async fn pages_replay_exactly_and_cover_the_complete_ordered_catalogue() {
         seed(lane).await;
         let all = lane.models.list().await.expect("all");
         let first = lane.models.page(1, None).await.expect("first");
-        assert_eq!(first.models, all[..1]);
+        assert_eq!(first.models, all.get(..1).expect("first model"));
         let token = first.next_cursor.expect("continuation");
         let second = lane.models.page(1, Some(&token)).await.expect("second");
         let replay = lane.models.page(1, Some(&token)).await.expect("replay");
         assert_eq!(second.models, replay.models);
         assert_eq!(second.next_cursor, replay.next_cursor);
-        assert_eq!(second.models, all[1..2]);
+        assert_eq!(second.models, all.get(1..2).expect("second model"));
         let third = lane
             .models
             .page(1, second.next_cursor.as_deref())
             .await
             .expect("third");
-        assert_eq!(third.models, all[2..]);
+        assert_eq!(third.models, all.get(2..).expect("remaining models"));
         assert!(third.next_cursor.is_none());
         assert!(
             lane.models
@@ -77,7 +77,14 @@ async fn page_bounds_tokens_and_changed_prices_are_refused() {
             error_code::INVALID_REQUEST
         );
         assert_eq!(
-            lane.models.page(1, None).await.expect("restart").models[0].details,
+            lane.models
+                .page(1, None)
+                .await
+                .expect("restart")
+                .models
+                .first()
+                .expect("restarted first model")
+                .details,
             details(true)
         );
     })
@@ -89,7 +96,7 @@ async fn page_bounds_tokens_and_changed_prices_are_refused() {
 async fn an_empty_catalogue_has_no_continuation() {
     super::isolated::run(async |lane| {
         let empty = lane.models.page(1, None).await.expect("empty");
-        assert!(empty.models.is_empty());
+        assert_eq!(empty.models.len(), 0);
         assert!(empty.next_cursor.is_none());
     })
     .await;

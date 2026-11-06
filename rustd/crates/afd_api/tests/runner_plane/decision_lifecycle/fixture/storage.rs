@@ -13,15 +13,19 @@ pub(super) async fn build(
         .to_string(),
     )
     .expect("synthetic storage credential");
-    afd_vault::Vault::new(database.clone(), storage_key.clone(), Entropy::new())
-        .create(
-            &owner.workspace,
-            &SecretName::parse("checkpoint-http-test").expect("storage bag"),
-            &SecretBody::parse(&storage_secret).expect("storage credential body"),
-            clock::now(),
-        )
-        .await
-        .expect("native storage credential custody");
+    afd_vault::Vault::new(
+        database.clone(),
+        std::sync::Arc::clone(&storage_key),
+        Entropy::new(),
+    )
+    .create(
+        &owner.workspace,
+        &SecretName::parse("checkpoint-http-test").expect("storage bag"),
+        &SecretBody::parse(&storage_secret).expect("storage credential body"),
+        clock::now(),
+    )
+    .await
+    .expect("native storage credential custody");
     afd_fleet::task::storage::R2CheckpointStore::new(
         garde::Unvalidated::new(afd_fleet::task::storage::CheckpointStorageConfig {
             endpoint: format!("https://{}.r2.cloudflarestorage.com", "0".repeat(32)),
@@ -31,7 +35,7 @@ pub(super) async fn build(
         .validate()
         .expect("bounded storage configuration"),
         owner.workspace.clone(),
-        afd_credential::vault::Vault::new(database.clone(), storage_key.clone()),
+        afd_credential::vault::Vault::new(database.clone(), std::sync::Arc::clone(&storage_key)),
         storage_key,
         afd_identity::direct::direct(std::time::Duration::from_secs(1))
             .build()

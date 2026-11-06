@@ -24,10 +24,10 @@ async fn history(case: &Case) {
     let effect = seed(case, &task.task_id, 1, "unknown").await;
     server.push(json!({"errors":[{"message":"fixture unavailable"}]}));
     server.push(json!({"data":{"repository":{"databaseId":102}}}));
-    server.push(response(vec![]));
-    server.push(response(vec![commit(&effect, "2", "0")]));
-    server.push(response(vec![commit(&effect, "1", "2")]));
-    server.push(response(vec![commit(&effect, "1", "0")]));
+    server.push(response(&[]));
+    server.push(response(&[commit(&effect, "2", "0")]));
+    server.push(response(&[commit(&effect, "1", "2")]));
+    server.push(response(&[commit(&effect, "1", "0")]));
     observe(&tasks, case, &effect).await;
     server.finish().await;
     fixture.model.finish().await.expect("fixture cleanup");
@@ -68,7 +68,7 @@ async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &str) {
     assert_eq!(receipt, replay);
 }
 
-fn response(nodes: Vec<Value>) -> Value {
+fn response(nodes: &[Value]) -> Value {
     json!({"data":{"repository":{"databaseId":101,"ref":{"target":{"history":{"nodes":nodes}}}}}})
 }
 

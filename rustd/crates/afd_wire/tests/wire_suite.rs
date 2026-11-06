@@ -28,6 +28,7 @@ mod redaction;
 // Every runner route template, pinned in one reviewed snapshot.
 #[path = "routes.rs"]
 mod routes;
+mod runner_policy;
 #[path = "strictness.rs"]
 mod strictness;
 // Declared bounds at their exact limits, the steer request's own rows, and a
