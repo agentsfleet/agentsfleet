@@ -37,6 +37,9 @@ pub enum Path {
     Activity,
     /// Settling the run: result, slot release, obligation.
     Report,
+    /// Durable-task reads every verb sends: the lease's task, its generation
+    /// and its execution deadline (PR #803).
+    Task,
     /// Statements several paths send: billing's per-transaction timeouts,
     /// foreign-key checks and the event counters trigger.
     Shared,
@@ -48,7 +51,7 @@ pub enum Path {
 
 impl Path {
     /// Every path, in report order.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Claim,
         Self::Gates,
         Self::Pricing,
@@ -57,6 +60,7 @@ impl Path {
         Self::Meter,
         Self::Activity,
         Self::Report,
+        Self::Task,
         Self::Shared,
         Self::Sweep,
         Self::Other,
@@ -74,6 +78,7 @@ impl Path {
             Self::Meter => "meter",
             Self::Activity => "activity",
             Self::Report => "report",
+            Self::Task => "task",
             Self::Shared => "shared",
             Self::Sweep => "sweep",
             Self::Other => "other",
@@ -123,7 +128,10 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Pricing,
     ),
     // Issue.
-    ("r.definition::text AS definition, f.status", Path::Issue),
+    (
+        "r.definition::text, f.status, r.runtime_model_ref",
+        Path::Issue,
+    ),
     ("SELECT r.definition::text FROM fleet.fleets", Path::Issue),
     (
         "memory_reads_workspace, memory_publishes_workspace FROM fleet.fleets",
@@ -182,9 +190,23 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Report,
     ),
     ("INSERT INTO runner.events (id, runner_id", Path::Report),
+    // Task: the durable-task reads PR #803 added to issue, renewal and report.
+    (
+        "SELECT task_id::text, fleet_id::text, workspace_id::text FROM runner.leases",
+        Path::Task,
+    ),
+    (
+        "SELECT t.id::text AS task_id, t.status, t.generation",
+        Path::Task,
+    ),
+    ("a.task_generation AS admission_generation", Path::Task),
+    (
+        "task_execution_deadline_at) AS execution_deadline",
+        Path::Task,
+    ),
     // Shared.
     ("SELECT set_config(", Path::Shared),
-    ("FOR KEY SHARE OF x", Path::Shared),
+    ("FOR KEY SHARE OF", Path::Shared),
     ("INSERT INTO fleet.activity_counters", Path::Shared),
     // Sweep: the backlog sampler.
     ("SELECT count(*) AS waiting", Path::Sweep),
