@@ -93,7 +93,7 @@ Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outs
 | `docs/development.md`, `README.md`, `docs/RUST_ERROR_STANDARD.md` (crate table row only) | EDIT | §7 |
 | `.orly/LOCAL.md` | EDIT | §7: the datastore rule, the live-datastore lane, the auth line and the probe line name NATS |
 | `docs/metrics.census.tsv` | EDIT | §2, §4: two new families; the reconnect row's description |
-| `schema/2800_identity_device_sessions.sql`, `schema/2810_connector_oauth_nonces.sql`, `schema/2820_fleet_obligations_claims.sql` | CREATE | §4, §5; placeholders from 2800-2840, renumbered from `origin/main` at CHORE(open) because PR #803 takes `schema/2190-2640` |
+| `schema/2800_identity_device_sessions.sql`, `schema/2810_connector_oauth_nonces.sql`, `schema/2820_fleet_obligations_claims.sql` | CREATE | §4, §5; placeholders from 2800-2840, renumbered from `origin/main` at CHORE(open) because PR #803 takes `schema/2190-2690` |
 | `rustd/crates/afd_db/src/migration.rs` and its position tests | EDIT | §4, §5: three slots (MIG) |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | §2 add `async-nats` without default features; §7 drop `afd_dragonfly` and `redis` |
 | `rustd/crates/afd_bus/src/nats/` (`mod.rs`, `hub.rs`, `debt.rs`, `preflight.rs`, `config.rs`, `tests.rs`), `afd_bus/Cargo.toml`, `afd_bus/tests/` | CREATE, EDIT | §2: the NATS implementation, its gap sources, its boot checks and `NATS_URL` |

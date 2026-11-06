@@ -86,7 +86,7 @@ activation:     Admissions::stage runs the same statement on the caller's transa
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M242_001_P1_API_INFRA_OBS_ONE_STATEMENT_MESSAGE_INTAKE.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
-| `schema/2650_fleet_admission_backlogs.sql` | CREATE | §1: placeholder slot, renumbered from `origin/main` at CHORE(open) because PR #803 takes 2190-2640 |
+| `schema/2700_fleet_admission_backlogs.sql` | CREATE | §1: placeholder slot, renumbered from `origin/main` at CHORE(open) because PR #803 takes 2190-2690 |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | §1: registers the slot |
 | `rustd/crates/afd_db/tests/integration_migrate/roles.rs`, `integration_migrate/backfill.rs`, `integration_migrate/mod.rs` | EDIT, CREATE | §1: the grant matrix row; the backfill test |
 | `rustd/crates/afd_admission/src/sql/admit_one.sql` | CREATE | §2: the one statement |
@@ -140,7 +140,7 @@ activation:     Admissions::stage runs the same statement on the caller's transa
 
 ### §1 — The backlog row counts each fleet's unsettled admissions
 
-Slot `schema/2650_fleet_admission_backlogs.sql` creates `fleet.admission_backlogs`: keyed by `fleet_id` (one row per fleet, SQL-ID's keyed-by-parent exception, `ON DELETE CASCADE`), with `unsettled_count`, `created_at` and `updated_at`. Two `SECURITY DEFINER` functions with a pinned `search_path` keep the count, mirroring slot 1770:
+Slot `schema/2700_fleet_admission_backlogs.sql` creates `fleet.admission_backlogs`: keyed by `fleet_id` (one row per fleet, SQL-ID's keyed-by-parent exception, `ON DELETE CASCADE`), with `unsettled_count`, `created_at` and `updated_at`. Two `SECURITY DEFINER` functions with a pinned `search_path` keep the count, mirroring slot 1770:
 - An `AFTER INSERT` row trigger on `fleet.admissions` upserts the fleet's row and adds one.
 - A deferred constraint trigger, `AFTER UPDATE OF settled_at` when the old value is NULL and the new one is not, subtracts one at commit.
 
@@ -153,7 +153,7 @@ The slot creates both triggers before it backfills. Creating a trigger locks `fl
 - **Dimension 1.3** — a rolled-back insert leaves the count → Test `a_rolled_back_insert_leaves_the_count` (integration): an insert inside a transaction that rolls back leaves the count and the row total unchanged.
 - **Dimension 1.4** — the runtime role cannot set the count → Test `runtime_role_cannot_set_the_backlog_count` (integration, under `api_runtime`, SQL-ROLE): `UPDATE … SET unsettled_count = 0`, and an `INSERT` naming `unsettled_count` for a fleet with no row, each fail with SQLSTATE `42501`; the count is unchanged.
 - **Dimension 1.5** — an open report does not hold intake → Test `an_open_settle_does_not_hold_intake` (integration): a transaction settles a row and stays open; an admission on that fleet returns within 2 s, and a separate autocommit connection sees no session blocked on it (SQL-STATACT); after commit the count drops by one. A plain `AFTER` trigger fails this test.
-- **Dimension 1.6** — the backfill counts what it finds → Test `backfill_counts_the_unsettled_rows_it_finds` (integration): a database built through the slot before 2650, holding 3 unsettled and 1 settled admission on one fleet, reads 3 once the slot applies.
+- **Dimension 1.6** — the backfill counts what it finds → Test `backfill_counts_the_unsettled_rows_it_finds` (integration): a database built through the slot before 2700, holding 3 unsettled and 1 settled admission on one fleet, reads 3 once the slot applies.
 - **Dimension 1.7** — every settle writer releases once → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once` (integration, amended in `settlement.rs`): the rolled-back report leaves the count; the retried report lowers it by exactly one.
 
 ### §2 — One statement admits, refuses or answers a repeat
@@ -187,7 +187,7 @@ The statement's steps are common table expressions (CTEs), each read by the next
 
 ### §3 — The shared transaction and claim order hold under the backlog row
 
-`stage` binds no runnable status, so activation still admits while the fleet is `installing`: `afd_authoring/src/creation/activate.rs` stages before it flips the status. The insert and its count follow the caller's transaction, and the backlog row stays locked until the caller commits. The insert draws its sequence only after the backlog row is locked, and the lock lasts through commit. So within a fleet, commit order is sequence order, which the claim reads (`claim_admission_head.sql`, `ORDER BY a.sequence`). Slot 2140's comment naming the fleet-row lock is shipped history (SCH); slot 2650's comment names the new holder, and `datastore_scaling.md` changes with it.
+`stage` binds no runnable status, so activation still admits while the fleet is `installing`: `afd_authoring/src/creation/activate.rs` stages before it flips the status. The insert and its count follow the caller's transaction, and the backlog row stays locked until the caller commits. The insert draws its sequence only after the backlog row is locked, and the lock lasts through commit. So within a fleet, commit order is sequence order, which the claim reads (`claim_admission_head.sql`, `ORDER BY a.sequence`). Slot 2140's comment naming the fleet-row lock is shipped history (SCH); slot 2700's comment names the new holder, and `datastore_scaling.md` changes with it.
 
 - **Dimension 3.1** — a waiter takes the later sequence → Test `a_send_queued_behind_the_backlog_row_takes_the_later_sequence` (integration): a transaction locks the fleet's backlog row; a concurrent admission blocks (seen through `pg_blocking_pids`); the transaction stages an admission and commits. The waiter's sequence is higher, and the next claim takes the staged row. Drawing the sequence before the lock gives the waiter the lower one and fails this.
 - **Dimension 3.2** — a rolled-back activation leaves nothing → Test `rollback_removes_staged_admission_without_a_notification` (integration, amended): no row, no notification, and the backlog count unchanged.

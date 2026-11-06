@@ -159,7 +159,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 
 ### §1 — The runner row carries its owner and a second token
 
-Four slots in the assigned range 2850–2890, renumbered from `origin/main` at CHORE(open) because PR #803 (open) takes `schema/2190-2640`:
+Four slots in the assigned range 2850–2890, renumbered from `origin/main` at CHORE(open) because PR #803 (open) takes `schema/2190-2690`:
 - `2850` alters `runner.runners`: `owner_tenant_id` referencing `identity.tenants(id) ON DELETE CASCADE` (NULL is a platform host), with a partial index; `previous_token_hash` and `previous_token_expires_at` (a NULL marker), both or neither, with a partial index; a trigger refusing any change to `owner_tenant_id`.
 - `2860` creates `runner.tenant_placements`: one row per tenant, keyed by `tenant_id` (the SQL-ID exception `model.tenant_selections` already states), and `placement_type` validated in the application.
 - `2870` adds `runner.leases.model_token_hash`, set only on a proxied lease (§4).

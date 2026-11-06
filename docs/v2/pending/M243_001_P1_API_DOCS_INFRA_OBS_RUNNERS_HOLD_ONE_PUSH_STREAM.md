@@ -71,7 +71,7 @@ agentsfleet-runner ──WebSocket over HTTPS──► cloudflared ──► age
   2. No self-hosted runner exists yet, so runner and daemon upgrade together. A runner of an older build gets `404` on its old routes and takes no work until upgraded.
   3. Batched renewal here is framing: each lease keeps its own renewal statements until M245 makes it one statement per host.
   4. The bench drives a gateway session in process, so M241's statement paths measure what the stream sends.
-  5. Schema slots 2750 and 2760 are placeholders, renumbered from `origin/main` at CHORE(open), because PR #803 takes `schema/2190`–`2640`. CHORE(open) also re-verifies Files Changed against `origin/main`.
+  5. Schema slots 2750 and 2760 are placeholders, renumbered from `origin/main` at CHORE(open), because PR #803 takes `schema/2190`–`2690`. CHORE(open) also re-verifies Files Changed against `origin/main`.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
 ## Implementing agent — read these first
