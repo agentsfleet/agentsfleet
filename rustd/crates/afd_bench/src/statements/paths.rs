@@ -16,7 +16,8 @@ use super::queries::QueryCost;
 /// One part of a chat's cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Path {
-    /// Finding and claiming the fleet's head admission.
+    /// Finding and claiming the fleet's head admission, and the delivery
+    /// writes and reads that follow the claim.
     Claim,
     /// Admission and renewal gates: policy, money, approvals, grants and the
     /// provider and key a lease is delivered with.
@@ -36,7 +37,8 @@ pub enum Path {
     Activity,
     /// Settling the run: result, slot release, obligation.
     Report,
-    /// Statements every path sends: tenant context and foreign-key checks.
+    /// Statements several paths send: billing's per-transaction timeouts,
+    /// foreign-key checks and the event counters trigger.
     Shared,
     /// Maintenance a sweeper ran inside the window.
     Sweep,
@@ -85,12 +87,17 @@ impl Path {
 /// fragment is the shortest text that names one product statement. When a
 /// statement changes, its row lands in `other` until its fragment follows.
 const FRAGMENTS: &[(&str, Path)] = &[
-    // Claim: the candidate scan, the slot-and-head claim, the received event
-    // and the delivery stamp.
+    // Claim: the candidate scan, the slot-and-head claim, and the delivery
+    // that follows it: received event, stamp, admission lock, counters read.
     ("eligible AS MATERIALIZED", Path::Claim),
     ("FOR UPDATE OF s SKIP LOCKED", Path::Claim),
     ("INSERT INTO fleet.events (fleet_id, event_id", Path::Claim),
     ("UPDATE fleet.admissions SET delivered_at", Path::Claim),
+    ("WITH slot AS MATERIALIZED", Path::Claim),
+    (
+        "SELECT COALESCE((SELECT k.event_count FROM fleet.activity_counters",
+        Path::Claim,
+    ),
     // Gates.
     ("SELECT r.policy_semantics FROM fleet.fleets", Path::Gates),
     ("SELECT w.balance_nanos, w.exhausted_at", Path::Gates),
@@ -125,7 +132,6 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ("FROM memory.entries WHERE fleet_id", Path::Issue),
     ("SELECT dek_ciphertext, dek_nonce", Path::Issue),
     ("WITH held AS ( UPDATE runner.fleet_slots", Path::Issue),
-    ("INSERT INTO runner.events (id, runner_id", Path::Issue),
     // Host: the capacity lock, its census and the lease-type record.
     ("SELECT worker_count, status, degraded_reason", Path::Host),
     (
@@ -165,21 +171,17 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "l.tenant_id::text AS tenant_id, e.event_id, e.actor",
         Path::Report,
     ),
-    ("WITH slot AS MATERIALIZED", Path::Report),
-    (
-        "SELECT COALESCE((SELECT k.event_count FROM fleet.activity_counters",
-        Path::Report,
-    ),
     ("WITH closed AS ( UPDATE fleet.events", Path::Report),
     (
-        "actor, event_type, status, token_count, wall_ms",
-        Path::Report,
+        "SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id, actor, event_type",
+        Path::Issue,
     ),
     ("SELECT COALESCE(sum(input_token_count)", Path::Report),
     (
         "SELECT reply_provider, reply_address FROM fleet.admissions",
         Path::Report,
     ),
+    ("INSERT INTO runner.events (id, runner_id", Path::Report),
     // Shared.
     ("SELECT set_config(", Path::Shared),
     ("FOR KEY SHARE OF x", Path::Shared),
