@@ -42,7 +42,8 @@ use tracing::Instrument as _;
 
 use crate::{Result, lease::Leases};
 
-pub(crate) const DECISION_POLICY_PATH: &[&str] = &["config", "x-agentsfleet", "decision_policy"];
+/// Canonical setup lookup path shared by task guards, queue queries and their measurements.
+pub const DECISION_POLICY_PATH: &[&str] = &["config", "x-agentsfleet", "decision_policy"];
 
 pub use decision::ReservedDecision;
 #[cfg(feature = "test-util")]

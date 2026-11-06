@@ -2,6 +2,70 @@
 
 ## Current continuation point
 
+### New cloud session continuation — Nov 06, 2026
+
+Indy requested: **“push all you changes and give me a handoff”** to start a new
+cloud session with an agent. This continuation commit contains every remaining
+source change. Continue the existing branch `feat/m236-durable-tasks` and PR #803;
+do not restore an archive or create another PR. Resolve the latest pushed head
+from GitHub; its parent is 13d9826379ac61ed67391f9cb34d3fc1cdd6a70b.
+M236 remains IN_PROGRESS, `durable_tasks_v1` remains disabled, and no merge occurred.
+
+Kishore already authorized gates after implementation and a current-main update,
+and merge only on green exact-head CI plus all Greptile threads resolved. Full
+acceptance remains required for activation; inability to run acceptance may be
+reported without blocking that conditional merge. Preserve the original approved
+UI design and the recorded unverified status of its HTML visuals. Do not restore
+the five deleted prompt Markdown files or alter setup-chat admission SQL owned by
+fix/soak-findings. Keep one admission/lease/report path and one local Rust lane.
+
+| Latest evidence / source | Result | Next action |
+| --- | --- | --- |
+| Approved database gates | User explicitly approved both reviewed names.rs/literals.rs corrections; applied in 13d982637 | No additional gate exceptions or lower thresholds |
+| Full lint | `make lint-all` passed at 13d982637 | Repeat after this continuation commit |
+| Full integration at 13d982637 | Database suite 50 passed; new history array/count/byte/sequence/truncation and detail/thread readback tests passed; fleet suite 245 passed / 45 failed | Full repository integration has not passed |
+| Fleet failure causes | Seven query-plan cases used outdated parameter lists; 37 task cases lacked durable capability; unknown-runner renewal returned Stopped(None) instead of Lost | Corrections below are committed, with remaining runtime verification explicit |
+| Focused fleet rerun | Workspace/all-features fleet_suite: 290 passed / one failed; new missing-capability regression passed | This is an inner-loop result, not repository VERIFY evidence |
+| Last focused failure | claim.rs direct EXPLAIN still supplied seven parameters instead of eleven, masked earlier by the metering failure | Corrected after that run; not rerun yet |
+| SQL consumer sweep | Updated candidate/claim fixtures to eleven parameters and meter fixture to thirteen; retained all plan/index/backlog assertions | Also fixed the two stale afd_bench candidate-query consumers; benchmarks not run |
+| Shared native path | DECISION_POLICY_PATH is one documented public constant used by production, plan fixtures and benchmark consumers | No test-util dependency added to the benchmark; latest export/consumer edits not compiled yet |
+| Task fixture authority | Task-only real heartbeats advertise durable_tasks_v1 for owner/spare; regression proves capability-off refuses without mutation and re-advertising allows the same lease | Shared fixture and production defaults stay false; all task cases passed in focused run |
+| Renewal result | Missing/refused capacity returns Lost when no original usage exists; known usage still returns Stopped(Some(settlement)) and settles | Existing unknown-runner case passed; source review found no authority/accounting regression |
+| PR gate | `orly gate pr` reached the failing full integration, then was stopped while progressing to lint so source could be corrected | No complete PR-gate pass; run again on final pushed head |
+| Exact 13d982637 CI snapshot | All completed jobs except substrate were green; kernel coverage still running | Substrate failed before tests with Docker `unknown blob`; job127643559160, run42141753185 |
+| Greptile at 13d982637 | SUCCESS; six threads, zero unresolved | Recheck the new pushed head; old green review is historical |
+| Companion docs | Clean and pushed at 437f9c1952dd5203ab2e48cdcec5249786038676 on chore/m236-durable-tasks-changelog | b535f3ae ancestry retained; docs make lint previously passed; no new docs PR |
+
+First steps in the next session:
+
+1. Locate existing clones and user setup; read AGENTS.md, .orly/LOCAL.md,
+   .orly/AGENTS.md, active M236_001 and this current continuation section.
+2. Fetch the feature branch and main. Required ancestors remain 9d826de4,
+   6bb180dc and 6cacc80c. Last integrated main is 66059667; merge newer main before
+   gates/review if needed. Do not overwrite user changes or force-push.
+3. Read exact-head CI and Greptile before launching work. The prior substrate
+   infrastructure retry was refused while its workflow was still running;
+   a new push starts a new run, so inspect that result before retrying old jobs.
+4. Final source is implemented; continue verification/corrections. Format was
+   applied, but the last claim/benchmark bind fixes and public constant change
+   have no runtime result. Run the full declared checks and `orly gate pr`;
+   the earlier failing focused lane must be followed by full-workspace evidence.
+5. Keep Rust patch coverage above 99.5% (configured floor99.51), TypeScript100%,
+   all ownership/accounting guards, exact-head green CI and resolved Greptile.
+   Partial Codecov statuses are not merged Rust coverage proof.
+6. Update PR #803 with results and an elaborate tabulated report. Merge only when
+   the authorized conditions actually hold; keep the feature disabled pending
+   verification/activation evidence.
+
+This environment's optional local aids are under `/workspace/scratch`, and may
+not exist in a new session. The source does not depend on them. The existing
+task-local CA override, tini/umask and environment-pointer notes below explain
+the observed environment issues; inspect the new environment before reusing them.
+Logs here: m236-approved-lint.log; m236-13d-integration.log (full failed run);
+m236-fleet-inner.log (290/1). The scratch inner make target includes the real
+Makefile and depends on `_migrate-test-db`, so it retained normal datastore reset
+and exported settings; it is not a repository gate or CI change.
+
 ### Source corrections after approved-gate verification — Nov 06, 2026
 
 The first full integration run after approval reached db_suite with 48 passes and

@@ -64,8 +64,8 @@ pub struct Renewing {
 
 /// What the extend-and-meter statement decided.
 ///
-/// A three-variant enum, because only the variant that measured a slice has a
-/// deadline and a usage line to read; the other two carry nothing.
+/// Only an extended lease carries a new deadline. Refused authority may still
+/// carry known usage that must settle without granting another execution slice.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Renewed {
     /// Both rows advanced. Carries the new deadline and the slice's usage line,
@@ -147,8 +147,11 @@ impl Leases {
                 .await?;
             usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
             transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
-            return Ok(Renewed::Stopped {
-                settlement: settlement.map(Box::new),
+            return Ok(match settlement {
+                Some(settlement) => Renewed::Stopped {
+                    settlement: Some(Box::new(settlement)),
+                },
+                None => Renewed::Lost,
             });
         };
         let row = lease

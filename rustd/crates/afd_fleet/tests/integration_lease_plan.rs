@@ -26,10 +26,10 @@ mod prepared;
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
 /// The scan's text prepared with the types sqlx binds it with.
 const PREPARE: &str = "PREPARE ledger_candidates \
-(text, text, bigint, interval, text, text[], text) AS ";
+(text, text, bigint, interval, text, text[], text, text, text, text, text[]) AS ";
 /// Its plan. The values are placeholders a generic plan never reads.
 const EXPLAIN: &str = "EXPLAIN (VERBOSE, COSTS OFF) EXECUTE ledger_candidates \
-('active', '01890a5d-ac96-774b-bcce-b302099a80a1', 64, '30 seconds', 'active', '{}', NULL)";
+('active', '01890a5d-ac96-774b-bcce-b302099a80a1', 64, '30 seconds', 'active', '{}', NULL, ";
 /// Drops the prepared text, which outlives the transaction.
 const DEALLOCATE: &str = "DEALLOCATE ledger_candidates";
 /// The plan line naming what the scan sorts by.
@@ -58,13 +58,16 @@ async fn test_the_held_ids_are_cast_once_per_scan() {
     run(&mut connection, "BEGIN").await;
     run(&mut connection, FORCE_GENERIC).await;
     run(&mut connection, &format!("{PREPARE}{SELECT_CANDIDATES}")).await;
-    let plan: Vec<String> = sqlx::raw_sql(AssertSqlSafe(EXPLAIN))
-        .fetch_all(&mut *connection)
-        .await
-        .expect("the scan explains")
-        .iter()
-        .map(|row| row.try_get::<String, _>(0).expect("a plan line is text"))
-        .collect();
+    let plan: Vec<String> = sqlx::raw_sql(AssertSqlSafe(format!(
+        "{EXPLAIN}{})",
+        prepared::task_parameters()
+    )))
+    .fetch_all(&mut *connection)
+    .await
+    .expect("the scan explains")
+    .iter()
+    .map(|row| row.try_get::<String, _>(0).expect("a plan line is text"))
+    .collect();
     run(&mut connection, DEALLOCATE).await;
     run(&mut connection, "ROLLBACK").await;
 
@@ -143,6 +146,10 @@ async fn head_plan(connection: &mut PgConnection, runner: &str) -> serde_json::V
     .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
     .bind(Vec::<String>::new())
     .bind(Option::<&str>::None)
+    .bind(afd_wire::task::CAPABILITY)
+    .bind(afd_wire::task::TaskState::Ready.as_str())
+    .bind(afd_wire::task::TaskState::Running.as_str())
+    .bind(afd_fleet::task::DECISION_POLICY_PATH)
     .fetch_one(connection)
     .await
     .expect("candidate explain")
