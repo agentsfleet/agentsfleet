@@ -33,7 +33,8 @@ fn progress(id: &str, completed: u32) -> TaskActivity {
 
 async fn saved(run: &Held) -> TaskActivityHistory {
     let Json(history) = sqlx::query_scalar::<_, Json<TaskActivityHistory>>(
-        "SELECT task_activity FROM fleet.events WHERE fleet_id=$1::uuid AND event_id=$2",
+        "SELECT jsonb_build_object('items', task_activity, 'truncated', task_activity_truncated) \
+         FROM fleet.events WHERE fleet_id=$1::uuid AND event_id=$2",
     )
     .bind(&run.fleet)
     .bind(&run.event_id)
@@ -105,6 +106,34 @@ async fn daemon_sequence_and_acknowledgements_survive_reordered_updates() {
             "the daemon replaces worker sequence and preserves a newer counter's order"
         );
     }
+    run.fixtures.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn bounded_history_retains_monotonic_sequence_and_truncation() {
+    let run = held().await;
+    for _ in 0..130 {
+        write(&run, progress(&afd_db::test_util::mint_id(), 1))
+            .await
+            .expect("owned progress persists");
+    }
+    let history = saved(&run).await;
+    assert_eq!(history.items.len(), 128);
+    assert!(
+        history.truncated,
+        "discarded stages remain explicit on reconnect"
+    );
+    let sequences: Vec<_> = history
+        .items
+        .iter()
+        .map(|item| {
+            item.progress()
+                .sequence
+                .expect("native observation sequence")
+        })
+        .collect();
+    assert_eq!(sequences, (3..=130).collect::<Vec<_>>());
     run.fixtures.cleanup().await;
 }
 

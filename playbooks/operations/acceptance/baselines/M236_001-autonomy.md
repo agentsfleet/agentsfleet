@@ -2,13 +2,35 @@
 
 ## Current continuation point
 
-### Reviewable gate corrections awaiting explicit approval
+### Source corrections after approved-gate verification — Nov 06, 2026
 
-Two independently reviewed proposals are recorded but **not applied**:
+The first full integration run after approval reached db_suite with 48 passes and
+two failures. The approved foreign-key check passed; the literal check then exposed
+the event-history JSON envelope, and the instant check found the older lease
+deadline column. Source corrections are complete and independently reviewed:
+
+| Finding | Correction | Evidence boundary |
+| --- | --- | --- |
+| Lease deadline naming | Persist task_execution_deadline_at; update all six schema/query/test references while preserving public execution_deadline | Full rerun pending |
+| History schema vocabulary | Store the entries as a JSONB array and sequence/truncation as typed columns; keep 128 entries and enforce the writer's 120,000-byte payload bound within 128 KiB public ceiling | No additional gate exception; live boundary regressions added |
+| History reads/writes | Preserve slot/lease/event lock order and canonical sequence; reconstruct the existing public items/truncated response in detail/thread reads | Add nonempty readback and truncation/sequence regressions; pending execution |
+| Exact-head substrate fixture | Replace stale completion_id with task_completion_id | Corrected ingress scenario passed in the full integration run |
+
+The approved gate changes match their reviewed patches after formatting. Source
+review found no remaining stale persisted SQL names or concrete history/concurrency
+defect. Full `make lint-all` passed after the corrections. The required final PR
+gate is next; no full integration or
+coverage pass is claimed for this new batch. Keep the milestone IN_PROGRESS and
+durable_tasks_v1 false. Existing exact ce815fe5 CI remains red as recorded below.
+
+### Approved gate corrections — Nov 06, 2026
+
+Kishore explicitly answered **“Approve both reviewed corrections”** for the two
+independently reviewed proposals, which are now applied:
 [composite foreign-key naming](M236_001-fk-gate-proposal.patch) and
 [structural SQL literals](M236_001-literal-gate-proposal.patch).
-Repository .orly/AGENTS.md requires explicit session approval naming a gate and
-reason before editing it. Approval was requested; silence is not approval.
+This satisfies .orly/AGENTS.md's explicit session approval requirement for the
+named afd_db integration_migrate/names.rs and literals.rs gate corrections.
 The proposals retain ordinary identity-pointer naming, status/provider rejection,
 database identifier-shape constraints, immutability triggers and ownership FKs.
 
@@ -18,9 +40,18 @@ stopped in db_suite (43 passed, seven failures): historical migration ranges,
 SQL parameter typing, persisted names/timestamps, mutable person-link tracking,
 and structural gate false positives. The two new API-role lock tests **passed**.
 Source corrections address the implementation/fixture issues; only the two gate
-proposals need approval. The latest source batch passed `make lint-all` and `make check-version`
+proposals are now approved. The latest committed source batch passed `make lint-all` and `make check-version`
 (all versions0.73.0), but has not passed full runtime verification. Full Rust diff coverage above99.5%, exact-head green CI and all final
 PR-boundary checks remain required; no merge and durable_tasks_v1 remains false.
+
+Exact ce815fe5 CI passed lint, unit, release/dry builds, runner/daemon coverage,
+toolbox and Greptile (six threads, all resolved). Substrate failed on a stale
+integration fixture reference to completion_id after the persisted column became
+task_completion_id; that exact reference is corrected. Kernel reproducibility
+failed while fetching pinned Debian packages with HTTP 503 backend errors; no
+snapshot or transport policy was changed. These failures leave overall CI red.
+Main was fetched again and remains 66059667, already an ancestor. Approved gate
+regressions and the corrected fixture are proceeding through full integration.
 
 ### Latest live result — Nov 05, 2026
 

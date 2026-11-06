@@ -42,6 +42,8 @@ use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 
 use self::report_seed::held;
 
+#[path = "integration_activity_publish/history_bounds.rs"]
+mod history_bounds;
 #[path = "integration_activity_publish/task_history.rs"]
 mod task_history;
 

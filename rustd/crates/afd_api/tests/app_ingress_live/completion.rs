@@ -74,7 +74,7 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("API connection");
         sqlx::query_scalar(
             "SELECT count(*) FROM fleet.task_completions c \
-             JOIN fleet.task_completion_fanout f ON f.completion_id = c.id \
+             JOIN fleet.task_completion_fanout f ON f.task_completion_id = c.id \
              WHERE c.workspace_id = $1::uuid AND c.scope_fleet_id IS NULL \
                AND c.installation_id = $2 AND c.body_digest = $3 \
                AND c.repository_id = 65_432_109 AND c.workflow_id = 87_654_321 \

@@ -6,7 +6,7 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), timed AS MATERIAL
 ), bound AS (
     UPDATE runner.leases l SET task_id = t.id, task_generation = t.generation,
         task_stop_generation = t.stop_generation, task_started_at = t.at,
-        task_runtime_accounted_at = t.at, task_execution_deadline = t.deadline,
+        task_runtime_accounted_at = t.at, task_execution_deadline_at = t.deadline,
         lease_expires_at = LEAST(l.lease_expires_at, t.deadline), updated_at = now()
     FROM timed t
     WHERE l.id = $2::uuid AND l.runner_id = $3::uuid

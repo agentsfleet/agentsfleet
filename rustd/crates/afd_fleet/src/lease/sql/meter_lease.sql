@@ -7,7 +7,7 @@ WITH locked_slot AS MATERIALIZED (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, e.event_id,
            l.fencing_token, l.created_at, l.lease_expires_at, l.last_metered_at,
            a.fencing_token AS live_fence, a.lease_expires_at AS slot_expires_at,
-           l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline,
+           l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
            l.task_runtime_accounted_at
     FROM runner.leases l
     JOIN locked_slot a ON a.fleet_id = l.fleet_id
@@ -36,7 +36,7 @@ WITH locked_slot AS MATERIALIZED (
     -- `$5` chooses the ending. A renewal must still be the live holder before
     -- either deadline and below the hard cap; a settle needs only that no
     -- reclaim has superseded it, because a report may land after its lease lapsed.
-    SELECT *, LEAST(checked_at + $6::interval, created_at + $7::interval, task_execution_deadline,
+    SELECT *, LEAST(checked_at + $6::interval, created_at + $7::interval, task_execution_deadline_at,
                     task_expires_at, task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000)) AS capped,
            (EXTRACT(EPOCH FROM metered_until - last_metered_at) * $3::bigint)::bigint AS d_ms
     FROM metered
@@ -49,7 +49,7 @@ WITH locked_slot AS MATERIALIZED (
                         task_status = $13 AND task_generation = live_task_generation
                         AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
                         AND used_model_nanos < max_model_nanos - reserved_model_nanos
-                        AND task_execution_deadline > checked_at
+                        AND task_execution_deadline_at > checked_at
                         AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
           END
       AND EXISTS (
@@ -97,7 +97,7 @@ SELECT
     (SELECT count(*) FROM probe)::bigint          AS probe_found,
     (SELECT count(*) FROM moved)::bigint          AS claimed,
     (SELECT capped FROM moved)                    AS new_until,
-    (SELECT LEAST(created_at + $7::interval, task_execution_deadline) FROM probe) AS hard_cap,
+    (SELECT LEAST(created_at + $7::interval, task_execution_deadline_at) FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at, g.d_ms,
     g.tenant_id::text AS tenant_id, g.workspace_id::text AS workspace_id,
     g.fleet_id::text AS fleet_id, g.event_id,

@@ -37,7 +37,8 @@ struct StoredDetail {
     request_json: String,
     response_text: Option<String>,
     tool_calls: Option<String>,
-    task_activity: sqlx::types::Json<afd_wire::activity::TaskActivityHistory>,
+    task_activity: sqlx::types::Json<Vec<afd_wire::activity::TaskActivityRecord>>,
+    task_activity_truncated: bool,
 }
 
 /// One event with everything recorded about it.
@@ -76,7 +77,10 @@ impl EventDetailRow {
             request_json: stored.request_json,
             response_text: stored.response_text,
             tool_calls: stored.tool_calls,
-            task_activity: stored.task_activity.0,
+            task_activity: afd_wire::activity::TaskActivityHistory {
+                items: stored.task_activity.0,
+                truncated: stored.task_activity_truncated,
+            },
         })
     }
 }

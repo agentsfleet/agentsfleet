@@ -108,7 +108,9 @@ async fn test_schema_objects_carry_no_vocabulary_literals() {
     for (name, text) in &objects {
         for literal in literals(text) {
             assert!(
-                STRUCTURAL.contains(&literal.as_str()) || is_exception_text(&literal),
+                STRUCTURAL.contains(&literal.as_str())
+                    || is_exception_text(&literal)
+                    || reviewed_structural_literal(name, text, &literal),
                 "{name} carries the literal '{literal}'"
             );
         }
@@ -124,4 +126,75 @@ fn test_literals_reads_every_quoted_string() {
     assert_eq!(literals("a = '7'::text AND b = 'it''s'"), ["7", "it's"]);
     assert_eq!(literals("no literal here"), Vec::<String>::new());
     assert_eq!(literals("an 'unterminated"), Vec::<String>::new());
+}
+
+/// Exact syntax guards and diagnostic-only refusals reviewed with their owners.
+/// These exceptions cannot admit status/provider vocabulary or arbitrary regexes.
+fn reviewed_structural_literal(name: &str, text: &str, literal: &str) -> bool {
+    match (name, literal) {
+        ("check person_links_team_id_check", "^T[A-Z0-9]{1,63}$")
+        | ("check person_links_external_user_id_check", "^[UW][A-Z0-9]{1,63}$") => {
+            text.contains(&format!("~ '{literal}'"))
+                && text.matches(&format!("'{literal}'")).count() == 1
+        }
+        ("function task_checkpoint_pages_freeze", "completed checkpoint pages are immutable")
+        | ("function task_base_pages_freeze", "completed base pages are immutable") => {
+            text.contains(&format!("RAISE EXCEPTION '{literal}'"))
+                && text.matches(&format!("'{literal}'")).count() == 1
+        }
+        _ => false,
+    }
+}
+
+#[test]
+fn reviewed_shapes_do_not_admit_runtime_vocabulary() {
+    assert!(reviewed_structural_literal(
+        "check person_links_team_id_check",
+        "CHECK ((team_id ~ '^T[A-Z0-9]{1,63}$'::text))",
+        "^T[A-Z0-9]{1,63}$"
+    ));
+    assert!(reviewed_structural_literal(
+        "check person_links_external_user_id_check",
+        "CHECK ((external_user_id ~ '^[UW][A-Z0-9]{1,63}$'::text))",
+        "^[UW][A-Z0-9]{1,63}$"
+    ));
+    for value in [
+        "slack",
+        "slack_mention",
+        "ready",
+        "^(ready|waiting)$",
+        "^.*$",
+    ] {
+        assert!(!reviewed_structural_literal(
+            "check person_links_team_id_check",
+            &format!("CHECK (team_id ~ '{value}')"),
+            value
+        ));
+    }
+    assert!(!reviewed_structural_literal(
+        "check other_team_check",
+        "CHECK (team_id ~ '^T[A-Z0-9]{1,63}$')",
+        "^T[A-Z0-9]{1,63}$"
+    ));
+    assert!(!reviewed_structural_literal(
+        "check person_links_team_id_check",
+        "CHECK (team_id = '^T[A-Z0-9]{1,63}$')",
+        "^T[A-Z0-9]{1,63}$"
+    ));
+    let diagnostic = "completed checkpoint pages are immutable";
+    assert!(reviewed_structural_literal(
+        "function task_checkpoint_pages_freeze",
+        &format!("RAISE EXCEPTION '{diagnostic}';"),
+        diagnostic
+    ));
+    assert!(!reviewed_structural_literal(
+        "function task_checkpoint_pages_freeze",
+        &format!("SELECT status = '{diagnostic}';"),
+        diagnostic
+    ));
+    assert!(!reviewed_structural_literal(
+        "function task_checkpoint_pages_freeze",
+        &format!("IF status = '{diagnostic}' THEN RAISE EXCEPTION '{diagnostic}'; END IF;"),
+        diagnostic
+    ));
 }

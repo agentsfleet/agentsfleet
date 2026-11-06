@@ -14,7 +14,7 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), started AS (
 ), bound AS (
     UPDATE runner.leases l SET task_id = s.id, task_generation = s.generation,
         task_stop_generation = s.stop_generation, task_started_at = s.at, task_runtime_accounted_at = s.at,
-        task_execution_deadline = s.deadline, lease_expires_at = LEAST(l.lease_expires_at, s.deadline), updated_at = now()
+        task_execution_deadline_at = s.deadline, lease_expires_at = LEAST(l.lease_expires_at, s.deadline), updated_at = now()
     FROM started s WHERE l.id = $1::uuid
     RETURNING l.fleet_id, l.fencing_token, l.lease_expires_at
 )
