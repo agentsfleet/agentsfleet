@@ -39,7 +39,7 @@ impl Exchange {
         self.signature(request);
         if request.path == root {
             assert_eq!(request.method, "GET");
-            assert!(request.body.is_empty());
+            assert_eq!(request.body.len(), 0);
             self.reads += 1;
             return Some(
                 json!({"permissions":{"contents":"write","pull_requests":"write",
@@ -53,7 +53,9 @@ impl Exchange {
             "installation proof precedes mint"
         );
         let body: Value = serde_json::from_slice(&request.body).expect("scoped token request");
-        let access = body["permissions"]["contents"]
+        let access = body
+            .pointer("/permissions/contents")
+            .expect("fixture contents")
             .as_str()
             .expect("contents permission");
         assert!(access == "read" || (self.write && access == "write"));
@@ -64,7 +66,7 @@ impl Exchange {
         );
         self.mints += 1;
         Some(
-            json!({"token":"native-test-read-token","permissions":body["permissions"],
+            json!({"token":"native-test-read-token","permissions":(*body.pointer("/permissions").expect("fixture permissions")),
             "repositories":[{"full_name":"example/linkwarden"}]}),
         )
     }

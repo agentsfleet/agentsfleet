@@ -42,7 +42,7 @@ impl Server {
             .build()
             .expect("pinned HTTPS client");
         let objects = Arc::new(Mutex::new(BTreeMap::new()));
-        let owned = objects.clone();
+        let owned = Arc::clone(&objects);
         let (stop, stopped) = oneshot::channel();
         let worker = tokio::spawn(serve(socket, tls, owned, stopped));
         Self {
@@ -104,20 +104,23 @@ async fn serve(
 
 fn respond(request: protocol::Request, owned: &Mutex<BTreeMap<String, Vec<u8>>>) -> (u16, Vec<u8>) {
     let mut objects = owned.lock().expect("object state");
-    match request.method.as_str() {
-        "PUT" if request.create_only && objects.contains_key(&request.path) => (412, vec![]),
+    let response = match request.method.as_str() {
+        "PUT" if request.create_only && objects.contains_key(&request.path) => Some((412, vec![])),
         "PUT" => {
             objects.insert(request.path, request.body);
-            (200, vec![])
+            Some((200, vec![]))
         }
-        "GET" => objects
-            .get(&request.path)
-            .map_or((404, vec![]), |body| (200, body.clone())),
+        "GET" => Some(
+            objects
+                .get(&request.path)
+                .map_or((404, vec![]), |body| (200, body.clone())),
+        ),
         "DELETE" => {
             objects.remove(&request.path);
-            (204, vec![])
+            Some((204, vec![]))
         }
-        "POST" => (200, delete::objects(&request, &mut objects)),
-        _ => panic!("unexpected SDK method {}", request.method),
-    }
+        "POST" => Some((200, delete::objects(&request, &mut objects))),
+        _ => None,
+    };
+    response.expect("unexpected SDK method")
 }

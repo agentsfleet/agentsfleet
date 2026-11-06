@@ -86,6 +86,8 @@ pub const SELECT_MENTION_CANDIDATES: &str = include_str!("select_mention_candida
 pub const SELECT_NOTICE_OWNER: &str = include_str!("select_notice_owner.sql");
 
 /// Bind once per channel/workspace; concurrent losers read the committed winner.
+///
 /// A moved team's prior-workspace binding is repointed, never reused.
+///
 /// `$1` id, `$2` provider, `$3` team, `$4` channel, `$5` fleet, `$6` kind, `$7` workspace.
 pub const INSERT_NOTICE_OWNER: &str = include_str!("insert_notice_owner.sql");

@@ -58,8 +58,9 @@ fn tagged_checkpoint_files_fit_every_closed_member_without_widening_the_wire() {
         .as_object_mut()
         .expect("file object")
         .insert("unexpected".into(), json!(true));
-    assert!(serde_json::from_value::<CheckpointEntry>(unknown).is_err());
-    assert!(serde_json::from_value::<CheckpointEntry>(value).is_ok());
+    serde_json::from_value::<CheckpointEntry>(unknown)
+        .expect_err("unknown checkpoint property is rejected");
+    serde_json::from_value::<CheckpointEntry>(value).expect("known checkpoint fields decode");
 }
 
 #[test]
@@ -89,7 +90,8 @@ fn score_distribution_keys_are_json_strings_and_runtime_collisions_stay_rejected
     );
     let collision = json!({"type":"score","score":0.2,"confidence":0.8,
         "probabilities":{"0":0.8,"00":0.1,"1":0.2}});
-    assert!(serde_json::from_value::<DecisionAnswer>(collision).is_err());
+    serde_json::from_value::<DecisionAnswer>(collision)
+        .expect_err("colliding score keys are rejected");
 }
 
 #[test]

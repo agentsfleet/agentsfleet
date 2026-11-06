@@ -27,17 +27,22 @@ fn evidence_tokens_cannot_inherit_native_publication_write_authority() {
     let read = binding.read_only();
     assert_eq!(read.access(), Access::Read);
     assert_eq!(read.repositories(), binding.repositories());
-    assert!(read.validation_workflows().is_empty());
+    assert_eq!(read.validation_workflows().len(), 0);
     assert!(read.reach().base().is_none());
     let exact = binding.read_repository("acme/CHECKOUT").expect("held repo");
     assert_eq!(exact.repositories(), &[Box::<str>::from("Acme/Checkout")]);
     assert_eq!(exact.access(), Access::Read);
-    assert!(exact.validation_workflows().is_empty());
+    assert_eq!(exact.validation_workflows().len(), 0);
     assert!(binding.read_repository("acme/foreign").is_none());
     let recorded = serde_json::to_value(binding.recorded()).expect("record");
-    assert_eq!(recorded["publication"], "existing_pr");
     assert_eq!(
-        recorded["validation_workflows"]
+        recorded.get("publication").expect("publication"),
+        "existing_pr"
+    );
+    assert_eq!(
+        recorded
+            .get("validation_workflows")
+            .expect("validation workflows")
             .as_array()
             .expect("workflows")
             .len(),

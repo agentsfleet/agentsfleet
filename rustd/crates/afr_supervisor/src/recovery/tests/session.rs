@@ -193,20 +193,29 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
     );
     assert_eq!(upload.objects.len(), 1);
     assert_eq!(
-        upload.objects[0].ciphertext_length,
+        upload.objects.first().unwrap().ciphertext_length,
         15 + afd_crypto::TAG_LEN as u64
     );
-    assert_eq!(upload.objects[0].ciphertext_sha256.len(), 64);
+    assert_eq!(upload.objects.first().unwrap().ciphertext_sha256.len(), 64);
     let verified: CheckpointAuthorizationInput = body(
         requests
             .iter()
             .find(|call| call.verb == Verb::TaskCheckpointAuthorizations)
             .unwrap(),
     );
-    assert_eq!(verified.object_ids, [upload.objects[0].object_id.clone()]);
-    let object = state.lock().unwrap().objects[&upload.objects[0].object_id].clone();
     assert_eq!(
-        object["transfer"],
+        verified.object_ids,
+        [upload.objects.first().unwrap().object_id.clone()]
+    );
+    let object = state
+        .lock()
+        .unwrap()
+        .objects
+        .get(&upload.objects.first().unwrap().object_id)
+        .unwrap()
+        .clone();
+    assert_eq!(
+        *object.get("transfer").unwrap(),
         serde_json::Value::Null,
         "verified reuse needs no physical URL"
     );

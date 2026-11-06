@@ -321,9 +321,8 @@ impl Plane {
                 expires_at,
                 settlement,
             } => Ok((expires_at, usage::charged(settlement.as_deref()))),
-            Renewed::Stopped { .. } => Err(lease_lost()),
+            Renewed::Stopped { .. } | Renewed::Lost => Err(lease_lost()),
             Renewed::MaxRuntime => Err(lease_max_runtime()),
-            Renewed::Lost => Err(lease_lost()),
         }
     }
 }

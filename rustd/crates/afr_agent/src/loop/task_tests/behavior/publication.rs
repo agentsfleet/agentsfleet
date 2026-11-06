@@ -166,7 +166,7 @@ async fn api_only_task_cannot_publish_even_when_model_invents_the_tool_call() ->
             .effect_watermark,
         0
     );
-    assert!(executor.spawned().is_empty());
+    assert_eq!(executor.spawned().len(), 0);
     assert!(
         native
             .published

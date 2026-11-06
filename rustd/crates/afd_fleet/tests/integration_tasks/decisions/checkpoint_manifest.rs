@@ -69,7 +69,7 @@ impl Manifest<'_> {
         let tasks = self.tasks;
         let case = self.case;
         let plan = self.plan;
-        let page_id = id(&plan.page_ids[0]);
+        let page_id = id(plan.page_ids.first().expect("checkpoint manifest page"));
         let checkpoint = id(&plan.checkpoint_id);
         let page_input = |contents| self.page_input(contents);
         let invalid = invalid_pages();
@@ -90,7 +90,7 @@ impl Manifest<'_> {
         let tasks = self.tasks;
         let case = self.case;
         let plan = self.plan;
-        let page_id = id(&plan.page_ids[0]);
+        let page_id = id(plan.page_ids.first().expect("checkpoint manifest page"));
         let checkpoint = id(&plan.checkpoint_id);
         let page_input = |contents| self.page_input(contents);
         let contents = safe_page();
@@ -118,7 +118,7 @@ impl Manifest<'_> {
         let tasks = self.tasks;
         let case = self.case;
         let plan = self.plan;
-        let page_id = id(&plan.page_ids[0]);
+        let page_id = id(plan.page_ids.first().expect("checkpoint manifest page"));
         let checkpoint = id(&plan.checkpoint_id);
         let page_input = |contents| self.page_input(contents);
         let contents = good.contents.clone();
@@ -148,7 +148,7 @@ impl Manifest<'_> {
         let tasks = self.tasks;
         let case = self.case;
         let plan = self.plan;
-        let page_id = id(&plan.page_ids[0]);
+        let page_id = id(plan.page_ids.first().expect("checkpoint manifest page"));
         let checkpoint = id(&plan.checkpoint_id);
         let task = self.task;
         let commit = CheckpointCommitInput {

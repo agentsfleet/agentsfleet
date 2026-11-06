@@ -143,7 +143,10 @@ async fn upload(
         span.name == "checkpoint_storage" && span.field("operation") == Some("authorize_upload")
     }));
     drop(captured);
-    let upload = uploads.items[0]
+    let upload = uploads
+        .items
+        .first()
+        .expect("registered upload")
         .transfer
         .as_ref()
         .expect("upload authorization");
@@ -201,11 +204,16 @@ async fn confirm(
         .await
         .expect("native authenticated remote readback");
     assert!(matches!(
-        confirmed.objects[0].status,
+        confirmed.objects.first().expect("confirmed object").status,
         CheckpointObjectStatus::Reused
     ));
     assert!(
-        confirmed.objects[0].transfer.is_none(),
+        confirmed
+            .objects
+            .first()
+            .expect("confirmed object")
+            .transfer
+            .is_none(),
         "verified ciphertext needs no second PUT"
     );
 }
@@ -245,7 +253,10 @@ async fn restore(
         )
         .await
         .expect("bounded restore object inventory");
-    let download = objects.items[0]
+    let download = objects
+        .items
+        .first()
+        .expect("registered object")
         .transfer
         .as_ref()
         .expect("read-only restore URL");
@@ -280,7 +291,7 @@ async fn publish(
     size: u64,
 ) {
     let digest = write_page(case, tasks, task, plan, object, size).await;
-    let page = &plan.page_ids[0];
+    let page = plan.page_ids.first().expect("checkpoint manifest page");
     tasks
         .commit_checkpoint(
             case.lease(),
@@ -318,7 +329,7 @@ async fn write_page(
         history_objects: vec![],
     };
     let digest = sha256_hex(&serde_json::to_vec(&contents).expect("manifest bytes"));
-    let page = &plan.page_ids[0];
+    let page = plan.page_ids.first().expect("checkpoint manifest page");
     tasks
         .write_checkpoint_page(
             case.lease(),

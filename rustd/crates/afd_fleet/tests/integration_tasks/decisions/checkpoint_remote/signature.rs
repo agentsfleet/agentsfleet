@@ -19,21 +19,46 @@ pub(super) fn assert_bound(upload: &CheckpointTransfer) {
     let mut url = reqwest::Url::parse(&upload.url).expect("authorized URL");
     let query: BTreeMap<String, String> = url.query_pairs().into_owned().collect();
     assert_eq!(
-        query["X-Amz-SignedHeaders"],
+        query
+            .get("X-Amz-SignedHeaders")
+            .expect("required signature parameter"),
         "content-length;host;if-none-match;x-amz-checksum-sha256"
     );
-    assert_eq!(query["X-Amz-Algorithm"], "AWS4-HMAC-SHA256");
-    assert!(query["X-Amz-Credential"].ends_with("/auto/s3/aws4_request"));
-    let timestamp = jiff::civil::DateTime::strptime("%Y%m%dT%H%M%SZ", &query["X-Amz-Date"])
-        .expect("signature date")
-        .to_zoned(jiff::tz::TimeZone::UTC)
-        .expect("UTC signature timestamp")
-        .timestamp();
+    assert_eq!(
+        query
+            .get("X-Amz-Algorithm")
+            .expect("required signature parameter"),
+        "AWS4-HMAC-SHA256"
+    );
+    assert!(
+        query
+            .get("X-Amz-Credential")
+            .expect("required signature parameter")
+            .ends_with("/auto/s3/aws4_request")
+    );
+    let timestamp = jiff::civil::DateTime::strptime(
+        "%Y%m%dT%H%M%SZ",
+        query
+            .get("X-Amz-Date")
+            .expect("required signature parameter"),
+    )
+    .expect("signature date")
+    .to_zoned(jiff::tz::TimeZone::UTC)
+    .expect("UTC signature timestamp")
+    .timestamp();
     let time: SystemTime = timestamp.into();
-    let lifetime = Duration::from_secs(query["X-Amz-Expires"].parse().expect("bounded expiry"));
+    let lifetime = Duration::from_secs(
+        query
+            .get("X-Amz-Expires")
+            .expect("required signature parameter")
+            .parse()
+            .expect("bounded expiry"),
+    );
     assert!(lifetime.as_secs() > 0 && lifetime.as_secs() <= 300);
     url.set_query(None);
-    let original = &query["X-Amz-Signature"];
+    let original = query
+        .get("X-Amz-Signature")
+        .expect("required signature parameter");
     assert!(
         signature(url.as_str(), &upload.headers, time, lifetime) == *original,
         "official SDK reconstructs the actual native authorization"
@@ -48,7 +73,10 @@ fn mutations(
     lifetime: Duration,
     original: &str,
 ) {
-    let length: u64 = upload.headers["content-length"]
+    let length: u64 = upload
+        .headers
+        .get("content-length")
+        .expect("signed physical length")
         .parse()
         .expect("physical length");
     for (name, value) in [

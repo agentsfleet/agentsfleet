@@ -215,8 +215,8 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
         stop: &stop,
     };
     let restored = restore.run(None).await?;
-    assert!(restored.history.expose().is_empty());
-    assert!(restored.base_paths.is_empty());
+    assert_eq!(restored.history.expose(), b"");
+    assert_eq!(restored.base_paths.len(), 0);
     assert_eq!(
         phases(&drain(&mut calls)).last().map(String::as_str),
         Some("restored")

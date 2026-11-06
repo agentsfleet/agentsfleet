@@ -112,7 +112,11 @@ fn has_sort(plan: &Value) -> bool {
 }
 
 fn assert_plan(plan: &Value) {
-    let root = &plan[0]["Plan"];
+    let root = plan
+        .get(0)
+        .expect("one EXPLAIN result")
+        .get("Plan")
+        .expect("root execution plan");
     assert_eq!(number(root, "Actual Rows"), 51.0, "{plan}");
     assert_eq!(number(root, "Actual Loops"), 1.0, "{plan}");
     let scan = identity_scan(root).expect("catalogue identity index serves the ordered page");
@@ -160,7 +164,7 @@ fn number(node: &Value, field: &str) -> f64 {
     let value = node
         .get(field)
         .and_then(Value::as_f64)
-        .unwrap_or_else(|| panic!("missing or nonnumeric {field}: {node}"));
+        .expect("required execution-plan field is numeric");
     assert!(value.is_finite() && value >= 0.0, "invalid {field}: {node}");
     value
 }

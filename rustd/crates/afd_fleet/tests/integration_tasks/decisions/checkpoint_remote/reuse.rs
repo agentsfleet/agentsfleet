@@ -41,9 +41,12 @@ pub(super) async fn verify(
         )
         .await
         .expect("verified content fits a zero-new-byte allowance");
-    assert_eq!(reused.items[0].object_id, object.object_id);
+    assert_eq!(
+        reused.items.first().expect("reused object").object_id,
+        object.object_id
+    );
     assert!(matches!(
-        reused.items[0].status,
+        reused.items.first().expect("reused object").status,
         CheckpointObjectStatus::Reused
     ));
     let quota: (i64, i64) = sqlx::query_as("SELECT reserved_bytes, stored_bytes FROM fleet.task_storage_quota WHERE workspace_id=$1::uuid")

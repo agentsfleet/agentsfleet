@@ -224,7 +224,10 @@ async fn complete_and_wait_reports_retain_native_goal_proof_and_private_history(
                 .map(|request| request.operation_id.as_str())
         );
         assert_eq!(
-            requests.first().map(|request| &request.evidence["answer"]),
+            requests.first().map(|request| request
+                .evidence
+                .get("answer")
+                .expect("goal evidence carries the answer")),
             Some(&serde_json::json!("Investigation recorded."))
         );
     }
@@ -329,8 +332,14 @@ async fn continue_requires_another_action_group_and_a_fresh_goal_receipt() -> cr
     let first = requests.next().ok_or_else(crate::decision::unavailable)?;
     let second = requests.next().ok_or_else(crate::decision::unavailable)?;
     assert_ne!(first.operation_id, second.operation_id);
-    assert_eq!(first.evidence["answer"], "Still investigating.");
-    assert_eq!(second.evidence["answer"], "Investigation recorded.");
+    assert_eq!(
+        first.evidence.get("answer").expect("answer evidence"),
+        "Still investigating."
+    );
+    assert_eq!(
+        second.evidence.get("answer").expect("answer evidence"),
+        "Investigation recorded."
+    );
     Ok(())
 }
 

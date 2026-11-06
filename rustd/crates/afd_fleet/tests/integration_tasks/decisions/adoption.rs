@@ -10,7 +10,9 @@ use super::fixture::{Decisions, policy};
 
 async fn revised(case: &Case, daily: i64) -> Uuid7 {
     let mut questions = policy();
-    questions["completion"]["statements"][0]["question"] =
+    *questions
+        .pointer_mut("/completion/statements/0/question")
+        .expect("existing reviewed completion question") =
         json!("Does the title regression pass with the accepted repair?");
     let config = json!({"name":"pull-request-repair", "x-agentsfleet":{
         "tools":[], "triggers":[], "budget":{"daily_nanos":daily.to_string()},

@@ -159,7 +159,6 @@ dependencies = [
  "afd_api_wire",
  "afd_approval",
  "afd_auth",
- "afd_authoring",
  "afd_connector",
  "afd_core",
  "afd_cron",

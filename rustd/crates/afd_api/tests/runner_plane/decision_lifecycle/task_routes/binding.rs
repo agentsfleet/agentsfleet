@@ -7,7 +7,12 @@ pub(super) async fn bind(fixture: &Fixture) -> (TaskBindingsInput, Value) {
         fixture.lease.fence
     );
     let before = success(fixture, Method::GET, &input_path, "", StatusCode::OK).await;
-    assert_eq!(before["current_message"], setup::MESSAGE);
+    assert_eq!(
+        before
+            .pointer("/current_message")
+            .expect("response field exists"),
+        setup::MESSAGE
+    );
     let issued = call(
         fixture,
         Method::POST,
@@ -35,11 +40,27 @@ pub(super) async fn bind(fixture: &Fixture) -> (TaskBindingsInput, Value) {
     let route = path(fixture, "bindings");
     foreign_and_stale(fixture, &route, &body).await;
     let accepted = call(fixture, Method::POST, &route, &body, StatusCode::CREATED).await;
-    assert_eq!(accepted["replayed"], false);
-    assert!(accepted["current_task"].is_object());
+    assert_eq!(
+        accepted
+            .pointer("/replayed")
+            .expect("response field exists"),
+        false
+    );
+    assert!(
+        accepted
+            .pointer("/current_task")
+            .expect("response field exists")
+            .is_object()
+    );
     let replay = call(fixture, Method::POST, &route, &body, StatusCode::OK).await;
-    assert_eq!(replay["replayed"], true);
-    assert_eq!(accepted["items"], replay["items"]);
+    assert_eq!(
+        replay.pointer("/replayed").expect("response field exists"),
+        true
+    );
+    assert_eq!(
+        accepted.pointer("/items").expect("response field exists"),
+        replay.pointer("/items").expect("response field exists")
+    );
     (binding, accepted)
 }
 
@@ -59,7 +80,7 @@ fn new_work_answer(
                 ..
             } => {
                 assert!(matches!(name.as_str(), "intent" | "association"));
-                *choice = "new_work".to_owned();
+                "new_work".clone_into(choice);
                 assert!(probabilities.contains_key("new_work"));
                 for (option, probability) in probabilities {
                     *probability = if option == "new_work" { 1.0 } else { 0.0 };
@@ -75,7 +96,9 @@ fn binding_input(fixture: &Fixture, before: &Value, call_id: String) -> TaskBind
     let mut binding = TaskBindingsInput {
         fencing_token: fixture.lease.fence,
         source_admission_id: fixture.lease.source.clone(),
-        accepted_revision_id: before["accepted_revision_id"]
+        accepted_revision_id: before
+            .pointer("/accepted_revision_id")
+            .expect("response field exists")
             .as_str()
             .expect("accepted setup")
             .to_owned(),

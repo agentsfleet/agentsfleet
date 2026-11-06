@@ -29,11 +29,18 @@ async fn accepted_task_http_recovers_without_reclassifying_or_reapplying() {
     let fixture = Fixture::create().await;
     let (binding, accepted) = binding::bind(&fixture).await;
     errors::refuse_malformed_requests(&fixture).await;
-    let task = json!({"task_id":accepted["current_task"]["task_id"],
-        "generation":accepted["current_task"]["generation"]});
+    let task = json!({"task_id":accepted.pointer("/current_task/task_id").expect("response field exists"),
+        "generation":accepted.pointer("/current_task/generation").expect("response field exists")});
     receipts(&fixture, &binding, &accepted, &task).await;
     checkpoints::exercise(&fixture, &task).await;
-    effects(&fixture, &task, &accepted["items"][0]["item_id"]).await;
+    effects(
+        &fixture,
+        &task,
+        accepted
+            .pointer("/items/0/item_id")
+            .expect("response field exists"),
+    )
+    .await;
     fixture.finish().await;
 }
 
@@ -42,7 +49,10 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
     let query = format!(
         "{route}?fencing_token={}&task_id={}",
         fixture.lease.fence,
-        task["task_id"].as_str().expect("bound task")
+        task.pointer("/task_id")
+            .expect("response field exists")
+            .as_str()
+            .expect("bound task")
     );
     let empty = success(fixture, Method::GET, &query, "", StatusCode::OK).await;
     assert_eq!(empty, json!({"effects":[],"next_cursor":null}));
@@ -74,7 +84,12 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
         StatusCode::CONFLICT,
     )
     .await;
-    assert_eq!(refused["error_code"], "UZ-DT-004");
+    assert_eq!(
+        refused
+            .pointer("/error_code")
+            .expect("response field exists"),
+        "UZ-DT-004"
+    );
     let unchanged = success(fixture, Method::GET, &query, "", StatusCode::OK).await;
     assert_eq!(unchanged, empty, "refused target allocates no publication");
 }
@@ -145,7 +160,9 @@ async fn foreign_and_stale(fixture: &Fixture, route: &str, body: &Value) {
         );
     }
     let mut stale = body.clone();
-    stale["fencing_token"] = json!(fixture.lease.fence + 1);
+    *stale
+        .get_mut("fencing_token")
+        .expect("fixture field exists") = json!(fixture.lease.fence + 1);
     let refused = call(fixture, Method::POST, route, &stale, StatusCode::CONFLICT).await;
     problem(&refused, "UZ-RUN-005");
 }
@@ -160,14 +177,21 @@ async fn receipts(fixture: &Fixture, binding: &TaskBindingsInput, accepted: &Val
         StatusCode::OK,
     )
     .await;
-    assert_eq!(inputs["current_task"]["task_id"], task["task_id"]);
     assert_eq!(
-        inputs["current_interpretation"]["plan_digest"],
-        binding.plan_digest
+        inputs
+            .pointer("/current_task/task_id")
+            .expect("response field exists"),
+        task.pointer("/task_id").expect("response field exists")
+    );
+    assert_eq!(
+        inputs
+            .pointer("/current_interpretation/plan_digest")
+            .expect("response field exists"),
+        &binding.plan_digest
     );
     let receipt = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_uuid7(),
         "source_admission_id":fixture.lease.source,"plan_digest":binding.plan_digest,
-        "item_id":accepted["items"][0]["item_id"],"task":task,
+        "item_id":accepted.pointer("/items/0/item_id").expect("response field exists"),"task":task,
         "mode":"answered","response_text":"I will inspect the failed checks."});
     acknowledge(fixture, &receipt).await;
 }
@@ -182,7 +206,10 @@ async fn acknowledge(fixture: &Fixture, receipt: &Value) {
         StatusCode::CREATED,
     )
     .await;
-    assert_eq!(first["replayed"], false);
+    assert_eq!(
+        first.pointer("/replayed").expect("response field exists"),
+        false
+    );
     let replay = call(
         fixture,
         Method::POST,
@@ -191,13 +218,22 @@ async fn acknowledge(fixture: &Fixture, receipt: &Value) {
         StatusCode::OK,
     )
     .await;
-    assert_eq!(replay["replayed"], true);
     assert_eq!(
-        first["covered_input_sequence"],
-        replay["covered_input_sequence"]
+        replay.pointer("/replayed").expect("response field exists"),
+        true
+    );
+    assert_eq!(
+        first
+            .pointer("/covered_input_sequence")
+            .expect("response field exists"),
+        replay
+            .pointer("/covered_input_sequence")
+            .expect("response field exists")
     );
     let mut changed = receipt.clone();
-    changed["response_text"] = json!("A conflicting second answer");
+    *changed
+        .get_mut("response_text")
+        .expect("fixture field exists") = json!("A conflicting second answer");
     let refused = call(
         fixture,
         Method::POST,
@@ -211,10 +247,19 @@ async fn acknowledge(fixture: &Fixture, receipt: &Value) {
 }
 
 fn problem(body: &Value, code: &str) {
-    assert_eq!(body["error_code"], code);
-    assert!(body["request_id"].as_str().is_some_and(|id| !id.is_empty()));
+    assert_eq!(
+        body.pointer("/error_code").expect("response field exists"),
+        code
+    );
     assert!(
-        body["detail"]
+        body.pointer("/request_id")
+            .expect("response field exists")
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+    );
+    assert!(
+        body.pointer("/detail")
+            .expect("response field exists")
             .as_str()
             .is_some_and(|detail| !detail.is_empty())
     );

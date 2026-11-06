@@ -22,7 +22,7 @@ async fn first_activations_serialize_and_keep_one_visible_default() {
             .expect("parent lock");
         let (first, second) = spawn_activations(lane, provider);
         await_waiters(lane, blocker, 2).await;
-        assert!(lane.keys.list().await.expect("metadata").is_empty());
+        assert_eq!(lane.keys.list().await.expect("metadata").len(), 0);
         transaction.commit().await.expect("release");
         drop(connection);
         assert!(matches!(
@@ -42,7 +42,7 @@ async fn await_waiters(lane: &Lane, blocker: i32, expected: i64) {
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let mut connection = lane.database.acquire().await.expect("observer");
-            let blocked: i64 = sqlx::query_scalar(
+            let waiters: i64 = sqlx::query_scalar(
                 "WITH RECURSIVE waiting(pid) AS (
                     SELECT pid FROM pg_stat_activity
                     WHERE $1::integer = ANY(pg_blocking_pids(pid))
@@ -55,7 +55,7 @@ async fn await_waiters(lane: &Lane, blocker: i32, expected: i64) {
             .fetch_one(&mut *connection)
             .await
             .expect("blocking graph");
-            if blocked == expected {
+            if waiters == expected {
                 break;
             }
             drop(connection);

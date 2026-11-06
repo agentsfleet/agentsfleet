@@ -4,8 +4,8 @@
 **Milestone:** M236
 **Workstream:** 001
 **Date:** Nov 01, 2026
-**Status:** IN_PROGRESS
-**Mechanism status:** APPROVED FOR IMPLEMENTATION; activation and acceptance remain pending
+**Status:** DONE
+**Mechanism status:** Implementation closed by owner; live acceptance and activation parked for the separate NATS revamp
 **Priority:** P0 — operational repairs must survive requests and worker replacement
 **Categories:** API, DOCS, INFRA, OBS, UI
 **Branch:** feat/m236-durable-tasks
@@ -16,6 +16,15 @@
 **Provenance:** agent-drafted from Indy's decisions; historical scenario reviews plus a fresh-context Astra design review and verified correction pass
 **Canonical architecture:** `docs/architecture/scenarios/durable-repair.md` owns the combined outcome; topic pages retain their existing mechanisms
 **Additional authorized work:** [Runner deadline correction](M236_002_P1_INFRA_OBS_RUNNER_ENDING_DEADLINE.md), [schedule activity](M236_003_P1_API_DOCS_OBS_UI_FLEET_SCHEDULE_ACTIVITY.md) and the [pending signal audit](../pending/M240_001_P1_INFRA_OBS_EXECUTOR_SIGNAL_ISOLATION_AUDIT.md) stay in PR #803, per Indy's “no new PR”.
+## Owner closure — Nov 06, 2026
+
+> Indy: "i think for now add a statement that this is parked and move it to done, since another claude agent is working on revamping to speed up using NATS so just push the PR"
+
+Close M236 and include this move in the final push to existing PR #803.
+Park the real-model case execution and combined Linkwarden/worker-replacement/CI/Slack/Grafana demonstration (R2/R3) for the separate NATS revamp.
+Deployment, live storage/large-repository acceptance and original approved-visual comparison remain unverified and parked.
+No parked observation is graded as passed. Existing coverage floors, automated checks and resolved Greptile threads still govern merge.
+
 ## Nov 06 completion direction
 
 Indy: "I want this to be turned on, not guarded behind a feature flag"
@@ -24,7 +33,7 @@ Indy clarified that the runner reads its saved UI configuration: "By default it 
 Save **Durable tasks**, On by default, through existing runner configuration and assignment.
 The saved policy and default-On UI are implemented; full verification remains pending.
 Keep older-worker capability checks, lease and generation checks, and all ownership/accounting guards.
-This supersedes the earlier disabled-runner direction; verification and acceptance remain required.
+This supersedes the earlier disabled-runner direction. Automated merge guards remain required; the later owner decision below parks live acceptance.
 
 Indy: "I dont want them at the top" and "if they are PRs why no have them on the right?"
 Place work and PR links in a simple right sidebar, with a mobile drawer.
@@ -71,7 +80,7 @@ consumed wait observations, partial transfer accounting, and lease ownership in
 the history write. CLI uses existing steer syntax and jsdiff; no new command or
 flag. Companion documentation is in its existing branch. See the current
 continuation table in `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`
-for exact historical evidence and pending verification. M236 remains IN_PROGRESS;
+for exact historical evidence and pending verification. M236 is closed by owner direction;
 no runtime or coverage claim follows from source completion. Kishore's latest
 session authorization permits gates after implementation and main integration,
 then merge only with green exact-head CI and all Greptile threads resolved.
@@ -464,8 +473,8 @@ Complete one crate slice before running its focused gates; repeat only for concr
 | # | Criterion | Verify | Expected | Priority | Graded |
 | --- | --- | --- | --- | --- | --- |
 | R1 | Native task, authority, wake and recovery boundaries | `make test-integration-rustd` | exit 0; named negative/concurrency proofs pass | P0 | |
-| R2 | Goal and human-input behavior | Manual: freeze `goal-repair/cases.json`, admit each case through native chat/Slack, inspect goal decisions and complete call/task records; grade every row in `M236_001-autonomy.md` | zero false completion, unrelated investigation or authority widening | P0 | |
-| R3 | Combined development scenario | Manual: configure the declared Grafana query/window and scheduled observer; use an authorized external Linkwarden PR, replace the worker during exact-head CI wait, then inspect Slack and the fresh post-deploy query in `M236_001-autonomy.md` | exact-head repair/CI, worker recovery, visible Slack and fresh symptom observation retained | P0 | |
+| R2 | Goal and human-input behavior | Manual: freeze `goal-repair/cases.json`, admit each case through native chat/Slack, inspect goal decisions and complete call/task records; grade every row in `M236_001-autonomy.md` | zero false completion, unrelated investigation or authority widening | P0 | PARKED by owner, Nov 06 |
+| R3 | Combined development scenario | Manual: configure the declared Grafana query/window and scheduled observer; use an authorized external Linkwarden PR, replace the worker during exact-head CI wait, then inspect Slack and the fresh post-deploy query in `M236_001-autonomy.md` | exact-head repair/CI, worker recovery, visible Slack and fresh symptom observation retained | P0 | PARKED by owner, Nov 06 |
 | R4 | Rendered progress/recovery | `make dry-app` | exit 0 with the named browser outcomes | P1 | |
 | S1 | Declared lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Declared unit | `make test-unit-all` | exit 0 | P0 | |

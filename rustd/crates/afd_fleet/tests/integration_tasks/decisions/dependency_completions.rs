@@ -105,7 +105,13 @@ async fn fanout(fixture: &Decisions<'_>, task: &str, completion: &VerifiedComple
         .maintain_waits()
         .await
         .expect("bounded fanout");
-    assert_eq!(wait_snapshot(case, task).await["signal_sequence"], 0);
+    assert_eq!(
+        *wait_snapshot(case, task)
+            .await
+            .get("signal_sequence")
+            .expect("signal sequence"),
+        0
+    );
     assert_eq!(
         fixture
             .tasks
@@ -116,7 +122,7 @@ async fn fanout(fixture: &Decisions<'_>, task: &str, completion: &VerifiedComple
     );
     let mut replay = completion.clone();
     replay.body_digest = "b".repeat(64);
-    replay.conclusion = "failure".to_owned();
+    "failure".clone_into(&mut replay.conclusion);
     assert_eq!(
         fixture
             .tasks
@@ -137,10 +143,28 @@ async fn cooldown(fixture: &Decisions<'_>, task: &str) {
         .expect("signal without bypassing cooldown");
     assert_eq!((result.checked, result.woken, result.deferred), (0, 0, 0));
     let wait = wait_snapshot(case, task).await;
-    assert_eq!(wait["signal_sequence"], 1);
-    assert_eq!(wait["observed_signal_sequence"], 0);
-    assert!(wait["claim_id"].is_null());
-    assert!(wait["consumed_admission_id"].is_null());
+    assert_eq!(
+        (*wait
+            .pointer("/signal_sequence")
+            .expect("fixture signal_sequence")),
+        1
+    );
+    assert_eq!(
+        (*wait
+            .pointer("/observed_signal_sequence")
+            .expect("fixture observed_signal_sequence")),
+        0
+    );
+    assert!(
+        wait.pointer("/claim_id")
+            .expect("fixture claim_id")
+            .is_null()
+    );
+    assert!(
+        wait.pointer("/consumed_admission_id")
+            .expect("fixture consumed_admission_id")
+            .is_null()
+    );
     let cooling: bool = sqlx::query_scalar("SELECT due_at >= cooldown_expires_at AND due_at > now() FROM fleet.task_waits WHERE task_id=$1::uuid")
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer"))
         .await.expect("cooldown retained");
@@ -150,5 +174,11 @@ async fn cooldown(fixture: &Decisions<'_>, task: &str) {
         .maintain_waits()
         .await
         .expect("idempotent fanout");
-    assert_eq!(wait_snapshot(case, task).await["signal_sequence"], 1);
+    assert_eq!(
+        *wait_snapshot(case, task)
+            .await
+            .get("signal_sequence")
+            .expect("signal sequence"),
+        1
+    );
 }

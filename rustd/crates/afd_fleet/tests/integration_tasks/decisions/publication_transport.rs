@@ -50,7 +50,7 @@ async fn counts(case: &Case, task: &str) {
     assert_eq!(row, (1, 1, "3".repeat(40), 0));
 }
 
-fn push(server: &Server, method: &str, path: &str, response: Value) {
+fn push(server: &Server, method: &str, path: &str, response: &Value) {
     server.push(json!({"fixture_request":{"method":method,"path":format!("/repos/example/linkwarden/{path}")},"response":response}));
 }
 
@@ -59,13 +59,13 @@ fn workflow(server: &Server, head: &str) {
         server,
         "GET",
         &format!("contents/.github/workflows?ref={head}"),
-        json!([{"path":".github/workflows/test.yml","sha":"workflow-blob","type":"file"}]),
+        &json!([{"path":".github/workflows/test.yml","sha":"workflow-blob","type":"file"}]),
     );
     push(
         server,
         "GET",
         "git/blobs/workflow-blob",
-        json!({"encoding":"base64","content":BASE64_STANDARD.encode(github_authority::WORKFLOW)}),
+        &json!({"encoding":"base64","content":BASE64_STANDARD.encode(github_authority::WORKFLOW)}),
     );
 }
 
@@ -74,33 +74,33 @@ fn script(server: &Server) {
         server,
         "GET",
         "pulls/101",
-        json!({"number":101,"state":"open","merged":false,"head":endpoint("repair"),"base":endpoint("main")}),
+        &json!({"number":101,"state":"open","merged":false,"head":endpoint("repair"),"base":endpoint("main")}),
     );
     push(
         server,
         "GET",
         "branches/repair",
-        json!({"protected":false,"commit":{"sha":"0".repeat(40)}}),
+        &json!({"protected":false,"commit":{"sha":"0".repeat(40)}}),
     );
     workflow(server, &"0".repeat(40));
     push(
         server,
         "GET",
         "branches/main",
-        json!({"commit":{"sha":"4".repeat(40)}}),
+        &json!({"commit":{"sha":"4".repeat(40)}}),
     );
     workflow(server, &"4".repeat(40));
     push(
         server,
         "GET",
         &format!("git/commits/{}", "0".repeat(40)),
-        json!({"sha":"0".repeat(40),"tree":{"sha":"1".repeat(40)}}),
+        &json!({"sha":"0".repeat(40),"tree":{"sha":"1".repeat(40)}}),
     );
     push(
         server,
         "GET",
         &format!("git/trees/{}", "1".repeat(40)),
-        json!({"tree":[],"truncated":false}),
+        &json!({"tree":[],"truncated":false}),
     );
     objects(server);
     server.push(json!({"fixture_request":{"method":"POST","path":"/graphql","publication":true},

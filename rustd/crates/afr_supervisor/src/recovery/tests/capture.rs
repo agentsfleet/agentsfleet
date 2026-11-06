@@ -215,7 +215,7 @@ fn assert_captured_boundary(
         .collect();
     assert_eq!(registration.len(), 1);
     assert_eq!(
-        registration[0].objects.len(),
+        registration.first().unwrap().objects.len(),
         2,
         "shared file bytes and history have separate identities"
     );
@@ -225,7 +225,7 @@ fn assert_captured_boundary(
             .any(|call| call.verb == Verb::TaskCheckpointUploads)
     );
     let state = state.lock().unwrap();
-    let page = &state.pages[PAGE];
+    let page = state.pages.get(PAGE).unwrap();
     let files: Vec<_> = page
         .entries
         .iter()
@@ -235,8 +235,11 @@ fn assert_captured_boundary(
         })
         .collect();
     assert_eq!(files.len(), 2);
-    assert_eq!(files[0].objects, files[1].objects);
-    assert_eq!(files[0].size, 10);
+    assert_eq!(
+        files.first().unwrap().objects,
+        files.get(1).unwrap().objects
+    );
+    assert_eq!(files.first().unwrap().size, 10);
     assert_eq!(page.history_objects.len(), 1);
     assert!(
         page.entries

@@ -201,7 +201,10 @@ impl Archive {
         let input: CheckpointCommitInput = body(call);
         assert_eq!(input.fencing_token, FENCE);
         assert_eq!(input.pin_id, ID);
-        assert_eq!(input.manifest_root, root(PAGE, &self.pages[PAGE]));
+        assert_eq!(
+            input.manifest_root,
+            root(PAGE, self.pages.get(PAGE).unwrap())
+        );
         self.plan.manifest_root = Some(input.manifest_root);
         self.plan.history_digest = Some(input.history_digest);
         self.plan.covered_input_sequence = input.covered_input_sequence;
@@ -233,7 +236,7 @@ impl Archive {
         let objects = input
             .object_ids
             .iter()
-            .map(|id| serde_json::from_value(self.objects[id].clone()).unwrap())
+            .map(|id| serde_json::from_value(self.objects.get(id).unwrap().clone()).unwrap())
             .collect();
         json(&CheckpointAuthorizations {
             plan: self.plan.clone(),
@@ -251,7 +254,7 @@ impl Archive {
             .next()
             .unwrap();
         assert!(call.path.contains("fencing_token=31"));
-        json(&self.pages[id])
+        json(self.pages.get(id).unwrap())
     }
 
     fn renewed(&mut self, _call: &Call) -> Answer {
@@ -288,7 +291,9 @@ fn phases(calls: &[Call]) -> Vec<String> {
         .filter(|call| call.verb == Verb::Activity)
         .map(|call| {
             let value: serde_json::Value = body(call);
-            value["frames"][0]["task_transfer_progress"]["phase"]
+            value
+                .pointer("/frames/0/task_transfer_progress/phase")
+                .unwrap()
                 .as_str()
                 .unwrap()
                 .to_owned()

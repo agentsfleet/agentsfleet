@@ -2,6 +2,17 @@
 
 ## Current continuation point
 
+### Owner closure — Nov 06, 2026
+
+**M236: DONE by owner direction.**
+
+> Indy: "i think for now add a statement that this is parked and move it to done, since another claude agent is working on revamping to speed up using NATS so just push the PR"
+
+Real-model cases, the combined Linkwarden/worker-replacement/CI/Slack/Grafana demonstration, deployment/live storage acceptance and original approved-visual comparison are parked for the separate NATS revamp.
+They are unverified, not passing evidence. Existing exact-head CI, coverage floors and Greptile merge guards remain.
+The spec move and all corrections belong in the same final push to PR #803.
+Current app push-hook result: 4,753 tests passed. The first push stopped before upload because cargo-shear was missing; pinned version 1.14.0 is now installed task-locally. `make lint-rustd` now passes, including formatting, Clippy and dependency checks. No new suppression or threshold change was added. The full Rust test suite was not restarted.
+
 ### Completion session — Nov 06, 2026
 
 Latest correction direction: Indy requested one scenario document, "Admin SQL - fix that", and "Fix this as needed".
@@ -24,9 +35,11 @@ Current verification:
 | --- | --- |
 | Production Rust/OpenAPI | `cargo run --locked --all-features --package agentsfleetd -- --no-banner openapi` passed; generated 123 paths, required runner-policy boolean and admin `limit`/`starting_after` query parameters |
 | TypeScript coverage | Earlier full `make test-coverage-all` passed: app 4,740, website 133, CLI 2,025 plus 16 existing live skips, design system 522; 100% thresholds retained. Latest affected UI/admin-client checks passed 58 tests across eight files. This focused result is not a fresh coverage measurement. |
+| Current visual capture | The implemented shared chat components rendered desktop sidebar and mobile drawer in one passing fixture capture. Images: `/workspace/scratch/m236-visual/chat-desktop.png` and `chat-mobile-work.png`; illustrative API data, no live Linkwarden effects. |
 | Browser | Full `make dry-app` reached 61 passed / one fixture assertion failure. The corrected desktop/mobile chat and native PR-badge cases then passed all 18 focused tests. These are focused results. |
 | Native integration | Latest clean `make test-integration-rustd` passed 1,258 tests and failed one checkpoint test; its fleet binary passed 324/325. Admin 12/12, Slack ingress 61/61 and served runner APIs 7/7 passed. The run stopped at fleet; later binaries were not executed. |
 | Failed-target correction | `make -f /workspace/scratch/m236-checkpoint-only.mk m236-checkpoint-only` passed the original checkpoint regression: 1 passed, zero failed, 332 filtered out; runtime 2.11 seconds after compilation. The official signer binds length, checksum and create-only headers. Signature mutation/omission, encrypted restore and private-log checks passed. The prior 324 passing fleet tests were not rerun. |
+| Current Rust lint | `make lint-rustd` passed after mechanical module-layout, checked-access, documentation and dependency corrections. Three existing dependency/file warnings remain non-fatal under the unchanged gate. |
 | Source lint | A new admin plan test directly included SQL from a repository file. The test now uses the production owner's existing test-util seam. `make lint-source` passed: 44 rule tests, zero failures, source scan clean. No lint rule changed. |
 | Review corrections | Reconnect reads now allow four attempts with existing capped jitter/backoff and cancellation; manual Retry/native revision starts a new cycle. Standard section primitives retain layout. Negative tests now check exact native errors and complete evidence digests. |
 | Focused Rust units | All 11 affected encryption/configuration/supervisor/agent cases passed. The agent checks include exact stopped-run outcomes and complete evidence byte/digest provenance. No full unit restart. |
@@ -121,7 +134,7 @@ Its existing title-regression run 41308186183 and Playwright run 41308186210
 passed at that head; this is starting-state evidence, not a new M236 repair.
 Controlled Grafana symptom, runtime setup and Slack bindings still need current
 validation before the acceptance demonstration.
-M236 remains IN_PROGRESS until its required evidence exists.
+The later owner closure above parks the remaining live evidence and closes M236. Automated merge checks remain required.
 
 Earlier completion evidence, before the approved sidebar and current-main integration:
 

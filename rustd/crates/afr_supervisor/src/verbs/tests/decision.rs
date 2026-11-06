@@ -87,19 +87,31 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
         .map(|call| serde_json::from_slice(call.body.as_ref().unwrap()).unwrap())
         .collect();
     assert_eq!(
-        progress[0]["frames"][0]["task_decision_started"]["provider"],
+        *progress
+            .first()
+            .unwrap()
+            .pointer("/frames/0/task_decision_started/provider")
+            .unwrap(),
         api
     );
     assert_eq!(
-        progress[0]["frames"][0]["task_decision_started"]["operation"],
+        *progress
+            .first()
+            .unwrap()
+            .pointer("/frames/0/task_decision_started/operation")
+            .unwrap(),
         purpose
     );
     assert_eq!(
-        progress[1]["frames"][0]["task_decision_completed"]["phase"],
+        *progress
+            .get(1)
+            .unwrap()
+            .pointer("/frames/0/task_decision_completed/phase")
+            .unwrap(),
         "unavailable"
     );
     assert!(!host.spool.drain_decisions(&plane).await.unwrap());
-    assert!(drain(&mut calls).is_empty());
+    assert_eq!(drain(&mut calls).len(), 0);
 }
 
 fn preflight_reply(
@@ -118,9 +130,9 @@ fn preflight_reply(
         Verb::TaskDecisionRecord => {
             let receipt: serde_json::Value =
                 serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
-            assert_eq!(receipt["fencing_token"], FENCING);
-            assert_eq!(receipt["receipt"]["outcome"], "not_sent");
-            assert_eq!(receipt["receipt"]["cause"], "preflight");
+            assert_eq!(*receipt.get("fencing_token").unwrap(), FENCING);
+            assert_eq!(*receipt.pointer("/receipt/outcome").unwrap(), "not_sent");
+            assert_eq!(*receipt.pointer("/receipt/cause").unwrap(), "preflight");
             json(&acknowledged())
         }
         Verb::Activity => json(&serde_json::json!({})),
@@ -159,7 +171,7 @@ async fn unacknowledged_receipt_survives_and_duplicate_dispatch_cannot_send_agai
     let (recovered, mut receipts) = crate::test_support::plane(|call| {
         assert_eq!(call.verb, Verb::TaskDecisionRecord);
         let body: serde_json::Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
-        assert_eq!(body["receipt"]["outcome"], "not_sent");
+        assert_eq!(*body.pointer("/receipt/outcome").unwrap(), "not_sent");
         json(&acknowledged())
     });
     // A nonempty page requests another sweep even when every receipt was acknowledged.
@@ -167,9 +179,9 @@ async fn unacknowledged_receipt_survives_and_duplicate_dispatch_cannot_send_agai
     assert_eq!(drain(&mut receipts).len(), 1);
     // The next sweep clears the saved cursor without replaying the acknowledged receipt.
     assert!(host.spool.drain_decisions(&recovered).await.unwrap());
-    assert!(drain(&mut receipts).is_empty());
+    assert_eq!(drain(&mut receipts).len(), 0);
     assert!(!host.spool.drain_decisions(&recovered).await.unwrap());
-    assert!(drain(&mut receipts).is_empty());
+    assert_eq!(drain(&mut receipts).len(), 0);
 }
 
 #[tokio::test]
@@ -177,7 +189,7 @@ async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
     let (plane, mut calls) = plane(|call| {
         assert_eq!(call.verb, Verb::TaskDecisionReserve);
         let mut value = dispatch("typesafe", "goal");
-        value["dispatch"]["request"]["call_id"] = serde_json::json!(LEASE_ID);
+        *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(LEASE_ID);
         json(&value)
     });
     let host = Host::new();
@@ -189,22 +201,30 @@ async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
     ));
     assert_eq!(drain(&mut calls).len(), 1);
     assert!(!host.spool.drain_decisions(&plane).await.unwrap());
-    assert!(drain(&mut calls).is_empty());
+    assert_eq!(drain(&mut calls).len(), 0);
 }
 
 fn failed_dispatch(api: &str, purpose: &str, fault: &str) -> serde_json::Value {
     let mut reservation = dispatch(api, purpose);
     match fault {
         "expired" => {
-            reservation["dispatch"]["expires_at"] = serde_json::json!(afd_core::clock::now())
+            *reservation.pointer_mut("/dispatch/expires_at").unwrap() =
+                serde_json::json!(afd_core::clock::now());
         }
         "profile" => {
-            reservation["dispatch"]["assignment"]["profile"]["revision"] = serde_json::json!("")
+            *reservation
+                .pointer_mut("/dispatch/assignment/profile/revision")
+                .unwrap() = serde_json::json!("");
         }
-        "request" => reservation["dispatch"]["request"]["questions"] = serde_json::json!([]),
+        "request" => {
+            *reservation
+                .pointer_mut("/dispatch/request/questions")
+                .unwrap() = serde_json::json!([]);
+        }
         "endpoint" => {
-            reservation["dispatch"]["assignment"]["profile"]["endpoint"] =
-                serde_json::json!("http://decision.invalid")
+            *reservation
+                .pointer_mut("/dispatch/assignment/profile/endpoint")
+                .unwrap() = serde_json::json!("http://decision.invalid");
         }
         _ => {}
     }
