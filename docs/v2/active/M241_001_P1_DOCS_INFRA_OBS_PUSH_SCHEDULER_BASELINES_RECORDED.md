@@ -139,8 +139,8 @@ all of it ─► docs/architecture/push_scheduler.md §Baselines and §Milestone
 
 Apply the two parking commits saved at `/Users/kishore/Projects/agentsfleet/.gstack/egm/scheduler/park_patches/` (gitignored); the first is also on `origin/chore/m240-001-park`. M240_001 and M222_001 move to `done/` as DEFERRED, each with Indy's words, the reason and the reopen condition in Discovery. Correct M240_001's quote time to 12:59 PM, when Indy sent it. **Implementation default:** apply the patches rather than rewrite them, because the standards review of that diff found no rule findings.
 
-- **Dimension 1.1** — both specs sit in `done/` as DEFERRED → Test R1's `grep -c` (manual): prints `1` for each file; evidence in the Pull Request Session Notes.
-- **Dimension 1.2** — no live page points at the pending paths → Test `git grep -n "pending/M240_001" -- docs/architecture rustd` (manual): prints nothing.
+- **Dimension 1.1** — DONE — both specs sit in `done/` as DEFERRED → Test R1's `grep -c` (manual): prints `1` for each file; evidence in the Pull Request Session Notes.
+- **Dimension 1.2** — DONE — no live page points at the pending paths → Test `git grep -n "pending/M240_001" -- docs/architecture rustd` (manual): prints nothing.
 
 ### §2 — `push_scheduler.md` records the decisions and the target design
 
