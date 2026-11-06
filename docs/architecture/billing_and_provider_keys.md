@@ -580,7 +580,7 @@ A constraint, syntax or decode failure is a defect and is refused under either p
 
 **The built-in biller.** `LedgerBiller` answers `check` with one read and no lock: `Balance::left`, the balance less the payer's unsettled lines. Every gate and check compares that one number with what the work asks for. A payer in debt is short even of nothing.
 
-The read sums only unsettled lines, through the partial index `idx_usage_lines_tenant_id_unsettled`, so its cost tracks the relay's backlog rather than the tenant's history (`the_funds_read_scans_only_unsettled_lines_however_long_the_history`).
+The read sums only unsettled lines, through the partial index `idx_usage_lines_tenant_id_unsettled`. Its cost grows with the relay's backlog alone (`the_funds_read_scans_only_unsettled_lines_however_long_the_history`).
 
 `settle` locks the payer's wallet row, then charges only lines still unsettled, so repeated passes are idempotent. A settlement takes its whole charge, past zero if it must, and the tenant owes the rest (Indy, 2026-10-19).
 
