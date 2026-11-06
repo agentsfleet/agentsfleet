@@ -4,7 +4,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import type { EventsPage } from "@/lib/api/events";
-import { steerMessagesUrl, type SteerAccepted } from "@/lib/api/fleets-types";
+import { STEER_DISPOSITION, steerMessagesUrl, type SteerAccepted } from "@/lib/api/fleets-types";
 import { ACTOR } from "@/lib/events/event-summary";
 import { fixtureSubject, signInAs } from "./auth";
 import { FIXTURE_KEY } from "./constants";
@@ -71,7 +71,7 @@ export async function withReplyPage(
 // so the 202 is answered here and resolves once the page has been given it.
 async function sendFromComposer(page: Page, steerPath: string, text: string, eventId: string): Promise<void> {
   const admitted = Promise.withResolvers<void>();
-  const receipt: SteerAccepted = { status: STEER_ACCEPTED, event_id: eventId, replayed: false };
+  const receipt: SteerAccepted = { status: STEER_ACCEPTED, event_id: eventId, replayed: false, disposition: STEER_DISPOSITION.STARTED };
   await page.route((url) => url.pathname === steerPath, async (route) => {
     await route.fulfill({ status: HTTP_ACCEPTED, json: receipt });
     admitted.resolve();

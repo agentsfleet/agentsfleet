@@ -70,11 +70,9 @@ async fn test_replayed_append_decides_from_its_insert() {
         "a fresh admission answers with its instant, which its frame carries"
     );
     assert_eq!(
-        again,
-        Steered {
-            event_id: first.event_id,
-            admitted_at: None,
-        }
+        (again.event_id, again.admitted_at),
+        (first.event_id, None),
+        "a repeat names the first event and admits nothing"
     );
 }
 

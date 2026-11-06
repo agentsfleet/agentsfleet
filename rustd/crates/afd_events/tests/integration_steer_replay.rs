@@ -20,7 +20,7 @@
 use afd_admission::Budgets;
 use afd_core::error_code;
 use afd_db::test_util::mint_id;
-use afd_events::{ACTOR_MACHINE, Steer, Steered};
+use afd_events::{ACTOR_MACHINE, Steer};
 use tracing::Level;
 
 use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with};
@@ -95,11 +95,8 @@ async fn test_replay_bypasses_the_deployment_ceiling() {
         .await
         .expect("a retry of an admitted message is answered despite the budget");
     assert_eq!(
-        retried,
-        Steered {
-            event_id: admitted.clone(),
-            admitted_at: None,
-        },
+        (retried.event_id.as_str(), retried.admitted_at),
+        (admitted.as_str(), None),
         "a retry of an admitted message must not be refused by the budget it \
          already spent -- the sender would read it as never delivered"
     );

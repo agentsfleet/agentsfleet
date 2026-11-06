@@ -36,7 +36,19 @@ export type SteerAccepted = {
   status: string;
   event_id: string;
   replayed: boolean;
+  // Where the message went (M242_002). `folded`: the fleet's live run took it,
+  // and `folded_into_event_id` names that run.
+  disposition: SteerDisposition;
+  folded_into_event_id?: string;
 };
+
+/** Mirrors `afd_wire::event::SteerDisposition`. */
+export const STEER_DISPOSITION = {
+  STARTED: "started",
+  FOLDED: "folded",
+  QUEUED: "queued",
+} as const;
+export type SteerDisposition = (typeof STEER_DISPOSITION)[keyof typeof STEER_DISPOSITION];
 
 /** The longest message a steer may carry, in UTF-8 bytes. Mirrors
  * `afd_wire::event::STEER_MESSAGE_MAX_BYTES`; the daemon refuses one byte more. */

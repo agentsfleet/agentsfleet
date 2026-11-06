@@ -74,6 +74,35 @@ pub const OPERATION_ID_MAX_BYTES: usize = 200;
 /// [`OPERATION_ID_MAX_BYTES`] gives.
 pub const STEER_MESSAGE_MAX_BYTES: usize = 8192;
 
+/// Where an accepted steer went.
+///
+/// `started`: nothing was waiting and no run was live, so it starts a run.
+/// `folded`: the fleet's live run takes it at its next safe boundary.
+/// `queued`: it runs after the work ahead of it.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SteerDisposition {
+    /// Starts a run of its own.
+    Started,
+    /// Joins the fleet's live run.
+    Folded,
+    /// Waits behind earlier work.
+    Queued,
+}
+
+impl SteerDisposition {
+    /// The wire spelling.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::Folded => "folded",
+            Self::Queued => "queued",
+        }
+    }
+}
+
 /// What a steer returns once agentsfleet accepts the request.
 ///
 /// The response carries the id the run is found under. Filter the live event
@@ -93,4 +122,9 @@ pub struct SteerAccepted<'a> {
     /// message. When `true`, `event_id` is that send's event, which may have
     /// run already. `false` when this call admitted it.
     pub replayed: bool,
+    /// Where the message went.
+    pub disposition: SteerDisposition,
+    /// The run the message joined, when `disposition` is `folded`.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub folded_into_event_id: Option<Cow<'a, str>>,
 }

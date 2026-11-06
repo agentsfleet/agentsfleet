@@ -19,6 +19,7 @@ fn open() -> Answer {
         digest: None,
         fleet: None,
         created_at: None,
+        run: super::RunRow::default(),
     }
 }
 

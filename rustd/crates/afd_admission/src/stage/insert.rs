@@ -52,6 +52,7 @@ impl Admissions {
             .bind(reply.inherited.as_ref().map(Uuid7::as_str))
             .bind(afd_fleet_runtime::definition::POLICY_SEMANTICS)
             .bind(runnable.map(FleetStatus::as_str))
+            .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_ADMIT))?;

@@ -21397,7 +21397,7 @@
               "string",
               "null"
             ],
-            "description": "Continue with starting_after, or null at the end of this catalogue snapshot."
+            "description": "Continue with `starting_after`, or null at the end of this catalogue snapshot."
           },
           "request_id": {
             "type": "string",
@@ -33766,12 +33766,30 @@
         "required": [
           "status",
           "event_id",
-          "replayed"
+          "replayed",
+          "disposition"
         ],
         "properties": {
+          "disposition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SteerDisposition"
+              }
+            ],
+            "description": "Where the message went. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
           "event_id": {
             "type": "string",
             "description": "The canonical event id the steer became."
+          },
+          "folded_into_event_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The run the message joined, when `disposition` is `folded`. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "replayed": {
             "type": "boolean",
@@ -33782,6 +33800,15 @@
             "description": "Always `accepted`."
           }
         }
+      },
+      "SteerDisposition": {
+        "type": "string",
+        "description": "Where an accepted steer went.\n\n`started`: nothing was waiting and no run was live, so it starts a run.\n`folded`: the fleet's live run takes it at its next safe boundary.\n`queued`: it runs after the work ahead of it.",
+        "enum": [
+          "started",
+          "folded",
+          "queued"
+        ]
       },
       "SteerRequest": {
         "type": "object",

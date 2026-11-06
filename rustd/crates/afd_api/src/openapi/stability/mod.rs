@@ -54,6 +54,8 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // is the runner release that reads them.
     ("HeartbeatResponse", &["woken"]),
     ("LeasePayload", &["memory"]),
+    // Where a steer went is new, and folding may reshape it (`M242_002`).
+    ("SteerAccepted", &["disposition", "folded_into_event_id"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.

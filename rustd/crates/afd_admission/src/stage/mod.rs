@@ -68,6 +68,7 @@ impl Admissions {
         Ok(Admitted {
             replayed: !ledger.inserted,
             stored: ledger.stored,
+            run: ledger.run,
         })
     }
 }

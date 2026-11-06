@@ -42,6 +42,12 @@ import {
 const TAG_FIELD = "_tag";
 
 const STEER_OUTCOME = "Steer outcome" as const;
+// Where the daemon placed the message (M242_002). `started` prints nothing:
+// the run that follows is the message's own.
+const DISPOSITION_FOLDED = "folded" as const;
+const DISPOSITION_QUEUED = "queued" as const;
+const LINE_FOLDED = "added to the current run" as const;
+const LINE_QUEUED = "queued behind the current run" as const;
 const MESSAGE_PLACEHOLDER = "<message>" as const;
 const SUGGESTION_REPORT_COMMAND = "report this with the command you ran" as const;
 const SUGGESTION_INSPECT_EVENTS = "inspect fleet events before sending again; an accepted message may still run" as const;
@@ -71,7 +77,16 @@ const failMissingEventId = (): Effect.Effect<never, CliError> =>
 
 interface MessagesResponse {
   readonly event_id?: string;
+  readonly disposition?: string;
+  readonly folded_into_event_id?: string;
 }
+
+// A folded message has no run of its own: the live run takes it, so the CLI
+// follows that run's event to the reply.
+const followedEvent = (post: MessagesResponse, own: string): string =>
+  post.disposition === DISPOSITION_FOLDED && post.folded_into_event_id
+    ? post.folded_into_event_id
+    : own;
 type StreamGetFn = typeof defaultStreamGet;
 export interface SteerDeps {
   readonly streamGet?: StreamGetFn;
@@ -136,12 +151,18 @@ const steerTurnWithTail = (
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
-    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, post.event_id, token, signal);
+    const output = yield* Output;
+    if (output.format === OUTPUT_FORMAT.text) {
+      if (post.disposition === DISPOSITION_FOLDED) yield* output.info(LINE_FOLDED);
+      if (post.disposition === DISPOSITION_QUEUED) yield* output.info(LINE_QUEUED);
+    }
+    const followed = followedEvent(post, post.event_id);
+    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, followed, token, signal);
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
-    yield* readSteeredWork(wsId, fleetId, post.event_id, token, signal);
-    yield* renderOutcome(outcome, post.event_id, fleetId, wsId, token, signal);
+    yield* readSteeredWork(wsId, fleetId, followed, token, signal);
+    yield* renderOutcome(outcome, followed, fleetId, wsId, token, signal, post);
   });
 
 // A tail that never became ready may have missed the event's opening frames;
@@ -177,12 +198,18 @@ const renderOutcome = (
   wsId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
+  post: MessagesResponse = {},
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
 
     if (output.format !== OUTPUT_FORMAT.text) {
-      yield* output.success(STEER_OUTCOME, { event_id: eventId, ...outcome });
+      yield* output.success(STEER_OUTCOME, {
+        event_id: eventId,
+        ...(post.disposition ? { disposition: post.disposition } : {}),
+        ...(post.folded_into_event_id ? { folded_into_event_id: post.folded_into_event_id } : {}),
+        ...outcome,
+      });
     } else if (outcome.kind === STATUS_COMPLETE) {
       yield* output.info("");
       yield* output.success(`event ${eventId} ${outcome.status}`);

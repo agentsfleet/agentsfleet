@@ -149,7 +149,7 @@ pub(crate) async fn steer<D: Services>(
         .map_err(refuse_steer)?;
     announce_admitted(steering, fleet, &steered, &actor, &steer.message).await;
     let replayed = steered.replayed();
-    Ok(accepted(steered.event_id, replayed))
+    Ok(accepted(steered.event_id, replayed, steered.placed))
 }
 
 /// Tells every screen on the fleet the message was accepted, before the 202.
@@ -200,15 +200,17 @@ fn not_runnable(status: FleetStatus) -> Refusal {
     )
 }
 
-/// The 202 a steer answers with, for a new message or a repeat alike — and
-/// which of the two it is.
-fn accepted(event_id: String, replayed: bool) -> Response {
+/// The 202 a steer answers with, for a new message or a repeat alike — which
+/// of the two it is, and where the message went (`M242_002`).
+fn accepted(event_id: String, replayed: bool, placed: afd_events::disposition::Placed) -> Response {
     (
         StatusCode::ACCEPTED,
         Json(SteerAccepted {
             status: Cow::Borrowed(STATUS_ACCEPTED),
             event_id: Cow::Owned(event_id),
             replayed,
+            disposition: placed.disposition,
+            folded_into_event_id: placed.folded_into_event_id.map(Cow::Owned),
         }),
     )
         .into_response()

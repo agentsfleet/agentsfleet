@@ -108,11 +108,15 @@ pub fn is_steer_actor(actor: &str) -> bool {
     actor.starts_with(ACTOR_PREFIX)
 }
 
+pub mod disposition;
+
 /// What a steer was answered with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Steered {
     /// The event the message became.
     pub event_id: String,
+    /// Where the message went, and the run it joined when folded.
+    pub placed: disposition::Placed,
     /// When THIS call admitted the message, or `None` when an
     /// earlier send of the same operation id already had — one field rather
     /// than a flag beside an instant, since a fresh admission always has one
@@ -121,10 +125,12 @@ pub struct Steered {
 }
 
 impl Steered {
-    /// The answer to a repeat: the first send's event.
-    const fn repeat(event_id: String) -> Self {
+    /// The answer to a repeat: the first send's event, placed as the ledger
+    /// sees its fleet now.
+    const fn repeat(event_id: String, placed: disposition::Placed) -> Self {
         Self {
             event_id,
+            placed,
             admitted_at: None,
         }
     }
@@ -175,10 +181,15 @@ impl Steer {
         let admitted = match self.admissions.admit_runnable(admission).await {
             Ok(admitted) => admitted,
             Err(refused) if refused.is_over_capacity() => {
+                // The insert never ran, so no live-run facts came back.
+                let queued = disposition::Placed {
+                    disposition: disposition::SteerDisposition::Queued,
+                    folded_into_event_id: None,
+                };
                 return self
                     .repeat_despite(&admission, refused)
                     .await
-                    .map(Steered::repeat);
+                    .map(|event_id| Steered::repeat(event_id, queued));
             }
             Err(failed) => return Err(failed.into()),
         };
@@ -186,7 +197,9 @@ impl Steer {
             // The insert met a row already under this key: a retry, or a send
             // with the same id that won the race to the insert. Its event is
             // this caller's answer only if the row holds this caller's payload.
-            return answer_repeat(&admission, admitted.stored).map(Steered::repeat);
+            let placed = disposition::of(&admitted.run, actor);
+            return answer_repeat(&admission, admitted.stored)
+                .map(|event_id| Steered::repeat(event_id, placed));
         }
 
         // Hoisted rather than spelled inside the macro: the log bridge
@@ -201,6 +214,7 @@ impl Steer {
             event = "steer_appended",
         );
         Ok(Steered {
+            placed: disposition::of(&admitted.run, actor),
             event_id: admitted.stored.id,
             admitted_at: Some(admitted.stored.created_at),
         })

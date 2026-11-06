@@ -240,5 +240,6 @@ fn answer(id: String, replayed: bool) -> Admitted {
             fleet: String::new(),
             created_at: Timestamp::UNIX_EPOCH,
         },
+        run: afd_admission::RunFacts::default(),
     }
 }

@@ -9,7 +9,7 @@ const MESSAGE = "deploy the canary";
 const OPERATION_ID = "0190a3b4-0000-7000-8000-000000000001";
 // pin test: literal is the contract — the route the browser POSTs to, ids encoded.
 const ROUTE = "/live/v1/workspaces/ws%2F1/fleets/fleet%201/messages";
-const ACCEPTED = { status: "accepted", event_id: "1790573387481-566", replayed: false };
+const ACCEPTED = { status: "accepted", event_id: "1790573387481-566", replayed: false, disposition: "started" };
 const HTTP_ACCEPTED = 202;
 const HTTP_CONFLICT = 409;
 const HTTP_BAD_GATEWAY = 502;
@@ -72,6 +72,17 @@ describe("postSteer", () => {
     const result = await steer();
     expect(result.ok).toBe(false);
     expect(result).not.toHaveProperty("status");
+  });
+
+  it("reads where a folded send went, and the run it joined (M242_002)", async () => {
+    const folded = { ...ACCEPTED, disposition: "folded", folded_into_event_id: "0190d5c2-7e1a-7000-8000-00000000e00f" };
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, folded));
+    expect(await steer()).toEqual({ ok: true, data: folded });
+  });
+
+  it("reads a disposition this app does not know as no answer: every part ships together", async () => {
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { ...ACCEPTED, disposition: "later" }));
+    expect((await steer()).ok).toBe(false);
   });
 
   it("reads the session check's redirect to sign-in as a 401", async () => {

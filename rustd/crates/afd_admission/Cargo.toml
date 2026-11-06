@@ -27,6 +27,8 @@ afd_db.workspace = true
 afd_fleet_runtime.workspace = true
 # The fleet status a runnable admission binds, and the one a refusal names.
 afd_fleet_lifecycle.workspace = true
+# The live lease status the disposition facts read.
+afd_state.workspace = true
 # Best-effort notification transport.
 afd_dragonfly.workspace = true
 # Admission outcome counters.

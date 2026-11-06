@@ -32,6 +32,8 @@ const DEPLOY = "deploy";
 const STOP = "stop";
 const ACCEPTED = { ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false } };
 const REPLAYED = { ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: true } };
+const RUN_EVENT_ID = "0190d5c2-7e1a-7000-8000-00000000e00f";
+const FOLDED = { ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false, disposition: "folded", folded_into_event_id: RUN_EVENT_ID } };
 const OPERATION_CONFLICT = { ok: false, error: "conflict", status: 409, errorCode: ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT };
 // Ten seconds into the first send's thirty.
 const LATER_MS = 10_000;
@@ -124,7 +126,14 @@ describe("useMessageDelivery", () => {
     postSteer.mockResolvedValue(REPLAYED);
     const { ctx, hook } = delivery();
     await act(() => hook.result.current.onNew(message(DEPLOY)));
-    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, true);
+    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, true, null);
+  });
+
+  it("hands a folded 202 to the reconcile with the run it joined (M242_002)", async () => {
+    postSteer.mockResolvedValue(FOLDED);
+    const { ctx, hook } = delivery();
+    await act(() => hook.result.current.onNew(message(DEPLOY)));
+    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, false, RUN_EVENT_ID);
   });
 
   it("ignores a Resend for a send the ledger no longer holds", () => {

@@ -51,6 +51,8 @@ pub use self::history::{
     Since, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, ToolCallRow, WIDEST_WINDOW, glob_to_like,
     next_cursor, parse_since, prefix_to_like,
 };
+/// Where an accepted steer went (`M242_002`).
+pub use self::steer::disposition;
 pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered, is_steer_actor, steer_actor};
 
 /// Every history read's text, named, so the plan suite can `EXPLAIN` exactly

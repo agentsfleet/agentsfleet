@@ -43,6 +43,30 @@ pub struct Admitted {
     /// the event's, and its digest and fleet let a producer tell a retry from a
     /// different payload under one key without a second read.
     pub stored: Repeated,
+    /// What the admitting statement saw of the fleet's live run, for the
+    /// disposition a producer names (`M242_002`).
+    pub run: RunFacts,
+}
+
+/// What the admitting statement saw of the fleet, under the fleet lock.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunFacts {
+    /// The run holding the fleet's slot, when its lease has not expired.
+    pub live_run: Option<LiveRun>,
+    /// Whether any unsettled admission was already on the fleet.
+    pub earlier_waiting: bool,
+}
+
+/// The fleet's live run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveRun {
+    /// The event the run serves.
+    pub event_id: String,
+    /// Whether the run is a durable task, which claims later input from a
+    /// person in its conversation at its next safe boundary.
+    pub takes_input: bool,
+    /// Whether this message's stated reply matches the run's.
+    pub same_conversation: bool,
 }
 
 /// The durable queue, its entropy source and best-effort notification transport.

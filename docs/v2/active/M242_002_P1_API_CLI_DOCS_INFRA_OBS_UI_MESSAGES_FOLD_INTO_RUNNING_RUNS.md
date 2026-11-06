@@ -383,7 +383,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 11:33 PM): chose "Approve as drafted (Recommended)" — context: the disposition facts below are added to `admit_one.sql`; Rust answers `folded` (a person's send, a live durable-task run in the same conversation), `started` (nothing waiting, no live run) or `queued`. The burst mislabel is accepted: the label can read `started` when the send runs second.
   > Indy (Nov 06, 2026: 11:33 PM): chose "Drop it, no slots (Recommended)" — context: `waiting_compaction` goes, and with it slots 2710, 2720 and 2730; "folded into which run" is derived through `input_claim_lease_id`. CHORE(open) rewrites §1 and §4 to match.
 
-  Approved disposition SQL (added to `admit_one.sql` after `already_sent`; `$17` binds `LEASE_STATUS_ACTIVE`):
+  Approved disposition SQL (added to `admit_one.sql` after `already_sent`; `$17` binds `LEASE_STATUS_ACTIVE`). Built with one change, listed in the final report for Indy's morning review: the `run_live` column is dropped, and a live run is read as `run_event_id IS NOT NULL`. The two are the same fact, because `live_run` returns a row only with its event, and the change keeps the answer row under clippy's limit on bools per struct:
 
   ```sql
   live_run AS (
@@ -406,7 +406,6 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
       ) AS waiting
   ),
   -- answer row adds:
-  --   EXISTS (SELECT 1 FROM live_run) AS run_live,
   --   COALESCE((SELECT takes_input FROM live_run), false) AS run_takes_input,
   --   COALESCE((SELECT reply_provider IS NOT DISTINCT FROM $12::text
   --                AND reply_address IS NOT DISTINCT FROM $13::text FROM live_run), false) AS same_conversation,

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { appendOptimistic, discardOptimistic, getSnapshot, reconcileOptimistic, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { setupRegistryTests, row, WS, Z_A, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
-import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
+import { foldRow, optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
+import { AGENTSFLEET_EVENT_STATUS, FOLDED_OUTCOME } from "./fleet-stream-row";
 
 setupRegistryTests();
 
@@ -41,6 +42,25 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     expect(snap.events[0]?.id).toBe("evt_real");
     expect(snap.events[0]?.status).toBe("received");
     a();
+  });
+
+  it("a folded send is named, labelled and never watched for a reply of its own (M242_002)", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const tempId = appendOptimistic(Z_A, "and also this", "steer:k@e2e.com");
+    expect(reconcileOptimistic(Z_A, tempId, "evt_folded", false, "evt_run")).toBe(true);
+    const row = getSnapshot(Z_A).events[0];
+    expect(row?.id).toBe("evt_folded");
+    expect(row?.status).toBe(AGENTSFLEET_EVENT_STATUS.FOLDED);
+    expect(row?.outcome).toBe(FOLDED_OUTCOME);
+    a();
+  });
+
+  it("foldRow leaves every other row alone", () => {
+    const temp = optimisticRow("temp", "mine", "steer:k@e2e.com");
+    const other = optimisticRow("other", "theirs", "steer:k@e2e.com");
+    const folded = foldRow([temp, other], "temp", "real");
+    expect(folded[0]?.status).toBe(AGENTSFLEET_EVENT_STATUS.FOLDED);
+    expect(folded[1]).toBe(other);
   });
 
   // The thread reports a run only for a row this tab sent (`reportsOwnRun`),
