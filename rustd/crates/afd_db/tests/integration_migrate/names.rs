@@ -13,7 +13,7 @@ SELECT table_schema::text, table_name::text
 
 /// Every foreign-key column, the table it references, and the column there.
 const FOREIGN_KEY_COLUMNS: &str = "\
-SELECT src.relname::text, src_col.attname::text, dst.relname::text, dst_col.attname::text
+SELECT src.relname::text, src_col.attname::text, dst.relname::text, dst_col.attname::text, cardinality(con.conkey)::int4
   FROM pg_constraint con
   JOIN pg_class src ON src.oid = con.conrelid
   JOIN pg_class dst ON dst.oid = con.confrelid
@@ -57,22 +57,17 @@ async fn test_table_and_key_names_follow_rules() {
         );
     }
 
-    let keys: Vec<(String, String, String, String)> = sqlx::query_as(FOREIGN_KEY_COLUMNS)
+    let keys: Vec<(String, String, String, String, i32)> = sqlx::query_as(FOREIGN_KEY_COLUMNS)
         .fetch_all(&mut *connection)
         .await
         .unwrap();
     assert!(!keys.is_empty(), "the catalog read found no foreign keys");
-    for (table, column, target, target_column) in &keys {
+    for (table, column, target, target_column, arity) in &keys {
         // A composite reference repeats the target's own column name for every
         // part but the pointer (`tenant_id` beside `tenant_model_id`).
-        let named = if target_column == "id" {
-            column.ends_with(&format!("{}_id", singular(target)))
-                || ROLE_NAMED.contains(&(column.as_str(), target.as_str()))
-        } else {
-            column == target_column
-        };
+        let named = key_names_match(table, column, target, target_column, *arity);
         assert!(
-            column.ends_with("_id") && named,
+            named,
             "{table}.{column} points at {target}.{target_column} without naming it"
         );
     }
@@ -87,4 +82,88 @@ fn test_singular_reads_the_pointer_name_a_table_takes() {
     assert_eq!(singular("library_entries"), "library_entry");
     assert_eq!(singular("revisions"), "revision");
     assert_eq!(singular("fleet_slots"), "fleet_slot");
+}
+
+/// Scope dimensions repeat their target only inside a composite reference.
+/// The sole primary-id role below closes the task/checkpoint ownership cycle.
+fn key_names_match(
+    table: &str,
+    column: &str,
+    target: &str,
+    target_column: &str,
+    arity: i32,
+) -> bool {
+    if target_column == "id" {
+        column.ends_with("_id")
+            && (column.ends_with(&format!("{}_id", singular(target)))
+                || ROLE_NAMED.contains(&(column, target)))
+    } else {
+        arity > 1
+            && (column == target_column
+                || (table == "tasks"
+                    && column == "id"
+                    && target == "task_checkpoints"
+                    && target_column == "task_id"))
+    }
+}
+
+#[test]
+fn composite_scope_columns_preserve_target_identity() {
+    assert!(key_names_match(
+        "task_checkpoints",
+        "task_base_id",
+        "task_bases",
+        "id",
+        1
+    ));
+    assert!(key_names_match(
+        "task_checkpoints",
+        "repository",
+        "task_bases",
+        "repository",
+        3
+    ));
+    assert!(key_names_match(
+        "tasks",
+        "id",
+        "task_checkpoints",
+        "task_id",
+        4
+    ));
+    assert!(!key_names_match(
+        "task_checkpoints",
+        "base_id",
+        "task_bases",
+        "id",
+        1
+    ));
+    assert!(!key_names_match(
+        "task_checkpoints",
+        "wrong_repository",
+        "task_bases",
+        "repository",
+        3
+    ));
+    assert!(!key_names_match(
+        "other_tasks",
+        "id",
+        "task_checkpoints",
+        "task_id",
+        4
+    ));
+    assert!(!key_names_match(
+        "tasks",
+        "id",
+        "task_checkpoints",
+        "other_task_id",
+        4
+    ));
+    assert!(!key_names_match("members", "email", "users", "email", 1));
+    assert!(!key_names_match(
+        "tasks",
+        "id",
+        "task_checkpoints",
+        "task_id",
+        1
+    ));
 }

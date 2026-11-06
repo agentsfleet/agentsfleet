@@ -39,6 +39,7 @@ fn each_refusal_round_trips_without_an_executable_proposal()
             "instructions_ambiguous",
         ),
         (ProposalRejection::StaleCandidate, "stale_candidate"),
+        (ProposalRejection::EditNotRequested, "edit_not_requested"),
     ] {
         let call: ProposalCall = ProposalCall::Refused {
             id: "provider-call".into(),

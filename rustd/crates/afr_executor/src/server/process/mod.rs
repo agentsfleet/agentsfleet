@@ -28,15 +28,8 @@ use crate::error::Result;
 use crate::protocol::{
     ExitedParams, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams, READ_CHUNK_BYTES, line,
 };
+use crate::timing::{DRAIN_GRACE, KILL_GRACE};
 
-/// How long a process's group has between TERM and KILL.
-pub(crate) const KILL_GRACE: Duration = Duration::from_secs(2);
-/// How long the drain waits on the pipe once the leader has ended. A
-/// descendant that left the group — `setsid cmd &`, a background job on a
-/// terminal — can hold the output open indefinitely; past this it is not
-/// waited for. Time spent waiting on the writer does not count: that is the
-/// supervisor reading, not the process holding its output open.
-pub(crate) const DRAIN_GRACE: Duration = Duration::from_secs(2);
 /// The most output forwarded once the leader has ended: twice what the
 /// reader's backlog holds, room for that and a pipe's buffer. Past it, a
 /// descendant outside the group that keeps writing is not forwarded.

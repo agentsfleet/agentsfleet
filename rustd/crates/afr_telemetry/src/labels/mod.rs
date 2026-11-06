@@ -8,6 +8,7 @@
 //! data into its overflow marker.
 
 use afr_tools::catalog;
+pub mod decision;
 
 /// The label key a provider is attributed under.
 pub const LABEL_PROVIDER: &str = "provider";

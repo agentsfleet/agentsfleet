@@ -13,6 +13,7 @@
 
 mod authoring_compaction;
 mod claim_selection;
+mod decision_receipts;
 
 #[path = "inference_images.rs"]
 mod inference_images;
@@ -27,8 +28,12 @@ mod redaction;
 // Every runner route template, pinned in one reviewed snapshot.
 #[path = "routes.rs"]
 mod routes;
+mod runner_policy;
 #[path = "strictness.rs"]
 mod strictness;
+mod task_owned;
+mod task_progress;
+mod task_validation;
 // Declared bounds at their exact limits, the steer request's own rows, and a
 // seeded mutation corpus the parser must survive without panicking.
 #[path = "validation.rs"]

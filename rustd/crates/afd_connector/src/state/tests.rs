@@ -148,6 +148,7 @@ fn a_subject_tag_in_any_other_spelling_matches_nobody() {
         "zz".to_owned(),
     ] {
         let verified = Verified {
+            authenticated_subject: None,
             workspace: WORKSPACE.to_owned(),
             subject_tag,
             nonce: NONCE.to_owned(),

@@ -199,12 +199,13 @@ build_root() {
 run_mmdebstrap() {
   local include="$1" mode="$2"
   shift 2
-  SOURCE_DATE_EPOCH="$epoch" mmdebstrap --quiet --mode="$mode" --variant=minbase --skip=essential/unlink --skip=cleanup/apt \
+  # Callers capture stdout as the image path; bootstrap diagnostics belong on stderr.
+  SOURCE_DATE_EPOCH="$epoch" mmdebstrap --verbose --mode="$mode" --variant=minbase --skip=essential/unlink --skip=cleanup/apt \
     --include="$include" --aptopt='Acquire::Check-Valid-Until "false"' \
     --dpkgopt='path-exclude=/usr/share/doc/*' --dpkgopt='path-include=/usr/share/doc/*/copyright' \
     --dpkgopt='path-exclude=/usr/share/man/*' --dpkgopt='path-exclude=/usr/share/locale/*' \
     --dpkgopt='path-exclude=/usr/share/info/*' --keyring="$keyring" \
-    "${hooks[@]}" "$suite" "$work/root.tar" "$@"
+    "${hooks[@]}" "$suite" "$work/root.tar" "$@" >&2
 }
 
 assemble_image() {

@@ -14,6 +14,8 @@ import { STATUS_AGENT_ERROR } from "./fleetMessageStatus";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
+import { NativeTaskPrBadge } from "./chat/NativeTaskPrBadge";
+import { TaskActivityTimeline } from "./TaskActivityTimeline";
 import { ContextProgressStatus } from "./ContextProgressStatus";
 import { readContextProgress } from "@/lib/context-progress";
 
@@ -52,7 +54,9 @@ export function FleetReply({
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
       failed={errored}
+      annotation={<NativeTaskPrBadge activity={message.metadata.custom.taskActivity} />}
     >
+      <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} />
       <FleetReplyParts errored={errored} running={running} queued={queued} eventId={eventId}
         reasoning={reasoningText(message)} span={span} content={message.content}
         startedAtMs={message.createdAt.getTime()} contextProgress={context} />

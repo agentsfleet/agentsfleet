@@ -11,6 +11,8 @@ fn a_run_debugs_without_the_leases_secrets() {
     let lease = lease(&[], unbounded());
     let sink = |_frame: ActivityFrame<'static>| {};
     let run = AgentRun {
+        recovered_task: None,
+        prepared_task: None,
         lease: &lease,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),

@@ -58,6 +58,8 @@ pub struct SelfRow {
 /// [`sql::runner::SELECT_RUNNER_SELF`]'s row, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct SelfColumns {
+    durable_tasks_enabled: bool,
+    decision_model_id: Option<String>,
     id: String,
     status: String,
     host_id: String,
@@ -81,6 +83,8 @@ impl SelfColumns {
             host_id: self.host_id,
             last_seen_at: self.last_seen_at,
             assignment: AssignmentColumns {
+                durable_tasks_enabled: self.durable_tasks_enabled,
+                decision_model_id: self.decision_model_id,
                 sandbox_tier: self.sandbox_tier,
                 network_policy: self.network_policy,
                 registry_allowlist_json: self.registry_allowlist,

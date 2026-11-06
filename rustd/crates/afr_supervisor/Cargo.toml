@@ -33,12 +33,18 @@ afd_observability.workspace = true
 afd_core.workspace = true
 # Per-report content keys, authenticated metadata and encrypted private spool bytes.
 afd_crypto.workspace = true
+# No-follow, nonblocking opens keep private spool reads on regular files.
+libc.workspace = true
+cap-std.workspace = true
+rustix.workspace = true
 # The one wire: every verb's request and reply, spelled once.
 afd_wire.workspace = true
 # The instants a lease, a renewal and a held sandbox carry; the runner reads
 # them off the injected clock and waits on the span left until each.
 jiff.workspace = true
 afr_agent.workspace = true
+# Physical decisions reuse the existing guarded provider protocols.
+afr_providers.workspace = true
 afr_executor.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.
 afr_memory.workspace = true
@@ -85,14 +91,18 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+# Verified local HTTPS object storage boundary for recovery transfer tests.
+afd_identity.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # `FakeResolver`: the egress suites resolve through the one fake the guarded
 # client's suites use.
 afr_egress = { workspace = true, features = ["test-util"] }
-# The production connector the fake agent admits through, so a lease naming a
-# provider no wire speaks is refused by the real check.
-afr_providers.workspace = true
 # Stub handlers, so the lease suites admit through a real catalog: a
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }
@@ -103,7 +113,7 @@ afr_tools = { workspace = true, features = ["test-util"] }
 afr_agent = { workspace = true, features = ["test-util"] }
 # The daemon side of `HttpRunnerApi`'s tests: a real listener, so a status code
 # and a header are proven on the socket rather than assumed by a mock.
-axum.workspace = true
+axum = { workspace = true, features = ["json"] }
 afd_core = { workspace = true, features = ["test-util"] }
 # The subscriber a lease's spans are exported through in the telemetry suite.
 tracing-subscriber.workspace = true

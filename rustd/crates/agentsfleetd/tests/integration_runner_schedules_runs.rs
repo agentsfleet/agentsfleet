@@ -306,7 +306,7 @@ async fn record_event(run: &Scenario, event: &str, actor: &str) {
         .bind(&run.workspace)
         .bind(actor)
         .bind("cron")
-        .bind("{}")
+        .bind(sqlx::types::Json(json!({})))
         .bind(Option::<&str>::None)
         .bind("processed")
         .fetch_one(&mut *connection)

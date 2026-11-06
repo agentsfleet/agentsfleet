@@ -14,10 +14,10 @@ use crate::harness::{Fleet, json_body, send};
 use crate::integration_operator_runner::{Fixture, SUBJECT, patch, text};
 
 /// A policy unlike the seed's, so a label write that touched it would show.
-const POLICY: &str = r#"{"sandbox_tier":"dev_none","network_policy":"deny_all_egress","registry_allowlist":["registry.example:443"],"worker_count":3,"extra_binds":[]}"#;
+const POLICY: &str = r#"{"sandbox_tier":"dev_none","network_policy":"deny_all_egress","registry_allowlist":["registry.example:443"],"worker_count":3,"extra_binds":[],"durable_tasks_enabled":true}"#;
 
 /// A second policy, for the edit that must leave labels alone.
-const SECOND_POLICY: &str = r#"{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":2,"extra_binds":[]}"#;
+const SECOND_POLICY: &str = r#"{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":2,"extra_binds":[],"durable_tasks_enabled":true}"#;
 
 /// Every column but the two a label write may move, as one comparable string.
 const ROW_BUT_LABELS: &str = "\

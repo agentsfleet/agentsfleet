@@ -64,6 +64,7 @@ impl Lane {
                 },
                 prices: vec![price(0), price(272_000)],
                 inference: None,
+                decision: None,
             },
         };
         assert!(matches!(

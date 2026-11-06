@@ -60,6 +60,10 @@ impl Leases {
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(&held)
             .bind(hint.as_ref().map(Uuid7::as_str))
+            .bind(afd_wire::task::CAPABILITY)
+            .bind(afd_wire::task::TaskState::Ready.as_str())
+            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(crate::task::DECISION_POLICY_PATH)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -94,6 +98,10 @@ impl Leases {
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_EXPIRED)
+            .bind(afd_wire::task::CAPABILITY)
+            .bind(afd_wire::task::TaskState::Ready.as_str())
+            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(crate::task::DECISION_POLICY_PATH)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT))?;

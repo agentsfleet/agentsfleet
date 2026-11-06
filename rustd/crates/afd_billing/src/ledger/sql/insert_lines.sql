@@ -1,3 +1,4 @@
+WITH inserted AS (
 INSERT INTO billing.usage_lines
     (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
      authoring_attempt_id, provider, model, posture, requested_at, input_token_count,
@@ -13,3 +14,6 @@ FROM unnest($1::text[]::uuid[], $13::bigint[], $14::timestamptz[], $15::bigint[]
     AS line(id, seq, requested_at, input, cached, write, write_5m, write_1h, output, runtime_ms,
             price_id, unpriced, charged)
 ON CONFLICT (work_type, work_id, seq) DO NOTHING
+RETURNING seq, charged_nanos
+)
+SELECT COALESCE(sum(charged_nanos) FILTER (WHERE seq < $25), 0)::bigint FROM inserted

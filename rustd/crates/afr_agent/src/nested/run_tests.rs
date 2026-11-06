@@ -266,6 +266,8 @@ async fn test_a_child_writes_no_checkpoint_of_its_own() {
 
     let output = engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

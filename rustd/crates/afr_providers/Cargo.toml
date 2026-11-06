@@ -14,7 +14,7 @@ categories.workspace = true
 [package.metadata.cargo-shear]
 # Used by `tests/support/`, which the provider suite includes through
 # `#[path = "../support/mod.rs"]`, a module path the source scan does not follow.
-ignored = ["afr_memory", "rcgen", "rustls", "tokio-rustls"]
+ignored = ["afr_memory", "rcgen", "rustls"]
 
 [lints]
 workspace = true
@@ -39,7 +39,7 @@ backon.workspace = true
 # A turn's request body, shared by every retry without a copy.
 # A tool result's image rides the wire as base64.
 base64.workspace = true
-bytes.workspace = true
+bytes = { workspace = true, features = ["serde"] }
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
 # The request and response types rig's HTTP seam speaks.
@@ -57,10 +57,14 @@ serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
+# Parse the exact reviewed decision endpoint and retain its typed parse error.
+url.workspace = true
 # The retry log line, and the level rig's own lines are held to.
 tracing.workspace = true
 
 [dev-dependencies]
+# Scoped channel-based logging proof avoids process-wide capture locks.
+tracing-subscriber.workspace = true
 afd_identity.workspace = true
 # Rig's scripted stream exercises unmodeled items and retained terminal failures.
 rig-core = { workspace = true, features = ["test-utils"] }

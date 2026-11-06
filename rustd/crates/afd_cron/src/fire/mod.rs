@@ -23,6 +23,7 @@
 //! replaces, the row does not expire and does not live in the queue.
 
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use afd_api_wire::activity::{ScheduleFire, ScheduleFireDescription};
 use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 
@@ -55,12 +56,6 @@ pub fn schedule_actor(schedule: &Uuid7) -> String {
 /// retires it. Keyed by the schedule alone, the second is the first's replay.
 const ONCE_FIRE: &str = "once";
 
-/// The body field a fired run's words travel in.
-///
-/// The field every producer's body uses and the runner reads its first turn
-/// from (`afr_agent::prompt`); see [`body`].
-const FIELD_MESSAGE: &str = "message";
-
 /// The event body a fire of a schedule whose message is `message` stores.
 ///
 /// The schedule's message is the author's plain text, and the lease records
@@ -69,10 +64,14 @@ const FIELD_MESSAGE: &str = "message";
 /// was admitted and could never be leased. Wrapped as `{"message": …}`, the
 /// shape a steer and a mention store, the runner reads the schedule's words as
 /// the run's first turn.
-pub(crate) fn body(message: &str) -> String {
-    let mut fields = serde_json::Map::new();
-    fields.insert(FIELD_MESSAGE.to_owned(), message.into());
-    serde_json::Value::Object(fields).to_string()
+pub(crate) fn body(schedule: &Uuid7, target: &FireTarget) -> Result<String> {
+    Ok(serde_json::to_string(&ScheduleFire {
+        message: target.message.as_str().into(),
+        schedule: ScheduleFireDescription {
+            schedule_id: schedule.as_str().into(),
+            description: target.description.as_str().into(),
+        },
+    })?)
 }
 
 /// What one fire put on the stream.
@@ -120,7 +119,7 @@ impl Fire {
         let fire_id = if target.once { ONCE_FIRE } else { message_id };
         let key = format!("{fleet}:{schedule}:{fire_id}");
         let actor = schedule_actor(schedule);
-        let request_json = body(&target.message);
+        let request_json = body(schedule, target)?;
 
         let admitted = self
             .admissions
@@ -151,6 +150,9 @@ impl Fire {
         let replayed = admitted.replayed;
         let schedule_id = schedule.as_str();
         let workspace_id = target.workspace.as_str();
+        if !replayed {
+            afd_events::activity::announce(&self.admissions.streams(), fleet).await;
+        }
         tracing::info!(
             fleet_id = fleet,
             workspace_id,

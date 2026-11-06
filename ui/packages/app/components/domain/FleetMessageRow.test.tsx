@@ -44,6 +44,20 @@ function renderRow(
 }
 
 describe("FleetMessageRow", () => {
+  it("keeps interactive annotations outside the hidden sender in the same header", () => {
+    renderRow({tone: ROW_TONE.FLEET, sender: "A long fleet name", messageRole: "assistant",
+      annotation: <a href="https://github.com/a/b/pull/803">Pull request #803</a>});
+    const sender = screen.getByTestId("fleet-message-sender");
+    const header = screen.getByTestId("chat-message-header");
+    const link = screen.getByRole("link", {name: "Pull request #803"});
+    expect(sender.getAttribute("aria-hidden")).toBe("true");
+    expect(header.contains(sender)).toBe(true);
+    expect(header.contains(link)).toBe(true);
+    expect(link.closest('[aria-hidden="true"]')).toBeNull();
+    link.focus();
+    expect(document.activeElement).toBe(link);
+  });
+
   it("shows only the operator message in a right-aligned bubble", () => {
     const { container } = renderRow();
     const row = container.querySelector('[data-role="user"]') as HTMLElement;

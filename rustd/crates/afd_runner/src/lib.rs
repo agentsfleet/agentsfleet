@@ -28,6 +28,8 @@ pub mod error;
 pub mod admin;
 pub mod bounds;
 pub mod capacity;
+mod decision;
+mod decision_profile;
 pub mod edit;
 pub mod heartbeat;
 pub mod policy;
@@ -42,6 +44,7 @@ pub mod validate;
 pub mod view;
 
 pub use self::admin::SelftestRequested;
+pub use self::decision_profile::{DecisionSelection, decision_assignment_on};
 pub use self::edit::{RunnerEdit, RunnerEdited};
 pub use self::error::{
     DETAIL_DATABASE_ERROR, DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST,

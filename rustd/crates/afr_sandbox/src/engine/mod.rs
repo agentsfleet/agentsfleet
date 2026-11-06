@@ -177,6 +177,11 @@ pub trait Engine: Send + Sync + fmt::Debug {
 /// One lease's sandbox, owned by the task running that lease.
 #[async_trait::async_trait]
 pub trait Sandbox: Send + Sync + fmt::Debug {
+    /// Verified immutable toolbox image used by checkpoint compatibility.
+    fn toolbox_digest(&self) -> Option<&str> {
+        None
+    }
+
     /// The executor running inside it.
     fn executor(&self) -> &dyn Executor;
 

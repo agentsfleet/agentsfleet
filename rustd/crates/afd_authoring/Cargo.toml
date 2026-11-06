@@ -15,6 +15,7 @@ categories.workspace = true
 [dependencies]
 afd_core.workspace = true
 afd_inference.workspace = true
+afr_providers.workspace = true
 afd_context = { workspace = true, features = ["postgres"] }
 afd_billing.workspace = true
 afd_identity.workspace = true
@@ -31,13 +32,13 @@ afd_admission.workspace = true
 afd_approval.workspace = true
 afd_cron.workspace = true
 afd_events.workspace = true
+afd_api_wire.workspace = true
 # The product-analytics reporter the private-chat-to-fleet funnel steps go to,
 # each after the commit that made it true.
 afd_observability.workspace = true
 garde.workspace = true
 async-trait.workspace = true
 base64.workspace = true
-const_format.workspace = true
 hex.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
 # jiff-sqlx.
@@ -61,6 +62,13 @@ zeroize.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+proc-macro2.workspace = true
+syn.workspace = true
+afd_admin = { workspace = true, features = ["test-util"] }
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+const_format.workspace = true
 # One isolated allocator observer also checks the runner's public secret owner.
 afr_secrets.workspace = true
 afd_runner = { workspace = true, features = ["test-util"] }

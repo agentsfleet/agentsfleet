@@ -1,11 +1,12 @@
 //! Capacity is counted under the parent lock before intent and its fence commit.
 
+use super::history::{Fact, Receipt};
 use super::{CONTEXT_WRITE, NewSchedule, Refused, SYNC_LEASE, Schedules, admit, fire_at};
 use crate::{DesiredStatus, Result, Schedule, SyncStatus, error, sql};
+use afd_api_wire::activity::ScheduleChange;
 use afd_core::id::Uuid7;
 use afd_db::Precondition;
 use jiff::Timestamp;
-use sqlx::Acquire as _;
 
 /// A new schedule's fence version: one, never zero.
 ///
@@ -47,9 +48,7 @@ impl Schedules {
         guard: Option<&dyn Precondition>,
     ) -> Result<core::result::Result<Schedule, Refused>> {
         let schedule_id = self.mint(now)?;
-        let mut connection = self.database.acquire().await?;
-        let mut transaction = connection
-            .begin()
+        let mut transaction = sqlx::Transaction::begin(self.database.acquire().await?, None)
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
 
@@ -65,36 +64,49 @@ impl Schedules {
             return Ok(Err(Refused::Unheld));
         }
 
-        let created = sqlx::query_as::<_, Schedule>(sql::INSERT)
-            .bind(schedule_id.as_str())
-            .bind(new.fleet.as_str())
-            .bind(new.source.as_str())
-            .bind(
-                new.provider_schedule_id
-                    .unwrap_or_else(|| schedule_id.as_str()),
-            )
-            .bind(new.cron)
-            .bind(new.timezone)
-            .bind(new.message)
-            .bind(DesiredStatus::Active.as_str())
-            .bind(SyncStatus::Syncing.as_str())
-            .bind(FIRST_VERSION)
-            .bind(token.as_str())
-            .bind(SYNC_LEASE)
-            .bind(new.once)
-            .fetch_one(transaction.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?;
+        let created = insert_row(&mut transaction, &new, &schedule_id, token).await?;
         let created = if created.once {
             fire_at::stamp(&mut transaction, &created, token, created.created_at).await?
         } else {
             created
         };
 
-        transaction
-            .commit()
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?;
+        let announcement = Receipt {
+            schedule: &created,
+            operation: token.as_str(),
+            fact: Fact::Changed(ScheduleChange::Created),
+        }
+        .record_on(&mut transaction, workspace)
+        .await?;
+        self.commit_activity(transaction, announcement).await?;
         Ok(Ok(created))
     }
+}
+
+async fn insert_row(
+    connection: &mut sqlx::PgConnection,
+    new: &NewSchedule<'_>,
+    schedule_id: &Uuid7,
+    token: &Uuid7,
+) -> Result<Schedule> {
+    sqlx::query_as::<_, Schedule>(sql::INSERT)
+        .bind(schedule_id.as_str())
+        .bind(new.fleet.as_str())
+        .bind(new.source.as_str())
+        .bind(
+            new.provider_schedule_id
+                .unwrap_or_else(|| schedule_id.as_str()),
+        )
+        .bind(new.cron)
+        .bind(new.timezone)
+        .bind(new.message)
+        .bind(DesiredStatus::Active.as_str())
+        .bind(SyncStatus::Syncing.as_str())
+        .bind(FIRST_VERSION)
+        .bind(token.as_str())
+        .bind(SYNC_LEASE)
+        .bind(new.once)
+        .fetch_one(connection)
+        .await
+        .map_err(error::query(CONTEXT_WRITE))
 }

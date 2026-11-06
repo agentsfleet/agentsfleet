@@ -27,6 +27,7 @@ export {
 };
 
 export type UseFleetEventStreamResult = {
+  tasksSeq: number;
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
   appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
@@ -98,6 +99,7 @@ export function useFleetEventStream(
   // it, held every message from then on. Work is now reported per event, on
   // the row it belongs to, where a strand can only misreport itself.
   return {
+    tasksSeq: snapshot.tasksSeq,
     events: snapshot.events,
     connectionStatus: snapshot.connectionStatus,
 

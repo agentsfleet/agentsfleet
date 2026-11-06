@@ -180,12 +180,17 @@ async fn report_and_relay(
         &attempt,
     )
     .await
-    .expect("the attempt's lines read")
-    .expect("the report logged the attempt's lines");
-    biller
-        .settle(&unsettled)
-        .await
-        .expect("the relay settles the attempt");
+    .expect("the attempt's lines read");
+    assert!(
+        !unsettled.is_empty(),
+        "the report logged the attempt's lines"
+    );
+    for settlement in unsettled {
+        biller
+            .settle(&settlement)
+            .await
+            .expect("the relay settles the attempt");
+    }
     reported
 }
 

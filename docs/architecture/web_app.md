@@ -242,5 +242,13 @@ Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow
 Effects own connections and cleanup; render stays pure and Hooks remain static.
 Private history loading does not wait for model or sidebar lists.
 
+Fleet chat also renders `TaskPanel` inline above its composer through `FleetThreadViewport`.
+Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `TaskDetail`.
+The [DT owner](durable_tasks.md#status-and-ownership) distinguishes these implemented reads from pending task attempts and recovery.
+
+The existing fleet stream supplies `task_changed` read hints through `tasksSeq`; its initial hello and gap recovery also invalidate task reads.
+Account or workspace changes abort old requests, and access loss clears private rows.
+Transient failures retain labelled confirmed data and expose retry without claiming fresh progress.
+
 An identity-owned cache retains at most five conversations and 1 MiB for 120 seconds, with access loss clearing its contents.
 See [shared chat implementation and verification](shared_chat_verification.md#browser-ownership) for the call graph and recovery rules.

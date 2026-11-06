@@ -1,6 +1,6 @@
 //! Unknown obligations take precedence over any ordinary retryable outcome.
 
-use afd_wire::authoring::{FailureReason, Knowledge, Outcome};
+use afd_wire::authoring::{FailureReason, Outcome};
 
 use super::prepare::Prepared;
 use crate::{
@@ -23,7 +23,7 @@ pub(super) fn derive(
     cancelled: bool,
     now: jiff::Timestamp,
 ) -> Result<Verdict> {
-    if verified.usage.knowledge == Knowledge::Unknown {
+    if !verified.chat_known {
         return Ok(Verdict {
             outcome: Outcome::Failed,
             reason: Some(FailureReason::ProviderUsageUnknown),

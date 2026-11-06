@@ -45,9 +45,15 @@ Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/mem
 
 **The load-bearing consequence:** because the writer is in the key, **a new fleet = a new `fleet_id` = an empty namespace of its own.** Spinning a *new ephemeral fleet per event* gives each one nothing of its own to hydrate. Memory continuity **requires reusing the same `fleet_id`** across events, or granting the new fleet read on the workspace's shared memory, which seeds it with what publishing fleets learned.
 
-## 4. The M106 channel pattern
+## 4. Slack threads and fleet memory
 
-Because memory is `fleet_id`-keyed, **per-channel memory = a per-channel fleet.** The Slack-resident bot (M106) gives each channel a **durable resident fleet**. `agentsfleetd` installs the resident beside fleets that subscribe to a channel (M206_002, [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §4). The boundary itself needs no new code: a runner hydrates or captures only a fleet it holds a live lease on, and only while no reclaim has moved the fleet past that lease (`Plane::hydrate` and `Plane::capture` in `rustd/crates/afd_fleet/src/lease/memory.rs`). Every mention in any thread of that channel routes to the same `fleet_id`, so memory persists thread to thread. The thread is a delivery surface, not a memory key. Per-thread would forget across threads; a resident stays private by holding no shared-memory grant. Spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`; scenario: [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
+Memory belongs to a configured fleet and its permitted scope, rather than a Slack thread.
+Mentions routed to that fleet can use saved facts only when its tools and grants permit memory capture and recall.
+A shared fleet identifier alone proves neither operation.
+
+The runner reads or saves memory only under the current lease fence.
+[Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects configured fleets; an unconfigured channel never creates a memory-owning fallback fleet.
+Historical stored fleets and their memory remain unchanged.
 
 ## 5. Categories, selection, tools — see the topic docs
 

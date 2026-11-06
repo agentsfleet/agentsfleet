@@ -17,6 +17,9 @@ pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
 
 /// The sentence a malformed registry allowlist earns.
 pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be host[:port] names";
+/// The optional selection uses the same canonical identity as the catalogue.
+pub const DETAIL_DECISION_MODEL_ID: &str =
+    "decision_model_id must be a canonical version-7 UUID or null";
 
 /// The sentence a vanished runner earns.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
@@ -34,8 +37,9 @@ mod raise;
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{
-    admin_state_malformed, assignment_malformed, query, rejected, row_malformed, runner_not_found,
-    runner_not_revoked, runner_still_leased, runner_vanished, selftest_refused, stored_json,
+    admin_state_malformed, assignment_malformed, decision_model_id, query, rejected, row_malformed,
+    runner_not_found, runner_not_revoked, runner_still_leased, runner_vanished, selftest_refused,
+    stored_json,
 };
 
 afd_core::error_shell!(
@@ -48,6 +52,13 @@ afd_core::error_shell!(
 /// Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    /// The operator's optional catalogue identifier did not parse canonically.
+    #[error("the assigned decision model identifier is malformed")]
+    DecisionModelId {
+        /// The identifier parser's value-free rejection.
+        #[source]
+        source: afd_core::error::Error,
+    },
     /// A statement would not run.
     #[error("the runner store could not {context}")]
     Query {
@@ -189,6 +200,7 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> &'static str {
         match self.kind() {
+            ErrorKind::DecisionModelId { .. } => DETAIL_DECISION_MODEL_ID,
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
@@ -227,7 +239,10 @@ impl Error {
     /// Whether the caller sent something this plane will not accept.
     #[must_use]
     pub fn is_rejected(&self) -> bool {
-        matches!(self.kind(), ErrorKind::Rejected { .. })
+        matches!(
+            self.kind(),
+            ErrorKind::Rejected { .. } | ErrorKind::DecisionModelId { .. }
+        )
     }
 
     /// Whether an authenticated runner's row has since disappeared.
@@ -240,7 +255,7 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::Rejected { .. } | ErrorKind::DecisionModelId { .. } => error_code::INVALID_REQUEST,
             ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
             ErrorKind::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
             ErrorKind::RunnerNotRevoked | ErrorKind::RunnerStillLeased => {

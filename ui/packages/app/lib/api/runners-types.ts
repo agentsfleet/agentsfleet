@@ -155,6 +155,8 @@ export const NETWORK_POLICY_DESCRIPTIONS: Record<NetworkPolicy, string> = {
 export const DEFAULT_ASSIGNED_NETWORK_POLICY: NetworkPolicy = "allow_all";
 
 export const DEFAULT_WORKER_COUNT = 1;
+// Mirrors afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED.
+export const DEFAULT_DURABLE_TASKS_ENABLED = true;
 
 export const MIN_WORKER_COUNT = 1;
 
@@ -203,6 +205,10 @@ export interface ExtraBind {
 // The policy the operator assigns to a runner — mirrors `protocol.AssignedPolicy`
 // verbatim. The host applies exactly this; it never declares its own.
 export interface AssignedPolicy {
+  /** Accept new durable task leases; issued work retains its current settings. */
+  durable_tasks_enabled: boolean;
+  /** Reviewed platform catalogue selection; omitted or null disables decisions. */
+  decision_model_id?: string | null;
   sandbox_tier: SandboxTier;
   network_policy: NetworkPolicy;
   registry_allowlist: string[];

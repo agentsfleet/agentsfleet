@@ -1,4 +1,4 @@
-//! Taking the fence, and giving it back.
+//! Taking the schedule fence; `complete` commits its observed result and history.
 //!
 //! Split from [`super`], which owns the table's plain reads and the create. The
 //! line is whether a call participates in the single-syncer protocol: a claim
@@ -16,8 +16,8 @@
 use afd_core::id::Uuid7;
 
 use afd_db::Precondition;
-use sqlx::Acquire as _;
 
+use super::history::{Fact, Receipt};
 use super::{Change, Refused, SYNC_LEASE, Schedules, fire_at};
 use crate::error::{self, Result};
 use crate::model::{DesiredStatus, Schedule, SyncStatus};
@@ -25,9 +25,6 @@ use crate::sql;
 
 /// The context a failed claim reports under.
 const CONTEXT_CLAIM: &str = "claim a schedule";
-
-/// The context a failed finalize reports under.
-const CONTEXT_WRITE: &str = "write a schedule";
 
 impl Schedules {
     /// Applies a change and takes the fence, in one statement.
@@ -60,19 +57,19 @@ impl Schedules {
         token: &Uuid7,
         guard: Option<&dyn Precondition>,
     ) -> Result<core::result::Result<Option<Schedule>, Refused>> {
-        let mut connection = self.database.acquire().await?;
-        let mut transaction = connection
-            .begin()
-            .await
-            .map_err(error::query(CONTEXT_CLAIM))?;
+        let mut scope = self.history_transaction(fleet).await?;
+        let transaction = &mut scope.transaction;
         if let Some(guard) = guard
             && !guard
-                .holds(&mut transaction)
+                .holds(transaction)
                 .await
                 .map_err(error::query(CONTEXT_CLAIM))?
         {
             return Ok(Err(Refused::Unheld));
         }
+        let Some(workspace) = scope.workspace.as_ref() else {
+            return Ok(Ok(None));
+        };
         let claimed = sqlx::query_as::<_, Schedule>(sql::CLAIM_MUTATION)
             .bind(schedule.as_str())
             .bind(fleet.as_str())
@@ -90,15 +87,23 @@ impl Schedules {
         let claimed = match claimed {
             Some(claimed) if claimed.once && moved(&change) => {
                 let from = claimed.updated_at;
-                Some(fire_at::stamp(&mut transaction, &claimed, token, from).await?)
+                Some(fire_at::stamp(transaction, &claimed, token, from).await?)
             }
             claimed => claimed,
         };
-        transaction
-            .commit()
-            .await
-            .map_err(error::query(CONTEXT_CLAIM))?;
-        Ok(Ok(claimed))
+        let Some(claimed) = claimed else {
+            return Ok(Ok(None));
+        };
+        let announcement = Receipt {
+            schedule: &claimed,
+            operation: token.as_str(),
+            fact: Fact::mutation(change.desired_status),
+        }
+        .record_on(transaction, workspace)
+        .await?;
+        self.commit_activity(scope.transaction, announcement)
+            .await?;
+        Ok(Ok(Some(claimed)))
     }
 
     /// Takes the fence over the row's current state, changing nothing.
@@ -123,79 +128,6 @@ impl Schedules {
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_CLAIM))
-    }
-
-    /// Releases a fence a push succeeded under.
-    ///
-    /// `Ok(None)` when the claim is no longer this caller's: the version
-    /// moved on, or the lease expired and another syncer took the row. Not an
-    /// error, and not a retry — the newer holder's state is the right one, and
-    /// overwriting it is precisely what the fence exists to prevent.
-    ///
-    /// # Errors
-    /// As [`Self::list`].
-    ///
-    /// `registered` is the key the scheduler filed this schedule under, when
-    /// this push learned one. `None` leaves the stored key alone — see
-    /// [`sql::FINALIZE_SUCCESS`] on why that is not the same as blanking it.
-    pub async fn finalize_synced(
-        &self,
-        held: &Schedule,
-        token: &Uuid7,
-        registered: Option<&str>,
-    ) -> Result<Option<Schedule>> {
-        let mut connection = self.database.acquire().await?;
-        sqlx::query_as::<_, Schedule>(sql::FINALIZE_SUCCESS)
-            .bind(held.schedule_id.as_str())
-            .bind(held.resource_version)
-            .bind(token.as_str())
-            .bind(SyncStatus::Synced.as_str())
-            .bind(registered)
-            .fetch_optional(connection.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))
-    }
-
-    /// Releases a fence a push failed under, keeping why on the row.
-    ///
-    /// # Errors
-    /// As [`Self::list`].
-    pub async fn finalize_failed(
-        &self,
-        held: &Schedule,
-        token: &Uuid7,
-        reason: &str,
-    ) -> Result<Option<Schedule>> {
-        let mut connection = self.database.acquire().await?;
-        sqlx::query_as::<_, Schedule>(sql::FINALIZE_FAILURE)
-            .bind(held.schedule_id.as_str())
-            .bind(held.resource_version)
-            .bind(token.as_str())
-            .bind(SyncStatus::Failed.as_str())
-            .bind(reason)
-            .fetch_optional(connection.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))
-    }
-
-    /// Removes a row whose upstream schedule is confirmed gone.
-    ///
-    /// Answers whether it removed one. `false` is the same not-mine state
-    /// [`Self::finalize_synced`] answers `None` for.
-    ///
-    /// # Errors
-    /// As [`Self::list`].
-    pub async fn delete_claimed(&self, held: &Schedule, token: &Uuid7) -> Result<bool> {
-        let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::DELETE_CLAIMED)
-            .bind(held.schedule_id.as_str())
-            .bind(held.resource_version)
-            .bind(token.as_str())
-            .fetch_optional(connection.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?;
-
-        Ok(row.is_some())
     }
 
     /// Whether `token` still holds `held`.

@@ -38,7 +38,7 @@ impl Creations {
             accepted: &accepted,
             model: checked.effective.runtime_model_ref.as_deref(),
         };
-        let announcement =
+        let mut announcement =
             insert_revision(connection, &row.id, &captured.candidate.definition, head).await?;
         let status = if matches!(row.status.as_str(), ACTIVE | INSTALLING) {
             INSTALLING
@@ -52,15 +52,17 @@ impl Creations {
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
-        self.replace_schedules(
-            connection,
-            &row.workspace_id,
-            &row.id,
-            number,
-            &captured.candidate.definition,
-            now,
-        )
-        .await?;
+        announcement.append(
+            self.replace_schedules(
+                connection,
+                &row.workspace_id,
+                &row.id,
+                number,
+                &captured.candidate.definition,
+                now,
+            )
+            .await?,
+        );
         super::activity::record(
             connection,
             row,

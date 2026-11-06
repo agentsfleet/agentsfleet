@@ -23,6 +23,7 @@ use crate::support::Fixtures;
 /// `held_until`.
 pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportRequest<'_> {
     ReportRequest {
+        task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),
         fencing_token: held.fence.as_u64(),
@@ -93,10 +94,10 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(asked));
 
-    let (reported, window) = window_around(
+    let (reported, window) = Box::pin(window_around(
         &held.fixtures,
         plane.report(&held.runner, &request, reported_at),
-    )
+    ))
     .await;
     reported.expect("the plane settles the report");
 

@@ -33,7 +33,7 @@ use afd_memory::Memories;
 use jiff::Timestamp;
 
 use crate::rows::Row;
-use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
+use crate::seed::{ACTOR, MODEL, POSTURE, PROVIDER, REQUEST_JSON, Seeded, seeded_for};
 use crate::support::Fixtures;
 
 /// A pool deep enough that nothing under test clamps against it.
@@ -95,12 +95,17 @@ pub(crate) async fn held() -> Held {
 /// [`held`], over `fixtures`: a private database for a test that breaks a
 /// table every other test reads.
 pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
+    held_admission(fixtures, ACTOR, REQUEST_JSON).await
+}
+
+/// One funded native lease over this scenario's admitted request and actor.
+pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json: &str) -> Held {
     let Seeded {
         runners: [runner, spare],
         fleet,
         tenant,
         ..
-    } = seeded::<2>(&fixtures).await;
+    } = seeded_for::<2>(&fixtures, actor, request_json).await;
     let leases = fixtures.leases();
     let now = fixtures.enrolled_at();
     fixtures.seed_wallet(&tenant, DEEP_POOL).await;
@@ -170,7 +175,7 @@ impl Held {
         )
         .await
         .expect("the lease's lines read");
-        if let Some(settlement) = unsettled {
+        for settlement in unsettled {
             LedgerBiller::on_system_clock(database.clone())
                 .settle(&settlement)
                 .await
@@ -299,6 +304,7 @@ impl Fixtures {
     pub(crate) fn plane(&self) -> Plane {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         Plane {
+            task_reports: None,
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             leases: self.leases(),
             gates: self.gates(),
@@ -335,6 +341,7 @@ impl Fixtures {
     /// tail makes about itself.
     pub(crate) fn plane_with_dead_queue(&self) -> Plane {
         Plane {
+            task_reports: None,
             leases: self.leases_with_dead_queue(),
             ..self.plane()
         }

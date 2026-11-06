@@ -1,8 +1,8 @@
 //! A mention no fleet can take is owed a notice, once.
 //!
 //! Split from the route cases beside it. The router holds a live fleet queue,
-//! because the notice's owner is the channel's resident and the first notice in
-//! a channel installs it. What is read back is the obligation ledger.
+//! and existing subscribers carry notices without a separate fleet install.
+//! What is read back is the obligation ledger.
 
 #![cfg(feature = "test-util")]
 
@@ -42,7 +42,7 @@ pub(super) async fn owed(fixture: &Fixture, event_id: &str) -> Vec<Owed> {
 }
 
 /// Dimension 6.2 — an unaddressed mention two fleets could answer is owed one
-/// notice naming both, by the channel's resident, in the thread it was asked
+/// notice naming both, by the first subscriber, in the thread it was asked
 /// in; Slack's retry of it owes nothing more, and no event is admitted.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
@@ -57,7 +57,7 @@ async fn retried_notice_is_owed_once() {
             )
             .await;
     }
-    let router = fixture.resident_router().await;
+    let router = fixture.router();
     let body = mention(
         &fixture.team,
         "EvNotice01",
@@ -93,7 +93,10 @@ async fn retried_notice_is_owed_once() {
     let owed = owed(&fixture, &key).await;
     assert_eq!(owed.len(), 1, "one notice for one Slack event: {owed:?}");
     let notice = owed.first().expect("the notice is owed");
-    assert!(notice.owner.starts_with("slack-channel-"), "{notice:?}");
+    assert_eq!(
+        notice.owner, "responder",
+        "first subscriber owns the notice"
+    );
     assert_eq!(notice.provider, PROVIDER.id());
     let thread = notice
         .destination

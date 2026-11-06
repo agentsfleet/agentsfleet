@@ -71,6 +71,8 @@ async fn test_memory_tools_round_trip_through_push() {
 
     let output = engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::window(&hydrated),
             executor: &afr_executor::ExecutorSlot::unavailable(
@@ -146,6 +148,8 @@ async fn the_memory_is_checkpointed_every_n_calls() {
 
     engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
@@ -223,6 +227,8 @@ async fn store_then_answer(checkpoint: &dyn Checkpoint) -> RunOutput {
 
     let output = engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
@@ -296,6 +302,8 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
     let ran = tokio::time::timeout(
         HANGING_CHECKPOINT_BOUND,
         engine.run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
@@ -329,6 +337,8 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
 
     engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

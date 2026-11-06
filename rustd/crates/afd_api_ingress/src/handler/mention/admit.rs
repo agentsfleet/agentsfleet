@@ -69,6 +69,7 @@ pub(super) async fn routed<D: Services>(
     let read = services.connectors().thread(token, &thread).await;
     let composed = compose(message, &asked.ts, &read);
     let body = MentionRequest {
+        human_message: Cow::Borrowed(message),
         message: Cow::Borrowed(&composed.message),
         channel_id: Cow::Borrowed(asked.channel.as_str()),
         reply_thread_ts: Cow::Borrowed(&asked.thread_ts),

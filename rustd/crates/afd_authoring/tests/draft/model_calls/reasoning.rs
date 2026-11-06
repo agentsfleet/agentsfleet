@@ -89,7 +89,10 @@ fn assert_native_replay(provider: &Reasoning) {
     let bodies = provider.bodies.lock().expect("sent requests");
     assert_eq!(bodies.len(), 2);
     for body in bodies.iter() {
-        super::preamble::assert_instructions(body, afd_wire::inference::InferenceApi::Responses);
+        super::user_context::assert_no_baked_instructions(
+            body,
+            afd_wire::inference::InferenceApi::Responses,
+        );
         assert_eq!(body.pointer("/input/0/role"), Some(&json!("user")));
         assert_eq!(
             body.pointer("/input/0/content/0/text"),

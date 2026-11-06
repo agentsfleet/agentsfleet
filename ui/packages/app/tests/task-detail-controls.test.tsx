@@ -1,0 +1,34 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { TaskDetail } from "@/components/domain/chat/TaskDetail";
+import { readTask, controlTask, adoptTaskGoal } from "@/lib/api/tasks";
+import { setupRequest } from "@/lib/api/draft-request";
+import { detail, summary, TASK_IDS } from "./helpers/task-reads";
+vi.mock("@/lib/api/tasks", async original => ({...await original<typeof import("@/lib/api/tasks")>(), readTask: vi.fn(), controlTask: vi.fn(), adoptTaskGoal: vi.fn()}));
+vi.mock("@/lib/api/draft-request", () => ({setupRequest: vi.fn()}));
+afterEach(() => {cleanup(); vi.resetAllMocks();});
+
+it("refreshes both saved task details and the parent after confirmed control and criteria changes", async () => {
+  const task = summary();
+  const value = {...detail(task), etag: `"${"a".repeat(64)}"`};
+  vi.mocked(readTask).mockResolvedValue({kind: "ready", value});
+  vi.mocked(controlTask).mockResolvedValue({kind: "confirmed", value});
+  vi.mocked(adoptTaskGoal).mockResolvedValue({kind: "confirmed", value});
+  const policy: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
+  vi.mocked(setupRequest).mockResolvedValue({setup_revision_id: TASK_IDS[1], setup_revision: "3", definition: {config: {"x-agentsfleet": {decision_policy: policy}}}});
+  const changed = vi.fn();
+  render(<TaskDetail workspaceId="w" fleetId="f" task={task} onChanged={changed} />);
+  await screen.findByRole("button", {name: "Pause"});
+  fireEvent.click(screen.getByRole("button", {name: "Pause"}));
+  await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(readTask).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.getByRole("button", {name: "Review latest saved criteria"})).toHaveProperty("disabled", false));
+  fireEvent.click(screen.getByRole("button", {name: "Review latest saved criteria"}));
+  await screen.findByRole("button", {name: "Use these criteria"});
+  fireEvent.click(screen.getByRole("button", {name: "Use these criteria"}));
+  await waitFor(() => expect(changed).toHaveBeenCalledTimes(2));
+  await act(async () => {});
+  expect(readTask).toHaveBeenCalledTimes(3);
+});

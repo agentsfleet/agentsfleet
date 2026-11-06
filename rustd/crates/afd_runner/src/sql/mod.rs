@@ -37,6 +37,10 @@ pub mod sweep;
 /// inline at a second write site is how a consumer's `metadata->>'host_id'`
 /// silently stops matching.
 pub mod meta {
+    /// The non-secret catalogue identity assigned for decision calls.
+    pub const DECISION_MODEL_ID: &str = "decision_model_id";
+    /// Whether the stored assignment permits new durable task leases.
+    pub const DURABLE_TASKS_ENABLED: &str = "durable_tasks_enabled";
     /// The authenticated person who requested an operator mutation.
     pub const ACTOR_ID: &str = "actor_id";
     /// The host a runner was enrolled for.

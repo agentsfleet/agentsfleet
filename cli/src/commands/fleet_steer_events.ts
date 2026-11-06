@@ -1,3 +1,5 @@
+import { ActivityPrinter, activityText } from "./task-activity.ts";
+import { ToolActivityPrinter } from "./tool-activity.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { Effect, Option, Redacted } from "effect";
 import { CLI_ERROR_TAG, type CliError } from "../errors/index.ts";
@@ -11,21 +13,17 @@ import {
 import { ui } from "../output/index.ts";
 import { CliConfig } from "../services/config.ts";
 import { HttpClient } from "../services/http-client.ts";
-import { Output } from "../services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../services/output.ts";
 import {
   wsFleetEventPath,
   wsFleetEventsStreamPath,
 } from "../lib/api-paths.ts";
 import { isString, isRecord } from "../lib/guards.ts";
 
-const MS_FIELD = "ms";
-
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
 const EVENT_NOT_FOUND_CODE = "UZ-AGT-015";
-const TOOL_PREFIX_LABEL = "[tool]" as const;
 export const STATUS_COMPLETE = "complete" as const;
-const FIELD_NAME = "name" as const;
 export const STATUS_SSE_DISCONNECTED = "sse_disconnected" as const;
 export const STATUS_SSE_ERROR = "sse_error" as const;
 const FIELD_STATUS = "status" as const;
@@ -74,12 +72,20 @@ const isTerminal = (status: string): boolean =>
 interface SteerFrameHandlers {
   readonly printLine: (line: string) => void;
   readonly eventId: string;
+  readonly presentation: SteerPresentation;
+}
+
+interface SteerPresentation {
+  readonly activity: ActivityPrinter;
+  readonly tools: ToolActivityPrinter;
 }
 
 const makeFrameCallback = (
   handlers: SteerFrameHandlers,
   setOutcome: (next: SteerOutcome) => void,
-): StreamGetCallback => (event) => {
+): StreamGetCallback => {
+  const {activity, tools} = handlers.presentation;
+  return (event) => {
   const payload = event.data as Record<string, unknown> | null | undefined;
   if (!isRecord(payload)) return undefined;
   // Frames without an event_id are dropped too: the daemon stamps every
@@ -87,25 +93,21 @@ const makeFrameCallback = (
   // unknown and rendering it would break the one-event-only invariant.
   const frameEventId = payload["event_id"];
   if (frameEventId !== handlers.eventId) return undefined;
+  if (activity.frame(event.type, payload)) return undefined;
+  if (tools.frame(event.type, payload)) return undefined;
+  if (event.type === KIND_CHUNK && payload["text_kind"] === "reasoning") return undefined;
   if (event.type === KIND_CHUNK && isString(payload[FIELD_TEXT])) {
-    handlers.printLine(`${ui.dim("[claw]")} ${payload[FIELD_TEXT]}`);
-    return undefined;
-  }
-  if (event.type === KIND_TOOL_CALL_STARTED && isString(payload[FIELD_NAME])) {
-    handlers.printLine(`${ui.dim(TOOL_PREFIX_LABEL)} ${payload[FIELD_NAME]} starting`);
-    return undefined;
-  }
-  if (event.type === KIND_TOOL_CALL_COMPLETED && isString(payload[FIELD_NAME])) {
-    const ms = typeof payload[MS_FIELD] === "number" ? `${payload[MS_FIELD] as number}ms` : "";
-    handlers.printLine(`${ui.dim(TOOL_PREFIX_LABEL)} ${payload[FIELD_NAME]} done ${ms}`);
+    handlers.printLine(`${ui.dim("[claw]")} ${activityText(payload[FIELD_TEXT])}`);
     return undefined;
   }
   if (event.type === KIND_EVENT_COMPLETE) {
+    if (isString(payload["final_reply"]) && payload["final_reply"]) handlers.printLine(`Final reply:\n${activityText(payload["final_reply"])}`);
     const status = isString(payload[FIELD_STATUS]) ? payload[FIELD_STATUS] : "unknown";
     setOutcome({ kind: STATUS_COMPLETE, status });
     return false;
   }
   return undefined;
+  };
 };
 
 // How the pre-send wait ended. A timed-out tail is untrusted for the turn:
@@ -120,6 +122,7 @@ export type TailReadiness =
   | typeof TAIL_TIMED_OUT;
 
 export interface EventTailHandle {
+  readonly presentation: SteerPresentation;
   readonly awaitReady: () => Promise<TailReadiness>;
   readonly awaitOutcome: () => Promise<SteerOutcome>;
   readonly deliverEventId: (id: string) => void;
@@ -211,8 +214,9 @@ export const openEventTail = (
     const url = `${config.apiUrl.replace(/\/$/, "")}${wsFleetEventsStreamPath(wsId, fleetId)}`;
     const headers = authHeaders({ token: Redacted.value(token) });
     const printLine = (line: string): void => {
-      Effect.runSync(output.info(line));
+      if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
     };
+    const presentation = {activity: new ActivityPrinter(printLine), tools: new ToolActivityPrinter(printLine)};
     let outcome: SteerOutcome = { kind: STATUS_SSE_DISCONNECTED };
     const ctrl = new AbortController();
     const streamSignal = signal ? AbortSignal.any([signal, ctrl.signal]) : ctrl.signal;
@@ -233,12 +237,13 @@ export const openEventTail = (
       if (dropped > 0) {
         printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet events ${fleetId}`));
       }
-      const filtered = makeFrameCallback({ printLine, eventId: id }, (next) => {
+      const filtered = makeFrameCallback({ printLine, eventId: id, presentation }, (next) => {
         outcome = next;
       });
       if (!buffer.promote(filtered)) ctrl.abort();
     };
     return Object.freeze({
+      presentation,
       awaitReady: boundedReady(opened, finished),
       // A buffered event_complete wins over a late stream error — the answer
       // is already known, so no redundant poll.
@@ -262,9 +267,17 @@ export const pollEventTerminal = (
   eventId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
-): Effect.Effect<PolledSteerOutcome, CliError, HttpClient> =>
+  presentation?: SteerPresentation,
+): Effect.Effect<PolledSteerOutcome, CliError, HttpClient | Output> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
+    const output = yield* Output;
+    const printLine = (line: string): void => {
+      if (output.format === OUTPUT_FORMAT.text) Effect.runSync(output.info(line));
+    };
+    const activity = presentation?.activity ?? new ActivityPrinter(printLine);
+    const tools = presentation?.tools ?? new ToolActivityPrinter(printLine);
+    printLine("Reading saved activity after the live stream ended.");
     // Event IDs are opaque. The owned detail read avoids inferring a clock
     // from an ID or losing this event behind a busy fleet's newest page.
     const path = wsFleetEventPath(wsId, fleetId, eventId);
@@ -281,7 +294,10 @@ export const pollEventTerminal = (
       );
       if (Option.isNone(read)) return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
       const res = read.value;
+      if (isRecord(res) && res.event_id === eventId) activity.history(res["task_activity"]);
       if (isRecord(res) && res.event_id === eventId && isString(res.status) && isTerminal(res.status)) {
+        tools.history(res["tool_calls"]);
+        if (isString(res["response_text"]) && res["response_text"]) printLine(`Final reply:\n${activityText(res["response_text"])}`);
         return { kind: STATUS_COMPLETE, status: res.status } as PolledSteerOutcome;
       }
       if (isRecord(res) && res.event_id === eventId) observed = true;

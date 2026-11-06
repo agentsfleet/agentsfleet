@@ -125,7 +125,13 @@ fn create_validation_pins_every_bound() {
     ] {
         let body = with(valid(), pointer, value);
         assert_eq!(create(&body), Err(expected), "{pointer}");
-        if !pointer.starts_with("/provider") {
+        if pointer == "/prices" {
+            assert_eq!(
+                patch(&body),
+                Ok(()),
+                "saved settings determine the coding schedule requirement"
+            );
+        } else if !pointer.starts_with("/provider") {
             assert_eq!(patch(&body), Err(expected), "{pointer} on a patch");
         }
     }
@@ -204,6 +210,76 @@ fn patch_requires_a_bounded_body() {
         Err(DETAIL_MALFORMED_JSON)
     );
     assert_eq!(patch(&valid()), Ok(()));
+}
+
+fn reviewed_decision() -> serde_json::Value {
+    let mut body = valid();
+    let decision = serde_json::json!({
+        "enabled":true, "prices":body.get("prices").expect("model prices"),
+        "profile":{
+            "revision":"reviewed-1", "api":"typesafe",
+            "endpoint":"https://api.typesafe.ai/v1/systemone",
+            "accepted_models":["evaluated-fixture-model"],
+            "capabilities":{"noul":true,"choice":true,"score":true},
+            "input_max_bytes":24576,
+            "intent":{
+                "questions_revision":"dt-routing-v1",
+                "intent":{"probability_bps":8500,"confidence_bps":7000},
+                "association":{"probability_bps":9500,"confidence_bps":8500},
+                "single_request_max_bps":3000,"multiple_request_min_bps":7000
+            },
+            "goal":{
+                "questions_revision":"dt-goal-v1", "statement_min_bps":9500,
+                "continue_action":{"probability_bps":8000,"confidence_bps":7000},
+                "wait":{"probability_bps":8500,"confidence_bps":7500},
+                "done":{"probability_bps":9500,"confidence_bps":8500}
+            },
+            "evaluation_digest":"ab".repeat(32),
+            "evaluation_source_url":"https://example.test/decision-evaluation",
+            "evaluated_at":VERIFIED
+        }
+    });
+    body.as_object_mut()
+        .expect("model object")
+        .insert("decision".into(), decision);
+    body
+}
+
+#[test]
+fn decision_configuration_bounds_name_the_decision_without_echoing_inputs() {
+    let body = reviewed_decision();
+    assert_eq!(create(&body), Ok(()));
+    assert_eq!(patch(&body), Ok(()));
+    let decision_only = with(body.clone(), "/prices", serde_json::json!([]));
+    assert_eq!(create(&decision_only), Ok(()));
+    assert_eq!(patch(&decision_only), Ok(()));
+    for (pointer, invalid) in [
+        (
+            "/decision/profile/endpoint",
+            serde_json::json!("private\u{0}value"),
+        ),
+        (
+            "/decision/profile/evaluation_source_url",
+            serde_json::json!("private\u{0}value"),
+        ),
+        (
+            "/decision/profile/accepted_models/0",
+            serde_json::json!("private\u{0}value"),
+        ),
+        (
+            "/decision/profile/goal/done/probability_bps",
+            serde_json::json!(10001),
+        ),
+        (
+            "/decision/profile/intent/single_request_max_bps",
+            serde_json::json!(7000),
+        ),
+        ("/decision/prices", serde_json::json!([])),
+    ] {
+        let broken = with(body.clone(), pointer, invalid);
+        assert_eq!(create(&broken), Err(DETAIL_DECISION), "{pointer}");
+        assert_eq!(patch(&broken), Err(DETAIL_DECISION), "{pointer}");
+    }
 }
 
 /// Postgres refuses NUL inside `text`: every string an operator types is

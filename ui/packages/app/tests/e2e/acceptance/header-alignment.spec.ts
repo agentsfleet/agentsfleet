@@ -21,7 +21,7 @@ for (const width of [1440, 390, 320]) {
       // A never-started labeled fixture cannot take work from the live runner.
       const runner = z.object({runner_id: z.uuid()}).parse(await client().post<unknown>("/v1/runners", {
         host_id: `header-layout-${crypto.randomUUID()}`, labels: LABELS,
-        assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
+        assigned_policy: { durable_tasks_enabled: true,sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
       }));
       runnerId = runner.runner_id;
     });

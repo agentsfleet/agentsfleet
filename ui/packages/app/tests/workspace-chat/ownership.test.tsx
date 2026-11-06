@@ -3,7 +3,7 @@ import {cleanup, fireEvent, render, screen, waitFor, within} from "@testing-libr
 import {ChatFixture, CHAT_PROPS, chooseSetupAction, openPublication} from "./fixture";
 import {WorkspaceChat} from "@/components/domain/chat/WorkspaceChat";
 import {stagePlatformLibraryAction} from "@/app/(dashboard)/admin/fleet-libraries/actions";
-import {DRAFT, FLEET, FLEET_ID, PUBLICATION, REVIEW, response} from "@/tests/helpers/draft-fixtures";
+import {DRAFT, FAILED_SCHEDULE, FLEET, FLEET_ID, PUBLICATION, REVIEW, SCHEDULE, response} from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
 beforeEach(() => {fixture = new ChatFixture(); fixture.mount(); vi.mocked(stagePlatformLibraryAction).mockReset();});
@@ -74,7 +74,7 @@ it("recovers a failed setup continuation from the conversation without reopening
 it.each(["saved", "updated"])("recovers failed schedule registration from the owning %s conversation", async (source) => {
   fixture.draft = source === "saved" ? {...DRAFT, state: "saving", linked_fleet_id: FLEET_ID}
     : {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
-  const owed = {schedule_id: "sched-1", fleet_id: FLEET_ID, sync: "failed", last_error: null};
+  const owed = {...FAILED_SCHEDULE, schedule_id: "sched-1", last_error: null};
   const base = fixture.fetch.getMockImplementation()!;
   let applied = false;
   let synced = false;
@@ -87,7 +87,7 @@ it.each(["saved", "updated"])("recovers failed schedule registration from the ow
       attempts += 1;
       if (attempts === 1) return response({user_message: "Registration retry unavailable"}, 503);
       synced = true;
-      return response({...owed, sync: "synced"});
+      return response({...SCHEDULE, schedule_id: owed.schedule_id, last_error: null});
     }
     return base(input, init);
   });

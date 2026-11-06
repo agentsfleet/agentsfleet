@@ -57,7 +57,8 @@ async fn replace_in(
     let fleet = lane.fleet_id();
     let mut connection = lane.connection().await;
     let mut tx = connection.begin().await.expect("recipe transaction");
-    lane.store
+    let _announcement = lane
+        .store
         .replace_recipes_on(
             &mut tx,
             RecipeSet {

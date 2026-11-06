@@ -56,3 +56,16 @@ fn test_renew_body_malformed_code_registered() {
     assert_eq!(problem.title(), "Renew body malformed");
     assert!(problem.hint().contains("`requests`"), "{}", problem.hint());
 }
+
+#[test]
+fn task_preconditions_are_distinct_from_lifecycle_and_allowance_refusals() {
+    for (code, status) in [
+        (error_code::TASK_STALE_STATE, 409),
+        (error_code::TASK_LIMIT_EXHAUSTED, 429),
+        (error_code::TASK_PRECONDITION_FAILED, 412),
+        (error_code::AUTHORING_PRECONDITION, 428),
+    ] {
+        assert_eq!(Problem::of(code).status(), status);
+        assert!(REGISTRY.contains(&code));
+    }
+}

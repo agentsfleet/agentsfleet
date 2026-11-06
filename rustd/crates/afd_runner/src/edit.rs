@@ -49,6 +49,7 @@ pub struct RunnerEdited<'a> {
 
 /// A policy proved and rendered before any connection is taken.
 struct Assignment<'a> {
+    decision_model_id: Option<Uuid7>,
     stored: AssignedPolicy<'a>,
     registry_json: String,
     sandbox_config_json: String,
@@ -58,6 +59,7 @@ struct Assignment<'a> {
 /// [`sql::runner_admin::SELECT_RUNNER_PATCH_STATE`]'s row.
 #[derive(Debug, sqlx::FromRow)]
 struct PatchState {
+    decision_model_id: Option<String>,
     status: String,
     capability_report: Option<String>,
 }
@@ -96,6 +98,13 @@ impl Runners {
 
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_EDIT))?;
+        let selected = crate::decision::lock(
+            &mut transaction,
+            assignment
+                .as_ref()
+                .and_then(|assignment| assignment.decision_model_id.as_ref()),
+        )
+        .await?;
         let row = sqlx::query_as::<_, PatchState>(sql::runner_admin::SELECT_RUNNER_PATCH_STATE)
             .bind(runner.as_str())
             .fetch_optional(&mut *transaction)
@@ -107,6 +116,7 @@ impl Runners {
             if status == AdminState::Revoked {
                 return Err(rejected(DETAIL_REVOKED_NO_POLICY));
             }
+            selected.allow_change_from(row.decision_model_id.as_deref())?;
             assign(&mut transaction, runner, assignment, row.capability_report).await?;
         }
         if let Some(labels_json) = labels_json {
@@ -136,6 +146,7 @@ impl Runners {
         let mut stored = requested.clone();
         stored.worker_count = validated.worker_count.get();
         Ok(Assignment {
+            decision_model_id: validated.decision_model_id,
             registry_json: render_list(&stored.registry_allowlist),
             sandbox_config_json: SandboxConfig {
                 extra_binds: stored.extra_binds.clone(),
@@ -174,6 +185,10 @@ async fn assign(
         .bind(sql::meta::WORKER_COUNT)
         .bind(verdict.reason())
         .bind(&assignment.sandbox_config_json)
+        .bind(assignment.decision_model_id.as_ref().map(Uuid7::as_str))
+        .bind(sql::meta::DECISION_MODEL_ID)
+        .bind(stored.durable_tasks_enabled)
+        .bind(sql::meta::DURABLE_TASKS_ENABLED)
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(CONTEXT_EDIT))?;

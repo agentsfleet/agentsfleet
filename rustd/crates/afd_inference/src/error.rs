@@ -37,6 +37,8 @@ pub(crate) enum ErrorKind {
     },
     #[error("inference endpoint must be HTTPS without userinfo, query or fragment")]
     Endpoint,
+    #[error("active decision settings require Noul and Choice capabilities")]
+    DecisionCapabilities,
     #[error("inference dialect is not supported for the configured API")]
     Dialect,
     #[error("inference request must contain JSON bytes")]

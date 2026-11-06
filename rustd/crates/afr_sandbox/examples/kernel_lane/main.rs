@@ -77,6 +77,8 @@ mod supervisor_model;
 #[cfg(target_os = "linux")]
 mod supervisor_plane;
 #[cfg(target_os = "linux")]
+mod supervisor_recovery;
+#[cfg(target_os = "linux")]
 mod supervisor_trials;
 #[cfg(target_os = "linux")]
 mod toolbox;

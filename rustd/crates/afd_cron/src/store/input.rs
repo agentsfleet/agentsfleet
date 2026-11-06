@@ -59,6 +59,8 @@ pub struct FireTarget {
     pub workspace: Uuid7,
     /// What the fleet is asked to do.
     pub message: String,
+    /// Human description resolved from the same stored schedule as the message.
+    pub description: String,
     /// Whether the schedule retires once this fire is admitted.
     pub once: bool,
     /// What the operator wants this schedule to be doing.

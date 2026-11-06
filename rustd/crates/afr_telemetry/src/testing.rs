@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
+use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
     SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
@@ -24,6 +25,8 @@ use crate::record::Recorder;
 /// One measurement, as a test reads it back.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Recorded {
+    /// [`Recorder::decision`].
+    Decision(DecisionProvider, DecisionPurpose, DecisionOutcome, Duration),
     /// [`Recorder::memory_source`].
     MemorySource(crate::labels::MemorySource),
     /// The observed usage of one model request.
@@ -83,6 +86,16 @@ impl Tally {
 }
 
 impl Recorder for Tally {
+    fn decision(
+        &self,
+        provider: DecisionProvider,
+        purpose: DecisionPurpose,
+        outcome: DecisionOutcome,
+        elapsed: Duration,
+    ) {
+        self.send(Recorded::Decision(provider, purpose, outcome, elapsed));
+    }
+
     fn memory_source(&self, source: crate::labels::MemorySource) {
         self.send(Recorded::MemorySource(source));
     }

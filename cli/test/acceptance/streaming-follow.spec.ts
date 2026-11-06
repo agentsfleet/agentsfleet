@@ -41,6 +41,7 @@ interface RequestCounts {
   messages: number;
   streams: number;
   polls: number;
+  readbacks: number;
 }
 
 interface StubServer {
@@ -75,15 +76,15 @@ function sseResponse(status: string): Response {
   });
 }
 
-function requestKind(pathname: string): "messages" | "stream" | "poll" | "unknown" {
+function requestKind(pathname: string): "messages" | "stream" | "detail" | "unknown" {
   if (pathname.endsWith("/messages")) return "messages";
   if (pathname.endsWith("/events/stream")) return "stream";
-  if (pathname === EVENT_PATH) return "poll";
+  if (pathname === EVENT_PATH) return "detail";
   return "unknown";
 }
 
 function startSteerStub(mode: ServerMode): StubServer {
-  const counts: RequestCounts = { messages: 0, streams: 0, polls: 0 };
+  const counts: RequestCounts = { messages: 0, streams: 0, polls: 0, readbacks: 0 };
   const server = Bun.serve({
     port: 0,
     fetch(request) {
@@ -100,8 +101,10 @@ function startSteerStub(mode: ServerMode): StubServer {
           headers: { "content-type": CONTENT_TYPE_SSE },
         });
       }
-      if (kind === "poll") {
-        counts.polls++;
+      if (kind === "detail") {
+        // A terminal SSE answer needs only one presentation read; fallback resolves status here.
+        if (mode === SERVER_MODE.sseTerminal) counts.readbacks++;
+        else counts.polls++;
         const status = mode === SERVER_MODE.explicitFailure
           ? STATUS_FLEET_ERROR
           : STATUS_PROCESSED;
@@ -145,10 +148,13 @@ async function runSteer(mode: ServerMode, jsonMode: boolean) {
 // The server cannot finish until the subprocess has printed a chunk. A
 // transport that buffers to EOF therefore fails at the owned deadline.
 function startPhasedStub() {
-  const counts: RequestCounts = { messages: 0, streams: 0, polls: 0 };
+  const counts: RequestCounts = { messages: 0, streams: 0, polls: 0, readbacks: 0 };
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let terminalSent = false;
   const send = (kind: string, data: unknown) => {
     if (!controller) throw new Error("stream must open before the message posts");
+    if (kind === FRAME.complete && typeof data === "object" && data !== null
+      && "event_id" in data && data.event_id === EVENT_ID) terminalSent = true;
     controller.enqueue(encoder.encode(`event: ${kind}\ndata: ${JSON.stringify(data)}\n\n`));
   };
   const server = Bun.serve({ port: 0, fetch(request) {
@@ -171,7 +177,11 @@ function startPhasedStub() {
       send(FRAME.chunk, { event_id: EVENT_ID, text: LIVE_CHUNK });
       return jsonResponse({ event_id: EVENT_ID }, HTTP_ACCEPTED);
     }
-    if (kind === "poll") counts.polls++;
+    if (kind === "detail") {
+      if (terminalSent) counts.readbacks++;
+      else counts.polls++;
+      return jsonResponse({event_id: EVENT_ID, task_activity: {items: [], truncated: false}});
+    }
     return jsonResponse({ error: "unexpected request" }, 500);
   } });
   return { counts, send, baseUrl: server.url.origin, stop: () => server.stop(true) };
@@ -208,13 +218,13 @@ async function runPhasedSteer() {
     })]);
     expect(stdout).not.toContain(STATUS_PROCESSED);
     expect(stdout).not.toContain(UNRELATED_CHUNK);
-    expect(server.counts).toEqual({ messages: 1, streams: 1, polls: 0 });
+    expect(server.counts).toEqual({ messages: 1, streams: 1, polls: 0, readbacks: 0 });
     server.send(FRAME.complete, { event_id: EVENT_ID, status: STATUS_PROCESSED });
     server.send(FRAME.complete, { event_id: EVENT_ID, status: STATUS_PROCESSED });
     expect(await exited).toBe(0);
     expect(stdout.split(`${EVENT_ID} ${STATUS_PROCESSED}`)).toHaveLength(2);
     expect(stdout.split(LIVE_CHUNK)).toHaveLength(2);
-    expect(server.counts).toEqual({ messages: 1, streams: 1, polls: 0 });
+    expect(server.counts).toEqual({ messages: 1, streams: 1, polls: 0, readbacks: 1 });
   } finally {
     clearTimeout(timer);
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
@@ -231,7 +241,7 @@ describe("steer transport reaches a truthful terminal result", () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(`${EVENT_ID} ${STATUS_PROCESSED}`);
-    expect(counts).toEqual({ messages: 1, streams: 1, polls: 0 });
+    expect(counts).toEqual({ messages: 1, streams: 1, polls: 0, readbacks: 1 });
   });
 
   it("falls back after stream loss and prints the same terminal JSON result", async () => {
@@ -242,7 +252,7 @@ describe("steer transport reaches a truthful terminal result", () => {
     expect(parsed.event_id).toBe(EVENT_ID);
     expect(parsed.kind).toBe(KIND_COMPLETE);
     expect(parsed.status).toBe(STATUS_PROCESSED);
-    expect(counts).toEqual({ messages: 1, streams: 1, polls: 1 });
+    expect(counts).toEqual({ messages: 1, streams: 1, polls: 1, readbacks: 0 });
   });
 
   it("reports an explicit fleet failure distinctly from a transport timeout", async () => {
@@ -251,6 +261,6 @@ describe("steer transport reaches a truthful terminal result", () => {
     expect(result.code).not.toBe(0);
     expect(result.stdout).toContain(STATUS_FLEET_ERROR);
     expect(`${result.stdout}\n${result.stderr}`).not.toContain("timeout");
-    expect(counts).toEqual({ messages: 1, streams: 1, polls: 1 });
+    expect(counts).toEqual({ messages: 1, streams: 1, polls: 1, readbacks: 0 });
   });
 });

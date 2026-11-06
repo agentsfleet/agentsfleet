@@ -20,8 +20,8 @@ const EXPLAIN: &str = const_format::concatcp!(
 #[ignore = "requires live Postgres"]
 async fn should_discover_two_queued_drafts_when_stopped_history_grows() {
     let f = fund(Fixture::isolated().await, 4).await;
-    let first = stopped(&f).await;
-    let second = stopped(&f).await;
+    let first = Box::pin(stopped(&f)).await;
+    let second = Box::pin(stopped(&f)).await;
     let mut owner = PgConnection::connect(&f.owner_url())
         .await
         .expect("isolated plan owner");

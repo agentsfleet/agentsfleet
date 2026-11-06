@@ -40,6 +40,17 @@ pub(crate) fn client(source: reqwest::Error) -> Error {
     ErrorKind::Client { source }.into()
 }
 
+/// Preserve the transport cause without logging temporary storage credentials.
+pub(crate) fn checkpoint_transfer(operation: &'static str) -> impl FnOnce(reqwest::Error) -> Error {
+    move |source| {
+        ErrorKind::CheckpointTransfer {
+            operation,
+            source: source.without_url(),
+        }
+        .into()
+    }
+}
+
 /// Reports a call that never completed a round trip.
 pub(crate) fn transport(verb: Verb) -> impl Fn(reqwest::Error) -> Error {
     move |source| ErrorKind::Transport { verb, source }.into()
@@ -128,4 +139,16 @@ pub(crate) fn egress_blocked(host: &str) -> Error {
 /// Reports a resolved allowlist the sandbox engine would not take.
 pub(crate) fn egress(source: afr_sandbox::Error) -> Error {
     ErrorKind::Egress { source }.into()
+}
+
+/// Retains a native recovery failure with its operation and original cause.
+pub(crate) fn boundary(
+    detail: &'static str,
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> Error {
+    ErrorKind::Boundary {
+        detail,
+        source: Box::new(source),
+    }
+    .into()
 }

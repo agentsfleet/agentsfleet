@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 
 const getFleetEventActionMock = vi.hoisted(() => vi.fn());
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
@@ -7,7 +7,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
 }));
 
 import { useEventDetail } from "@/components/domain/use-event-detail";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { EventDetail, EventLocator, EventRow } from "@/lib/api/events";
 
 /** A list row as the events page hands it over: every column the list read
  *  carries, and neither of the two bodies it deliberately omits. */
@@ -24,34 +24,23 @@ function row(overrides: Partial<EventRow> = {}): EventRow {
     failure_label: null,
     failure_detail: null,
     cost_nanos: null,
+    resumes_event_id: null,
     created_at: "2026-04-30T00:00:00Z",
     updated_at: "2026-04-30T00:00:00.1Z",
     ...overrides,
-  } as EventRow;
+  };
 }
 
 const detailFor = (r: EventRow): EventDetail =>
-  ({ ...r, request_json: "{\"prompt\":\"hi\"}", response_text: "done" }) as EventDetail;
+  ({ ...r, request_json: "{\"prompt\":\"hi\"}", response_text: "done", tool_calls: null });
 
-/** A promise plus the handle to settle it later — needed to observe the state
- *  between "request issued" and "request answered". */
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (cause: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => vi.resetAllMocks());
 afterEach(() => cleanup());
 
 describe("useEventDetail", () => {
   it("asks for nothing while no row is open — a closed dialog costs no request", () => {
     const { result } = renderHook(() => useEventDetail(null));
-    expect(result.current).toBeNull();
+    expect(result.current).toEqual({kind: "idle"});
     expect(getFleetEventActionMock).not.toHaveBeenCalled();
   });
 
@@ -59,38 +48,42 @@ describe("useEventDetail", () => {
     const r = row();
     getFleetEventActionMock.mockResolvedValue({ ok: true, data: detailFor(r) });
 
-    const { result } = renderHook(() => useEventDetail(r));
+    const { result, rerender } = renderHook(({target}: {target: EventLocator | null}) => useEventDetail(target), {initialProps: {target: r as EventLocator | null}});
 
-    await waitFor(() => expect(result.current?.response_text).toBe("done"));
+    await waitFor(() => expect(result.current).toEqual({kind: "ready", detail: detailFor(r)}));
     expect(getFleetEventActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "ev_1");
+    rerender({target: {...r}});
+    expect(getFleetEventActionMock).toHaveBeenCalledOnce();
+    rerender({target: null});
+    expect(result.current).toEqual({kind: "idle"});
   });
 
   // The degraded path is deliberate: every other field in the dialog arrived
   // with the row and is already on screen, so a refused body blanks one panel
   // rather than the view.
-  it("a refused read renders as no detail, not as an error", async () => {
+  it("distinguishes a refused read from a record with no result", async () => {
     getFleetEventActionMock.mockResolvedValue({ ok: false, error: "not found" });
 
     const { result } = renderHook(() => useEventDetail(row()));
 
-    await waitFor(() => expect(getFleetEventActionMock).toHaveBeenCalled());
-    expect(result.current).toBeNull();
+    await waitFor(() => expect(result.current).toEqual({kind: "failed"}));
+    expect(getFleetEventActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "ev_1");
   });
 
   // A Server Action that never resolves its envelope — transport gone, not a
   // refusal it could describe. Without the hook's own catch this rejection
   // escapes as an unhandled promise and the dialog keeps a stale body.
-  it("a rejected action degrades to no detail instead of escaping", async () => {
+  it("distinguishes a rejected action without an unhandled promise", async () => {
     getFleetEventActionMock.mockRejectedValue(new Error("transport gone"));
 
     const { result } = renderHook(() => useEventDetail(row()));
 
-    await waitFor(() => expect(getFleetEventActionMock).toHaveBeenCalled());
-    expect(result.current).toBeNull();
+    await waitFor(() => expect(result.current).toEqual({kind: "failed"}));
+    expect(getFleetEventActionMock).toHaveBeenCalledOnce();
   });
 
   it("a body that lands after its row closed is dropped, never shown against another row", async () => {
-    const slow = deferred<{ ok: true; data: EventDetail }>();
+    const slow = Promise.withResolvers<{ ok: true; data: EventDetail }>();
     getFleetEventActionMock.mockReturnValueOnce(slow.promise);
 
     const first = row();
@@ -100,9 +93,25 @@ describe("useEventDetail", () => {
 
     // Close the dialog before the first read answers, then let it answer.
     rerender({ r: null });
-    slow.resolve({ ok: true, data: detailFor(first) });
-    await slow.promise;
+    await act(async () => {slow.resolve({ ok: true, data: detailFor(first) }); await slow.promise;});
 
-    expect(result.current).toBeNull();
+    expect(result.current).toEqual({kind: "idle"});
+    expect(getFleetEventActionMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an earlier workspace's delayed answer out of the selected native record", async () => {
+    const first = Promise.withResolvers<{ok: true; data: EventDetail}>();
+    const second = Promise.withResolvers<{ok: true; data: EventDetail}>();
+    getFleetEventActionMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const old = row();
+    const current = row({workspace_id: "ws_other", fleet_id: "fleet_other", event_id: "ev_other"});
+    const {result, rerender} = renderHook(({target}) => useEventDetail(target), {initialProps: {target: old}});
+    expect(result.current).toEqual({kind: "loading"});
+    rerender({target: current});
+    await act(async () => {second.resolve({ok: true, data: detailFor(current)}); await second.promise;});
+    expect(result.current).toEqual({kind: "ready", detail: detailFor(current)});
+    await act(async () => {first.resolve({ok: true, data: detailFor(old)}); await first.promise;});
+    expect(result.current).toEqual({kind: "ready", detail: detailFor(current)});
+    expect(getFleetEventActionMock.mock.calls).toEqual([["ws_1", "zom_1", "ev_1"], ["ws_other", "fleet_other", "ev_other"]]);
   });
 });

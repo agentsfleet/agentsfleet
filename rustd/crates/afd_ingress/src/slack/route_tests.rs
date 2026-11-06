@@ -42,13 +42,8 @@ fn paused(nth: usize, name: &str) -> Subscriber {
 /// Dimension 3.1 — every row of the scenario's §4 table, addressed and not.
 #[test]
 fn routing_table_is_total() {
-    // No subscriber: nothing can be named, so the resident answers.
-    assert_eq!(
-        route(&[], "incident why did CI fail?"),
-        Route::Resident {
-            message: "incident why did CI fail?"
-        }
-    );
+    // No subscriber: nothing can be named, so no model runs.
+    assert_eq!(route(&[], "incident why did CI fail?"), Route::Unconfigured);
 
     // One read-only subscriber answers either way.
     let one_reader = [reader(0, "responder")];

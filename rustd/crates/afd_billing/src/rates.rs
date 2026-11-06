@@ -123,7 +123,24 @@ impl Accounts {
             return Ok(Estimate::Priced(Nanos::ZERO));
         }
         let mut connection = self.pool().acquire().await?;
-        let book = PriceBook::load(&mut *connection, provider, model).await?;
+        Self::estimate_on(&mut connection, posture, provider, model, now).await
+    }
+
+    /// The same coding headroom calculation on a caller's bounded transaction.
+    ///
+    /// # Errors
+    /// Preserves the catalogue and arithmetic failures of [`Self::estimate`].
+    pub async fn estimate_on(
+        connection: &mut sqlx::PgConnection,
+        posture: Posture,
+        provider: &str,
+        model: &str,
+        now: Timestamp,
+    ) -> Result<Estimate> {
+        if posture == Posture::SelfManaged {
+            return Ok(Estimate::Priced(Nanos::ZERO));
+        }
+        let book = PriceBook::load(connection, provider, model).await?;
         floor(&book, now)
     }
 }

@@ -5,7 +5,8 @@
 // process.env at capture time.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { TELEMETRY_POSTHOG_HOST_ENV, TELEMETRY_POSTHOG_KEY_ENV } from "../src/constants/env.ts";
+import { Option } from "effect";
+import { API_KEY_ENV, TELEMETRY_POSTHOG_HOST_ENV, TELEMETRY_POSTHOG_KEY_ENV } from "../src/constants/env.ts";
 import {
   DEFAULT_POSTHOG_HOST,
   DEFAULT_POSTHOG_KEY,
@@ -70,4 +71,16 @@ describe("CliConfig PostHog resolution", () => {
     expect(cfg.telemetryPosthogKey).toBe(DEFAULT_POSTHOG_KEY);
     expect(cfg.telemetryPosthogHost).toBe(DEFAULT_POSTHOG_HOST);
   });
+});
+
+
+it("an absent service key leaves credential resolution to the saved-login path", () => {
+  const previous = process.env[API_KEY_ENV];
+  try {
+    delete process.env[API_KEY_ENV];
+    expect(Option.isNone(resolveCliConfig().accessToken)).toBe(true);
+  } finally {
+    if (previous === undefined) delete process.env[API_KEY_ENV];
+    else process.env[API_KEY_ENV] = previous;
+  }
 });

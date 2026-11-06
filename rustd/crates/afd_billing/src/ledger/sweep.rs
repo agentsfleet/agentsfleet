@@ -3,11 +3,9 @@
 //!
 //! A work's own transaction logs its lines and returns; the billing relay
 //! settles them (billing §11). [`unsettled`] hands them back as one
-//! [`Settlement`] per work, and [`resettle`] passes each to a biller, so a
+//! [`Settlement`] per work and pricing header, and [`resettle`] passes each to a biller, so a
 //! biller in another process sees the same calls an in-process one does and
 //! `(work, seq)` keeps a retried or repeated pass from charging twice.
-
-use std::collections::BTreeMap;
 
 use afd_core::error_code::ErrorCode;
 use afd_core::id::Uuid7;
@@ -48,9 +46,9 @@ pub struct Resume {
 /// What one resettling pass did.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Resettled {
-    /// Works whose unsettled lines this pass settled.
+    /// Work/provider/model/posture groups this pass settled.
     pub settled: u64,
-    /// Works it could not settle; they wait for the next pass.
+    /// Settlement groups it could not settle; they wait for the next pass.
     pub failed: u64,
     /// Whether the pass read a whole batch, so more lines may be waiting.
     pub full: bool,
@@ -61,7 +59,7 @@ pub struct Resettled {
 }
 
 /// Settles up to one batch of unsettled lines after `after` through `biller`,
-/// one call per work, and publishes what is still owed.
+/// one call per work/provider/model/posture group, and publishes what is still owed.
 ///
 /// # Errors
 /// The datastore would not answer a read. A biller refusing one settlement is
@@ -146,7 +144,7 @@ const TABLE_LINES: &str = "billing.usage_lines";
 const EVENT_REFUSED: &str = "billing_relay_refused";
 
 /// Up to `limit` unsettled lines after `after`, oldest first, grouped into
-/// one [`Settlement`] per work.
+/// one [`Settlement`] per work, provider, model and pricing posture.
 ///
 /// Answers where the next read resumes when this one filled its limit, and
 /// `None` when it reached the newest line, so the next read starts a new lap.
@@ -165,6 +163,7 @@ pub async fn unsettled<'e>(
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
+    // Capture the oldest-first boundary before grouping by settlement header.
     let resume = (i64::try_from(rows.len()).unwrap_or(i64::MAX) >= limit)
         .then(|| rows.last())
         .flatten()
@@ -172,30 +171,13 @@ pub async fn unsettled<'e>(
             logged_at: last.logged_at,
             line_id: last.line_id.clone(),
         });
-    let mut works: BTreeMap<(String, String), Settlement> = BTreeMap::new();
-    for row in rows {
-        // A work type this build does not write, which no row it logged can
-        // carry: skipped rather than refused, so one foreign row cannot stall
-        // the sweep.
-        let Some(work) = row.work() else {
-            continue;
-        };
-        let key = (row.work_type.clone(), row.work_id.clone());
-        let line = row.line()?;
-        if let Some(settlement) = works.get_mut(&key) {
-            settlement.lines.push(line);
-        } else {
-            let settlement = row.settlement(work, line)?;
-            works.insert(key, settlement);
-        }
-    }
-    Ok((works.into_values().collect(), resume))
+    Ok((grouped(rows)?, resume))
 }
 
-/// `work`'s unsettled lines as one [`Settlement`], or `None` when it has none.
+/// `work`'s unsettled lines grouped by provider, model and pricing posture.
 ///
-/// What a relay pass hands the biller for that work, for a test that settles
-/// one work on a shared database without a pass over every other work's lines.
+/// Uses the same grouping as the relay, scoped to one work so a test on a
+/// shared database never settles another test's usage.
 ///
 /// # Errors
 /// The statement would not run, or a stored identifier is not one.
@@ -203,26 +185,36 @@ pub async fn unsettled<'e>(
 pub async fn unsettled_work<'e>(
     executor: impl PgExecutor<'e>,
     work: &WorkKey,
-) -> Result<Option<Settlement>> {
+) -> Result<Vec<Settlement>> {
     let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED_WORK)
         .bind(work.work_type())
         .bind(work.id().as_str())
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
-    let kind: fn(Uuid7) -> WorkKey = match work {
-        WorkKey::FleetLease(_) => WorkKey::FleetLease,
-        WorkKey::AuthoringAttempt(_) => WorkKey::AuthoringAttempt,
-    };
-    let mut settlement: Option<Settlement> = None;
-    for row in rows {
-        let line = row.line()?;
-        match settlement.as_mut() {
-            Some(settlement) => settlement.lines.push(line),
-            None => settlement = Some(row.settlement(kind, line)?),
+    grouped(rows)
+}
+
+fn grouped(mut rows: Vec<UnsettledRow>) -> Result<Vec<Settlement>> {
+    rows.sort_unstable_by(|left, right| {
+        left.identity()
+            .cmp(&right.identity())
+            .then_with(|| left.seq.cmp(&right.seq))
+    });
+    let mut rows = rows.into_iter().peekable();
+    let mut settlements = Vec::new();
+    while let Some(row) = rows.next() {
+        // Skip future work kinds without blocking the relay's cursor.
+        let Some(work) = row.work() else {
+            continue;
+        };
+        let mut lines = vec![row.line()?];
+        while let Some(next) = rows.next_if(|next| next.identity() == row.identity()) {
+            lines.push(next.line()?);
         }
+        settlements.push(row.settlement(work, lines)?);
     }
-    Ok(settlement)
+    Ok(settlements)
 }
 
 /// One unsettled line, by column name.
@@ -257,6 +249,18 @@ struct UnsettledRow {
 }
 
 impl UnsettledRow {
+    /// Money and attribution remain under the original work identity while
+    /// independently configured providers retain their own settlement header.
+    fn identity(&self) -> (&str, &str, &str, &str, &str) {
+        (
+            &self.work_type,
+            &self.work_id,
+            &self.provider,
+            &self.model,
+            &self.posture,
+        )
+    }
+
     /// The row's line as the work priced it.
     fn line(&self) -> Result<RatedLine> {
         let price = self
@@ -293,8 +297,8 @@ impl UnsettledRow {
         }
     }
 
-    /// A settlement for this row's `work`, opening with `line`.
-    fn settlement(self, work: fn(Uuid7) -> WorkKey, line: RatedLine) -> Result<Settlement> {
+    /// A settlement for this row's `work`, retaining its complete priced group.
+    fn settlement(self, work: fn(Uuid7) -> WorkKey, lines: Vec<RatedLine>) -> Result<Settlement> {
         let id = |text: &str, column: &'static str| {
             Uuid7::parse(text).map_err(row_malformed(TABLE_LINES, column))
         };
@@ -316,7 +320,7 @@ impl UnsettledRow {
             provider: self.provider,
             model: self.model,
             posture: Posture::parse(&self.posture).unwrap_or(Posture::Platform),
-            lines: vec![line],
+            lines,
         })
     }
 }

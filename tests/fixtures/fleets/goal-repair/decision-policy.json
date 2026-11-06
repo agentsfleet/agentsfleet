@@ -1,0 +1,59 @@
+{
+  "routing": {
+    "intent": {
+      "question": "What does the newest message ask this Linkwarden fleet to do?",
+      "criteria": {
+        "conversation": "Social conversation without a request to change work.",
+        "status": "Explain confirmed progress without running new investigation.",
+        "refresh": "Read fresh evidence for existing work.",
+        "steer": "Change the requested approach for an existing repair.",
+        "new_work": "A separate Linkwarden defect or review needing its own outcome.",
+        "clarify": "The requested action or target cannot be determined safely."
+      }
+    },
+    "association": {
+      "question": "Which trusted task matches the newest request?",
+      "criteria": {
+        "matching_task": "The message identifies the same defect and pull request as a candidate.",
+        "new_work": "It requests an independent outcome absent from the candidates.",
+        "unclear": "Several candidates fit, or the message does not identify its target."
+      }
+    },
+    "multiple_requests": {
+      "question": "Does the full message ask for independent actions or repair outcomes?",
+      "criteria": {
+        "true": "Separate actions concern different defects, pull requests or outcomes.",
+        "false": "All requested steps support one outcome, or there is no work request."
+      }
+    }
+  },
+  "completion": {
+    "statements": [
+      {
+        "id": "defect-fixed",
+        "question": "Does the patch fix the task's accepted Linkwarden defect?",
+        "criteria": {
+          "true": "Current code and regression evidence demonstrate the accepted behavior.",
+          "false": "The defect remains, scope changed, or evidence is missing or contradictory."
+        }
+      },
+      {
+        "id": "verification-current",
+        "question": "Does the required verification cover the exact proposed code?",
+        "criteria": {
+          "true": "Required checks passed for the current tested tree and pull-request head.",
+          "false": "A required check failed, is missing or pending, or covers older code."
+        }
+      }
+    ],
+    "next_action": {
+      "question": "What should happen next toward the task's accepted outcome?",
+      "criteria": {
+        "CONTINUE": "An authorized useful action remains and can run now.",
+        "WAIT": "A recorded external dependency must finish before useful action can continue.",
+        "DONE": "All accepted statements and mandatory native evidence are satisfied.",
+        "BLOCKED": "Progress needs clarification, authority, resources or reliable evidence."
+      }
+    }
+  }
+}

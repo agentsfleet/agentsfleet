@@ -193,6 +193,7 @@ pub fn grant(installation: &Installation, connected_at: Timestamp) -> Grant {
         handle.insert(HANDLE_LABEL.into(), account.clone().into());
     }
     Grant {
+        external_person_id: None,
         handle,
         install: Some(Install {
             external_account_id: installation.id.clone(),

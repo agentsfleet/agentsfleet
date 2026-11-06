@@ -24,6 +24,7 @@ pub(crate) struct Verified {
     pub(crate) runtime: Duration,
     pub(crate) usage: Usage,
     pub(crate) failed_calls: i64,
+    pub(crate) chat_known: bool,
 }
 
 #[derive(sqlx::FromRow)]
@@ -33,6 +34,7 @@ struct Totals {
     output: i64,
     provider: i64,
     known: bool,
+    chat_known: bool,
     failed_calls: i64,
 }
 
@@ -64,6 +66,7 @@ pub(crate) async fn verify(
     Ok(Verified {
         runtime,
         failed_calls: totals.failed_calls,
+        chat_known: totals.chat_known,
         usage: usage?,
     })
 }

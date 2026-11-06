@@ -18,6 +18,27 @@ use crate::policy::grants::Grants;
 const CONTEXT_GRANTS: &str = "integration grants";
 
 impl Gates {
+    /// Hold one approved grant through a caller's committed issuance cutoff.
+    ///
+    /// # Errors
+    /// Preserves query failures; revocation waits for this shared row lock.
+    pub async fn hold_approved_on(
+        connection: &mut sqlx::PgConnection,
+        fleet: &Uuid7,
+        integration: &str,
+    ) -> Result<bool> {
+        Ok(
+            sqlx::query_scalar::<_, String>(include_str!("grant_sql/hold_approved_service.sql"))
+                .bind(fleet.as_str())
+                .bind(integration)
+                .bind(grant_sql::STATUS_APPROVED)
+                .fetch_optional(connection)
+                .await
+                .map_err(query(CONTEXT_GRANTS))?
+                .is_some(),
+        )
+    }
+
     /// Every integration `fleet_id` holds a standing grant for.
     ///
     /// One batch read per lease, not one per declared credential: a fleet

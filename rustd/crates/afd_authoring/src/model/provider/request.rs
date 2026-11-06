@@ -2,7 +2,7 @@
 
 use super::super::ModelCallInput;
 use super::PROPOSAL_ARGUMENT;
-use super::prompt::{TOOL, tool};
+use super::tools::{TOOL, tool};
 use crate::{
     Result,
     error::{ErrorKind, raise::stored},

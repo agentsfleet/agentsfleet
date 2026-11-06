@@ -20,6 +20,20 @@ pub(super) async fn apply(
     let Event::Proposal { proposal } = &request.event else {
         return Ok(None);
     };
+    if matches!(proposal, Proposal::Edit { .. }) {
+        let veto: bool = sqlx::query_scalar(include_str!("../model/edit_intent/sql/veto.sql"))
+            .bind(guarded.attempt.id.as_str())
+            .bind(guarded.draft.candidate_revision)
+            .bind("no")
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(crate::error::raise::query("check setup edit veto"))?;
+        if veto {
+            return Err(invalid(
+                "The newest message does not request a setup change",
+            ));
+        }
+    }
     let definition = replacement(connection, guarded, proposal).await?;
     let revision = guarded
         .draft

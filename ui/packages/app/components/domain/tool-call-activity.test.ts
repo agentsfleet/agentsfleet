@@ -30,6 +30,7 @@ describe("recorded tool activity", () => {
     [TOOL_NAME.GIT, {args: ["rev-parse", "--show-toplevel"]}, "Scoping workspace", "Scoped workspace", ""],
     [TOOL_NAME.GIT, {args: ["status", "--short"]}, "Checking changes", "Checked changes", ""],
     [TOOL_NAME.GIT, {args: ["diff"]}, "Checking changes", "Checked changes", ""],
+    [TOOL_NAME.PROPOSE_CHANGE, {}, "Validating and publishing changes", "Published tested changes", "Accepted pull request"],
     [TOOL_NAME.GIT, {args: ["log"]}, "Running Git command", "Ran Git command", ""],
     ["unknown_tool", {credential: "hidden-input"}, "Using", "Used", "unknown_tool"],
     [TOOL_NAME.UPDATE_PLAN, {plan: []}, "Updating plan", "Updated plan", TOOL_NAME.UPDATE_PLAN],

@@ -278,7 +278,7 @@ impl CronLane {
             .expect("seeding a workspace");
 
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ACTIVE)
-            .name("cron-fixture-fleet")
+            .name("Support triage")
             .at(SEED_AT)
             .native_setup()
             .insert(&mut *connection)
