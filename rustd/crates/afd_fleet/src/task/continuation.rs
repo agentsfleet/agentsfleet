@@ -85,15 +85,13 @@ impl Continuation {
     }
 }
 
-/// Retire superseded native work without settling an issued lease or human reply.
+/// Settle superseded native work, issued or not, so the fleet backlog count stays exact.
 pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &str) -> crate::Result<()> {
     sqlx::query(include_str!("sql/retire_continuations.sql"))
         .bind(task)
         .bind(Producer::TaskContinuation.as_str())
         .execute(connection)
         .await
-        .map_err(crate::error::query(
-            "retire never-issued obsolete task continuations",
-        ))?;
+        .map_err(crate::error::query("retire obsolete task continuations"))?;
     Ok(())
 }

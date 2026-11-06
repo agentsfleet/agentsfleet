@@ -21,6 +21,7 @@ const RESTORE_SETTLE: &str = "DROP TRIGGER refuse_admission_settlement ON fleet.
 async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_once() {
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
     let owner = held.fixtures.open(DbRole::Migrator).await;
+    let before = held.fixtures.backlog_count(&held.fleet).await;
     let mut connection = owner.acquire().await.expect("owner");
     sqlx::raw_sql(FAIL_SETTLE)
         .execute(&mut *connection)
@@ -33,6 +34,11 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
     assert!(
         !held.fixtures.admission_settled(&held.event_id).await,
         "a rollback cannot settle the admission"
+    );
+    assert_eq!(
+        held.fixtures.backlog_count(&held.fleet).await,
+        before,
+        "a rolled-back report releases nothing"
     );
     assert_eq!(
         held.fixtures
@@ -54,6 +60,11 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
         commit(&held).await.expect("repeat"),
         Committed::AlreadySettled
     ));
+    assert_eq!(
+        held.fixtures.backlog_count(&held.fleet).await,
+        before - 1,
+        "the retried report releases its admission exactly once"
+    );
     assert_eq!(held.fixtures.ledger_rows(&held.event_id).await, 1);
     owner.close().await;
     held.fixtures.cleanup().await;

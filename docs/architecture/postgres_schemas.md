@@ -188,7 +188,7 @@ connection or transaction; there is no generic repository trait.
 
 ```
  identity.workspaces ◀── fleets ──▶ revisions (head_revision_id)
- fleets ◀── revisions, schedules, sessions (1:1), activity_counters (1:1),
+ fleets ◀── revisions, schedules, sessions (1:1), activity_counters (1:1), admission_backlogs (1:1),
             events ◀── tool_calls, admissions, approval_gates ──▶ connector.integration_grants,
             obligations, task_items ◀── tasks ◀── task_inputs
 ```
@@ -229,6 +229,7 @@ connection or transaction; there is no generic repository trait.
 | `obligations` | An answer owed to a destination until delivered or abandoned |  |
 | `tool_calls` | Full arguments and output of each tool call |  |
 | `activity_counters` | Trigger-maintained dashboard totals |  |
+| `admission_backlogs` | Trigger-kept count of each fleet's unsettled admissions | read and locked by intake; an insert counts at once, a first settle releases at commit |
 
 The live setup is read from `revisions` only; `fleets` keeps no config copy.
 `revisions.review_context` is the frozen review subject (creator, source pin, instance name) that
@@ -318,7 +319,7 @@ or account therefore never deletes a charge. The slots name the export that read
 | Draft (user delete or 30-day sweep) | messages, candidates, answer receipts, draft context checkpoint | attempts, dispatches, settlements, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, settlements | `dispatches.result` and `dispatches.native_reply` of their attempts |
 | Library card | its revisions | fleets installed from it; drafts started from it (`source_library_revision_id` set NULL) | — |
-| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | charges; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently retained workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
+| Fleet (purge) | revisions, sessions, events, tool calls, admissions and their backlog count, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | charges; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently retained workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, settlements, charges; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), settlements; slots (`last_runner_id` set NULL) | — |
