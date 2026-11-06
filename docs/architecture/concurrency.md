@@ -303,7 +303,7 @@ The claim is the one path that holds a host and then asks for a draft, and it ne
 
 So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
 
-Runtime reports take the lease row and never the runner, authoring or wallet rows. Only the billing relay locks a wallet row, in its own transactions, wallet then lines.
+Runtime reports take the lease row and never the runner, authoring or wallet rows. Only the billing relay writes a wallet row, in its own transactions. It stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
 
 Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage counts against nothing until the replay that learns it logs its lines.
 

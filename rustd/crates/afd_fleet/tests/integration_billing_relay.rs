@@ -13,7 +13,7 @@
 )]
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afd_billing::ledger::{LedgerBiller, log_lines};
@@ -33,12 +33,10 @@ use crate::support::Fixtures;
 const LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NULL), \
      COALESCE(sum(charged_nanos), 0)::BIGINT FROM billing.usage_lines WHERE work_id = $1::uuid";
 
-/// Sessions waiting on a lock the session `$1` holds.
-const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
-     WHERE $1::integer = ANY(pg_blocking_pids(pid))";
-
-/// How often the watcher looks for a session waiting on the wallet row.
-const WATCH: Duration = Duration::from_millis(5);
+/// How long a report may take while the wallet row is held: the billing
+/// lock timeout. The row stays locked for the whole report, so a report that
+/// needed it would hang or give up at that timeout, and either outlasts this.
+const REPORT_BOUND: Duration = Duration::from_secs(2);
 
 async fn isolated() -> Held {
     held_in(Fixtures::create_isolated_with_queue().await).await
@@ -81,38 +79,16 @@ async fn report_returns_while_the_wallet_row_is_locked() {
 
     let mut locker = database.acquire().await.expect("a pooled connection");
     let mut lock = locker.begin().await.expect("a transaction opens");
-    let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE",
-    )
-    .bind(&held.tenant)
-    .fetch_one(&mut *lock)
-    .await
-    .expect("the wallet row locks");
+    sqlx::query("SELECT 1 FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE")
+        .bind(&held.tenant)
+        .execute(&mut *lock)
+        .await
+        .expect("the wallet row locks");
 
-    let done = AtomicBool::new(false);
-    let mut watcher = database.acquire().await.expect("a pooled connection");
-    let watch = async {
-        let mut most: i64 = 0;
-        while !done.load(Ordering::SeqCst) {
-            let waiting: i64 = sqlx::query_scalar(WAITERS)
-                .bind(pid)
-                .fetch_one(&mut *watcher)
-                .await
-                .expect("the waiters count");
-            most = most.max(waiting);
-            tokio::time::sleep(WATCH).await;
-        }
-        most
-    };
-    let run = async {
-        let reported = plane.report(&held.runner, &report, held.now).await;
-        done.store(true, Ordering::SeqCst);
-        reported
-    };
-    let (reported, most) = tokio::join!(run, watch);
-    drop(watcher);
-    reported.expect("the report settles the lease");
-    assert_eq!(most, 0, "the report never waited on the wallet row");
+    tokio::time::timeout(REPORT_BOUND, plane.report(&held.runner, &report, held.now))
+        .await
+        .expect("the report returns while the wallet row is held")
+        .expect("the report settles the lease");
     let (logged, unsettled, charged) = lines(&held).await;
     assert!(logged > 0, "the report logs its runtime line");
     assert_eq!(unsettled, logged, "the report charges nothing itself");

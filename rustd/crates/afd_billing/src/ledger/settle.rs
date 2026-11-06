@@ -11,11 +11,12 @@ use crate::{Nanos, Result};
 const EVENT_SETTLED_WITHOUT_WALLET: &str = "billing_settled_without_wallet";
 
 /// Stamps `settlement`'s still-unsettled lines settled, then debits their
-/// whole sum from the payer's wallet, under a wallet lock the caller already
-/// holds.
+/// whole sum from the payer's wallet.
 ///
-/// The `settled_at IS NULL` guard is what makes a repeat call charge nothing:
-/// a line settled once is never returned again.
+/// The `settled_at IS NULL` guard is what makes a repeat call charge nothing.
+/// A concurrent pass over the same lines waits on their row locks, then finds
+/// them stamped. The debit is the last statement, so the wallet row is locked
+/// only from it to the caller's commit.
 pub(super) async fn charge(
     connection: &mut PgConnection,
     settlement: &Settlement,
