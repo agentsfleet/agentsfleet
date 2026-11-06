@@ -17,6 +17,8 @@ afd_core::error_shell!(
 
 #[derive(Debug, thiserror::Error)]
 enum ErrorKind {
+    #[error("invalid admin catalogue page")]
+    Page,
     #[cfg(feature = "test-util")]
     #[error("catalogue fixture invariant failed: {reason}")]
     Fixture { reason: &'static str },
@@ -70,7 +72,8 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match *self.kind() {
-            ErrorKind::Inference { .. }
+            ErrorKind::Page
+            | ErrorKind::Inference { .. }
             | ErrorKind::DecisionSettings { .. }
             | ErrorKind::DecisionRevision
             | ErrorKind::CodingPrices => error_code::INVALID_REQUEST,
@@ -89,6 +92,9 @@ impl Error {
     #[must_use]
     pub const fn detail(&self) -> &'static str {
         match *self.kind() {
+            ErrorKind::Page => {
+                "Use a limit between 1 and 100 and a cursor from the same catalogue generation and page size; restart listing after catalogue edits"
+            }
             ErrorKind::DecisionRevision => {
                 "Changed decision settings require a new profile revision"
             }
@@ -164,4 +170,8 @@ pub(super) fn fixture(reason: &'static str) -> Error {
 #[cfg(feature = "test-util")]
 pub(super) fn fixture_definition(source: serde_json::Error) -> Error {
     ErrorKind::FixtureDefinition { source }.into()
+}
+
+pub(super) fn page() -> Error {
+    ErrorKind::Page.into()
 }

@@ -13,7 +13,7 @@ function okJson(body: unknown) {
 // ── Authed admin client: correct verb + path + body to the wire contract ─────
 describe("admin model catalogue client", () => {
   it("should GET the admin catalogue with a bearer token", async () => {
-    fetchMock.mockResolvedValue(okJson({ models: [] }));
+    fetchMock.mockResolvedValue(okJson({ next_cursor: null, models: [] }));
     await listAdminModels("tok_abc");
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toContain("/v1/admin/models");
@@ -94,11 +94,11 @@ describe("activePlatformDefault", () => {
 
 it("returns complete metadata and preserves nanos beyond JavaScript's safe integer range", async () => {
   const model = { ...ADMIN_MODEL, prices: [{ ...PRICE, input_nanos_per_mtok: "9223372036854775807" }] };
-  fetchMock.mockResolvedValue(okJson({ models: [model] }));
+  fetchMock.mockResolvedValue(okJson({ next_cursor: null, models: [model] }));
   expect((await listAdminModels("token")).models[0]).toEqual(model);
 });
 it("refuses malformed read rows", async () => {
-  fetchMock.mockResolvedValue(okJson({ models: [{ id: "invalid" }] }));
+  fetchMock.mockResolvedValue(okJson({ next_cursor: null, models: [{ id: "invalid" }] }));
   await expect(listAdminModels("token")).rejects.toThrow();
 });
 it("leaves the server's schedule refusal visible to the editor", async () => {
@@ -120,4 +120,31 @@ it("sends exact int64 write amounts and preserves nulls on PATCH", async () => {
   expect(init.body).toContain('"input_nanos_per_mtok":"9223372036854775807"');
   expect(init.body).toContain('"cache_write_5m_nanos_per_mtok":"1"');
   expect(init.body).toContain('"cache_write_nanos_per_mtok":null');
+});
+
+
+it("follows every page and preserves the server ordering", async () => {
+  const later = { ...ADMIN_MODEL, model_id: "second-model" };
+  fetchMock.mockResolvedValueOnce(okJson({ models: [ADMIN_MODEL], next_cursor: "opaque+cursor" }))
+    .mockResolvedValueOnce(okJson({ models: [later], next_cursor: null }));
+  expect((await listAdminModels("tok")).models).toEqual([ADMIN_MODEL, later]);
+  expect(String(fetchMock.mock.calls[1]![0])).toContain("starting_after=opaque%2Bcursor");
+  expect(fetchMock.mock.calls[1]![1].headers.Authorization).toBe("Bearer tok");
+});
+
+it("refuses repeated continuation tokens instead of returning a partial catalogue", async () => {
+  fetchMock.mockImplementation(async () => okJson({ models: [ADMIN_MODEL], next_cursor: "repeated" }));
+  await expect(listAdminModels("tok")).rejects.toThrow("repeated cursor");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it("does not return a mixed catalogue when a later page becomes stale", async () => {
+  fetchMock.mockResolvedValueOnce(okJson({ models: [ADMIN_MODEL], next_cursor: "old" }))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ detail: "restart listing", error_code: "UZ-REQUEST-001" }), { status: 400 }));
+  await expect(listAdminModels("tok")).rejects.toMatchObject({ status: 400 });
+});
+
+it.each([undefined, "", 17])("refuses an invalid page cursor %j", async (next_cursor) => {
+  fetchMock.mockResolvedValue(okJson({ models: [], next_cursor }));
+  await expect(listAdminModels("tok")).rejects.toThrow();
 });

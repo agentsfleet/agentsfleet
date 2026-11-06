@@ -1,5 +1,7 @@
 //! Registered runners issue a real lease and share the router's native secret key.
 
+mod storage;
+
 use std::borrow::Cow;
 
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
@@ -68,6 +70,10 @@ impl Fixture {
             "DELETE FROM runner.decision_payloads WHERE tenant_id = $1::uuid",
             owner.tenant.as_str(),
         );
+        cleanup.record(
+            "DELETE FROM fleet.task_checkpoints c USING identity.workspaces w WHERE c.workspace_id = w.id AND w.tenant_id = $1::uuid",
+            owner.tenant.as_str(),
+        );
         cleanup.record(include_str!("fixtures/cleanup.sql"), owner.tenant.as_str());
         cleanup.record(
             "DELETE FROM runner.runners WHERE labels ? $1::text",
@@ -94,6 +100,7 @@ impl Fixture {
         save_key(&database, &owner.workspace, &key).await;
         let mut dependencies = harness::task_dependencies(database.clone());
         dependencies.admin_workspace = Some(owner.workspace.clone());
+        dependencies.storage = Some(storage::build(&database, &owner).await);
         let tasks = Tasks::new(leases, admissions, dependencies);
         let router = harness::Fleet::live(
             database.clone(),
@@ -180,6 +187,7 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
                 &RegisterRequest {
                     host_id: Cow::Owned(format!("{}-{suffix}", owner.tag)),
                     assigned_policy: AssignedPolicy {
+                        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
                         decision_model_id: Some(Cow::Owned(model.to_string())),
                         sandbox_tier: SandboxTier::DevNone,
                         network_policy: NetworkPolicy::AllowAll,
@@ -193,29 +201,7 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
             )
             .await
             .expect("native runner registration");
-        // Decision-enabled fleets require explicit durable-task support even
-        // before their human admission has been bound to a task.
-        let beat = store
-            .heartbeat(
-                &registered.runner_id,
-                &HeartbeatRequest {
-                    capability_report: Some(CapabilityReport {
-                        durable_tasks_v1: true,
-                        build_id: None,
-                        landlock: false,
-                        seccomp: false,
-                        cgroup_controllers: Vec::new(),
-                        bubblewrap: false,
-                        egress_enforcement: false,
-                    }),
-                    ..afd_runner::NO_REPORT
-                },
-                None,
-                clock::now(),
-            )
-            .await
-            .expect("native durable-task capability beat");
-        assert_eq!(beat.verdict, afd_runner::Verdict::Healthy);
+        heartbeat(&store, &registered.runner_id).await;
         enrolled.push(Runner {
             id: registered.runner_id,
             token: registered.token.expose().to_owned(),
@@ -301,4 +287,30 @@ async fn save_key(database: &Db, workspace: &Uuid7, key: &str) {
         )
         .await
         .expect("platform-admin secret");
+}
+
+async fn heartbeat(store: &Runners, runner: &Uuid7) {
+    // Decision-enabled fleets require explicit durable-task support even
+    // before their human admission has been bound to a task.
+    let beat = store
+        .heartbeat(
+            runner,
+            &HeartbeatRequest {
+                capability_report: Some(CapabilityReport {
+                    durable_tasks_v1: true,
+                    build_id: None,
+                    landlock: false,
+                    seccomp: false,
+                    cgroup_controllers: Vec::new(),
+                    bubblewrap: false,
+                    egress_enforcement: false,
+                }),
+                ..afd_runner::NO_REPORT
+            },
+            None,
+            clock::now(),
+        )
+        .await
+        .expect("native durable-task capability beat");
+    assert_eq!(beat.verdict, afd_runner::Verdict::Healthy);
 }

@@ -20,8 +20,14 @@ pub(super) fn spawn(supervisor: &mut Supervisor, tasks: Tasks) {
                 () = stop.cancelled() => return,
                 result = tokio::time::timeout(PASS_DEADLINE, async {
                     let (effects, waits) = tokio::join!(tasks.maintain_effects(), tasks.maintain_waits());
-                    if let Err(error) = effects { tracing::warn!(event = "dt_effect_maintenance_deferred", error_code = %error.code()); }
-                    if let Err(error) = waits { tracing::warn!(event = "dt_wait_maintenance_deferred", error_code = %error.code()); }
+                    if let Err(error) = effects {
+                        let error_code = error.code();
+                        tracing::warn!(event = "dt_effect_maintenance_deferred", %error_code);
+                    }
+                    if let Err(error) = waits {
+                        let error_code = error.code();
+                        tracing::warn!(event = "dt_wait_maintenance_deferred", %error_code);
+                    }
                 }) => {
                     if result.is_err() { tracing::warn!(event = "dt_maintenance_deferred", reason = "pass_deadline"); }
                 }

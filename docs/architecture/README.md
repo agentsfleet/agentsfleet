@@ -38,7 +38,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
 | How does the Rust runner run a lease, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §"Process model", §"Workspace between leases" |
 | How should we evaluate SPACE and test a recoverable coding session? | [Coding sandbox evaluation](sandbox_evaluation.md) |
-| How should one goal-driven repair survive later CI, externally opened PRs and worker replacement? | [Proposed durable repair scenario](scenarios/durable-repair.md) |
+| How do three assigned repairs survive later CI and worker replacement, then verify a Grafana/Slack outcome? | [Durable repair scenario](scenarios/durable-repair.md) |
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §"Egress model — outbound is the only network surface" |
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §"Sandbox tiers" |
 | How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
@@ -65,7 +65,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | How does a cold machine reach a running fleet? | [`user_flow.md`](./user_flow.md) §"§8.0 The wedge surface", §"§8.2.1 Cold-machine bootstrap (run once per machine)" |
 | Where do model and cap originate, per posture? | [`user_flow.md`](./user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" |
 | What triggers can a fleet's setup declare? | [`user_flow.md`](./user_flow.md) §"§8.3 Triggering the Fleet" |
-| What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack as a resident surface (Rung 0) — M106" |
+| What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack mentions and configured fleets" |
 | How many datastore connections does a deployment need? | [`scaling.md`](./scaling.md) §"Connection budget after the cutover" |
 | What is the datastore target, and what has moved so far? | [`datastore_scaling.md`](./datastore_scaling.md) |
 | What drives idle request volume? | [`scaling.md`](./scaling.md) §"Idle request volume" |
@@ -142,7 +142,6 @@ After that, dip into whichever of these matches the change you're making:
 | 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | Credits, debit points, provider keys, model library. |
 | 🐙 [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install the reviewer; follow one Pull Request (PR). |
 | 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deploy toward a draft PR. |
-| 💬 [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md) | Rung-0 Slack bot: a per-channel resident fleet. |
 | 🚨 [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) | An installed fleet answering one Slack channel. |
 | 🔀 [`scenarios/two-fleets-github-slack.md`](./scenarios/two-fleets-github-slack.md) | Two fleets end to end, one picture per step. |
 | 🔐 [`../AUTH.md`](../AUTH.md) | Principals, tokens and bearer routing. |

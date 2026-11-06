@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
+import { FleetConversationLayout } from "./FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 import { CONNECTION_STATUS, type ConnectionStatus } from "./useFleetEventStream";
 
@@ -22,12 +23,13 @@ const TOP_ANCHOR_USER = "[data-aui-top-anchor-user]";
 
 afterEach(() => cleanup());
 
-function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupEventId }: {
+function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, connectionStatus = CONNECTION_STATUS.LIVE, setup, setupEventId, work }: {
   eventsCount?: number;
   messages?: ThreadMessageLike[];
   isRunning?: boolean;
   connectionStatus?: ConnectionStatus;
   setup?: ReactNode;
+  work?: ReactNode;
   setupEventId?: string;
 }) {
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
@@ -38,7 +40,7 @@ function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, conn
   });
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <FleetThreadViewport
+      <FleetConversationLayout work={work}><FleetThreadViewport
         setup={setup} setupEventId={setupEventId}
         eventsCount={eventsCount}
         connectionStatus={connectionStatus}
@@ -48,7 +50,7 @@ function View({ eventsCount = 0, messages = NO_MESSAGES, isRunning = false, conn
         onDismiss={() => {}}
         onRestored={() => {}}
         onDraft={() => {}}
-      />
+      /></FleetConversationLayout>
     </AssistantRuntimeProvider>
   );
 }
@@ -113,3 +115,13 @@ describe("FleetThreadViewport layout", () => {
     expect(view.getAllByText("Setup saved · v1")).toHaveLength(1);
   });
 });
+
+ it("keeps work outside the composer and opens mobile context without modifying its text", () => {
+  const view = render(<View work={<p>Saved PR evidence</p>} />);
+  const composer = view.getByRole("textbox", {name: "Message your fleet…"});
+  fireEvent.change(composer, {target: {value: "Keep session expiry unchanged"}});
+  expect(view.getByTestId("fleet-chat-footer").textContent).not.toContain("Saved PR evidence");
+  fireEvent.click(view.getByRole("button", {name: "Work context"}));
+  expect(view.getByRole("dialog").textContent).toContain("Saved PR evidence");
+  expect(composer).toHaveProperty("value", "Keep session expiry unchanged");
+ });

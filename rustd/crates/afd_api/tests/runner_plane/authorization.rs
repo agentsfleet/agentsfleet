@@ -40,7 +40,7 @@ async fn an_authorized_enrolment_reports_a_datastore_outage_without_minting_a_to
         .router();
     let payload = serde_json::json!({
         "host_id": "refused-host",
-        "assigned_policy": {
+        "assigned_policy": { "durable_tasks_enabled": true,
             "sandbox_tier": "dev_none", "network_policy": "allow_all",
             "registry_allowlist": [], "worker_count": 1, "extra_binds": []
         },

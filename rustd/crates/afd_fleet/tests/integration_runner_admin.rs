@@ -144,6 +144,7 @@ async fn concurrent_identical_transitions_append_one_event() {
 fn reassignment(worker_count: u32) -> AssignedPolicy<'static> {
     AssignedPolicy {
         decision_model_id: None,
+        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         sandbox_tier: SandboxTier::LandlockFull,
         network_policy: NetworkPolicy::AllowListEgress,
         registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],

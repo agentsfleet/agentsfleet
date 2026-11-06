@@ -351,6 +351,8 @@ base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 serde-saphyr = { version = "2.1.0", default-features = false, features = ["deserialize"] }
 # Immutable private checkpoint objects and native SigV4 transfer authorizations.
 object_store = { version = "0.14.2", default-features = false, features = ["aws"] }
+aws-sigv4 = "=1.6.4"
+aws-credential-types = "=1.3.1"
 
 # The ONE cryptographic backend this workspace links.
 #

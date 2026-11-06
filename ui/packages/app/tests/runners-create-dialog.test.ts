@@ -106,7 +106,7 @@ describe("AddRunnerDialog component", () => {
     // forwards it verbatim).
     expect(createRunnerActionMock).toHaveBeenCalledWith({
       host_id: "web-prod-1",
-      assigned_policy: {
+      assigned_policy: { durable_tasks_enabled: true,
         sandbox_tier: "landlock_full",
         network_policy: "allow_all",
         registry_allowlist: [],
@@ -167,7 +167,7 @@ describe("AddRunnerDialog component", () => {
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
     expect(createRunnerActionMock).toHaveBeenCalledWith({
       host_id: "web-prod-1",
-      assigned_policy: {
+      assigned_policy: { durable_tasks_enabled: true,
         sandbox_tier: "container_nested",
         network_policy: "allow_all",
         registry_allowlist: [],

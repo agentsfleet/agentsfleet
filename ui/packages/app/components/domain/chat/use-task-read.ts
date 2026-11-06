@@ -20,14 +20,18 @@ export function useTaskRead<T>(read: (signal: AbortSignal) => Promise<TaskRead<T
   useEffect(() => {
     const current = new AbortController();
     setResource(previous => ({kind: "loading", previous: confirmed(previous)}));
+    let recovery: ReturnType<typeof setTimeout> | undefined;
     void read(current.signal).then(result => {
       if (current.signal.aborted) return;
+      if (result.kind === "failed" && result.reason !== "access" && result.reason !== "missing") {
+        recovery = setTimeout(retry, 5000);
+      }
       setResource(previous => result.kind === "ready" ? result : {
         kind: "failed", reason: result.reason,
         previous: result.reason === "access" || result.reason === "missing" ? null : confirmed(previous),
       });
     });
-    return () => current.abort();
-  }, [read, revision, retryRevision]);
+    return () => {current.abort(); clearTimeout(recovery);};
+  }, [read, revision, retryRevision, retry]);
   return {resource, retry};
 }

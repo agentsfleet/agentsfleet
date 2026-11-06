@@ -187,6 +187,8 @@ async fn assign(
         .bind(&assignment.sandbox_config_json)
         .bind(assignment.decision_model_id.as_ref().map(Uuid7::as_str))
         .bind(sql::meta::DECISION_MODEL_ID)
+        .bind(stored.durable_tasks_enabled)
+        .bind(sql::meta::DURABLE_TASKS_ENABLED)
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(CONTEXT_EDIT))?;

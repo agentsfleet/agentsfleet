@@ -2,6 +2,7 @@
 
 mod backend;
 mod bounded;
+mod signing;
 mod transfer;
 
 pub(in crate::task) use transfer::StorageSession;

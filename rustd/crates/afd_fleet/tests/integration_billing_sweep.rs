@@ -10,7 +10,7 @@
 
 use std::{panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
-use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
+use afd_billing::biller::{Account, Attribution, Biller, Settlement, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines};
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};

@@ -103,6 +103,9 @@ pub struct ExtraBind<'a> {
     pub note: Cow<'a, str>,
 }
 
+/// Whether newly assigned runners accept durable task work.
+pub const DURABLE_TASKS_DEFAULT_ENABLED: bool = true;
+
 /// Sandbox isolation, outgoing network access, and concurrency settings assigned to this
 /// runner.
 //
@@ -111,6 +114,9 @@ pub struct ExtraBind<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct AssignedPolicy<'a> {
+    /// Permit new durable task leases; existing leases retain their issued mode.
+    #[garde(skip)]
+    pub durable_tasks_enabled: bool,
     /// Canonical `UUIDv7` of the platform decision model; absent disables decisions.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]

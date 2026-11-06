@@ -14,7 +14,7 @@ vi.mock("@/app/(dashboard)/admin/models/actions", () => ({listAdminModelsAction:
 
 const SELECTED = "0199f0c0-0000-7000-8000-000000000001";
 const AVAILABLE = "0199f0c0-0000-7000-8000-000000000002";
-const stored = {decision_model_id: SELECTED, sandbox_tier: "landlock_full" as const,
+const stored = { durable_tasks_enabled: true,decision_model_id: SELECTED, sandbox_tier: "landlock_full" as const,
   network_policy: "allow_all" as const, registry_allowlist: ["registry.npmjs.org"], worker_count: 3,
   extra_binds: [{path: "/srv/models", mode: "read_only" as const, note: "shared cache"}]};
 const saved = vi.fn();

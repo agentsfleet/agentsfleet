@@ -46,6 +46,9 @@ async fn unusable(case: &Case) {
         }
     })
     .await;
+    assert_eq!(fixture.wallet().await, balance);
+    fixture.case.held.relay().await;
+    assert_eq!(fixture.wallet().await, balance - 9);
     uncertain(&fixture, &task, |r| r.usage = None).await;
     uncertain(&fixture, &task, |r| {
         r.usage.as_mut().expect("fixture usage").cached_input_tokens = 1001;

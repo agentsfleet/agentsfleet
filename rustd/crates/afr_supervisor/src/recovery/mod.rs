@@ -14,6 +14,8 @@ mod progress;
 mod progress_tests;
 mod restore;
 mod session;
+#[cfg(test)]
+mod tests;
 mod transfer;
 #[cfg(test)]
 mod transfer_tests;

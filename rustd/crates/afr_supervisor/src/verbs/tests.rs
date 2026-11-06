@@ -5,6 +5,8 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
+mod decision;
+
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afr_agent::{LeaseVerbs as _, ScheduleCall, Unanswered};

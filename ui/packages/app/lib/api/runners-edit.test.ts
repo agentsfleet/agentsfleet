@@ -5,7 +5,7 @@ import { response } from "@/tests/helpers/draft-fixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
 const POLICY = {sandbox_tier: "container_nested", network_policy: "allow_all", registry_allowlist: [], worker_count: 2} as const;
-const assigned_policy = {...POLICY, registry_allowlist: [], extra_binds: []};
+const assigned_policy = {...POLICY, registry_allowlist: [], extra_binds: [], durable_tasks_enabled: true};
 const SENTENCE = "Runner labels must contain at most 32 labels of at most 64 bytes each";
 beforeEach(() => {fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock);});
 afterEach(() => vi.unstubAllGlobals());

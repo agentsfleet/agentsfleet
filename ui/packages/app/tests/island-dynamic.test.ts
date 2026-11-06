@@ -121,7 +121,7 @@ describe("dynamic island shims load their own inner component with the caller's 
       "EditPolicyDialog",
       React.createElement(EditPolicyDialogDynamic, {
         runnerId: "run_1",
-        current: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
+        current: { durable_tasks_enabled: true,sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
         onSaved: noop,
       }),
     ],

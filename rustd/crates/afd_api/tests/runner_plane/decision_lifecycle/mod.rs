@@ -7,6 +7,7 @@
 mod assertions;
 mod fixture;
 mod setup;
+mod task_routes;
 
 use afd_wire::task::{DecisionReceiptInput, DecisionRecordDisposition, DecisionReservationInput};
 use http::{Method, StatusCode};
@@ -111,6 +112,8 @@ async fn settle_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, ca
     )
     .await;
     assertions::recorded(&recorded, call, false);
+    assertions::logged_before_relay(fixture).await;
+    assertions::relay_once(fixture).await;
     assertions::one_charge(fixture).await;
     let repeated = success(
         fixture,

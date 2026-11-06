@@ -1,14 +1,5 @@
-//! A mention routing gave no fleet: fixed text owed to its thread.
-//!
-//! Split from `mention.rs`, which routes. No model runs and no event is
-//! admitted. The channel's resident owns the notice, so it is found or
-//! installed first, and the notice is owed under a key derived from the chat
-//! event's own id: a retried delivery finds it already owed and owes nothing
-//! more.
-//!
-//! The route answers as it does for an admitted mention, with the notice's key
-//! where an event id would be, so a delivery that owed nothing new reads as
-//! replayed.
+//! Fixed routing text uses a stable channel carrier and the ordinary outbound ledger.
+//! A carrier is never an admission target and never creates or rewrites a fleet.
 
 use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
@@ -16,15 +7,19 @@ use afd_core::id::Uuid7;
 use afd_ingress::slack::{Notice, NoticeOwed, notice_key, notice_text};
 use std::borrow::Cow;
 
-use super::resident::resident;
-use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, address};
+use super::{
+    Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, REASON_CHANNEL_NOT_CONFIGURED,
+    REASON_NOTICE_OWNER_KILLED, address,
+};
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _};
+use afd_fleet_lifecycle::FleetStatus;
+use afd_ingress::slack::{NoticeOwner, Subscriber};
 
 /// Owes `notice` to the thread `asked` was asked in.
 ///
 /// # Errors
-/// A datastore, an install or a ledger that would not answer, as the refusal a
+/// A datastore or a ledger that would not answer, as the refusal a
 /// provider retries.
 pub(super) async fn owe<D: Services>(
     services: &D,
@@ -33,13 +28,12 @@ pub(super) async fn owe<D: Services>(
     asked: &Asked,
     notice: &Notice<'_>,
 ) -> Result<Outcome, Refusal> {
-    let owner = match resident(services, provider, workspace, asked)
-        .await?
-        .resident()
-    {
-        Ok(owner) => owner,
-        Err(settled) => return Ok(settled),
+    let Some(owner) = owner(services, provider, workspace, asked, notice).await? else {
+        return Ok(Outcome::Dropped(REASON_CHANNEL_NOT_CONFIGURED));
     };
+    if owner.status == FleetStatus::Killed {
+        return Ok(Outcome::Dropped(REASON_NOTICE_OWNER_KILLED));
+    }
     let address = address(&asked.thread())?;
     let key = notice_key(&asked.team_id, &asked.event_id);
     let text = notice_text(notice);
@@ -47,7 +41,7 @@ pub(super) async fn owe<D: Services>(
         .ingress()
         .owe_notice(
             NoticeOwed {
-                resident: &owner.fleet,
+                owner: &owner.fleet,
                 workspace,
                 provider,
                 key: &key,
@@ -59,10 +53,24 @@ pub(super) async fn owe<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_MENTION))?;
 
-    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    Ok(accepted(
+        workspace,
+        &owner.fleet,
+        notice.kind(),
+        key,
+        written,
+    ))
+}
+
+fn accepted(
+    workspace: &Uuid7,
+    owner: &Uuid7,
+    verdict: &str,
+    key: String,
+    written: bool,
+) -> Outcome {
     let workspace_id = workspace.as_str();
-    let fleet_id = owner.fleet.as_str();
-    let verdict = notice.kind();
+    let fleet_id = owner.as_str();
     let replayed = !written;
     tracing::info!(
         workspace_id,
@@ -71,8 +79,64 @@ pub(super) async fn owe<D: Services>(
         replayed,
         event = EVENT_ROUTED
     );
-    Ok(Outcome::Accepted(Accepted {
+    Outcome::Accepted(Accepted {
         event_id: Cow::Owned(key),
         replayed,
-    }))
+    })
+}
+
+/// Existing bindings, including historical ones, are notice carriers only.
+async fn owner<D: Services>(
+    services: &D,
+    provider: Provider,
+    workspace: &Uuid7,
+    asked: &Asked,
+    notice: &Notice<'_>,
+) -> Result<Option<NoticeOwner>, Refusal> {
+    let ingress = services.ingress();
+    let existing = ingress
+        .notice_owner(workspace, provider.id(), &asked.team_id, &asked.channel)
+        .await
+        .map_err(Refusal::at(EVENT_MENTION))?;
+    if existing.is_some() {
+        return Ok(existing);
+    }
+    let Some(candidate) = candidate(notice) else {
+        return Ok(None);
+    };
+    ingress
+        .bind_notice_owner(
+            workspace,
+            provider.id(),
+            &asked.team_id,
+            &asked.channel,
+            &candidate.fleet,
+            services.now(),
+        )
+        .await
+        .map_err(Refusal::at(EVENT_MENTION))?;
+    // The channel's unique key chooses one owner even across concurrent first notices.
+    ingress
+        .notice_owner(workspace, provider.id(), &asked.team_id, &asked.channel)
+        .await
+        .map_err(Refusal::at(EVENT_MENTION))?
+        .map(Some)
+        .ok_or_else(|| {
+            Refusal::coded(
+                afd_core::error_code::INTERNAL_DB_UNAVAILABLE,
+                afd_core::error::DETAIL_DATABASE_UNAVAILABLE,
+            )
+        })
+}
+
+fn candidate<'a>(notice: &'a Notice<'a>) -> Option<&'a Subscriber> {
+    match notice {
+        Notice::Paused { fleet } => Some(*fleet),
+        Notice::Ambiguous { fleets } | Notice::Choose { fleets } | Notice::AddressIt { fleets } => {
+            fleets
+                .iter()
+                .copied()
+                .min_by(|left, right| left.fleet.as_str().cmp(right.fleet.as_str()))
+        }
+    }
 }

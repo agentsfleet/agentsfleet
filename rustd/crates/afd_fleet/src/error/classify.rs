@@ -166,9 +166,11 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
-            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageDeadline { .. } => {
-                error_code::TASK_STORAGE_UNAVAILABLE
-            }
+            ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
+            | ErrorKind::TaskStorageDeadline { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
             ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskRemoteStatus { .. }
             | ErrorKind::TaskRemoteDeadline { .. }
@@ -243,7 +245,7 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> &'static str {
         match self.inner.kind {
-            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageDeadline { .. } => crate::task::TaskRefusal::StorageUnavailable.detail(),
+            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageSigning { .. } | ErrorKind::TaskStorageSigningParameters { .. } | ErrorKind::TaskStorageRequest { .. } | ErrorKind::TaskStorageDeadline { .. } => crate::task::TaskRefusal::StorageUnavailable.detail(),
             ErrorKind::TaskRemote { .. } | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteDeadline { .. } | ErrorKind::TaskRemoteCooldown { .. } => crate::task::TaskRefusal::EffectUncertain.detail(),
             ErrorKind::TaskMutation { ref source, .. } => source.detail(),
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::task::TaskRefusal::DecisionUnavailable.detail(),

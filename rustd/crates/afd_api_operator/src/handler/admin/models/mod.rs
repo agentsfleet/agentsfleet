@@ -4,6 +4,7 @@ mod input;
 
 use input::{create_request, patch_request};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use afd_admin::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate};
@@ -18,7 +19,7 @@ use afd_http::services::{metadata_store, metadata_wire, price_store, price_wire}
 use afd_wire::inference::ModelInference;
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
@@ -33,7 +34,7 @@ const DETAIL_DUPLICATE: &str = "A catalogue row for this provider and model alre
 const DETAIL_IN_USE: &str =
     "This model is in use; change its platform default or runner assignments before deleting it";
 
-/// Lists every priced catalogue row.
+/// Lists one snapshot-bound page of priced catalogue rows.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
     path = "/v1/admin/models",
@@ -41,13 +42,16 @@ const DETAIL_IN_USE: &str =
     operation_id = "list_admin_models",
     summary = "List models",
     description = concat!(
-        "Returns every shared model, ordered by provider and model ",
-        "identifier. Requires the `model:read` scope. ",
+        "Returns a bounded page of shared models, ordered by provider and model ",
+        "identifier. Continue with next_cursor as starting_after; catalogue edits invalidate cursors. Requires the `model:read` scope. ",
     ),
     params(
+        ("limit" = Option<u32>, Query, description = "Page size, 1–100; defaults to 50"),
+        ("starting_after" = Option<String>, Query, description = "Continuation cursor from this catalogue generation and page size"),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = AdminModelsResponse),
+        (status = 400, description = "Invalid page size or malformed, mismatched or stale cursor"),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -55,10 +59,30 @@ const DETAIL_IN_USE: &str =
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
-    match services.models().list().await {
-        Ok(models) => Json(AdminModelsResponse {
-            models: models.iter().map(item).collect(),
+pub(crate) async fn list<D: Services>(
+    State(services): State<Arc<D>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let limit = match afd_validate::Limit::parse(
+        params.get("limit").map(String::as_str),
+        afd_core::paging::CEILING,
+    ) {
+        Ok(limit) => limit,
+        Err(_invalid) => {
+            return reject(
+                error_code::INVALID_REQUEST,
+                "limit must be an integer between 1 and 100",
+            );
+        }
+    };
+    match services
+        .models()
+        .page(limit, params.get("starting_after").map(String::as_str))
+        .await
+    {
+        Ok(page) => Json(AdminModelsResponse {
+            models: page.models.iter().map(item).collect(),
+            next_cursor: page.next_cursor.map(Cow::Owned),
             request_id: request_id(),
         })
         .into_response(),

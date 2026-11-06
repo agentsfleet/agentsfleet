@@ -2,7 +2,7 @@
 
 use super::super::edits::tests::candidate;
 use super::proposal;
-use crate::{Result, model::provider::prompt::TOOL};
+use crate::{Result, model::provider::tools::TOOL};
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName};
 use serde_json::{Value, json};
 

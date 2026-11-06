@@ -271,7 +271,7 @@ leaves the index once metering reaches its expiry, so the index holds only the b
 |---|---|
 | `installs` | Outside account (Slack team, GitHub installation) → workspace; credentials stay in the vault |
 | `person_links` | OAuth-proved Slack person → current workspace member; installation deletion cascades the link |
-| `channels` | Slack channel → resident fleet; rebinds when a team moves workspace |
+| `channels` | Stable Slack channel notice owner; current workspace/team checks reject stale bindings |
 | `integration_grants` | Whether a fleet may use a service; deny is stored as revoked |
 
 ## model

@@ -46,6 +46,8 @@ const COLUMN_REGISTRY_ALLOWLIST: &str = "registry_allowlist";
 /// documents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssignmentColumns {
+    /// Whether this runner accepts new durable task leases.
+    pub durable_tasks_enabled: bool,
     /// Optional reviewed catalogue identity selected by the operator.
     pub decision_model_id: Option<String>,
     /// `runner.runners.sandbox_tier`, as its wire spelling.
@@ -77,6 +79,7 @@ impl AssignmentColumns {
                 .map_err(row_malformed(TABLE_RUNNERS, "decision_platform_model_id"))?;
         }
         Ok(AssignedPolicy {
+            durable_tasks_enabled: self.durable_tasks_enabled,
             decision_model_id: self
                 .decision_model_id
                 .as_deref()

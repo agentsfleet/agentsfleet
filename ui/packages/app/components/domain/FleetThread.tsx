@@ -1,5 +1,7 @@
 "use client";
 
+import type { FleetSources } from "@/lib/fleet-sources";
+
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/events/fleet-activity";
 import {
@@ -26,11 +28,14 @@ import { ACTOR } from "@/lib/events/event-summary";
 import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { useFleetSteerQueue } from "./useFleetSteerQueue";
 import { reportsOwnRun } from "./fleetReplyMessage";
+import { FleetConversationLayout } from "./FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 import { FleetScopeProvider } from "./FleetScope";
+import { FleetTaskProvider } from "./chat/FleetTaskProvider";
 import { TaskPanel } from "./chat/TaskPanel";
 
 export type FleetThreadProps = {
+  sources?: FleetSources;
   modelLabel?: string;
   setupRevision?: string;
   setup?: ReactNode;
@@ -75,7 +80,7 @@ export function FleetThread(props: FleetThreadProps) {
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
   const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
-    subject={taskSubject} revision={stream.tasksSeq} />, [props.workspaceId, props.fleetId, taskSubject, stream.tasksSeq]);
+    subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources} />, [props.sources, props.workspaceId, props.fleetId, taskSubject, stream.tasksSeq, stream.events]);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
@@ -87,11 +92,12 @@ export function FleetThread(props: FleetThreadProps) {
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
-              <FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
-                work={work}
+              <FleetTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources}>
+              <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
                 eventsCount={stream.events.length} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
-                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} />
+                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} /></FleetConversationLayout>
+              </FleetTaskProvider>
             </DashboardPanel>
           </SenderNamesProvider>
         </SenderLabelProvider>

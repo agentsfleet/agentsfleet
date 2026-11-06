@@ -6,10 +6,12 @@
 
 #![deny(clippy::self_named_module_files)]
 
+mod bounds;
 pub mod catalogue;
 mod decision_revision;
 mod error;
 mod model;
+mod model_page;
 mod model_validation;
 mod platform_key;
 mod sql;
@@ -18,4 +20,5 @@ pub mod test_util;
 
 pub use error::{Error, Result};
 pub use model::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
+pub use model_page::ModelPage;
 pub use platform_key::{PlatformKey, PlatformKeyInput, PlatformKeys, SetPlatformKey};

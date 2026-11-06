@@ -15,6 +15,8 @@
 mod aad;
 #[path = "checkpoint.rs"]
 mod checkpoint;
+#[path = "checkpoint_identity.rs"]
+mod checkpoint_identity;
 #[path = "entropy_mock.rs"]
 mod entropy_mock;
 #[path = "entropy_uuid7.rs"]

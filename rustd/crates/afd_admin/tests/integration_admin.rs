@@ -20,8 +20,16 @@ use jiff::Timestamp;
 /// The instant model identifiers are minted at; rows are stamped by `now()`.
 const NOW: Timestamp = Timestamp::constant(1_725_000_000, 0);
 
+#[path = "admin_model/default_concurrency.rs"]
+mod default_concurrency;
+#[path = "admin_model/isolated.rs"]
+mod isolated;
+#[path = "admin_model/paging.rs"]
+mod model_paging;
 #[path = "admin_model/proofs.rs"]
 mod model_proofs;
+#[path = "admin_model/page_plans.rs"]
+mod page_plans;
 
 /// Synthetic prices and API evidence for the administrator's fixture model.
 fn details(raised: bool) -> ModelUpdate {

@@ -372,12 +372,12 @@ Each gap names what would close it.
 14. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress/src/handler/webhook/app_route.rs`). A writer for the repair sweeper's evidence closes it.
 
 
-## Original Pull Request repair: proposed follow-on
+## Original Pull Request repair
 
-The [durable repair scenario](scenarios/durable-repair.md) owns the proposed combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and configured goal decisions.
-The current path creates and corrects its own event-derived draft during one request. Arbitrary existing-PR authority and durable cross-request ownership remain unimplemented.
+The [durable repair scenario](scenarios/durable-repair.md) owns the combined flow: an authorized externally opened PR, later-CI continuation, worker recovery and configured goal decisions.
+Native task bindings and publication receipts retain the authorized PR and expected head across requests. Combined live acceptance remains pending.
 
-The future implementation must use the existing admission/lease path, not a second scheduler.
+Task continuations use the existing admission/lease path.
 A task wake requests fresh exact-head evidence; it does not grant authority or certify CI success.
 See the scenario for target binding, publication races, cumulative limits and combined acceptance; see [sandbox evaluation](sandbox_evaluation.md#coding-sessions-and-worktrees-across-leases) for workspace recovery mechanics.
 

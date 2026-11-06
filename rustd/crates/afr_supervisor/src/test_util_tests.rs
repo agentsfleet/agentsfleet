@@ -22,6 +22,7 @@ use crate::test_support::{drain, json, plane};
 fn healthy() -> Healthy {
     Healthy {
         assigned: AssignedPolicy {
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::DenyAllEgress,

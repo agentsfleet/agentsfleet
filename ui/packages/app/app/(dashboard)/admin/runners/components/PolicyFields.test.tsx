@@ -12,7 +12,7 @@ import type { AssignedPolicy } from "@/lib/api/runners-types";
 // the schema bounds are what both dialogs stand on, so their failure paths get
 // direct tests here (no rendering needed).
 
-const STORED: AssignedPolicy = {
+const STORED: AssignedPolicy = { durable_tasks_enabled: true,
   sandbox_tier: "container_nested",
   network_policy: "deny_all_egress",
   registry_allowlist: ["pypi.org", "registry.npmjs.org"],
@@ -106,4 +106,19 @@ describe("policyFormSchema bind rows", () => {
     expect(r.success).toBe(false);
     expect(r.error?.issues.some((issue) => issue.message.includes(String(MAX_EXTRA_BINDS)))).toBe(true);
   });
+});
+
+it("enables durable tasks for new runners and preserves an explicit disabled edit", () => {
+  expect(POLICY_FORM_DEFAULTS.durable_tasks_enabled).toBe(true);
+  expect(policyFromForm(POLICY_FORM_DEFAULTS).policy?.durable_tasks_enabled).toBe(true);
+  const disabled = {...STORED, durable_tasks_enabled: false};
+  const values = {...formFromPolicy(disabled), worker_count: "8"};
+  expect(values.durable_tasks_enabled).toBe(false);
+  expect(policyFromForm(values)).toEqual({policy: {...disabled, worker_count: 8}, error: null});
+});
+
+it.each([undefined, null, "false", 0])("rejects non-boolean durable task preference %j", value => {
+  const result = policyFormSchema.safeParse({...POLICY_FORM_DEFAULTS, durable_tasks_enabled: value});
+  expect(result.success).toBe(false);
+  if (!result.success) expect(result.error.issues.map(issue => issue.path)).toContainEqual(["durable_tasks_enabled"]);
 });

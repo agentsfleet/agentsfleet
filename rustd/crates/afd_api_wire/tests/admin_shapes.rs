@@ -60,12 +60,13 @@ fn item_json() -> serde_json::Value {
 #[test]
 fn admin_catalogue_wire_shapes_are_metadata_only() {
     let models = AdminModelsResponse {
+        next_cursor: None,
         models: vec![item()],
         request_id: Cow::Borrowed("req-models"),
     };
     assert_eq!(
         serde_json::to_value(models).expect("model response serializes"),
-        serde_json::json!({"models":[item_json()],"request_id":"req-models"})
+        serde_json::json!({"models":[item_json()],"next_cursor":null,"request_id":"req-models"})
     );
 }
 

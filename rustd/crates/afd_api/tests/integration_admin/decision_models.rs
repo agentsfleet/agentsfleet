@@ -278,14 +278,10 @@ async fn assert_saved(router: &Router, token: &str, expected: &Value) {
 }
 
 async fn listed(router: &Router, token: &str, name: &str) -> Option<Value> {
-    let response = send(router, Method::GET, "/v1/admin/models", Some(token), "").await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = json_body(response).await;
-    let models = at(&body, "/models").as_array().expect("complete catalogue");
-    models
-        .iter()
+    super::model_pages::all(router, token)
+        .await
+        .into_iter()
         .find(|model| at(model, "/model_id").as_str() == Some(name))
-        .cloned()
 }
 
 async fn request(

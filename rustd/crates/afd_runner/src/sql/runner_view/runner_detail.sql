@@ -4,6 +4,7 @@ SELECT r.id::text AS id, r.host_id, r.sandbox_tier, r.status, r.labels::text AS 
        r.network_policy, r.registry_allowlist::text AS registry_allowlist, r.worker_count,
        r.capability_report::text AS capability_report, r.degraded_reason,
        r.sandbox_config::text AS sandbox_config,
+       r.durable_tasks_enabled,
        r.decision_platform_model_id::text AS decision_model_id,
        COALESCE(s.active_count, 0) AS active_lease_count,
        COALESCE(s.active_fleets, 0) AS active_fleet_count,

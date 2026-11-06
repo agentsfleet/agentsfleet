@@ -60,6 +60,7 @@ pub enum DecisionAnswer {
         #[serde(
             with = "serde_with::As::<serde_with::MapPreventDuplicates<serde_with::DisplayFromStr, serde_with::Same>>"
         )]
+        #[cfg_attr(feature = "openapi", schema(value_type = BTreeMap<String, f64>))]
         probabilities: BTreeMap<u32, f64>,
     },
 }

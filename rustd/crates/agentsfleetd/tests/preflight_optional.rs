@@ -259,3 +259,61 @@ fn blank_optionals_read_as_unset_and_padded_ones_as_their_value() {
     );
     assert_eq!(padded.app_url().as_str(), "https://dashboard.example.test/");
 }
+
+const STORAGE: &str = "R2_CHECKPOINT_STORAGE";
+const VALID: &str = r#"{"endpoint":"https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com","bucket":"checkpoints","credential_name":"private-r2"}"#;
+
+#[test]
+fn checkpoint_storage_requires_private_r2_location_and_platform_custody() {
+    let config = preflight(&with_optional([
+        (STORAGE, VALID),
+        (PLATFORM_ADMIN_WORKSPACE_KNOB, PLATFORM_WORKSPACE),
+    ]))
+    .expect("private storage with an existing platform workspace boots");
+    let storage = config.checkpoint_storage().expect("storage configured");
+    assert_eq!(storage.bucket, "checkpoints");
+    assert_eq!(storage.credential_name, "private-r2");
+    assert!(
+        preflight(&with_optional([]))
+            .expect("optional storage")
+            .checkpoint_storage()
+            .is_none()
+    );
+    let missing_owner = preflight(&with_optional([(STORAGE, VALID)]))
+        .expect_err("storage cannot boot without platform Secret custody");
+    assert!(missing_owner.faults().iter().any(|fault| matches!(
+        fault,
+        Fault::Invalid {
+            knob: PLATFORM_ADMIN_WORKSPACE_KNOB,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn checkpoint_storage_refuses_invalid_locations_and_unknown_fields() {
+    for invalid in [
+        "not-json".to_owned(),
+        VALID.replace("https://", "http://"),
+        VALID.replace(
+            "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
+            "public.r2.dev",
+        ),
+        VALID.replace("checkpoints", "../outside"),
+        VALID.replace("private-r2", ""),
+        VALID.replace("\"bucket\":", "\"unknown\":1,\"bucket\":"),
+    ] {
+        let refusal = preflight(&with_optional([
+            (STORAGE, invalid.as_str()),
+            (PLATFORM_ADMIN_WORKSPACE_KNOB, PLATFORM_WORKSPACE),
+        ]))
+        .expect_err("invalid storage must fail at boot");
+        assert!(
+            refusal
+                .faults()
+                .iter()
+                .any(|fault| matches!(fault, Fault::Invalid { knob: STORAGE, .. }))
+        );
+        assert!(!format!("{refusal:?}").contains(&invalid));
+    }
+}

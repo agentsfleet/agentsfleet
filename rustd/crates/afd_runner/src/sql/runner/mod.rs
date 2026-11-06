@@ -25,7 +25,7 @@ const FIRST_LEASE_VERSION: i64 = 0;
 ///
 /// # Why this one gets a struct and most statements do not
 ///
-/// It takes nineteen positional parameters and `$2` and `$4` are each read
+/// It takes twenty-one positional parameters and `$2` and `$4` are each read
 /// twice. A flat bind list is correct only as far as someone counts arguments
 /// against the statement text. Two same-typed arguments transposed —
 /// `host_id` and `token_hash` are both text, and one is a CREDENTIAL — compiles
@@ -38,6 +38,8 @@ const FIRST_LEASE_VERSION: i64 = 0;
 /// orders, and a caller names fields instead of counting slots.
 #[derive(Debug)]
 pub struct RegisterRow<'a> {
+    /// Whether the enrolled runner accepts new durable task leases.
+    pub durable_tasks_enabled: bool,
     /// Complete validated sandbox configuration, including enrollment binds.
     pub sandbox_config_json: &'a str,
     /// Proved catalogue selection, when an operator configured decisions.
@@ -102,6 +104,8 @@ impl<'a> RegisterRow<'a> {
             .bind(self.decision_model_id.map(Uuid7::as_str))
             .bind(super::meta::DECISION_MODEL_ID)
             .bind(self.sandbox_config_json)
+            .bind(self.durable_tasks_enabled)
+            .bind(super::meta::DURABLE_TASKS_ENABLED)
     }
 }
 

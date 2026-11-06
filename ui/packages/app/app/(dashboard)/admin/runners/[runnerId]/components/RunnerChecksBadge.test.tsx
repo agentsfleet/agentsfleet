@@ -10,7 +10,7 @@ afterEach(() => cleanup());
 
 const renderBadge = (ui: ReactElement) => render(ui, { wrapper: TooltipProvider });
 
-const ASSIGNED: AssignedPolicy = {
+const ASSIGNED: AssignedPolicy = { durable_tasks_enabled: true,
   sandbox_tier: "landlock_full",
   network_policy: "deny_all_egress",
   registry_allowlist: [],

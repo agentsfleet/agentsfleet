@@ -245,9 +245,12 @@ pub struct AdminModelItem<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelsResponse<'a> {
-    /// Every priced row.
+    /// One bounded page of priced rows.
     #[serde(borrow)]
     pub models: Vec<AdminModelItem<'a>>,
+    /// Continue with starting_after, or null at the end of this catalogue snapshot.
+    #[serde(borrow)]
+    pub next_cursor: Option<Cow<'a, str>>,
     /// Reference identifier to include when contacting support.
     #[serde(borrow)]
     pub request_id: Cow<'a, str>,

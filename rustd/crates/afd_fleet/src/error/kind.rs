@@ -4,6 +4,22 @@ use super::Error;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("private checkpoint upload authorization could not be signed")]
+    TaskStorageSigning {
+        #[source]
+        source: aws_sigv4::http_request::SigningError,
+    },
+    #[error("private checkpoint upload signing parameters are unavailable")]
+    TaskStorageSigningParameters {
+        #[source]
+        source: aws_sigv4::sign::v4::signing_params::BuildError,
+    },
+    #[error("private checkpoint upload request could not be constructed")]
+    TaskStorageRequest {
+        #[source]
+        source: http::Error,
+    },
+
     #[error("private checkpoint storage could not establish object custody")]
     TaskStorage {
         #[source]

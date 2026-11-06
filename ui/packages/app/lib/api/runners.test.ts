@@ -134,7 +134,7 @@ describe("createRunner", () => {
     requestMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "agt_rabc" });
     const body = {
       host_id: "web-prod-1",
-      assigned_policy: {
+      assigned_policy: { durable_tasks_enabled: true,
         sandbox_tier: "landlock_full" as const,
         network_policy: "allow_all" as const,
         registry_allowlist: ["registry.npmjs.org"],
@@ -162,7 +162,7 @@ describe("updateRunnerAdminState", () => {
 
 describe("updateRunner", () => {
   it("PATCHes policy and labels together through the existing runner resource", async () => {
-    const assigned_policy = {
+    const assigned_policy = { durable_tasks_enabled: true,
       sandbox_tier: "container_nested" as const,
       network_policy: "deny_all_egress" as const,
       registry_allowlist: ["pypi.org"],

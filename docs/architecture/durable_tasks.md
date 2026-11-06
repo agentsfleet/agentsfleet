@@ -3,11 +3,15 @@
 ## Status and ownership
 
 This page defines the approved M236 Durable Task (DT) lifecycle.
-Indy approved implementation on November 3, 2026. The November 5 continuation
-connects the native task owner, root coordinator and supervisor recovery in source;
-that batch is uncompiled and unverified. Runtime acceptance remains pending and
-`durable_tasks_v1` remains disabled. The [continuation record](../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md)
-separates this source inventory from historical passing evidence.
+Indy approved implementation on November 3, 2026, and default-on runner support on November 6.
+Supported runners advertise `durable_tasks_v1` on every heartbeat.
+The saved runner assignment includes **Durable tasks**, On by default, as `durable_tasks_enabled`.
+The daemon checks both configuration and software capability before issuing a new durable lease.
+Turning the setting Off preserves the authority and accounting duties of existing leases.
+Older workers cannot claim unsupported task work.
+
+Runtime acceptance remains pending. The [continuation record](../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md)
+separates source changes from passing verification evidence.
 [Goal evaluation](goal_evaluation.md) owns decision-provider questions; [sandbox evaluation](sandbox_evaluation.md#durable-task-checkpoints-in-r2) owns saved files.
 
 The mechanisms below define the approved implementation target, including the concrete limits and protocol in the final sections.
@@ -52,7 +56,7 @@ fleet -> existing admission -> existing lease -> existing agent -> existing repo
 ```
 
 This page owns lifecycle, storage rows, scheduling and native APIs.
-[Decision models](goal_evaluation.md) owns the provider trait/configuration; [three-task Linkwarden](scenarios/durable-tasks-three-prs.md) remains a worked example.
+[Decision models](goal_evaluation.md) owns the provider trait/configuration; [durable repair](scenarios/durable-repair.md) owns the combined three-task worked example.
 Do not merge the complete example into this page or duplicate its API definitions; keep diagrams linked to their canonical mechanisms.
 
 ### Simplification decisions

@@ -34,7 +34,7 @@ impl Estimator<'_> {
                 group.text
             )))
         }));
-        let retained = body.chat_history.split_off(1);
+        let retained = std::mem::take(&mut body.chat_history);
         body.chat_history.extend(prefix);
         body.chat_history.extend(retained);
         Ok(body)

@@ -1,0 +1,68 @@
+//! Bounded fixture HTTP parsing; assertions reject unexpected request shapes.
+
+use std::collections::BTreeMap;
+use tokio::io::AsyncReadExt as _;
+use tokio_rustls::server::TlsStream;
+
+pub(super) struct Request {
+    pub method: String,
+    pub path: String,
+    pub bulk_delete: bool,
+    pub create_only: bool,
+    pub body: Vec<u8>,
+}
+
+pub(super) async fn read(stream: &mut TlsStream<tokio::net::TcpStream>) -> Request {
+    let mut bytes = Vec::new();
+    let (end, length, method, path, create_only) = loop {
+        let mut chunk = [0; 4096];
+        let count = stream.read(&mut chunk).await.expect("request bytes");
+        assert!(count > 0, "complete request headers");
+        bytes.extend_from_slice(&chunk[..count]);
+        assert!(bytes.len() < 32 * 1024, "fixture request bounded");
+        if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+            let (length, method, path, create_only) = headers(&bytes[..end]);
+            break (end + 4, length, method, path, create_only);
+        }
+    };
+    while bytes.len() - end < length {
+        let mut chunk = [0; 4096];
+        let count = stream.read(&mut chunk).await.expect("body bytes");
+        assert!(count > 0, "complete request body");
+        bytes.extend_from_slice(&chunk[..count]);
+    }
+    let (path, query) = path.split_once('?').unwrap_or((&path, ""));
+    Request {
+        method,
+        path: path.to_owned(),
+        bulk_delete: query == "delete",
+        create_only,
+        body: bytes[end..end + length].to_vec(),
+    }
+}
+
+fn headers(bytes: &[u8]) -> (usize, String, String, bool) {
+    let header = std::str::from_utf8(bytes).expect("HTTP header");
+    let mut lines = header.lines();
+    let first = lines
+        .next()
+        .expect("request line")
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    let headers = lines
+        .filter_map(|line| line.split_once(':'))
+        .map(|(k, v)| (k.to_ascii_lowercase(), v.trim().to_owned()))
+        .collect::<BTreeMap<_, _>>();
+    let length = headers
+        .get("content-length")
+        .map_or(0, |value| value.parse::<usize>().expect("body size"));
+    assert!(length < 8192, "small real transport fixture");
+    (
+        length,
+        first[0].to_owned(),
+        first[1].to_owned(),
+        headers
+            .get("if-none-match")
+            .is_some_and(|value| value == "*"),
+    )
+}

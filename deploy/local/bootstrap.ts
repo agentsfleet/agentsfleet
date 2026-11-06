@@ -85,6 +85,22 @@ async function saveSecret(request: Request, workspaceId: string, name: string, d
   if (!secrets.some((row) => row.name === name)) await request(HTTP_METHOD.post, path, { name, data });
 }
 
+async function hasConfiguredModel(request: Request): Promise<boolean> {
+  const schema = z.object({ models: z.array(z.object({ provider: z.string(), model_id: z.string() })),
+    next_cursor: z.string().min(1).nullable() });
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const suffix: string = cursor ? `?starting_after=${encodeURIComponent(cursor)}` : "";
+    const page = schema.parse(await request<unknown>(HTTP_METHOD.get, `${MODELS}${suffix}`));
+    if (page.models.some((model) => model.provider === PROVIDER && model.model_id === MODEL)) return true;
+    cursor = page.next_cursor;
+    if (cursor && seen.has(cursor)) throw new LocalBootstrapError("model catalogue repeated a cursor");
+    if (cursor) seen.add(cursor);
+  } while (cursor);
+  return false;
+}
+
 async function configureModel(request: Request, workspaceId: string): Promise<void> {
   const { keys } = await request<{ keys: { provider: string; active: boolean }[] }>(HTTP_METHOD.get, PLATFORM_KEYS);
   if (keys.some((key) => key.active)) return;
@@ -92,8 +108,7 @@ async function configureModel(request: Request, workspaceId: string): Promise<vo
   if (!key) throw new LocalBootstrapError("machine configuration must supply FIREWORKS_API_KEY for initial local setup");
   const row = desiredRows(await readCatalogue(CATALOGUE_URL)).find((entry) => entry.provider === PROVIDER && entry.model_name === MODEL);
   if (!row) throw new LocalBootstrapError("local acceptance model is missing from the checked catalogue");
-  const { models } = await request<{ models: { provider: string; model_id: string }[] }>(HTTP_METHOD.get, MODELS);
-  if (!models.some((model) => model.provider === PROVIDER && model.model_id === MODEL)) {
+  if (!await hasConfiguredModel(request)) {
     const { provider, model_name, prices, inference, ...metadata } = row;
     await request(HTTP_METHOD.post, MODELS, { provider, model_id: model_name, metadata, prices, inference });
   }
@@ -146,7 +161,7 @@ export async function enroll(request: Request, base: string, namespace: string, 
   await requireFreshHost(request, host);
   await writeFile(pending, host, {flag: EXCLUSIVE_CREATE, mode: 0o600});
   const registration = await request(HTTP_METHOD.post, RUNNERS, { host_id: host, labels: [],
-    assigned_policy: { sandbox_tier: "container_nested", network_policy: "allow_all", registry_allowlist: [], worker_count: 4, extra_binds: [] } });
+    assigned_policy: { durable_tasks_enabled: true, sandbox_tier: "container_nested", network_policy: "allow_all", registry_allowlist: [], worker_count: 4, extra_binds: [] } });
   registrationSchema.parse(registration);
   await writeFile(temporary, `${JSON.stringify(registration)}\n`, { flag: EXCLUSIVE_CREATE, mode: 0o600 });
   await rename(temporary, record);

@@ -26,6 +26,7 @@ use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxT
 fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static> {
     AssignedPolicy {
         decision_model_id: None,
+        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         sandbox_tier: tier,
         network_policy: network,
         registry_allowlist: Vec::new(),

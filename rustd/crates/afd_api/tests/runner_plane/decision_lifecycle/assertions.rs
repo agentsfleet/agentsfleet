@@ -111,6 +111,50 @@ pub(super) async fn one_charge(fixture: &Fixture) {
     );
 }
 
+pub(super) async fn logged_before_relay(fixture: &Fixture) {
+    assert_eq!(counts(fixture).await, (1, 1, 1));
+    assert_eq!(balance(fixture).await, BALANCE);
+    let settled: bool = sqlx::query_scalar(
+        "SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2",
+    )
+    .bind(fixture.lease.id.as_str())
+    .bind(i64::from(DECISION_SEQ_BASE))
+    .fetch_one(&mut *fixture.database.acquire().await.expect("relay boundary observer"))
+    .await
+    .expect("the retained decision usage line");
+    assert!(
+        !settled,
+        "HTTP receipt records usage without charging inline"
+    );
+}
+
+pub(super) async fn relay_once(fixture: &Fixture) {
+    use afd_billing::biller::{Biller as _, WorkKey};
+    let work = WorkKey::FleetLease(fixture.lease.id.clone());
+    let groups = afd_billing::ledger::unsettled_work(
+        &mut *fixture.database.acquire().await.expect("owned relay read"),
+        &work,
+    )
+    .await
+    .expect("relay reads only this lease's committed usage");
+    assert_eq!(groups.len(), 1, "one retained decision pricing header");
+    let ledger = afd_billing::ledger::LedgerBiller::on_system_clock(fixture.database.clone());
+    for group in groups {
+        let first = ledger
+            .settle(&group)
+            .await
+            .expect("native relay settlement");
+        assert_eq!(first.settled_lines, 1);
+        assert_eq!(first.charged.as_i64(), 3);
+        assert_eq!(first.taken.as_i64(), 3);
+        let replay = ledger
+            .settle(&group)
+            .await
+            .expect("lost relay acknowledgement replay");
+        assert_eq!(replay, afd_billing::biller::Receipt::default());
+    }
+}
+
 async fn counts(fixture: &Fixture) -> (i64, i64, i64) {
     sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1::uuid),(SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1::uuid),(SELECT count(*) FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2)")
         .bind(fixture.lease.id.as_str()).bind(i64::from(DECISION_SEQ_BASE))

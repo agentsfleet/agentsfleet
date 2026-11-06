@@ -29,6 +29,7 @@ async fn incremental_capture_retains_its_base_after_publication_and_refuses_inco
 async fn capture(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
+    super::configured::support::set(case, false).await;
     let tasks = storage(&fixture);
     let base_input = input(
         &task,
@@ -82,7 +83,7 @@ async fn capture(case: &Case) {
         .expect("decision model fixture lifecycle");
 }
 
-fn storage(fixture: &Decisions<'_>) -> Tasks {
+pub(super) fn storage(fixture: &Decisions<'_>) -> Tasks {
     let case = fixture.case;
     let config = valid(CheckpointStorageConfig {
         endpoint: format!("https://{}.r2.cloudflarestorage.com", "0".repeat(32)),
@@ -107,7 +108,7 @@ fn storage(fixture: &Decisions<'_>) -> Tasks {
     )
 }
 
-fn input(
+pub(super) fn input(
     task: &DecisionTaskVersion,
     case: &Case,
     mode: CheckpointMode,
@@ -130,13 +131,13 @@ fn input(
     }
 }
 
-fn valid<T: garde::Validate<Context = ()>>(value: T) -> garde::Valid<T> {
+pub(super) fn valid<T: garde::Validate<Context = ()>>(value: T) -> garde::Valid<T> {
     garde::Unvalidated::new(value)
         .validate()
         .expect("bounded fixture")
 }
 
-async fn complete(
+pub(super) async fn complete(
     tasks: &Tasks,
     case: &Case,
     task: &DecisionTaskVersion,

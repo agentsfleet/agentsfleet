@@ -88,6 +88,7 @@ fn should_not_leak_the_runner_token_through_debug() {
         runner_id: Cow::Borrowed("runner"),
         runner_token: Cow::Borrowed(SECRET),
         assigned_policy: AssignedPolicy {
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: EgressPolicy::AllowAll,

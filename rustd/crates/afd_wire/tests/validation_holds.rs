@@ -26,10 +26,22 @@ const REPORT: &str = r#"{"lease_id":"lease","event_id":"1-0","fencing_token":7,
 const HELD_UNTIL: &str = "2026-10-18T06:10:00.250Z";
 /// A heartbeat answer releasing nothing.
 // pin test: literal is the contract
-const BEAT_ANSWER: &str = r#"{"heartbeat_interval_ms":10000,"status":"ok",
-    "assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all",
-    "registry_allowlist":[],"worker_count":1,"extra_binds":[]},
-    "degraded":false,"degraded_reason":null,"selftest_requested":false,"release_holds":[]}"#;
+const BEAT_ANSWER: &str = r#"{
+  "heartbeat_interval_ms": 10000,
+  "status": "ok",
+  "assigned_policy": {
+    "sandbox_tier": "dev_none",
+    "network_policy": "allow_all",
+    "registry_allowlist": [],
+    "worker_count": 1,
+    "extra_binds": [],
+    "durable_tasks_enabled": true
+  },
+  "degraded": false,
+  "degraded_reason": null,
+  "selftest_requested": false,
+  "release_holds": []
+}"#;
 
 fn held(count: usize, fleet: &str) -> HeldFleets<'_> {
     HeldFleets(vec![Cow::Borrowed(fleet); count])

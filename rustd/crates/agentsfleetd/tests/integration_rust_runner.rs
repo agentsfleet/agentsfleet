@@ -186,6 +186,7 @@ async fn assert_memory_pushed(run: &crate::e2e::Scenario) {
 pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
     use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
     let policy = AssignedPolicy {
+        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: SandboxTier::LandlockFull,
         network_policy: NetworkPolicy::AllowAll,

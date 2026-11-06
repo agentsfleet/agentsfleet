@@ -12,7 +12,7 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::{Db, DbRole, PoolConfig};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
-use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, Resident};
+use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed};
 use afd_ingress::{Binding, Delivery, Ingress, Surface};
 use afd_vault::Vault;
 use jiff::Timestamp;
@@ -165,10 +165,10 @@ fn mention<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> MentionAdmission<'a> {
     }
 }
 
-/// The notice that mention owes, posted by `fleet` as the resident.
+/// The notice that mention owes, posted by `fleet` as the notice owner.
 fn notice<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> NoticeOwed<'a> {
     NoticeOwed {
-        resident: fleet,
+        owner: fleet,
         workspace,
         provider: Provider::Slack,
         key: "TSEAM:EvSeam:notice",
@@ -179,15 +179,14 @@ fn notice<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> NoticeOwed<'a> {
 
 /// The chat-mention half of the seam reaches its store too.
 ///
-/// Six more one-line delegations with the same exposure: the workspace
-/// argument threads through `resident` and `bind_resident` by position, and a
+/// Five more one-line delegations with the same exposure: the workspace
+/// argument threads through `notice_owner` and `bind_notice_owner` by position, and a
 /// swapped pair still type-checks.
 #[tokio::test]
 async fn every_mention_reader_on_the_seam_reaches_a_store() {
     let ingress = refusing();
     let (fleet, workspace) = (fleet(), workspace());
     let channel: ChannelId = "C0123456789".parse().expect("the channel is well formed");
-    let resident = Resident::for_channel("TSEAM", &channel).expect("the resident is named");
     let now = Timestamp::UNIX_EPOCH;
 
     assert!(refused(
@@ -197,16 +196,13 @@ async fn every_mention_reader_on_the_seam_reaches_a_store() {
         &WebhookIngress::admit_mention(&ingress, mention(&fleet, &workspace)).await
     ));
     assert!(refused(
-        &WebhookIngress::resident(&ingress, &workspace, "slack", "TSEAM", &channel).await
+        &WebhookIngress::notice_owner(&ingress, &workspace, "slack", "TSEAM", &channel).await
     ));
     assert!(refused(
-        &WebhookIngress::bind_resident(
+        &WebhookIngress::bind_notice_owner(
             &ingress, &workspace, "slack", "TSEAM", &channel, &fleet, now
         )
         .await
-    ));
-    assert!(refused(
-        &WebhookIngress::resident_named(&ingress, &workspace, &resident).await
     ));
     assert!(refused(
         &WebhookIngress::owe_notice(&ingress, notice(&fleet, &workspace), now).await

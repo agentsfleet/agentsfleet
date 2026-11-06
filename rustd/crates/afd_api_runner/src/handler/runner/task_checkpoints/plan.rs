@@ -19,6 +19,7 @@ use std::sync::Arc;
     description = "Binds the native repository, cumulative byte ceilings, immutable ordered page identities and one expiring writer pin before any upload. Replays preserve the original operation and deadlines.",
     params(("lease_id" = String, Path, description = "Native lease UUIDv7.")), request_body = CheckpointPlanInput,
     responses((status = 201, body = afd_wire::task::CheckpointPlan, description = "Native checkpoint result"),
+        (status = 200, body = afd_wire::task::CheckpointPlan, description = "Immutable checkpoint plan replay"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT), (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),

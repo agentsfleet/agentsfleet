@@ -6,7 +6,8 @@
 //! database's `now()` (`docs/architecture/postgres_schemas.md` rule 4).
 
 /// Every catalogued model's identity, in stable provider/model order; prices
-/// come from [`SELECT_MODEL_PRICES`].
+/// come from [`SELECT_MODEL_PRICES`]. `$1` optional limit, `$2` optional provider
+/// boundary, `$3` optional model-name boundary. The identity pair is unique.
 pub(crate) const LIST_PLATFORM_MODELS: &str = include_str!("list_platform_models.sql");
 
 /// Files a model, or writes nothing when `(provider, model_name)` is taken.

@@ -637,7 +637,7 @@ An engine whose disk the host cannot mount, such as Firecracker, reports no host
 
 ## Workspace between leases
 
-The proposed [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
+The [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
 
 The workspace is the fleet's, not the lease's. Holding a sandbox between messages is built. Workspace snapshots are the target: nothing saves or restores one yet, and the bullets that describe them are marked *Target, not built*.
 
