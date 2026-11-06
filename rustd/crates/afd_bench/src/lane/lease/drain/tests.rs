@@ -58,3 +58,13 @@ fn default_turn_renews_twice_and_posts_forty_times() {
 
     assert_eq!((turn.renewals, turn.posts), (2, 40));
 }
+
+#[test]
+fn a_held_turn_keeps_its_sends_and_waits_the_turn() {
+    let turn = Turn::held(Duration::from_secs(2));
+
+    assert_eq!(
+        (turn.renewals, turn.posts, turn.hold),
+        (0, 8, Some(Duration::from_secs(2)))
+    );
+}

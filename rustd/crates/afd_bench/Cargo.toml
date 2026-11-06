@@ -107,6 +107,8 @@ afd_core = { workspace = true, features = ["test-util"] }
 # `Redis::unreachable`: a handle that opens no socket, so the abort rail can be
 # proven wired into a lane without a datastore to kill.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
+# Paused time: the burst's pacer is proven 100 ms apart without waiting it out.
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

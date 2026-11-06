@@ -37,6 +37,16 @@ impl Turn {
             hold: None,
         }
     }
+
+    /// The same sends, and the lease held for the whole turn before the
+    /// report, so a fleet is busy while new messages arrive (§5).
+    #[must_use]
+    pub(in crate::lane::lease) fn held(turn: Duration) -> Self {
+        Self {
+            hold: Some(turn),
+            ..Self::back_to_back(turn)
+        }
+    }
 }
 
 /// Whole intervals of `every` inside `turn`; a partial interval sends nothing.

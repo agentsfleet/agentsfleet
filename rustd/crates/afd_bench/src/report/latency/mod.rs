@@ -35,6 +35,9 @@ pub const P95: f64 = 0.95;
 /// The quantile a lane reports beside it, where the tail actually lives.
 pub const P99: f64 = 0.99;
 
+/// The median a burst reports beside its tails.
+pub const P50: f64 = 0.50;
+
 /// Every operation a lane timed, as a distribution.
 #[derive(Debug, Clone)]
 pub struct Latency {

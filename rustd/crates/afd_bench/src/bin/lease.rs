@@ -9,6 +9,7 @@ use std::process::ExitCode;
 use afd_bench::RunPrefix;
 use afd_bench::cli;
 use afd_bench::error::Result;
+use afd_bench::lane::lease::drain::burst::{self, Burst};
 use afd_bench::lane::lease::shape::Shape;
 use afd_bench::lane::lease::{self, drain, saturation};
 use afd_bench::lane::sweep;
@@ -35,6 +36,20 @@ const SATURATION_FACTOR: u64 = 2;
 
 /// How long the contended window may run when the caller does not say.
 const DEFAULT_WINDOW_SECONDS: u64 = 30;
+
+/// Fleets a burst paces steers into when the caller does not say: the fifty
+/// bursting at once the push-scheduler targets were set against (`M241_001` §5).
+const BURST_FLEETS: u64 = 50;
+
+/// A burst's window when the caller does not say: thirty thousand steers at
+/// the default rate, under the deployment's backlog budget.
+const BURST_WINDOW_SECONDS: u64 = 60;
+
+/// Steers a second per fleet in a burst when the caller does not say.
+const BURST_RATE: u64 = 10;
+
+/// How long a burst's runner holds each lease: one short chat turn.
+const BURST_TURN: Duration = Duration::from_secs(2);
 
 /// One simulated turn when the caller does not say: two renewals and forty
 /// activity posts per lease at today's timing (`M241_001` §4).
@@ -63,6 +78,21 @@ async fn measure() -> Result<String> {
     };
     parameters.admit(profile)?;
 
+    if shape == Shape::Burst {
+        parameters.fleets = number(&env, Parameter::Fleets.name(), BURST_FLEETS)?;
+        parameters.window =
+            Duration::from_secs(number(&env, WINDOW_VARIABLE, BURST_WINDOW_SECONDS)?);
+        parameters.turn = Duration::from_millis(number(
+            &env,
+            Parameter::TurnMs.name(),
+            u64::try_from(BURST_TURN.as_millis()).unwrap_or(u64::MAX),
+        )?);
+        parameters.admit(profile)?;
+    }
+    let burst = Burst {
+        rate: number(&env, Parameter::Rate.name(), BURST_RATE)?,
+    };
+
     let stores = cli::datastores(&env).await?;
     if shape == Shape::Saturation {
         // More requesters than connections is the shape's whole point, so its
@@ -83,11 +113,16 @@ async fn measure() -> Result<String> {
             Lane::LeaseSaturation,
             saturation::run(profile, provenance, parameters, &stores, &prefix).await,
         ),
+        Shape::Burst => (
+            Lane::LeaseBurst,
+            burst::run(profile, provenance, parameters, burst, &stores, &prefix).await,
+        ),
     };
     if let Ok(report) = &measured {
         let summary = match shape {
             Shape::Default => drain::summary(report),
             Shape::Saturation => saturation::summary(report),
+            Shape::Burst => burst::summary(report),
         };
         // the make target's output is what the acceptance rubric reads; no daemon runs here to carry an event.
         cli::show(&summary);

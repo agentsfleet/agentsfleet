@@ -2,8 +2,9 @@
 //!
 //! `PROFILE` already answers WHERE a run points and how hard it may push. The
 //! shape answers WHAT it drives there, so the two never share one knob: the
-//! default pair (the drain, then the contended window), or saturation — the
-//! production poll with more requesters than the pool has connections.
+//! default pair (the drain, then the contended window), saturation — the
+//! production poll with more requesters than the pool has connections — or a
+//! paced burst of steers to fleets whose runners are busy (`M241_001` §5).
 
 use core::fmt;
 
@@ -19,8 +20,11 @@ const DEFAULT: &str = "default";
 /// The spelling of [`Shape::Saturation`].
 const SATURATION: &str = "saturation";
 
+/// The spelling of [`Shape::Burst`].
+const BURST: &str = "burst";
+
 /// Every spelling, for the refusal that names them.
-const EXPECTED: &str = "default, saturation";
+const EXPECTED: &str = "default, saturation, burst";
 
 /// A lease run's population.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +34,9 @@ pub enum Shape {
     /// The production poll over chat drafts and fleets, beside live-set
     /// readers, with requesters outnumbering the pool's connections.
     Saturation,
+    /// Steers paced at a rate per fleet while runners hold each lease for a
+    /// turn, so new messages queue behind running ones.
+    Burst,
 }
 
 impl Shape {
@@ -42,6 +49,7 @@ impl Shape {
         match variable(env, SHAPE_VARIABLE).as_deref().map(str::trim) {
             None | Some(DEFAULT) => Ok(Self::Default),
             Some(SATURATION) => Ok(Self::Saturation),
+            Some(BURST) => Ok(Self::Burst),
             Some(other) => Err(ErrorKind::UnknownShape {
                 name: other.to_owned(),
                 expected: EXPECTED,
@@ -50,15 +58,16 @@ impl Shape {
         }
     }
 
-    /// Refuse saturation anywhere but the compose rig.
+    /// Refuse saturation and the burst anywhere but the compose rig: both
+    /// push a pool past what a shared deployment should carry.
     ///
     /// # Errors
     ///
     /// `ShapeNeedsRig` naming the profile that was asked for.
     pub fn admit(self, profile: Profile) -> Result<()> {
-        if self == Self::Saturation && profile != Profile::Rig {
+        if self != Self::Default && profile != Profile::Rig {
             return Err(ErrorKind::ShapeNeedsRig {
-                shape: SATURATION,
+                shape: self.name(),
                 profile,
             }
             .into());
@@ -72,6 +81,7 @@ impl Shape {
         match self {
             Self::Default => DEFAULT,
             Self::Saturation => SATURATION,
+            Self::Burst => BURST,
         }
     }
 }
@@ -90,7 +100,7 @@ impl fmt::Display for Shape {
 mod tests {
     use afd_core::env::MapEnv;
 
-    use super::{Profile, SATURATION, SHAPE_VARIABLE, Shape};
+    use super::{BURST, Profile, SATURATION, SHAPE_VARIABLE, Shape};
 
     fn env_of(pairs: &[(&str, &str)]) -> MapEnv {
         MapEnv::from_pairs(pairs.iter().copied())
@@ -105,6 +115,22 @@ mod tests {
     fn test_saturation_is_read_by_name() {
         let env = env_of(&[(SHAPE_VARIABLE, SATURATION)]);
         assert_eq!(Shape::read(&env).expect("reads"), Shape::Saturation);
+    }
+
+    #[test]
+    fn shape_reads_burst_and_refuses_unknown() {
+        let env = env_of(&[(SHAPE_VARIABLE, BURST)]);
+        assert_eq!(Shape::read(&env).expect("reads"), Shape::Burst);
+
+        let refused = Shape::read(&env_of(&[(SHAPE_VARIABLE, "bursty")]))
+            .expect_err("a misspelt shape is refused");
+        assert!(
+            refused.to_string().contains("default, saturation, burst"),
+            "the refusal names every spelling: {refused}"
+        );
+        Shape::Burst
+            .admit(Profile::Dev)
+            .expect_err("a burst never runs against a deployment");
     }
 
     #[test]

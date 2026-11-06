@@ -12,6 +12,7 @@ use afd_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 use afd_wire::lease::{LeasePayload, LeaseResponse};
 use afd_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
 
+use super::burst::Pickups;
 use super::turn::Turn;
 
 use crate::abort::Abort;
@@ -35,6 +36,8 @@ pub(super) struct Shared {
     pub(super) target: Option<u64>,
     /// What each lease sends between its grant and its report.
     pub(super) turn: Turn,
+    /// Under a burst, the appended steers whose pickup each lease times.
+    pub(super) pickups: Option<Arc<Pickups>>,
     /// The monitor every outcome is reported to.
     pub(super) abort: Arc<Abort>,
 }
@@ -125,6 +128,9 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
     };
     tally.leased += 1;
     tally.lease_latency.record(took)?;
+    if let Some(pickups) = &shared.pickups {
+        pickups.leased(&lease.event.event_id).await?;
+    }
     run_turn(plane, runner, &lease, shared.turn).await?;
     let reporting = Instant::now();
     plane

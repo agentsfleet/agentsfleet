@@ -34,19 +34,18 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `bench-lease`, its `burst` shape and `bench-tail` write statements per chat by path, burst pickup latency, and tail and wake p99 into committed baselines, and `push_scheduler.md` records them beside the decisions and milestone 4's pass bar.
+**Goal (testable):** `bench-lease` and its `burst` shape write statements per chat by path and burst pickup latency into committed baselines, `push_scheduler.md` records the decisions and target design, and every later milestone has a spec.
 
 **Problem:** The programme replaces the 1 s lease poll with a pushed runner stream, folds chat messages into running runs, and replaces Dragonfly with core NATS. Nobody can tell whether any of that is faster, because today's costs are unmeasured or mismeasured:
 - `agentsfleet_lease_poll_db_roundtrips_total` counts only the ledger statements of a poll (`afd_fleet/src/lease/assign/ledger.rs`).
 - `agentsfleet_lease_poll_dragonfly_commands_total` is always zero: `lease_polled` is passed `0` (`assign/mod.rs`).
 - The lease drain's simulated runner leases and reports, but never renews or posts activity (`afd_bench/src/lane/lease/drain/runner.rs`), so a drained "chat" is missing most of a real one.
 - No bench sends a paced burst to busy fleets; the steer lane appends as fast as it can (`lane/steer/mod.rs`).
-- `bench-tail` reports p95, never p99, and no bench times a wake.
 - No one has recorded what a viewer sees when Dragonfly dies. Both Fly configurations run all four processes on one machine (`docs/architecture/datastore_scaling.md:55`).
 
 The decisions themselves live only in a brief outside the repository.
 
-**Solution summary:** One architecture page holds Indy's decisions, the rules they supersede, the proposed tables per milestone, the sequence diagrams and the milestone list. The two undercounting poll counters are deleted, so `pg_stat_statements` in the bench is the only statement count. Three bench changes and one drill fill the page's baselines and set the bar NATS must clear in milestone 4. The two specs this programme supersedes are parked.
+**Solution summary:** One architecture page holds Indy's decisions, the rules they supersede, the proposed tables per milestone, the sequence diagrams and the milestone list. The two undercounting poll counters are deleted, so `pg_stat_statements` in the bench is the only statement count. Two bench changes fill the page's baselines. The specs for M242 to M247 are written, so each milestone starts from a reviewed change list. The two specs this programme supersedes are parked.
 
 **Design flow:**
 
@@ -57,12 +56,8 @@ make bench-lease PROFILE=rig
 make bench-lease PROFILE=rig BENCH_SHAPE=burst
    50 fleets × 10 steers/s via Steer::append ─► runners hold each lease for the turn
    bench clock: append → lease received, per event ─► p50/p95/p99 ─► lease-burst.rig.json
-make bench-tail PROFILE=rig
-   viewer ladder ─► publish-to-receive p95 and p99 ─► tail.rig.json
-   wake ladder: doorbell::publish ─► Doorbell::wait_for_ring on 1, 2, 4 hubs ─► p50, p99, missed
-broker-kill drill (manual, laptop): curl viewers + paced steers ─► stop Dragonfly ─► observe ─► restart
 each lane: three runs, the median run copied to bench/baselines/, spread recorded
-all of it ─► docs/architecture/push_scheduler.md §Baselines and §Milestone 4 pass bar
+all of it ─► docs/architecture/push_scheduler.md §Baselines
 ```
 
 ## PR Intent & comprehension handshake
@@ -81,7 +76,7 @@ all of it ─► docs/architecture/push_scheduler.md §Baselines and §Milestone
 1. `rustd/crates/afd_bench/src/lane/steer/mod.rs` — how a lane appends steers in process through `afd_events::Steer::append`; §5 mirrors it with pacing.
 2. `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `lane/lease/shape.rs` and `src/bin/lease.rs` — the simulated runner §4 extends, and the shape switch and per-shape lane file §5 extends.
 3. `rustd/crates/afd_bench/src/statements/mod.rs` and `src/report/mod.rs` — how statements are read today (one `sum(calls)`) and the flat `measurements` map every result key must fit.
-4. `rustd/crates/afd_dragonfly/src/doorbell/mod.rs` — the public `publish`, `Doorbell::listen` and `wait_for_ring` the wake ladder drives, and the 64-hint cap.
+4. `rustd/crates/afd_events/src/steer/mod.rs` — `Steer::append`, the production intake the burst paces.
 5. `bench/baselines/README.md` — a baseline is a real run, copied over in the same commit as the change, with `scaling.md`'s table moving with it.
 
 ## Files Changed (blast radius)
@@ -103,9 +98,10 @@ all of it ─► docs/architecture/push_scheduler.md §Baselines and §Milestone
 | `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `drain/mod.rs`, `drain/window.rs`, `drain/turn.rs`, `drain/tests.rs`, `lane/lease/mod.rs`, `lane/lease/tests.rs`, `src/bin/lease.rs`, `tests/ledger_claim.rs` | EDIT, CREATE | §4: the turn plan, renewals and activity per lease, flat path keys |
 | `rustd/crates/afd_bench/src/profile/mod.rs`, `profile/tests.rs` | EDIT | §4, §5: `BENCH_TURN_MS` and `BENCH_RATE` as parameters with ceilings |
 | `rustd/crates/afd_bench/src/lane/lease/shape.rs`, `lane/lease/mod.rs`, `lane/lease/burst/mod.rs`, `burst/tests.rs`, `src/bin/lease.rs`, `src/report/lane.rs` | EDIT, CREATE | §5: `Shape::Burst` and `Lane::LeaseBurst` |
-| `rustd/crates/afd_bench/src/lane/tail/mod.rs`, `tail/viewers/mod.rs`, `tail/tests.rs`, `tail/wake/mod.rs`, `tail/wake/tests.rs` | EDIT, CREATE | §6: p99 per rung, and the wake ladder |
+| `rustd/crates/afd_bench/src/lane/lease/drain/burst/mod.rs`, `burst/pace.rs`, `burst/tests.rs`, `src/report/latency/mod.rs`, `Cargo.toml` | CREATE, EDIT | §5: the burst, its pacer and pickups, the median quantile, paused time for tests |
 | `make/bench.mk` | EDIT | §5, §6: help text; no new target |
-| `bench/baselines/lease.rig.json`, `bench/baselines/lease-burst.rig.json`, `bench/baselines/tail.rig.json` | EDIT, CREATE | §4–§6: median-run baselines |
+| `bench/baselines/lease.rig.json`, `bench/baselines/lease-burst.rig.json` | EDIT, CREATE | §7: median-run baselines |
+| `docs/v2/pending/M242_001_*`, `M242_002_*`, `M243_001_*`, `M244_001_*`, `M245_001_*`, `M246_001_*`, `M247_001_*` | CREATE | the later milestones' specs, each with its table and code changes (Indy, Discovery) |
 | `docs/architecture/scaling.md`, `observability.md`, `runner_fleet.md` | EDIT | §3: lines naming the deleted counters (`scaling.md` lease and tail rows, `observability.md` poll counters, `runner_fleet.md` poll cost); §7: the measured-ceilings rows move with the baselines |
 
 ## Applicable Rules
@@ -124,13 +120,13 @@ all of it ─► docs/architecture/push_scheduler.md §Baselines and §Milestone
 | `docs.language` at `orly gate verify` and `orly gate pr` | yes, new and edited architecture prose | sentences under 25 words, paragraphs of at most three sentences; scan before each commit |
 | `make lint-all` (clippy `-D warnings`, `cargo shear`) | yes, `afd_bench`, `afd_fleet` and `afd_observability` change | `lint-rustd` per Section |
 | Metrics census and producer tests | yes, two families go | census rows, declarations and producer go in one commit |
-| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, `statements/` and `lane/tail/` grow | the path table in `statements/paths.rs`; the wake ladder in `tail/wake/` |
+| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, `statements/` and the drain grow | the path table in `statements/paths.rs`; the burst in `drain/burst/` |
 
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `afd_bench/src/lane/steer/` — in-process steers through `Steer::append`; `burst` adds pacing per fleet. Divergence: runners drain while steers arrive.
 - **Reference:** `afd_bench/src/lane/lease/saturation/` and `Lane::LeaseSaturation` — a second lease shape with its own lane file, the pattern `Lane::LeaseBurst` follows.
-- **Reference:** `afd_bench/src/lane/tail/viewers/` — the ladder the wake ladder mirrors, including the rule that the sender never outruns its slowest receiver.
+- **Reference:** `afd_bench/src/lane/lease/drain/` — the staging, plane and runners the burst reuses.
 - **Reference:** `docs/architecture/datastore_scaling.md` — dated decisions with the owner's words and the evidence that decided them.
 
 ## Sections (implementation slices)
@@ -181,47 +177,26 @@ The page states the target as the design (SPEC-FRAME). **Implementation default:
 
 `BENCH_SHAPE=burst` writes `Lane::LeaseBurst` (`lease-burst.rig.json`). It seeds `BENCH_FLEETS` fleets (default 50) and appends `BENCH_RATE` steers a second to each (default 10) through `Steer::append` for `BENCH_WINDOW_SECONDS` (default 60, keeping 30 000 steers under `DEPLOYMENT_BACKLOG_BUDGET` of 100 000). `BENCH_RUNNERS` simulated runners (default 8) drain, each holding a lease for `BENCH_TURN_MS` before reporting, so fleets are busy while steers arrive. Today each steer is a separate run (`runner_fleet.md:541`), so this measures the queue milestone 2's folding removes. Pickup is timed on the bench's clock: append returned → lease received, keyed by event id. Results are flat keys: `burst_accepted`, `burst_refused`, `burst_unleased`, `burst_append_p95_ms`, `burst_pickup_p50_ms`, `burst_pickup_p95_ms`, `burst_pickup_p99_ms` and `burst_backlog_peak`. **Implementation default:** a refused append is counted and excluded from latency; an accepted steer with no lease at window close is counted as unleased, never dropped.
 
-- **Dimension 5.1** — the shape parses and rejects nonsense → Test `shape_reads_burst_and_refuses_unknown` (unit): `burst` reads as `Shape::Burst`; `bursty` fails naming the allowed spellings.
-- **Dimension 5.2** — unleased work is reported → Test `burst_counts_unleased_at_window_close` (unit): 10 accepted, 4 leased reports `burst_unleased` 6.
-- **Dimension 5.3** — refusals stay out of latency → Test `burst_excludes_refusals_from_pickup` (unit): 3 refusals and 7 pickups of 100 ms report `burst_refused` 3 and p95 100.
-- **Dimension 5.4** — pacing holds the asked rate → Test `burst_pacer_spaces_appends` (unit, paused time): 10 a second for 2 s schedules 20 appends 100 ms apart.
-- **Dimension 5.5** — a live burst reports pickup → Test `make bench-lease PROFILE=rig BENCH_SHAPE=burst` (integration): the result holds `burst_pickup_p99_ms` and `burst_accepted` above 0.
+- **Dimension 5.1** — DONE — the shape parses and rejects nonsense → Test `shape_reads_burst_and_refuses_unknown` (unit): `burst` reads as `Shape::Burst`; `bursty` fails naming the allowed spellings.
+- **Dimension 5.2** — DONE — unleased work is reported → Test `burst_counts_unleased_at_window_close` (unit): 10 accepted, 4 leased reports `burst_unleased` 6.
+- **Dimension 5.3** — DONE — refusals stay out of latency → Test `burst_excludes_refusals_from_pickup` (unit): 3 refusals and 7 pickups of 100 ms report `burst_refused` 3 and p95 100.
+- **Dimension 5.4** — DONE — pacing holds the asked rate → Test `burst_pacer_spaces_appends` (unit, paused time): 10 a second for 2 s schedules 20 appends 100 ms apart.
+- **Dimension 5.5** — DONE — a live burst reports pickup → Test `make bench-lease PROFILE=rig BENCH_SHAPE=burst` (integration): the result holds `burst_pickup_p99_ms` and `burst_accepted` above 0.
 
-### §6 — Tail and wake p99
+### §6 — Moved to M244
 
-The viewer ladder records p99 beside p95 per rung (`tail/viewers/mod.rs`), as flat keys `p99_ms_<rung>`. A wake ladder calls `afd_dragonfly::doorbell::publish` for distinct fleets while 1, 2 and 4 hubs each run a `Doorbell` through `listen` and `wait_for_ring`. It keeps at most 64 rings outstanding, the doorbell's hint cap, and counts a ring missed when no hub takes it within 1 s. Results are `wake_p50_ms_hubs_<n>`, `wake_p99_ms_hubs_<n>` and `wake_missed_hubs_<n>`. **Implementation default:** the wake ladder lives in the tail lane, because both time one broker hop and milestone 4 compares both.
+Tail and wake p99 move to M244, where Dragonfly is measured on the code as it stands then and NATS right after it, on the same laptop (Discovery). M244's spec carries this Section's Dimensions as its own.
 
-- **Dimension 6.1** — the summary carries p99 → Test `tail_summary_reports_p99` (unit): latencies 1..100 ms report p95 95 and p99 99.
-- **Dimension 6.2** — a late ring is missed, not delivered → Test `wake_past_deadline_counts_missed` (unit): a ring taken after 1 s counts in `wake_missed_hubs_1` and not in p99.
-- **Dimension 6.3** — the ringer never passes the hint cap → Test `wake_ringer_waits_at_window` (unit, paused time): with 64 untaken rings, the 65th waits.
-- **Dimension 6.4** — a live wake ladder delivers → Test `make bench-tail PROFILE=rig` (integration): the result holds `wake_p99_ms_hubs_4` and `wake_missed_hubs_4` 0.
+### §7 — Median baselines
 
-### §7 — Three runs, the broker-kill drill and milestone 4's pass bar
-
-Each of `bench-lease`, `bench-lease BENCH_SHAPE=burst` and `bench-tail` runs three times on Indy's laptop, interleaved, after a reset rig. A laptop drain has ranged from 38 to 167 leases/s between runs, so one run proves nothing. The run with the median headline value (drain leases per second, `burst_pickup_p95_ms`, `wake_p99_ms_hubs_4`) is copied to `bench/baselines/`, as the baselines README requires a real run. The other two runs' headline values are recorded beside it in §Baselines.
-
-The drill runs on the dev stack, twice:
-1. Start the dev stack with `make up`: shared Postgres and Dragonfly from `compose.dev-infra.yml`, plus this worktree's native daemon.
-2. Hold two viewers on one fleet's stream (`curl -N` on `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream`), and post one steer a second to that fleet.
-3. Stop Dragonfly (`docker compose -f compose.dev-infra.yml stop dragonfly`) and observe for 60 s.
-4. Start it again with `make up`.
-5. Record what each viewer received (`event_admitted` frames, `catching_up`, or nothing behind the 15 s heartbeat), whether each steer was accepted in Postgres during the outage, and the seconds until frames flow again.
-
-A laptop cannot execute a run (the sandbox is Linux-only), so the drill watches daemon frames, not run output.
-
-§Milestone 4 pass bar then records, against these numbers:
-- NATS tail p99 and wake p99 no worse than Dragonfly's plus 10%;
-- after one of three NATS nodes is killed, every viewer receives `catching_up` and resumes within 10 s with no person acting;
-- no lost frame passes without a gap signal.
+`bench-lease` and `bench-lease BENCH_SHAPE=burst` each run three times on Indy's laptop, interleaved, after a reset rig. A laptop drain has ranged from 38 to 167 leases/s between runs, so one run proves nothing. The run with the median headline value (drain leases per second; `burst_pickup_p95_ms`) is copied to `bench/baselines/`, as the baselines README requires a real run. The other two headline values are recorded beside it in `push_scheduler.md` §Baselines. The broker-kill drill and milestone 4's pass bar move to M244 with §6.
 
 - **Dimension 7.1** — baselines are median real runs → Test `baselines_are_median_runs` (manual): §Baselines lists three headline values per lane, and the committed file's value is the middle one.
-- **Dimension 7.2** — the drill is recorded with evidence → Test `broker_kill_drill_recorded` (manual): §Baselines holds "Broker-kill drill, run 1" and "run 2", each with viewer outcomes, accepted steers and recovery seconds, and the commands used.
-- **Dimension 7.3** — the frozen-tail defect is captured → Test `broker_kill_drill_shows_no_gap_signal` (manual): during the outage no viewer receives `catching_up`, recorded as observed; if one does, the pass bar is rewritten from what was seen.
 
 ## Interfaces
 
 - **Bench environment:** `BENCH_SHAPE=burst`; `BENCH_RATE` (steers a second per fleet, default 10, rig cap 50); `BENCH_TURN_MS` (default 10 000, rig cap 60 000). `BENCH_FLEETS`, `BENCH_RUNNERS` and `BENCH_WINDOW_SECONDS` keep their meanings. Unknown values fail naming the allowed spellings, as `shape.rs` does today.
-- **Result files:** flat keys in `measurements`, so `bench-compare` reads them unchanged. `lease.rig.json` gains `drain_statements_per_lease_<path>` for the eleven paths and loses `roundtrips_per_lease`. `lease-burst.rig.json` is new, with the `burst_*` keys. `tail.rig.json` gains `p99_ms_<rung>` and the `wake_*` keys.
+- **Result files:** flat keys in `measurements`, so `bench-compare` reads them unchanged. `lease.rig.json` gains `drain_statements_per_lease_<path>` for the eleven paths and loses `roundtrips_per_lease`. `lease-burst.rig.json` is new, with the `burst_*` keys.
 - **Metrics:** `agentsfleet_lease_poll_db_roundtrips_total` and `agentsfleet_lease_poll_dragonfly_commands_total` are removed. `agentsfleet_lease_polls_total` and `agentsfleet_lease_poll_candidates_scanned_total` are unchanged.
 
 ## Failure Modes
@@ -234,16 +209,12 @@ A laptop cannot execute a run (the sandbox is Linux-only), so the drill watches 
 | No leases in the drain | failure | a stalled rig | no per-lease keys, no division | `no_leases_reports_no_ratio` |
 | Burst outruns the runners | capacity | appends faster than leases | accepted but unleased steers counted | `burst_counts_unleased_at_window_close` |
 | Intake refuses steers | capacity | a fleet or the deployment past its backlog budget | refusals counted apart, out of latency | `burst_excludes_refusals_from_pickup` |
-| A ring arrives late or never | failure | no hub, or a slow hub | counted missed, out of p99 | `wake_past_deadline_counts_missed` |
-| Ringer floods the doorbell | capacity | more than 64 untaken rings | the ringer waits at the window | `wake_ringer_waits_at_window` |
 | A census row outlives its producer | failure | a family half removed | the producer test fails | `every_census_family_has_a_producer` |
-| Dragonfly dies | failure | the drill stops it | viewers' outcome and steer acceptance recorded as observed | `broker_kill_drill_shows_no_gap_signal` |
 
 ## Invariants
 
 1. Every statement call the drain's database executed is attributed to exactly one path — `paths.rs` classifies first-match with an `other` fallback, and `statements_by_path_sum_to_total` fails if any call is lost or doubled. A real drain sums its paths to `drain_statements_per_lease` exactly.
 2. A census family exists exactly when a producer feeds it — `every_census_family_has_a_producer` fails on an orphan row.
-3. The wake ringer never has more than 64 rings outstanding — the ladder awaits a take before ringing again, and `wake_ringer_waits_at_window` fails otherwise.
 
 ## Metrics & Observability
 
@@ -261,8 +232,7 @@ A laptop cannot execute a run (the sandbox is Linux-only), so the drill watches 
 | R3 | The undercounting counters are gone (§3) | `git grep -n -w -e agentsfleet_lease_poll_db_roundtrips_total -e agentsfleet_lease_poll_dragonfly_commands_total -- ':!docs/v2'` | no output | P0 | |
 | R4 | Statements per chat by path are a baseline (§4, §7) | `grep -c drain_statements_per_lease_activity bench/baselines/lease.rig.json` | `1` | P0 | |
 | R5 | Burst pickup is a baseline (§5, §7) | `grep -c burst_pickup_p99_ms bench/baselines/lease-burst.rig.json` | `1` | P0 | |
-| R6 | Wake p99 is a baseline (§6, §7) | `grep -c wake_p99_ms_hubs_4 bench/baselines/tail.rig.json` | `1` | P0 | |
-| R7 | The drill is recorded twice (§7) | `grep -c "Broker-kill drill, run 2" docs/architecture/push_scheduler.md` | `1` | P1 | |
+| R6 | Every later milestone has a spec (Discovery) | `ls docs/v2/pending/M242_001_*.md docs/v2/pending/M242_002_*.md docs/v2/pending/M243_001_*.md docs/v2/pending/M244_001_*.md docs/v2/pending/M245_001_*.md docs/v2/pending/M246_001_*.md docs/v2/pending/M247_001_*.md` | seven paths, exit 0 | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -282,7 +252,8 @@ Hits under `docs/v2/` are records (done specs, the parked M240_001, `docs/v2/rev
 
 ## Out of Scope
 
-- Every behaviour change: folding and one-statement intake (M242), the runner stream (M243), NATS (M244), fewer round trips (M245), customer runners (M246), capacity and checkpoint respawn (M247). Each spec lists its table and code changes when its milestone starts (Indy, Discovery).
+- Every behaviour change: folding and one-statement intake (M242), the runner stream and the bus seam (M243), NATS (M244), fewer round trips (M245), customer runners (M246), capacity and checkpoint respawn (M247). Their specs land in `pending/` with this milestone; each is built and merged as its own Pull Request.
+- Tail and wake p99, the broker-kill drill and milestone 4's pass bar: moved to M244 (Indy, Discovery).
 - Rewriting the rules in `.orly/LOCAL.md`, `runner_fleet.md` or `concurrency.md`: each changes with the milestone that changes the behaviour. Only lines naming the deleted counters change here.
 - Partitions and a daemon-side fleet owner: only if measurement shows saturation below three times the 12-month peak.
 - Re-measuring on the api-dev machines: at deployment (Indy, Discovery).
@@ -295,7 +266,7 @@ N/A: no user surface.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** park and record first, then delete the counters, then three measurements and a drill, so each measurement lands on honest counting and every number has a home in §2's page.
+- **Chosen shape:** park and record first, then delete the counters, then two measurements, so each lands on honest counting and every number has a home in §2's page. The later specs come last, built on the page.
 - **Alternatives considered:** repairing the poll tally, rejected because a hand-threaded count misses statements other crates send; a new `bench-burst` target, rejected because the lease lane already owns shapes; reading `event_to_lease` from the delivery-stage histogram, rejected because its buckets start at 50 ms and the bench's exporter captures only counters; a scripted broker kill, rejected because the tail lane records that killing a shared compose node is not a stable bench.
 - **Patch-vs-refactor verdict:** a **patch** because it adds measurements and removes two counters without changing any request path.
 
@@ -324,4 +295,6 @@ N/A: no user surface.
   - Standards review of the parking diff (orly-standards-reviewer): no rule findings; one wording note on R10, applied.
   - Spec review (Claude Opus 5.5; implementation-readiness, codebase-details): 3 blockers, 12 majors, 9 minors, all applied in this revision: flat result keys and per-shape lane files; the simulated turn pinned; median runs into `bench/baselines/`; full metric names in greps; the producer test in place of the census parity test; the window's operations source; the missed callers and docs; bench runs as the live proofs; `Steer::append` pacing and bench-clock pickup; the doorbell API and cap; the shared-statement rule; dev-stack drill commands; the patch path; failure Dimensions at half or more; corrected doc lines.
 - **Open blockers** — none.
-- **Deferrals and transfers** — none.
+- **Deferrals and transfers** — §6 and the drill half of §7 move to M244, which measures Dragonfly and then NATS on the same code:
+  > Indy (Nov 06, 2026: 02:13 PM): "Move 6-7 to M244 but when we hit M244 we would have change code here) is this still fine to measure." — context: measuring both brokers in M244, on the code as it stands then, is the fairer comparison; M244's spec carries the Dimensions as its own.
+  > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: the specs for M242 to M247 land with this milestone, superseding the earlier "code changes when you start the milestone".

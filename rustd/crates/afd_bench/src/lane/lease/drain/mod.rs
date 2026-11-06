@@ -1,5 +1,6 @@
 //! Measure complete production lease and report cycles, followed by idle polling.
 
+pub mod burst;
 pub(in crate::lane::lease) mod platform;
 mod runner;
 mod settled;
@@ -163,6 +164,7 @@ async fn measure(
             IDLE_WINDOW,
             None,
             quiet,
+            None,
             &abort,
         )
         .await?;
@@ -187,6 +189,7 @@ async fn drain(
         parameters.window,
         Some(events),
         Turn::back_to_back(parameters.turn),
+        None,
         abort,
     )
     .await

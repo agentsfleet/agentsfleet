@@ -7,6 +7,7 @@ use std::time::Instant;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Plane;
 
+use super::burst::Pickups;
 use super::runner::{self, Shared, Tally};
 use super::settled::Settled;
 use super::turn::Turn;
@@ -35,6 +36,13 @@ pub(super) struct Window {
 }
 
 /// Drive every runner until `target` events are reported or `length` passes.
+///
+/// Eight arguments, one per thing a window varies; a burst also hands in the
+/// pickups its runners time.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is one thing a window varies"
+)]
 pub(super) async fn window(
     plane: &Plane,
     stores: &Datastores,
@@ -42,6 +50,7 @@ pub(super) async fn window(
     length: Duration,
     target: Option<u64>,
     turn: Turn,
+    pickups: Option<Arc<Pickups>>,
     abort: &Arc<Abort>,
 ) -> Result<Window> {
     let queries_before = statements::read_queries(&stores.database).await?;
@@ -53,6 +62,7 @@ pub(super) async fn window(
         reported: 0.into(),
         target,
         turn,
+        pickups,
         abort: Arc::clone(abort),
     });
     let mut tasks = Vec::with_capacity(runners.len());
