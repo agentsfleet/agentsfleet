@@ -1,7 +1,8 @@
 //! The built-in biller: wallets and the usage log, both in Postgres.
 //!
 //! A funds check is one read: the balance less every line the payer logged
-//! and was not yet charged for. Charging stamps the lines first and debits the
+//! and was not yet charged for, capped at a second so a slow read refuses
+//! rather than holding the lease path. Charging stamps the lines first and debits the
 //! wallet last, so the wallet row is locked only from the debit to the commit.
 
 use std::sync::Arc;
@@ -10,7 +11,9 @@ use afd_core::clock::Clock;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use sqlx::Connection as _;
+use sqlx::postgres::{PgArguments, PgRow};
+use sqlx::query::QueryAs;
+use sqlx::{Connection as _, FromRow, Postgres, SqlSafeStr};
 
 use crate::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
 use crate::error::{billing_wallet_missing, query};
@@ -40,6 +43,21 @@ const LOCK_TIMEOUT: &str = "2000ms";
 
 /// How long any one billing statement may run.
 const STATEMENT_TIMEOUT: &str = "5000ms";
+
+/// How long a funds read's statement may run. The wait for a pool connection
+/// comes first and is not counted.
+///
+/// A funds check sits on the lease path: renewal, admission and every setup
+/// chat model call. A read past this ends with SQLSTATE `57014`, which
+/// [`crate::Error::is_unanswered`] names, and the outage policy decides what
+/// the work does. The read sums one tenant's unsettled lines over a partial
+/// index, so it takes milliseconds; the cap is for a relay that stopped and
+/// left those lines to pile up, or a database under load.
+const READ_TIMEOUT: &str = "1000ms";
+
+/// [`READ_TIMEOUT`], for a test that waits it out.
+#[cfg(feature = "test-util")]
+pub const FUNDS_READ_TIMEOUT: &str = READ_TIMEOUT;
 
 /// What each statement here was doing, for [`query`].
 const CONTEXT_SETTLE: &str = "settle usage lines";
@@ -77,19 +95,50 @@ impl LedgerBiller {
     }
 }
 
-/// Bounds the lock wait and statement time for the rest of the transaction.
+/// Bounds the lock wait, and each statement at `statement_timeout`, for the
+/// rest of the transaction.
 ///
 /// Set per transaction with `set_config(.., true)` rather than as connection
 /// startup options: a transaction-pooling bouncer refuses those, and a local
 /// setting ends with the transaction it bounds.
-async fn bound(connection: &mut sqlx::PgConnection, context: &'static str) -> Result<()> {
+async fn bound(
+    connection: &mut sqlx::PgConnection,
+    statement_timeout: &'static str,
+    context: &'static str,
+) -> Result<()> {
     sqlx::query(BOUND_TRANSACTION)
         .bind(LOCK_TIMEOUT)
-        .bind(STATEMENT_TIMEOUT)
+        .bind(statement_timeout)
         .execute(&mut *connection)
         .await
         .map_err(query(context))?;
     Ok(())
+}
+
+/// The funds read, `wrap`ped: as written for production, under `EXPLAIN` for
+/// a plan test.
+fn balance_statement<'q, O, S>(
+    wrap: impl FnOnce(&'static str) -> S,
+    tenant: &'q Uuid7,
+) -> QueryAs<'q, Postgres, O, PgArguments>
+where
+    O: for<'r> FromRow<'r, PgRow>,
+    S: SqlSafeStr,
+{
+    sqlx::query_as(wrap(SELECT_BALANCE)).bind(tenant.as_str())
+}
+
+/// Wraps the production funds read, keeping its bindings, for a plan test.
+#[cfg(feature = "test-util")]
+pub fn balance_query<'q, O, S>(
+    wrap: impl FnOnce(&'static str) -> S,
+    tenant: &'q Uuid7,
+) -> QueryAs<'q, Postgres, O, PgArguments>
+where
+    O: for<'r> FromRow<'r, PgRow>,
+    S: SqlSafeStr,
+{
+    balance_statement(wrap, tenant)
 }
 
 /// The wallet's balance and its unsettled lines, by column name.
@@ -103,15 +152,14 @@ struct BalanceRow {
 #[async_trait::async_trait]
 impl Biller for LedgerBiller {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
-        let mut connection = self.database.acquire().await?;
-        let funds = balance(connection.as_mut(), &ask.payer.tenant).await?;
+        let funds = self.capped_balance(&ask.payer.tenant).await?;
         Ok(Funds::of(funds.left(), ask.next))
     }
 
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_SETTLE))?;
-        bound(&mut transaction, CONTEXT_SETTLE).await?;
+        bound(&mut transaction, STATEMENT_TIMEOUT, CONTEXT_SETTLE).await?;
         log_lines(
             &mut *transaction,
             &self.entropy,
@@ -125,8 +173,20 @@ impl Biller for LedgerBiller {
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {
+        self.capped_balance(&payer.tenant).await
+    }
+}
+
+impl LedgerBiller {
+    /// `tenant`'s balance, read on a connection of its own under
+    /// [`READ_TIMEOUT`].
+    async fn capped_balance(&self, tenant: &Uuid7) -> Result<Balance> {
         let mut connection = self.database.acquire().await?;
-        balance(connection.as_mut(), &payer.tenant).await
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_BALANCE))?;
+        bound(&mut transaction, READ_TIMEOUT, CONTEXT_BALANCE).await?;
+        let funds = balance(&mut *transaction, tenant).await?;
+        transaction.commit().await.map_err(query(CONTEXT_BALANCE))?;
+        Ok(funds)
     }
 }
 
@@ -136,13 +196,13 @@ impl Biller for LedgerBiller {
 /// already inside a transaction reads it on that transaction's connection
 /// rather than taking a second one from the pool: a nested acquire under load
 /// starves the pool, every connection held by a transaction waiting for one
-/// more.
+/// more. Read that way it carries no cap of its own, because a cap set here
+/// would bound the rest of the caller's transaction too.
 ///
 /// # Errors
 /// The statement would not run, or the tenant has no wallet.
 pub async fn balance<'e>(executor: impl sqlx::PgExecutor<'e>, tenant: &Uuid7) -> Result<Balance> {
-    let row: Option<BalanceRow> = sqlx::query_as(SELECT_BALANCE)
-        .bind(tenant.as_str())
+    let row: Option<BalanceRow> = balance_statement(|statement| statement, tenant)
         .fetch_optional(executor)
         .await
         .map_err(query(CONTEXT_BALANCE))?;

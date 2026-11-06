@@ -288,4 +288,5 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
             "every run is stopped at its next check"
         );
     }
+    lane.cleanup().await;
 }
