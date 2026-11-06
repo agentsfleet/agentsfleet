@@ -15,6 +15,8 @@ mod accounts;
 mod biller;
 #[path = "billing/biller_debt.rs"]
 mod biller_debt;
+#[path = "billing/funds_cap.rs"]
+mod funds_cap;
 #[path = "billing/mixed_settlements.rs"]
 mod mixed_settlements;
 #[path = "billing/reads.rs"]

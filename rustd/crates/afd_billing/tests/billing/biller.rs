@@ -274,6 +274,7 @@ async fn test_unsettled_lines_are_resettled() {
         BALANCE.as_i64() - LINE.as_i64(),
         "a second pass charges nothing"
     );
+    lane.cleanup().await;
 }
 
 /// `settled_at` of each of `work`'s lines, oldest first, as text.
