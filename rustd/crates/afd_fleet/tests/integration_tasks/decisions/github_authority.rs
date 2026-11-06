@@ -30,7 +30,8 @@ async fn configured(
     let installation = installation();
     install(fixture, installation).await;
     let config = json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
-        "budget":{"daily_nanos":"1000000000"},"repositories":["example/linkwarden"],
+        "budget":{"daily_nanos":"1000000000"},"decision_policy":super::fixture::policy(),
+        "repositories":["example/linkwarden"],
         "repository_access":"write","repository_base":"main","repository_publication":"existing_pr",
         "repository_validation_workflows":[{"path":".github/workflows/test.yml","sha256":afd_core::etag::sha256_hex(WORKFLOW.as_bytes())}]}});
     case.held

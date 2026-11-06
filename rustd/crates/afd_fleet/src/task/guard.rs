@@ -54,6 +54,30 @@ pub(super) async fn lease(
     connection: &mut PgConnection,
     presented: TaskLease<'_>,
 ) -> Result<LeaseRow> {
+    locked_lease(connection, presented, sql::LOCK_SLOT, sql::LEASE).await
+}
+
+/// Receipt reads exclude writers without serializing other receipt readers.
+/// The caller must end this transaction before attempting a mutation.
+pub(super) async fn replay_lease(
+    connection: &mut PgConnection,
+    presented: TaskLease<'_>,
+) -> Result<LeaseRow> {
+    locked_lease(
+        connection,
+        presented,
+        sql::LOCK_REPLAY_SLOT,
+        sql::REPLAY_LEASE,
+    )
+    .await
+}
+
+async fn locked_lease(
+    connection: &mut PgConnection,
+    presented: TaskLease<'_>,
+    slot_lock: &'static str,
+    lease_lock: &'static str,
+) -> Result<LeaseRow> {
     // A short ownership read precedes the lock so fleet deletion cannot wait
     // on our slot while we wait on its parent row's foreign-key lock.
     let scope: Option<(String, String)> = sqlx::query_as(sql::LEASE_SCOPE)
@@ -64,7 +88,7 @@ pub(super) async fn lease(
         .map_err(query(CONTEXT))?;
     let (fleet, workspace) = scope.ok_or_else(lease_not_found)?;
     lock_scope(connection, &fleet, &workspace).await?;
-    sqlx::query_scalar::<_, String>(sql::LOCK_SLOT)
+    sqlx::query_scalar::<_, String>(slot_lock)
         .bind(presented.lease_id.as_str())
         .bind(presented.runner_id.as_str())
         .fetch_optional(&mut *connection)
@@ -73,7 +97,7 @@ pub(super) async fn lease(
         .ok_or_else(lease_not_found)?;
     // Slot and parent locks are already held when the existing deadline/fence
     // is checked. A row-lock wait cannot leave a pre-wait deadline accepted.
-    let row: LeaseRow = sqlx::query_as(sql::LEASE)
+    let row: LeaseRow = sqlx::query_as(lease_lock)
         .bind(presented.lease_id.as_str())
         .bind(presented.runner_id.as_str())
         .bind(LEASE_STATUS_ACTIVE)

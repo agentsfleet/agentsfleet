@@ -127,7 +127,7 @@ pub(super) async fn existing(
 ) -> Result<Option<TaskBindings>> {
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::replay_lease(&mut tx, lease).await?;
     let saved = replay::read(&mut tx, &current, plan).await?;
     tx.commit().await.map_err(query(CONTEXT))?;
     transaction::recycle(connection);

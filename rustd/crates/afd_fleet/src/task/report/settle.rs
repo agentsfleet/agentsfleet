@@ -231,15 +231,18 @@ async fn action(
                 .dependency
                 .as_ref()
                 .zip(plan.target.as_ref())
-                .filter(|(status, target)| {
-                    status.open
-                        && status.head == target.head
-                        && status
+                .filter(|(status, target)| status.open && status.head == target.head)
+                .and_then(|(status, target)| {
+                    if status.checks_finished(target) {
+                        Some((TaskState::Ready, Some("validation_changed")))
+                    } else {
+                        status
                             .checks
                             .iter()
                             .any(|check| check.status != "completed")
-                })
-                .map(|_| (TaskState::Waiting, Some("validation_pending"))))
+                            .then_some((TaskState::Waiting, Some("validation_pending")))
+                    }
+                }))
         }
     }
 }

@@ -34,6 +34,12 @@ async fn bind_and_replay(case: &Case) {
             .all(|reply| reply.execution_deadline == first.execution_deadline)
     );
     stored_deadline(case, first).await;
+    let warm_replies = contended_calls(case, &plan).await;
+    assert!(warm_replies.iter().all(|reply| {
+        reply.replayed
+            && reply.items == first.items
+            && reply.execution_deadline == first.execution_deadline
+    }));
     let unique: BTreeSet<_> = first
         .items
         .iter()

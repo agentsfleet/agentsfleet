@@ -2,6 +2,33 @@
 
 ## Current continuation point
 
+### Review and verification corrections — Nov 06, 2026
+
+Source `1071effa0d5870d8074098d136008c323ba6e0bd` corrects the three authoring test failures.
+The two history tests now require all 100 original messages and no setup system instruction.
+The Markdown guard parses Rust tokens, preserving rejection of Markdown includes without mistaking comments or quoted examples for macros.
+Its parser dependencies are test dependencies; no dependency version or gate changed.
+The focused history selection passed two tests; the source guard selection passed one.
+The previously reported Rust unit aggregate and daemon-library jobs passed on this pushed head.
+
+Indy then requested: "Also before pushing run the rustd test-integration".
+This supersedes the earlier restriction on restarting that integration target.
+The first clean attempt reset both datastores and migrated through 2690, but exhausted local build space during linking before tests started.
+`cargo clean` for the 56 workspace packages reclaimed 17.1 GiB; third-party build artifacts, clones and user setup were retained.
+
+| Correction | Evidence and verification boundary |
+| --- | --- |
+| Greptile: checks finish after paid WAIT | Same-head completed checks now prepare and stage one ordinary continuation for a fresh assessment. Failed checks also return for assessment; completion still requires the existing success proof. Current ownership, accepted revision, profile, accounting, checkpoint and generation guards remain. |
+| WAIT regression | A real base and incremental checkpoint, paid WAIT receipt and subsequent GitHub observations reproduce `Blocked` instead of `Ready` on original production code. The correction passed all three focused cases: completed success/failure, pending/missing runs and head/open/checkpoint refusal. Replay preserves accounting, admission counts and the committed checkpoint. The earlier base-only fixture was invalid and is not bug evidence. |
+| Reported substrate failure | The reported job passed 332 tests and failed concurrent plan replay on a five-second API pool acquisition. Inspection found no nested acquisition deadlock; receipt prechecks serialized on exclusive slot and lease locks. |
+| Receipt contention | Receipt reads now share slot and lease locks while excluding writers. The common guard retains every authority predicate and lock order. Mutation transactions retain exclusive locks; the read transaction commits before mutation. No pool budget, statement timeout or caller count changed. |
+| Contention regressions | The original guard failed while a fixture held shared authority locks. With the correction, four focused binding cases passed, including both 100-caller cold/warm waves and a real exclusive writer followed by stale-fence refusal. Independent source review found no concrete defect. |
+| Full-run environment diagnosis | The next clean attempt passed all 330 fleet cases and 1,497 tests in completed binaries before later daemon scenarios failed. A focused visible-log rerun showed an HTTP request to `[::]` routed through the workspace proxy and refused with 403. Adding IPv4/IPv6 local addresses to the command's proxy exclusions passed both matching activity cases. User setup, source and gates were unchanged. The already-failed daemon binary was stopped for diagnosis; that attempt is not a full pass. |
+| Full native integration | A fresh clean run with the corrected proxy exclusions was started, then stopped to publish when Indy requested "Can you push the PR so it helps CI runs?". Full verification continues after publication. Its result remains pending; focused tests are not a repository pass. |
+
+M236 remains DONE under the owner closure below. Live acceptance remains parked.
+These corrections update existing PR #803; exact-head automated checks and resolved Greptile threads remain merge conditions.
+
 ### Owner closure — Nov 06, 2026
 
 **M236: DONE by owner direction.**

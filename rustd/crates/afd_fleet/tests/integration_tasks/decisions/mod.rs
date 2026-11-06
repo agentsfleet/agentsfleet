@@ -37,6 +37,7 @@ mod publication_transport;
 mod recovery;
 mod reply;
 mod report_completion;
+mod report_wait;
 mod settlement_recovery;
 mod source;
 mod source_capacity;

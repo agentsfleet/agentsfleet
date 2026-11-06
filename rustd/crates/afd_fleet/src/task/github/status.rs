@@ -18,6 +18,14 @@ pub(in crate::task) struct Snapshot {
 }
 
 impl Snapshot {
+    pub(in crate::task) fn checks_finished(&self, target: &BoundPr) -> bool {
+        self.open
+            && self.head == target.head
+            && !self.checks.is_empty()
+            && self.checks.len() == target.workflows.len()
+            && self.checks.iter().all(|check| check.status == "completed")
+    }
+
     pub(in crate::task) fn digest(&self) -> Result<String> {
         Ok(afd_core::etag::sha256_hex(
             &serde_json::to_vec(self).map_err(afd_core::json::Unreadable::from)?,
