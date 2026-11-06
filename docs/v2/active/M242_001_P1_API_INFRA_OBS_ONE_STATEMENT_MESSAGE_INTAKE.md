@@ -105,7 +105,7 @@ activation: Admissions::stage runs the same statement on the caller's transactio
 | `playbooks/operations/database_region_move/001_playbook.md` | EDIT | §6: the API branch role gets both bounds after `pscale role create` |
 | `bench/baselines/steer.rig.json` | EDIT | §5: the median branch run |
 | `docs/architecture/push_scheduler.md` | EDIT | §5: §M242 records the design and before/after numbers |
-| `docs/architecture/datastore_scaling.md`, `scaling.md` | EDIT | §1, §3, §5: the budget and lock sentences; the steer row |
+| `docs/architecture/datastore_scaling.md`, `lease_flow.md`, `scaling.md` | EDIT | §1, §3, §5: the budget and lock sentences; the per-fleet cap line; the steer row |
 
 No schema slot changes: the statement reads and writes existing columns.
 

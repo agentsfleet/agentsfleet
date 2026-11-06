@@ -348,7 +348,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 - Workers per host: default 1, between 1 and 64 (`afd_core/src/limits.rs`).
 - Activity: 64 KiB batches, 4 held (`afr_supervisor/src/activity/mod.rs`). Memory: a 256 KiB hydrate window (`afd_wire/src/memory.rs`).
 - Timers: lease TTL 30 s, renew every 5 s, max runtime 12 h, runner offline after 90 s, heartbeat 10 s, empty-poll hint 1 s, sandbox hold 10 min (`afd_core/src/timing.rs`).
-- Poll and admission: at most 64 candidate fleets per poll; 10,000 unsettled admissions per fleet. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
+- Poll and admission: at most 64 candidate fleets per poll; no per-fleet admission cap. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
 
 ---
 

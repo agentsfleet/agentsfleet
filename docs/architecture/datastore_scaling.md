@@ -217,8 +217,8 @@ A report settles the admission in the transaction that records usage, terminal s
 
 An expired slot exposes the same unsettled head to another runner. The original billing identity survives redelivery.
 
-The per-fleet budget serializes admission with a `NO KEY UPDATE` fleet lock and refuses at 10,000 unsettled admissions.
-That lock permits the foreign-key checks needed to record delivery concurrently.
+Admission is one statement, `admit_one.sql`, that holds the fleet row `NO KEY UPDATE` until it commits, so one fleet's messages commit in sequence order.
+That lock permits the foreign-key checks needed to record delivery concurrently. No per-fleet cap exists; the deployment ceiling bounds the total.
 
 The deployment ceiling estimates 100,000 unsettled admissions. It refreshes every 1,000 admissions or five seconds, and every 500 milliseconds while refusing.
 
