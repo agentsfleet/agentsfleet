@@ -326,7 +326,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
 ## Out of Scope
 
 - Webhook and Slack same-thread coalescing: out of the programme until a webhook burst is measured (Indy, Discovery); each owes a reply to its own destination.
-- Interrupting a model call for new input: a fold waits for the call in flight, as in Codex. Open blocker 1 asks Indy.
+- Interrupting a model call for new input: a fold waits for the call in flight, as in Codex (Indy, Discovery).
 - Carrying this read on the runner stream: M243 moves the folds request onto the stream, and nothing pushes input down it.
 - Gate checks at fold time: the head's gates admitted the run's tools at issue, renewal meters money, and a message adds no capability.
 - A fold cap per run: runtime, budget and compaction already bound a run.
@@ -377,6 +377,9 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 04:06 PM): chose "Not now (Recommended)" for webhook and Slack coalescing — context: out of the programme until a webhook burst is measured; chat folding covers the 50 fleets × 10 messages a second burst.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
   > Indy (Nov 06, 2026: 09:20 PM): "Well i mean the ui currently captures on a per runner  (eg: landlock, allow network egress and so on, similarly this must be configured from the runner config) is my request." — context: `durable_tasks_v1` set per runner in the admin UI, carried in this Pull Request.
+  > Indy (Nov 06, 2026: 11:25 PM): chose "Reuse #803 path (Recommended)" — context: a message sent mid-run reaches the running lease through #803's input claims (`pending_inputs.sql`, `input_claim_lease_id`/`input_claim_fence`, `settle_source.sql`) instead of a parallel `/folds` route and `Inbox`. CHORE(open) reworks §1–§3 on that path and drops `fold_pending.sql`, `settle_folded.sql` and the slots the reuse leaves unneeded; first it verifies whether every chat run is a durable task under `durable_tasks_v1`. A runner with Durable tasks off keeps today's queueing.
+  > Indy (Nov 06, 2026: 11:25 PM): chose "Same gate (Recommended)" — context: no M242_002 product SQL (statements or slots, including the `admit_one.sql` disposition change) is committed without his line-by-line approval; test fixtures are exempt.
+  > Indy (Nov 06, 2026: 11:25 PM): chose "Wait for the call (Recommended)" — context: a message arriving mid model call joins at the next model call; the in-flight call is never interrupted.
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review of this spec runs before it leaves `pending/`.
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
