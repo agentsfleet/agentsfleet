@@ -21,6 +21,8 @@ mod concurrency;
 mod failures;
 #[path = "report/fixture.rs"]
 mod fixture;
+#[path = "report/funds_plan.rs"]
+mod funds_plan;
 #[path = "report/plans.rs"]
 mod plans;
 use fixture::{Fixture, Line};
