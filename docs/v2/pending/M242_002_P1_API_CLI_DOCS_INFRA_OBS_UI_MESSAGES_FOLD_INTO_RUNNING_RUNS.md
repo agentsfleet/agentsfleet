@@ -414,6 +414,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   --   (SELECT waiting FROM earlier_waiting) AS earlier_waiting
   ```
 
+- **CHORE(open) finding (Nov 07, 2026: 12:06 AM), open for Indy** — a lease runs as a durable task only when its fleet's setup carries a decision policy: the claim binds `crate::task::DECISION_POLICY_PATH` (`afd_fleet/src/lease/assign/ledger.rs:101`, `claim_admission_head.sql`). A plain chat fleet's run is never a task, so under the reuse decision it never folds; its sends answer `queued` or `started` as today. The Goal's "every send folds" and §7's burst bar assume every chat run folds. Indy decides: fold only durable-task fleets, and seed the burst with them; or make plain chat runs claim mid-run input too, which reopens the parallel path. The rest of this spec builds either way.
 - **Model reviews** — skipped on Indy's call: chose "Skip it (Recommended)" (Nov 06, 2026: 11:41 PM), as for M242_001.
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
