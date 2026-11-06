@@ -184,9 +184,12 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 #   97.5 -> 99.5 (2026-10-20) on 99.5863%, 72,214 of 72,514 lines, PR #778's
 #   merge run. The margin is about 62 lines: a change that leaves an uncovered
 #   path covers it, which is the point.
+#   99.5 -> 98.5 (2026-11-06) on Indy's M236 closeout instruction:
+#   "overall Rust gate at 99%? if that is possible? or 98.5%". Exact-head
+#   CI measured 98.5561%, 97,948 of 99,383 lines, on 9499b0552.
 # `scripts/rustd_coverage.py` compares in exact decimals, so a half point is
 # enforced rather than rounded. The 100% contract in the header remains the goal.
-RUSTD_COVERAGE_FLOOR ?= 99.5
+RUSTD_COVERAGE_FLOOR ?= 98.5
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
@@ -246,7 +249,7 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/afd_bench/)
 # only grade a profile it holds; the merge job holds lcov files, not profiles.
 # The two read the same numbers: LCOV's `LF:`/`LH:` records are llvm-cov's line
 # denominator and numerator (verified equal on a probe crate, 2/5 = 40.00% both
-# ways), and the script compares in exact decimals, so 99.5 is enforced rather
+# ways), and the script compares in exact decimals, so the floor is enforced rather
 # than rounded. A red run prints the missed lines by crate, the answer to
 # "where" that used to cost a second instrumented run.
 #
@@ -258,17 +261,17 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/afd_bench/)
 # Continuous Integration passes the pull request's base explicitly. An empty
 # base skips the patch grade (a checkout with no `origin/main` to measure from).
 #
-# Every file that patch touches is graded whole as well, against
-# `RUSTD_PER_FILE_FLOOR`: all of its instrumented lines, not only the changed
-# ones, and a renamed file counts (Indy, Oct 15, 2026: "its 99% of the rust git
-# diff patch files"; "all renames must be graded for 99%").
-# Codecov has no per-file status, so this is the only place it is graded.
-# Above 99.5% on Indy's Nov 04, 2026 instruction; Codecov agrees.
-RUSTD_PATCH_FLOOR ?= 99.51
-RUSTD_PER_FILE_FLOOR ?= 99
+# Indy replaced the separate touched-file floor on Nov 06, 2026:
+# "Use aggregate gates only". The required grades are overall and patch;
+# the report still identifies missed lines without a per-file veto.
+# Indy reset patch coverage on Nov 06, 2026: "95% or what ever you have done"
+# so subsequent milestones can raise it from verified work. CI measured
+# 94.3990%, 21,000 of 22,246 changed lines, on 9499b0552; 94% is the floor.
+# codecov.yml uses the same patch and overall Rust floors; TypeScript stays 100%.
+RUSTD_PATCH_FLOOR ?= 94
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
-  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --per-file-floor $(RUSTD_PER_FILE_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
+  $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
 # Shards: three, each on its own runner with its own Postgres and Dragonfly,
 # measured in parallel and graded together by `test-coverage-rustd-merge`.
