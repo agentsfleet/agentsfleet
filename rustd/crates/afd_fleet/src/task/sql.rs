@@ -2,6 +2,8 @@
 
 pub(super) const LOCK_SLOT: &str = include_str!("sql/lock_slot.sql");
 pub(super) const LEASE: &str = include_str!("sql/lease.sql");
+pub(super) const LOCK_REPLAY_SLOT: &str = include_str!("sql/lock_replay_slot.sql");
+pub(super) const REPLAY_LEASE: &str = include_str!("sql/replay_lease.sql");
 pub(super) const LOCK_SOURCE: &str = include_str!("sql/lock_source.sql");
 pub(super) const REPLAY: &str = include_str!("sql/replay.sql");
 pub(super) const INSERT_ITEM: &str = include_str!("sql/insert_item.sql");

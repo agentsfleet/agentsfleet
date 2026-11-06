@@ -70,7 +70,13 @@ pub(super) async fn prepare(
     } else {
         None
     };
-    let wake = if input.disposition == TaskDisposition::Continue {
+    let needs_continuation = input.disposition == TaskDisposition::Continue
+        || input.disposition == TaskDisposition::Waiting
+            && dependency
+                .as_ref()
+                .zip(target.as_ref())
+                .is_some_and(|(status, target)| status.checks_finished(target));
+    let wake = if needs_continuation {
         Some(Continuation::new(
             &owned.scope,
             &guard::id(&input.task.task_id, "task_id")?,
