@@ -7,6 +7,7 @@ pub(super) mod authorize;
 mod budget;
 pub(super) mod compile;
 mod context;
+mod credit;
 mod dispatch;
 mod fund;
 mod intent;

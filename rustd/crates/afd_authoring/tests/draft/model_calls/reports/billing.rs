@@ -1,14 +1,11 @@
-//! A setup chat's money moves through the biller: its usage lines are logged
-//! once, settled once, and its hold released, whether its report races the
-//! expiry sweep or its biller cannot answer until the billing sweeper runs.
+//! A setup chat's report logs its usage lines and returns; the billing relay
+//! settles them once, whether the report races the
+//! expiry sweep or the relay's biller cannot answer on its first pass.
 
 use super::{Attempt, Fixture, accounting, balance, fixture, report};
-use afd_authoring::Drafts;
 use afd_authoring::types::Source;
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::sql::work::AUTHORING_ATTEMPT;
-use afd_core::{error_code, test_util::trace::Capture};
-use afd_crypto::entropy::Entropy;
 use afd_db::test_util::unreachable_db;
 use std::sync::Arc;
 
@@ -17,17 +14,11 @@ const LINES: i64 = 2;
 /// One reported millisecond of runtime; the provider is billed by the owner's
 /// key, so its tokens charge nothing.
 const RUNTIME_DEBIT: i64 = 100;
-/// Moves a line and its attempt past the billing sweeper's grace.
-const AGED: &str = "WITH lines AS (UPDATE billing.usage_lines SET created_at=created_at-interval '1 hour' \
-WHERE work_type=$2 AND work_id=$1::uuid) \
-UPDATE authoring.attempts SET updated_at=updated_at-interval '1 hour' WHERE id=$1::uuid";
 
-/// The attempt's usage lines, how many are settled, and whether its hold is
-/// still open.
-pub(super) async fn ledger(f: &Fixture, a: &Attempt) -> (i64, i64, bool) {
+/// The attempt's usage lines, and how many are settled.
+pub(super) async fn ledger(f: &Fixture, a: &Attempt) -> (i64, i64) {
     sqlx::query_as(
-        "SELECT count(*), count(settled_at), \
-        EXISTS(SELECT 1 FROM billing.holds WHERE work_type=$2 AND work_id=$1::uuid AND released_at IS NULL) \
+        "SELECT count(*), count(settled_at) \
         FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1::uuid",
     )
     .bind(a.id.as_str())
@@ -76,7 +67,8 @@ async fn a_report_racing_the_expiry_sweep_settles_once() {
             .expect("the resent accounting settles");
         assert!(late.settled, "known usage settles on the resend");
     }
-    assert_eq!(ledger(&f, &a).await, (LINES, LINES, false));
+    f.relay(a.id.as_str()).await;
+    assert_eq!(ledger(&f, &a).await, (LINES, LINES));
     assert_eq!(balance(&f).await, before - RUNTIME_DEBIT, "charged once");
     let again = f
         .drafts
@@ -84,75 +76,71 @@ async fn a_report_racing_the_expiry_sweep_settles_once() {
         .await
         .expect("a further resend replays");
     assert!(again.settled && again.replayed);
-    assert_eq!(ledger(&f, &a).await, (LINES, LINES, false));
+    f.relay(a.id.as_str()).await;
+    assert_eq!(ledger(&f, &a).await, (LINES, LINES));
     assert_eq!(balance(&f).await, before - RUNTIME_DEBIT, "still once");
     f.cleanup().await;
 }
 
+/// A setup chat report logs its lines, settles the attempt and
+/// returns, and moves no money: the lines wait unsettled for the relay.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn lines_a_biller_could_not_settle_are_settled_and_released_by_the_sweeper_once() {
+async fn a_report_logs_its_lines_and_leaves_them_to_the_relay() {
     let f = Fixture::create().await;
     let a = with_known_call(&f).await;
-    let offline = Drafts::new(
-        f.db.clone(),
-        Entropy::new(),
-        Arc::new(LedgerBiller::on_system_clock(unreachable_db())),
-    );
     let before = balance(&f).await;
-    let capture = Capture::install();
-    let ack = offline
+    let ack = f
+        .drafts
         .report(&f.runner, &a.lease, report())
         .await
-        .expect("the report commits though its biller cannot answer");
-    let deferred = [
-        capture.only("setup_chat_settle_deferred"),
-        capture.only("setup_chat_release_deferred"),
-    ];
-    drop(capture);
-    assert!(ack.settled, "the attempt settled; only its money waits");
-    for event in deferred {
-        assert_eq!(event.field("work_id"), Some(a.id.as_str()));
-        assert_eq!(
-            event.field("error_code"),
-            Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
-            "the outage is named: {event:?}"
-        );
-    }
+        .expect("the report settles the attempt");
+    assert!(ack.settled, "known usage settles the attempt");
     assert_eq!(
         ledger(&f, &a).await,
-        (LINES, 0, true),
-        "lines logged, none charged, the hold still open"
+        (LINES, 0),
+        "lines logged, none charged"
     );
-    assert_eq!(balance(&f).await, before, "no money moved yet");
+    assert_eq!(balance(&f).await, before, "the report moved no money");
+    f.relay(a.id.as_str()).await;
+    f.cleanup().await;
+}
 
-    sqlx::query(AGED)
-        .bind(a.id.as_str())
-        .bind(AUTHORING_ATTEMPT)
-        .execute(&mut *f.connection().await)
+/// The relay settles a reported attempt's lines on its next pass, with no
+/// wait. A pass whose biller cannot answer charges nothing and the next one
+/// does; a further pass charges nothing more.
+#[tokio::test]
+#[ignore = "requires live Postgres"]
+async fn a_reported_attempt_is_settled_on_the_next_pass() {
+    // Its own database: a pass settles every unsettled line it can see.
+    let f = Fixture::isolated().await;
+    let a = with_known_call(&f).await;
+    let before = balance(&f).await;
+    f.drafts
+        .report(&f.runner, &a.lease, report())
         .await
-        .expect("past the sweeper's grace");
-    let unreleased = afd_authoring::billing_sweep::release_finished(
+        .expect("the report settles the attempt");
+
+    let refused = afd_billing::ledger::resettle(
         &f.db,
         &LedgerBiller::on_system_clock(unreachable_db()),
+        None,
     )
     .await
-    .expect("the hold sweep reads its batch");
+    .expect("the line pass reads its batch");
     assert_eq!(
-        unreleased.released, 0,
-        "a biller that cannot answer frees nothing"
+        refused.settled, 0,
+        "a biller that cannot answer charges nothing"
     );
-    assert!(unreleased.release_failures >= 1, "{unreleased:?}");
-    assert_eq!(ledger(&f, &a).await, (LINES, 0, true), "the hold waits");
+    assert!(refused.failed >= 1, "{refused:?}");
+    assert_eq!(ledger(&f, &a).await, (LINES, 0), "the lines wait");
+
     let biller = crate::draft::fixture::ledger(&f.db);
     for pass in 0..2 {
-        afd_billing::ledger::resettle(&f.db, biller.as_ref())
+        afd_billing::ledger::resettle(&f.db, biller.as_ref(), None)
             .await
-            .expect("the line sweep runs");
-        afd_authoring::billing_sweep::release_finished(&f.db, biller.as_ref())
-            .await
-            .expect("the hold sweep runs");
-        assert_eq!(ledger(&f, &a).await, (LINES, LINES, false), "pass {pass}");
+            .expect("the line pass runs");
+        assert_eq!(ledger(&f, &a).await, (LINES, LINES), "pass {pass}");
         assert_eq!(
             balance(&f).await,
             before - RUNTIME_DEBIT,

@@ -5,8 +5,8 @@
 //! provider request since the last acknowledged renewal. This module prices
 //! every request line by its own whole-prompt tier and its own request time,
 //! adds one runtime-only line for the time the daemon measured, and wraps them
-//! as the [`Settlement`] the lease's transaction logs and its biller settles
-//! after commit (billing §11).
+//! as the [`Settlement`] the lease's transaction logs and the billing relay
+//! settles (billing §11).
 
 mod original;
 

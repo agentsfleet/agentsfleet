@@ -5,7 +5,6 @@ mod issue;
 mod selection;
 mod sql;
 
-use afd_billing::biller::{Hold, Reservation};
 use afd_core::id::Uuid7;
 use afd_runner::capacity::choice::{self, Ticket};
 use afd_wire::lease::LeaseKind;
@@ -17,9 +16,6 @@ use selection::{Authorized, Hint};
 /// The complete private placement returned only to the authenticated runner.
 pub type Claimed = afd_wire::authoring::Lease<Candidate>;
 
-/// Logged when a freshly claimed attempt's hold was not placed.
-const EVENT_HOLD_UNPLACED: &str = "setup_chat_hold_unplaced";
-
 /// Logged when a claim skips a candidate whose creator or draft another
 /// transaction holds.
 const EVENT_DRAFT_SKIPPED: &str = "authoring_claim_draft_skipped";
@@ -27,10 +23,6 @@ const EVENT_DRAFT_SKIPPED: &str = "authoring_claim_draft_skipped";
 /// What [`EVENT_DRAFT_SKIPPED`] says.
 const MESSAGE_DRAFT_SKIPPED: &str =
     "a held draft was skipped, not waited on; a later poll admits it";
-
-/// What [`EVENT_HOLD_UNPLACED`] says, whichever way the hold was missed.
-const MESSAGE_HOLD_UNPLACED: &str =
-    "the setup chat runs unheld; its first model call reserves again";
 
 enum Placement {
     Busy,
@@ -117,41 +109,9 @@ impl Drafts {
         }
         tx.commit().await.map_err(query(sql::CONTEXT))?;
         owed.settle(&self.analytics);
-        let Some((lease, hold)) = admitted else {
+        let Some(lease) = admitted else {
             return Ok(Placement::Skipped);
         };
-        self.hold_claimed(&hold).await;
         Ok(Placement::Admitted(Box::new(lease)))
-    }
-
-    /// Place a freshly claimed attempt's hold: the bound its gate admitted.
-    ///
-    /// After the attempt commits, because the hold names the attempt and a
-    /// biller can never join our transaction. A balance that moved since the
-    /// gate, or a biller that could not answer, leaves the attempt unheld; its
-    /// first model call raises the hold and refuses there if the balance cannot
-    /// fund it.
-    async fn hold_claimed(&self, hold: &Reservation) {
-        let work_id = hold.work.id().as_str();
-        match self.biller.reserve(hold).await {
-            Ok(Hold::Held { .. } | Hold::Unconfirmed) => {}
-            Ok(answer) => tracing::warn!(
-                work_id,
-                hold = ?answer,
-                event = EVENT_HOLD_UNPLACED,
-                MESSAGE_HOLD_UNPLACED
-            ),
-            Err(fault) => {
-                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                let error_code = fault.code().as_str();
-                tracing::warn!(
-                    error = %fault,
-                    error_code,
-                    work_id,
-                    event = EVENT_HOLD_UNPLACED,
-                    MESSAGE_HOLD_UNPLACED
-                );
-            }
-        }
     }
 }

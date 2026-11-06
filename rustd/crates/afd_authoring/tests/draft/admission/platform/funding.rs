@@ -51,7 +51,7 @@ async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
         .expect_err("input cost cannot fit a signed ledger amount");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(provider.0.load(Ordering::SeqCst), 0);
-    assert_eq!(durable(&f, &lease).await, (ADMISSION, ADMISSION, 0));
+    assert_eq!(durable(&f, &lease).await, (ADMISSION, 0));
     f.cleanup().await;
 }
 
@@ -99,9 +99,9 @@ fn request(lease: &Claimed, index: u32) -> ModelCallInput {
     }
 }
 
-async fn durable(f: &Fixture, lease: &Claimed) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT a.reserved_nanos,h.ceiling_nanos,(SELECT count(*) FROM authoring.dispatches d WHERE d.attempt_id=a.id) FROM authoring.attempts a JOIN billing.holds h ON h.work_id=a.id WHERE a.id=$1::uuid")
-        .bind(&lease.attempt_id).fetch_one(&mut *f.connection().await).await.expect("owned reservation and receipts")
+async fn durable(f: &Fixture, lease: &Claimed) -> (i64, i64) {
+    sqlx::query_as("SELECT a.reserved_nanos,(SELECT count(*) FROM authoring.dispatches d WHERE d.attempt_id=a.id) FROM authoring.attempts a WHERE a.id=$1::uuid")
+        .bind(&lease.attempt_id).fetch_one(&mut *f.connection().await).await.expect("the attempt's bound and receipts")
 }
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn each_platform_send_funds_measured_input_and_keeps_prior_known_cost() {
     let id = Uuid7::parse(&lease.lease_id).expect("lease");
     let provider = Arc::new(Provider::default());
     let calls = calls(&f, Arc::clone(&provider));
-    assert_eq!(durable(&f, &lease).await, (ADMISSION, ADMISSION, 0));
+    assert_eq!(durable(&f, &lease).await, (ADMISSION, 0));
     let mut previous = ADMISSION;
     for index in 1..=2 {
         let reply = calls
@@ -121,12 +121,11 @@ async fn each_platform_send_funds_measured_input_and_keeps_prior_known_cost() {
             .await
             .expect("funded physical call");
         assert_eq!(reply.text, "funded answer");
-        let (reserved, held, receipts) = durable(&f, &lease).await;
+        let (reserved, receipts) = durable(&f, &lease).await;
         assert!(
             reserved > previous,
             "each send must cover measured input and known prior spend"
         );
-        assert_eq!(held, reserved);
         assert_eq!(receipts, i64::from(index));
         previous = reserved;
     }
@@ -153,6 +152,6 @@ async fn an_admission_only_balance_refuses_measured_input_before_any_dispatch() 
         .expect_err("input needs additional funding");
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(provider.0.load(Ordering::SeqCst), 0);
-    assert_eq!(durable(&f, &lease).await, (ADMISSION, ADMISSION, 0));
+    assert_eq!(durable(&f, &lease).await, (ADMISSION, 0));
     f.cleanup().await;
 }

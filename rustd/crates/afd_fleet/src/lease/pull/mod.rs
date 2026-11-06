@@ -85,7 +85,7 @@ pub struct Plane {
     /// The payer, the issue-time floor and a fleet's spend: the reads a money
     /// gate makes before anything moves.
     pub accounts: Accounts,
-    /// Holds, charges and releases money for every lease (billing §11).
+    /// Checks every lease's funds as it renews (billing §11); the relay charges.
     ///
     /// A trait object so the built-in ledger, a queue or a third-party
     /// metering system all sit behind one call site; the daemon chooses which,

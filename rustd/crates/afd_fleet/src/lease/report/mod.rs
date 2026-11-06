@@ -45,7 +45,6 @@ use crate::lease::tool_trace::{self, TraceOwner};
 use crate::lease::usage::{self, Pricing};
 use crate::lease::verdict::{Terminal, Verdict};
 use afd_billing::Nanos;
-use afd_billing::biller::Release;
 use afd_billing::rates::Posture;
 
 pub use tokens::RunTokens;
@@ -189,12 +188,7 @@ impl Plane {
         // future, past the large-future bound, for a step most reports skip.
         Box::pin(self.capture_reported(runner_id, &lease, request, now)).await;
         match self.leases.commit_report(report).await? {
-            Committed::Fenced { settlement } => {
-                if let Some(settled) = settlement.as_deref() {
-                    self.settle_usage(settled).await;
-                }
-                Err(stale_fence())
-            }
+            Committed::Fenced { .. } => Err(stale_fence()),
             Committed::AlreadySettled => {
                 Self::record_repeat(&lease, lease_id);
                 Ok(reconciled(
@@ -215,10 +209,6 @@ impl Plane {
                     plan.announce().await;
                 }
                 let charged = usage::charged(settlement.as_deref());
-                if let Some(settled) = settlement.as_deref() {
-                    self.settle_usage(settled).await;
-                }
-                self.release_usage(&lease_key, release_of(request)).await;
                 let answer = notice.unwrap_or(request.response_text.as_ref());
                 let completed_at = self
                     .announce(
@@ -238,21 +228,6 @@ impl Plane {
                 Ok(reconciled(lease, charged, false, tokens, completed_at))
             }
         }
-    }
-}
-
-/// Why a reported lease's hold is released.
-fn release_of(request: &ReportRequest<'_>) -> Release {
-    if Verdict::of(
-        request.outcome,
-        request.failure_reason,
-        request.failure_detail.as_ref(),
-    )
-    .succeeded()
-    {
-        Release::Completed
-    } else {
-        Release::Failed
     }
 }
 

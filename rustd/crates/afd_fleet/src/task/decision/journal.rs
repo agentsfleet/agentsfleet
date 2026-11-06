@@ -1,4 +1,4 @@
-//! Financial evidence commits before any live-state read or biller await.
+//! Financial evidence commits before live-state reads; the billing relay charges it.
 
 use afd_billing::biller::Settlement;
 use afd_crypto::entropy::Entropy;
@@ -25,7 +25,6 @@ pub(super) struct Written {
     pub call: Call,
     pub replayed: bool,
     pub task_version: Option<i64>,
-    pub settlement: Option<Box<Settlement>>,
 }
 
 struct Accounting {
@@ -82,7 +81,7 @@ impl Recording<'_> {
     ) -> Result<Written> {
         let accounting = Accounting::of(plan);
         let replayed = accounting.is_none();
-        let (task_version, settlement) = if let Some(accounting) = accounting {
+        let task_version = if let Some(accounting) = accounting {
             let at = self.header(connection, &accounting).await?;
             if let Some(settlement) = &accounting.settlement {
                 afd_billing::ledger::log_lines(&mut *connection, entropy, at, settlement).await?;
@@ -94,10 +93,9 @@ impl Recording<'_> {
                 .execute(&mut *connection)
                 .await
                 .map_err(query("save the physical decision receipt"))?;
-            let version = self.account_task(connection, accounting.charged).await?;
-            (version, accounting.settlement)
+            self.account_task(connection, accounting.charged).await?
         } else {
-            (None, None)
+            None
         };
         let saved = row::find(connection, Lookup::Id(&self.call.id))
             .await?
@@ -106,7 +104,6 @@ impl Recording<'_> {
             call: saved,
             replayed,
             task_version,
-            settlement,
         })
     }
 

@@ -37,8 +37,8 @@ fn label_products() -> Vec<(&'static str, usize)> {
             task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
         ),
         (
-            billing::BILLING_RESERVE_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::ReserveOutcome::ALL.len(),
+            billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
+            billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
         ),
         (
             billing::BILLING_SETTLE_TOTAL.wire_name(),

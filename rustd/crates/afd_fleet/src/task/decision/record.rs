@@ -60,12 +60,6 @@ async fn after_commit(
 ) -> Result<DecisionReceiptResult> {
     let disposition = disposition(tasks, &written.call, payload.as_ref(), receipt).await;
     changed(tasks, &written).await?;
-    if let Some(settlement) = &written.settlement
-        && let Err(fault) = tasks.dependencies.biller.settle(settlement).await
-    {
-        tracing::warn!(event = "lease_settle_deferred", work_id = written.call.original_lease_id.as_str(),
-                error_code = %fault.code(), reason = "decision_settlement_pending");
-    }
     let result = response(&written, disposition)?;
     tracing::info!(event = "dt_decision_recorded", decision_call_id = result.call_id.as_str(),
         assessment_id = written.call.assessment_id.as_str(), state = result.state.as_str(),

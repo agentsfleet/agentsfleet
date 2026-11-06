@@ -88,11 +88,6 @@ impl ModelCalls {
             .await?;
         }
         tx.commit().await.map_err(query(CONTEXT))?;
-        if let Some(bill) = settlement
-            && let Err(fault) = self.drafts.biller.settle(&bill).await
-        {
-            tracing::warn!(event = "setup_chat_settle_deferred", work_id = prepared.attempt.id.as_str(), error_code = %fault.code());
-        }
         tracing::info!(event = "setup_edit_intent", dispatch_id = %prepared.request.call_id,
             disposition = disposition.as_str(), usage_known = charged.is_some());
         Ok(disposition)

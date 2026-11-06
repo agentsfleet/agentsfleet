@@ -1,18 +1,18 @@
-//! What the billing lifecycle did: holds asked for, lines settled, tokens
-//! left unpriced, and what is still owed.
+//! What the billing lifecycle did: funds checked, lines settled, tokens left
+//! unpriced, and what is still owed.
 //!
 //! Recorded at one choke point, the biller every money path holds (billing
-//! §11), so a reservation or a settlement is counted once whichever product
-//! path or sweeper made it. The three gauges are the billing sweeper's: it is
-//! the one reader that already scans the unsettled lines and open holds.
+//! §11), so a check or a settlement is counted once whichever product path or
+//! relay pass made it. The two gauges are the billing relay's: it is the one
+//! reader that already scans the unsettled lines.
 
 use crate::metrics::family::{CounterKind, Declared, GaugeKind};
 
-/// Reservations by their answer.
+/// Funds checks by their answer.
 ///
 /// Labels: `work_type,outcome`.
-pub const BILLING_RESERVE_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_billing_reserve_total");
+pub const BILLING_FUNDS_CHECK_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_billing_funds_check_total");
 
 /// Settlements by whether they landed.
 ///
@@ -26,21 +26,18 @@ pub const BILLING_SETTLE_TOTAL: Declared<CounterKind> =
 pub const BILLING_UNPRICED_TOKENS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_billing_unpriced_tokens_total");
 
-/// Work/provider/model/posture groups whose unsettled lines the sweeper settled.
+/// Work/provider/model/posture groups whose unsettled lines the relay settled.
 ///
 /// Labels: `work_type`.
 pub const BILLING_SWEEPER_RESETTLED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_billing_sweeper_resettled_total");
 
-/// Nanos logged and not yet settled, as the last sweep read them.
+/// Nanos logged and not yet settled, as the last relay pass read them.
 ///
 /// Labels: `work_type`.
 pub const BILLING_UNSETTLED_NANOS: Declared<GaugeKind> =
     Declared::new("agentsfleet_billing_unsettled_nanos");
 
-/// Age of the oldest unsettled line, as the last sweep read it.
+/// Age of the oldest unsettled line, as the last relay pass read it.
 pub const BILLING_UNSETTLED_OLDEST_SECONDS: Declared<GaugeKind> =
     Declared::new("agentsfleet_billing_unsettled_oldest_seconds");
-
-/// Nanos held by open reservations and not yet captured.
-pub const BILLING_HELD_NANOS: Declared<GaugeKind> = Declared::new("agentsfleet_billing_held_nanos");

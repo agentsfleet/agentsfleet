@@ -25,7 +25,8 @@ impl ModelCalls {
             .reserved_nanos
             .checked_add(prepared.reserved_nanos)
             .ok_or(ErrorKind::Balance)?;
-        let held = budget::hold(self.drafts.biller.as_ref(), &attempt).await;
+        let held =
+            budget::covers(&self.drafts.database, self.drafts.biller.as_ref(), &attempt).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let guarded = guard::publication(&mut tx, runner, lease, counters).await?;

@@ -34,7 +34,7 @@ impl Drafts {
     pub async fn renew(&self, runner: &Uuid7, lease: &Uuid7, request: Renew) -> Result<Renewed> {
         let request = garde::Unvalidated::new(request).validate()?;
         let counters = guard::Counters::renew(&request)?;
-        let held = budget::held(self, runner, lease).await;
+        let held = budget::funded(self, runner, lease).await;
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let mut guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
