@@ -200,3 +200,39 @@ async fn a_send_behind_a_held_fleet_row_times_out() {
     assert_eq!(rows, 0, "a timed-out send records nothing");
     lane.cleanup().await;
 }
+
+/// A stopped fleet's refusal is the caller's answer, not an admission failure:
+/// no `admission_failed` and no capacity line, and so no tick of
+/// `agentsfleet_admissions_total`, which `count_refusal` records beside that
+/// log (`M242_001` Dimension 4.5).
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_stopped_fleet_refusal_counts_no_admission() {
+    let capture = afd_core::test_util::trace::Capture::install();
+    let lane = Lane::seed().await;
+    let (_server, admissions) = over_fake(&lane, &[]).await;
+    let key = mint_id();
+    let refused = admissions
+        .admit_runnable(steer(&lane, &key, ReplyTo::None))
+        .await
+        .expect_err("the lane's fleet is stopped");
+    assert_eq!(
+        refused.not_runnable(),
+        Some(afd_fleet_lifecycle::FleetStatus::Stopped)
+    );
+    let refusal_lines = capture
+        .events()
+        .into_iter()
+        .filter(|event| {
+            matches!(
+                event.field("event"),
+                Some("admission_failed" | "admission_refused_over_capacity")
+            )
+        })
+        .count();
+    assert_eq!(
+        refusal_lines, 0,
+        "a stopped-fleet refusal is not an admission failure"
+    );
+    lane.cleanup().await;
+}

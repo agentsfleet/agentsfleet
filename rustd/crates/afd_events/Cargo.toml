@@ -29,6 +29,8 @@ afd_db.workspace = true
 # steer appends to the fleet's stream. Both are this crate's, because both are
 # the same question the table answers, asked about the present.
 afd_dragonfly.workspace = true
+# The status a stopped-fleet refusal names.
+afd_fleet_lifecycle.workspace = true
 # The event type and status spellings the wire carries.
 afd_api_wire.workspace = true
 afd_wire.workspace = true

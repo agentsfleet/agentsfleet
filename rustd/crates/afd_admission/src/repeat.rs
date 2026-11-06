@@ -1,10 +1,11 @@
 //! The row a producer's key already holds, read back.
 //!
-//! [`crate::Admissions::admit`] answers a repeat itself — its insert conflicts
-//! on `UNIQUE (producer, producer_key)` and hands back the first row, digest
-//! and fleet included, as [`crate::Admitted::stored`]. A spent fleet budget or
-//! the caller's own check refuses before the insert is reached, so a producer
-//! that must answer a repeat on those paths reads the row here.
+//! [`crate::Admissions::admit`] answers a repeat itself — its one statement
+//! reads the key before any gate and hands back the first row, digest and
+//! fleet included, as [`crate::Admitted::stored`]. A same-key send that
+//! committed while this one waited on the fleet lock is invisible to that read,
+//! and a spent deployment ceiling then refuses before the insert can meet it,
+//! so a producer that must answer a repeat on that path reads the row here.
 
 use jiff::Timestamp;
 
@@ -17,8 +18,8 @@ const CONTEXT_FIND_REPEATED: &str = "find a repeated admission";
 /// An admission row as recorded under a producer's key: an earlier call's
 /// when read back here, or the one an admission just wrote or met.
 ///
-/// Decoded straight from [`sql::SELECT_REPEATED`] and from the `RETURNING` of
-/// [`sql::INSERT_ADMISSION`], which name their columns after these fields.
+/// Decoded straight from [`sql::SELECT_REPEATED`], and assembled from the
+/// answer row of [`sql::ADMIT_ONE`], whose columns are named after these fields.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Repeated {
     /// The event id the row's admission was answered with: the row's own

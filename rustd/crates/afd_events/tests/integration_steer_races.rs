@@ -106,19 +106,6 @@ async fn test_reused_id_by_another_caller_is_refused() {
         .await
         .expect_err("another caller's reuse is refused");
     assert!(refused.is_operation_conflict(), "{refused}");
-    assert!(
-        steer
-            .replayed(
-                &lane.fleet,
-                &lane.workspace,
-                OTHER_ACTOR,
-                REQUEST_JSON,
-                OPERATION
-            )
-            .await
-            .expect_err("the lookup refuses it too")
-            .is_operation_conflict()
-    );
     assert_eq!(admissions_for(&lane, OPERATION).await, 1);
 }
 

@@ -204,23 +204,6 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
         operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<Steered>> + Send;
 
-    /// The event a caller's operation already became on `fleet`, or `None`
-    /// when the operation id is new — asked when the fleet refuses new work, so
-    /// a retry of a message admitted before it stopped is answered, never
-    /// refused as undelivered.
-    ///
-    /// # Errors
-    /// Refuses an id already admitted with a different message; reports a
-    /// ledger that would not answer.
-    fn replayed(
-        &self,
-        fleet: &str,
-        workspace: &str,
-        actor: &str,
-        request_json: &str,
-        operation_id: &str,
-    ) -> impl Future<Output = EventResult<Option<String>>> + Send;
-
     /// Puts `frame` on `fleet`'s live tail, best-effort — no answer, because
     /// a frame the queue refuses must not change the steer's.
     fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send;
@@ -237,17 +220,6 @@ impl FleetSteering for Steer {
         operation_id: Option<&str>,
     ) -> impl Future<Output = EventResult<Steered>> + Send {
         Self::append(self, fleet, workspace, actor, request_json, operation_id)
-    }
-
-    fn replayed(
-        &self,
-        fleet: &str,
-        workspace: &str,
-        actor: &str,
-        request_json: &str,
-        operation_id: &str,
-    ) -> impl Future<Output = EventResult<Option<String>>> + Send {
-        Self::replayed(self, fleet, workspace, actor, request_json, operation_id)
     }
 
     fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send {

@@ -38,7 +38,7 @@ use afd_fleet_lifecycle::FleetStatus;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{FleetSteering, Services, WorkspaceFleets as _};
+use crate::services::{FleetSteering, Services};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -135,36 +135,14 @@ pub(crate) async fn steer<D: Services>(
     let fleet = parse_fleet_id(&fleet_id)?;
     let steer = read_steer(&body)?;
     let actor = actor_for(person.person());
-
-    // Ownership first: a fleet this workspace does not hold is a 404 before any
-    // operation id is looked at, so a guessed id can never probe another
-    // tenant's ledger.
-    let status = services
-        .fleets()
-        .ingress_status(&owned.workspace, &fleet)
-        .await
-        .map_err(Refusal::at(EVENT_STEER))?
-        .ok_or_else(|| Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND))?;
     let request_json = stored_payload(&steer.message)?;
     let operation_id = steer.operation_id.as_deref();
     let (fleet, workspace) = (fleet.as_str(), owned.workspace.as_str());
     let steering = services.steering();
-    if !status.is_runnable() {
-        // A fleet that will not take work refuses new messages — but answers a
-        // retry of one it admitted while it did, with that message's event:
-        // refusing the retry would report as never sent a message that is
-        // going to run.
-        let replayed = match operation_id {
-            Some(operation) => steering
-                .replayed(fleet, workspace, &actor, &request_json, operation)
-                .await
-                .map_err(refuse_steer)?,
-            None => None,
-        };
-        return replayed
-            .map(|event_id| accepted(event_id, true))
-            .ok_or_else(|| not_runnable(status));
-    }
+    // One ledger statement decides ownership, a repeat, the fleet's status and
+    // the ceiling (`M242_001` §4): a foreign fleet is a 404 before any operation
+    // id is read, and a retry of a message admitted before the fleet stopped is
+    // still answered with its event.
     let steered = steering
         .append(fleet, workspace, &actor, &request_json, operation_id)
         .await
@@ -236,10 +214,16 @@ fn accepted(event_id: String, replayed: bool) -> Response {
         .into_response()
 }
 
-/// The refusal a failed steer earns: a reused operation id is a 409 naming the
-/// state the id is in; everything else renders as its plane decided.
+/// The refusal a failed steer earns: a fleet this workspace does not hold is a
+/// 404, a fleet that takes no work a 409 naming its status, a reused operation
+/// id a 409 naming the state the id is in; everything else renders as its plane
+/// decided.
 fn refuse_steer(error: afd_events::Error) -> Refusal {
-    if error.is_operation_conflict() {
+    if error.is_fleet_absent() {
+        Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND)
+    } else if let Some(status) = error.not_runnable() {
+        not_runnable(status)
+    } else if error.is_operation_conflict() {
         Refusal::conflict_at(EVENT_STEER, STATE_ADMITTED)(error)
     } else {
         Refusal::at(EVENT_STEER)(error)

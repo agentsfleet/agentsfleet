@@ -182,9 +182,9 @@ async fn the_message_bound_is_measured_on_the_decoded_bytes() {
 
 /// A well-formed steer reaches the store, and the outage is a 503.
 ///
-/// The ingress check runs first, so this proves the message got past the body
-/// reader and the status read is what refused — not that a steer was silently
-/// accepted into a queue nobody polls.
+/// No status read runs before the admission (`M242_001` §4), so this proves the
+/// message got past the body reader and the ledger's one statement is what
+/// refused — not that a steer was silently accepted into a queue nobody polls.
 #[tokio::test]
 async fn a_well_formed_steer_reaches_the_store_and_reports_the_outage() {
     for message in [

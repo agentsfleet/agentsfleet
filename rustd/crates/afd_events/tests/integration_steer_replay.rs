@@ -103,17 +103,6 @@ async fn test_replay_bypasses_the_deployment_ceiling() {
         "a retry of an admitted message must not be refused by the budget it \
          already spent -- the sender would read it as never delivered"
     );
-    let replayed = steer
-        .replayed(
-            &lane.fleet,
-            &lane.workspace,
-            ACTOR_MACHINE,
-            REQUEST_JSON,
-            OPERATION,
-        )
-        .await
-        .expect("the ledger answers");
-    assert_eq!(replayed.as_deref(), Some(admitted.as_str()));
 
     // New work under a spent budget is still refused, with the capacity class.
     let refused = steer
@@ -146,20 +135,6 @@ async fn test_replay_bypasses_the_deployment_ceiling() {
     assert!(
         keyless.is_datastore_unavailable(),
         "a keyless steer over budget is refused like new work: {keyless}"
-    );
-    assert!(
-        steer
-            .replayed(
-                &lane.fleet,
-                &lane.workspace,
-                ACTOR_MACHINE,
-                REQUEST_JSON,
-                FRESH_OPERATION
-            )
-            .await
-            .expect("the ledger answers")
-            .is_none(),
-        "an id never admitted replays nothing"
     );
 }
 
@@ -261,19 +236,6 @@ async fn test_payload_drift_is_refused() {
         "not the conflict: {refused}"
     );
     assert_eq!(refused.code(), error_code::AGENTSFLEET_OPERATION_CONFLICT);
-    assert!(
-        steer
-            .replayed(
-                &lane.fleet,
-                &lane.workspace,
-                ACTOR_MACHINE,
-                CHANGED_JSON,
-                OPERATION
-            )
-            .await
-            .expect_err("the lookup refuses the same way")
-            .is_operation_conflict()
-    );
     assert_eq!(
         admissions_for(&lane, OPERATION).await,
         1,
@@ -284,4 +246,92 @@ async fn test_payload_drift_is_refused() {
         crate::integration_steer_retry::queued_ids(&lane).await,
         [admitted]
     );
+}
+
+/// A send whose twin committed while it waited on the fleet lock, with the
+/// deployment ceiling spent, is still answered as the twin's replay: its insert
+/// never ran to meet the first row, so `repeat_despite` reads the key after the
+/// capacity refusal (`M242_001` §4).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceiling() {
+    use sqlx::Connection as _;
+    let lane = EventsLane::open().await;
+    let operation = "019feca5-bc9b-72e8-b71f-e2714f6b0d01";
+    let mut connection = lane.connection().await;
+    let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *connection)
+        .await
+        .expect("holder backend");
+    let mut hold = connection.begin().await.expect("open the holder");
+    sqlx::query("SELECT 1 FROM fleet.fleets WHERE id = $1::uuid FOR UPDATE")
+        .bind(&lane.fleet)
+        .execute(&mut *hold)
+        .await
+        .expect("hold the fleet row");
+    let lane = std::sync::Arc::new(lane);
+    let waiting = tokio::spawn({
+        let lane = std::sync::Arc::clone(&lane);
+        let operation = operation.to_owned();
+        async move {
+            spent(&lane)
+                .append(
+                    &lane.fleet,
+                    &lane.workspace,
+                    ACTOR_MACHINE,
+                    REQUEST_JSON,
+                    Some(&operation),
+                )
+                .await
+        }
+    });
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let blocked: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))",
+        )
+        .bind(holder)
+        .fetch_one(&mut *lane.connection().await)
+        .await
+        .expect("blocked sessions");
+        if blocked > 0 {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the send never waited"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    // The twin lands through the holder's own transaction, then the lock goes.
+    let key = [lane.fleet.as_str(), operation].join(crate::integration_steer_retry::KEY_SEPARATOR);
+    let admissions = lane.admissions();
+    let prepared = admissions
+        .prepare(afd_admission::Admission {
+            producer: afd_admission::Producer::Steer,
+            key: afd_admission::Key::Repeated(&key),
+            fleet: &lane.fleet,
+            workspace: &lane.workspace,
+            actor: ACTOR_MACHINE,
+            event_type: afd_wire::event::EventType::Chat,
+            request_json: REQUEST_JSON,
+            reply: afd_admission::Reply::None,
+        })
+        .await
+        .expect("prepare the twin");
+    let twin = admissions
+        .stage(&mut hold, prepared)
+        .await
+        .expect("stage the twin");
+    hold.commit().await.expect("the twin commits");
+    drop(connection);
+    let answered = waiting
+        .await
+        .expect("the waiting send's task")
+        .expect("the waiting send is answered, not refused");
+    assert_eq!(
+        answered.event_id, twin.stored.id,
+        "the twin's event answers the waiter"
+    );
+    assert_eq!(admissions_for(&lane, operation).await, 1);
 }

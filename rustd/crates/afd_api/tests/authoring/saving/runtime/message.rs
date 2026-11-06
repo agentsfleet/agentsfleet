@@ -161,3 +161,41 @@ async fn test_foreign_fleet_replay_is_not_found() {
     prober.case.cleanup().await;
     owner.case.cleanup().await;
 }
+
+/// A tenant key the status-blind router authenticates.
+const STATUS_BLIND_KEY: &str =
+    "agt_tfeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface";
+
+/// No status read precedes the admission: with the fleets store unreachable
+/// and the steering ledger live over an active fleet, a steer answers 202. The
+/// route before `M242_001` read the status first and answered 503 here
+/// (Dimension 4.3).
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_steer_reads_no_fleet_status_before_admitting() {
+    let saved = Saved::create().await;
+    let workspace = afd_core::id::Uuid7::parse(saved.case.base.workspace.as_str())
+        .expect("a canonical workspace id");
+    let router = crate::harness::Fleet::new()
+        .with_owned_workspace(workspace)
+        .with_person(
+            STATUS_BLIND_KEY,
+            "user_2statusblind",
+            afd_auth::scope::ScopeSet::from_scopes(&[afd_auth::scope::Scope::FleetWrite]),
+        )
+        .with_steering_queue(saved.case.base.db.clone(), saved.case.queue.clone())
+        .router();
+    let body = json!({"message": MESSAGE, "operation_id": FRESH_OPERATION}).to_string();
+    let response = send(
+        &router,
+        Method::POST,
+        &saved.thread,
+        Some(STATUS_BLIND_KEY),
+        &body,
+    )
+    .await;
+    let status = response.status();
+    let answer = json_body(response).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{answer}");
+    saved.case.cleanup().await;
+}

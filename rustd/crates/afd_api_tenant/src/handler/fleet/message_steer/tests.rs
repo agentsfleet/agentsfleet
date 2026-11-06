@@ -144,3 +144,20 @@ fn should_admit_the_ceiling_and_refuse_one_byte_past_it() {
     );
     read_steer(&Bytes::from(one_past.into_bytes())).unwrap_err();
 }
+
+/// A fleet that takes no work answers 409 `UZ-AGT-012` naming its status
+/// (`M242_001` Dimension 4.4).
+#[tokio::test]
+async fn a_stopped_fleet_refusal_names_its_status() {
+    let response = super::not_runnable(afd_fleet_lifecycle::FleetStatus::Paused).into_response();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("the refusal body");
+    let rendered = String::from_utf8(body.to_vec()).expect("a JSON body");
+    assert!(rendered.contains("UZ-AGT-012"), "{rendered}");
+    assert!(
+        rendered.contains(r#""current_state":"paused""#),
+        "{rendered}"
+    );
+}

@@ -43,9 +43,10 @@
 //! and fleet that row holds, and the repeat is checked against those. That is
 //! also what closes the race where two sends with one id both reached the
 //! insert, and no row deleted in between can make the check pass unchecked.
-//! Only the paths that never reach the insert look the key up: a spent budget,
-//! and a fleet that stopped taking work, both still answer a repeat — a
-//! message already admitted is not new work.
+//! A fleet that stopped taking work still answers a repeat: the ledger's one
+//! statement reads the key before it checks status (`M242_001` §4). Only one
+//! path looks the key up afterwards: a same-key send racing a spent deployment
+//! ceiling, whose insert never ran to meet the first row.
 //!
 //! The same id with a different payload — another message, or another sender
 //! — is refused rather than answered: the first message's event would tell the
@@ -171,7 +172,7 @@ impl Steer {
     ) -> Result<Steered> {
         let key = operation_id.map(|operation| scoped_key(fleet, operation));
         let admission = steer_admission(fleet, workspace, actor, request_json, key.as_deref());
-        let admitted = match self.admissions.admit(admission).await {
+        let admitted = match self.admissions.admit_runnable(admission).await {
             Ok(admitted) => admitted,
             Err(refused) if refused.is_over_capacity() => {
                 return self
@@ -209,35 +210,6 @@ impl Steer {
     /// not take it is logged by the publisher and changes no answer.
     pub async fn announce(&self, fleet: &str, frame: &TailFrame<'_>) {
         self.admissions.streams().publish_frame(fleet, frame).await;
-    }
-
-    /// The event a caller's operation already became on `fleet`, or `None`
-    /// when this operation id is new.
-    ///
-    /// The handler asks this when the fleet will not take work: a retry of a
-    /// message admitted before the fleet stopped is answered with that
-    /// message's event, not refused as if it never landed.
-    ///
-    /// # Errors
-    /// Refuses an id already admitted with a different message, and reports a
-    /// ledger that would not answer.
-    pub async fn replayed(
-        &self,
-        fleet: &str,
-        workspace: &str,
-        actor: &str,
-        request_json: &str,
-        operation_id: &str,
-    ) -> Result<Option<String>> {
-        let key = scoped_key(fleet, operation_id);
-        self.repeat_of(&steer_admission(
-            fleet,
-            workspace,
-            actor,
-            request_json,
-            Some(&key),
-        ))
-        .await
     }
 
     /// A capacity refusal, unless the key is a repeat: then its event.

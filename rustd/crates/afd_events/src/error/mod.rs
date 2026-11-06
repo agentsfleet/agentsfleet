@@ -152,6 +152,25 @@ impl Error {
         matches!(self.kind(), ErrorKind::Datastore { .. })
     }
 
+    /// Whether no fleet with the id belongs to the caller's workspace, as the
+    /// ledger's one statement found.
+    #[must_use]
+    pub fn is_fleet_absent(&self) -> bool {
+        match self.kind() {
+            ErrorKind::Admission { source } => source.is_fleet_absent(),
+            _other => false,
+        }
+    }
+
+    /// The status of a fleet that takes no new work, when that refused the steer.
+    #[must_use]
+    pub fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
+        match self.kind() {
+            ErrorKind::Admission { source } => source.not_runnable(),
+            _other => None,
+        }
+    }
+
     /// Whether a steer reused an operation id with a different message.
     ///
     /// The handler's question: this refusal is a 409 that names the state the
