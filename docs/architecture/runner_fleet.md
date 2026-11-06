@@ -216,7 +216,9 @@ The daemon records liveness, capability and holds as for any beat. It then waits
 
 A ring answers `woken: true`, and the runner ends one idle worker's pause. Fresh work then waits one round trip, not the idle hint. The ring is the doorbell's sharded publish, which every replica hears (`afd_dragonfly/src/doorbell/mod.rs`, `afd_api_runner/src/handler/runner/wake.rs`).
 
-One ring completes one held beat per replica, the one held longest. One admission is one unit of work, and the claim takes the oldest ready fleet for whichever host polls, so waking every idle host would send all of them to claim one admission. A ring that finds no beat held is kept, and the next beat to arrive answers at once.
+One ring completes one held beat per replica, the one held longest. One admission is one unit of work, and the claim takes the oldest ready fleet for whichever host polls. Waking every idle host would send all of them to claim one admission.
+
+A ring that finds no beat held is kept, and the next beat to arrive answers at once.
 
 One process holds at most `HELD_BEATS_MAX` (64) beats. A beat past the cap answers `woken: false` at once, counted under `agentsfleet_runner_wake_answers_total{reason="capped"}`. A held beat keeps one in-flight permit, so the cap keeps three quarters of `DEFAULT_MAX_IN_FLIGHT` for requests.
 
@@ -583,7 +585,9 @@ The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in the one claim statement.
 
-Locked or parked heads cannot expose later admissions. A parked head clears its fleet's readiness. A gate answer clears the park stamp, re-arms the fleet and publishes a best-effort wake; so does the park sweep (`sweeper:parks`, every 5 s) once every event card on the head has lapsed. The sweep expires no card: a late answer stays possible, and standing access still waits for one.
+Locked or parked heads cannot expose later admissions, and a parked head clears its fleet's readiness. A gate answer clears the park stamp, re-arms the fleet and publishes a best-effort wake.
+
+The park sweep (`sweeper:parks`, every 5 s) does the same once every event card on the head has lapsed. It expires no card: a late answer stays possible, and standing access still waits for one.
 
 The claim prefers held fleets, then the runner's previous fleets, then the oldest ready fleet.
 It checks runner labels and live sandbox holds in the same statement. Every poll claims from PostgreSQL; missing notifications cannot hide accepted work.

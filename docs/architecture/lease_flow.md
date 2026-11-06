@@ -93,18 +93,20 @@ The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler
 
 Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
 
-Repeated producer identities return the existing admission. A trigger on `fleet.admissions` keeps the fleet's place in the queue on its slot: `runner.fleet_slots.ready_at` is the `created_at` of the oldest unsettled admission while it is unparked, and `NULL` otherwise. After commit, one ring on `fleet:wake:{shard}` completes one held heartbeat on each daemon replica.
+Repeated producer identities return the existing admission. A trigger on `fleet.admissions` keeps the fleet's place in the queue on its slot, in `runner.fleet_slots.ready_at`. It holds the `created_at` of the oldest unsettled admission while that admission is unparked, and `NULL` otherwise.
+
+After commit, one ring on `fleet:wake:{shard}` completes one held heartbeat on each daemon replica.
 
 ### The poll claims an admission and its fleet slot
 
-1. One statement takes the oldest ready, free slot this runner may run: `ready_at` set, `lease_expires_at` passed, the fleet active, its required tags among the runner's labels, and no live hold of another runner. Held fleets come first, then fleets this runner ran last.
-2. It locks that slot with `SKIP LOCKED`, then its head admission by primary key, also `SKIP LOCKED`. A slot another transaction holds is passed over; a head that is held, or that settled or parked since the statement began, leaves this poll empty. The claim never waits.
+1. One statement takes the oldest ready, free slot this runner may run, trying held fleets first, then fleets it ran last. Ready and free means `ready_at` set and `lease_expires_at` passed. The fleet must be active, carry tags among the runner's labels, and have no live hold by another runner.
+2. It locks that slot with `SKIP LOCKED`, then its head admission by primary key, also `SKIP LOCKED`. A slot another transaction holds is passed over. A head that is held, or that settled or parked since the statement began, empties this poll; the claim never waits.
 3. In the same statement it advances the fence, stamps `delivered_at` and opens the event row. Every write joins the pick, so a claim that took nothing wrote nothing.
 4. The statement reads back whether the event is new, still open, or already ended. An ended event settles in one fenced statement and issues nothing.
-5. Read installed configuration, resolve billing and check approval gates. A refusal ends the event, settles the admission and frees the slot in one statement. Parked work frees the slot; the trigger clears the fleet's readiness until the card is answered, or until the park sweep finds every event card on the head lapsed.
+5. Read installed configuration, resolve billing and check approval gates. A refusal ends the event, settles the admission and frees the slot in one statement. Parked work frees the slot, and the trigger clears its readiness until the card is answered or the park sweep finds its event cards lapsed.
 6. Assemble credentials and policy, then issue `runner.leases` under the claimed fence, recording the poll's key.
 
-A pass that ends on a retry frees its slot behind a short backoff, so the oldest-first order cannot keep handing a failing fleet to every poll.
+A pass that ends on a retry frees its slot behind a short backoff. Otherwise the oldest-first order would hand a failing fleet to every poll.
 
 An expired slot exposes the same unsettled row. Redelivery preserves its event identity, original time and prior billing identity.
 

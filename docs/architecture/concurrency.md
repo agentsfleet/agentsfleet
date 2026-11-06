@@ -313,7 +313,7 @@ Stop and delete take draft → attempt and never later take the runner guard.
 
 ### The fleet slot comes before its admissions
 
-Every statement that updates an existing `fleet.admissions` row locks that fleet's `runner.fleet_slots` row first. The admission trigger (`schema/2190_runner_fleet_slots_ready.sql`) writes the slot's `ready_at` on every insert, park, unpark and settle, so a writer that took an admission first and the slot second would deadlock against one that took them the other way.
+Every statement that updates an existing `fleet.admissions` row locks that fleet's `runner.fleet_slots` row first. The admission trigger (`schema/2190_runner_fleet_slots_ready.sql`) writes the slot's `ready_at` on every insert, park, unpark and settle. A writer that took an admission first and the slot second would deadlock against one that took them in the other order.
 
 - The claim locks the slot, then the head admission, both with `SKIP LOCKED`, so it never waits.
 - Park (`lock_admission.sql`), a refusal or terminal ending (`end_refused.sql`, `settle_terminal.sql`), a report and a renewal (`meter_lease.sql`) lock the slot in their first step.
@@ -321,7 +321,7 @@ Every statement that updates an existing `fleet.admissions` row locks that fleet
 - The admission insert is the one exception: it reaches the slot through its trigger after inserting its row. That row is invisible to every other transaction until commit, so nothing can be waiting on it.
 - A repeated producer key takes the insert's conflict arm (`insert_admission.sql`), which locks the existing admission without the slot and fires no trigger. That statement takes no other lock, so it cannot close a cycle. A claim that meets the head while it is held answers no work for that poll.
 
-The proof is `test_gate_resolution_locks_the_slot_before_any_admission` (a resolution and an expiry each racing an uncommitted park) and `test_claim_report_park_and_admit_never_deadlock` (claims, endings, resolutions and admissions over ten fleets released together), in `afd_fleet/tests/integration_lease_queue/`. If the pool's default isolation ever changes from READ COMMITTED, rerun the first.
+`test_gate_resolution_locks_the_slot_before_any_admission` races a resolution and an expiry against an uncommitted park. `test_claim_report_park_and_admit_never_deadlock` releases claims, endings, resolutions and admissions over ten fleets together. Both live in `afd_fleet/tests/integration_lease_queue/`; if the pool's default isolation ever changes from READ COMMITTED, rerun the first.
 
 ### The setup chat claim never waits on a row
 

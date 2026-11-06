@@ -197,18 +197,21 @@ A producer commits its identity and payload before reporting acceptance. A faile
 
 Every poll runs the claim statement against PostgreSQL. A ring names no fleet; it only ends a held heartbeat sooner.
 
-The claim walks ready slots. The admission trigger sets `runner.fleet_slots.ready_at` only while a fleet's oldest unsettled admission is unparked, so an idle estate has no ready slot and the claim reads none.
+The claim walks ready slots. The admission trigger sets `runner.fleet_slots.ready_at` only while a fleet's oldest unsettled admission is unparked.
+An idle estate therefore has no ready slot, and the claim reads none.
+
 For each slot it considers, it reads that fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.
 Admission holds the fleet row lock before allocating its sequence and through commit. A transaction that inserts later therefore stays behind unfinished work.
 
 A parked head clears its fleet's readiness while standing access awaits an answer or an unresolved event approval has a future deadline. An answer re-arms it, and so does the park sweep once every event card on the head has lapsed.
+
 Expired event approvals remain answerable; the resumed gate evaluation decides whether to proceed or refuse.
 A missing cached gate reference falls back to the durable event association, so a long polling outage cannot erase that decision.
 
-The claim locks the slot with `SKIP LOCKED`, then the exact head by primary key, and in the same statement advances both fences and opens the event row.
+The claim locks the slot with `SKIP LOCKED`, then the exact head by primary key. The same statement advances both fences and opens the event row.
 A held or moved head returns no work, and the statement writes nothing.
 
-Claims take held fleets first, then the runner's last fleets, then the oldest ready fleet by `ready_at`; within a fleet, admissions run in `sequence` order.
+Claims take held fleets first, then the runner's last fleets, then the oldest ready fleet by `ready_at`. Within a fleet, admissions run in `sequence` order.
 
 `delivered_at` records admission into runtime history. `settled_at` removes a row from the queue.
 A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.
