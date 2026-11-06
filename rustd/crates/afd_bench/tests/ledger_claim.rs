@@ -32,6 +32,7 @@ async fn test_ledger_claim_lane_reports_round_trips() {
         fleets: FLEETS,
         runners: RUNNERS,
         window: Duration::from_secs(30),
+        turn: Duration::from_secs(10),
     };
     let provenance = Provenance {
         revision: "integration-proof".to_owned(),

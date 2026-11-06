@@ -63,6 +63,11 @@ use sqlx::{Connection as _, FromRow as _, Postgres};
 use crate::datastores::postgres_count;
 use crate::error::{Error, ErrorKind, Result};
 
+pub mod paths;
+mod queries;
+
+pub use self::queries::{QueryCost, QueryReading, read_queries};
+
 /// Creates the view the counter reads, where the library is already loaded.
 const INSTALL: &str = "CREATE EXTENSION IF NOT EXISTS pg_stat_statements";
 

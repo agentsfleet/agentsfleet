@@ -13,6 +13,7 @@ fn with_runners(runners: u64) -> Parameters {
         fleets: 200,
         runners,
         window: Duration::from_secs(30),
+        turn: Duration::from_secs(10),
     }
 }
 

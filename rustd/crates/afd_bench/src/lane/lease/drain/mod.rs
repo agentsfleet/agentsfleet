@@ -5,6 +5,7 @@ mod runner;
 mod settled;
 pub(in crate::lane::lease) mod stage;
 mod summary;
+pub(in crate::lane::lease) mod turn;
 mod window;
 
 pub use self::summary::summary;
@@ -14,6 +15,7 @@ use std::sync::Arc;
 
 use afd_fleet::lease::Plane;
 
+use self::turn::Turn;
 use self::window::{Window, window};
 use super::Parameters;
 use crate::abort::Abort;
@@ -149,10 +151,21 @@ async fn measure(
         .into());
     }
     drained.record(report, events, settled);
+    drained.show_costliest();
     // After an abort every runner exits on entry, and a per-poll ratio over a
     // window that never polled would describe nothing.
     if !abort.fired() {
-        let idle = window(&plane, stores, &staged.runners, IDLE_WINDOW, None, &abort).await?;
+        let quiet = Turn::back_to_back(Duration::ZERO);
+        let idle = window(
+            &plane,
+            stores,
+            &staged.runners,
+            IDLE_WINDOW,
+            None,
+            quiet,
+            &abort,
+        )
+        .await?;
         idle.record_idle(report);
     }
     Ok(())
@@ -173,6 +186,7 @@ async fn drain(
         &staged.runners,
         parameters.window,
         Some(events),
+        Turn::back_to_back(parameters.turn),
         abort,
     )
     .await

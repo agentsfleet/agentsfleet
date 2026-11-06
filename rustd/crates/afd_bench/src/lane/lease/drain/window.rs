@@ -9,6 +9,7 @@ use afd_fleet::lease::Plane;
 
 use super::runner::{self, Shared, Tally};
 use super::settled::Settled;
+use super::turn::Turn;
 use super::{
     COMMITS_PER_LEASE, DRAGONFLY_CALLS_PER_LEASE, EVENT_ROWS, EVENTS, EVENTS_PROCESSED, FAILURES,
     IDLE_COMMITS_PER_POLL, IDLE_DRAGONFLY_CALLS_PER_POLL, IDLE_POLLS, IDLE_STATEMENTS_PER_POLL,
@@ -20,13 +21,16 @@ use crate::datastores::{Datastores, dragonfly_calls};
 use crate::error::{ErrorKind, Result};
 use crate::lane::joined;
 use crate::report::{Report, count, latency, per_second, ratio};
-use crate::statements::{self, StatementCost};
+use crate::statements::paths::{self, Path};
+use crate::statements::{self, QueryCost, StatementCost};
 
 /// One window of every runner at once, with its cost either side.
 pub(super) struct Window {
     pub(super) tally: Tally,
     length: Duration,
     cost: StatementCost,
+    /// Each statement's calls in the window, for the split by path.
+    queries: Vec<QueryCost>,
     dragonfly_calls: u64,
 }
 
@@ -37,8 +41,10 @@ pub(super) async fn window(
     runners: &[Uuid7],
     length: Duration,
     target: Option<u64>,
+    turn: Turn,
     abort: &Arc<Abort>,
 ) -> Result<Window> {
+    let queries_before = statements::read_queries(&stores.database).await?;
     let before = statements::read(&stores.database).await?;
     let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let started = Instant::now();
@@ -46,6 +52,7 @@ pub(super) async fn window(
         deadline: started + length,
         reported: 0.into(),
         target,
+        turn,
         abort: Arc::clone(abort),
     });
     let mut tasks = Vec::with_capacity(runners.len());
@@ -68,6 +75,9 @@ pub(super) async fn window(
         tally: tally.ok_or(ErrorKind::TaskLost { role: RUNNER_ROLE })?,
         length,
         cost: statements::read(&stores.database).await?.since(before),
+        queries: statements::read_queries(&stores.database)
+            .await?
+            .since(&queries_before),
         dragonfly_calls: dragonfly_calls(&stores.queue)
             .await?
             .saturating_sub(dragonfly_before),
@@ -98,6 +108,11 @@ impl Window {
             );
         }
         report.measurement(STATEMENTS_PER_LEASE, ratio(self.cost.statements, leased));
+        if let Some(per) = paths::per_lease(&paths::by_path(&self.queries), leased) {
+            for (path, value) in per {
+                report.measurement(&path_key(path), value);
+            }
+        }
         report.measurement(COMMITS_PER_LEASE, ratio(self.cost.commits, leased));
         report.measurement(
             DRAGONFLY_CALLS_PER_LEASE,
@@ -125,3 +140,36 @@ impl Window {
         );
     }
 }
+
+/// The result key one path's statements per lease are written under.
+fn path_key(path: Path) -> String {
+    format!("{STATEMENTS_PER_LEASE}_{}", path.as_str())
+}
+
+impl Window {
+    /// Name the statements that ran most per lease, so a reader of the run
+    /// sees what each path's number is made of.
+    pub(super) fn show_costliest(&self) {
+        let leased = self.tally.leased.max(1);
+        for cost in paths::costliest(&self.queries, COSTLIEST_SHOWN) {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "statement counts in one window stay far below 2^52"
+            )]
+            let per = cost.calls as f64 / leased as f64;
+            let text: String = cost.query.split_whitespace().collect::<Vec<_>>().join(" ");
+            // the bench has no subscriber; its stdout is the result summary, so the breakdown goes to stderr.
+            eprintln!(
+                "{per:>8.2}/lease  {:<8}  {}",
+                paths::classify(&cost.query).as_str(),
+                text.chars().take(QUERY_SHOWN).collect::<String>()
+            );
+        }
+    }
+}
+
+/// How many statements a run names.
+const COSTLIEST_SHOWN: usize = 5;
+
+/// How much of a statement's text a run prints.
+const QUERY_SHOWN: usize = 110;

@@ -36,6 +36,10 @@ const SATURATION_FACTOR: u64 = 2;
 /// How long the contended window may run when the caller does not say.
 const DEFAULT_WINDOW_SECONDS: u64 = 30;
 
+/// One simulated turn when the caller does not say: two renewals and forty
+/// activity posts per lease at today's timing (`M241_001` §4).
+const DEFAULT_TURN: Duration = Duration::from_secs(10);
+
 #[tokio::main]
 async fn main() -> ExitCode {
     cli::exit("bench-lease", measure().await)
@@ -51,6 +55,11 @@ async fn measure() -> Result<String> {
         fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,
         runners: number(&env, Parameter::Runners.name(), DEFAULT_RUNNERS)?,
         window: Duration::from_secs(number(&env, WINDOW_VARIABLE, DEFAULT_WINDOW_SECONDS)?),
+        turn: Duration::from_millis(number(
+            &env,
+            Parameter::TurnMs.name(),
+            u64::try_from(DEFAULT_TURN.as_millis()).unwrap_or(u64::MAX),
+        )?),
     };
     parameters.admit(profile)?;
 

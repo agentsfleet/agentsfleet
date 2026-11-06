@@ -214,6 +214,8 @@ fn test_every_parameter_is_checked_against_a_ceiling() {
         Parameter::Runners,
         Parameter::Jobs,
         Parameter::Concurrency,
+        Parameter::TurnMs,
+        Parameter::Rate,
     ] {
         let ceiling = caps.ceiling(parameter);
         assert!(

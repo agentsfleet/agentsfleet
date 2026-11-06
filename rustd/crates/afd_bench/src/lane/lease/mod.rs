@@ -54,6 +54,9 @@ pub struct Parameters {
     pub runners: u64,
     /// The longest the contended window may run.
     pub window: Duration,
+    /// One simulated turn: how many renewals and activity posts each lease
+    /// sends before its report (`M241_001` §4).
+    pub turn: Duration,
 }
 
 impl Parameters {
@@ -65,6 +68,10 @@ impl Parameters {
     pub fn admit(self, profile: Profile) -> Result<()> {
         profile.check(Parameter::Fleets, self.fleets)?;
         profile.check(Parameter::Runners, self.runners)?;
+        profile.check(
+            Parameter::TurnMs,
+            u64::try_from(self.turn.as_millis()).unwrap_or(u64::MAX),
+        )?;
         profile.check_window(self.window)
     }
 

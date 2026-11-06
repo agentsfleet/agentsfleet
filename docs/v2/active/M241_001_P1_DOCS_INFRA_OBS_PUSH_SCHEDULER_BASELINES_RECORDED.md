@@ -99,9 +99,9 @@ all of it ─► docs/architecture/push_scheduler.md §Baselines and §Milestone
 | `docs/metrics.census.tsv` | EDIT | §3: two rows go |
 | `rustd/crates/afd_bench/src/instrument/mod.rs`, `instrument/tests.rs`, `tests/lease_instrument.rs`, `tests/ledger_claim.rs`, `src/report/compare/tests.rs`, `Cargo.toml` | EDIT | §3: `PollCounters` keeps polls and candidates; tests and the manifest comment follow |
 | `rustd/crates/afd_bench/src/lane/lease/window.rs` → `window/mod.rs`, `window/tests.rs` | MOVE, EDIT, CREATE | §3: `roundtrips_per_lease` gives way to `candidates_per_poll`; `datastores.postgres.operations` comes from the window's `pg_stat_statements` calls |
-| `rustd/crates/afd_bench/src/statements/mod.rs`, `statements/paths.rs`, `statements/tests.rs` | EDIT, CREATE | §4: per-query calls and the path table |
-| `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `drain/mod.rs`, `drain/tests.rs` | EDIT | §4: renewals and activity per simulated turn; flat path keys |
-| `rustd/crates/afd_bench/src/knobs/mod.rs`, `src/profile/mod.rs` | EDIT | §4, §5: `BENCH_TURN_MS` and `BENCH_RATE`, with rig caps |
+| `rustd/crates/afd_bench/src/statements/mod.rs`, `statements/queries.rs`, `statements/paths.rs`, `statements/tests.rs` | EDIT, CREATE | §4: per-query calls and the path table |
+| `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `drain/mod.rs`, `drain/window.rs`, `drain/turn.rs`, `drain/tests.rs`, `lane/lease/mod.rs`, `lane/lease/tests.rs`, `src/bin/lease.rs`, `tests/ledger_claim.rs` | EDIT, CREATE | §4: the turn plan, renewals and activity per lease, flat path keys |
+| `rustd/crates/afd_bench/src/profile/mod.rs`, `profile/tests.rs` | EDIT | §4, §5: `BENCH_TURN_MS` and `BENCH_RATE` as parameters with ceilings |
 | `rustd/crates/afd_bench/src/lane/lease/shape.rs`, `lane/lease/mod.rs`, `lane/lease/burst/mod.rs`, `burst/tests.rs`, `src/bin/lease.rs`, `src/report/lane.rs` | EDIT, CREATE | §5: `Shape::Burst` and `Lane::LeaseBurst` |
 | `rustd/crates/afd_bench/src/lane/tail/mod.rs`, `tail/viewers/mod.rs`, `tail/tests.rs`, `tail/wake/mod.rs`, `tail/wake/tests.rs` | EDIT, CREATE | §6: p99 per rung, and the wake ladder |
 | `make/bench.mk` | EDIT | §5, §6: help text; no new target |
@@ -168,14 +168,14 @@ The page states the target as the design (SPEC-FRAME). **Implementation default:
 
 ### §4 — Statements per chat, grouped by path
 
-`BENCH_TURN_MS` (default 10 000, rig cap 60 000) sets one simulated turn. Per lease, the drain's runner sends what that turn sends: `floor(turn / 5 000)` renewals through `Leases::extend` (renewal every 5 s, `afd_core/src/timing.rs:37`) and `turn / 250` activity posts through the activity service (`afr_supervisor/src/activity/mod.rs:56`). In the default shape they run back to back with no sleep, so the 30 s drain window still holds. After the drain, `statements/` reads each `pg_stat_statements` row's `calls` and normalized query, and `paths.rs` attributes it to one path: `claim`, `gates`, `issue`, `renew`, `activity`, `report`, `sweep` or `other`. **Implementation default:** the table matches a distinctive fragment of each product statement's normalized text, first match wins, and a statement shared by two paths goes to the first and is listed as shared; product statement constants are private to their crates. Results are flat keys `drain_statements_per_lease_<path>`. The lane's printed summary lists the five statements with the most calls per lease.
+`BENCH_TURN_MS` (default 10 000, rig cap 60 000) sets one simulated turn. Per lease, the drain's runner sends what that turn sends: `floor(turn / 5 000)` renewals through `Plane::renew` (renewal every 5 s, `afd_core/src/timing.rs:37`) and `turn / 250` activity posts through `Plane::activity` (`afr_supervisor/src/activity/mod.rs:56`), the calls the runner routes make. In the default shape they run back to back with no sleep, so the 30 s drain window still holds. After the drain, `statements/` reads each `pg_stat_statements` row's `calls` and normalized query, and `paths.rs` attributes it to one path: `claim`, `gates`, `pricing`, `issue`, `host`, `meter`, `activity`, `report`, `shared`, `sweep` or `other`. Statements several verbs send get a path of their own (`pricing`, `host`, `meter`, `shared`), so no verb is charged for another's work. **Implementation default:** the table matches a distinctive fragment of each product statement's normalized text, read off a real drain, and the first match wins; product statement constants are private to their crates. Results are flat keys `drain_statements_per_lease_<path>`. The lane's printed summary lists the five statements with the most calls per lease.
 
-- **Dimension 4.1** — the paths sum to the total → Test `statements_by_path_sum_to_total` (unit): rows of 10, 15 and 5 calls in three paths over 10 leases report 1.0, 1.5 and 0.5 per lease, and 3.0 in total.
-- **Dimension 4.2** — an unknown statement is counted, not lost → Test `unmatched_statement_counts_as_other` (unit): a query matching no fragment adds its calls to `other`.
-- **Dimension 4.3** — a shared statement is counted once → Test `shared_statement_counts_in_its_first_path` (unit): a statement matching two fragments adds its calls to the first path only.
-- **Dimension 4.4** — zero leases never divide → Test `no_leases_reports_no_ratio` (unit): a drain with 0 leases reports no per-lease keys rather than infinity.
-- **Dimension 4.5** — a turn shorter than one renewal renews zero times → Test `short_turn_sends_no_renewal` (unit): `BENCH_TURN_MS=1000` plans 0 renewals and 4 activity posts.
-- **Dimension 4.6** — a drained chat fills its paths → Test `make bench-lease PROFILE=rig` (integration): `bench/results/lease.rig.json` holds non-zero `drain_statements_per_lease_` keys for `claim`, `issue`, `renew`, `activity` and `report`.
+- **Dimension 4.1** — DONE — the paths sum to the total → Test `statements_by_path_sum_to_total` (unit): rows of 10, 15 and 5 calls in three paths over 10 leases report 1.0, 1.5 and 0.5 per lease, and 3.0 in total.
+- **Dimension 4.2** — DONE — an unknown statement is counted, not lost → Test `unmatched_statement_counts_as_other` (unit): a query matching no fragment adds its calls to `other`.
+- **Dimension 4.3** — DONE — a shared statement is counted once → Test `shared_statement_counts_in_its_first_path` (unit): a statement matching two fragments adds its calls to the first path only.
+- **Dimension 4.4** — DONE — zero leases never divide → Test `no_leases_reports_no_ratio` (unit): a drain with 0 leases reports no per-lease keys rather than infinity.
+- **Dimension 4.5** — DONE — a turn shorter than one renewal renews zero times → Test `short_turn_sends_no_renewal` (unit): `BENCH_TURN_MS=1000` plans 0 renewals and 4 activity posts.
+- **Dimension 4.6** — DONE — a drained chat fills its paths → Test `make bench-lease PROFILE=rig` (integration): `bench/results/lease.rig.json` holds non-zero `drain_statements_per_lease_` keys for `claim`, `issue`, `meter`, `activity` and `report`, and `other` under 1 per lease.
 
 ### §5 — A paced burst to busy fleets
 
@@ -221,7 +221,7 @@ A laptop cannot execute a run (the sandbox is Linux-only), so the drill watches 
 ## Interfaces
 
 - **Bench environment:** `BENCH_SHAPE=burst`; `BENCH_RATE` (steers a second per fleet, default 10, rig cap 50); `BENCH_TURN_MS` (default 10 000, rig cap 60 000). `BENCH_FLEETS`, `BENCH_RUNNERS` and `BENCH_WINDOW_SECONDS` keep their meanings. Unknown values fail naming the allowed spellings, as `shape.rs` does today.
-- **Result files:** flat keys in `measurements`, so `bench-compare` reads them unchanged. `lease.rig.json` gains `drain_statements_per_lease_<path>` and loses `roundtrips_per_lease`. `lease-burst.rig.json` is new, with the `burst_*` keys. `tail.rig.json` gains `p99_ms_<rung>` and the `wake_*` keys.
+- **Result files:** flat keys in `measurements`, so `bench-compare` reads them unchanged. `lease.rig.json` gains `drain_statements_per_lease_<path>` for the eleven paths and loses `roundtrips_per_lease`. `lease-burst.rig.json` is new, with the `burst_*` keys. `tail.rig.json` gains `p99_ms_<rung>` and the `wake_*` keys.
 - **Metrics:** `agentsfleet_lease_poll_db_roundtrips_total` and `agentsfleet_lease_poll_dragonfly_commands_total` are removed. `agentsfleet_lease_polls_total` and `agentsfleet_lease_poll_candidates_scanned_total` are unchanged.
 
 ## Failure Modes
@@ -241,7 +241,7 @@ A laptop cannot execute a run (the sandbox is Linux-only), so the drill watches 
 
 ## Invariants
 
-1. Every statement call the drain's database executed is attributed to exactly one path — `paths.rs` classifies first-match with an `other` fallback, and `statements_by_path_sum_to_total` fails if any call is lost or doubled.
+1. Every statement call the drain's database executed is attributed to exactly one path — `paths.rs` classifies first-match with an `other` fallback, and `statements_by_path_sum_to_total` fails if any call is lost or doubled. A real drain sums its paths to `drain_statements_per_lease` exactly.
 2. A census family exists exactly when a producer feeds it — `every_census_family_has_a_producer` fails on an orphan row.
 3. The wake ringer never has more than 64 rings outstanding — the ladder awaits a take before ringing again, and `wake_ringer_waits_at_window` fails otherwise.
 
@@ -259,7 +259,7 @@ A laptop cannot execute a run (the sandbox is Linux-only), so the drill watches 
 | R1 | M240_001 is parked (§1) | `grep -c "Status:\*\* DEFERRED" docs/v2/done/M240_001_P1_API_DOCS_INFRA_OBS_LEASE_QUEUE_ONE_STATEMENT_CLAIM.md` | `1` | P1 | |
 | R2 | The decisions page reads clean (§2) | `orly gate verify` | exit 0 | P0 | |
 | R3 | The undercounting counters are gone (§3) | `git grep -n -w -e agentsfleet_lease_poll_db_roundtrips_total -e agentsfleet_lease_poll_dragonfly_commands_total -- ':!docs/v2'` | no output | P0 | |
-| R4 | Statements per chat by path are a baseline (§4, §7) | `grep -c drain_statements_per_lease_renew bench/baselines/lease.rig.json` | `1` | P0 | |
+| R4 | Statements per chat by path are a baseline (§4, §7) | `grep -c drain_statements_per_lease_activity bench/baselines/lease.rig.json` | `1` | P0 | |
 | R5 | Burst pickup is a baseline (§5, §7) | `grep -c burst_pickup_p99_ms bench/baselines/lease-burst.rig.json` | `1` | P0 | |
 | R6 | Wake p99 is a baseline (§6, §7) | `grep -c wake_p99_ms_hubs_4 bench/baselines/tail.rig.json` | `1` | P0 | |
 | R7 | The drill is recorded twice (§7) | `grep -c "Broker-kill drill, run 2" docs/architecture/push_scheduler.md` | `1` | P1 | |

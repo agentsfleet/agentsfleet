@@ -8,8 +8,11 @@ use std::time::Instant;
 use afd_core::clock;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Plane;
+use afd_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 use afd_wire::lease::{LeasePayload, LeaseResponse};
-use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
+use afd_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
+
+use super::turn::Turn;
 
 use crate::abort::Abort;
 use crate::error::{ErrorKind, Result};
@@ -30,6 +33,8 @@ pub(super) struct Shared {
     pub(super) reported: AtomicU64,
     /// Stop once `reported` reaches this; `None` polls to the deadline.
     pub(super) target: Option<u64>,
+    /// What each lease sends between its grant and its report.
+    pub(super) turn: Turn,
     /// The monitor every outcome is reported to.
     pub(super) abort: Arc<Abort>,
 }
@@ -120,6 +125,7 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
     };
     tally.leased += 1;
     tally.lease_latency.record(took)?;
+    run_turn(plane, runner, &lease, shared.turn).await?;
     let reporting = Instant::now();
     plane
         .report(runner, &processed(&lease), clock::now())
@@ -127,6 +133,45 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
     tally.report_latency.record(reporting.elapsed())?;
     shared.reported.fetch_add(1, Ordering::Relaxed);
     Ok(())
+}
+
+/// Send one turn's renewals and activity through the production paths a
+/// runner's routes call, then hold the lease when the turn says to.
+async fn run_turn(
+    plane: &Plane,
+    runner: &Uuid7,
+    lease: &LeasePayload<'_>,
+    turn: Turn,
+) -> Result<()> {
+    for _renewal in 0..turn.renewals {
+        let request = RenewRequest {
+            requests: afd_wire::usage::RequestLines::default(),
+        };
+        plane
+            .renew(runner, &lease.lease_id, request, clock::now())
+            .await?;
+    }
+    for seq in 0..turn.posts {
+        plane
+            .activity(runner, &lease.lease_id, &[chunk(seq)])
+            .await?;
+    }
+    if let Some(hold) = turn.hold {
+        tokio::time::sleep(hold).await;
+    }
+    Ok(())
+}
+
+/// One answer chunk, as the runner's pump forwards a streamed model output.
+fn chunk(seq: u64) -> ActivityFrame<'static> {
+    ActivityFrame::FleetResponseChunk(FleetResponseChunk {
+        text: Cow::Borrowed(RESPONSE),
+        text_kind: StreamTextKind::Answer,
+        first_chunk_after_ms: None,
+        stream_start: seq == 0,
+        stream_contiguous: true,
+        stream_seq: seq,
+    })
 }
 
 /// The first refusal per runner is enough to diagnose a failed measurement.

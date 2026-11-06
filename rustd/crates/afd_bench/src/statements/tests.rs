@@ -1,4 +1,7 @@
-use super::{READ_COST, StatementCost, StatementReading};
+use std::collections::BTreeMap;
+
+use super::paths::{Path, by_path_with, costliest, per_lease};
+use super::{QueryCost, QueryReading, READ_COST, StatementCost, StatementReading};
 
 /// Statements the server had run before a window opened.
 const EARLIER_STATEMENTS: u64 = 1_000;
@@ -51,4 +54,94 @@ fn an_earlier_reading_past_the_later_one_saturates_rather_than_wraps() {
     let later = reading(10, 2, 3);
 
     assert_eq!(later.since(earlier), StatementCost::default());
+}
+
+/// A table of three fragments, the third overlapping the first's statement.
+const TABLE: &[(&str, Path)] = &[
+    ("FROM runner.fleet_slots", Path::Claim),
+    ("FROM billing.wallets", Path::Gates),
+    ("runner.fleet_slots", Path::Report),
+];
+
+fn cost(query: &str, calls: u64) -> QueryCost {
+    QueryCost {
+        query: query.to_owned(),
+        calls,
+    }
+}
+
+#[test]
+fn statements_by_path_sum_to_total() {
+    let costs = [
+        cost("SELECT 1 FROM runner.fleet_slots WHERE x", 10),
+        cost("SELECT 1 FROM billing.wallets", 15),
+        cost("UPDATE runner.fleet_slots SET y", 5),
+    ];
+    let totals = by_path_with(TABLE, &costs);
+    let per = per_lease(&totals, 10);
+    let of = |path: Path| per.as_ref().and_then(|per| per.get(&path)).copied();
+
+    assert_eq!(of(Path::Claim), Some(1.0));
+    assert_eq!(of(Path::Gates), Some(1.5));
+    assert_eq!(of(Path::Report), Some(0.5));
+    assert_eq!(
+        per.map(|per| per.values().sum::<f64>()),
+        Some(3.0),
+        "no call is lost or doubled"
+    );
+}
+
+#[test]
+fn unmatched_statement_counts_as_other() {
+    let totals = by_path_with(TABLE, &[cost("INSERT INTO fleet.unknown VALUES ($1)", 7)]);
+
+    assert_eq!(totals.get(&Path::Other).copied(), Some(7));
+    assert_eq!(totals.values().sum::<u64>(), 7);
+}
+
+#[test]
+fn shared_statement_counts_in_its_first_path() {
+    // Both the Claim and the Report fragment match; the earlier entry wins.
+    let totals = by_path_with(TABLE, &[cost("SELECT * FROM runner.fleet_slots", 4)]);
+
+    assert_eq!(
+        (
+            totals.get(&Path::Claim).copied(),
+            totals.get(&Path::Report).copied()
+        ),
+        (Some(4), Some(0))
+    );
+}
+
+#[test]
+fn no_leases_reports_no_ratio() {
+    let totals: BTreeMap<Path, u64> = BTreeMap::from([(Path::Claim, 9)]);
+
+    assert!(
+        per_lease(&totals, 0).is_none(),
+        "a ratio over zero leases would report infinity"
+    );
+}
+
+#[test]
+fn a_query_reading_charges_only_the_window() {
+    let earlier = QueryReading::of(&[(1, 100, "SELECT a"), (2, 5, "SELECT b")]);
+    let later = QueryReading::of(&[(1, 130, "SELECT a"), (2, 5, "SELECT b"), (3, 2, "SELECT c")]);
+
+    let mut ran = later.since(&earlier);
+    ran.sort_by(|left, right| left.query.cmp(&right.query));
+
+    assert_eq!(ran, vec![cost("SELECT a", 30), cost("SELECT c", 2)]);
+}
+
+#[test]
+fn the_costliest_statements_come_first() {
+    let costs = [cost("a", 1), cost("b", 9), cost("c", 4)];
+
+    let top: Vec<&str> = costliest(&costs, 2)
+        .iter()
+        .map(|c| c.query.as_str())
+        .collect();
+
+    assert_eq!(top, vec!["b", "c"]);
 }

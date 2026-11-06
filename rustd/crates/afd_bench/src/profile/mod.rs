@@ -34,6 +34,14 @@ pub const TARGET_VARIABLE: &str = "BENCH_TARGET";
 /// write a rate of zero over the last real result under the same name.
 const PARAMETER_FLOOR: u64 = 1;
 
+/// The longest simulated turn any profile drives: a minute of renewals and
+/// activity per lease already outlasts every drain window.
+const TURN_CEILING: Duration = Duration::from_secs(60);
+
+/// The most steers a second one fleet receives in a burst: five times the
+/// ten a second the push-scheduler targets were set against.
+const RATE_CEILING: u64 = 50;
+
 /// What [`Profile::Rig`] is called on a command line and in a result file.
 const RIG_NAME: &str = "rig";
 
@@ -125,6 +133,10 @@ pub enum Parameter {
     Jobs,
     /// How many operations are in flight at once.
     Concurrency,
+    /// How long one simulated turn lasts, in milliseconds (`M241_001` §4).
+    TurnMs,
+    /// Steers a second each fleet receives under the burst shape (§5).
+    Rate,
 }
 
 impl Parameter {
@@ -136,6 +148,8 @@ impl Parameter {
             Self::Runners => "BENCH_RUNNERS",
             Self::Jobs => "BENCH_JOBS",
             Self::Concurrency => "BENCH_CONCURRENCY",
+            Self::TurnMs => "BENCH_TURN_MS",
+            Self::Rate => "BENCH_RATE",
         }
     }
 }
@@ -157,10 +171,12 @@ pub struct Caps {
 impl Caps {
     /// The ceiling this parameter is checked against.
     #[must_use]
-    pub const fn ceiling(&self, parameter: Parameter) -> u64 {
+    pub fn ceiling(&self, parameter: Parameter) -> u64 {
         match parameter {
             Parameter::Fleets => self.fleets,
             Parameter::Runners | Parameter::Jobs | Parameter::Concurrency => self.tasks,
+            Parameter::TurnMs => u64::try_from(TURN_CEILING.as_millis()).unwrap_or(u64::MAX),
+            Parameter::Rate => RATE_CEILING,
         }
     }
 }
