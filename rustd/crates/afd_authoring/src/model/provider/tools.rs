@@ -19,6 +19,7 @@ pub(in crate::model) fn tool(editing: bool) -> Value {
     reason = "source-tree fixture failures must fail the regression guard"
 )]
 mod tests {
+    use proc_macro2::{TokenStream, TokenTree};
     use std::{fs, path::Path};
 
     // Value: protects=runtime source cannot silently regain compiled Markdown templates;
@@ -26,6 +27,22 @@ mod tests {
     // seam=repository source tree; no_claim=model behavior or native edit authorization.
     #[test]
     fn runtime_sources_have_no_markdown_files_or_markdown_loaders() {
+        for source in [
+            r#"fn main() { include_str!("resident.md"); }"#,
+            r##"fn main() { std::include_str ! (r#"resident.md"#); }"##,
+            r#"fn main() { include_str!(concat!("../", "resident.md")); }"#,
+            r#"macro_rules! load { () => { include_str!("resident.m\u{64}") }; }"#,
+        ] {
+            assert!(loads_markdown(source));
+        }
+        for source in [
+            "// include_str! without a macro argument",
+            r##"fn main() { let text = r#"include_str!("resident.md")"#; }"##,
+            r#"fn main() { include_str!("statement.sql"); }"#,
+            r#"fn main() { include_str!(concat!("../schema/", "table.sql")); }"#,
+        ] {
+            assert!(!loads_markdown(source));
+        }
         let crates = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("Rust crates directory");
@@ -46,17 +63,50 @@ mod tests {
                     );
                     if path.extension().and_then(|v| v.to_str()) == Some("rs") {
                         let source = fs::read_to_string(&path).expect("Rust source");
-                        for invocation in source.split("include_str!").skip(1) {
-                            let argument = invocation.split_once(')').expect("macro argument").0;
-                            assert!(
-                                !argument.contains(".md"),
-                                "{} loads Markdown",
-                                path.display()
-                            );
-                        }
+                        assert!(
+                            !loads_markdown(&source),
+                            "{} loads Markdown",
+                            path.display()
+                        );
                     }
                 }
             }
         }
+    }
+
+    fn loads_markdown(source: &str) -> bool {
+        let mut pending = vec![source.parse::<TokenStream>().expect("valid Rust tokens")];
+        while let Some(stream) = pending.pop() {
+            let mut tokens = stream.into_iter().peekable();
+            while let Some(token) = tokens.next() {
+                match token {
+                    TokenTree::Ident(name)
+                        if name == "include_str"
+                            && matches!(tokens.peek(), Some(TokenTree::Punct(p)) if p.as_char() == '!') =>
+                    {
+                        tokens.next();
+                        if let Some(TokenTree::Group(argument)) = tokens.next() {
+                            let stream = argument.stream();
+                            if markdown_literal(stream.clone()) {
+                                return true;
+                            }
+                            pending.push(stream);
+                        }
+                    }
+                    TokenTree::Group(group) => pending.push(group.stream()),
+                    _ => {}
+                }
+            }
+        }
+        false
+    }
+
+    fn markdown_literal(stream: TokenStream) -> bool {
+        stream.into_iter().any(|token| match token {
+            TokenTree::Literal(literal) => syn::parse_str::<syn::LitStr>(&literal.to_string())
+                .is_ok_and(|text| text.value().contains(".md")),
+            TokenTree::Group(group) => markdown_literal(group.stream()),
+            _ => false,
+        })
     }
 }

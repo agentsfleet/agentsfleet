@@ -190,6 +190,9 @@ serde_with = { version = "3.24.0", default-features = false, features = ["std"] 
 # and every error it raises already carries the record and line it failed on.
 csv = "1.4.0"
 serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
+# Test-only Rust tokenization and literal decoding for the compiled-prompt guard.
+proc-macro2 = "=1.0.107"
+syn = { version = "=2.0.119", default-features = false, features = ["parsing"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
