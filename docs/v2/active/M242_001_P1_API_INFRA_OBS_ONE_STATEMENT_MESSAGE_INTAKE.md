@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, every message a person, webhook or schedule sends pays this path, and at 10 messages a second per fleet the fleet-row lock is the ceiling
 
@@ -26,7 +26,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Depends on:** M241_001, which creates `docs/architecture/push_scheduler.md` and the statement counts this spec is judged by
 
-**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 06, 2026) from the EGM brief and source research on main 14539a73e
+**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 06, 2026) from the EGM brief and source research on main 14539a73e; amended at CHORE(open) against `origin/main` `67f5f7d19` (PR #803)
 
 **Canonical architecture:** `docs/architecture/push_scheduler.md` §M242 (created by M241_001); `docs/architecture/datastore_scaling.md` §"The admissions ledger is the queue" describes the ledger this changes
 
@@ -69,8 +69,9 @@ activation:     Admissions::stage runs the same statement on the caller's transa
 - **Authoring handshake:** Indy wants intake rebuilt for scale before production: one statement per accepted message, and the fleet-row lock no longer serialising a fleet's intake. The fleet budget, the deployment gate, producer-key idempotency, claim order and activation's shared transaction all keep their behaviour. The route's extra status read goes too. ASSUMPTIONS I'M MAKING:
   1. "One statement" means one top-level statement and one round trip. The backlog trigger runs inside it, and `pg_stat_statements.track=all` (`docker-compose.yml`) reports the trigger's update as a second, nested call. So `bench-steer` reads about 2.0 statements per steer, down from about 4.0.
   2. Responses stay byte-identical: 202 `SteerAccepted`, 404 `UZ-AGT-009`, 409 `UZ-AGT-012` with `current_state`, 409 `UZ-AGT-016`, 503 `UZ-INTERNAL-001`. No OpenAPI, command-line interface (CLI), web app or docs-repository change.
-  3. Pull Request (PR) #803 merges first. CHORE(open) re-verifies `afd_admission`, the settle writers and the producers against `origin/main`, because #803 changes six files in that crate.
+  3. Pull Request (PR) #803 has merged (`67f5f7d19`). CHORE(open) found it changed the budget: an obsolete task continuation no longer counts. §1 keeps the count exact by settling those rows (Dimensions 1.8, 1.9).
   4. Other producers keep their own status reads (webhook bindings, schedule fires); only the steer route's read goes.
+  5. Intake's lock and statement bounds sit on each API login role (§6), because an autocommit statement has no transaction to carry `set_config`.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
 ## Implementing agent — read these first
@@ -98,6 +99,11 @@ activation:     Admissions::stage runs the same statement on the caller's transa
 | `rustd/crates/afd_admission/tests/receipts/backlog.rs`, `receipts/mod.rs`, `receipts/failures.rs`, `receipts/staging.rs` | CREATE, EDIT | §1–§4 tests |
 | `rustd/crates/afd_fleet_lifecycle/src/lib.rs` | EDIT | §2: the runnable-status pin test |
 | `rustd/crates/afd_fleet/tests/integration_ledger_queue/ordering.rs`, `settlement.rs` | EDIT | §3: claim order; §1: a report releases its count once |
+| `rustd/crates/afd_fleet/src/task/sql/retire_continuations.sql`, `task/continuation.rs` | EDIT | §1: an issued obsolete continuation is settled too, so the count matches #803's budget rule |
+| `rustd/crates/afd_fleet/tests/integration_tasks/**` | EDIT, CREATE | §1: Dimensions 1.8 and 1.9 |
+| `rustd/crates/afd_db/src/login.rs`, `src/lib.rs`, `tests/integration_migrate/login.rs` | CREATE, EDIT | §6: `LOCK_TIMEOUT` and `STATEMENT_TIMEOUT`, and the test that reads them back through the API pool |
+| `make/test-integration-rustd.mk` | EDIT | §6: `_api_login` sets both bounds on the test lane's API login |
+| `playbooks/operations/database_region_move/001_playbook.md` | EDIT | §6: the API branch role gets both bounds after `pscale role create` |
 | `rustd/crates/afd_events/src/steer/mod.rs`, `src/error/mod.rs` | EDIT | §4: `admit_runnable`; `Steer::replayed` goes; refusal accessors |
 | `rustd/crates/afd_events/tests/integration_intake_cost.rs`, `events_suite.rs`, `integration_budgets.rs`, `integration_steer_races.rs`, `integration_steer_replay.rs` | CREATE, EDIT | §2, §4 tests; callers of `Steer::replayed` move to `append` |
 | `rustd/crates/afd_http/src/services/event.rs` | EDIT | §4: `replayed` leaves `FleetSteering` |
@@ -110,7 +116,7 @@ activation:     Admissions::stage runs the same statement on the caller's transa
 
 ## Applicable Rules
 
-- **`domains/sql.md`** — SCH, MIG, SQL-SLOT, SGR, STS, SQL-COUNTER, SQL-READER, SQL-ONEFACT, SQL-ID, SQL-TSTYPE, SQL-STAMP, SQL-FILE, SQL-ROW, SQL-PREPARE, SQL-UPSERT, SQL-ROLE, SQL-TIMEOUT (Open blocker 1), SQL-ERASE, SQL-STATACT, CNX
+- **`domains/sql.md`** — SCH, MIG, SQL-SLOT, SGR, STS, SQL-COUNTER, SQL-READER, SQL-ONEFACT, SQL-ID, SQL-TSTYPE, SQL-STAMP, SQL-FILE, SQL-ROW, SQL-PREPARE, SQL-UPSERT, SQL-ROLE, SQL-TIMEOUT (§6), SQL-ERASE, SQL-STATACT, CNX
 - **`languages/rust.md`** — ERR-RS, RS-FROM, RS-MAPERR, RS-SOURCE, FN-RS, RS-RACE
 - **`code.md`** — NDC, NLR, NLG, HLP, ORP, GRD, ECL, EMS, TGU, FLL, CODE-MSID
 - **`tests.md`** — TCF, TEST-NEG, TEST-ERROR, TEST-CONTEND, TEST-COUNTER, TEST-RESIDUAL, TEST-REAL, TEST-SCOPE, TEST-LANE
@@ -154,6 +160,8 @@ The slot creates both triggers before it backfills. Creating a trigger locks `fl
 - **Dimension 1.4** — the runtime role cannot set the count → Test `runtime_role_cannot_set_the_backlog_count` (integration, under `api_runtime`, SQL-ROLE): `UPDATE … SET unsettled_count = 0`, and an `INSERT` naming `unsettled_count` for a fleet with no row, each fail with SQLSTATE `42501`; the count is unchanged.
 - **Dimension 1.5** — an open report does not hold intake → Test `an_open_settle_does_not_hold_intake` (integration): a transaction settles a row and stays open; an admission on that fleet returns within 2 s, and a separate autocommit connection sees no session blocked on it (SQL-STATACT); after commit the count drops by one. A plain `AFTER` trigger fails this test.
 - **Dimension 1.6** — the backfill counts what it finds → Test `backfill_counts_the_unsettled_rows_it_finds` (integration): a database built through the slot before 2700, holding 3 unsettled and 1 settled admission on one fleet, reads 3 once the slot applies.
+- **Dimension 1.8** — an issued obsolete continuation leaves the count → Test `an_issued_obsolete_continuation_is_settled_and_released` (integration): a leased `task_continuation` row, then a generation advance through `continuation::retire`, reads the row settled and the count one lower. The count equals #803's budget predicate over the same fleet. Its late report is refused by the fence guard and bills nothing further (Indy, Discovery).
+- **Dimension 1.9** — a report that advances its own task still settles its own row once → Test `a_report_that_advances_its_task_settles_its_row_once` (integration): the report's own continuation row is settled by the report, not by `retire`, and the count drops by exactly one.
 - **Dimension 1.7** — every settle writer releases once → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once` (integration, amended in `settlement.rs`): the rolled-back report leaves the count; the retried report lowers it by exactly one.
 
 ### §2 — One statement admits, refuses or answers a repeat
@@ -213,11 +221,21 @@ On Indy's laptop, `make bench-steer PROFILE=rig` runs three times on the base re
 - **Dimension 5.2** — the numbers are median real runs → Test `intake_numbers_recorded` (manual): §M242 lists three base and three branch values for rate, p95 and statements per steer in both shapes, plus the burst's `burst_append_p95_ms` and `burst_refused`; the committed file holds the median run.
 - **Dimension 5.3** — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the four changed architecture pages.
 
+### §6 — Intake runs under the login role's bounds
+
+`afd_db::login` holds `LOCK_TIMEOUT` (`2000ms`) and `STATEMENT_TIMEOUT` (`5000ms`), the values the billing ledger and the admin bounds use. Postgres applies a role's settings only to the role that logs in, so each API login gets them: `ALTER ROLE <login> SET lock_timeout = …, statement_timeout = …`. The test lane's `_api_login` sets them, and the region-move playbook sets them after `pscale role create`. A transaction that sets its own bounds with `set_config` still wins, so billing and task reads keep theirs.
+
+**Implementation default:** the login role rather than pool startup options, which Indy chose (Discovery). Pool startup options were also considered; unverified: whether the production PgBouncers pass them through.
+
+- **Dimension 6.1** — the API pool carries both bounds → Test `the_api_login_runs_under_the_intake_bounds` (integration): `SHOW lock_timeout` and `SHOW statement_timeout` over the API pool equal `LOCK_TIMEOUT` and `STATEMENT_TIMEOUT`.
+- **Dimension 6.2** — a held backlog row fails one send, not every caller → Test `a_send_behind_a_held_backlog_row_times_out` (integration): a transaction holds a fleet's backlog row past `LOCK_TIMEOUT`; a send answers 503 `UZ-INTERNAL-001` with SQLSTATE `55P03` logged, and records nothing.
+
 ## Interfaces
 
 - **`afd_admission`:** `Admissions::admit(Admission) -> Result<Admitted>` keeps its signature and may now refuse `FleetAbsent`. New `Admissions::admit_runnable(Admission) -> Result<Admitted>` also refuses `NotRunnable` unless the key is a repeat. `prepare` and `stage` keep their signatures; `stage` binds no status. `Error::is_fleet_absent() -> bool` and `Error::not_runnable() -> Option<FleetStatus>` are new; a status spelling this build cannot parse refuses as an unreadable row (500), as `ingress_status` does today. `check_fleet_budget` is removed.
 - **`afd_events`:** `Steer::append` keeps its signature. `Error::is_fleet_absent` and `Error::not_runnable` forward the ledger's. `Steer::replayed` is removed, and `FleetSteering::replayed` with it.
 - **HTTP:** `POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages` is unchanged in paths, bodies, codes and `current_state` values; `public/openapi.json` does not change.
+- **Login roles:** each API login carries `lock_timeout` and `statement_timeout` from `afd_db::login`; provisioning sets them (§6).
 - **Schema:** `fleet.admission_backlogs (fleet_id, unsettled_count, created_at, updated_at)`, read by `admit_one.sql`. The runtime may create a zero row and stamp `updated_at`; only the two triggers change `unsettled_count`.
 - **Bench:** `steer.rig.json` gains `postgres_statements_per_steer` (the current lane writes it; the committed file predates it).
 
@@ -237,6 +255,9 @@ On Indy's laptop, `make bench-steer PROFILE=rig` runs three times on the base re
 | Report holds the backlog row | capacity | a settle inside an open report | intake proceeds; the count drops at commit | `an_open_settle_does_not_hold_intake` |
 | Settle stamped twice | failure | a `COALESCE` re-stamp | one release | `restamping_a_settled_row_releases_nothing` |
 | Count written by hand | security | runtime SQL sets the count | `42501`, count unchanged | `runtime_role_cannot_set_the_backlog_count` |
+| Obsolete continuation still leased | race | a task's generation advances mid-run | the row settles at once; the late report is refused and bills nothing further | `an_issued_obsolete_continuation_is_settled_and_released` |
+| Backlog row held past the bound | capacity | a stalled holder of the row | that send 503 `UZ-INTERNAL-001`, `55P03` logged, nothing recorded | `a_send_behind_a_held_backlog_row_times_out` |
+| API statement over 5 s | capacity | a slow query on the API login | `57014`; the request fails instead of holding a connection | `the_api_login_runs_under_the_intake_bounds` |
 | Datastore unavailable | dependency | pool cannot connect | 503 `UZ-INTERNAL-001`, nothing recorded | `a_well_formed_steer_reaches_the_store_and_reports_the_outage` |
 
 ## Invariants
@@ -269,6 +290,8 @@ No event name is added or renamed.
 | R7 | The route reads no status before admitting (§4) | `git grep -n ingress_status -- rustd/crates/afd_api_tenant/src/handler/fleet/message_steer` | no output | P0 | |
 | R8 | The four folded statements are gone (§2) | `git grep -n -w -e SELECT_REPEATED_ON_FLEET -e SELECT_INSTALLED_POLICY -e FLEET_BUDGET -e INSERT_ADMISSION -e check_fleet_budget -- rustd` | no output | P0 | |
 | R9 | Statements per steer halve on the rig (§5) | `jq -e '.measurements.postgres_statements_per_steer <= 2.05' bench/baselines/steer.rig.json` | `true`, exit 0 | P1 | |
+| R11 | An issued obsolete continuation leaves the count (§1) | `make test-integration-rustd` | output holds `an_issued_obsolete_continuation_is_settled_and_released ... ok` | P0 | |
+| R12 | The API login runs under the intake bounds (§6) | `make test-integration-rustd` | output holds `the_api_login_runs_under_the_intake_bounds ... ok` | P0 | |
 | R10 | The changed pages read clean (§5) | `orly gate verify` | exit 0 | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
@@ -330,6 +353,8 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   - Activation stages on its own transaction while the fleet is `installing` (`afd_authoring/src/creation/activate.rs`, `creation/start/admit.rs:35,53`).
   - The claim takes the lowest unsettled `sequence` (`claim_admission_head.sql`), and slot 2140 records the fleet lock as the reason that order holds.
   - Two runtime statements set `settled_at`: `settle_terminal.sql` and `meter_lease.sql`. PR #803 adds `retire_continuations.sql` and `settle_source.sql`; the triggers cover every writer.
+  - CHORE(open) at `67f5f7d19`, Nov 06, 2026: PR #803 made `fleet_budget.sql` and `select_backlog.sql` skip a `task_continuation` row whose task generation moved or whose task ended. `retire_continuations.sql` already settles such rows when never issued. Every statement that advances a generation runs `continuation::retire` in the same transaction (`report/settle.rs:265`, `waits/claim.rs:169`, `waits/finish.rs:231`, `adoption.rs:295`, `lease.rs:165`, `waits/cleanup.rs:73`, `control.rs:62`). The report's fence guard refuses a settled row (`meter_lease.sql:55-59`), and M245 keeps that guard verbatim.
+  - Production API logins are PlanetScale branch roles made with `pscale role create … --inherited-roles api_runtime` (`database_region_move/001_playbook.md:44-51`). Unverified: that a branch role may hold `ALTER ROLE … SET`; §6's playbook step settles it on first deploy.
   - Producers: `afd_cron/src/fire/mod.rs:127`, `afd_ingress/src/deliver.rs:111`, `afd_ingress/src/slack/admit.rs:63`, `afd_approval/src/inbox/resolve/mod.rs:190`, and activation; only the steer route reads status separately.
   - `docker-compose.yml` runs `postgres:19rc1-alpine` with `pg_stat_statements.track=all`; `rustd/Cargo.lock` pins sqlx 0.9.0. Dimensions 1.5, 2.2, 2.5 and 3.1 rerun when either, or the production Postgres major, changes (unverified: that major).
   - Risk: `FOR SHARE` from many concurrent senders creates multixact lock records on the fleet row. §5's one-fleet run measures it.
@@ -341,7 +366,9 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
   > Indy (Nov 06, 2026: 04:06 PM): chose "On the login role (Recommended)" for the intake timeout — context: `lock_timeout` and `statement_timeout` are set once on the API's Postgres login role at provisioning, from named constants a test reads back through the pool; zero extra round trips. The provisioning change is his approved deploy edit.
   > Indy (Nov 06, 2026: 04:06 PM): chose "Settle them (Recommended)" for #803's obsolete continuations, noting "we are not in production, i donot care about older tasks, so we could even cleanup all the fleeets and test." — context: an obsolete leased continuation is settled when its task generation advances, so the trigger-kept count stays exact; the backfill needs no care for pre-existing tasks, and dev data may be reset.
+  > Indy (Nov 06, 2026: 09:50 PM): chose "Amend, skip EGM" — context: the spec is amended at CHORE(open) for #803 and builds without the Elephant-Goldfish Model (EGM) review.
+  > Indy (Nov 06, 2026: 09:52 PM): chose "Settle, accept the loss", then "but i thought this is changing in the subsequent? on renew, if so why poke around this" — context: an issued obsolete continuation settles when its generation advances; its late report is refused, so up to one renewal interval of its run time goes unbilled. Release with a marker column was declined as not worth the column before production.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
-- **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review runs before this spec leaves `pending/`.
+- **Model reviews** — skipped on Indy's call (Owner decisions, 09:50 PM).
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
