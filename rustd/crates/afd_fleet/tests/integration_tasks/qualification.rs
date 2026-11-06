@@ -272,3 +272,19 @@ async fn refused(case: &Case, plan: &PreparedPlan, expected: ErrorCode) {
     assert_eq!(page.items, Vec::new(), "no work survives refusal");
     assert!(!page.more);
 }
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_current_lease_without_durable_capability_cannot_allocate_work() {
+    exercise(async |case| {
+        let plan = case.plan("capability", 1);
+        super::fixture::task_capability(&case.held, false).await;
+        refused(case, &plan, error_code::RUN_STALE_FENCING_TOKEN).await;
+        super::fixture::task_capability(&case.held, true).await;
+        case.tasks
+            .bind(case.lease(), &plan)
+            .await
+            .expect("the same current lease binds after advertising protocol support");
+    })
+    .await;
+}

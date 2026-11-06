@@ -45,6 +45,7 @@ impl Case {
             &request,
         )
         .await;
+        task_capability(&held, true).await;
         held.fixtures
             .native_config(
                 &held.fleet,
@@ -235,5 +236,39 @@ pub(super) async fn exercise(scenario: impl AsyncFnOnce(&Case)) {
     match outcome {
         Ok(result) => result.expect("native lifecycle scenario is bounded"),
         Err(failure) => std::panic::resume_unwind(failure),
+    }
+}
+
+/// Only this durable-task suite opts its native runner into the guarded protocol.
+pub(super) async fn task_capability(held: &Held, enabled: bool) {
+    use afd_wire::runner::{HeartbeatRequest, HeldFleets};
+    use std::borrow::Cow;
+
+    for runner in [&held.runner, &held.spare] {
+        let mut capability = crate::requests::capable();
+        capability.durable_tasks_v1 = enabled;
+        let holds = if runner == &held.runner {
+            HeldFleets(vec![Cow::Borrowed(held.fleet.as_str())])
+        } else {
+            HeldFleets::default()
+        };
+        let request = HeartbeatRequest {
+            capability_report: Some(capability),
+            selftest: None,
+            holds,
+            closing: false,
+            wake: false,
+        };
+        let held_fleets = afd_runner::heartbeat::holds::prove(request.holds.clone());
+        held.fixtures
+            .runners()
+            .heartbeat(
+                runner,
+                &request,
+                held_fleets.as_ref(),
+                jiff::Timestamp::now(),
+            )
+            .await
+            .expect("task runner advertises its actual protocol support");
     }
 }
