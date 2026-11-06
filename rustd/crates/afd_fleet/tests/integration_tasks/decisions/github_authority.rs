@@ -1,51 +1,28 @@
-//! Real standing grant, installation ownership and encrypted handle; exchange is a scoped fixture.
-use super::fixture::Decisions;
+//! Real broker, encrypted App/installation credentials and local external GitHub exchange.
+use super::{fixture::Decisions, github_server::Server};
 use crate::report_seed::FIXTURE_KEK_HEX;
 use afd_core::clock;
-use afd_credential::credential::{Ask, Broker, Exchanger, Minted, Outcome};
-use afd_credential::secrets::connector::{Connector, Registry};
+use afd_credential::credential::platform::Platform;
+use afd_credential::credential::{Broker, Vendors};
+use afd_credential::secrets::connector::Registry;
 use afd_crypto::secret::Kek;
 use afd_db::test_util::mint_id;
 use afd_fleet::task::{Github, Tasks};
 use afd_vault::{SecretBody, SecretName};
 use serde_json::{json, value::RawValue};
-use std::{pin::Pin, sync::Arc, time::Duration};
-use zeroize::Zeroizing;
+use std::sync::Arc;
 
-#[derive(Debug)]
-struct Reader(afd_fleet_runtime::config::Access);
-impl Exchanger for Reader {
-    fn exchange<'a>(
-        &'a self,
-        _connector: &'a dyn Connector,
-        ask: Ask<'a>,
-    ) -> Pin<Box<dyn Future<Output = Outcome> + Send + 'a>> {
-        let binding = ask.binding.expect("native repository binding");
-        assert!(
-            binding.access() == afd_fleet_runtime::config::Access::Read
-                || binding.access() == self.0
-        );
-        assert_eq!(binding.repositories().len(), 1);
-        assert_eq!(binding.repositories()[0].as_ref(), "example/linkwarden");
-        Box::pin(std::future::ready(Outcome::Ok(Minted {
-            token: Zeroizing::new("native-test-read-token".to_owned()),
-            expires_at: clock::after(clock::now(), Duration::from_secs(300)),
-            rotated_refresh_token: None,
-        })))
-    }
+pub(super) async fn tasks(fixture: &Decisions<'_>, server: &Server) -> Tasks {
+    configured(fixture, server, afd_fleet_runtime::config::Access::Read).await
 }
 
-pub(super) async fn tasks(fixture: &Decisions<'_>, client: reqwest::Client) -> Tasks {
-    configured(fixture, client, afd_fleet_runtime::config::Access::Read).await
-}
-
-pub(super) async fn publisher(fixture: &Decisions<'_>, client: reqwest::Client) -> Tasks {
-    configured(fixture, client, afd_fleet_runtime::config::Access::Write).await
+pub(super) async fn publisher(fixture: &Decisions<'_>, server: &Server) -> Tasks {
+    configured(fixture, server, afd_fleet_runtime::config::Access::Write).await
 }
 
 async fn configured(
     fixture: &Decisions<'_>,
-    client: reqwest::Client,
+    server: &Server,
     access: afd_fleet_runtime::config::Access,
 ) -> Tasks {
     let case = fixture.case;
@@ -61,14 +38,15 @@ async fn configured(
         .native_config(&case.held.fleet, &config.to_string())
         .await;
     let mut plane = case.held.fixtures.plane();
+    let platform = platform(fixture, &plane.vault, server, installation, access).await;
     plane.broker = Arc::new(Broker::new(
         Arc::new(Registry::default()),
-        Arc::new(Reader(access)),
+        Arc::new(Vendors::new(platform, server.client.clone())),
     ));
     let mut dependencies = fixture.dependencies.clone();
     dependencies.github = Some(Github::new(
         plane,
-        client,
+        server.client.clone(),
         Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("fixture key")),
     ));
     Tasks::new(
@@ -76,6 +54,38 @@ async fn configured(
         case.admissions.clone(),
         dependencies,
     )
+}
+
+async fn platform(
+    fixture: &Decisions<'_>,
+    vault: &afd_credential::vault::Vault,
+    server: &Server,
+    installation: u32,
+    access: afd_fleet_runtime::config::Access,
+) -> Platform {
+    let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_RSA_SHA256).expect("generated App RSA key");
+    server.app(
+        installation,
+        &key.public_key_pem(),
+        access == afd_fleet_runtime::config::Access::Write,
+    );
+    let raw = RawValue::from_string(
+        json!({"app_id":"7","private_key_pem":key.serialize_pem()}).to_string(),
+    )
+    .expect("operator App credential");
+    fixture
+        .vault
+        .create(
+            &fixture.case.scope.workspace_id,
+            &SecretName::parse("github-app").expect("App bag name"),
+            &SecretBody::parse(&raw).expect("App secret object"),
+            clock::now(),
+        )
+        .await
+        .expect("encrypted platform App credential");
+    let platform = Platform::load(vault, &fixture.case.scope.workspace_id).await;
+    assert_eq!(platform.github().map(|app| app.app_id), Some(7));
+    platform
 }
 
 fn installation() -> u32 {

@@ -111,6 +111,10 @@ fn assert_refusals(cases: impl IntoIterator<Item = (ConfigOp, &'static str)>) {
                 ..EditBatch::default()
             })
             .expect_err("refused batch");
+        assert_eq!(
+            failure.code(),
+            afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
+        );
         assert!(failure.to_string().contains(expected), "{failure}");
         assert_eq!(original, parse(&value()));
     }

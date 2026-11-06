@@ -1,6 +1,7 @@
 "use client";
 
 import type { Control } from "react-hook-form";
+import type { PolicyFormValues } from "./PolicyFields";
 import {
   FormControl,
   FormDescription,
@@ -10,7 +11,6 @@ import {
   FormMessage,
   Switch,
 } from "@agentsfleet/design-system";
-import type { PolicyFormValues } from "./PolicyFields";
 
 export function PolicyDurableTasksField({ control }: { control: Control<PolicyFormValues> }) {
   return <FormField control={control} name="durable_tasks_enabled" render={({ field }) => (

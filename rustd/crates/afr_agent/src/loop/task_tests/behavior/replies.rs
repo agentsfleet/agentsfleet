@@ -107,10 +107,13 @@ async fn empty_reply_or_wrong_native_acknowledgement_does_not_claim_the_source_a
         let output = execute(&script, &native, false).await?;
         assert!(output.task.is_none());
         assert!(output.result.content.is_empty());
-        assert!(matches!(
+        assert_eq!(
             output.result.outcome,
-            crate::ResultOutcome::Failed(_)
-        ));
+            crate::ResultOutcome::Failed(crate::Failure {
+                class: None,
+                detail: "the run was stopped before it finished".into(),
+            })
+        );
         assert_eq!(
             native
                 .receipts

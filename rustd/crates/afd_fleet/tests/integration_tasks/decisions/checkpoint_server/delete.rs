@@ -3,7 +3,28 @@
 use super::protocol::Request;
 use std::collections::BTreeMap;
 
-const OPEN: &str = "<Delete xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">";
+const NAMESPACE: &str = "http://s3.amazonaws.com/doc/2006-03-01/";
+
+#[derive(serde::Deserialize)]
+enum Document {
+    Delete(Batch),
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Batch {
+    #[serde(rename = "@xmlns")]
+    namespace: String,
+    #[serde(rename = "Object")]
+    objects: Vec<Object>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Object {
+    #[serde(rename = "Key")]
+    key: String,
+}
 
 pub(super) fn objects(request: &Request, objects: &mut BTreeMap<String, Vec<u8>>) -> Vec<u8> {
     assert_eq!(
@@ -15,20 +36,16 @@ pub(super) fn objects(request: &Request, objects: &mut BTreeMap<String, Vec<u8>>
         "POST must explicitly request the S3 delete operation"
     );
     let body = std::str::from_utf8(&request.body).expect("S3 XML request");
-    let mut remaining = body
-        .strip_prefix(OPEN)
-        .and_then(|body| body.strip_suffix("</Delete>"))
-        .expect("complete S3 Delete document");
+    let Document::Delete(batch) =
+        quick_xml::de::from_str(body).expect("structured S3 Delete document");
+    assert_eq!(batch.namespace, NAMESPACE, "S3 Delete namespace");
+    assert!(
+        (1..=1000).contains(&batch.objects.len()),
+        "S3 bounded nonempty delete batch"
+    );
     let mut response =
         String::from("<DeleteResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
-    let mut count = 0;
-    while !remaining.is_empty() {
-        let item = remaining
-            .strip_prefix("<Object><Key>")
-            .expect("delete Object with one Key");
-        let (key, rest) = item
-            .split_once("</Key></Object>")
-            .expect("closed object key");
+    for Object { key } in batch.objects {
         assert!(
             key.starts_with("capability-probes/") || key.starts_with("workspaces/"),
             "only native checkpoint keys may be deleted"
@@ -40,13 +57,7 @@ pub(super) fn objects(request: &Request, objects: &mut BTreeMap<String, Vec<u8>>
         );
         objects.remove(&format!("/checkpoint-test/{key}"));
         response.push_str(&format!("<Deleted><Key>{key}</Key></Deleted>"));
-        remaining = rest;
-        count += 1;
     }
-    assert!(
-        (1..=1000).contains(&count),
-        "S3 bounded nonempty delete batch"
-    );
     response.push_str("</DeleteResult>");
     response.into_bytes()
 }

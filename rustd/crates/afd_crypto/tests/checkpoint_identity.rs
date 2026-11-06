@@ -25,7 +25,12 @@ fn checkpoint_identity_cannot_be_rebound_to_another_owner_or_format() {
         Aad::effect_recovery(&owner, &identity),
         Aad::new(owner.as_str(), identity.as_str()),
     ] {
-        assert!(sealed.open(&key, &wrong_scope).is_err());
+        let failure = sealed.open(&key, &wrong_scope).unwrap_err();
+        assert!(failure.is_open_failed());
+        assert_eq!(
+            failure.code(),
+            afd_core::error_code::INTERNAL_OPERATION_FAILED
+        );
     }
 }
 

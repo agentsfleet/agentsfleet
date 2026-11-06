@@ -21,7 +21,7 @@ async fn publish(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
     let server = Server::start(vec![]).await;
-    let tasks = github_authority::publisher(&fixture, server.client.clone()).await;
+    let tasks = github_authority::publisher(&fixture, &server).await;
     let input = garde::Unvalidated::new(prepared(case, task).await)
         .validate()
         .expect("bounded publication");

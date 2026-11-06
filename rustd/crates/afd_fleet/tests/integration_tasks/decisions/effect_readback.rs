@@ -1,7 +1,8 @@
 //! Recovery listings of persisted uncertain intents never claim remote success.
 
+use afd_core::error_code;
 use afd_db::test_util::mint_id;
-use afd_fleet::task::TaskLifecycle as _;
+use afd_fleet::task::{TaskLifecycle as _, TaskRefusal};
 use afd_wire::task::{TaskEffectState, TaskEffectsQuery};
 
 use super::{
@@ -85,36 +86,44 @@ async fn pages(fixture: &Decisions<'_>, task: &str, first: &str, second: &str, t
 async fn refusals(fixture: &Decisions<'_>, task: &str) {
     let case = fixture.case;
     for cursor in ["-1", "not-an-ordinal", "9223372036854775808"] {
-        assert!(
+        assert_eq!(
             fixture
                 .tasks
                 .effects(case.lease(), &query(case, task, 0, Some(cursor)))
                 .await
-                .is_err()
+                .expect_err("malformed cursor")
+                .code(),
+            error_code::INVALID_REQUEST
         );
     }
-    assert!(
+    assert_eq!(
         fixture
             .tasks
             .effects(case.lease(), &query(case, task, u64::MAX, None))
             .await
-            .is_err()
+            .expect_err("overflowed watermark")
+            .code(),
+        error_code::INVALID_REQUEST
     );
-    assert!(
+    assert_eq!(
         fixture
             .tasks
             .effects(case.lease(), &query(case, &mint_id(), 0, None))
             .await
-            .is_err()
+            .expect_err("foreign task")
+            .code(),
+        TaskRefusal::NotFound.code()
     );
     let mut stale = case.lease();
     stale.fencing_token += 1;
-    assert!(
+    assert_eq!(
         fixture
             .tasks
             .effects(stale, &query(case, task, 0, None))
             .await
-            .is_err()
+            .expect_err("stale lease fence")
+            .code(),
+        error_code::RUN_STALE_FENCING_TOKEN
     );
 }
 
@@ -127,20 +136,24 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &str, second: &str
         .expect("terminal refused receipt");
     assert_eq!(refused.state, TaskEffectState::Refused);
     assert!(refused.commit.is_none());
-    assert!(
+    assert_eq!(
         fixture
             .tasks
             .effect(case.lease(), &id(&mint_id()))
             .await
-            .is_err()
+            .expect_err("missing receipt")
+            .code(),
+        TaskRefusal::NotFound.code()
     );
     // No configured native Github dependency can turn unknown into confirmed on a read.
-    assert!(
+    assert_eq!(
         fixture
             .tasks
             .effect(case.lease(), &id(second))
             .await
-            .is_err()
+            .expect_err("unconfigured GitHub cannot resolve unknown effect")
+            .code(),
+        TaskRefusal::InvalidTarget.code()
     );
     let page = fixture
         .tasks

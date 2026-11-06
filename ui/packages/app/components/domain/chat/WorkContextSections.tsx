@@ -1,16 +1,19 @@
-import { Files, FolderGit2, GitPullRequest, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { TaskDetails } from "./use-task-details";
+import { Section } from "@agentsfleet/design-system";
+import { Files, FolderGit2, GitPullRequest, ShieldCheck } from "lucide-react";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "../tool-call-shape";
 import { confirmed } from "./use-task-read";
-import type { TaskDetails } from "./use-task-details";
+
+const WRITES: ReadonlySet<string> = new Set([TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.FILE_APPEND, TOOL_NAME.FILE_DELETE]);
 
 export function WorkSection({title, icon, children}: {title: string; icon: ReactNode; children: ReactNode}) {
-  return <section aria-label={title} className="min-w-0 space-y-sm border-t border-border pt-md first:border-0 first:pt-0">
+  return <Section asChild className="block gap-0"><section aria-label={title} className="min-w-0 space-y-sm border-t border-border pt-md first:border-0 first:pt-0">
     <h2 className="flex items-center gap-sm text-label font-medium">{icon}{title}</h2>{children}
-  </section>;
+  </section></Section>;
 }
 
 export function WorkOutputs({details}: {details: TaskDetails}) {
@@ -28,7 +31,6 @@ export function WorkOutputs({details}: {details: TaskDetails}) {
   </WorkSection>;
 }
 
-const WRITES: ReadonlySet<string> = new Set([TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.FILE_APPEND, TOOL_NAME.FILE_DELETE]);
 export function recordedChanges(events: readonly FleetEvent[]): {path: string; running: boolean}[] {
   const paths = new Map<string, {path: string; running: boolean}>();
   for (const event of events) for (const tool of event.tools ?? []) {

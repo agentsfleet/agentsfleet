@@ -1,6 +1,6 @@
+import type { ThreadMessageLike } from "@assistant-ui/react";
 import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
-import type { ThreadMessageLike } from "@assistant-ui/react";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { useEffect, useState } from "react";
 import { FleetThreadViewport } from "@/components/domain/FleetThreadViewport";

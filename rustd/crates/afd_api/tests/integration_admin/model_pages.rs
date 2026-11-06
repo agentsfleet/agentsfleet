@@ -69,6 +69,14 @@ async fn invalid_pages(router: &Router, token: &str) {
         )
         .await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{query}");
+        let body = json_body(response).await;
+        assert_eq!(body["error_code"], "UZ-REQ-001");
+        if query.starts_with("limit=") {
+            assert_eq!(
+                body["detail"],
+                afd_api_operator::test_util::MODEL_PAGE_LIMIT_DETAIL
+            );
+        }
     }
 }
 
@@ -84,4 +92,5 @@ async fn check_replay(router: &Router, token: &str, path: &str, next: &str, seco
     )
     .await;
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_body(refused).await["error_code"], "UZ-REQ-001");
 }

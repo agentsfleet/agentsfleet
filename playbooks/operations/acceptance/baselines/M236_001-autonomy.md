@@ -23,13 +23,20 @@ Current verification:
 | Check | Current evidence |
 | --- | --- |
 | Production Rust/OpenAPI | `cargo run --locked --all-features --package agentsfleetd -- --no-banner openapi` passed; generated 123 paths, required runner-policy boolean and admin `limit`/`starting_after` query parameters |
-| TypeScript coverage | Earlier full `make test-coverage-all` passed: app 4,740, website 133, CLI 2,025 plus 16 existing live skips, design system 522; 100% thresholds retained. Admin pagination was added afterward and needs a fresh run. |
+| TypeScript coverage | Earlier full `make test-coverage-all` passed: app 4,740, website 133, CLI 2,025 plus 16 existing live skips, design system 522; 100% thresholds retained. Latest affected UI/admin-client checks passed 58 tests across eight files. This focused result is not a fresh coverage measurement. |
 | Browser | Full `make dry-app` reached 61 passed / one fixture assertion failure. The corrected desktop/mobile chat and native PR-badge cases then passed all 18 focused tests. These are focused results. |
 | Native integration | Latest clean `make test-integration-rustd` passed 1,258 tests and failed one checkpoint test; its fleet binary passed 324/325. Admin 12/12, Slack ingress 61/61 and served runner APIs 7/7 passed. The run stopped at fleet; later binaries were not executed. |
 | Failed-target correction | `make -f /workspace/scratch/m236-checkpoint-only.mk m236-checkpoint-only` passed the original checkpoint regression: 1 passed, zero failed, 332 filtered out; runtime 2.11 seconds after compilation. The official signer binds length, checksum and create-only headers. Signature mutation/omission, encrypted restore and private-log checks passed. The prior 324 passing fleet tests were not rerun. |
 | Source lint | A new admin plan test directly included SQL from a repository file. The test now uses the production owner's existing test-util seam. `make lint-source` passed: 44 rule tests, zero failures, source scan clean. No lint rule changed. |
+| Review corrections | Reconnect reads now allow four attempts with existing capped jitter/backoff and cancellation; manual Retry/native revision starts a new cycle. Standard section primitives retain layout. Negative tests now check exact native errors and complete evidence digests. |
+| Focused Rust units | All 11 affected encryption/configuration/supervisor/agent cases passed. The agent checks include exact stopped-run outcomes and complete evidence byte/digest provenance. No full unit restart. |
+| Focused live checks | Eight affected API/fleet scenarios passed individually, including real encrypted App credentials and signed exchange through local HTTPS, publication/refusal/readback, upload/restore and typed XML deletion. One new assertion initially used a tenant authentication code; the runner's documented `UZ-RUN-001` correction passed on its focused rerun. The passing admin scenario was not repeated. |
 | Review | All 250 eligible prior gate hunks reviewed; no unjustified weakening found. Shutdown cancellation and relay fixture corrections were independently reread. Signer review found private SDK trace diagnostics; scoped suppression retains native operation spans. The reviewer verified that correction closed; the focused runtime check also passed. |
-| Publication | Local HEAD `9d28968d4`; latest pushed head remains `fd6d5670`. No merge or M236 runtime deployment. |
+| Publication | Source implementation committed in `82766cce0` and `9e38b3eac`; the following correction commit records the passing focused checks. Companion docs `543c60f` are pushed on the existing branch with verification passing. No merge or M236 runtime deployment. |
+
+The review ledger covers the 308-file continuation snapshot and records concrete findings.
+Independent reviewers disclosed their authored test slices and exchanged those slices for review.
+Final whole-branch gstack/QA certification remains incomplete; the correction results are not a completion certificate.
 
 Indy directed: "which test failed once you fix that, only rerun that since target" and "donot run all through again".
 Local correction checks now rerun the failed target only; preserve previous passing results and identify tests that have not run.

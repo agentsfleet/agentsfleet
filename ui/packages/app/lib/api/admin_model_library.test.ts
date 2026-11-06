@@ -1,5 +1,6 @@
 import { ADMIN_MODEL, METADATA, PRICE } from "@/tests/helpers/catalogue-fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ZodError } from "zod";
 import { listAdminModels, createAdminModel, updateAdminModel, deleteAdminModel, setPlatformDefault, listPlatformKeys, activePlatformDefault, type PlatformKey } from "./admin_model_library";
 
 const fetchMock = vi.fn();
@@ -146,5 +147,7 @@ it("does not return a mixed catalogue when a later page becomes stale", async ()
 
 it.each([undefined, "", 17])("refuses an invalid page cursor %j", async (next_cursor) => {
   fetchMock.mockResolvedValue(okJson({ models: [], next_cursor }));
-  await expect(listAdminModels("tok")).rejects.toThrow();
+  const result = listAdminModels("tok");
+  await expect(result).rejects.toBeInstanceOf(ZodError);
+  await expect(result).rejects.toMatchObject({issues: [{path: ["next_cursor"]}]});
 });

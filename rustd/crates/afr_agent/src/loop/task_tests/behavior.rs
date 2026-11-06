@@ -276,10 +276,13 @@ async fn untrusted_goal_results_never_authorize_completion() -> crate::Result<()
         let output = run(&engine, &lease, &native, &prepared).await?;
         assert!(output.task.is_none());
         assert!(output.recovery.is_some());
-        assert!(matches!(
+        assert_eq!(
             output.result.outcome,
-            crate::ResultOutcome::Failed(_)
-        ));
+            crate::ResultOutcome::Failed(crate::Failure {
+                class: None,
+                detail: "the run was stopped before it finished".into(),
+            })
+        );
         assert!(output.result.content.is_empty());
         assert_eq!(
             native

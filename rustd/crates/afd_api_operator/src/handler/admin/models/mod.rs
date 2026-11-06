@@ -29,6 +29,7 @@ use crate::request_id::RequestId;
 use crate::services::Services;
 
 const DETAIL_ID: &str = "id must be a canonical UUIDv7";
+pub(crate) const DETAIL_LIMIT: &str = "limit must be an integer between 1 and 100";
 const DETAIL_NOT_FOUND: &str = "No catalogue model matches this id";
 const DETAIL_DUPLICATE: &str = "A catalogue row for this provider and model already exists";
 const DETAIL_IN_USE: &str =
@@ -69,10 +70,7 @@ pub(crate) async fn list<D: Services>(
     ) {
         Ok(limit) => limit,
         Err(_invalid) => {
-            return reject(
-                error_code::INVALID_REQUEST,
-                "limit must be an integer between 1 and 100",
-            );
+            return reject(error_code::INVALID_REQUEST, DETAIL_LIMIT);
         }
     };
     match services

@@ -1,7 +1,8 @@
 "use client";
 
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import { taskActivityLabel, type TaskActivityHistory } from "@/lib/task-activity";
+import type { TaskActivityHistory } from "@/lib/task-activity";
+import { taskActivityLabel } from "@/lib/task-activity";
 
 /** Only explicit task identity associates an event's observations with this work. */
 export function workActivity(events: readonly FleetEvent[], task: string): TaskActivityHistory {

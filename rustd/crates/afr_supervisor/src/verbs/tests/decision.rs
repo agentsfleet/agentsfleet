@@ -145,7 +145,10 @@ async fn unacknowledged_receipt_survives_and_duplicate_dispatch_cannot_send_agai
         Err(Unanswered::Unreachable)
     ));
     drain(&mut calls);
-    assert!(verbs.task_decision(input()).await.is_err());
+    assert!(matches!(
+        verbs.task_decision(input()).await,
+        Err(Unanswered::Unreachable)
+    ));
     assert_eq!(
         drain(&mut calls)
             .iter()
@@ -180,7 +183,10 @@ async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
     let host = Host::new();
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
-    assert!(verbs.task_decision(input()).await.is_err());
+    assert!(matches!(
+        verbs.task_decision(input()).await,
+        Err(Unanswered::Unreachable)
+    ));
     assert_eq!(drain(&mut calls).len(), 1);
     assert!(!host.spool.drain_decisions(&plane).await.unwrap());
     assert!(drain(&mut calls).is_empty());

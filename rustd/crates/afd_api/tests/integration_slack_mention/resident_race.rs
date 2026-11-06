@@ -1,6 +1,6 @@
 //! Two first mentions binding one channel at once, interleaved on purpose.
 //!
-//! Split from `carrier_bound.rs`: the cases there arrange a binding that is
+//! Split from `resident_bound.rs`: the cases there arrange a binding that is
 //! already committed, and this one holds it open so the statement that binds
 //! has to wait on it.
 

@@ -6,7 +6,7 @@ use super::{
     github_server::Server,
 };
 use afd_db::test_util::mint_id;
-use afd_fleet::task::{TaskLifecycle as _, Tasks};
+use afd_fleet::task::{TaskLifecycle as _, TaskRefusal, Tasks};
 use afd_wire::task::{DecisionTaskVersion, TaskEffectInput, TaskEffectState, TaskFileChange};
 use serde_json::json;
 use sqlx::types::Json;
@@ -21,7 +21,7 @@ async fn refusal(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
     let server = Server::start(vec![]).await;
-    let tasks = github_authority::publisher(&fixture, server.client.clone()).await;
+    let tasks = github_authority::publisher(&fixture, &server).await;
     let input = prepared(case, task).await;
     stale_inputs(&tasks, case, &input).await;
     server.push(
@@ -38,7 +38,14 @@ async fn assert_refusal(tasks: &Tasks, case: &Case, input: TaskEffectInput) {
     let valid = garde::Unvalidated::new(input.clone())
         .validate()
         .expect("valid publication");
-    assert!(tasks.publish_effect(case.lease(), &valid).await.is_err());
+    assert_eq!(
+        tasks
+            .publish_effect(case.lease(), &valid)
+            .await
+            .expect_err("closed PR cannot publish")
+            .code(),
+        TaskRefusal::InvalidTarget.code()
+    );
     let (receipt, replayed) = tasks
         .publish_effect(case.lease(), &valid)
         .await
@@ -58,7 +65,14 @@ async fn conflict(tasks: &Tasks, case: &Case, mut input: TaskEffectInput) {
     let valid = garde::Unvalidated::new(input)
         .validate()
         .expect("different valid request");
-    assert!(tasks.publish_effect(case.lease(), &valid).await.is_err());
+    assert_eq!(
+        tasks
+            .publish_effect(case.lease(), &valid)
+            .await
+            .expect_err("changed request cannot replay the operation")
+            .code(),
+        TaskRefusal::ReplayConflict.code()
+    );
 }
 
 async fn stale_inputs(tasks: &Tasks, case: &Case, input: &TaskEffectInput) {
@@ -73,7 +87,14 @@ async fn stale_inputs(tasks: &Tasks, case: &Case, input: &TaskEffectInput) {
         let valid = garde::Unvalidated::new(changed)
             .validate()
             .expect("well-shaped stale request");
-        assert!(tasks.publish_effect(case.lease(), &valid).await.is_err());
+        assert_eq!(
+            tasks
+                .publish_effect(case.lease(), &valid)
+                .await
+                .expect_err("stale source, head, cursor or generation cannot allocate")
+                .code(),
+            TaskRefusal::StaleState.code()
+        );
     }
 }
 
