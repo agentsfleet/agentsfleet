@@ -14,9 +14,17 @@ use std::error::Error as _;
 use afd_admission::error::one_of_each_kind;
 
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 4;
-/// How many distinct registry codes the kinds report between them.
-const DISTINCT_CODES: usize = 4;
+/// Five since `M242_001` §6: a lock or statement timeout keeps its cause.
+const WITH_SOURCE: usize = 5;
+/// How many distinct registry codes the kinds report between them. Six since
+/// `M242_001` §2: a missing fleet (`UZ-AGT-009`) and a fleet that takes no
+/// work (`UZ-AGT-012`) are the ledger's refusals now.
+const DISTINCT_CODES: usize = 6;
+/// How many sentences a caller can be handed: the two refusals added theirs.
+const SENTENCES: usize = 6;
+/// The kinds a caller retries: an outage, capacity, and since `M242_001` §6 a
+/// statement that gave up waiting under the login's bounds.
+const RETRYABLE: usize = 4;
 
 /// Everything every error surface owes, graded once by
 /// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
@@ -32,7 +40,7 @@ fn the_error_surface_holds() {
     );
 }
 
-/// The caller-facing vocabulary: present, uncoded, and exactly 4 sentences.
+/// The caller-facing vocabulary: present, uncoded, and exactly [`SENTENCES`].
 #[test]
 fn the_caller_facing_sentences_hold() {
     let samples = one_of_each_kind();
@@ -40,7 +48,7 @@ fn the_caller_facing_sentences_hold() {
         samples
             .iter()
             .map(|(label, error)| (*label, error.detail())),
-        4,
+        SENTENCES,
     );
 }
 
@@ -58,8 +66,8 @@ fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
         .collect();
     assert_eq!(
         is_datastore_unavailable.len(),
-        3,
-        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 3 kinds"
+        RETRYABLE,
+        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not {RETRYABLE} kinds"
     );
 
     let is_over_capacity: Vec<&str> = one_of_each_kind()

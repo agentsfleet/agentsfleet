@@ -37,8 +37,18 @@ async fn a_blocked_authorization_read_closes_at_its_deadline_and_releases_capaci
         next.is_none(),
         "blocked authorization cannot emit buffered text"
     );
-    // gstack-timing-ok: checks the real access timeout after observing Postgres row-lock contention.
-    assert!(started.elapsed() >= Duration::from_secs(10));
+    // gstack-timing-ok: checks the real bound after observing Postgres row-lock contention.
+    // The API login's `lock_timeout` (`afd_db::login`, `M242_001` §6) ends the
+    // blocked check before the stream's 10 s deadline would.
+    let lock_bound = humantime_ms(afd_db::login::LOCK_TIMEOUT);
+    assert!(
+        started.elapsed() >= lock_bound,
+        "closed before the lock bound"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "waited out the stream deadline"
+    );
     held.rollback().await.expect("release draft");
     drop(body);
     assert_eq!(live.hub.readers(&live.channel()), 0);
@@ -154,4 +164,14 @@ async fn stream_ceiling_refuses_excess_viewers_and_dropped_body_releases_its_slo
     drop(replacement);
     assert_eq!(live.hub.readers(&live.channel()), 0);
     live.cleanup().await;
+}
+
+/// A `"2000ms"`-style bound as a `Duration`.
+fn humantime_ms(bound: &str) -> Duration {
+    Duration::from_millis(
+        bound
+            .strip_suffix("ms")
+            .and_then(|millis| millis.parse().ok())
+            .expect("a bound in milliseconds"),
+    )
 }

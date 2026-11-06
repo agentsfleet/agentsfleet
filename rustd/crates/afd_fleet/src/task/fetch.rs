@@ -17,6 +17,10 @@ use crate::error::{Result, query};
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// Server cancellation frees lock waits even when a client stops receiving.
 pub(super) const STATEMENT_TIMEOUT: &str = "3000ms";
+/// No separate lock bound inside a task transaction: [`STATEMENT_TIMEOUT`]
+/// governs a lock wait and answers it as a timeout (503), as it did before the
+/// API login carried its own 2 s `lock_timeout` (`afd_db::login`).
+pub(super) const NO_LOCK_TIMEOUT: &str = "0";
 
 pub(super) async fn rows<R>(
     database: &Db,
@@ -33,6 +37,7 @@ where
         let mut transaction = connection.begin().await.map_err(query(context))?;
         sqlx::query(include_str!("sql/read_timeout.sql"))
             .bind(STATEMENT_TIMEOUT)
+            .bind(NO_LOCK_TIMEOUT)
             .execute(&mut *transaction)
             .await
             .map_err(query(context))?;
