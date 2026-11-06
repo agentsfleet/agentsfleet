@@ -4,6 +4,7 @@
 mod authoring;
 mod retry;
 mod routing;
+mod task;
 mod transport;
 
 use super::{Call, HttpRunnerApi, RunnerApi, Verb};
