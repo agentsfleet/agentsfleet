@@ -136,6 +136,13 @@ describe("useMessageDelivery", () => {
     expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, false, RUN_EVENT_ID);
   });
 
+  it("a folded 202 that names no run reconciles as an ordinary send", async () => {
+    postSteer.mockResolvedValue({ ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false, disposition: "folded" } });
+    const { ctx, hook } = delivery();
+    await act(() => hook.result.current.onNew(message(DEPLOY)));
+    expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, false, null);
+  });
+
   it("ignores a Resend for a send the ledger no longer holds", () => {
     // Another tab dismissed it between this render and the click.
     const { ctx, hook } = delivery();
