@@ -70,10 +70,7 @@ impl Leases {
         cost.candidates_scanned = u64::try_from(candidates.len()).unwrap_or(u64::MAX);
         for fleet in candidates {
             let fleet = Uuid7::parse(&fleet).map_err(row_malformed(LEDGER, "fleet_id"))?;
-            if let Some(acquired) = self
-                .ledger_claim(&mut connection, &fleet, runner)
-                .await?
-            {
+            if let Some(acquired) = self.ledger_claim(&mut connection, &fleet, runner).await? {
                 producers::fleet::run_started(started(acquired.kind));
                 affinity::count_resumed(&acquired);
                 return Ok(Some(acquired));
