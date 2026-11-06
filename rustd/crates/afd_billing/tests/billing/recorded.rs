@@ -6,7 +6,7 @@
 )]
 
 use afd_billing::Nanos;
-use afd_billing::biller::{Account, Biller, Observed, RecordingBiller, Release, WorkKey};
+use afd_billing::biller::{Account, Biller, Observed, RecordingBiller, WorkKey};
 use afd_db::test_util::mint_uuid7;
 
 use crate::biller::{LINE, rated};
@@ -53,13 +53,13 @@ async fn funding_a_known_payer_replaces_its_balance() {
         .await
         .expect("a funded payer answers");
     assert_eq!(balance.balance, SECOND_FUNDING);
-    assert_eq!(balance.held, Nanos::from_i64(0));
+    assert_eq!(balance.unsettled, Nanos::from_i64(0));
     assert_eq!(balance.exhausted_at, None);
 }
 
-/// Every settlement and release is kept, in order, for a domain test to read.
+/// Every settlement is kept, in order, for a domain test to read.
 #[tokio::test]
-async fn settlements_and_releases_are_kept_in_order() {
+async fn settlements_are_kept_in_order() {
     let biller = RecordingBiller::new();
     let payer = payer();
     biller.fund(&payer.tenant, SECOND_FUNDING);
@@ -69,12 +69,7 @@ async fn settlements_and_releases_are_kept_in_order() {
         .settle(&charged)
         .await
         .expect("the settlement answers");
-    biller
-        .release(&work, Release::Failed)
-        .await
-        .expect("the release answers");
     assert_eq!(biller.settlements(), vec![charged]);
-    assert_eq!(biller.releases(), vec![(work, Release::Failed)]);
 }
 
 /// A retried settlement charges nothing, and the counting wrapper passes the

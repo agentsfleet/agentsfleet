@@ -141,8 +141,8 @@ impl Leases {
     /// freed slot commit with it or not at all
     /// ([`Leases::commit_report`](crate::lease::commit)). Acquiring a second
     /// connection here would put the line outside that boundary and hold two
-    /// connections of a five-connection pool for one report (RULE CNX). Money
-    /// moves after commit, through the caller's biller. The caller also holds
+    /// connections of a five-connection pool for one report (RULE CNX). The
+    /// billing relay moves the money from the line. The caller also holds
     /// the host's capacity lock first, which is what numbers this line after a
     /// racing renewal's (see [`sql::meter::METER_LEASE`]).
     ///

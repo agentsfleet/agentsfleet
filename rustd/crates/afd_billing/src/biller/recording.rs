@@ -1,24 +1,18 @@
 //! An in-memory [`Biller`] for domain tests: the same answers as the built-in
 //! biller, with no datastore, and every call kept for assertions.
+//!
+//! It has no usage log, so a check here weighs only the balance: lines a test
+//! wants counted against a check are settled through it first.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
 
 use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
-use super::{Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey};
+use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
 use crate::error::{billing_wallet_missing, charge_overflow};
 use crate::{Nanos, Result};
-
-/// One work's hold.
-#[derive(Debug, Clone, Copy)]
-struct Held {
-    tenant_index: usize,
-    ceiling: i64,
-    captured: i64,
-    released: bool,
-}
 
 /// Everything the biller remembers.
 #[derive(Debug, Default)]
@@ -26,25 +20,13 @@ struct State {
     tenants: Vec<Uuid7>,
     balances: Vec<i64>,
     exhausted_at: Vec<Option<Timestamp>>,
-    holds: HashMap<WorkKey, Held>,
     settled: HashSet<(WorkKey, u32)>,
     settlements: Vec<Settlement>,
-    releases: Vec<(WorkKey, Release)>,
 }
 
 impl State {
     fn tenant(&self, tenant: &Uuid7) -> Option<usize> {
         self.tenants.iter().position(|known| known == tenant)
-    }
-
-    fn held_by_others(&self, tenant_index: usize, work: &WorkKey) -> i64 {
-        self.holds
-            .iter()
-            .filter(|(key, held)| {
-                held.tenant_index == tenant_index && !held.released && *key != work
-            })
-            .map(|(_, held)| (held.ceiling - held.captured).max(0))
-            .sum()
     }
 }
 
@@ -82,12 +64,6 @@ impl RecordingBiller {
         self.lock().settlements.clone()
     }
 
-    /// Every release this biller was asked to make, in order.
-    #[must_use]
-    pub fn releases(&self) -> Vec<(WorkKey, Release)> {
-        self.lock().releases.clone()
-    }
-
     #[expect(
         clippy::expect_used,
         reason = "test double: a poisoned lock means another test thread already failed"
@@ -101,40 +77,13 @@ impl RecordingBiller {
 
 #[async_trait::async_trait]
 impl Biller for RecordingBiller {
-    async fn reserve(&self, ask: &Reservation) -> Result<Hold> {
-        let mut state = self.lock();
+    async fn check(&self, ask: &Ask) -> Result<Funds> {
+        let state = self.lock();
         let index = state
             .tenant(&ask.payer.tenant)
             .ok_or_else(billing_wallet_missing)?;
-        let balance = state.balances.get(index).copied().unwrap_or_default();
-        let existing = state.holds.get(&ask.work).copied();
-        let (ceiling, captured) = match existing {
-            Some(held) if held.released => return Ok(Hold::Closed),
-            Some(held) => (held.ceiling, held.captured),
-            None => (0, 0),
-        };
-        if ask.ceiling.as_i64() <= ceiling && ceiling > 0 {
-            return Ok(held_answer(ceiling, captured));
-        }
-        let available = (balance - state.held_by_others(index, &ask.work)).max(0);
-        let needed = (ask.ceiling.as_i64() - captured).max(0);
-        if available < needed {
-            return Ok(Hold::Short {
-                available: Nanos::from_i64(available),
-                asked: ask.ceiling,
-            });
-        }
-        let ceiling = ceiling.max(ask.ceiling.as_i64());
-        state.holds.insert(
-            ask.work.clone(),
-            Held {
-                tenant_index: index,
-                ceiling,
-                captured,
-                released: false,
-            },
-        );
-        Ok(held_answer(ceiling, captured))
+        let left = Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default());
+        Ok(Funds::of(left, ask.next))
     }
 
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
@@ -168,21 +117,9 @@ impl Biller for RecordingBiller {
                 *since = (left <= 0).then(|| since.unwrap_or_else(afd_core::clock::now));
             }
         }
-        if let Some(held) = state.holds.get_mut(&settlement.work) {
-            held.captured += total;
-        }
         receipt.charged = Nanos::from_i64(total);
         receipt.taken = receipt.charged;
         Ok(receipt)
-    }
-
-    async fn release(&self, work: &WorkKey, why: Release) -> Result<()> {
-        let mut state = self.lock();
-        state.releases.push((work.clone(), why));
-        if let Some(held) = state.holds.get_mut(work) {
-            held.released = true;
-        }
-        Ok(())
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {
@@ -190,23 +127,10 @@ impl Biller for RecordingBiller {
         let index = state
             .tenant(&payer.tenant)
             .ok_or_else(billing_wallet_missing)?;
-        let held = state
-            .holds
-            .values()
-            .filter(|held| held.tenant_index == index && !held.released)
-            .map(|held| (held.ceiling - held.captured).max(0))
-            .sum();
         Ok(Balance {
             balance: Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default()),
-            held: Nanos::from_i64(held),
+            unsettled: Nanos::ZERO,
             exhausted_at: state.exhausted_at.get(index).copied().flatten(),
         })
-    }
-}
-
-const fn held_answer(ceiling: i64, captured: i64) -> Hold {
-    Hold::Held {
-        ceiling: Nanos::from_i64(ceiling),
-        captured: Nanos::from_i64(captured),
     }
 }

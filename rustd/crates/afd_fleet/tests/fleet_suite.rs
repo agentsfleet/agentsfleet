@@ -56,6 +56,8 @@ mod view_heartbeat;
 
 #[path = "integration_activity_publish.rs"]
 mod integration_activity_publish;
+#[path = "integration_billing_relay.rs"]
+mod integration_billing_relay;
 #[path = "integration_billing_sweep.rs"]
 mod integration_billing_sweep;
 #[path = "integration_billing_sweep_faults.rs"]

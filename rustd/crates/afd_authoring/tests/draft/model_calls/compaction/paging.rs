@@ -74,9 +74,9 @@ async fn an_older_runner_cannot_pay_for_a_summary_it_cannot_resume() {
 }
 
 async fn financial_state(f: &Fixture) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT balance_nanos,(SELECT count(*) FROM billing.holds WHERE tenant_id=$1::uuid),(SELECT COALESCE(sum(captured_nanos),0)::bigint FROM billing.holds WHERE tenant_id=$1::uuid) FROM billing.wallets WHERE tenant_id=$1::uuid")
+    sqlx::query_as("SELECT balance_nanos,(SELECT count(*) FROM billing.usage_lines WHERE tenant_id=$1::uuid),(SELECT COALESCE(sum(charged_nanos),0)::bigint FROM billing.usage_lines WHERE tenant_id=$1::uuid) FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str()).fetch_one(&mut *f.connection().await).await
-        .expect("wallet balance, hold count and captured charges")
+        .expect("wallet balance, line count and logged charges")
 }
 
 #[tokio::test]

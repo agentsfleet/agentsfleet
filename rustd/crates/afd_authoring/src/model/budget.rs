@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use afd_billing::biller::{Account, Biller, Hold, Reservation, WorkKey};
+use afd_billing::biller::{Account, Ask, Biller, Funds, WorkKey};
 use afd_billing::{Nanos, RUN_NANOS_PER_SEC};
 use afd_core::id::Uuid7;
 use afd_credential::provider::RegisteredModel;
@@ -57,14 +57,15 @@ fn ceil(tokens: i64, rate: i64) -> Result<i64> {
         .map_err(|_overflow| ErrorKind::Balance.into())
 }
 
-/// The claim gate: whether `tenant`'s balance, less every open hold, covers
-/// `required` before an attempt is issued.
+/// The claim gate: whether `tenant`'s balance, less every line it logged and
+/// the relay has not yet charged, covers `required` before an attempt is
+/// issued.
 ///
 /// Read on the claim's own transaction from the ledger's tables, never through
 /// a second pooled connection, which would starve the pool under concurrent
-/// claims. The gate only refuses early; the hold placed after commit is what
-/// the biller decides, and the first model call refuses if that hold is short.
-/// A tenant with no wallet is refused, as before the biller.
+/// claims. Nothing is set aside: each model call checks again, and refuses if
+/// the balance can no longer fund the attempt. A tenant with no wallet is
+/// refused.
 pub(crate) async fn gate(
     connection: &mut PgConnection,
     tenant: &Uuid7,
@@ -72,11 +73,7 @@ pub(crate) async fn gate(
 ) -> Result<()> {
     match afd_billing::ledger::balance(&mut *connection, tenant).await {
         Ok(balance) => {
-            let available = balance
-                .balance
-                .as_i64()
-                .saturating_sub(balance.held.as_i64());
-            if available < required {
+            if balance.left().as_i64() < required {
                 return Err(ErrorKind::Balance.into());
             }
             Ok(())
@@ -86,55 +83,41 @@ pub(crate) async fn gate(
     }
 }
 
-/// Re-establish the current reservation before a renewal, outside its transaction.
-pub(crate) async fn held(drafts: &Drafts, runner: &Uuid7, lease: &Uuid7) -> Result<()> {
+/// Whether the attempt behind `lease` is still funded, checked before a
+/// renewal and outside its transaction.
+pub(crate) async fn funded(drafts: &Drafts, runner: &Uuid7, lease: &Uuid7) -> Result<()> {
     let attempt = {
         let mut connection = drafts.database.acquire().await?;
         guard::peek(&mut connection, runner, lease).await
     };
     match attempt {
-        Ok(attempt) => hold(drafts.biller.as_ref(), &attempt).await,
+        Ok(attempt) => covers(drafts.biller.as_ref(), &attempt).await,
         Err(_unreadable) => Ok(()),
     }
 }
 
-/// The attempt's hold, raised to its reserved ceiling before more is spent.
+/// Whether the payer can still fund the attempt's whole bound.
 ///
-/// Called at renewal and before every model call. The ceiling is the bound the
-/// claim reserved, so a repeat is a no-op unless the hold was never placed;
-/// [`Hold::Short`] means the balance can no longer fund the attempt, and
-/// [`Hold::Closed`] means a report already released it.
-pub(crate) async fn hold(biller: &dyn Biller, attempt: &Attempt) -> Result<()> {
+/// Called at renewal and before every model call. The attempt logs its lines
+/// only when it reports, so its own spend is not yet among the payer's
+/// unsettled lines and the bound is asked in full; [`Funds::Short`] means the
+/// balance can no longer fund the attempt.
+pub(crate) async fn covers(biller: &dyn Biller, attempt: &Attempt) -> Result<()> {
     if attempt.reserved_nanos < bound(&attempt.model_snapshot)? {
         return Err(ErrorKind::Balance.into());
     }
-    let ask = reservation(
-        attempt.id.clone(),
-        &attempt.tenant_id,
-        &attempt.workspace_id,
-        attempt.reserved_nanos,
-    );
-    match biller.reserve(&ask).await {
-        Ok(Hold::Held { .. } | Hold::Unconfirmed) => Ok(()),
-        Ok(Hold::Short { .. } | Hold::Closed) => Err(ErrorKind::Balance.into()),
+    let ask = Ask {
+        work: WorkKey::AuthoringAttempt(attempt.id.clone()),
+        payer: Account {
+            tenant: attempt.tenant_id.clone(),
+            workspace: attempt.workspace_id.clone(),
+        },
+        next: Nanos::from_i64(attempt.reserved_nanos),
+    };
+    match biller.check(&ask).await {
+        Ok(Funds::Covered | Funds::Unconfirmed) => Ok(()),
+        Ok(Funds::Short { .. }) => Err(ErrorKind::Balance.into()),
         Err(fault) if fault.is_wallet_missing() => Err(ErrorKind::Balance.into()),
         Err(fault) => Err(fault.into()),
-    }
-}
-
-/// The reservation an attempt holds: up to `ceiling` for its whole run.
-pub(crate) fn reservation(
-    attempt: Uuid7,
-    tenant: &Uuid7,
-    workspace: &Uuid7,
-    ceiling: i64,
-) -> Reservation {
-    Reservation {
-        work: WorkKey::AuthoringAttempt(attempt),
-        payer: Account {
-            tenant: tenant.clone(),
-            workspace: workspace.clone(),
-        },
-        ceiling: Nanos::from_i64(ceiling),
     }
 }

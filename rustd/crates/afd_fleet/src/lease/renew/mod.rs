@@ -110,8 +110,8 @@ impl Leases {
     /// atomically.
     ///
     /// The line is logged inside the transaction that advanced the deadlines,
-    /// so a renewal and what it cost commit together; the caller settles it
-    /// through the biller after commit.
+    /// so a renewal and what it cost commit together; the billing relay
+    /// settles it.
     ///
     /// # Errors
     /// Reports an entropy source that could not produce the line's
@@ -278,13 +278,7 @@ impl Plane {
             Renewed::Extended {
                 expires_at,
                 settlement,
-            } => {
-                let charged = usage::charged(settlement.as_deref());
-                if let Some(settled) = settlement.as_deref() {
-                    self.settle_usage(settled).await;
-                }
-                Ok((expires_at, charged))
-            }
+            } => Ok((expires_at, usage::charged(settlement.as_deref()))),
             Renewed::MaxRuntime => Err(lease_max_runtime()),
             Renewed::Lost => Err(lease_lost()),
         }

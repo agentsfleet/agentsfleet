@@ -223,8 +223,8 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     fixtures.cleanup().await;
 }
 
-/// Admission moves no money: the gates read, and the lease's hold and usage
-/// are the biller's once the lease is issued.
+/// Admission moves no money: the gates read, and the lease's usage is the
+/// relay's to charge once the lease runs.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_admitted_run_is_charged_nothing_at_admission() {

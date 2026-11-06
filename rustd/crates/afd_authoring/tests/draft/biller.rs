@@ -3,42 +3,35 @@
 //!
 //! A failing call goes to the same ledger over a pool nobody answers, so the
 //! fault a proof sees is the transport error production would see, not a value
-//! the fixture invented. `Short` is the one invented answer: a balance that moved
-//! between a gate and its hold, which no single-threaded fixture can race into.
+//! the fixture invented.
 
-use afd_billing::biller::{
-    Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey,
-};
+use afd_billing::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
 use afd_billing::ledger::LedgerBiller;
 use afd_db::{Db, test_util::unreachable_db};
 use std::sync::Arc;
 
-/// How the fixture biller answers a reservation.
+/// How the fixture biller answers a funds check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Reserve {
+pub(super) enum Check {
     /// The real ledger's answer.
     Ledger,
     /// The ledger lost its datastore.
     Down,
-    /// The balance cannot cover the ask any more.
-    Short,
 }
 
 /// The calls a [`Faulty`] biller fails; every other call reaches the ledger.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Faults {
-    pub(super) reserve: Reserve,
+    pub(super) check: Check,
     pub(super) settle: bool,
-    pub(super) release: bool,
     pub(super) balance: bool,
 }
 
 impl Faults {
     /// Nothing fails.
     pub(super) const NONE: Self = Self {
-        reserve: Reserve::Ledger,
+        check: Check::Ledger,
         settle: false,
-        release: false,
         balance: false,
     };
 }
@@ -67,23 +60,15 @@ impl Faulty {
 
 #[async_trait::async_trait]
 impl Biller for Faulty {
-    async fn reserve(&self, ask: &Reservation) -> afd_billing::Result<Hold> {
-        match self.faults.reserve {
-            Reserve::Ledger => self.ledger.reserve(ask).await,
-            Reserve::Down => self.down.reserve(ask).await,
-            Reserve::Short => Ok(Hold::Short {
-                available: afd_billing::Nanos::ZERO,
-                asked: ask.ceiling,
-            }),
+    async fn check(&self, ask: &Ask) -> afd_billing::Result<Funds> {
+        match self.faults.check {
+            Check::Ledger => self.ledger.check(ask).await,
+            Check::Down => self.down.check(ask).await,
         }
     }
 
     async fn settle(&self, settlement: &Settlement) -> afd_billing::Result<Receipt> {
         self.pick(self.faults.settle).settle(settlement).await
-    }
-
-    async fn release(&self, work: &WorkKey, why: Release) -> afd_billing::Result<()> {
-        self.pick(self.faults.release).release(work, why).await
     }
 
     async fn balance(&self, payer: &Account) -> afd_billing::Result<Balance> {
