@@ -150,50 +150,6 @@ async fn continuation_without_recovery_checkpoint_settles_but_never_wakes() {
     .await;
 }
 
-/// Makes the held lease's own admission the task's generation-1 continuation.
-const AS_CONTINUATION: &str = "UPDATE fleet.admissions SET producer = 'task_continuation', \
-    task_id = $2::uuid, task_generation = 1 WHERE id = $1::uuid";
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_report_that_advances_its_task_settles_its_row_once() {
-    exercise(async |case| {
-        let task = task(case, TaskDisposition::Blocked).await;
-        let task_id = task.task.task_id.clone();
-        sqlx::query(AS_CONTINUATION)
-            .bind(&case.held.event_id)
-            .bind(&task_id)
-            .execute(
-                &mut *case
-                    .held
-                    .fixtures
-                    .database
-                    .acquire()
-                    .await
-                    .expect("fixture"),
-            )
-            .await
-            .expect("the report's own row is the task's continuation");
-        let fleet = case.scope.fleet_id.as_str();
-        let before = case.held.fixtures.backlog_count(fleet).await;
-        let report = request(case, Some(task));
-        assert!(
-            case.tasks
-                .prepare_report(case.lease(), &report)
-                .await
-                .expect("native blocked evidence")
-                .is_some()
-        );
-        settle(case, &report, &task_id, "prerequisite_unavailable").await;
-        assert_eq!(
-            case.held.fixtures.backlog_count(fleet).await,
-            before - 1,
-            "the report settles its own row once, and retire finds it settled"
-        );
-    })
-    .await;
-}
-
 async fn assert_accounted(case: &Case, task_id: &str, reason: &str) {
     let stored: (String, i64) = sqlx::query_as(
         "SELECT t.status_reason,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2::uuid) FROM fleet.tasks t WHERE t.id=$1::uuid",

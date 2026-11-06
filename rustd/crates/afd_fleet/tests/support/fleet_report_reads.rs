@@ -115,18 +115,6 @@ impl Fixtures {
         .expect("the admission settlement read must run")
     }
 
-    /// The fleet's trigger-kept count of unsettled admissions.
-    pub(crate) async fn backlog_count(&self, fleet: &str) -> i64 {
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar(
-            "SELECT unsettled_count FROM fleet.admission_backlogs WHERE fleet_id = $1::uuid",
-        )
-        .bind(fleet)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the backlog count read must run")
-    }
-
     /// Ends an event out of band, as an earlier delivery of the same logical
     /// event already did.
     ///

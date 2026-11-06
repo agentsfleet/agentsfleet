@@ -89,7 +89,7 @@ activation:     Admissions::stage runs the same statement on the caller's transa
 | `docs/v2/pending/M242_001_P1_API_INFRA_OBS_ONE_STATEMENT_MESSAGE_INTAKE.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
 | `schema/2700_fleet_admission_backlogs.sql` | CREATE | §1: placeholder slot, renumbered from `origin/main` at CHORE(open) because PR #803 takes 2190-2690 |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | §1: registers the slot |
-| `rustd/crates/afd_db/tests/integration_migrate/roles.rs` | EDIT | §1: the grant matrix row |
+| `rustd/crates/afd_db/tests/integration_migrate/roles.rs`, `integration_migrate/backfill.rs`, `integration_migrate/mod.rs` | EDIT, CREATE | §1: the grant matrix row; the backfill test |
 | `rustd/crates/afd_admission/src/sql/admit_one.sql` | CREATE | §2: the one statement |
 | `rustd/crates/afd_admission/src/sql/insert_admission.sql`, `fleet_budget.sql`, `select_installed_policy.sql`, `select_repeated_on_fleet.sql` | DELETE | §2: folded into `admit_one.sql` |
 | `rustd/crates/afd_admission/src/sql/mod.rs`, `stage/policy.rs` | EDIT, DELETE | §2: constants and the policy step go |
@@ -150,19 +150,19 @@ Slot `schema/2700_fleet_admission_backlogs.sql` creates `fleet.admission_backlog
 - An `AFTER INSERT` row trigger on `fleet.admissions` upserts the fleet's row and adds one.
 - A deferred constraint trigger, `AFTER UPDATE OF settled_at` when the old value is NULL and the new one is not, subtracts one at commit.
 
-The slot has no backfill: it ships before production, and the deploy resets dev data, so no unsettled admission predates the triggers (Indy, Discovery). `unsettled_count` defaults to zero. `api_runtime` gets `SELECT`, `INSERT` on `fleet_id`, `created_at` and `updated_at`, and `UPDATE` on `updated_at` only, so only the triggers move the count. The slot comment names its reader (`admit_one.sql`) and its consistency rule (SQL-ONEFACT's trigger-kept aggregate). It also says why this is not a `fleet.fleets` column: a report's commit would then wait on any revision install holding the fleet row `FOR UPDATE`.
+The slot creates both triggers before it backfills. Creating a trigger locks `fleet.admissions` against inserts and updates until the slot commits, so no concurrent write falls between the backfill and the triggers. `unsettled_count` defaults to zero. `api_runtime` gets `SELECT`, `INSERT` on `fleet_id`, `created_at` and `updated_at`, and `UPDATE` on `updated_at` only, so only the triggers move the count. The slot comment names its reader (`admit_one.sql`) and its consistency rule (SQL-ONEFACT's trigger-kept aggregate). It also says why this is not a `fleet.fleets` column: a report's commit would then wait on any revision install holding the fleet row `FOR UPDATE`.
 
 **Implementation default:** the settle trigger is deferred to commit, because a plain `AFTER` trigger would hold the backlog row from the report's settle statement through its remaining writes (`afd_fleet/src/lease/commit.rs`), stalling the fleet's intake behind every report.
 
-- **Dimension 1.1** — DONE — the count follows inserts and first settles → Test `backlog_count_follows_inserts_and_settles` (integration): three inserts on one fleet, then one settle, read 3 then 2, equal at each step to the fleet's `settled_at IS NULL` row count.
-- **Dimension 1.2** — DONE — a settled row stamped again releases nothing → Test `restamping_a_settled_row_releases_nothing` (integration): `SET settled_at = COALESCE(settled_at, clock_timestamp())` on a settled row leaves 2, not 1.
-- **Dimension 1.3** — DONE — a rolled-back insert leaves the count → Test `a_rolled_back_insert_leaves_the_count` (integration): an insert inside a transaction that rolls back leaves the count and the row total unchanged.
-- **Dimension 1.4** — DONE — the runtime role cannot set the count → Test `runtime_role_cannot_set_the_backlog_count` (integration, under `api_runtime`, SQL-ROLE): `UPDATE … SET unsettled_count = 0`, and an `INSERT` naming `unsettled_count` for a fleet with no row, each fail with SQLSTATE `42501`; the count is unchanged.
-- **Dimension 1.5** — DONE — an open report does not hold intake → Test `an_open_settle_does_not_hold_intake` (integration): a transaction settles a row and stays open; an admission on that fleet returns within 2 s, and a separate autocommit connection sees no session blocked on it (SQL-STATACT); after commit the count drops by one. A plain `AFTER` trigger fails this test.
-- **Dimension 1.6** — CUT — the backfill went with Indy's call (Discovery); the deploy resets dev data instead.
-- **Dimension 1.8** — DONE — an issued obsolete continuation leaves the count → Test `an_issued_obsolete_continuation_is_settled_and_released` (integration): a leased `task_continuation` row, then a generation advance through `continuation::retire`, reads the row settled and the count one lower. The count equals #803's budget predicate over the same fleet. Its late report is refused by the fence guard and bills nothing further (Indy, Discovery).
-- **Dimension 1.9** — DONE — a report that advances its own task still settles its own row once → Test `a_report_that_advances_its_task_settles_its_row_once` (integration): the report's own continuation row is settled by the report, not by `retire`, and the count drops by exactly one.
-- **Dimension 1.7** — DONE — every settle writer releases once → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once` (integration, amended in `settlement.rs`): the rolled-back report leaves the count; the retried report lowers it by exactly one.
+- **Dimension 1.1** — the count follows inserts and first settles → Test `backlog_count_follows_inserts_and_settles` (integration): three inserts on one fleet, then one settle, read 3 then 2, equal at each step to the fleet's `settled_at IS NULL` row count.
+- **Dimension 1.2** — a settled row stamped again releases nothing → Test `restamping_a_settled_row_releases_nothing` (integration): `SET settled_at = COALESCE(settled_at, clock_timestamp())` on a settled row leaves 2, not 1.
+- **Dimension 1.3** — a rolled-back insert leaves the count → Test `a_rolled_back_insert_leaves_the_count` (integration): an insert inside a transaction that rolls back leaves the count and the row total unchanged.
+- **Dimension 1.4** — the runtime role cannot set the count → Test `runtime_role_cannot_set_the_backlog_count` (integration, under `api_runtime`, SQL-ROLE): `UPDATE … SET unsettled_count = 0`, and an `INSERT` naming `unsettled_count` for a fleet with no row, each fail with SQLSTATE `42501`; the count is unchanged.
+- **Dimension 1.5** — an open report does not hold intake → Test `an_open_settle_does_not_hold_intake` (integration): a transaction settles a row and stays open; an admission on that fleet returns within 2 s, and a separate autocommit connection sees no session blocked on it (SQL-STATACT); after commit the count drops by one. A plain `AFTER` trigger fails this test.
+- **Dimension 1.6** — the backfill counts what it finds → Test `backfill_counts_the_unsettled_rows_it_finds` (integration): a database built through the slot before 2700, holding 3 unsettled and 1 settled admission on one fleet, reads 3 once the slot applies.
+- **Dimension 1.8** — an issued obsolete continuation leaves the count → Test `an_issued_obsolete_continuation_is_settled_and_released` (integration): a leased `task_continuation` row, then a generation advance through `continuation::retire`, reads the row settled and the count one lower. The count equals #803's budget predicate over the same fleet. Its late report is refused by the fence guard and bills nothing further (Indy, Discovery).
+- **Dimension 1.9** — a report that advances its own task still settles its own row once → Test `a_report_that_advances_its_task_settles_its_row_once` (integration): the report's own continuation row is settled by the report, not by `retire`, and the count drops by exactly one.
+- **Dimension 1.7** — every settle writer releases once → Test `failed_admission_settlement_rolls_back_the_report_and_retry_settles_once` (integration, amended in `settlement.rs`): the rolled-back report leaves the count; the retried report lowers it by exactly one.
 
 ### §2 — One statement admits, refuses or answers a repeat
 
@@ -337,7 +337,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** the table first, then the statement, then the activation and order proofs, then the route, then the measurement. The slot deploys before the daemon, and the deploy resets dev data, so the triggers count every admission from the first.
+- **Chosen shape:** the table first, then the statement, then the activation and order proofs, then the route, then the measurement. The slot deploys before the daemon. A daemon still on the old code keeps counting rows itself, while the triggers already keep the new table current.
 - **Alternatives considered:**
   - Keep the fleet-row lock inside one statement: rejected, because the count reads the snapshot taken before the lock wait and overshoots under concurrency.
   - The count as a `fleet.fleets` column: rejected, because a report's commit would wait on revision installs.
@@ -368,7 +368,6 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 04:06 PM): chose "Settle them (Recommended)" for #803's obsolete continuations, noting "we are not in production, i donot care about older tasks, so we could even cleanup all the fleeets and test." — context: an obsolete leased continuation is settled when its task generation advances, so the trigger-kept count stays exact; the backfill needs no care for pre-existing tasks, and dev data may be reset.
   > Indy (Nov 06, 2026: 09:50 PM): chose "Amend, skip EGM" — context: the spec is amended at CHORE(open) for #803 and builds without the Elephant-Goldfish Model (EGM) review.
   > Indy (Nov 06, 2026: 09:52 PM): chose "Settle, accept the loss", then "but i thought this is changing in the subsequent? on renew, if so why poke around this" — context: an issued obsolete continuation settles when its generation advances; its late report is refused, so up to one renewal interval of its run time goes unbilled. Release with a marker column was declined as not worth the column before production.
-  > Indy (Nov 06, 2026: 10:14 PM): "If  you yes drop that, what other crap assumptions have you made like this" — context: slot 2700's backfill is dropped; the M242 deploy resets dev data, so no unsettled admission predates the triggers.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — skipped on Indy's call (Owner decisions, 09:50 PM).
 - **Open blockers** — none; Indy answered both on Nov 06 (above).

@@ -10,7 +10,6 @@ mod exhaustion;
 mod fixture;
 mod input_answers;
 mod input_receipts;
-mod obsolete_continuations;
 mod qualification;
 mod read_deadline;
 mod replay_reads;
