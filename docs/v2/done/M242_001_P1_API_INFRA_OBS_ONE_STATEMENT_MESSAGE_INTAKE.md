@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, every message a person, webhook or schedule sends pays this path, and at 10 messages a second per fleet the fleet-row lock is the ceiling
 
@@ -199,7 +199,7 @@ On Indy's laptop, `make bench-steer PROFILE=rig` runs three times on the base re
 
 - **Dimension 5.1** — DONE — statements per steer halve → Test `make bench-steer PROFILE=rig` (integration): `postgres_statements_per_steer` is at most 1.05 in the committed baseline, from about 4.0 on the base.
 - **Dimension 5.2** — DONE — the numbers are median real runs → Test `intake_numbers_recorded` (manual): §M242 lists three base and three branch values for rate, p95 and statements per steer in both shapes, plus the burst's `burst_append_p95_ms` and `burst_refused`; the committed file holds the median run.
-- **Dimension 5.3** — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the four changed architecture pages.
+- **Dimension 5.3** — DONE — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the four changed architecture pages.
 
 ### §6 — Intake runs under the login role's bounds
 
@@ -255,20 +255,20 @@ No event name is added or renamed.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | An accepted message costs one top-level statement (§2) | `make test-integration-rustd` | output holds `an_accepted_message_costs_one_statement ... ok` | P0 | |
-| R2 | 64 concurrent sends to one fleet each land once (§2) | `make test-integration-rustd` | output holds `sixty_four_concurrent_sends_to_one_fleet_each_land_once ... ok` | P0 | |
-| R3 | Claim order equals sequence order (§3) | `make test-integration-rustd` | output holds `a_send_queued_behind_the_fleet_lock_takes_the_later_sequence ... ok` | P0 | |
-| R4 | No per-fleet cap refuses a fleet (§1) | `make test-integration-rustd` | output holds `a_fleet_admits_past_ten_thousand_unsettled ... ok` | P0 | |
-| R5 | The route reads no status before admitting (§4) | `git grep -n ingress_status -- rustd/crates/afd_api_tenant/src/handler/fleet/message_steer` | no output | P0 | |
-| R6 | The folded statements and the per-fleet budget are gone (§1, §2) | `git grep -n -w -e SELECT_REPEATED_ON_FLEET -e SELECT_INSTALLED_POLICY -e FLEET_BUDGET -e INSERT_ADMISSION -e check_fleet_budget -e FLEET_BACKLOG_BUDGET -e fleet_backlog -e BudgetScope -- rustd` | no output | P0 | |
-| R7 | Statements per steer drop to one on the rig (§5) | `jq -e '.measurements.postgres_statements_per_steer <= 1.05' bench/baselines/steer.rig.json` | `true`, exit 0 | P1 | |
-| R8 | The changed pages read clean (§5) | `orly gate verify` | exit 0 | P1 | |
-| R9 | The API login runs under the intake bounds (§6) | `make test-integration-rustd` | output holds `the_api_login_runs_under_the_intake_bounds ... ok` | P0 | |
-| S1 | Lint | `make lint-all` | exit 0 | P0 | |
-| S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Version | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| R1 | An accepted message costs one top-level statement (§2) | `make test-integration-rustd` | output holds `an_accepted_message_costs_one_statement ... ok` | P0 |  ✅ `an_accepted_message_costs_one_statement ... ok` (full lane, Nov 07) |
+| R2 | 64 concurrent sends to one fleet each land once (§2) | `make test-integration-rustd` | output holds `sixty_four_concurrent_sends_to_one_fleet_each_land_once ... ok` | P0 |  ✅ `sixty_four_concurrent_sends_to_one_fleet_each_land_once ... ok` |
+| R3 | Claim order equals sequence order (§3) | `make test-integration-rustd` | output holds `a_send_queued_behind_the_fleet_lock_takes_the_later_sequence ... ok` | P0 |  ✅ `a_send_queued_behind_the_fleet_lock_takes_the_later_sequence ... ok` |
+| R4 | No per-fleet cap refuses a fleet (§1) | `make test-integration-rustd` | output holds `a_fleet_admits_past_ten_thousand_unsettled ... ok` | P0 |  ✅ `a_fleet_admits_past_ten_thousand_unsettled ... ok` |
+| R5 | The route reads no status before admitting (§4) | `git grep -n ingress_status -- rustd/crates/afd_api_tenant/src/handler/fleet/message_steer` | no output | P0 |  ✅ no output |
+| R6 | The folded statements and the per-fleet budget are gone (§1, §2) | `git grep -n -w -e SELECT_REPEATED_ON_FLEET -e SELECT_INSTALLED_POLICY -e FLEET_BUDGET -e INSERT_ADMISSION -e check_fleet_budget -e FLEET_BACKLOG_BUDGET -e fleet_backlog -e BudgetScope -- rustd` | no output | P0 |  ✅ no output |
+| R7 | Statements per steer drop to one on the rig (§5) | `jq -e '.measurements.postgres_statements_per_steer <= 1.05' bench/baselines/steer.rig.json` | `true`, exit 0 | P1 |  ✅ `true` (1.003) |
+| R8 | The changed pages read clean (§5) | `orly gate verify` | exit 0 | P1 |  ✅ `orly gate verify` exit 0 |
+| R9 | The API login runs under the intake bounds (§6) | `make test-integration-rustd` | output holds `the_api_login_runs_under_the_intake_bounds ... ok` | P0 |  ✅ `the_api_login_runs_under_the_intake_bounds ... ok` |
+| S1 | Lint | `make lint-all` | exit 0 | P0 |  ✅ `make lint-all` exit 0, inside `orly gate verify` |
+| S2 | Unit | `make test-unit-all` | exit 0 | P0 |  ✅ Rust unit lanes 1569 + 153 + 3471 passed; `make test-coverage-all` every package gate at 100% |
+| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 |  ⚠️ 1639 passed, 1 failed: `telemetry_boot` needs `/proc`, absent on macOS; Indy's `Orly-Override`, Linux CI runs it |
+| S4 | Version | `make check-version` | exit 0 | P0 |  ✅ `all versions match 0.73.0` |
+| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 |  ✅ `no leaks found` |
 
 ## Dead Code Sweep
 
