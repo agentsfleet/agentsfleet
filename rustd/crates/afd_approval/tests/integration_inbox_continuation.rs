@@ -230,7 +230,6 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
     // A ledger with no room refuses the continuation after the row moved.
     let full = Budgets {
         deployment_backlog: 0,
-        ..Budgets::default()
     };
     let refusing = Inbox::new(
         lane.pool.clone(),

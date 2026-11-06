@@ -26,8 +26,8 @@ use afd_dragonfly::{Dragonfly, FleetStreams};
 
 pub use self::admission::{Admission, Key, Producer, Reply};
 pub use self::backlog::LedgerBacklog;
+pub use self::budget::Budgets;
 use self::budget::Ceiling;
-pub use self::budget::{BudgetScope, Budgets};
 pub use self::confirm::Confirmation;
 pub use self::error::{Error, Result};
 pub use self::repeat::Repeated;

@@ -1,7 +1,7 @@
 //! Activation can commit its fleet transition and admission in one Postgres transaction.
 
-mod insert;
-mod policy;
+pub(crate) mod insert;
+mod verdict;
 
 use crate::{Admission, Admissions, Admitted, Key, Result};
 use afd_core::{clock, id::Uuid7};
@@ -36,7 +36,8 @@ impl Admissions {
     /// producer identity and rings the doorbell after the commit.
     ///
     /// # Errors
-    /// Preserves a failed statement or the deployment ceiling's refusal.
+    /// Preserves a failed statement, a fleet outside the caller's workspace,
+    /// a setup needing review, or the deployment ceiling's refusal.
     pub async fn stage(
         &self,
         connection: &mut PgConnection,
@@ -53,7 +54,10 @@ impl Admissions {
                 &prepared.admission,
                 key,
                 &prepared.admission.payload_digest(),
-                prepared.estimate,
+                insert::Gates {
+                    estimate: prepared.estimate,
+                    runnable: None,
+                },
             )
             .await?;
         if ledger.inserted {

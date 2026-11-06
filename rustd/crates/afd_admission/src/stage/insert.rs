@@ -1,14 +1,28 @@
-//! The shared ledger statement runs on the caller's transaction without external I/O.
+//! The one admission statement, on whatever connection the caller holds.
 
-use crate::admit::{Ledger, ReplyBinds};
-use crate::error::{Error, ErrorKind, Result, query};
-use crate::{Admission, Admissions, BudgetScope, sql};
 use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
 use sqlx::PgConnection;
 
-const CONTEXT_ADMIT: &str = "record staged admission";
+use super::verdict::{self, Answer, Bound};
+use crate::admit::{Ledger, ReplyBinds};
+use crate::error::{Result, query};
+use crate::{Admission, Admissions, sql};
+
+const CONTEXT_ADMIT: &str = "admit one message";
+
+/// What a new key is checked against beside the fleet's own row.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Gates {
+    /// The sampled deployment estimate, compared with the ceiling.
+    pub(crate) estimate: u64,
+    /// The status a new key needs; `None` admits a fleet in any status, as
+    /// activation does while the fleet is still installing.
+    pub(crate) runnable: Option<FleetStatus>,
+}
 
 impl Admissions {
+    /// Runs `admit_one.sql` and names its answer.
     pub(crate) async fn insert_on(
         &self,
         connection: &mut PgConnection,
@@ -16,12 +30,12 @@ impl Admissions {
         admission: &Admission<'_>,
         key: &str,
         digest: &str,
-        estimate: u64,
+        gates: Gates,
     ) -> Result<Ledger> {
-        super::policy::check(connection, admission, key).await?;
-        self.check_fleet_budget(connection, admission, key).await?;
+        let Gates { estimate, runnable } = gates;
+        let limit = self.budgets.deployment_backlog;
         let reply = ReplyBinds::from(admission.reply);
-        sqlx::query_as::<_, Ledger>(sql::INSERT_ADMISSION)
+        let answer = sqlx::query_as::<_, Answer>(sql::ADMIT_ONE)
             .bind(row_id.as_str())
             .bind(admission.fleet)
             .bind(admission.workspace)
@@ -31,19 +45,23 @@ impl Admissions {
             .bind(admission.actor)
             .bind(admission.event_type.as_str())
             .bind(admission.request_json)
-            .bind(i64::try_from(self.budgets.deployment_backlog).unwrap_or(i64::MAX))
+            .bind(i64::try_from(limit).unwrap_or(i64::MAX))
             .bind(i64::try_from(estimate).unwrap_or(i64::MAX))
             .bind(reply.connector)
             .bind(reply.address)
             .bind(reply.inherited.as_ref().map(Uuid7::as_str))
-            .fetch_optional(&mut *connection)
+            .bind(afd_fleet_runtime::definition::POLICY_SEMANTICS)
+            .bind(runnable.map(FleetStatus::as_str))
+            .fetch_one(&mut *connection)
             .await
-            .map_err(query(CONTEXT_ADMIT))?
-            .ok_or_else(|| {
-                Error::from(ErrorKind::OverBudget {
-                    scope: BudgetScope::Deployment,
-                    limit: self.budgets.deployment_backlog,
-                })
-            })
+            .map_err(query(CONTEXT_ADMIT))?;
+        verdict::decide(
+            &answer,
+            Bound {
+                runnable,
+                ceiling_open: estimate < limit,
+                limit,
+            },
+        )
     }
 }

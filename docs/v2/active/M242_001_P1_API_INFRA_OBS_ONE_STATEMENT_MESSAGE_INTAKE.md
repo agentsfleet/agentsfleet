@@ -93,6 +93,7 @@ activation: Admissions::stage runs the same statement on the caller's transactio
 | `rustd/crates/afd_fleet_lifecycle/src/lib.rs` | EDIT | §2: the runnable-status pin test |
 | `rustd/crates/afd_fleet/tests/integration_ledger_queue/ordering.rs`, `delivery.rs` | EDIT | §3: claim order under the fleet lock; the delivery test names the fleet lock, not a budget |
 | `rustd/crates/afd_authoring/tests/draft/creation/stages.rs` | EDIT | §1: a blocked activation is refused by the deployment ceiling |
+| `rustd/crates/afd_api/tests/authoring/saving/initial_run.rs`, `rustd/crates/afd_approval/tests/integration_inbox_continuation.rs` | EDIT | §1: `Budgets` has one field, so their struct updates go |
 | `rustd/crates/afd_events/src/steer/mod.rs`, `src/error/mod.rs` | EDIT | §4: `admit_runnable`; `Steer::replayed` goes; refusal accessors |
 | `rustd/crates/afd_events/tests/integration_intake_cost.rs`, `events_suite.rs`, `integration_budgets.rs`, `integration_steer_races.rs`, `integration_steer_replay.rs` | CREATE, EDIT | §1, §2, §4 tests; callers of `Steer::replayed` move to `append` |
 | `rustd/crates/afd_http/src/services/event.rs` | EDIT | §4: `replayed` leaves `FleetSteering` |
@@ -139,10 +140,10 @@ No schema slot changes: the statement reads and writes existing columns.
 
 `FLEET_BACKLOG_BUDGET`, `Budgets::fleet_backlog`, `check_fleet_budget` and `fleet_budget.sql` are deleted. `BudgetScope` goes with them, because one scope is left: `OverBudget` carries the deployment ceiling's limit alone, and its log line keeps its event name. The deployment ceiling (`DEPLOYMENT_BACKLOG_BUDGET`, sampled through `select_backlog.sql`) still refuses new work at 100,000 unsettled admissions. Tests that set `fleet_backlog` move to `deployment_backlog`, or go where the deployment case is already covered. `datastore_scaling.md` drops its per-fleet budget sentence.
 
-- **Dimension 1.1** — a fleet admits past the old cap → Test `a_fleet_admits_past_ten_thousand_unsettled` (integration): one `INSERT … SELECT generate_series` seeds 10,000 unsettled rows on one fleet; the next `admit` is accepted.
-- **Dimension 1.2** — the default budgets name one ceiling → Test `budgets_default_to_the_deployment_ceiling` (unit, amended in `src/tests/mod.rs`): `Budgets::default().deployment_backlog` is `DEPLOYMENT_BACKLOG_BUDGET`.
-- **Dimension 1.3** — an initial run refused at the ceiling still activates blocked → Test `an_initial_run_over_the_deployment_backlog_budget_activates_blocked` (integration, renamed in `stages.rs`): `deployment_backlog: 0` activates the fleet blocked, as `fleet_backlog: 0` did.
-- **Dimension 1.4** — a replay passes a spent ceiling → Test `test_replay_bypasses_the_deployment_ceiling` (integration, renamed in `integration_steer_replay.rs`): with the ceiling spent, a resent `operation_id` answers 202 with its event.
+- **Dimension 1.1** — DONE — a fleet admits past the old cap → Test `a_fleet_admits_past_ten_thousand_unsettled` (integration): one `INSERT … SELECT generate_series` seeds 10,000 unsettled rows on one fleet; the next `admit` is accepted.
+- **Dimension 1.2** — DONE — the default budgets name one ceiling → Test `budgets_default_to_the_deployment_ceiling` (unit, amended in `src/tests/mod.rs`): `Budgets::default().deployment_backlog` is `DEPLOYMENT_BACKLOG_BUDGET`.
+- **Dimension 1.3** — DONE — an initial run refused at the ceiling still activates blocked → Test `an_initial_run_over_the_deployment_backlog_budget_activates_blocked` (integration, renamed in `stages.rs`): `deployment_backlog: 0` activates the fleet blocked, as `fleet_backlog: 0` did.
+- **Dimension 1.4** — DONE — a replay passes a spent ceiling → Test `test_replay_bypasses_the_deployment_ceiling` (integration, renamed in `integration_steer_replay.rs`): with the ceiling spent, a resent `operation_id` answers 202 with its event.
 
 ### §2 — One statement admits, refuses or answers a repeat
 
@@ -168,9 +169,9 @@ The statement's steps are common table expressions (CTEs), each read by the next
 - **Dimension 2.4** — racing repeats admit one row → Test `test_a_hundred_racing_repeats_admit_one_row` (integration, TEST-CONTEND): 100 sends of one key from a barrier leave one row; all 100 answers name the same event.
 - **Dimension 2.5** — a revision install cannot slip under an admission → Test `an_admission_waiting_on_a_revision_install_never_lands_under_the_old_policy` (integration): a transaction holds the fleet row `FOR UPDATE` and makes a foreign-marker revision head; an admission blocks behind it; after the commit it is refused with `UZ-AUTHOR-009` and no row lands.
 - **Dimension 2.6** — a foreign workspace records nothing → Test `an_invalid_fleet_scope_records_nothing_and_sends_no_notification` (integration, amended): the refusal is `FleetAbsent`; no admission row and no `SPUBLISH`.
-- **Dimension 2.7** — the refusal order → Test `verdict_names_the_first_refusal_in_order` (unit): absent with a stored row answers absent; a stored row on a stopped fleet answers the repeat; stopped with a foreign marker answers not runnable; a foreign marker with the ceiling closed answers policy; a closed ceiling on a current fleet answers the deployment ceiling.
+- **Dimension 2.7** — DONE — the refusal order → Test `verdict_names_the_first_refusal_in_order` (unit): absent with a stored row answers absent; a stored row on a stopped fleet answers the repeat; stopped with a foreign marker answers not runnable; a foreign marker with the ceiling closed answers policy; a closed ceiling on a current fleet answers the deployment ceiling.
 - **Dimension 2.8** — only `active` is runnable → Test `only_active_is_runnable` (unit): `FleetStatus::ALL` filtered by `is_runnable` is `[Active]`, so a second runnable status fails here before the bound spelling goes stale.
-- **Dimension 2.9** — the deployment gate still refuses new work and answers a retry → Test `a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry` (integration, unchanged): with the estimate at its ceiling, a new key is refused over capacity, and the earlier key is answered with its event.
+- **Dimension 2.9** — DONE — the deployment gate still refuses new work and answers a retry → Test `a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry` (integration, unchanged): with the estimate at its ceiling, a new key is refused over capacity, and the earlier key is answered with its event.
 
 ### §3 — The shared transaction and claim order hold under the fleet lock
 

@@ -131,19 +131,20 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             query("admitting an event")(sqlx::Error::RowNotFound),
         ),
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
-        (
-            "over budget",
-            ErrorKind::OverBudget {
-                scope: crate::BudgetScope::Fleet,
-                limit: 1,
-            }
-            .into(),
-        ),
+        ("over budget", ErrorKind::OverBudget { limit: 1 }.into()),
         (
             "exhausted",
             query("admitting an event")(sqlx::Error::Database(Box::new(DiskFull))),
         ),
         ("policy", ErrorKind::Policy.into()),
+        ("fleet absent", ErrorKind::FleetAbsent.into()),
+        (
+            "not runnable",
+            ErrorKind::NotRunnable {
+                status: afd_fleet_lifecycle::FleetStatus::Paused,
+            }
+            .into(),
+        ),
     ]
 }
 

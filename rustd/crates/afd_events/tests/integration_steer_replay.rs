@@ -36,9 +36,6 @@ const FRESH_OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a02";
 /// The same operation id's message, changed after the first send.
 pub(crate) const CHANGED_JSON: &str = r#"{"message":"redeploy production"}"#;
 
-/// A fleet budget one entry deep: the first admission spends it.
-const ONE_ENTRY: u64 = 1;
-
 /// The warn a refused reuse leaves, and the fields it must carry.
 const CONFLICT_EVENT: &str = "steer_operation_conflict";
 const FIELD_EVENT: &str = "event";
@@ -67,18 +64,25 @@ async fn test_operation_ids_are_scoped_to_the_fleet() {
     assert_eq!(admissions_for(&second, OPERATION).await, 1);
 }
 
-/// A repeat is answered despite a spent fleet budget; new work is still refused.
+/// A ledger whose deployment ceiling is spent: nothing new is admitted.
+///
+/// A ceiling of zero rather than a small count, because the estimate samples
+/// the whole lane's rows and a parallel suite could cross a count first.
+fn spent(lane: &EventsLane) -> Steer {
+    Steer::new(lane.admissions().with_budgets(Budgets {
+        deployment_backlog: 0,
+    }))
+}
+
+/// A repeat is answered despite a spent deployment ceiling; new work is still
+/// refused (`M242_001` Dimension 1.4).
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_replay_bypasses_fleet_budget() {
+async fn test_replay_bypasses_the_deployment_ceiling() {
     let lane = EventsLane::open().await;
-    let steer = Steer::new(lane.admissions().with_budgets(Budgets {
-        fleet_backlog: ONE_ENTRY,
-        deployment_backlog: u64::MAX,
-    }));
-
-    let admitted = append_with(&steer, &lane, Some(OPERATION)).await;
-    // The budget is now spent. The retry is the same message, already
+    let admitted = append_with(&Steer::new(lane.admissions()), &lane, Some(OPERATION)).await;
+    let steer = spent(&lane);
+    // The ceiling is now spent. The retry is the same message, already
     // accepted, and must be answered as such: the first event, marked a replay.
     let retried = steer
         .append(
@@ -159,19 +163,15 @@ async fn test_replay_bypasses_fleet_budget() {
     );
 }
 
-/// Under a spent budget, the same id with a changed message is still a
+/// Under a spent ceiling, the same id with a changed message is still a
 /// conflict: the capacity refusal the sender would retry must not stand in for
 /// the 409 that tells it to stop.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_drift_under_spent_budget_is_a_conflict() {
     let lane = EventsLane::open().await;
-    let steer = Steer::new(lane.admissions().with_budgets(Budgets {
-        fleet_backlog: ONE_ENTRY,
-        deployment_backlog: u64::MAX,
-    }));
-
-    append_with(&steer, &lane, Some(OPERATION)).await;
+    append_with(&Steer::new(lane.admissions()), &lane, Some(OPERATION)).await;
+    let steer = spent(&lane);
     let refused = steer
         .append(
             &lane.fleet,

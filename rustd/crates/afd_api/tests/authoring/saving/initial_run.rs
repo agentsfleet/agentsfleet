@@ -18,7 +18,6 @@ const RUN_NOW: &str = "Investigate the failed build.";
 async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
     let case = Case::with_budgets(afd_admission::Budgets {
         deployment_backlog: 0,
-        ..afd_admission::Budgets::default()
     })
     .await;
     case.fund().await;

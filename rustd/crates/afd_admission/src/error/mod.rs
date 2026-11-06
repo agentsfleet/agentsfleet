@@ -39,6 +39,16 @@ pub(crate) enum ErrorKind {
     /// A setup written under another build's semantics needs explicit review.
     #[error("the selected setup requires policy review")]
     Policy,
+
+    /// No fleet with this id belongs to the caller's workspace.
+    #[error("no such fleet in this workspace")]
+    FleetAbsent,
+
+    /// The fleet exists but its status takes no new work.
+    #[error("the fleet is {} and takes no new work", status.as_str())]
+    NotRunnable {
+        status: afd_fleet_lifecycle::FleetStatus,
+    },
     /// The pool would not give a connection.
     ///
     /// The retryable refusal: nothing was committed, and a producer that
@@ -56,12 +66,9 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    /// A budget is spent, and the producer is told to come back later.
-    #[error("the {scope} admission budget of {limit} is spent")]
-    OverBudget {
-        scope: crate::BudgetScope,
-        limit: u64,
-    },
+    /// The deployment ceiling is spent, and the producer is told to come back later.
+    #[error("the deployment admission budget of {limit} is spent")]
+    OverBudget { limit: u64 },
 
     /// Postgres refused for want of a resource: disk, memory, connections.
     ///
@@ -89,6 +96,14 @@ impl Error {
             ErrorKind::Policy => (
                 error_code::AUTHORING_POLICY,
                 afd_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
+            ),
+            ErrorKind::FleetAbsent => (
+                error_code::AGENTSFLEET_NOT_FOUND,
+                afd_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
+            ),
+            ErrorKind::NotRunnable { .. } => (
+                error_code::AGENTSFLEET_PAUSED_INGRESS,
+                afd_core::problem::Problem::of(error_code::AGENTSFLEET_PAUSED_INGRESS).title(),
             ),
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
@@ -131,6 +146,21 @@ impl Error {
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. } => true,
             _reachable => false,
+        }
+    }
+
+    /// Whether no fleet with the id belongs to the caller's workspace.
+    #[must_use]
+    pub fn is_fleet_absent(&self) -> bool {
+        matches!(self.kind(), ErrorKind::FleetAbsent)
+    }
+
+    /// The status of a fleet that takes no new work, when that is the refusal.
+    #[must_use]
+    pub fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
+        match self.kind() {
+            ErrorKind::NotRunnable { status } => Some(*status),
+            _other => None,
         }
     }
 

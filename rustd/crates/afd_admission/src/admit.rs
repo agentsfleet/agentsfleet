@@ -3,24 +3,24 @@
 use afd_core::clock;
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
+use afd_fleet_lifecycle::FleetStatus;
 use afd_observability::metrics::label::fleet::AdmissionOutcome;
 use afd_observability::producers::fleet::admission as metrics;
 use jiff::Timestamp;
-use sqlx::Acquire as _;
 
 use crate::error::{Error, Result};
 use crate::{Admission, Admissions, Admitted, Key, Repeated, Reply};
 
-/// A [`Reply`] as the three parameters `INSERT_ADMISSION` takes it in.
+/// A [`Reply`] as the three parameters `ADMIT_ONE` takes it in.
 ///
 /// At most one is set, which is what lets the statement `COALESCE` them
 /// without ever mixing a stated half with an inherited one.
 pub(crate) struct ReplyBinds<'a> {
-    /// `$13`, a stated connector.
+    /// `$12`, a stated connector.
     pub(crate) connector: Option<&'a str>,
-    /// `$14`, a stated address.
+    /// `$13`, a stated address.
     pub(crate) address: Option<&'a str>,
-    /// `$15`, the row the inherited event was admitted as.
+    /// `$14`, the row the inherited event was admitted as.
     pub(crate) inherited: Option<Uuid7>,
 }
 
@@ -43,12 +43,10 @@ impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
     }
 }
 
-/// What the ledger answered for one admission, as `INSERT_ADMISSION`'s
-/// `RETURNING` names it.
-#[derive(sqlx::FromRow)]
+/// What the ledger answered for one admission.
+#[derive(Debug)]
 pub(crate) struct Ledger {
     /// The row the key holds, this statement's or an earlier one's.
-    #[sqlx(flatten)]
     pub(crate) stored: Repeated,
     /// Whether THIS statement created the row.
     pub(crate) inserted: bool,
@@ -62,10 +60,30 @@ impl Admissions {
     /// retrying work this daemon already holds has nothing to fix.
     ///
     /// # Errors
-    /// Reports a database that would not commit the row, and a budget that
-    /// is spent — both the retryable refusal, with no acceptance recorded. A lost
-    /// wake notification leaves the committed admission available to every poll.
+    /// Reports a database that would not commit the row, and a spent
+    /// deployment ceiling — both the retryable refusal, with no acceptance
+    /// recorded — plus a fleet outside the caller's workspace and a setup
+    /// needing review. A lost wake notification leaves the committed admission
+    /// available to every poll.
     pub async fn admit(&self, admission: Admission<'_>) -> Result<Admitted> {
+        self.admit_under(admission, None).await
+    }
+
+    /// [`Admissions::admit`] for a fleet that must be runnable: a new key on a
+    /// fleet in any other status is refused `NotRunnable`, while a repeat is
+    /// still answered.
+    ///
+    /// # Errors
+    /// As [`Admissions::admit`], and `NotRunnable` with the fleet's status.
+    pub async fn admit_runnable(&self, admission: Admission<'_>) -> Result<Admitted> {
+        self.admit_under(admission, Some(FleetStatus::Active)).await
+    }
+
+    async fn admit_under(
+        &self,
+        admission: Admission<'_>,
+        runnable: Option<FleetStatus>,
+    ) -> Result<Admitted> {
         let now = clock::now();
         let row_id = self.entropy.uuid7(now)?;
         // An unrepeatable producer is keyed on the row it is about to write,
@@ -81,7 +99,7 @@ impl Admissions {
         let producer = admission.producer.as_str();
 
         let ledger = self
-            .commit(&row_id, &admission, key, &digest, now)
+            .commit(&row_id, &admission, key, &digest, now, runnable)
             .await
             .inspect_err(|refused| count_refusal(refused, &admission))?;
         let event_id = ledger.stored.id.as_str();
@@ -119,7 +137,7 @@ impl Admissions {
         })
     }
 
-    /// Commit acceptance under the fleet and deployment backlog budgets.
+    /// Commit acceptance under the deployment ceiling, in one autocommit statement.
     ///
     /// `now` is the instant the row id was minted at, and the one the
     /// deployment ceiling's sampling cadence is read against; the row's own
@@ -131,20 +149,20 @@ impl Admissions {
         key: &str,
         digest: &str,
         now: Timestamp,
+        runnable: Option<FleetStatus>,
     ) -> Result<Ledger> {
         let estimate = self.deployment_estimate(now).await;
         let mut connection = self.database.acquire().await?;
-        let mut transaction = connection
-            .begin()
-            .await
-            .map_err(crate::error::query("begin admission"))?;
         let ledger = self
-            .insert_on(&mut transaction, row_id, admission, key, digest, estimate)
+            .insert_on(
+                &mut connection,
+                row_id,
+                admission,
+                key,
+                digest,
+                crate::stage::insert::Gates { estimate, runnable },
+            )
             .await?;
-        transaction
-            .commit()
-            .await
-            .map_err(crate::error::query("commit admission"))?;
         if ledger.inserted {
             self.ceiling.admitted();
         }
@@ -158,6 +176,11 @@ impl Admissions {
 /// the deployment doing what it was told, and a database that would not answer
 /// is an incident.
 fn count_refusal(refused: &Error, admission: &Admission<'_>) {
+    // A missing or stopped fleet is the caller's answer, not an admission
+    // failure: the route refused both before the ledger saw them until M242.
+    if refused.is_fleet_absent() || refused.not_runnable().is_some() {
+        return;
+    }
     let (outcome, event) = if refused.is_over_capacity() {
         (
             AdmissionOutcome::OverBudget,

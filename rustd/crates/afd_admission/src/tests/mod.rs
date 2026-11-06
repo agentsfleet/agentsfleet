@@ -7,8 +7,8 @@ use std::collections::BTreeSet;
 use afd_wire::event::EventType;
 
 use super::admit::ReplyBinds;
-use super::budget::{DEPLOYMENT_BACKLOG_BUDGET, FLEET_BACKLOG_BUDGET};
-use super::{Admission, BudgetScope, Budgets, Key, Producer, Reply};
+use super::budget::DEPLOYMENT_BACKLOG_BUDGET;
+use super::{Admission, Budgets, Key, Producer, Reply};
 
 /// Every producer, so spelling and key ownership stay exhaustive.
 ///
@@ -139,27 +139,13 @@ fn a_digest_is_sixty_four_hex_characters() {
     );
 }
 
-/// The production budgets are the declared constants, and a suite that wants
-/// others has to name them.
+/// The production ceiling is the declared constant, and a suite that wants
+/// another has to name it (`M242_001` Dimension 1.2).
 #[test]
-fn the_default_budgets_are_the_declared_constants() {
-    let budgets = Budgets::default();
-    assert_eq!(budgets.fleet_backlog, FLEET_BACKLOG_BUDGET);
-    assert_eq!(budgets.deployment_backlog, DEPLOYMENT_BACKLOG_BUDGET);
-}
-
-/// The two scopes spell themselves apart, and the sentence a refusal renders
-/// carries the same spelling a log line does.
-#[test]
-fn each_budget_scope_spells_itself_once() {
-    assert_ne!(
-        BudgetScope::Fleet.as_str(),
-        BudgetScope::Deployment.as_str()
-    );
-    assert_eq!(BudgetScope::Fleet.to_string(), BudgetScope::Fleet.as_str());
+fn budgets_default_to_the_deployment_ceiling() {
     assert_eq!(
-        BudgetScope::Deployment.to_string(),
-        BudgetScope::Deployment.as_str()
+        Budgets::default().deployment_backlog,
+        DEPLOYMENT_BACKLOG_BUDGET
     );
 }
 

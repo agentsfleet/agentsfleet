@@ -123,13 +123,12 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn an_initial_run_over_the_fleet_backlog_budget_activates_blocked() {
+async fn an_initial_run_over_the_deployment_backlog_budget_activates_blocked() {
     let c = Case::create().await;
     c.fund().await;
     let full =
         Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()).with_budgets(Budgets {
-            fleet_backlog: 0,
-            ..Budgets::default()
+            deployment_backlog: 0,
         });
     let creations = Creations::new(c.setup.clone(), full);
     let start = Start::RunNow {

@@ -185,6 +185,8 @@ fn every_sentence_is_one_the_workspace_declares() {
         DETAIL_DATABASE_ERROR,
         DETAIL_OPERATION_FAILED,
         afd_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
+        afd_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
+        afd_core::problem::Problem::of(error_code::AGENTSFLEET_PAUSED_INGRESS).title(),
     ];
     for (label, error) in one_of_each_kind() {
         assert!(

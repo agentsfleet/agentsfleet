@@ -1,7 +1,7 @@
 //! Dimension 3.2 — a full datastore produces classified backpressure and no
-//! silent drop: a fleet holding its budget of outstanding entries, or a
-//! deployment holding its budget of unsettled admissions, refuses the
-//! producer with the capacity class and commits nothing.
+//! silent drop: a deployment holding its budget of unsettled admissions
+//! refuses the producer with the capacity class and commits nothing. No
+//! per-fleet budget exists (`M242_001` §1).
 //!
 //! The budgets are set small through `Admissions::with_budgets`; the
 //! production numbers are compile-time assertions in `afd_admission::budget`
@@ -20,9 +20,6 @@ use afd_core::error_code;
 use afd_wire::event::EventType;
 
 use crate::support::EventsLane;
-
-/// How many entries the fleet may hold outstanding before it is refused.
-const FLEET_BUDGET: u64 = 3;
 
 /// A delivery key no earlier run holds.
 ///
@@ -72,51 +69,6 @@ fn assert_capacity_refusal(refused: &afd_admission::Error) {
     assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
 }
 
-/// Dimension 3.2, the fleet budget: unsettled admissions.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_fleet_holding_its_budget_of_outstanding_entries_refuses_the_producer() {
-    let lane = EventsLane::open().await;
-    let ledger = lane.admissions().with_budgets(Budgets {
-        fleet_backlog: FLEET_BUDGET,
-        deployment_backlog: u64::MAX,
-    });
-
-    for index in 0..FLEET_BUDGET {
-        let key = delivery(&lane, &format!("within-{index}"));
-        ledger
-            .admit(admission(&lane, &key))
-            .await
-            .expect("an admission inside the budget is taken");
-    }
-    let before = rows_for(&lane).await;
-
-    let refused = ledger
-        .admit(admission(&lane, &delivery(&lane, "one-over")))
-        .await
-        .expect_err("the fleet holds its budget");
-    assert_capacity_refusal(&refused);
-    assert_eq!(
-        rows_for(&lane).await,
-        before,
-        "a refusal commits nothing: the row is what the budget protects"
-    );
-
-    let mut connection = lane.connection().await;
-    sqlx::query("UPDATE fleet.admissions SET settled_at = now() WHERE id = (SELECT id FROM fleet.admissions WHERE fleet_id = $1::uuid ORDER BY created_at, sequence LIMIT 1)")
-        .bind(&lane.fleet)
-        .execute(&mut *connection)
-        .await
-        .expect("settle the oldest admission");
-    drop(connection);
-    ledger
-        .admit(admission(&lane, &delivery(&lane, "one-over")))
-        .await
-        .expect("room was made");
-
-    lane.cleanup().await;
-}
-
 /// Dimension 3.2, the deployment budget: unsettled rows.
 ///
 /// The budget is a deployment-wide count that other suites in this lane can
@@ -135,7 +87,6 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
         .expect("admitted while the budget is open");
 
     let spent = lane.admissions().with_budgets(Budgets {
-        fleet_backlog: u64::MAX,
         deployment_backlog: 0,
     });
     let before = rows_for(&lane).await;
