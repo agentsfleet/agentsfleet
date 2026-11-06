@@ -56,7 +56,7 @@ SETUP    claim gate: balance − unsettled ≥ bound; each model call and renewa
 
 RELAY (BILLING task, every 2 s; again at once after a full pass that settled something, up to 10 passes)
          expired, unreported leases past GRACE → log and settle the last slice
-         unsettled usage_lines → Biller::settle per work      (settled_at IS NULL under the wallet lock)
+         unsettled usage_lines → Biller::settle per work      (settled_at IS NULL, then the debit)
 ```
 
 **Bounds this spec states:** with the daemon up, a committed line is charged within one relay interval plus one pass. With the daemon down, it is charged on the first pass after restart. Runs that start together all pass their checks; each spends at most one slice before its next check sees the logged lines and refuses, so the balance goes below zero by at most one slice per parallel run, and that debt refuses the tenant's next work until a grant repays it.
@@ -180,7 +180,7 @@ Lines settle with no age filter. An expired, unreported lease keeps `GRACE`, own
 ## Invariants
 
 1. No request path settles. Enforced by Dimensions 1.1 to 1.3 and the Dimension 4.1 grep.
-2. A line is charged once: `SETTLE_LINES` stamps only `settled_at IS NULL` rows under the wallet lock (Dimension 2.3).
+2. A line is charged once: `SETTLE_LINES` stamps only `settled_at IS NULL` rows (Dimension 2.3). A second pass waits on the first's line locks, then finds them stamped.
 3. Nothing is lost when the relay stops: every charge is derived from committed lines.
 4. Every gate reads one number, the balance less the payer's unsettled lines (Dimensions 3.1 to 3.3).
 
