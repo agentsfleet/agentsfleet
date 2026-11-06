@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 05, 2026
 
-**Status:** PENDING
+**Status:** DEFERRED
 
 **Priority:** P1, every lease poll scans every active fleet and one admission wakes every idle host, so chat pickup cost grows with the size of the estate rather than with the work waiting
 
@@ -476,4 +476,12 @@ Prerequisite: §1 to §6.
 
     The majors are applied: initial slot values, the writer list replaced by the trigger, fleet status in the pick, the `redelivered` and `delivered_at` rules, the terminal ending, the refusal's fence and `Now`/`Already` reading, the fault path, the key's unique index and its ended-lease answer, replay without re-rendering, the `Ok(None)` split with slot release, and the lock-order scope. The rest were made moot by the scope cuts. Nits are applied.
 - **Open blockers** — none.
-- **Deferrals and transfers** — none.
+- **Deferrals and transfers** — the whole workstream, recorded under `done/` with none of its code merged. The push-scheduler design (EGM brainstorm, Nov 06, 2026) deletes the poll path this spec speeds up; the spec that comes out of it supersedes this one by name.
+  > Indy (Nov 06, 2026: 01:00 PM): "do we need M240_001? since a second goldfish review can results in a new spec? which will make 240_001 outdated? so why M240_001 and ensure we move that to parked and done? then saying we have the ... yada yada specs that have been overriden M240_001*.md spec?" — context: parked in favour of the push-scheduler spec.
+
+  A build exists on branch `feat/m240-lease-queue` (`890fa4f4c`, `main` merged), unmerged. It failed bench row R10: 97.3 leases/s against 151.8 on `main` (`make bench-lease PROFILE=rig`, same machine). What it taught the successor:
+  - The `ready_at` trigger adds four nested statements to every admission write, which cancelled the claim's savings on the rig.
+  - A slot written twice in one transaction rechecks `last_runner_id` under `KEY SHARE`. With the host lock `FOR UPDATE`, that deadlocked against a renewal; `FOR NO KEY UPDATE` fixed it.
+  - Worth carrying forward: the one-statement refusal and terminal endings, the `Idempotency-Key` poll replay, and the host-lock mode.
+
+  Reopen only if the push-scheduler programme is dropped and the Postgres poll stays. Start from the branch, and make R10 pass before anything else.
