@@ -287,6 +287,8 @@ No event name is added or renamed.
 
 `ingress_status` stays for the stream route (`afd_api_tenant/src/handler/stream/mod.rs`).
 
+Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+
 ## Out of Scope
 
 - Folding messages into a running run: M242_002.
@@ -339,6 +341,7 @@ No event name is added or renamed.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
   > Indy (Nov 06, 2026: 04:06 PM): chose "On the login role (Recommended)" for the intake timeout — context: `lock_timeout` and `statement_timeout` are set once on the API's Postgres login role at provisioning, from named constants a test reads back through the pool; zero extra round trips. The provisioning change is his approved deploy edit.
   > Indy (Nov 06, 2026: 04:06 PM): chose "Settle them (Recommended)" for #803's obsolete continuations, noting "we are not in production, i donot care about older tasks, so we could even cleanup all the fleeets and test." — context: an obsolete leased continuation is settled when its task generation advances, so the trigger-kept count stays exact; the backfill needs no care for pre-existing tasks, and dev data may be reset.
+  > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review runs before this spec leaves `pending/`.
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

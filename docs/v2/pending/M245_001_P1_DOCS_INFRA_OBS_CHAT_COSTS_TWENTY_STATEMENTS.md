@@ -368,6 +368,8 @@ Funds go through `Biller::check` once per distinct payer: on a session's first t
 
 `select_fleet_with_session.sql`, `select_access.sql`, `select_tenant_for_workspace.sql`, `lock_admission.sql`, `release_fleet_slot.sql`, `delete_other_fences.sql`, `select_reply_destination.sql`, `census.sql` and `record_choice.sql` keep callers off this path: the message path, the runner's memory verbs, the wallet, park, affinity, tool detail and authoring. CHORE(open) re-runs every row against `origin/main`, because M243 and #803 may move these files first.
 
+Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+
 ## Out of Scope
 
 - Activity posts: M243 removes the per-post target read.
@@ -418,6 +420,8 @@ N/A: no user surface. No route, frame, command, page or error code changes; the 
   > Indy (Nov 06, 2026: 01:18 PM): "Yes i agree on NATS." — context: M244's broker carries no cache state.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
   - The reviewed brief records, as Indy's decisions of Nov 06, 2026, "one expiry clock" and that "a small budget overrun is accepted". Its M2 finding asks to "check money every Nth tick". §7 builds on both; neither is a verbatim quote of Indy.
+- **Owner decisions** —
+  > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — the programme brief's two EGM passes are recorded in M241_001's Discovery. This spec has had no model review of its own yet.
 - **Open blockers** (the spec stays in `pending/` until Indy answers both):
   1. **May decrypted platform keys be cached in daemon memory?** This changes the security posture: a key lives past its lease. **Implementation default:** cache the resolution with the key in `Zeroizing`, re-decrypt only when the secret's id or `resource_version` moves, and zero it on eviction. Precedent: the broker caches connector tokens the same way, and a platform host's lease already carries the key to the runner. M246 keeps the key inside the daemon for tenant runners and re-resolves it on every proxied model call (M246_001 §4), which this cache serves. "No" keeps the resolution cache and re-reads the secret per lease, one statement per chat.

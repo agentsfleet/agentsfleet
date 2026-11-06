@@ -321,6 +321,8 @@ The drain's simulated runner reads the folds verb through `Plane` every `BENCH_M
 
 N/A: no files or symbols are deleted. `read_input` stays for child loops.
 
+Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+
 ## Out of Scope
 
 - Webhook and Slack same-thread coalescing: out of the programme until a webhook burst is measured (Indy, Discovery); each owes a reply to its own destination.
@@ -373,6 +375,7 @@ N/A: no files or symbols are deleted. `read_input` stays for child loops.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
   > Indy (Nov 06, 2026: 04:06 PM): chose "Next model call (Recommended)" for the 1 s target — context: a folded message joins at the run's next model call, as Codex does; the in-flight call is never interrupted, and the bench's 500 ms call keeps pickup p95 under 1 s.
   > Indy (Nov 06, 2026: 04:06 PM): chose "Not now (Recommended)" for webhook and Slack coalescing — context: out of the programme until a webhook burst is measured; chat folding covers the 50 fleets × 10 messages a second burst.
+  > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review of this spec runs before it leaves `pending/`.
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

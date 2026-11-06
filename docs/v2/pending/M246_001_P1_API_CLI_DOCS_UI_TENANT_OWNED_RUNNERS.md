@@ -353,6 +353,8 @@ R rows read the logs the S lanes write: `.tmp/rustd-integration.log` from S3 and
 
 Rotation's "the old token fails the next read" sentences in `AUTH.md:662` and `runner_fleet.md:251` are rewritten by §7, not swept.
 
+Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+
 ## Out of Scope
 
 - One-time enrolment codes and self-registration: excluded by decision; `runner_fleet.md:227` keeps mode C for later.
@@ -396,6 +398,7 @@ Rotation's "the old token fails the next read" sentences in `AUTH.md:662` and `r
   > Indy (Nov 06, 2026: 10:19 AM): "This will be on by default durable_tasks_v1. ... my plan also was to have folks spin a runner and point to the agentsfleetd (in cloud) and keep using it." — context: tenant-enrolled runners against the cloud daemon.
   > Indy (Nov 06, 2026: 10:43 AM): "1. Yes placement rules are via the tags and labels 2. Respawn across ownership - this is a tenant setting ... Based on the scope i would like to build this ... 4. Yes, but donot overengineer now, we can improve this." — context: labels stay placement; the three-option setting; the smallest design.
   - Programme decisions recorded in the reviewed EGM brief (`concepts_brief.md`, Nov 06, 2026), not quoted verbatim: runners carry an owner tenant, NULL a platform host; the ownership filter sits in the claim and is re-checked at issue under the host lock; widening is one way, and setup placement gets the same filter; the setting has three options; platform keys never leave the daemon; rotation overlaps old and new digests and the runner reloads from a file on a 401 or SIGHUP; enrolment is the dashboard and CLI mint with a new tenant scope, and one-time codes are out of scope.
+  > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet. The EGM (Elephant-Goldfish Model) review runs before this spec leaves `pending/`.
 - **Open blockers** —
   1. **The platform-fallback threshold for `own_then_platform`.** Question for Indy: how long does a tenant's work wait for its own runners before a platform host may take it, and is the trigger time or liveness? Options: a platform-wide wait in `afd_core::timing` (☠️ my call: 30 s, one `LEASE_TTL`, so a dead own host is replaced as fast as a lapsed lease is today); fall back only when none of the tenant's runners is online, which needs a runner scan in the claim; or a per-tenant value, a column on `runner.tenant_placements`. Dimension 3.6 binds whichever he picks.

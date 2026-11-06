@@ -356,6 +356,8 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 
 Hits under `docs/v2/` are records and stay. CHORE(open) reruns each search on `origin/main` and adds any new hit to Files Changed.
 
+Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+
 ## Out of Scope
 
 - One statement per host renewal: M245. Each lease keeps its own renewal statements here.
@@ -413,6 +415,7 @@ Hits under `docs/v2/` are records and stay. CHORE(open) reruns each search on `o
   > Indy (Nov 06, 2026: 01:18 PM): "Yes i agree on NATS." — context: the bus seam built here, so M244 adds NATS behind it.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
 - **Programme decisions (relayed in the authoring brief, Nov 06, 2026; not owner quotes):** one outbound stream per host through the public API, and self-hosted runners never touch the broker. The frame lists above; auth once per connection; revocation closes the stream; each grant re-checks the host. Rebuild from Postgres with no replay buffer, and a cancel is a Postgres mark plus a push. The bus seam is built here. WebSocket is the default, decided by §1's spike, with HTTP/2 as the written fallback. No compatibility period for the `POST` routes.
+  > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review runs before this spec leaves `pending/`.
 - **Open blockers** —
   1. Indy: do you approve an `originRequest` edit to `deploy/fly/cloudflared-dev/config.yml` and `cloudflared-prod/config.yml` if §1 shows the tunnel needs one that the 15 s ping does not cover? If not, a failing WebSocket check falls back to HTTP/2 and never to a configuration change.

@@ -299,6 +299,8 @@ The drill runs two real runner processes, `--unsandboxed`, against the daemon's 
 
 Hits under `docs/v2/` are records (`docs/v2/reviews/schema-usage-audit-2026-09-18.md`) and stay.
 
+Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+
 ## Out of Scope
 
 - A host-down signal (`af.runner.<id>.down`): it would only speed respawn, and expiry stays the trigger; not planned here.
@@ -351,6 +353,7 @@ Hits under `docs/v2/` are records (`docs/v2/reviews/schema-usage-audit-2026-09-1
   > Indy (Nov 06, 2026: 11:57 AM): "Yes i am ok with postgres store and accepting messages, fences runs" — context: the fence decides every restart.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
 - **Assignment decisions** (relayed by the orchestrating session, Nov 06, 2026): holds count except the claimant's own, and authoring leases count; a silent host is cordoned in its offline transaction; expiry is the only respawn trigger; respawn resumes the current turn's last checkpoint; `run_restarted` resets the browser and CLI; no input is dropped or replayed, and usage lines stay unique. The agent's choices are the Implementation defaults in §1-§5.
+  > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review runs before this spec leaves `pending/`.
 - **Open blockers** —
   1. #803: §4, R8 and the schema slot numbers are finalized against `origin/main` after #803 merges: its checkpoint pointer, its load, the runner's resume, and where the checkpoint keeps the fold cursor.

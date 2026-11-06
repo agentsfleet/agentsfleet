@@ -353,6 +353,8 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 | `scripts/dragonfly-cluster.sh`, `scripts/dragonfly_cluster_ready.sh`, `playbooks/operations/teardown/dragonfly/` | `git grep -n -e dragonfly-cluster.sh -e dragonfly_cluster_ready.sh -e teardown/dragonfly -- ':!docs/v2'` | no output |
 | `BENCH_BUS`, `integration_hub_exclusive` | `git grep -n -w -e BENCH_BUS -e integration_hub_exclusive` | no output outside `docs/v2` |
 
+Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+
 ## Out of Scope
 
 - JetStream, NATS KV and the object store: Postgres holds every durable fact (Indy, Discovery).
@@ -395,6 +397,7 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   > Indy (Nov 06, 2026: 01:31 PM): "i prefer to have it in my laptop, upon deployment we move to the api-dev machines." — context: §1 and §3 run on the laptop.
   > Indy (Nov 06, 2026: 02:13 PM): "Move 6-7 to M244 but when we hit M244 we would have change code here) is this still fine to measure." — context: §1 carries M241's old §6 and §7 Dimensions as its own, Dragonfly measured first on this milestone's code.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands in `pending/` with M241.
+  > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet. The EGM spec review runs before this spec leaves `pending/`.
 - **Open blockers** — the spec stays in `pending/` until Indy answers each:
   1. Approve, at CHORE(open), edits to `deploy/fly/*` (new `nats-dev` and `nats-prod`, three machines each; `dragonfly-*` deleted) and to `.github/workflows/{deploy-dev-fly,release,test-integration-rustd,test-unit-rustd}.yml`.
