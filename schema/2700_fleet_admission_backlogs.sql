@@ -60,15 +60,8 @@ CREATE CONSTRAINT TRIGGER trg_admissions_backlog_release
     FOR EACH ROW WHEN (OLD.settled_at IS NULL AND NEW.settled_at IS NOT NULL)
     EXECUTE FUNCTION fleet.admissions_backlog_release();
 
--- The backfill runs after both triggers exist. Creating them locked
--- fleet.admissions against writes until this slot commits, so no write falls
--- between the count and the triggers. Rows from before #803's continuation
--- rule are counted as found; dev data may be reset (Indy, M242_001 Discovery).
-INSERT INTO fleet.admission_backlogs (fleet_id, unsettled_count, created_at, updated_at)
-SELECT fleet_id, count(*), now(), now()
-  FROM fleet.admissions
- WHERE settled_at IS NULL
- GROUP BY fleet_id;
+-- No backfill: the slot ships before production, and the deploy resets dev
+-- data, so no unsettled admission predates the triggers (Indy, M242_001 Discovery).
 
 GRANT SELECT ON fleet.admission_backlogs TO api_runtime;
 GRANT INSERT (fleet_id, created_at, updated_at) ON fleet.admission_backlogs TO api_runtime;

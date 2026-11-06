@@ -87,7 +87,6 @@ async fn test_migrate_parity_fresh_db() {
     database.cleanup().await;
 }
 
-mod backfill;
 mod edited;
 mod immutable;
 mod instants;
