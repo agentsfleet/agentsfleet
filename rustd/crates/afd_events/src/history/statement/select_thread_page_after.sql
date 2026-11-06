@@ -6,7 +6,7 @@
           FROM billing.usage_lines charge
          WHERE charge.event_id = fleet.events.event_id
            AND charge.fleet_id = fleet.events.fleet_id) AS cost_nanos,
-       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls, task_activity
+       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
 FROM fleet.events
 WHERE workspace_id = $1::uuid
   AND fleet_id = $2::uuid
@@ -21,7 +21,7 @@ UNION ALL
        NULL::text AS resumes_event_id, a.created_at, a.created_at AS updated_at,
        NULL::bigint AS cost_nanos, a.request_json, NULL::text AS response_text,
        NULL::text AS tool_calls,
-       jsonb_build_object('items', '[]'::jsonb, 'truncated', false) AS task_activity
+       jsonb_build_array() AS task_activity, false AS task_activity_truncated
 FROM fleet.admissions a
 WHERE a.workspace_id = $1::uuid AND a.fleet_id = $2::uuid
   AND a.producer = ANY($6) AND a.delivered_at IS NULL AND a.settled_at IS NULL

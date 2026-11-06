@@ -223,7 +223,7 @@ connection or transaction; there is no generic repository trait.
 | `task_storage_purges` | Durable remote-delete custody and quota-release receipt | opaque object/location plus charged bytes/disposition; no owner foreign key |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler |  |
 | `sessions` | Resume bookmark `{last_event_id, last_response}` |  |
-| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` retains at most 128 public stages and 128 KiB, with explicit truncation |
+| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` retains an array of at most 128 public stages / 120 KB; native sequence and truncation are separate typed columns, within the public 128 KiB ceiling |
 | `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | optional task/item association; single-use active-loop input claim |
 | `approval_gates` | A risky action waiting for a person |  |
 | `obligations` | An answer owed to a destination until delivered or abandoned |  |

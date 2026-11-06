@@ -12,16 +12,17 @@ WITH slot AS MATERIALIZED (
       AND l.status = $7 AND l.lease_expires_at > statement_timestamp()
     FOR UPDATE OF l SKIP LOCKED
 ), held AS MATERIALIZED (
-    SELECT e.id, e.task_activity FROM fleet.events e JOIN lease l ON l.fleet_event_id = e.id
+    SELECT e.id, e.task_activity, e.task_activity_sequence, e.task_activity_truncated
+    FROM fleet.events e JOIN lease l ON l.fleet_event_id = e.id
     WHERE e.fleet_id = $1::uuid AND e.event_id = $2
     FOR UPDATE OF e SKIP LOCKED
 ), combined AS (
     SELECT item, COALESCE((item->'progress'->>'sequence')::bigint, ordinal::bigint) AS position
-    FROM held, jsonb_array_elements(held.task_activity->'items') WITH ORDINALITY AS old(item, ordinal)
+    FROM held, jsonb_array_elements(held.task_activity) WITH ORDINALITY AS old(item, ordinal)
     UNION ALL
     SELECT jsonb_set(item, '{progress,sequence}', to_jsonb(
-        COALESCE((held.task_activity->>'sequence')::bigint, jsonb_array_length(held.task_activity->'items')) + ordinal::bigint)),
-        COALESCE((held.task_activity->>'sequence')::bigint, jsonb_array_length(held.task_activity->'items')) + ordinal::bigint AS position
+        held.task_activity_sequence + ordinal::bigint)),
+        held.task_activity_sequence + ordinal::bigint AS position
     FROM held, jsonb_array_elements($3::jsonb) WITH ORDINALITY AS incoming(item, ordinal)
 ), newest AS MATERIALIZED (
     SELECT DISTINCT ON (item->>'kind', item->'progress'->>'activity_id', item->'progress'->>'operation', item->'progress'->>'phase') item, position
@@ -36,9 +37,9 @@ WITH slot AS MATERIALIZED (
 ), retained AS (
     SELECT item, position FROM bounded WHERE bytes <= $9
 )
-UPDATE fleet.events e SET task_activity = jsonb_build_object(
-    'items', COALESCE((SELECT jsonb_agg(item ORDER BY position) FROM retained), '[]'::jsonb),
-    'sequence', COALESCE((held.task_activity->>'sequence')::bigint, jsonb_array_length(held.task_activity->'items')) + jsonb_array_length($3::jsonb),
-    'truncated', (held.task_activity->>'truncated')::boolean OR (SELECT count(*) FROM newest) > (SELECT count(*) FROM retained))
+UPDATE fleet.events e SET
+    task_activity = COALESCE((SELECT jsonb_agg(item ORDER BY position) FROM retained), jsonb_build_array()),
+    task_activity_sequence = held.task_activity_sequence + jsonb_array_length($3::jsonb),
+    task_activity_truncated = held.task_activity_truncated OR (SELECT count(*) FROM newest) > (SELECT count(*) FROM retained)
 FROM held WHERE e.id = held.id
-RETURNING e.task_activity
+RETURNING jsonb_build_object('items', e.task_activity, 'truncated', e.task_activity_truncated)

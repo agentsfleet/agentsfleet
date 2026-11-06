@@ -6,7 +6,7 @@ SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id,
           FROM billing.usage_lines charge
          WHERE charge.event_id = fleet.events.event_id
            AND charge.fleet_id = fleet.events.fleet_id) AS cost_nanos,
-       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls, task_activity
+       request_json::text AS request_json, response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
 FROM fleet.events
 WHERE workspace_id = $1::uuid
   AND fleet_id = $2::uuid

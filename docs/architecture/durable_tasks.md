@@ -149,7 +149,7 @@ Wait, effect, decision and checkpoint storage below describe the approved design
 with exact scope and pending verification in the [active spec](../v2/active/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
 
 The daemon binds admissions and leases to a nullable task identity; ordinary exchanges retain the existing path.
-Registered schema slots currently extend through 2620; merge-time inventory checks remain required.
+Registered schema slots currently extend through 2640; merge-time inventory checks remain required.
 
 Each DT binds its workspace, fleet, accepted instruction revision, objective, approved target and cumulative limits.
 One current generation guards changes; input sequence, checkpoint generation and lease fencing remain distinct counters.
