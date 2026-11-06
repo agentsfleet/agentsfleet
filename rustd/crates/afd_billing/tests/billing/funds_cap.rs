@@ -115,4 +115,5 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         biller.check(&ask).await.expect("the check answers"),
         Funds::Covered
     );
+    lane.cleanup().await;
 }

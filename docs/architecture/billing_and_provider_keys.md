@@ -574,7 +574,7 @@ A `Settlement` carries each line's raw usage and the daemon's price. A biller th
 
 An outage is a pool with no connection to hand out, or a connection lost mid-statement, as `afd_db::error::is_connection_lost` decides. A settle waits at most 2 s for the wallet lock and 5 s for its statement.
 
-`LedgerBiller`'s `check` and `balance` run at most 1 s (`READ_TIMEOUT` in `afd_billing/src/ledger/mod.rs`). A wait past any of these limits (`55P03`, `57014`) is a biller with no answer (`Error::is_unanswered`).
+`LedgerBiller`'s `check` and `balance` cap their balance statement at 1 s (`READ_TIMEOUT` in `afd_billing/src/ledger/mod.rs`). The wait for a pool connection comes before that statement and is not capped. A wait past any of these statement limits (`55P03`, `57014`) is a biller with no answer (`Error::is_unanswered`).
 
 A constraint, syntax or decode failure is a defect and is refused under either policy. The policy is chosen once, where `agentsfleetd` builds the biller, and starts open (Indy, 2026-10-19).
 

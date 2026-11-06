@@ -44,7 +44,8 @@ const LOCK_TIMEOUT: &str = "2000ms";
 /// How long any one billing statement may run.
 const STATEMENT_TIMEOUT: &str = "5000ms";
 
-/// How long a funds read may run.
+/// How long a funds read's statement may run. The wait for a pool connection
+/// comes first and is not counted.
 ///
 /// A funds check sits on the lease path: renewal, admission and every setup
 /// chat model call. A read past this ends with SQLSTATE `57014`, which
