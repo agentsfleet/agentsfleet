@@ -380,6 +380,40 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 11:25 PM): chose "Reuse #803 path (Recommended)" — context: a message sent mid-run reaches the running lease through #803's input claims (`pending_inputs.sql`, `input_claim_lease_id`/`input_claim_fence`, `settle_source.sql`) instead of a parallel `/folds` route and `Inbox`. CHORE(open) reworks §1–§3 on that path and drops `fold_pending.sql`, `settle_folded.sql` and the slots the reuse leaves unneeded; first it verifies whether every chat run is a durable task under `durable_tasks_v1`. A runner with Durable tasks off keeps today's queueing.
   > Indy (Nov 06, 2026: 11:25 PM): chose "Same gate (Recommended)" — context: no M242_002 product SQL (statements or slots, including the `admit_one.sql` disposition change) is committed without his line-by-line approval; test fixtures are exempt.
   > Indy (Nov 06, 2026: 11:25 PM): chose "Wait for the call (Recommended)" — context: a message arriving mid model call joins at the next model call; the in-flight call is never interrupted.
+  > Indy (Nov 06, 2026: 11:33 PM): chose "Approve as drafted (Recommended)" — context: the disposition facts below are added to `admit_one.sql`; Rust answers `folded` (a person's send, a live durable-task run in the same conversation), `started` (nothing waiting, no live run) or `queued`. The burst mislabel is accepted: the label can read `started` when the send runs second.
+  > Indy (Nov 06, 2026: 11:33 PM): chose "Drop it, no slots (Recommended)" — context: `waiting_compaction` goes, and with it slots 2710, 2720 and 2730; "folded into which run" is derived through `input_claim_lease_id`. CHORE(open) rewrites §1 and §4 to match.
+
+  Approved disposition SQL (added to `admit_one.sql` after `already_sent`; `$17` binds `LEASE_STATUS_ACTIVE`):
+
+  ```sql
+  live_run AS (
+      SELECT l.task_id IS NOT NULL AS takes_input,
+             head.reply_provider, head.reply_address,
+             e.event_id AS run_event_id
+      FROM locked_fleet
+      JOIN runner.fleet_slots s ON s.fleet_id = locked_fleet.id
+      JOIN runner.leases l
+        ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
+       AND l.fencing_token = s.fencing_token AND l.status = $17
+      JOIN fleet.events e ON e.id = l.fleet_event_id
+      JOIN fleet.admissions head ON head.id = e.event_id::uuid
+      WHERE s.lease_expires_at > statement_timestamp()
+  ),
+  earlier_waiting AS (
+      SELECT EXISTS (
+          SELECT 1 FROM fleet.admissions a, locked_fleet
+          WHERE a.fleet_id = locked_fleet.id AND a.settled_at IS NULL
+      ) AS waiting
+  ),
+  -- answer row adds:
+  --   EXISTS (SELECT 1 FROM live_run) AS run_live,
+  --   COALESCE((SELECT takes_input FROM live_run), false) AS run_takes_input,
+  --   COALESCE((SELECT reply_provider IS NOT DISTINCT FROM $12::text
+  --                AND reply_address IS NOT DISTINCT FROM $13::text FROM live_run), false) AS same_conversation,
+  --   (SELECT run_event_id FROM live_run) AS run_event_id,
+  --   (SELECT waiting FROM earlier_waiting) AS earlier_waiting
+  ```
+
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review of this spec runs before it leaves `pending/`.
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
