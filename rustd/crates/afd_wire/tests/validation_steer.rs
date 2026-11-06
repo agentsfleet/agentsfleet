@@ -99,8 +99,7 @@ fn test_steer_message_holding_nul_is_refused() {
 #[test]
 #[expect(clippy::expect_used, reason = "the test inspects a JSON document")]
 fn test_steer_answer_tolerates_new_fields() {
-    let answer =
-        r#"{"status":"accepted","event_id":"1790573387481-566","replayed":false,"added_later":1}"#;
+    let answer = r#"{"status":"accepted","event_id":"1790573387481-566","replayed":false,"disposition":"started","added_later":1}"#;
     let parsed: SteerAccepted<'_> =
         serde_json::from_str(answer).expect("an extended answer parses");
     assert_eq!(parsed.event_id, "1790573387481-566");

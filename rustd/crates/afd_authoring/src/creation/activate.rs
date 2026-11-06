@@ -15,6 +15,11 @@ use jiff::Timestamp;
 use sqlx::Transaction;
 
 const SETUP_BUDGET: Duration = Duration::from_secs(15);
+/// Activation's server-side bound, one second past [`SETUP_BUDGET`]: the budget
+/// answers a long wallet wait first (the fleet stays installing), as it did
+/// before the API login carried 2 s and 5 s bounds, and the server still frees
+/// a wait whose client is gone.
+const SETUP_SERVER_BOUND: &str = "16000ms";
 
 impl Creations {
     pub(super) async fn advance(
@@ -90,6 +95,11 @@ impl Creations {
             .prepare_initial(&snapshot, &key, payload.as_deref())
             .await?;
         let mut tx = Transaction::begin(self.setup.drafts.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT))?;
+        sqlx::query(sql::SETUP_LOCK_BOUND)
+            .bind(SETUP_SERVER_BOUND)
+            .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;

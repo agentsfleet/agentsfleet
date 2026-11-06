@@ -94,3 +94,5 @@ pub(super) const REMOVE: &str = include_str!("remove.sql");
 ///
 /// `$1` tenant.
 pub(super) const WALLET: &str = include_str!("wallet.sql");
+/// Bounds activation's waits by its own budget (`M242_001` §6).
+pub(super) const SETUP_LOCK_BOUND: &str = include_str!("setup_lock_bound.sql");
