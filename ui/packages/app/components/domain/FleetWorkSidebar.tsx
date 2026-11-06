@@ -1,17 +1,10 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useSyncExternalStore } from "react";
 import { Button, Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@agentsfleet/design-system";
 
 const QUERY = "(min-width: 1024px)";
-function subscribe(changed: () => void) {
-  const media = window.matchMedia(QUERY);
-  media.addEventListener("change", changed);
-  return () => media.removeEventListener("change", changed);
-}
-const desktopSnapshot = () => window.matchMedia(QUERY).matches;
-const serverSnapshot = () => false;
-
 /** The same authenticated work reader mounts in one surface, never twice. */
 export function FleetWorkSidebar({children}: {children: ReactNode}) {
   const desktop = useSyncExternalStore(subscribe, desktopSnapshot, serverSnapshot);
@@ -34,3 +27,11 @@ export function FleetConversationLayout({children, work}: {children: ReactNode; 
     <FleetWorkSidebar>{work}</FleetWorkSidebar>
   </div>;
 }
+
+function subscribe(changed: () => void) {
+  const media = window.matchMedia(QUERY);
+  media.addEventListener("change", changed);
+  return () => media.removeEventListener("change", changed);
+}
+function desktopSnapshot() {return window.matchMedia(QUERY).matches;}
+function serverSnapshot() {return false;}

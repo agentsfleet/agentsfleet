@@ -1,3 +1,4 @@
+import type { TaskActivity } from "@/lib/task-activity";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { FleetWorkSidebar } from "@/components/domain/FleetWorkSidebar";
@@ -5,7 +6,6 @@ import { WorkAction, workActivity } from "@/components/domain/chat/WorkActivity"
 import { TaskNextStep } from "@/components/domain/chat/TaskNextStep";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, TASK_IDS } from "./helpers/task-reads";
-import type { TaskActivity } from "@/lib/task-activity";
 afterEach(() => {cleanup(); vi.restoreAllMocks();});
 
 it("uses the existing accessible dialog on mobile without touching the conversation draft", () => {

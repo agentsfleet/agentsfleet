@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TaskDetail } from "@/lib/api/tasks";
-import { confirmed, type TaskResource } from "./use-task-read";
+import type { TaskResource } from "./use-task-read";
 import type { TaskReference } from "./task-references";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { confirmed } from "./use-task-read";
 import { loadTaskDetails } from "./task-detail-reader";
 
 export type TaskDetails = ReadonlyMap<string, TaskResource<TaskDetail>>;

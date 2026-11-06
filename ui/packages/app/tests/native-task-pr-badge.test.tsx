@@ -1,3 +1,4 @@
+import type { TaskActivityHistory } from "@/lib/task-activity";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { FleetTaskProvider } from "@/components/domain/chat/FleetTaskProvider";
@@ -5,7 +6,6 @@ import { NativeTaskPrBadge } from "@/components/domain/chat/NativeTaskPrBadge";
 import { TaskPanel } from "@/components/domain/chat/TaskPanel";
 import { FleetWorkSidebar } from "@/components/domain/FleetWorkSidebar";
 import { detail, summary, TASK_IDS } from "./helpers/task-reads";
-import type { TaskActivityHistory } from "@/lib/task-activity";
 const SCOPE = {workspaceId: "workspace", fleetId: "fleet", subject: "indy", revision: 0};
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 function activity(ids: (string | null)[]): TaskActivityHistory {

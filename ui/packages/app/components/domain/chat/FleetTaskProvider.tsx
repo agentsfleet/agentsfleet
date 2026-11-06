@@ -1,12 +1,17 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
-import { readTasks, type TaskPage, type TaskSummary } from "@/lib/api/tasks";
+import type { ReactNode } from "react";
+import type { TaskPage, TaskSummary } from "@/lib/api/tasks";
 import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
-import { confirmed, useTaskRead, type TaskResource } from "./use-task-read";
-import { useTaskDetails, type TaskDetails } from "./use-task-details";
-import { currentTaskRef, recentTaskIds, type TaskReference } from "./task-references";
+import type { TaskResource } from "./use-task-read";
+import type { TaskDetails } from "./use-task-details";
+import type { TaskReference } from "./task-references";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { readTasks } from "@/lib/api/tasks";
+import { confirmed, useTaskRead } from "./use-task-read";
+import { useTaskDetails } from "./use-task-details";
+import { currentTaskRef, recentTaskIds } from "./task-references";
 
 export type FleetTaskProps = {workspaceId: string; fleetId: string; subject: string | null; revision: number; events?: readonly FleetEvent[]; sources?: FleetSources};
 type ReadState = {scope: string; resource: TaskResource<TaskPage>; details: TaskDetails; retry: () => void; retryDetails: () => void};
@@ -16,8 +21,6 @@ const EMPTY_TASKS: readonly TaskSummary[] = [];
 const EMPTY_EVENTS: readonly FleetEvent[] = [];
 const DetailContext = createContext<TaskDetails>(EMPTY_DETAILS);
 const ViewContext = createContext<ViewState | null>(null);
-export const useFleetTaskDetails = () => useContext(DetailContext);
-export const useFleetTaskView = () => useContext(ViewContext);
 
 /** Key only the data owner: revocation must not remount the conversation draft. */
 export function FleetTaskProvider({children, workspaceId, fleetId, subject, revision, events, sources}: FleetTaskProps & {children: ReactNode}) {
@@ -34,6 +37,9 @@ export function FleetTaskProvider({children, workspaceId, fleetId, subject, revi
     {children}
   </ViewContext></DetailContext>;
 }
+
+export const useFleetTaskDetails = () => useContext(DetailContext);
+export const useFleetTaskView = () => useContext(ViewContext);
 
 function TaskReadOwner({workspaceId, fleetId, revision, events = EMPTY_EVENTS, scope, publish}: FleetTaskProps & {scope: string; publish: (read: ReadState) => void}) {
   const load = useCallback((signal: AbortSignal) => readTasks(workspaceId, fleetId, signal), [workspaceId, fleetId]);

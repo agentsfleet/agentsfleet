@@ -72,7 +72,7 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   await screen.findByText("What counts as done?");
   list = new Response(null, {status: 503});
   view.rerender(<TaskPanel {...SCOPE} revision={1} />);
-  expect(await screen.findByText(/Last confirmed progress is shown while we reconnect/)).toBeTruthy();
+  expect(await screen.findByText(/Last confirmed progress is shown/)).toBeTruthy();
   expect(within(screen.getByLabelText("PR #123 repair details")).getByText(detail().context.objective)).toBeTruthy();
   list = new Response(null, {status: 403});
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));

@@ -7,7 +7,7 @@ use afd_wire::task::CheckpointPage;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use super::{Fixture, call, foreign_and_stale, path, success};
+use super::{Fixture, call, foreign_and_stale, path, problem, success};
 
 pub(super) async fn exercise(fixture: &Fixture, task: &Value) {
     let route = path(fixture, "checkpoints");
@@ -93,7 +93,7 @@ async fn renew_pin(fixture: &Fixture, task: &Value, route: &str, plan: &Value) {
                 .as_u64()
                 .expect("original version")
     );
-    call(
+    let refused = call(
         fixture,
         Method::PATCH,
         &format!("{route}/pins/{pin}"),
@@ -101,6 +101,7 @@ async fn renew_pin(fixture: &Fixture, task: &Value, route: &str, plan: &Value) {
         StatusCode::CONFLICT,
     )
     .await;
+    problem(&refused, "UZ-DT-002");
 }
 
 async fn write_page(
@@ -129,7 +130,7 @@ async fn write_page(
     }
     let mut corrupt = write.clone();
     corrupt["digest"] = json!("f".repeat(64));
-    call(
+    let refused = call(
         fixture,
         Method::PUT,
         &page_route,
@@ -137,6 +138,7 @@ async fn write_page(
         StatusCode::CONFLICT,
     )
     .await;
+    problem(&refused, "UZ-DT-008");
     (contents, digest)
 }
 
@@ -213,7 +215,7 @@ async fn refuse_upload(
         "pin_id":plan["pin"]["id"],"objects":[{"object_id":objects["items"][0]["object_id"],
         "ciphertext_sha256":"a".repeat(64),"ciphertext_length":18}]});
     // One plaintext byte requires exactly 17 ciphertext bytes; refuse before signing or I/O.
-    call(
+    let refused = call(
         fixture,
         Method::POST,
         &format!("{route}/uploads"),
@@ -221,4 +223,5 @@ async fn refuse_upload(
         StatusCode::CONFLICT,
     )
     .await;
+    problem(&refused, "UZ-DT-003");
 }

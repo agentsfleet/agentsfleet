@@ -73,9 +73,12 @@ fn native_publication_refuses_missing_or_ambiguous_workflow_authority() {
     ] {
         let mut input = native();
         input.pointer_mut("/config/x-agentsfleet").expect("runtime")[field] = changed;
-        assert!(
-            Definition::parse(&input.to_string()).is_err(),
-            "accepted {field}"
+        let failure =
+            Definition::parse(&input.to_string()).expect_err("invalid publication authority");
+        assert_eq!(
+            failure.code(),
+            afd_core::error_code::AGENTSFLEET_INVALID_CONFIG,
+            "{field}"
         );
     }
 }

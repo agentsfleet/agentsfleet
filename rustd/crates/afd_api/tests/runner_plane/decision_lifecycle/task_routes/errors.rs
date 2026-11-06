@@ -25,7 +25,7 @@ pub(super) async fn refuse_malformed_requests(fixture: &Fixture) {
             StatusCode::BAD_REQUEST,
         )
         .await;
-        assert!(body.to_string().contains("UZ-REQ-001"));
+        problem(&body, "UZ-REQ-001");
     }
     refuse_malformed_reads(fixture, &checkpoint, &page).await;
 }
@@ -47,6 +47,7 @@ async fn refuse_malformed_reads(fixture: &Fixture, checkpoint: &str, page: &str)
         )
         .await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        problem(&json_body(response).await, "UZ-REQ-001");
     }
     for limit in [0, 5] {
         let response = send(
@@ -62,5 +63,6 @@ async fn refuse_malformed_reads(fixture: &Fixture, checkpoint: &str, page: &str)
         )
         .await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        problem(&json_body(response).await, "UZ-REQ-001");
     }
 }

@@ -1,8 +1,8 @@
+import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { fleetSources } from "@/lib/fleet-sources";
 import { WorkChanges, WorkOutputs, WorkSources, recordedChanges } from "@/components/domain/chat/WorkContextSections";
-import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail } from "./helpers/task-reads";
 afterEach(cleanup);

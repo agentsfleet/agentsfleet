@@ -1,16 +1,17 @@
 import type { TaskReference } from "./task-references";
-import { readTask, type TaskDetail, type TaskRead } from "@/lib/api/tasks";
+import type { TaskDetail, TaskRead } from "@/lib/api/tasks";
+import { readTask } from "@/lib/api/tasks";
+import { TASK_READ_ATTEMPTS, retryableTaskRead, waitForTaskRetry } from "./task-read-recovery";
 
 type Observer = (task: TaskReference, result: TaskRead<TaskDetail> | null) => void;
 const READERS = 3;
-const RETRY_MS = 5000;
 
 /** One bounded owner supplies both the task rows and publication outputs. */
 export async function loadTaskDetails(workspace: string, fleet: string, tasks: readonly TaskReference[], signal: AbortSignal, observe: Observer): Promise<void> {
   let pending = tasks;
-  while (pending.length && !cancelled(signal)) {
+  for (let attempt = 0; attempt < TASK_READ_ATTEMPTS && pending.length && !cancelled(signal); attempt += 1) {
     pending = await batch(workspace, fleet, pending, signal, observe);
-    if (pending.length && !cancelled(signal)) await recoverAfter(signal);
+    if (pending.length && attempt + 1 < TASK_READ_ATTEMPTS && !cancelled(signal)) await waitForTaskRetry(signal, attempt);
   }
 }
 
@@ -26,7 +27,7 @@ async function batch(workspace: string, fleet: string, tasks: readonly TaskRefer
       const result = owned(task, await readTask(workspace, fleet, task.id, signal));
       if (cancelled(signal)) return;
       observe(task, result);
-      if (result.kind === "failed" && result.reason !== "access" && result.reason !== "missing") retry.push(task);
+      if (retryableTaskRead(result)) retry.push(task);
     }
   };
   await Promise.all(Array.from({length: Math.min(READERS, tasks.length)}, worker));
@@ -42,12 +43,4 @@ function owned(task: TaskReference, result: TaskRead<TaskDetail>): TaskRead<Task
     return {kind: "failed", reason: "invalid"};
   }
   return result;
-}
-
-function recoverAfter(signal: AbortSignal): Promise<void> {
-  return new Promise(resolve => {
-    const finish = () => {clearTimeout(timer); signal.removeEventListener("abort", finish); resolve();};
-    const timer = setTimeout(finish, RETRY_MS);
-    signal.addEventListener("abort", finish, {once: true});
-  });
 }

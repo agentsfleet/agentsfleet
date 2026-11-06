@@ -1,3 +1,4 @@
+import type { TaskActivity } from "@/lib/task-activity";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
@@ -6,7 +7,6 @@ import { recentTaskIds } from "@/components/domain/chat/task-references";
 import { loadTaskDetails } from "@/components/domain/chat/task-detail-reader";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, summary, TASK_IDS } from "./helpers/task-reads";
-import type { TaskActivity } from "@/lib/task-activity";
 const SCOPE = {workspaceId: "workspace", fleetId: "fleet", subject: "indy", revision: 0};
 const SOURCES = {repositories: ["a/b"], access: "write" as const, publication: "existing_pr" as const};
 const TARGET = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};

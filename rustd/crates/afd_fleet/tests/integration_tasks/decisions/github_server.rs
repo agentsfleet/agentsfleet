@@ -14,11 +14,14 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_rustls::{TlsAcceptor, server::TlsStream};
+mod exchange;
+
 const HOST: &str = "api.github.com";
 
 pub(super) struct Server {
     pub client: reqwest::Client,
     replies: Arc<Mutex<VecDeque<Value>>>,
+    exchange: Arc<Mutex<Option<exchange::Exchange>>>,
     stop: Option<oneshot::Sender<()>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -44,6 +47,8 @@ impl Server {
             .expect("pinned HTTPS client");
         let replies = Arc::new(Mutex::new(VecDeque::from(replies)));
         let owned = replies.clone();
+        let exchange = Arc::new(Mutex::new(None));
+        let app = exchange.clone();
         let (stop, mut stopped) = oneshot::channel();
         let worker = tokio::spawn(async move {
             loop {
@@ -53,15 +58,21 @@ impl Server {
                 };
                 let (socket, _) = accepted.expect("native reader connects");
                 let mut stream = tls.accept(socket).await.expect("verified TLS handshake");
-                respond(&mut stream, &owned).await;
+                respond(&mut stream, &owned, &app).await;
             }
         });
         Self {
             client,
             replies,
+            exchange,
             stop: Some(stop),
             worker: Some(worker),
         }
+    }
+    pub(super) fn app(&self, installation: u32, public_key: &str, write: bool) {
+        let mut exchange = self.exchange.lock().expect("App exchange configuration");
+        assert!(exchange.is_none(), "one workspace installation per server");
+        *exchange = Some(exchange::Exchange::new(installation, public_key, write));
     }
     pub(super) fn push(&self, reply: Value) {
         self.replies.lock().expect("replies").push_back(reply);
@@ -76,6 +87,9 @@ impl Server {
             .await
             .expect("bounded shutdown")
             .expect("server assertions");
+        if let Some(exchange) = &*self.exchange.lock().expect("App exchange") {
+            exchange.finish();
+        }
         assert!(
             self.replies.lock().expect("replies").is_empty(),
             "all evidence requests reached transport"
@@ -89,8 +103,29 @@ impl Drop for Server {
         }
     }
 }
-async fn respond(stream: &mut TlsStream<tokio::net::TcpStream>, replies: &Mutex<VecDeque<Value>>) {
+async fn respond(
+    stream: &mut TlsStream<tokio::net::TcpStream>,
+    replies: &Mutex<VecDeque<Value>>,
+    exchange: &Mutex<Option<exchange::Exchange>>,
+) {
     let request = read(stream).await;
+    let app = exchange
+        .lock()
+        .expect("App API state")
+        .as_mut()
+        .and_then(|app| app.respond(&request));
+    let reply = app.unwrap_or_else(|| evidence(&request, replies));
+    let body = serde_json::to_vec(&reply).expect("response");
+    let header = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(header.as_bytes()).await.expect("headers");
+    stream.write_all(&body).await.expect("body");
+    stream.shutdown().await.expect("TLS close");
+}
+
+fn evidence(request: &Request, replies: &Mutex<VecDeque<Value>>) -> Value {
     let reply = replies
         .lock()
         .expect("replies")
@@ -107,22 +142,16 @@ async fn respond(stream: &mut TlsStream<tokio::net::TcpStream>, replies: &Mutex<
             );
         }
         if expected.get("publication").is_some() {
-            publication_request(&request);
+            publication_request(request);
         }
         reply["response"].clone()
     } else {
-        history_request(&request);
+        history_request(request);
         reply
     };
-    let body = serde_json::to_vec(&reply).expect("response");
-    let header = format!(
-        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(header.as_bytes()).await.expect("headers");
-    stream.write_all(&body).await.expect("body");
-    stream.shutdown().await.expect("TLS close");
+    reply
 }
+
 fn publication_request(request: &Request) {
     let body: Value = serde_json::from_slice(&request.body).expect("mutation body");
     assert!(

@@ -90,10 +90,13 @@ async fn empty_oversized_cut_or_tool_bearing_summary_blocks_goal_assessment() ->
         let output = run(&engine, &lease, &native, &prepared).await?;
         assert!(output.task.is_none());
         assert!(output.recovery.is_some());
-        assert!(matches!(
+        assert_eq!(
             output.result.outcome,
-            crate::ResultOutcome::Failed(_)
-        ));
+            crate::ResultOutcome::Failed(crate::Failure {
+                class: None,
+                detail: "the run was stopped before it finished".into(),
+            })
+        );
         assert!(
             native
                 .requests
@@ -161,6 +164,21 @@ fn assert_complete_summary(evidence: &serde_json::Value) {
             .get("complete_group_bytes")
             .and_then(serde_json::Value::as_u64)
             .is_some_and(|bytes| bytes > 8192)
+    );
+    // Independent literal bytes describe this fixture's complete two-message group.
+    // Do not call the production evidence builder: dropping or reordering a member must fail.
+    let canonical = [
+        r#"{"answer":"","completed_group":[{"role":"assistant","text":"","calls":[{"name":"update_plan","arguments":{}}]},{"role":"tool","call_id":"plan","output":""#,
+        &"evidence ".repeat(1400),
+        r#""}]}"#,
+    ].concat();
+    assert_eq!(
+        evidence["complete_group_bytes"],
+        serde_json::json!(canonical.len())
+    );
+    assert_eq!(
+        evidence["complete_group_sha256"],
+        serde_json::json!(afd_core::etag::sha256_hex(canonical.as_bytes()))
     );
     assert_eq!(
         evidence

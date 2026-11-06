@@ -60,6 +60,7 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
     )
     .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    problem(&json_body(response).await, "UZ-DT-001");
     let publish = json!({"operation_id":mint_uuid7(),"fencing_token":fixture.lease.fence,
         "task":task,"source_item_id":item,"covered_input_sequence":0,
         "expected_head":"0".repeat(40),"tested_tree":"1".repeat(40),
@@ -134,13 +135,19 @@ async fn foreign_and_stale(fixture: &Fixture, route: &str, body: &Value) {
                 StatusCode::NOT_FOUND
             }
         );
-        if token.is_some() {
-            assert_eq!(crate::harness::code_of(response).await, "UZ-RUN-006");
-        }
+        problem(
+            &json_body(response).await,
+            if token.is_none() {
+                "UZ-RUN-001"
+            } else {
+                "UZ-RUN-006"
+            },
+        );
     }
     let mut stale = body.clone();
     stale["fencing_token"] = json!(fixture.lease.fence + 1);
-    call(fixture, Method::POST, route, &stale, StatusCode::CONFLICT).await;
+    let refused = call(fixture, Method::POST, route, &stale, StatusCode::CONFLICT).await;
+    problem(&refused, "UZ-RUN-005");
 }
 
 async fn receipts(fixture: &Fixture, binding: &TaskBindingsInput, accepted: &Value, task: &Value) {
@@ -191,7 +198,7 @@ async fn acknowledge(fixture: &Fixture, receipt: &Value) {
     );
     let mut changed = receipt.clone();
     changed["response_text"] = json!("A conflicting second answer");
-    call(
+    let refused = call(
         fixture,
         Method::POST,
         &receipt_path,
@@ -199,5 +206,16 @@ async fn acknowledge(fixture: &Fixture, receipt: &Value) {
         StatusCode::CONFLICT,
     )
     .await;
+    problem(&refused, "UZ-DT-003");
     foreign_and_stale(fixture, &receipt_path, receipt).await;
+}
+
+fn problem(body: &Value, code: &str) {
+    assert_eq!(body["error_code"], code);
+    assert!(body["request_id"].as_str().is_some_and(|id| !id.is_empty()));
+    assert!(
+        body["detail"]
+            .as_str()
+            .is_some_and(|detail| !detail.is_empty())
+    );
 }

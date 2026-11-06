@@ -1,14 +1,16 @@
 "use client";
 
+import type { TaskSummary, TaskDetail as NativeTaskDetail } from "@/lib/api/tasks";
+import type { TaskResource } from "./use-task-read";
 import { useCallback } from "react";
 import { Button, SignalSpinner } from "@agentsfleet/design-system";
-import { readTask, type TaskSummary, type TaskDetail as NativeTaskDetail } from "@/lib/api/tasks";
+import { readTask } from "@/lib/api/tasks";
 import { TaskNextStep } from "./TaskNextStep";
 import { TaskGoalAdoption } from "./TaskGoalAdoption";
 import { TaskControls } from "./TaskControls";
 import { TaskRepositoryProgress } from "./TaskRepositoryProgress";
 import { QuestionDetails } from "./SetupQuestions";
-import { confirmed, useTaskRead, type TaskResource } from "./use-task-read";
+import { confirmed, useTaskRead } from "./use-task-read";
 
 type Props = {workspaceId: string; fleetId: string; task: TaskSummary; onChanged: () => void};
 

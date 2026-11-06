@@ -1,16 +1,20 @@
 "use client";
 
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, SignalSpinner } from "@agentsfleet/design-system";
-import { CircleDot, Clock3, ListTodo, TriangleAlert } from "lucide-react";
-import { type TaskSummary, type TaskPage } from "@/lib/api/tasks";
+import type { TaskSummary, TaskPage } from "@/lib/api/tasks";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { TaskResource } from "./use-task-read";
+import type { TaskDetails } from "./use-task-details";
+import type { FleetTaskProps } from "./FleetTaskProvider";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Section, SignalSpinner } from "@agentsfleet/design-system";
+import { CircleDot, Clock3, ListTodo, TriangleAlert } from "lucide-react";
 import { taskActivityLabel } from "@/lib/task-activity";
 import { TaskDetailView } from "./TaskDetail";
-import { confirmed, type TaskResource } from "./use-task-read";
-import { type TaskDetails } from "./use-task-details";
-import { FleetTaskProvider, useFleetTaskView, type FleetTaskProps } from "./FleetTaskProvider";
+import { confirmed } from "./use-task-read";
+import { FleetTaskProvider, useFleetTaskView } from "./FleetTaskProvider";
 import { workActivity } from "./WorkActivity";
 import { WorkChanges, WorkOutputs, WorkSection, WorkSources } from "./WorkContextSections";
+
+type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; events: readonly FleetEvent[]; retry: () => void; retryDetails: () => void};
 
 const EMPTY_TASKS: readonly TaskSummary[] = [];
 const EMPTY_EVENTS: readonly FleetEvent[] = [];
@@ -25,16 +29,16 @@ function CurrentWork() {
   const view = useFleetTaskView();
   if (!view?.subject) return null;
   const {workspaceId, fleetId, sources, events = EMPTY_EVENTS, read} = view;
-  if (!read) return <section aria-label="Current work"><WorkLoading /></section>;
+  if (!read) return <Section asChild className="block gap-0"><section aria-label="Current work"><WorkLoading /></section></Section>;
   const {resource, details, retry, retryDetails} = read;
   const page = confirmed(resource);
   const tasks = page?.items ?? EMPTY_TASKS;
-  return <section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-lg">
+  return <Section asChild className="block gap-0"><section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-lg">
     <WorkReadStatus resource={resource} retry={retry} />
     {page ? <><WorkSection title="Durable tasks" icon={<ListTodo size={16} aria-hidden="true" />}>
       {!tasks.length ? <p className="text-eyebrow text-muted-foreground">No unfinished tasks.</p> : <TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={details} events={events} retry={retry} retryDetails={retryDetails} />}
     </WorkSection><WorkOutputs details={details} /><WorkChanges events={events} /><WorkSources sources={sources} /></> : null}
-  </section>;
+  </section></Section>;
 }
 
 function WorkLoading() {
@@ -44,10 +48,9 @@ function WorkLoading() {
 function WorkReadStatus({resource, retry}: {resource: TaskResource<TaskPage>; retry: () => void}) {
   if (resource.kind === "loading") return <WorkLoading />;
   if (resource.kind !== "failed") return null;
-  return <><output className="block text-eyebrow text-muted-foreground">{confirmed(resource) ? "Connection interrupted. Last confirmed progress is shown while we reconnect." : "Current work is unavailable."}</output><Button variant="ghost" size="sm" onClick={retry}>Retry connection</Button></>;
+  return <><output className="block text-eyebrow text-muted-foreground">{confirmed(resource) ? "Connection interrupted. Last confirmed progress is shown. Retry connection to check again." : "Current work is unavailable."}</output><Button variant="ghost" size="sm" onClick={retry}>Retry connection</Button></>;
 }
 
-type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; events: readonly FleetEvent[]; retry: () => void; retryDetails: () => void};
 function TaskRows({workspaceId, fleetId, tasks, details, events, retry, retryDetails}: RowsProps) {
   return <Accordion type="single" collapsible>
     {tasks.map(task => <AccordionItem key={task.id} value={task.id} className="border-0">

@@ -148,6 +148,9 @@ garde.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+# Parse SDK batch-delete XML and verify the local GitHub App exchange signature.
+quick-xml = { version = "=0.41.0", features = ["serialize"] }
+jsonwebtoken.workspace = true
 # Real HTTPS object-store fixtures use an ephemeral CA and pinned local DNS.
 rcgen.workspace = true
 rustls.workspace = true

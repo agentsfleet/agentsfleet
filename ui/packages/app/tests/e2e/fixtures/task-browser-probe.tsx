@@ -1,9 +1,9 @@
+import type { ThreadMessageLike } from "@assistant-ui/react";
 import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
 import { SenderLabelProvider } from "@/components/domain/FleetMessageRow";
 import { TASK_IDS } from "@/tests/helpers/task-reads";
 import { FleetTaskProvider } from "@/components/domain/chat/FleetTaskProvider";
-import type { ThreadMessageLike } from "@assistant-ui/react";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { FleetThreadViewport } from "@/components/domain/FleetThreadViewport";
 import { FleetConversationLayout } from "@/components/domain/FleetWorkSidebar";

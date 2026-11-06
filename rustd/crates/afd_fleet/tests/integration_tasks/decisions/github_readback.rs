@@ -6,7 +6,7 @@ use super::{
     github_authority,
     github_server::Server,
 };
-use afd_fleet::task::TaskLifecycle as _;
+use afd_fleet::task::{TaskLifecycle as _, TaskRefusal};
 use afd_wire::task::TaskEffectState;
 use serde_json::{Value, json};
 
@@ -20,7 +20,7 @@ async fn history(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
     let server = Server::start(vec![]).await;
-    let tasks = github_authority::tasks(&fixture, server.client.clone()).await;
+    let tasks = github_authority::tasks(&fixture, &server).await;
     let effect = seed(case, &task.task_id, 1, "unknown").await;
     server.push(json!({"errors":[{"message":"fixture unavailable"}]}));
     server.push(json!({"data":{"repository":{"databaseId":102}}}));
@@ -35,7 +35,14 @@ async fn history(case: &Case) {
 
 async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &str) {
     for _ in 0..2 {
-        assert!(tasks.effect(case.lease(), &id(effect)).await.is_err());
+        assert_eq!(
+            tasks
+                .effect(case.lease(), &id(effect))
+                .await
+                .expect_err("remote failure or mismatched repository leaves effect uncertain")
+                .code(),
+            TaskRefusal::EffectUncertain.code()
+        );
     }
     for _ in 0..3 {
         let receipt = tasks
