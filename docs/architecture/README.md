@@ -66,6 +66,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What does the Slack bot do — and never do? | [`user_flow.md`](./user_flow.md) §"§8.8 Slack as a resident surface (Rung 0) — M106" |
 | How many datastore connections does a deployment need? | [`scaling.md`](./scaling.md) §"Connection budget after the cutover" |
 | What is the datastore target, and what has moved so far? | [`datastore_scaling.md`](./datastore_scaling.md) |
+| How will a message reach a runner at 20,000 fleets, and in which milestones? | [`push_scheduler.md`](./push_scheduler.md) |
 | What drives idle request volume? | [`scaling.md`](./scaling.md) §"Idle request volume" |
 | Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §"Tuneup knobs and when to turn them" |
 | Where is the next bottleneck? | [`scaling.md`](./scaling.md) §"Where the next ceiling actually lives" |

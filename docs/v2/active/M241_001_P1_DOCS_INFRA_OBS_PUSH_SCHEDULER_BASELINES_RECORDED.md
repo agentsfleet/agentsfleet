@@ -150,7 +150,7 @@ One new architecture page holds:
 
 The page states the target as the design (SPEC-FRAME). **Implementation default:** no column listings, because each milestone's spec fixes its own schema when it starts (Indy, Discovery).
 
-- **Dimension 2.1** — the page reads clean → Test `orly gate verify` (integration): 0 `docs.language` findings on `docs/architecture/push_scheduler.md`.
+- **Dimension 2.1** — DONE — the page reads clean → Test `orly gate verify` (integration): 0 `docs.language` findings on `docs/architecture/push_scheduler.md`.
 - **Dimension 2.2** — Indy approves the decisions section → Test `decisions_approved` (manual): Indy reads §Decisions and §Superseded rules; his reply is quoted in the Pull Request Session Notes.
 
 ### §3 — Delete the poll counters that undercount
