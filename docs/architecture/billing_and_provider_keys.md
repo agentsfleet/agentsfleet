@@ -572,11 +572,15 @@ A `Settlement` carries each line's raw usage and the daemon's price. A biller th
 
 **Outage policy.** `WithOutagePolicy<B>` wraps any biller. Under `OutagePolicy::Open`, a `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` reads the policy; a failed `settle` leaves the lines for the relay's next pass.
 
-An outage is a pool with no connection to hand out, or a connection lost mid-statement, as `afd_db::error::is_connection_lost` decides. A settle waits at most 2 s for the wallet lock and 5 s for its statement. A funds read runs at most 1 s (`afd_billing/src/ledger/sql/begin_read.sql`). A wait past any of them (`55P03`, `57014`) is a biller with no answer (`Error::is_unanswered`).
+An outage is a pool with no connection to hand out, or a connection lost mid-statement, as `afd_db::error::is_connection_lost` decides. A settle waits at most 2 s for the wallet lock and 5 s for its statement.
+
+`LedgerBiller`'s `check` and `balance` run at most 1 s (`READ_TIMEOUT` in `afd_billing/src/ledger/mod.rs`). A wait past any of these limits (`55P03`, `57014`) is a biller with no answer (`Error::is_unanswered`).
 
 A constraint, syntax or decode failure is a defect and is refused under either policy. The policy is chosen once, where `agentsfleetd` builds the biller, and starts open (Indy, 2026-10-19).
 
-**The built-in biller.** `LedgerBiller` answers `check` with one read and no lock: `Balance::left`, the balance less the payer's unsettled lines. The read sums only unsettled lines, through the partial index `idx_usage_lines_tenant_id_unsettled`, so its cost tracks the relay's backlog rather than the tenant's history (`the_funds_read_scans_only_unsettled_lines_however_long_the_history`). Every gate and check compares that one number with what the work asks for. A payer in debt is short even of nothing.
+**The built-in biller.** `LedgerBiller` answers `check` with one read and no lock: `Balance::left`, the balance less the payer's unsettled lines. Every gate and check compares that one number with what the work asks for. A payer in debt is short even of nothing.
+
+The read sums only unsettled lines, through the partial index `idx_usage_lines_tenant_id_unsettled`, so its cost tracks the relay's backlog rather than the tenant's history (`the_funds_read_scans_only_unsettled_lines_however_long_the_history`).
 
 `settle` locks the payer's wallet row, then charges only lines still unsettled, so repeated passes are idempotent. A settlement takes its whole charge, past zero if it must, and the tenant owes the rest (Indy, 2026-10-19).
 
