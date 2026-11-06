@@ -84,7 +84,7 @@ afd_fleet_lifecycle.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "test-util"] }
 
 [features]
-test-util = ["afd_db/test-util"]
+test-util = ["afd_db/test-util", "afd_billing/test-util"]
 
 [lints]
 workspace = true

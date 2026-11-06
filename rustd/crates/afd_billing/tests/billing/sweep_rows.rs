@@ -2,8 +2,7 @@
 //!
 //! The shared lane's sweep reads every unsettled line in it, so a foreign or
 //! corrupt row seeded there would reach every other suite's pass. These checks
-//! build a private database holding only the usage log's columns, and no
-//! `billing.holds`, so the owed read after a pass fails on its own.
+//! build a private database holding only the usage log's columns.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -30,7 +29,7 @@ const USAGE_LOG: &str = "CREATE SCHEMA billing; \
       unpriced_token_count bigint NOT NULL, charged_nanos bigint NOT NULL, \
       settled_at timestamptz, created_at timestamptz NOT NULL)";
 
-/// One unsettled line logged at the epoch, long past the grace.
+/// One unsettled line, logged at the epoch.
 const SEED_LINE: &str = "INSERT INTO billing.usage_lines \
     (work_type, work_id, seq, tenant_id, workspace_id, provider, model, posture, \
      requested_at, input_token_count, cached_input_token_count, cache_write_token_count, \
@@ -71,17 +70,16 @@ async fn seed(database: &Db, work_type: &str, price: Option<&str>) {
         .expect("the line seeds");
 }
 
-/// A line of a work type this build does not write is skipped, so the pass
-/// settles nothing; the owed read after it fails, and that failure is the
-/// pass's answer rather than a silent zero.
+/// A line of a work type this build does not write is skipped by the read, so
+/// the pass settles nothing and one foreign row cannot stall the relay.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_foreign_line_is_skipped_and_an_unread_debt_fails_the_pass() {
+async fn a_foreign_line_is_skipped_by_the_read_and_the_pass() {
     let (lane, database) = private_log().await;
     seed(&database, FOREIGN_WORK, None).await;
 
     let mut connection = database.acquire().await.expect("a private connection");
-    let read = unsettled(&mut *connection, std::time::Duration::ZERO, READ_LIMIT)
+    let (read, _resume) = unsettled(&mut *connection, READ_LIMIT, None)
         .await
         .expect("the log reads");
     assert!(
@@ -91,9 +89,34 @@ async fn a_foreign_line_is_skipped_and_an_unread_debt_fails_the_pass() {
     drop(connection);
 
     let biller = RecordingBiller::new();
-    let failed = resettle(&database, &biller)
+    let swept = resettle(&database, &biller, None)
         .await
-        .expect_err("the owed read has no holds table to read");
+        .expect("the pass reads");
+    assert_eq!(swept.settled, 0, "{swept:?}");
+    assert!(biller.settlements().is_empty(), "nothing was settled");
+
+    database.close().await;
+    lane.cleanup().await;
+}
+
+/// What is still owed is read after every pass; a read that cannot sum it
+/// fails the pass rather than publishing a silent zero.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_unreadable_debt_fails_the_pass() {
+    let (lane, database) = private_log().await;
+    for _ in 0..2 {
+        seed(&database, afd_billing::sql::work::FLEET_LEASE, None).await;
+    }
+    sqlx::query("UPDATE billing.usage_lines SET charged_nanos = 9223372036854775807")
+        .execute(&mut *database.acquire().await.expect("a private connection"))
+        .await
+        .expect("two lines no BIGINT can sum");
+
+    let biller = RecordingBiller::new();
+    let failed = resettle(&database, &biller, None)
+        .await
+        .expect_err("the owed read overflows");
     assert_eq!(failed.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert!(
         failed.to_string().contains("read what is still owed"),
@@ -119,7 +142,7 @@ async fn a_malformed_price_reference_refuses_the_read() {
     .await;
 
     let mut connection = database.acquire().await.expect("a private connection");
-    let refused = unsettled(&mut *connection, std::time::Duration::ZERO, READ_LIMIT)
+    let refused = unsettled(&mut *connection, READ_LIMIT, None)
         .await
         .expect_err("a malformed price reference refuses");
     assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
@@ -129,6 +152,40 @@ async fn a_malformed_price_reference_refuses_the_read() {
             .contains("billing.usage_lines.platform_model_price_id"),
         "the refusal names the column: {refused}"
     );
+    drop(connection);
+
+    database.close().await;
+    lane.cleanup().await;
+}
+
+/// A full batch the relay cannot move does not hold newer lines behind it: the
+/// read resumes after the last line it returned, and a read that reaches the
+/// newest line answers no resume point, so the next read starts a new lap.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_read_resumes_after_a_full_batch_and_then_laps() {
+    const BATCH: i64 = 3;
+    let (lane, database) = private_log().await;
+    for _ in 0..=BATCH {
+        seed(&database, afd_billing::sql::work::FLEET_LEASE, None).await;
+    }
+
+    let mut connection = database.acquire().await.expect("a private connection");
+    let (first, resume) = unsettled(&mut *connection, BATCH, None)
+        .await
+        .expect("the first batch reads");
+    assert_eq!(first.len(), 3, "a full batch: {first:?}");
+    let resume = resume.expect("a full batch says where to resume");
+    let (rest, lap) = unsettled(&mut *connection, BATCH, Some(&resume))
+        .await
+        .expect("the next batch reads");
+    assert_eq!(rest.len(), 1, "the line past the stuck batch is reached");
+    let reached = rest.first().expect("one line past the batch");
+    assert!(
+        first.iter().all(|work| work.work != reached.work),
+        "the resumed read returns no line the first one did"
+    );
+    assert!(lap.is_none(), "reaching the newest line starts a new lap");
     drop(connection);
 
     database.close().await;

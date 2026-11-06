@@ -155,6 +155,7 @@ async fn settle_once(f: &Fixture, first: &Claimed) {
             .expect("a retained report is answered, not left to retry");
         assert!(ack.settled, "the spool removes only a settled entry");
         assert_eq!(ack.replayed, replayed);
+        f.relay(&first.attempt_id).await;
     }
     assert_eq!(
         balance(f).await,

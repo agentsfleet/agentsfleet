@@ -65,9 +65,9 @@ impl Issuance<'_> {
             return Ok(Emission::Existing(Box::new(locked)));
         }
         let required =
-            crate::lease::holds::ceiling_on(&mut tx, self.lease.lease_id, self.coverage.headroom)
+            super::credit::required_on(&mut tx, self.lease.lease_id, self.coverage.headroom)
                 .await?;
-        if required > self.coverage.ceiling {
+        if required > self.coverage.required {
             return Err(TaskRefusal::DecisionUnavailable.into());
         }
         let payload = row::payload(&mut tx, &locked.id)

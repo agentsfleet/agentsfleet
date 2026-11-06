@@ -31,8 +31,7 @@ use crate::{
 #[derive(Debug, PartialEq, Eq, sqlx::FromRow)]
 struct Financials {
     balance: i64,
-    captured: i64,
-    released: bool,
+    settled_cost: i64,
     decision_rows: i64,
     unsettled: i64,
     decision_cost: i64,
@@ -40,7 +39,7 @@ struct Financials {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn receipt_settlement_recovers_without_replay_charges_or_releasing_unknown_calls() {
+async fn receipt_settlement_recovers_without_replay_charges_or_losing_unknown_calls() {
     exercise(recovery).await;
 }
 
@@ -50,7 +49,6 @@ async fn recovery(case: &Case) {
     let balance = fixture.wallet().await;
     let first = fixture.reserve(&fixture.goal_reservation(&task)).await.1;
     let second = fixture.reserve(&fixture.goal_reservation(&task)).await.1;
-    let retained = hold_identity(&fixture).await;
     deferred_receipt(&fixture, &first, balance).await;
     fixture
         .record(
@@ -62,23 +60,16 @@ async fn recovery(case: &Case) {
         .await;
     let fee = completed_lease(&fixture).await;
     age_recovery(&fixture, &request(&first).call_id).await;
-    assert_eq!(
-        financials(&fixture).await,
-        expected(balance, fee, 1, 1, false)
-    );
+    assert_eq!(financials(&fixture).await, expected(balance, 0, 1, 1));
     assert_eq!(
         swept(&fixture).await,
         BillingSwept {
-            resettled: 1,
+            resettled: 2,
             ..BillingSwept::default()
         }
     );
-    assert_eq!(
-        financials(&fixture).await,
-        expected(balance, fee + 3, 1, 0, false)
-    );
+    assert_eq!(financials(&fixture).await, expected(balance, fee + 3, 1, 0));
     late_usage(&fixture, &second, &task, balance, fee).await;
-    assert_eq!(hold_identity(&fixture).await, retained);
     original_attribution(&fixture).await;
     fixture
         .model
@@ -91,10 +82,7 @@ async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {
     let mut dependencies = fixture.dependencies.clone();
     dependencies.biller = Faulty::over(
         &fixture.case.held.fixtures.database,
-        Faults {
-            settle: true,
-            ..Faults::NONE
-        },
+        Faults { settle: true },
     );
     let down = Tasks::new(
         fixture.case.held.leases.clone(),
@@ -114,7 +102,12 @@ async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {
         .await
         .expect("receipt commits before the failed financial transport");
     assert_receipt(&recorded, DecisionRecordDisposition::Current);
-    deferred_diagnostic(&capture, fixture);
+    assert!(
+        !capture
+            .events()
+            .iter()
+            .any(|event| event.field("event") == Some("lease_settle_deferred"))
+    );
     drop(capture);
     let replay = fixture
         .record(&request.call_id, input.into_inner().receipt)
@@ -122,24 +115,25 @@ async fn deferred_receipt(fixture: &Decisions<'_>, body: &Value, balance: i64) {
     let mut expected_receipt = recorded;
     expected_receipt.replayed = true;
     assert_eq!(replay, expected_receipt);
-    assert_eq!(financials(fixture).await, expected(balance, 0, 1, 1, false));
+    assert_eq!(financials(fixture).await, expected(balance, 0, 1, 1));
     assert_eq!(fixture.counts().await, (2, 2, 1));
+    failed_relay(fixture).await;
+    assert_eq!(financials(fixture).await, expected(balance, 0, 1, 1));
 }
 
-fn deferred_diagnostic(capture: &Capture, fixture: &Decisions<'_>) {
-    let event = capture.only("lease_settle_deferred");
-    assert_eq!(event.level, tracing::Level::WARN);
+async fn failed_relay(fixture: &Decisions<'_>) {
+    let database = &fixture.case.held.fixtures.database;
+    let biller = Faulty::over(database, Faults { settle: true });
+    let failed = sweep(database, &*biller, &Entropy::new(), clock::now(), None)
+        .await
+        .expect("failed relay retains measured usage");
     assert_eq!(
-        (
-            event.field("error_code"),
-            event.field("reason"),
-            event.field("work_id")
-        ),
-        (
-            Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
-            Some("decision_settlement_pending"),
-            Some(fixture.case.held.lease_key.as_str())
-        )
+        failed,
+        BillingSwept {
+            settle_failures: 1,
+            refused: Some(error_code::INTERNAL_DB_UNAVAILABLE),
+            ..BillingSwept::default()
+        }
     );
 }
 
@@ -170,11 +164,11 @@ async fn completed_lease(fixture: &Decisions<'_>) -> i64 {
         .await
         .expect("normal terminal report");
     assert!(!saved.repeated);
-    let event = capture.only("lease_release_deferred");
-    assert_eq!(event.level, tracing::Level::INFO);
-    assert_eq!(
-        (event.field("reason"), event.field("work_id")),
-        (Some("decision_pending"), Some(held.lease_key.as_str()))
+    assert!(
+        !capture
+            .events()
+            .iter()
+            .any(|event| event.field("event") == Some("lease_release_deferred"))
     );
     assert!(held.fixtures.admission_settled(&held.event_id).await);
     saved.charged.as_i64()
@@ -220,18 +214,15 @@ async fn late_usage(
     let recorded = fixture.record(&request.call_id, receipt.clone()).await;
     assert_receipt(&recorded, DecisionRecordDisposition::Stale);
     assert_eq!(fixture.counts().await, (2, 2, 2));
-    assert_eq!(
-        financials(fixture).await,
-        expected(balance, fee + 6, 2, 0, false)
-    );
+    assert_eq!(financials(fixture).await, expected(balance, fee + 3, 2, 1));
     assert_eq!(
         swept(fixture).await,
         BillingSwept {
-            released: 1,
+            resettled: 1,
             ..BillingSwept::default()
         }
     );
-    let completed = expected(balance, fee + 6, 2, 0, true);
+    let completed = expected(balance, fee + 6, 2, 0);
     assert_eq!(financials(fixture).await, completed);
     assert!(fixture.record(&request.call_id, receipt).await.replayed);
     assert_eq!(swept(fixture).await, BillingSwept::default());
@@ -247,11 +238,10 @@ async fn late_usage(
     );
 }
 
-fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64, released: bool) -> Financials {
+fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64) -> Financials {
     Financials {
         balance: balance - charged,
-        captured: charged,
-        released,
+        settled_cost: charged,
         decision_rows: rows,
         unsettled,
         decision_cost: rows * 3,
@@ -259,25 +249,18 @@ fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64, released: boo
 }
 
 async fn financials(fixture: &Decisions<'_>) -> Financials {
-    sqlx::query_as("SELECT w.balance_nanos AS balance,h.captured_nanos AS captured,h.released_at IS NOT NULL AS released,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=h.work_id AND u.seq >= $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=h.work_id AND u.seq >= $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=h.work_id AND u.seq >= $2) AS decision_cost FROM billing.holds h JOIN billing.wallets w ON w.tenant_id=h.tenant_id WHERE h.work_id=$1::uuid")
+    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_cost FROM runner.leases l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1::uuid")
         .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(DECISION_SEQ_BASE))
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original financial state"))
-        .await.expect("complete original wallet, usage and hold")
+        .await.expect("complete original wallet and immutable usage")
 }
 
 async fn swept(fixture: &Decisions<'_>) -> BillingSwept {
     let database = &fixture.case.held.fixtures.database;
     let biller = LedgerBiller::on_system_clock(database.clone());
-    sweep(database, &biller, &Entropy::new(), clock::now())
+    sweep(database, &biller, &Entropy::new(), clock::now(), None)
         .await
         .expect("normal native financial recovery")
-}
-
-async fn hold_identity(fixture: &Decisions<'_>) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(h)-'updated_at'-'captured_nanos'-'released_at' FROM billing.holds h WHERE h.work_id=$1::uuid")
-        .bind(fixture.case.held.lease_key.as_str())
-        .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original hold identity"))
-        .await.expect("hold ceiling and original ownership remain unchanged")
 }
 
 async fn original_attribution(fixture: &Decisions<'_>) {

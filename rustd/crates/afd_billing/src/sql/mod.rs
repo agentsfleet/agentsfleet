@@ -50,8 +50,9 @@ pub const SELECT_PRICE_BOOK: &str = include_str!("select_price_book.sql");
 /// `$1` model UUID · `$2` reviewed revision UUID · `$3` native call timestamp.
 pub const SELECT_DECISION_PRICE_BOOK: &str = include_str!("select_decision_price_book.sql");
 
-/// The stored spellings of `billing.usage_lines.work_type` and
-/// `billing.holds.work_type` (RULE STS: the schema names none of them).
+/// The stored spellings of `billing.usage_lines.work_type` (RULE STS: the
+/// schema names none of them).
+
 pub mod work {
     /// A fleet run's lease.
     pub const FLEET_LEASE: &str = "fleet_lease";

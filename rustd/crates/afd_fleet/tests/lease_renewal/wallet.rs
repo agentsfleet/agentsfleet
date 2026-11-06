@@ -1,8 +1,11 @@
-//! A runtime renewal's settled slice and an authoring settlement debit one wallet.
+//! A runtime renewal's settled slice and a setup chat attempt the billing relay
+//! settles debit one wallet.
 //!
 //! Both kinds run on one two-worker host for one tenant. The wallet row is held
-//! while both requests queue behind it, in each order; on release both commit,
-//! neither debit is lost, and neither waits forever on the other's locks.
+//! while both settlements queue behind it, in each order; on release both
+//! commit, neither debit is lost, and neither waits forever on the other's
+//! locks. The setup chat's report itself never waits on the wallet: only the
+//! relay's release of the settled attempt does.
 
 use super::{
     fixture::Running,
@@ -10,14 +13,12 @@ use super::{
     seat::{FUNDED, Seat},
 };
 use crate::rows::Row;
-use afd_authoring::Claimed;
-use std::sync::Arc;
+use afd_authoring::{Claimed, Drafts};
 
 use afd_billing::Posture;
-use afd_billing::biller::{Biller as _, Receipt};
+use afd_billing::biller::{Biller as _, Receipt, WorkKey};
 use afd_billing::ledger::LedgerBiller;
 use afd_core::{clock, id::Uuid7};
-use afd_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
 use afd_fleet::lease::Renewed;
 use afd_fleet::lease::sql::meter::Metering;
@@ -57,11 +58,7 @@ async fn test_runtime_debit_and_authoring_settlement_interleave_on_one_wallet() 
 async fn scenario(first: First) {
     let running = Running::create().await;
     let database = &running.fixtures.database;
-    sqlx::query("UPDATE runner.runners SET worker_count = 2 WHERE id = $1::uuid")
-        .bind(running.runner.as_str())
-        .execute(&mut *database.acquire().await.expect("widen"))
-        .await
-        .expect("a second worker for the authoring turn");
+    widen(&running).await;
     let seat = Seat::create(&running).await;
     let drafts = Seat::drafts(database);
     let draft = seat.queue(&drafts).await;
@@ -74,57 +71,9 @@ async fn scenario(first: First) {
         .await;
     assert_eq!(balance(&running, &seat.tenant).await, FUNDED);
 
-    let leases = running.fixtures.leases();
-    let pricing = Pricing::load(
-        database,
-        Posture::SelfManaged,
-        crate::seed::PROVIDER,
-        crate::seed::MODEL,
-        running.lease.as_str(),
-    )
-    .await;
-    let biller = LedgerBiller::new(
-        database.clone(),
-        Entropy::new(),
-        Arc::new(afd_core::clock::SystemClock),
-    );
-    // A renewal, then its slice settled through the biller: the step that
-    // takes the tenant's wallet lock on the fleet path.
-    let requests = [afd_wire::usage::RequestUsage {
-        seq: 0,
-        at: clock::now(),
-        input_tokens: u32::try_from(INPUT_TOKENS).expect("the fixture count fits a line"),
-        cached_input_tokens: 0,
-        cache_write_tokens: 0,
-        cache_write_5m_tokens: 0,
-        cache_write_1h_tokens: 0,
-        output_tokens: 0,
-    }];
-    let renew = async {
-        let renewed = leases
-            .extend(
-                Metering {
-                    lease_id: running.lease.as_str(),
-                    runner_id: &running.runner,
-                    requests: &requests,
-                },
-                &running.lease,
-                &pricing,
-                clock::now(),
-            )
-            .await
-            .expect("the renewal is a verdict");
-        let receipt = match &renewed {
-            Renewed::Extended {
-                settlement: Some(settled),
-                ..
-            } => biller.settle(settled).await.expect("the slice settles"),
-            _ => Receipt::default(),
-        };
-        (renewed, receipt)
-    };
-    let authoring = lease_id(&lease);
-    let settle = drafts.report(&running.runner, &authoring, accounting(&lease));
+    let biller = LedgerBiller::on_system_clock(database.clone());
+    let renew = renew_and_settle(&running, &biller);
+    let settle = report_and_relay(&running, &drafts, &lease, &biller);
     let (renewed, reported) = match first {
         First::Renewal => Box::pin(queued(&running, &seat.tenant, renew, settle)).await,
         First::Settlement => {
@@ -154,6 +103,95 @@ async fn scenario(first: First) {
     );
     seat.remove(database).await;
     running.cleanup().await;
+}
+
+/// Gives the runner a second worker, for the setup chat turn beside the lease.
+async fn widen(running: &Running) {
+    sqlx::query("UPDATE runner.runners SET worker_count = 2 WHERE id = $1::uuid")
+        .bind(running.runner.as_str())
+        .execute(&mut *running.fixtures.database.acquire().await.expect("widen"))
+        .await
+        .expect("a second worker for the authoring turn");
+}
+
+/// A renewal, then its slice settled through the biller: the step that takes
+/// the tenant's wallet lock on the fleet path.
+async fn renew_and_settle(running: &Running, biller: &LedgerBiller) -> (Renewed, Receipt) {
+    let database = &running.fixtures.database;
+    let pricing = Pricing::load(
+        database,
+        Posture::SelfManaged,
+        crate::seed::PROVIDER,
+        crate::seed::MODEL,
+        running.lease.as_str(),
+    )
+    .await;
+    let requests = [afd_wire::usage::RequestUsage {
+        seq: 0,
+        at: clock::now(),
+        input_tokens: u32::try_from(INPUT_TOKENS).expect("the fixture count fits a line"),
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: 0,
+    }];
+    let metering = Metering {
+        lease_id: running.lease.as_str(),
+        runner_id: &running.runner,
+        requests: &requests,
+    };
+    let renewed = running
+        .fixtures
+        .leases()
+        .extend(metering, &running.lease, &pricing, clock::now())
+        .await
+        .expect("the renewal is a verdict");
+    let receipt = match &renewed {
+        Renewed::Extended {
+            settlement: Some(settled),
+            ..
+        } => biller.settle(settled).await.expect("the slice settles"),
+        _ => Receipt::default(),
+    };
+    (renewed, receipt)
+}
+
+/// A setup chat report, then the relay's settlement of the attempt's lines:
+/// the step that takes the tenant's wallet lock on the setup chat path. The
+/// report itself never waits on the wallet.
+async fn report_and_relay(
+    running: &Running,
+    drafts: &Drafts,
+    lease: &Claimed,
+    biller: &LedgerBiller,
+) -> afd_authoring::Result<Reported> {
+    let attempt = WorkKey::AuthoringAttempt(Uuid7::parse(&lease.attempt_id).expect("a v7 attempt"));
+    let reported = drafts
+        .report(&running.runner, &lease_id(lease), accounting(lease))
+        .await;
+    let unsettled = afd_billing::ledger::unsettled_work(
+        &mut *running
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection"),
+        &attempt,
+    )
+    .await
+    .expect("the attempt's lines read");
+    assert!(
+        !unsettled.is_empty(),
+        "the report logged the attempt's lines"
+    );
+    for settlement in unsettled {
+        biller
+            .settle(&settlement)
+            .await
+            .expect("the relay settles the attempt");
+    }
+    reported
 }
 
 /// Hold the wallet row, queue `first` then `second` behind it, release both.

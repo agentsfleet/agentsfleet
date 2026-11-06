@@ -6,7 +6,7 @@ use std::{panic::AssertUnwindSafe, time::Duration};
 use afd_billing::{
     Nanos, Posture,
     biller::{Account, Attribution, Biller as _, Settlement, WorkKey, conformance::BALANCE},
-    ledger::{GRACE, LedgerBiller, Resettled, charged_so_far, log_lines, resettle, unsettled},
+    ledger::{LedgerBiller, Resettled, log_lines, resettle, unsettled},
 };
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
@@ -103,10 +103,13 @@ async fn recovery(database: &Db, payer: &Account, fleet: &Uuid7) {
         "logged usage has not charged the wallet yet"
     );
     assert_eq!(
-        resettle(database, &biller).await.expect("native recovery"),
+        resettle(database, &biller, None)
+            .await
+            .expect("native recovery"),
         Resettled {
             settled: 5,
-            failed: 0
+            failed: 0,
+            ..Resettled::default()
         }
     );
     let after = biller.balance(payer).await.expect("settled balance");
@@ -116,7 +119,7 @@ async fn recovery(database: &Db, payer: &Account, fleet: &Uuid7) {
         "six unique lines across two leases charge once"
     );
     assert_eq!(
-        resettle(database, &biller)
+        resettle(database, &biller, None)
             .await
             .expect("repeated recovery"),
         Resettled::default()
@@ -127,10 +130,10 @@ async fn recovery(database: &Db, payer: &Account, fleet: &Uuid7) {
     );
     let mut connection = database.acquire().await.expect("remaining work read");
     assert_eq!(
-        unsettled(&mut *connection, Duration::ZERO, 100)
+        unsettled(&mut *connection, 100, None)
             .await
             .expect("settlement completion read"),
-        Vec::<Settlement>::new()
+        (Vec::<Settlement>::new(), None)
     );
 }
 
@@ -152,16 +155,17 @@ async fn reconstruct(database: &Db, payer: &Account, expected: &mut [Settlement;
             .expect("later usage and identical replay commit");
         let aged = sqlx::query(include_str!("fixtures/age_mixed_settlements.sql"))
             .bind(payer.tenant.as_str())
-            .bind(GRACE * 2)
+            .bind(Duration::from_secs(1))
             .bind(expected[0].work.id().as_str())
             .bind(8_i64)
             .execute(&mut *connection)
             .await
-            .expect("owned rows pass the grace with sequence 8 strictly older than 2");
+            .expect("owned sequence 8 is strictly older than 2");
         assert_eq!(aged.rows_affected(), 6, "identical replay created no row");
-        let actual = unsettled(&mut *connection, Duration::ZERO, 100)
+        let (actual, resume) = unsettled(&mut *connection, 100, None)
             .await
             .expect("all stored settlement headers reconstruct");
+        assert!(resume.is_none(), "the complete page ends this lap");
         assert_eq!(actual.len(), 5, "four model groups plus another lease");
         for group in expected.iter() {
             assert!(
@@ -170,15 +174,11 @@ async fn reconstruct(database: &Db, payer: &Account, expected: &mut [Settlement;
             );
         }
         assert_eq!(
-            charged_so_far(&mut *connection, &expected[0].work)
-                .await
-                .expect("original lease cumulative charge"),
+            logged_total(&actual, &expected[0].work),
             Nanos::from_i64(62_000)
         );
         assert_eq!(
-            charged_so_far(&mut *connection, &expected[4].work)
-                .await
-                .expect("independent lease cumulative charge"),
+            logged_total(&actual, &expected[4].work),
             Nanos::from_i64(25_000)
         );
     }
@@ -245,4 +245,15 @@ fn line(seq: u32, charged: i64) -> afd_billing::price::RatedLine {
     line.usage.at = AT;
     line.charged = Nanos::from_i64(charged);
     line
+}
+
+fn logged_total(settlements: &[Settlement], work: &WorkKey) -> Nanos {
+    Nanos::from_i64(
+        settlements
+            .iter()
+            .filter(|group| &group.work == work)
+            .flat_map(|group| &group.lines)
+            .map(|line| line.charged.as_i64())
+            .sum(),
+    )
 }

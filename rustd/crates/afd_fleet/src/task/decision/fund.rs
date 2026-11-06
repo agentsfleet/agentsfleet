@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use afd_billing::{
     Accounts, Nanos, Posture,
-    biller::{Account, Hold, Reservation, WorkKey},
+    biller::{Account, Ask, Funds, WorkKey},
     rates::Estimate,
 };
 use afd_crypto::secret::SecretString;
@@ -24,7 +24,7 @@ use crate::{
 
 pub(super) struct Coverage {
     pub headroom: Nanos,
-    pub ceiling: Nanos,
+    pub required: Nanos,
 }
 
 pub(super) async fn issue(
@@ -84,22 +84,18 @@ async fn run(
 
 async fn cover(tasks: &Tasks, lease: TaskLease<'_>, call: &Call) -> Result<Coverage> {
     let proposed = proposed(tasks, lease).await?;
-    let ask = Reservation {
+    let ask = Ask {
         work: WorkKey::FleetLease(lease.lease_id.clone()),
         payer: Account {
             tenant: Call::id(&call.tenant_id, "tenant_id")?,
             workspace: Call::id(&call.workspace_id, "workspace_id")?,
         },
-        ceiling: proposed.ceiling,
+        next: proposed.required,
     };
-    match tasks.dependencies.biller.reserve(&ask).await? {
-        Hold::Held { ceiling, .. } => Ok(Coverage {
-            headroom: proposed.headroom,
-            ceiling,
-        }),
-        Hold::Short { .. } => Err(refused(lease, "insufficient_credit")),
-        Hold::Closed => Err(refused(lease, "work_closed")),
-        Hold::Unconfirmed => Err(refused(lease, "credit_unconfirmed")),
+    match tasks.dependencies.biller.check(&ask).await? {
+        Funds::Covered => Ok(proposed),
+        Funds::Short { .. } => Err(refused(lease, "insufficient_credit")),
+        Funds::Unconfirmed => Err(refused(lease, "credit_unconfirmed")),
     }
 }
 
@@ -129,11 +125,11 @@ async fn proposed_on(connection: &mut PgConnection, lease: TaskLease<'_>) -> Res
     let Estimate::Priced(headroom) = estimate else {
         return Err(refused(lease, "coding_price_unavailable"));
     };
-    let ceiling = crate::lease::holds::ceiling_on(&mut tx, lease.lease_id, headroom).await?;
+    let required = super::credit::required_on(&mut tx, lease.lease_id, headroom).await?;
     tx.commit().await.map_err(crate::error::query(
         "finish bounded decision credit prerequisites",
     ))?;
-    Ok(Coverage { headroom, ceiling })
+    Ok(Coverage { headroom, required })
 }
 
 fn refused(lease: TaskLease<'_>, reason: &'static str) -> crate::Error {

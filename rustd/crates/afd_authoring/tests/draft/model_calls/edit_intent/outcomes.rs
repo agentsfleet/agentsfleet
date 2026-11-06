@@ -157,4 +157,27 @@ async fn assert_charge(case: &Case) {
         charge,
         ("authoring_attempt".into(), "typesafe".into(), 100, 3)
     );
+    assert!(
+        !settled(case).await,
+        "decision recording never debits inline"
+    );
+    case.f.relay(case.attempt.id.as_str()).await;
+    assert!(
+        settled(case).await,
+        "the shared relay settles decision usage"
+    );
+    case.f.relay(case.attempt.id.as_str()).await;
+    assert!(
+        settled(case).await,
+        "repeated relay leaves the receipt settled"
+    );
+}
+
+async fn settled(case: &Case) -> bool {
+    sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2")
+        .bind(case.attempt.id.as_str())
+        .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+        .fetch_one(&mut *case.f.connection().await)
+        .await
+        .expect("native decision settlement receipt")
 }

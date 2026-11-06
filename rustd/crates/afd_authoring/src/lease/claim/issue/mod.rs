@@ -2,7 +2,6 @@
 
 mod payload;
 
-use afd_billing::biller::Reservation;
 use afd_core::{clock, error_code, id::Uuid7, timing::LEASE_TTL};
 use afd_credential::provider::RegisteredModel;
 use afd_wire::authoring::FailureReason;
@@ -45,7 +44,7 @@ pub(super) async fn admit(
     hint: &Hint,
     selected: Selected,
     owed: &mut Owed,
-) -> Result<Option<(Claimed, Reservation)>> {
+) -> Result<Option<Claimed>> {
     let prepared = prepare(connection, hint, &selected).await;
     let gate = Gate {
         hint,
@@ -68,13 +67,7 @@ pub(super) async fn admit(
         .execute(connection)
         .await
         .map_err(query(sql::CONTEXT))?;
-    let hold = budget::reservation(
-        placement.attempt.clone(),
-        &hint.tenant_id,
-        &hint.workspace_id,
-        placement.reserved,
-    );
-    Ok(Some((payload, hold)))
+    Ok(Some(payload))
 }
 
 /// The message a refused gate fails, and whose draft it belongs to.

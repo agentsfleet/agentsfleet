@@ -85,6 +85,7 @@ async fn late(fixture: &Decisions<'_>, task: &DecisionTaskVersion, balance: i64)
     assert_eq!(fixture.goal_snapshot(task).await, expected);
     assert!(fixture.record(&request.call_id, receipt).await.replayed);
     assert_eq!(fixture.goal_snapshot(task).await, expected);
+    fixture.case.held.relay().await;
     assert_eq!(fixture.wallet().await, balance - 3);
     assert_eq!(fixture.counts().await, (1, 1, 1));
     let generation: (i64, String) = sqlx::query_as("SELECT task_generation,context_snapshot #>> '{execution,generation}' FROM runner.decision_calls WHERE id=$1::uuid")

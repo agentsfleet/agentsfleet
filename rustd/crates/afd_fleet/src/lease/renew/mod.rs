@@ -123,8 +123,8 @@ impl Leases {
     /// atomically.
     ///
     /// The line is logged inside the transaction that advanced the deadlines,
-    /// so a renewal and what it cost commit together; the caller settles it
-    /// through the biller after commit.
+    /// so a renewal and what it cost commit together; the billing relay
+    /// settles it.
     ///
     /// # Errors
     /// Reports an entropy source that could not produce the line's
@@ -301,13 +301,10 @@ impl Plane {
         )
         .await;
         if let Err(refusal) = admission {
-            let known = self
+            let _known = self
                 .leases
                 .record_known_requests(runner_id, &lease_key, &pricing, &request.requests.0, now)
                 .await?;
-            if let Some(settled) = known.as_ref() {
-                self.settle_usage(settled).await;
-            }
             return Err(refusal);
         }
         let metering = Metering {
@@ -323,19 +320,8 @@ impl Plane {
             Renewed::Extended {
                 expires_at,
                 settlement,
-            } => {
-                let charged = usage::charged(settlement.as_deref());
-                if let Some(settled) = settlement.as_deref() {
-                    self.settle_usage(settled).await;
-                }
-                Ok((expires_at, charged))
-            }
-            Renewed::Stopped { settlement } => {
-                if let Some(settled) = settlement.as_deref() {
-                    self.settle_usage(settled).await;
-                }
-                Err(lease_lost())
-            }
+            } => Ok((expires_at, usage::charged(settlement.as_deref()))),
+            Renewed::Stopped { .. } => Err(lease_lost()),
             Renewed::MaxRuntime => Err(lease_max_runtime()),
             Renewed::Lost => Err(lease_lost()),
         }

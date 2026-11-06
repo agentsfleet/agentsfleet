@@ -1,7 +1,8 @@
-//! Admission against the biller's holds, and concurrently priced turns.
+//! Admission against what the payer owes, and concurrently priced turns.
 //!
-//! Admission reads the balance less every open hold; a hold that leaves less
-//! than the attempt's bound refuses it as the wallet refusal it is. Two turns
+//! Admission reads the balance less every line the payer logged and the relay
+//! has not yet charged; spend that leaves less than the attempt's bound refuses
+//! it as the wallet refusal it is. Two turns
 //! pinned to different prices dispatch at once and each is charged its own
 //! rate; their settlements debit one shared wallet without losing either.
 
@@ -10,13 +11,16 @@ use afd_authoring::{
     Claimed, ModelCallInput, ModelCalls, ProviderRequest, ProviderResponse, Transport,
 };
 use afd_billing::Nanos;
-use afd_billing::biller::{Account, Release, Reservation, WorkKey};
+use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
+use afd_billing::price::RatedLine;
+use afd_billing::{Posture, ledger::log_lines};
 use afd_core::{id::Uuid7, money::NANOS_PER_USD};
 use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_wire::authoring::{
     Accounting, Knowledge, Meter, ModelCall, ModelMessage, ModelRequest, ModelUsage, Outcome,
     Report,
 };
+use afd_wire::usage::UsageLine;
 use std::sync::Arc;
 
 /// Three times the fixture model's rates: three and six dollars per million.
@@ -34,30 +38,48 @@ const DEBT: i64 = 50;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn an_open_hold_that_leaves_less_than_the_bound_refuses_admission() {
+async fn uncharged_spend_that_leaves_less_than_the_bound_refuses_admission() {
     let f = funded(1).await;
     fixture::balance(&f, NANOS_PER_USD).await;
-    let biller = crate::draft::fixture::ledger(&f.db);
-    let elsewhere = Reservation {
+    let elsewhere = Settlement {
         work: WorkKey::AuthoringAttempt(mint()),
         payer: Account {
             tenant: f.tenant.clone(),
             workspace: f.workspace.clone(),
         },
-        ceiling: Nanos::from_i64(NANOS_PER_USD),
+        attribution: Attribution::SetupChat,
+        provider: "fixture".to_owned(),
+        model: "fixture".to_owned(),
+        posture: Posture::Platform,
+        lines: vec![RatedLine {
+            usage: UsageLine {
+                seq: 0,
+                at: now(),
+                input_tokens: 0,
+                cached_input_tokens: 0,
+                cache_write_tokens: 0,
+                cache_write_5m_tokens: 0,
+                cache_write_1h_tokens: 0,
+                output_tokens: 0,
+                runtime_ms: 0,
+            },
+            price: None,
+            charged: Nanos::from_i64(NANOS_PER_USD),
+            unpriced_tokens: 0,
+        }],
     };
-    assert!(
-        biller
-            .reserve(&elsewhere)
-            .await
-            .expect("the biller answers")
-            .admits(),
-        "another setup chat holds the whole balance"
-    );
-    let refused = queue(&f, "A turn the held balance cannot fund").await;
+    log_lines(
+        &mut *f.connection().await,
+        &Entropy::new(),
+        now(),
+        &elsewhere,
+    )
+    .await
+    .expect("another setup chat logged a line the relay has not charged");
+    let refused = queue(&f, "A turn the uncharged spend leaves no room for").await;
     assert!(
         claim(&f, &refused).await.is_none(),
-        "a held balance never admits"
+        "uncharged spend counts before the relay settles it"
     );
     assert_eq!(fixture::attempts(&f).await, 0, "no attempt was issued");
     let failed = fixture::failure(&f, &refused).await;
@@ -67,16 +89,13 @@ async fn an_open_hold_that_leaves_less_than_the_bound_refuses_admission() {
             .expect("durable balance failure")
             .recovery_action,
         "owner_billing",
-        "the held balance reads as the wallet refusal it is"
+        "the uncharged spend reads as the wallet refusal it is"
     );
-    biller
-        .release(&elsewhere.work, Release::Completed)
-        .await
-        .expect("the other hold releases");
-    let admitted = queue(&f, "The same wallet once the hold is gone").await;
+    fixture::balance(&f, 2 * NANOS_PER_USD).await;
+    let admitted = queue(&f, "The same wallet once there is room again").await;
     assert!(
         claim(&f, &admitted).await.is_some(),
-        "the refusal above was the hold, not the balance"
+        "the refusal above was the uncharged spend, not the balance"
     );
     f.cleanup().await;
 }
@@ -152,6 +171,10 @@ async fn differently_priced_turns_dispatch_and_settle_concurrently_at_their_own_
         tokio::join!(settle(&f, &cheap_lease), settle(&f, &dear_lease));
     assert!(cheap_report.settled && dear_report.settled);
     assert!(!cheap_report.replayed && !dear_report.replayed);
+    tokio::join!(
+        f.relay(&cheap_lease.attempt_id),
+        f.relay(&dear_lease.attempt_id)
+    );
     assert_eq!(
         fixture_balance(&f).await,
         before - 2 * RUNTIME_DEBIT,
