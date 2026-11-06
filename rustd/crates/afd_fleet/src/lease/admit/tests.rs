@@ -131,8 +131,8 @@ async fn decided_on_a_dead_ledger(
 
 /// Asserts the dead-ledger outcome: both read gates failed open under their own
 /// names and the run was admitted. Nothing is charged at admission, so no
-/// write gate is left to end the pass; the lease's hold and usage are the
-/// biller's, after the lease is issued.
+/// write gate is left to end the pass; the lease's usage is the relay's to
+/// charge once it runs.
 #[cfg(feature = "test-util")]
 fn assert_read_gates_fail_open_and_admit(
     decided: &super::Admission,
@@ -163,7 +163,7 @@ fn assert_read_gates_fail_open_and_admit(
 }
 
 /// With the ledger unreachable, the catalogue read fails first: both read gates
-/// fail open and the run is admitted, with a floor of nothing to hold.
+/// fail open and the run is admitted.
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn an_unreadable_catalogue_and_budget_fail_open_and_admit() {

@@ -209,21 +209,6 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
         Some(error_code::INTERNAL_DB_QUERY.as_str())
     );
     assert_eq!(reconciled.charged, Nanos::ZERO);
-    let open: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM billing.holds WHERE work_id = $1::uuid AND released_at IS NULL",
-    )
-    .bind(lease_id)
-    .fetch_one(
-        &mut *held
-            .fixtures
-            .database
-            .acquire()
-            .await
-            .expect("a connection"),
-    )
-    .await
-    .expect("the holds count");
-    assert_eq!(open, 0, "the failed run's hold is released");
     held.fixtures.cleanup().await;
 }
 

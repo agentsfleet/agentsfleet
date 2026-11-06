@@ -3,8 +3,9 @@
 //! Each JUDGES reads the caller already made: the estimate, the balance and
 //! the fleet's spend depend on nothing but the request, so [`super::money_gates`]
 //! starts all three together and hands their answers here in judging order.
-//! Nothing in here decides what a FAULT means — that is [`super::fault`]'s,
-//! applied through the [`Gate`](super::fault::Gate) value each one names.
+//! Both answer `Option<Declined>`, where `None` continues the pass. Nothing in
+//! here decides what a FAULT means — that is [`super::fault`]'s, applied
+//! through the [`Gate`](super::fault::Gate) value each one names.
 
 use afd_core::error_code;
 
@@ -13,8 +14,8 @@ use afd_billing::rates::Estimate;
 
 use crate::lease::admit::fault::{BALANCE, BUDGET};
 use crate::lease::admit::{Declined, Refusal, Request};
+use afd_billing::Spend;
 use afd_billing::budget::{self, Verdict};
-use afd_billing::{Nanos, Spend};
 
 /// The credit pool cannot cover this run.
 ///
@@ -27,10 +28,10 @@ const EVENT_BUDGET_BREACH: &str = "lease_budget_breach";
 
 /// The tenant's credit pool against this run's floor cost.
 ///
-/// Answers the floor when the pool covers it: the lease's first hold reserves
-/// exactly that once the lease is issued. The pool is the biller's balance
-/// less every hold other work has open, so runs already in flight count
-/// against it.
+/// Answers a refusal when the pool cannot cover the run's floor. The pool is
+/// the biller's balance less every line the tenant has logged and the relay
+/// has not yet charged, so what runs already in flight spent counts against
+/// it.
 ///
 /// Two reads, and BOTH are judged even when the first answers that the run
 /// cannot be priced. An unpriceable model costs zero to admit against, but the
@@ -44,19 +45,19 @@ pub(super) fn balance(
     request: &Request<'_>,
     estimate: afd_billing::Result<Estimate>,
     balance: afd_billing::Result<Balance>,
-) -> Result<Nanos, Declined> {
+) -> Option<Declined> {
     let estimate = match estimate {
         Ok(estimate) => estimate,
-        Err(fault) => return BALANCE.absorb(&fault).map_or(Ok(Nanos::ZERO), Err),
+        Err(fault) => return BALANCE.absorb(&fault),
     };
     let floor = estimate.floor();
     let available = match balance {
-        Ok(held) => Nanos::from_i64(held.balance.as_i64().saturating_sub(held.held.as_i64())),
-        Err(fault) if fault.is_wallet_missing() => return Ok(floor),
-        Err(fault) => return BALANCE.absorb(&fault).map_or(Ok(floor), Err),
+        Ok(funds) => funds.left(),
+        Err(fault) if fault.is_wallet_missing() => return None,
+        Err(fault) => return BALANCE.absorb(&fault),
     };
     if available.covers(floor) {
-        return Ok(floor);
+        return None;
     }
 
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
@@ -71,7 +72,7 @@ pub(super) fn balance(
         estimate_nanos = floor_nanos,
         "the tenant's credit pool cannot cover this run's floor cost"
     );
-    Err(Declined::Refuse(Refusal::labelled(
+    Some(Declined::Refuse(Refusal::labelled(
         afd_core::event::label::BALANCE_EXHAUSTED,
     )))
 }

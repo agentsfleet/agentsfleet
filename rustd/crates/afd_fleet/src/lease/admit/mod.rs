@@ -14,8 +14,8 @@
 //!
 //! # Order is a money-safety property
 //!
-//! Every gate that can refuse PERMANENTLY runs before the lease is issued and
-//! its hold placed, so a refused event is never charged. The order is one
+//! Every gate that can refuse PERMANENTLY runs before the lease is issued, so
+//! a refused event is never charged. The order is one
 //! readable sequence in this module, so a reader checks the rule without
 //! inferring it from statement order.
 //!
@@ -39,9 +39,9 @@ use afd_fleet_runtime::config::Budget;
 use jiff::Timestamp;
 
 use crate::error::Result;
+use afd_billing::Accounts;
 use afd_billing::biller::{Account, Biller};
 use afd_billing::rates::Posture;
-use afd_billing::{Accounts, Nanos};
 use afd_gate::gate::Waiting;
 use futures_util::future;
 
@@ -97,9 +97,6 @@ pub struct Billed {
     pub provider: Box<str>,
     /// The model the estimate was priced against.
     pub model: Box<str>,
-    /// The floor the balance gate admitted against: what the lease's first
-    /// hold reserves once the lease is issued.
-    pub floor: Nanos,
 }
 
 /// Why an event was ended, and what an operator is told.
@@ -191,8 +188,8 @@ pub fn payer_gate(
 /// Payer → balance → fleet budget. Every gate that can refuse permanently
 /// runs before the lease is issued, so a refused event is never charged. The
 /// payer gate judges the read the caller made; it reads nothing itself. Nothing
-/// is charged here: the lease's hold is placed once it is issued, and its usage
-/// is charged as it runs.
+/// is charged here: the lease's usage is logged as it runs and the billing
+/// relay charges it.
 ///
 /// # Errors
 /// Datastore faults do NOT reach the caller as `Err` — each gate absorbs its
@@ -223,10 +220,9 @@ pub async fn money_gates(
         accounts.spend(request.workspace_id, request.fleet_id),
     )
     .await;
-    let floor = match gates::balance(&request, estimate, balance) {
-        Ok(floor) => floor,
-        Err(stop) => return Ok(stop.into()),
-    };
+    if let Some(stop) = gates::balance(&request, estimate, balance) {
+        return Ok(stop.into());
+    }
     if let Some(stop) = gates::fleet_budget(&request, spend) {
         return Ok(stop.into());
     }
@@ -236,7 +232,6 @@ pub async fn money_gates(
         posture: request.posture,
         provider: request.provider.into(),
         model: request.model.into(),
-        floor,
     }))
 }
 

@@ -194,6 +194,8 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("2180_fleet_event_type_index.sql"),
     migration!("2190_runner_fleet_slots_ready.sql"),
     migration!("2200_runner_leases_poll_key.sql"),
+    migration!("2210_billing_holds_drop.sql"),
+    migration!("2220_billing_usage_lines_unsettled_tenant_index.sql"),
     migration!("2230_fleet_admissions_parked.sql"),
 ];
 

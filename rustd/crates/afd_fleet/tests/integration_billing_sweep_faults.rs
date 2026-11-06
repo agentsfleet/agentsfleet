@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_billing::ledger::LedgerBiller;
+use afd_core::error_code;
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::{BillingSwept, sweep};
 use afd_fleet::lease::sql::LEASE_STATUS_REPORTED;
@@ -55,34 +56,27 @@ async fn close(held: Held) {
     held.fixtures.cleanup().await;
 }
 
-/// A reported lease's open hold the biller cannot release is counted and
-/// left open; the next pass, with the biller back, releases it as completed.
+/// A reported lease's line the biller cannot settle is counted and left
+/// unsettled; the next pass, with the biller back, settles it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
+async fn a_line_the_biller_cannot_settle_waits_for_the_next_pass() {
     let held = isolated().await;
     let database = &held.fixtures.database;
     let ledger = LedgerBiller::on_system_clock(database.clone());
-    orphan(&held, &ledger).await;
+    orphan(&held).await;
     sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1::uuid")
         .bind(held.lease_key.as_str())
         .bind(LEASE_STATUS_REPORTED)
         .execute(&mut *database.acquire().await.expect("a connection"))
         .await
-        .expect("the lease reported before its release was lost");
-    let down = Faulty::over(
-        database,
-        Faults {
-            settle: true,
-            release: true,
-            ..Faults::NONE
-        },
-    );
+        .expect("the lease reported before the relay's next pass");
+    let down = Faulty::over(database, Faults { settle: true });
 
-    let missed = sweep(database, down.as_ref(), &Entropy::new(), held.now)
+    let missed = sweep(database, down.as_ref(), &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
-    let recovered = sweep(database, &ledger, &Entropy::new(), held.now)
+    let recovered = sweep(database, &ledger, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
 
@@ -90,7 +84,7 @@ async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
         missed,
         BillingSwept {
             settle_failures: 1,
-            release_failures: 1,
+            refused: Some(error_code::INTERNAL_DB_UNAVAILABLE),
             ..BillingSwept::default()
         }
     );
@@ -98,7 +92,6 @@ async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
         recovered,
         BillingSwept {
             resettled: 1,
-            released: 1,
             ..BillingSwept::default()
         }
     );
@@ -106,29 +99,26 @@ async fn a_finished_hold_the_biller_cannot_release_waits_for_the_next_pass() {
 }
 
 /// An abandoned lease's last slice is logged even when the biller cannot
-/// settle it; the pass counts the miss and the line sweep settles it later.
+/// settle it; the pass counts the miss twice, once for the slice and once when
+/// the line pass meets the same line, and a later pass settles it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
     let held = isolated().await;
     let database = &held.fixtures.database;
     abandon(&held).await;
-    let down = Faulty::over(
-        database,
-        Faults {
-            settle: true,
-            ..Faults::NONE
-        },
-    );
+    let down = Faulty::over(database, Faults { settle: true });
 
-    let swept = sweep(database, down.as_ref(), &Entropy::new(), held.now)
+    let swept = sweep(database, down.as_ref(), &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
 
     assert_eq!(
         swept,
         BillingSwept {
+            settle_failures: 1,
             expired_settle_failures: 1,
+            refused: Some(error_code::INTERNAL_DB_UNAVAILABLE),
             ..BillingSwept::default()
         }
     );
@@ -163,7 +153,7 @@ async fn a_lease_billed_while_the_pass_waited_is_skipped() {
     let biller = Arc::new(LedgerBiller::on_system_clock(database.clone()));
     let pass = tokio::spawn({
         let (database, biller, now) = (database.clone(), Arc::clone(&biller), held.now);
-        async move { sweep(&database, biller.as_ref(), &Entropy::new(), now).await }
+        async move { sweep(&database, biller.as_ref(), &Entropy::new(), now, None).await }
     });
     let deadline = tokio::time::Instant::now() + QUEUED_WITHIN;
     let mut queued = 0_i64;

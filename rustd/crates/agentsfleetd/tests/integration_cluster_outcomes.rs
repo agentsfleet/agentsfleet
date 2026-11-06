@@ -43,7 +43,9 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{Scenario, dragonfly_config, scenario};
-use crate::reads::{balance, counter_column, lease_column, ledger_rows, unsettled_lines};
+use crate::reads::{
+    balance, counter_column, lease_column, ledger_rows, relay_settled, unsettled_lines,
+};
 use crate::tail::{next_frame, settle};
 use crate::wire::{
     capable_beat, field, json, poll_for_lease, poll_for_seeded_lease, post, report_body,
@@ -214,20 +216,21 @@ async fn a_report_settles_once_across_both_stores(
         "the lease is terminal, which is what stops the reclaim sweep re-issuing it"
     );
 
+    let logged = ledger_rows(run).await;
+    assert!(
+        logged >= 1,
+        "the run's usage is logged in the report's own transaction, at least its final slice"
+    );
+    relay_settled(run).await;
+    assert_eq!(
+        unsettled_lines(run).await,
+        0,
+        "and the billing relay settles it shortly after the report answered"
+    );
     let after = balance(run).await;
     assert!(
         after < before,
         "a priced run draws the wallet down: {before:?} → {after:?}"
-    );
-    let logged = ledger_rows(run).await;
-    assert!(
-        logged >= 1,
-        "the run's usage is logged, at least its final slice"
-    );
-    assert_eq!(
-        unsettled_lines(run).await,
-        0,
-        "and settled before the report answered"
     );
 
     let repeated = post(http, run, "/v1/runners/me/reports", &report).await;
@@ -238,15 +241,16 @@ async fn a_report_settles_once_across_both_stores(
          it did not hear the first answer, and refusing teaches it to retry forever"
     );
     assert_eq!(
+        ledger_rows(run).await,
+        logged,
+        "the repeat logs no usage line"
+    );
+    // No new line, so nothing for the relay to charge: the balance is final.
+    assert_eq!(
         balance(run).await,
         after,
         "and it charges nothing: the settlement keys on the ledger row, so a \
          replayed receipt cannot debit twice"
-    );
-    assert_eq!(
-        ledger_rows(run).await,
-        logged,
-        "with no usage line behind it either"
     );
     assert_eq!(
         counter_column(run, "succeeded_count").await.as_deref(),

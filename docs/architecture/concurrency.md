@@ -295,7 +295,7 @@ Integration (CI) job that runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims hold the runner row while counting live capacity and writing a lease. Both renewal kinds hold it before extending deadlines and sample database time after acquiring it. Runtime renewal takes runner → lease/affinity → wallet.
+All claims hold the runner row while counting live capacity and writing a lease. Both renewal kinds hold it before extending deadlines and sample database time after acquiring it. Runtime renewal takes runner → lease/affinity; its funds check reads the wallet without a lock.
 
 A setup chat renewal takes draft → attempt → runner instead (`afd_authoring/src/lease/renew.rs`). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 
@@ -303,11 +303,13 @@ The claim is the one path that holds a host and then asks for a draft, and it ne
 
 So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
 
-Runtime reports take lease → wallet and never acquire the runner or authoring rows. Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage keeps its outstanding admission bound.
+Runtime reports take the lease row and never the runner, authoring or wallet rows. Only the billing relay writes a wallet row, in its own transactions. It stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
+
+Commit dispatch intent before network I/O, and release every database lock before provider calls. Unknown provider usage counts against nothing until the replay that learns it logs its lines.
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
-No setup chat path locks the wallet row. The claim gate reads the balance less every open hold, without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`).
+No setup chat path locks the wallet row. The claim gate reads the balance less every unsettled line, without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`).
 
 Stop and delete take draft → attempt and never later take the runner guard.
 
@@ -318,6 +320,7 @@ Every statement that updates an existing `fleet.admissions` row locks that fleet
 - The claim locks the slot, then the head admission, both with `SKIP LOCKED`, so it never waits.
 - Park (`lock_admission.sql`), a refusal or terminal ending (`end_refused.sql`, `settle_terminal.sql`), a report and a renewal (`meter_lease.sql`) lock the slot in their first step.
 - Gate resolution and gate expiry run their slot lock as a statement of its own, before the statement that unparks (`lock_gate_fleet_slot.sql`, `lock_expiring_fleet_slots.sql`). Under READ COMMITTED the unpark then reads a snapshot taken after any wait, so a park that committed meanwhile is cleared rather than missed. The expiry sweep locks its fleets' slots in fleet order, so two replicas' sweeps cannot deadlock.
+- The trigger's slot write rechecks the `last_runner_id` foreign key whenever its own transaction already changed the slot, as a report or refusal does. That recheck takes `KEY SHARE` on the runner, which the host lock (`FOR NO KEY UPDATE`, `afd_runner/src/capacity/sql/lock_host.sql`) does not block. A renewal holding the host therefore cannot close a cycle with it.
 - The admission insert is the one exception: it reaches the slot through its trigger after inserting its row. That row is invisible to every other transaction until commit, so nothing can be waiting on it.
 - A repeated producer key takes the insert's conflict arm (`insert_admission.sql`), which locks the existing admission without the slot and fires no trigger. That statement takes no other lock, so it cannot close a cycle. A claim that meets the head while it is held answers no work for that poll.
 

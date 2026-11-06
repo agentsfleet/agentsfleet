@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use afd_billing::biller::{Biller as _, WorkKey};
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::nanos::MS_PER_SEC;
 use afd_billing::{Accounts, Posture, RUN_NANOS_PER_SEC};
@@ -154,6 +155,26 @@ pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
 }
 
 impl Held {
+    /// What the billing relay does for this lease: charge every line it left
+    /// unsettled. Scoped to the lease, so a test on the shared database never
+    /// settles another test's lines.
+    pub(crate) async fn relay(&self) {
+        let database = &self.fixtures.database;
+        let work = WorkKey::FleetLease(self.lease_key.clone());
+        let unsettled = afd_billing::ledger::unsettled_work(
+            &mut *database.acquire().await.expect("a pooled connection"),
+            &work,
+        )
+        .await
+        .expect("the lease's lines read");
+        if let Some(settlement) = unsettled {
+            LedgerBiller::on_system_clock(database.clone())
+                .settle(&settlement)
+                .await
+                .expect("the relay charges the lease's lines");
+        }
+    }
+
     /// Moves the fleet's live sequence one past the held lease, as a won claim
     /// does before it expires the prior lease, and answers the new sequence.
     pub(crate) async fn supersede(&self) -> u64 {

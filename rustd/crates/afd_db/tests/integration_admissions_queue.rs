@@ -17,6 +17,8 @@ const MESSAGE_SAVE_MIGRATION: i64 = 2170;
 const EVENT_TYPE_INDEX_MIGRATION: i64 = 2180;
 const READY_MIGRATION: i64 = 2190;
 const POLL_KEY_MIGRATION: i64 = 2200;
+const HOLDS_DROP_MIGRATION: i64 = 2210;
+const UNSETTLED_INDEX_MIGRATION: i64 = 2220;
 const PARKED_INDEX_MIGRATION: i64 = 2230;
 
 // M230 can land before M226: its higher slot must not hide the queue upgrade.
@@ -145,6 +147,8 @@ async fn test_receipt_drop_migration_applies_populated() {
             EVENT_TYPE_INDEX_MIGRATION,
             READY_MIGRATION,
             POLL_KEY_MIGRATION,
+            HOLDS_DROP_MIGRATION,
+            UNSETTLED_INDEX_MIGRATION,
             PARKED_INDEX_MIGRATION,
         ]
     );

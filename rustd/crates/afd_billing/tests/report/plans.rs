@@ -117,18 +117,20 @@ async fn assert_detail_plan(f: &Fixture) {
     println!("report_query=details scanned_rows=1 index={DETAIL_INDEX}");
 }
 
-fn explain(statement: &'static str) -> AssertSqlSafe<String> {
-    AssertSqlSafe(format!("EXPLAIN (ANALYZE, FORMAT JSON) {statement}"))
+pub(super) fn explain(statement: &'static str) -> AssertSqlSafe<String> {
+    AssertSqlSafe(format!(
+        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {statement}"
+    ))
 }
 
-fn root(plan: &Value) -> &Value {
+pub(super) fn root(plan: &Value) -> &Value {
     plan.as_array()
         .and_then(|rows| rows.first())
         .and_then(|row| row.get("Plan"))
         .expect("EXPLAIN returns its first root plan")
 }
 
-fn find<'a>(plan: &'a Value, field: &str, expected: &str) -> Option<&'a Value> {
+pub(super) fn find<'a>(plan: &'a Value, field: &str, expected: &str) -> Option<&'a Value> {
     if plan.get(field).and_then(Value::as_str) == Some(expected) {
         return Some(plan);
     }

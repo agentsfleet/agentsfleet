@@ -18,9 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use afd_billing::biller::{
-    Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey,
-};
+use afd_billing::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
 use afd_core::env::MapEnv;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet_runtime::FleetConfig;
@@ -113,16 +111,12 @@ struct HeldBalance {
 
 #[async_trait::async_trait]
 impl Biller for HeldBalance {
-    async fn reserve(&self, ask: &Reservation) -> afd_billing::Result<Hold> {
-        self.inner.reserve(ask).await
+    async fn check(&self, ask: &Ask) -> afd_billing::Result<Funds> {
+        self.inner.check(ask).await
     }
 
     async fn settle(&self, settlement: &Settlement) -> afd_billing::Result<Receipt> {
         self.inner.settle(settlement).await
-    }
-
-    async fn release(&self, work: &WorkKey, why: Release) -> afd_billing::Result<()> {
-        self.inner.release(work, why).await
     }
 
     async fn balance(&self, payer: &Account) -> afd_billing::Result<Balance> {

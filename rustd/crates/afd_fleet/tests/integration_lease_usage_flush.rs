@@ -104,6 +104,7 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
         .report(&held.runner, &report, held.now)
         .await
         .expect("the report settles the lease");
+    held.relay().await;
 
     let mut connection = held
         .fixtures

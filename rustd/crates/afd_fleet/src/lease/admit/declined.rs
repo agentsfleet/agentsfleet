@@ -90,7 +90,6 @@ mod tests {
             posture: afd_billing::rates::Posture::Platform,
             provider: "anthropic".into(),
             model: "claude-fixture".into(),
-            floor: afd_billing::Nanos::ZERO,
         };
         assert_eq!(Admission::Admit(billed.clone()).admitted(), Ok(billed));
         assert!(matches!(

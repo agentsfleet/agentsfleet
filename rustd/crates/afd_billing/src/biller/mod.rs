@@ -1,17 +1,17 @@
 //! The one billing lifecycle every product path runs through.
 //!
-//! Work places a hold before it runs ([`Biller::reserve`]), charges its priced
-//! lines as it goes ([`Biller::settle`]), and frees what is left when it ends
-//! ([`Biller::release`]). The built-in implementation is
-//! [`LedgerBiller`](crate::ledger::LedgerBiller); a queue or a third-party
-//! metering system is another implementation of the same trait, held as
-//! `Arc<dyn Biller>` (billing §11).
+//! Work checks that its payer can fund what it is about to spend
+//! ([`Biller::check`]) and logs its priced lines in its own transaction; the
+//! billing relay charges them ([`Biller::settle`]). No money is set aside: a
+//! payer that runs out is stopped at its next check, and what parallel work
+//! spent before then is a debt the next grant repays. The built-in
+//! implementation is [`LedgerBiller`](crate::ledger::LedgerBiller); a billing
+//! service in its own process or a third-party metering system is another
+//! implementation of the same trait, held as `Arc<dyn Biller>` (billing §11).
 //!
-//! The work's own transaction records what happened in `billing.usage_lines`
-//! (always ours); a biller moves money after commit. Every method is
-//! idempotent on its key, so a retry or the sweeper never charges twice.
-
-use std::time::Duration;
+//! `billing.usage_lines` records what happened (always ours); a biller moves
+//! money from it. `settle` is idempotent on each line's `(work, seq)`, so a
+//! retried or repeated relay pass never charges twice.
 
 use afd_core::id::Uuid7;
 use jiff::Timestamp;
@@ -32,7 +32,7 @@ mod recording;
 #[cfg(feature = "test-util")]
 pub use self::recording::RecordingBiller;
 
-/// The piece of work money is held and charged for.
+/// The piece of work money is charged for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WorkKey {
     /// A fleet run's lease.
@@ -85,48 +85,50 @@ pub enum Attribution {
     SetupChat,
 }
 
-/// A request to hold up to `ceiling` for `work` against `payer`'s balance.
+/// A request to check that `payer` can fund `next` more for `work`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Reservation {
-    /// The work the hold is for.
+pub struct Ask {
+    /// The work about to spend.
     pub work: WorkKey,
     /// Who pays.
     pub payer: Account,
-    /// The most the work may spend in total, captured lines included.
-    pub ceiling: Nanos,
+    /// What the work is about to spend before its next check.
+    pub next: Nanos,
 }
 
-/// A biller's answer to a [`Reservation`].
+/// A biller's answer to an [`Ask`].
 ///
 /// An ordinary answer rather than an error: a short balance is a decision the
 /// caller acts on, not a failure (FN-RS).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hold {
-    /// The work may spend up to `ceiling`; `captured` is already charged.
-    Held {
-        /// The hold's ceiling after this reservation.
-        ceiling: Nanos,
-        /// What the work's settled lines have taken so far.
-        captured: Nanos,
-    },
-    /// The balance cannot cover the ask.
+pub enum Funds {
+    /// The balance, less what is logged and not yet charged, covers the ask.
+    Covered,
+    /// It cannot cover the ask.
     Short {
-        /// What the payer could still hold, other holds deducted.
+        /// What the payer has left once its logged lines are charged.
         available: Nanos,
-        /// The ceiling that was asked for.
+        /// What was asked for.
         asked: Nanos,
     },
-    /// The work's hold was already released; it may not reserve again.
-    Closed,
     /// The biller could not answer and the outage policy admitted the work.
     Unconfirmed,
 }
 
-impl Hold {
-    /// Whether the work may run.
+impl Funds {
+    /// The answer for a payer with `left` once its unsettled lines are
+    /// charged: covered only when `left` reaches `asked`, so a payer in debt is
+    /// short even of nothing.
     #[must_use]
-    pub const fn admits(self) -> bool {
-        matches!(self, Self::Held { .. } | Self::Unconfirmed)
+    pub fn of(left: Nanos, asked: Nanos) -> Self {
+        if left.as_i64() >= asked.as_i64() {
+            Self::Covered
+        } else {
+            Self::Short {
+                available: Nanos::from_i64(left.as_i64().max(0)),
+                asked,
+            }
+        }
     }
 }
 
@@ -165,62 +167,54 @@ pub struct Receipt {
     pub taken: Nanos,
 }
 
-/// Why a piece of work's hold is released.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Release {
-    /// The work finished and reported.
-    Completed,
-    /// The work failed.
-    Failed,
-    /// The work's lease expired unreported. The caller logs and settles the
-    /// runtime-only line for its last `runtime` before releasing; a biller
-    /// that keeps no line log of its own may read it here.
-    Expired {
-        /// Run time since the last settled line.
-        runtime: Duration,
-    },
-}
-
 /// A payer's balance as a biller sees it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Balance {
     /// Credit left, negative while the payer owes a debt a settlement ran past
     /// zero; a grant repays the debt before any of it is spendable.
     pub balance: Nanos,
-    /// Credit held by open reservations and not yet charged.
-    pub held: Nanos,
+    /// What the payer's logged lines cost and the relay has not yet charged.
+    pub unsettled: Nanos,
     /// When the balance last reached zero or went below it; `None` while it
     /// holds credit.
     pub exhausted_at: Option<Timestamp>,
 }
 
-/// Holds, charges and releases money for work (billing §11).
+impl Balance {
+    /// What the payer has left once its unsettled lines are charged: the one
+    /// number every funds check and gate reads, below zero while it owes.
+    #[must_use]
+    pub const fn left(&self) -> Nanos {
+        Nanos::from_i64(
+            self.balance
+                .as_i64()
+                .saturating_sub(self.unsettled.as_i64()),
+        )
+    }
+}
+
+/// Checks funds and charges money for work (billing §11).
 ///
-/// Every method is idempotent on its key: `reserve` and `release` on the work,
-/// `settle` on each line's `(work, seq)`.
+/// `check` writes nothing; `settle` is idempotent on each line's
+/// `(work, seq)`.
 #[async_trait::async_trait]
 pub trait Biller: Send + Sync + std::fmt::Debug {
-    /// Holds up to `ask.ceiling` for the work, or answers why not. Raising an
-    /// existing hold is the same call with a higher ceiling.
+    /// Whether `ask.payer` can fund `ask.next` on top of every line it has
+    /// logged and not yet been charged for.
     ///
     /// # Errors
     /// The biller could not answer. [`WithOutagePolicy`] decides what the work
     /// does then.
-    async fn reserve(&self, ask: &Reservation) -> Result<Hold>;
+    async fn check(&self, ask: &Ask) -> Result<Funds>;
 
     /// Charges `settlement`'s lines that were not charged before.
     ///
     /// # Errors
-    /// The biller could not answer; the lines stay unsettled for the sweeper.
+    /// The biller could not answer; the lines stay unsettled for the next
+    /// relay pass.
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt>;
 
-    /// Charges anything still unsettled for `work`, then frees its hold.
-    ///
-    /// # Errors
-    /// The biller could not answer; the sweeper retries.
-    async fn release(&self, work: &WorkKey, why: Release) -> Result<()>;
-
-    /// `payer`'s balance and what is held against it.
+    /// `payer`'s balance and what its logged lines still owe.
     ///
     /// # Errors
     /// The biller could not answer, or the payer has no balance at all.
