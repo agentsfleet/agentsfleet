@@ -21,7 +21,7 @@ use std::sync::{
 
 const KEY: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const TEXT: &str = "Check setup with this credential";
-const LEDGER: &str = "SELECT a.status,a.usage_unknown,(SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id), EXISTS(SELECT 1 FROM billing.holds WHERE work_id=a.id AND released_at IS NULL) FROM authoring.attempts a WHERE id=$1::uuid";
+const LEDGER: &str = "SELECT a.status,a.usage_unknown,(SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id) FROM authoring.attempts a WHERE id=$1::uuid";
 
 #[derive(Debug)]
 struct Provider {
@@ -96,7 +96,7 @@ async fn call<T: Transport + 'static>(
         .await
 }
 
-async fn state(f: &Fixture, lease: &Claimed) -> (String, bool, i64, bool) {
+async fn state(f: &Fixture, lease: &Claimed) -> (String, bool, i64) {
     sqlx::query_as(LEDGER)
         .bind(&lease.attempt_id)
         .fetch_one(&mut *f.connection().await)
@@ -117,9 +117,10 @@ async fn settled(f: &Fixture, lease: &Claimed, calls: u32) {
         assert_eq!(ack.state, Outcome::Failed);
         assert_eq!(ack.replayed, replayed);
     }
+    f.relay(&lease.attempt_id).await;
     assert_eq!(
         state(f, lease).await,
-        ("settled".into(), false, i64::from(calls), false)
+        ("settled".into(), false, i64::from(calls))
     );
     let draft = Uuid7::parse(&lease.draft_id).expect("draft");
     let page = f
@@ -188,7 +189,6 @@ async fn malformed_key(api: InferenceApi, key: &str) {
     replace(&f, key).await;
     let draft = queue(&f, TEXT).await;
     let lease = claim(&f, &draft).await.expect("admission");
-    assert!(state(&f, &lease).await.3, "reservation is real");
     let provider = Arc::new(Provider {
         count: AtomicUsize::new(0),
         status: 200,
@@ -200,7 +200,7 @@ async fn malformed_key(api: InferenceApi, key: &str) {
     assert_eq!(fault.code(), error_code::AUTHORING_MODEL);
     assert!(!fault.to_string().contains("fixture-key"));
     assert_eq!(provider.count.load(Ordering::Relaxed), 0);
-    assert_eq!(state(&f, &lease).await, ("active".into(), false, 0, true));
+    assert_eq!(state(&f, &lease).await, ("active".into(), false, 0));
     settled(&f, &lease, 0).await;
     replace(&f, "repaired-fixture-key").await;
     f.drafts
@@ -238,7 +238,7 @@ async fn authentication_rejection_fails_and_settles_without_cancelling_the_chat(
         .expect_err("invalid credentials");
     assert_eq!(fault.code(), error_code::AUTHORING_MODEL);
     assert_eq!(provider.count.load(Ordering::Relaxed), 1);
-    assert_eq!(state(&f, &lease).await, ("active".into(), false, 1, true));
+    assert_eq!(state(&f, &lease).await, ("active".into(), false, 1));
     settled(&f, &lease, 1).await;
     let current = f
         .drafts

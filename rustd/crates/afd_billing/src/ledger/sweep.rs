@@ -1,15 +1,15 @@
 //! The usage log read back: what a piece of work has cost so far, and the
 //! lines that committed without a settlement.
 //!
-//! A work's own transaction logs its lines and a biller settles them after
-//! commit (billing §11). A crash, an outage or a lost response between the two
-//! leaves lines logged and unsettled; [`unsettled`] hands them back as the same
-//! [`Settlement`]s the work would have sent, so a retry through any biller is
-//! the original call again and `(work, seq)` keeps it from charging twice.
+//! A work's own transaction logs its lines and returns; the billing relay
+//! settles them (billing §11). [`unsettled`] hands them back as one
+//! [`Settlement`] per work, and [`resettle`] passes each to a biller, so a
+//! biller in another process sees the same calls an in-process one does and
+//! `(work, seq)` keeps a retried or repeated pass from charging twice.
 
 use std::collections::BTreeMap;
-use std::time::Duration;
 
+use afd_core::error_code::ErrorCode;
 use afd_core::id::Uuid7;
 use afd_wire::usage::UsageLine;
 use jiff::Timestamp;
@@ -24,52 +24,82 @@ use crate::rates::Posture;
 use crate::{Nanos, Result, sql};
 
 const SELECT_UNSETTLED: &str = include_str!("sql/select_unsettled.sql");
-const SELECT_WORK_CHARGED: &str = include_str!("sql/select_work_charged.sql");
+#[cfg(feature = "test-util")]
+const SELECT_UNSETTLED_WORK: &str = include_str!("sql/select_unsettled_work.sql");
 const SELECT_OWED: &str = include_str!("sql/select_owed.sql");
 
 /// What each statement here was doing, for [`query`].
 const CONTEXT_UNSETTLED: &str = "read unsettled usage lines";
-const CONTEXT_CHARGED: &str = "read a work's charged usage";
 const CONTEXT_OWED: &str = "read what is still owed";
-
-/// How long a line waits before the sweeper settles it.
-///
-/// Long enough that the work's own post-commit settle has had its chance, so
-/// the sweeper repairs failures rather than racing successes.
-pub const GRACE: Duration = Duration::from_secs(120);
 
 /// Lines one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
 
+/// Where the next pass resumes: just after the last line this one read.
+///
+/// The relay walks the unsettled lines oldest first in laps, so a work its
+/// biller keeps refusing never holds every newer line behind it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Resume {
+    logged_at: Timestamp,
+    line_id: String,
+}
+
 /// What one resettling pass did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Resettled {
     /// Works whose unsettled lines this pass settled.
     pub settled: u64,
     /// Works it could not settle; they wait for the next pass.
     pub failed: u64,
+    /// Whether the pass read a whole batch, so more lines may be waiting.
+    pub full: bool,
+    /// The code of the first refusal, for the pass's one aggregate record.
+    pub refused: Option<ErrorCode>,
+    /// Where the next pass resumes; `None` once a lap reached the newest line.
+    pub resume: Option<Resume>,
 }
 
-/// Settles every work with lines logged more than [`GRACE`] ago and never
-/// settled, through `biller`, and publishes what is still owed.
+/// Settles up to one batch of unsettled lines after `after` through `biller`,
+/// one call per work, and publishes what is still owed.
 ///
 /// # Errors
 /// The datastore would not answer a read. A biller refusing one settlement is
 /// counted, not raised: the rest of the batch still runs, and the next pass
 /// retries what failed.
-pub async fn resettle(database: &afd_db::Db, biller: &dyn Biller) -> Result<Resettled> {
-    let settlements = {
+pub async fn resettle(
+    database: &afd_db::Db,
+    biller: &dyn Biller,
+    after: Option<&Resume>,
+) -> Result<Resettled> {
+    let (settlements, resume) = {
         let mut connection = database.acquire().await?;
-        unsettled(&mut *connection, GRACE, BATCH_LIMIT).await?
+        unsettled(&mut *connection, BATCH_LIMIT, after).await?
     };
-    let mut done = Resettled::default();
+    let mut done = Resettled {
+        full: resume.is_some(),
+        resume,
+        ..Resettled::default()
+    };
     for settlement in &settlements {
         match biller.settle(settlement).await {
             Ok(_receipt) => {
                 done.settled += 1;
                 metrics::sweeper_resettled(observed::work_type(&settlement.work), 1);
             }
-            Err(_fault) => done.failed += 1,
+            Err(fault) => {
+                done.failed += 1;
+                let error_code = fault.code();
+                done.refused.get_or_insert(error_code);
+                // Bound first: the macro repeats its field expressions.
+                let (work_id, error_code) = (settlement.work.id().as_str(), error_code.as_str());
+                tracing::debug!(
+                    work_id,
+                    error_code,
+                    event = EVENT_REFUSED,
+                    "the biller refused this work's settlement; the next pass retries"
+                );
+            }
         }
     }
     let owed = {
@@ -97,7 +127,6 @@ struct OwedRow {
     fleet_nanos: i64,
     authoring_nanos: i64,
     oldest_seconds: i64,
-    held_nanos: i64,
 }
 
 impl From<OwedRow> for metrics::Owed {
@@ -106,7 +135,6 @@ impl From<OwedRow> for metrics::Owed {
         Self {
             unsettled_nanos: [gauge(row.fleet_nanos), gauge(row.authoring_nanos)],
             oldest_seconds: gauge(row.oldest_seconds),
-            held_nanos: gauge(row.held_nanos),
         }
     }
 }
@@ -114,42 +142,36 @@ impl From<OwedRow> for metrics::Owed {
 /// The table a malformed identifier is reported against.
 const TABLE_LINES: &str = "billing.usage_lines";
 
-/// What `work`'s logged lines cost in total, settled or not.
-///
-/// A renewal raises its hold to this plus the next slice's floor, so the hold
-/// tracks what the work has actually used rather than how often it renewed.
-///
-/// # Errors
-/// The statement would not run.
-pub async fn charged_so_far<'e>(executor: impl PgExecutor<'e>, work: &WorkKey) -> Result<Nanos> {
-    let charged: i64 = sqlx::query_scalar(SELECT_WORK_CHARGED)
-        .bind(work.work_type())
-        .bind(work.id().as_str())
-        .fetch_one(executor)
-        .await
-        .map_err(query(CONTEXT_CHARGED))?;
-    Ok(Nanos::from_i64(charged))
-}
+/// A work whose settlement the biller refused this pass; the next pass retries.
+const EVENT_REFUSED: &str = "billing_relay_refused";
 
-/// Up to `limit` lines logged more than `grace` ago and never settled, grouped
-/// into one [`Settlement`] per work.
+/// Up to `limit` unsettled lines after `after`, oldest first, grouped into
+/// one [`Settlement`] per work.
 ///
-/// `grace` leaves the work's own post-commit settle its chance first; settling
-/// is idempotent either way, so the grace only spares duplicate work.
+/// Answers where the next read resumes when this one filled its limit, and
+/// `None` when it reached the newest line, so the next read starts a new lap.
 ///
 /// # Errors
 /// The statement would not run, or a stored identifier is not one.
 pub async fn unsettled<'e>(
     executor: impl PgExecutor<'e>,
-    grace: Duration,
     limit: i64,
-) -> Result<Vec<Settlement>> {
+    after: Option<&Resume>,
+) -> Result<(Vec<Settlement>, Option<Resume>)> {
     let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED)
-        .bind(grace)
         .bind(limit)
+        .bind(after.map(|resume| jiff_sqlx::Timestamp::from(resume.logged_at)))
+        .bind(after.map(|resume| resume.line_id.as_str()))
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
+    let resume = (i64::try_from(rows.len()).unwrap_or(i64::MAX) >= limit)
+        .then(|| rows.last())
+        .flatten()
+        .map(|last| Resume {
+            logged_at: last.logged_at,
+            line_id: last.line_id.clone(),
+        });
     let mut works: BTreeMap<(String, String), Settlement> = BTreeMap::new();
     for row in rows {
         // A work type this build does not write, which no row it logged can
@@ -167,7 +189,40 @@ pub async fn unsettled<'e>(
             works.insert(key, settlement);
         }
     }
-    Ok(works.into_values().collect())
+    Ok((works.into_values().collect(), resume))
+}
+
+/// `work`'s unsettled lines as one [`Settlement`], or `None` when it has none.
+///
+/// What a relay pass hands the biller for that work, for a test that settles
+/// one work on a shared database without a pass over every other work's lines.
+///
+/// # Errors
+/// The statement would not run, or a stored identifier is not one.
+#[cfg(feature = "test-util")]
+pub async fn unsettled_work<'e>(
+    executor: impl PgExecutor<'e>,
+    work: &WorkKey,
+) -> Result<Option<Settlement>> {
+    let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED_WORK)
+        .bind(work.work_type())
+        .bind(work.id().as_str())
+        .fetch_all(executor)
+        .await
+        .map_err(query(CONTEXT_UNSETTLED))?;
+    let kind: fn(Uuid7) -> WorkKey = match work {
+        WorkKey::FleetLease(_) => WorkKey::FleetLease,
+        WorkKey::AuthoringAttempt(_) => WorkKey::AuthoringAttempt,
+    };
+    let mut settlement: Option<Settlement> = None;
+    for row in rows {
+        let line = row.line()?;
+        match settlement.as_mut() {
+            Some(settlement) => settlement.lines.push(line),
+            None => settlement = Some(row.settlement(kind, line)?),
+        }
+    }
+    Ok(settlement)
 }
 
 /// One unsettled line, by column name.
@@ -196,6 +251,9 @@ struct UnsettledRow {
     price_id: Option<String>,
     unpriced_token_count: i64,
     charged_nanos: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    logged_at: Timestamp,
+    line_id: String,
 }
 
 impl UnsettledRow {

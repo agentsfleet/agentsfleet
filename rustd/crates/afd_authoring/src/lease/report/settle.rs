@@ -1,5 +1,6 @@
 //! Final settlement: the attempt's usage lines and its replay acknowledgement
-//! commit together; money moves after commit, through the biller (billing §11).
+//! commit together; the billing relay moves the money from those lines
+//! (billing §11).
 
 use afd_core::clock;
 use afd_wire::authoring::{Knowledge, Outcome, Report, Reported};
@@ -20,7 +21,6 @@ use crate::{
     lease::{Status, guard, meter},
     types::RUNNING,
 };
-use afd_billing::biller::Release;
 
 pub(super) struct Settlement<'a> {
     pub(super) attempt: &'a guard::Attempt,
@@ -42,25 +42,16 @@ pub(super) enum Acknowledgement {
     Retained,
 }
 
-/// What a settled report owes once its transaction commits: the lines it
-/// logged, to settle, and why the attempt's hold is released.
-pub(super) struct Owing {
-    pub(super) lines: afd_billing::biller::Settlement,
-    pub(super) release: Release,
-}
-
 pub(super) async fn commit(
     drafts: &Drafts,
     connection: &mut PgConnection,
     settlement: Settlement<'_>,
     owed: &mut Owed,
-) -> Result<(Reported, Option<Owing>)> {
+) -> Result<Reported> {
     let known = settlement.verified.usage.knowledge == Knowledge::Known;
-    let owing = if known {
-        Some(log(drafts, connection, &settlement).await?)
-    } else {
-        None
-    };
+    if known {
+        log(drafts, connection, &settlement).await?;
+    }
     update_attempt(connection, &settlement, known).await?;
     if known {
         reconcile(connection, &settlement).await?;
@@ -86,7 +77,7 @@ pub(super) async fn commit(
         )
         .await?;
     }
-    Ok((ack, owing))
+    Ok(ack)
 }
 
 async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
@@ -108,16 +99,11 @@ async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<
 ///
 /// Usage the daemon knows is what settles: one line per known dispatch and
 /// one for the runtime, logged once per attempt (`(work, seq)` is unique, so a
-/// replay that reaches here again logs nothing new).
-async fn log(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_>) -> Result<Owing> {
+/// replay that reaches here again logs nothing new). The relay settles them.
+async fn log(drafts: &Drafts, connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
     let lines = usage::settlement(connection, s.attempt, s.verified, s.now).await?;
     afd_billing::ledger::log_lines(&mut *connection, &drafts.entropy, s.now, &lines).await?;
-    let release = if s.verdict.outcome == Outcome::Completed {
-        Release::Completed
-    } else {
-        Release::Failed
-    };
-    Ok(Owing { lines, release })
+    Ok(())
 }
 
 async fn update_attempt(

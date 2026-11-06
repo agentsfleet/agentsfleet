@@ -1,10 +1,9 @@
-//! What the billing lifecycle records: reservations, settlements, unpriced
-//! tokens, and the sweeper's view of what is still owed.
+//! What the billing lifecycle records: funds checks, settlements, unpriced
+//! tokens, and the relay's view of what is still owed.
 //!
 //! The counters are recorded by the one biller wrapper every money path holds,
-//! so a hold or a settlement counts once whoever made it; the gauges are
-//! published by the billing sweeper, which already reads the rows they
-//! describe.
+//! so a check or a settlement counts once whoever made it; the gauges are
+//! published by the billing relay, which already reads the rows they describe.
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::Counter;
@@ -12,7 +11,7 @@ use opentelemetry::metrics::Counter;
 use crate::error::Result;
 use crate::metrics::declared::billing as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::billing::{ReserveOutcome, SettleOutcome, WorkType};
+use crate::metrics::label::billing::{FundsOutcome, SettleOutcome, WorkType};
 use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::semconv;
@@ -23,13 +22,10 @@ static UNSETTLED: [Observed; 2] = [Observed::new(), Observed::new()];
 /// Age of the oldest unsettled line.
 static UNSETTLED_OLDEST: Observed = Observed::new();
 
-/// Nanos held and not yet captured.
-static HELD: Observed = Observed::new();
-
 /// The billing counters, claimed once.
 #[derive(Debug)]
 pub struct Handles {
-    reserve: Counter<u64>,
+    funds: Counter<u64>,
     settle: Counter<u64>,
     unpriced: Counter<u64>,
     resettled: Counter<u64>,
@@ -56,11 +52,8 @@ impl Handles {
                 .into_iter()
                 .collect()
         })?;
-        instruments.gauge_u64(&declared::BILLING_HELD_NANOS, || {
-            HELD.load().map(Reading::unlabelled).into_iter().collect()
-        })?;
         Ok(Self {
-            reserve: instruments.counter_u64(&declared::BILLING_RESERVE_TOTAL)?,
+            funds: instruments.counter_u64(&declared::BILLING_FUNDS_CHECK_TOTAL)?,
             settle: instruments.counter_u64(&declared::BILLING_SETTLE_TOTAL)?,
             unpriced: instruments.counter_u64(&declared::BILLING_UNPRICED_TOKENS_TOTAL)?,
             resettled: instruments.counter_u64(&declared::BILLING_SWEEPER_RESETTLED_TOTAL)?,
@@ -68,10 +61,10 @@ impl Handles {
     }
 }
 
-/// One reservation's answer.
-pub fn reserved(work: WorkType, outcome: ReserveOutcome) {
+/// One funds check's answer.
+pub fn funds_checked(work: WorkType, outcome: FundsOutcome) {
     if let Some(producers) = installed() {
-        producers.billing.reserve.add(
+        producers.billing.funds.add(
             1,
             &[
                 KeyValue::new(semconv::LABEL_WORK_TYPE, work.as_str()),
@@ -110,7 +103,7 @@ pub fn unpriced_tokens(provider: &str, model: &str, tokens: u64) {
     }
 }
 
-/// Works the billing sweeper settled.
+/// Works the billing relay settled.
 pub fn sweeper_resettled(work: WorkType, works: u64) {
     if works == 0 {
         return;
@@ -123,7 +116,7 @@ pub fn sweeper_resettled(work: WorkType, works: u64) {
     }
 }
 
-/// Publishes what the billing sweeper last read.
+/// Publishes what the billing relay last read.
 ///
 /// `None` withdraws every cell, for a pass whose read failed: a gap, never a
 /// zero nobody measured.
@@ -133,23 +126,19 @@ pub fn owed_observed(owed: Option<Owed>) {
             cell.withdraw();
         }
         UNSETTLED_OLDEST.withdraw();
-        HELD.withdraw();
         return;
     };
     for (cell, nanos) in UNSETTLED.iter().zip(owed.unsettled_nanos) {
         cell.publish(nanos);
     }
     UNSETTLED_OLDEST.publish(owed.oldest_seconds);
-    HELD.publish(owed.held_nanos);
 }
 
-/// One sweep's reading of what is still owed.
+/// One relay pass's reading of what is still owed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Owed {
     /// Unsettled nanos per work type, in [`WorkType::ALL`] order.
     pub unsettled_nanos: [u64; 2],
     /// Age of the oldest unsettled line, in seconds.
     pub oldest_seconds: u64,
-    /// Nanos held by open reservations and not yet captured.
-    pub held_nanos: u64,
 }

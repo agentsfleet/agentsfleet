@@ -33,7 +33,6 @@ pub mod issue;
 pub mod memory;
 pub mod message;
 pub mod mint;
-mod money;
 pub mod obligation;
 mod park;
 pub mod pull;

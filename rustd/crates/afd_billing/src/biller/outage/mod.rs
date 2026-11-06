@@ -1,9 +1,9 @@
 //! What work does when its biller cannot answer.
 
-use super::{Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey};
+use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
 use crate::Result;
 
-/// Whether work runs while its biller cannot answer a reservation.
+/// Whether work runs while its biller cannot answer a funds check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutagePolicy {
     /// Admit the work; its lines are logged and settle when the biller is back.
@@ -12,11 +12,11 @@ pub enum OutagePolicy {
     Closed,
 }
 
-/// Any [`Biller`], with an [`OutagePolicy`] applied to its reservations.
+/// Any [`Biller`], with an [`OutagePolicy`] applied to its funds checks.
 ///
-/// Only `reserve` gates work, so only `reserve` reads the policy: a failed
-/// `settle` or `release` leaves the lines logged and unsettled, and the sweeper
-/// retries them under either policy.
+/// Only `check` gates work, so only `check` reads the policy: a failed
+/// `settle` leaves the lines logged and unsettled, and the relay retries them
+/// under either policy.
 #[derive(Debug)]
 pub struct WithOutagePolicy<B> {
     inner: B,
@@ -33,18 +33,24 @@ impl<B> WithOutagePolicy<B> {
 
 #[async_trait::async_trait]
 impl<B: Biller> Biller for WithOutagePolicy<B> {
-    async fn reserve(&self, ask: &Reservation) -> Result<Hold> {
-        match (self.inner.reserve(ask).await, self.policy) {
+    async fn check(&self, ask: &Ask) -> Result<Funds> {
+        match (self.inner.check(ask).await, self.policy) {
             (Err(fault), OutagePolicy::Open) if fault.is_unanswered() => {
+                // Bound first: the macro repeats its field expressions.
+                let (error_code, work_type, work_id) = (
+                    fault.code().as_str(),
+                    ask.work.work_type(),
+                    ask.work.id().as_str(),
+                );
                 tracing::warn!(
                     error = %fault,
-                    error_code = fault.code().as_str(),
-                    work_type = ask.work.work_type(),
-                    work_id = ask.work.id().as_str(),
-                    event = "billing_reserve_unconfirmed",
+                    error_code,
+                    work_type,
+                    work_id,
+                    event = "billing_check_unconfirmed",
                     "the biller could not answer; the work runs and settles later"
                 );
-                Ok(Hold::Unconfirmed)
+                Ok(Funds::Unconfirmed)
             }
             (answer, _) => answer,
         }
@@ -52,10 +58,6 @@ impl<B: Biller> Biller for WithOutagePolicy<B> {
 
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
         self.inner.settle(settlement).await
-    }
-
-    async fn release(&self, work: &WorkKey, why: Release) -> Result<()> {
-        self.inner.release(work, why).await
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {

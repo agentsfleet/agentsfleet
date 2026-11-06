@@ -17,14 +17,12 @@ closed_set! {
 }
 
 closed_set! {
-    /// What a reservation answered.
-    ReserveOutcome {
-        /// The hold covers the ask.
-        Held => "held",
-        /// The balance could not cover it.
+    /// What a funds check answered.
+    FundsOutcome {
+        /// The balance, less what is logged and not yet charged, covers the ask.
+        Covered => "covered",
+        /// It could not cover it.
         Short => "short",
-        /// The work's hold was already released.
-        Closed => "closed",
         /// The biller could not answer and the outage policy admitted the work.
         Unconfirmed => "unconfirmed",
     }

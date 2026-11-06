@@ -1,18 +1,18 @@
-//! Any biller, counted: the one choke point every reservation and settlement
-//! passes through, whichever product path or sweeper made it.
+//! Any biller, counted: the one choke point every funds check and settlement
+//! passes through, whichever product path or relay pass made it.
 
-use afd_observability::metrics::label::billing::{ReserveOutcome, SettleOutcome, WorkType};
+use afd_observability::metrics::label::billing::{FundsOutcome, SettleOutcome, WorkType};
 use afd_observability::metrics::label::cost::ChargeClass;
 use afd_observability::producers::{billing as metrics, cost};
 
-use super::{Account, Balance, Biller, Hold, Receipt, Release, Reservation, Settlement, WorkKey};
+use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
 use crate::Result;
 
-/// `inner`, with every reservation's answer and every settlement's outcome,
+/// `inner`, with every funds check's answer and every settlement's outcome,
 /// spend and unpriced tokens recorded.
 ///
-/// Wraps outside [`super::WithOutagePolicy`] so a reservation the policy
-/// admitted is counted as `unconfirmed` rather than vanishing as an error.
+/// Wraps outside [`super::WithOutagePolicy`] so a check the policy admitted is
+/// counted as `unconfirmed` rather than vanishing as an error.
 #[derive(Debug)]
 pub struct Observed<B> {
     inner: B,
@@ -28,16 +28,15 @@ impl<B> Observed<B> {
 
 #[async_trait::async_trait]
 impl<B: Biller> Biller for Observed<B> {
-    async fn reserve(&self, ask: &Reservation) -> Result<Hold> {
-        let answer = self.inner.reserve(ask).await;
-        if let Ok(hold) = &answer {
-            let outcome = match hold {
-                Hold::Held { .. } => ReserveOutcome::Held,
-                Hold::Short { .. } => ReserveOutcome::Short,
-                Hold::Closed => ReserveOutcome::Closed,
-                Hold::Unconfirmed => ReserveOutcome::Unconfirmed,
+    async fn check(&self, ask: &Ask) -> Result<Funds> {
+        let answer = self.inner.check(ask).await;
+        if let Ok(funds) = &answer {
+            let outcome = match funds {
+                Funds::Covered => FundsOutcome::Covered,
+                Funds::Short { .. } => FundsOutcome::Short,
+                Funds::Unconfirmed => FundsOutcome::Unconfirmed,
             };
-            metrics::reserved(work_type(&ask.work), outcome);
+            metrics::funds_checked(work_type(&ask.work), outcome);
         }
         answer
     }
@@ -58,10 +57,6 @@ impl<B: Biller> Biller for Observed<B> {
         answer
     }
 
-    async fn release(&self, work: &WorkKey, why: Release) -> Result<()> {
-        self.inner.release(work, why).await
-    }
-
     async fn balance(&self, payer: &Account) -> Result<Balance> {
         self.inner.balance(payer).await
     }
@@ -71,7 +66,7 @@ impl<B: Biller> Biller for Observed<B> {
 ///
 /// Spend is what left the balance (`taken`): the whole charge, or nothing for a
 /// payer with no wallet to debit. Unpriced tokens count only when this
-/// call charged lines, so a sweeper's retry of lines already settled adds
+/// call charged lines, so a relay's retry of lines already settled adds
 /// nothing.
 fn record_spend(settlement: &Settlement, receipt: &Receipt) {
     if receipt.settled_lines == 0 {

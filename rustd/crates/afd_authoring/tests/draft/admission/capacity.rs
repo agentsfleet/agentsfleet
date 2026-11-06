@@ -43,23 +43,17 @@ async fn runtime_occupancy_blocks_authoring_until_original_runtime_expiry() {
     f.cleanup().await;
 }
 
+/// Nothing is set aside: a second attempt is admitted against the balance the
+/// first one was admitted against, and what they spend past it is a debt.
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn all_unresolved_obligations_remain_covered_when_a_second_attempt_is_admitted() {
+async fn a_second_attempt_is_admitted_against_the_same_balance() {
     let f = funded(2).await;
     fixture::balance(&f, 30_000_000).await;
-    let first = queue(&f, "Fully reserve the wallet").await;
+    let first = queue(&f, "The first turn's bound covers the wallet").await;
     assert!(claim(&f, &first).await.is_some());
-    let second = queue(&f, "Cannot consume an existing obligation").await;
-    assert!(claim(&f, &second).await.is_none());
-    assert_eq!(fixture::attempts(&f).await, 1);
-    let failed = fixture::failure(&f, &second).await;
-    assert_eq!(
-        failed
-            .failure
-            .expect("bounded balance failure")
-            .recovery_action,
-        "owner_billing"
-    );
+    let second = queue(&f, "The second turn sees the same wallet").await;
+    assert!(claim(&f, &second).await.is_some());
+    assert_eq!(fixture::attempts(&f).await, 2);
     f.cleanup().await;
 }

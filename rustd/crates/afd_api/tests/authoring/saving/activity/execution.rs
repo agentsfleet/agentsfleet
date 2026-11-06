@@ -33,24 +33,22 @@ async fn recorded_receipts_never_admit_run_bill_deliver_or_enter_runtime_context
 }
 
 async fn assert_no_work(saved: &Saved) {
-    let counts: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+    let counts: (i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT
          (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid),
          (SELECT count(*) FROM runner.leases WHERE fleet_id=$1::uuid),
          (SELECT count(*) FROM runner.fleet_slots WHERE fleet_id=$1::uuid),
          (SELECT count(*) FROM billing.usage_lines WHERE fleet_id=$1::uuid),
-         (SELECT count(*) FROM billing.holds WHERE tenant_id=$2::uuid),
          (SELECT count(*) FROM fleet.obligations WHERE fleet_id=$1::uuid)",
     )
     .bind(saved.fleet.as_str())
-    .bind(saved.case.base.tenant.as_str())
     .fetch_one(&mut *saved.case.base.db.acquire().await.expect("work connection"))
     .await
     .expect("runtime side-effect counts");
     assert_eq!(
         counts,
-        (0, 0, 0, 0, 0, 0),
-        "receipts create no queue, lease, run, charge, hold or delivery"
+        (0, 0, 0, 0, 0),
+        "receipts create no queue, lease, run, charge or delivery"
     );
 }
 
