@@ -91,6 +91,7 @@ async fn an_invalid_fleet_scope_records_nothing_and_sends_no_notification() {
         .admit(request)
         .await
         .expect_err("fleet belongs to another workspace");
+    assert!(refused.is_fleet_absent(), "{refused}");
     assert!(!refused.is_over_capacity());
     assert!(!server.seen().iter().any(|s| s.starts_with("SPUBLISH")));
     let count: i64 =

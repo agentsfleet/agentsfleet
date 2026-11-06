@@ -24,6 +24,8 @@ mod integration_backfill;
 mod integration_budgets;
 #[path = "integration_continuation_lineage.rs"]
 mod integration_continuation_lineage;
+#[path = "integration_intake_cost.rs"]
+mod integration_intake_cost;
 mod integration_list_plans;
 #[path = "integration_steer.rs"]
 mod integration_steer;

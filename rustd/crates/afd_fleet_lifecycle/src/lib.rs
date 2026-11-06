@@ -149,6 +149,17 @@ impl FleetStatus {
 
 #[cfg(test)]
 mod tests {
+    /// `active` is the only runnable status, so the spelling admission binds
+    /// for a runnable send cannot go stale (`M242_001` Dimension 2.8).
+    #[test]
+    fn only_active_is_runnable() {
+        let runnable: Vec<super::FleetStatus> = super::FleetStatus::ALL
+            .into_iter()
+            .filter(|status| status.is_runnable())
+            .collect();
+        assert_eq!(runnable, [super::FleetStatus::Active]);
+    }
+
     use afd_observability::metrics::label::fleet::FleetStatusLabel;
 
     use super::FleetStatus;

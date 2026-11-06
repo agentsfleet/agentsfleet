@@ -98,3 +98,78 @@ fn input<'a>(fleet: &'a str, workspace: &'a str) -> Admission<'a> {
         reply: Reply::None,
     }
 }
+
+/// How long a send may take to start waiting on the held fleet lock.
+const BLOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Sessions waiting on `holder`, read from a separate autocommit connection (SQL-STATACT).
+const BLOCKED_ON: &str =
+    "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
+
+/// A send that waits behind a staged admission's fleet lock draws the later
+/// sequence, and the claim takes the staged row first (`M242_001` Dimension 3.1).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
+    let fixtures = Fixtures::create().await;
+    let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
+    let admissions = Admissions::for_tests(fixtures.database.clone(), crate::queue::unreachable());
+    let prepared = admissions
+        .prepare(input(&fleet, &workspace))
+        .await
+        .expect("prepare");
+    let mut connection = fixtures.database.acquire().await.expect("holder");
+    let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *connection)
+        .await
+        .expect("holder backend");
+    let mut tx = connection
+        .begin()
+        .await
+        .expect("open the staging transaction");
+    let staged = admissions
+        .stage(&mut tx, prepared)
+        .await
+        .expect("stage under the open transaction");
+    let queued_send = tokio::spawn({
+        let (admissions, fleet, workspace) = (admissions.clone(), fleet.clone(), workspace.clone());
+        async move { admissions.admit(input(&fleet, &workspace)).await }
+    });
+    let deadline = tokio::time::Instant::now() + BLOCK_WAIT;
+    loop {
+        let blocked: i64 = sqlx::query_scalar(BLOCKED_ON)
+            .bind(holder)
+            .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
+            .await
+            .expect("blocked sessions");
+        if blocked > 0 {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the send never waited on the fleet lock"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    tx.commit().await.expect("the staged admission commits");
+    let behind = queued_send
+        .await
+        .expect("the waiting send's task")
+        .expect("the waiting send admits");
+    let later: bool = sqlx::query_scalar(
+        "SELECT w.sequence > s.sequence FROM fleet.admissions w, fleet.admissions s \
+         WHERE w.id = $1::uuid AND s.id = $2::uuid",
+    )
+    .bind(&behind.stored.id)
+    .bind(&staged.stored.id)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("both sequences");
+    assert!(later, "the waiter draws the later sequence");
+    let leases = fixtures.leases_with_dead_queue();
+    let first = next(&leases, &runner).await.expect("the claim");
+    assert_eq!(
+        first.event_id, staged.stored.id,
+        "the staged row is claimed first"
+    );
+}

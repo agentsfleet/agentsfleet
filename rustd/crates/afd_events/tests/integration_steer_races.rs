@@ -157,3 +157,79 @@ async fn test_a_key_another_fleet_holds_is_refused() {
         .expect_err("a row another fleet holds is refused");
     assert!(refused.is_operation_conflict(), "{refused}");
 }
+
+/// Concurrent unkeyed sends to one fleet this many at once.
+const CONCURRENT_SENDS: usize = 64;
+
+/// Racing repeats of one key this many at once.
+const RACING_REPEATS: usize = 100;
+
+/// 64 unkeyed sends released together each land once, with no per-fleet cap to
+/// refuse any (`M242_001` Dimension 2.2).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
+    let lane = std::sync::Arc::new(EventsLane::open().await);
+    let steer = std::sync::Arc::new(Steer::new(lane.admissions()));
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(CONCURRENT_SENDS));
+    let mut sends = tokio::task::JoinSet::new();
+    for _ in 0..CONCURRENT_SENDS {
+        let (lane, steer, barrier) = (
+            std::sync::Arc::clone(&lane),
+            std::sync::Arc::clone(&steer),
+            std::sync::Arc::clone(&barrier),
+        );
+        sends.spawn(async move {
+            barrier.wait().await;
+            append_with(&steer, &lane, None).await
+        });
+    }
+    let mut events = std::collections::BTreeSet::new();
+    while let Some(sent) = sends.join_next().await {
+        events.insert(sent.expect("a send task"));
+    }
+    assert_eq!(
+        events.len(),
+        CONCURRENT_SENDS,
+        "every send is its own event"
+    );
+    let (rows, sequences): (i64, i64) = sqlx::query_as(
+        "SELECT count(*), count(DISTINCT sequence) FROM fleet.admissions WHERE fleet_id = $1::uuid",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *lane.connection().await)
+    .await
+    .expect("the fleet's rows");
+    let expected = i64::try_from(CONCURRENT_SENDS).expect("a small count");
+    assert_eq!((rows, sequences), (expected, expected));
+}
+
+/// 100 sends of one key released together leave one row, and every answer
+/// names it (`M242_001` Dimension 2.4).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_hundred_racing_repeats_admit_one_row() {
+    let lane = std::sync::Arc::new(EventsLane::open().await);
+    let steer = std::sync::Arc::new(Steer::new(lane.admissions()));
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(RACING_REPEATS));
+    let operation = format!("{OPERATION}-hundred");
+    let mut sends = tokio::task::JoinSet::new();
+    for _ in 0..RACING_REPEATS {
+        let (lane, steer, barrier, operation) = (
+            std::sync::Arc::clone(&lane),
+            std::sync::Arc::clone(&steer),
+            std::sync::Arc::clone(&barrier),
+            operation.clone(),
+        );
+        sends.spawn(async move {
+            barrier.wait().await;
+            append_with(&steer, &lane, Some(&operation)).await
+        });
+    }
+    let mut events = std::collections::BTreeSet::new();
+    while let Some(sent) = sends.join_next().await {
+        events.insert(sent.expect("a send task"));
+    }
+    assert_eq!(events.len(), 1, "one key, one event: {events:?}");
+    assert_eq!(admissions_for(&lane, &operation).await, 1);
+}
