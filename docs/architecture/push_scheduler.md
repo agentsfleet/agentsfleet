@@ -9,7 +9,7 @@ Indy made each decision below on Nov 06, 2026. The specs quote his words.
 | Decision | What it means |
 |---|---|
 | Postgres accepts every message and fences every run | `fleet.admissions` is the only acceptance store. `runner.fleet_slots.fencing_token` is the only execution authority. |
-| Messages fold into a running run | A chat message that arrives mid-run joins that run at its next model call. During compaction it waits, and the user sees "compacting". |
+| Messages fold into a running run | A chat message that arrives mid-run joins that run at its next safe boundary, through #803's input claims. A call in flight is never interrupted. Revised Nov 06, 2026: no compaction marker, no parallel path (M242_002 Discovery). |
 | Runners hold one stream | A runner host keeps one outbound connection to `agentsfleetd`. Work is pushed down it; nothing polls. |
 | Core NATS replaces Dragonfly | NATS carries signals only: no JetStream, no KV. Every durable fact moves to Postgres first. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
@@ -38,7 +38,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 |---|---|---|
 | Message accepted, in order | `fleet.admissions` | The runner's pending input, re-read at each model call |
 | Run assigned, and its fence | `runner.fleet_slots`, `runner.leases` | The runner's stream session, rebuilt from Postgres on reconnect |
-| Message folded into a run | `fleet.admissions.folded_into`, `fleet.events.folded_into` | None |
+| Message folded into a run | `fleet.admissions.input_claim_lease_id` and `input_claim_fence` (#803) | None |
 | Lease deadline | `runner.leases.lease_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines` and the billing relay | None |
 | Outbound reply owed | `fleet.obligations` | A NATS ping wakes a worker; a 30 s scan is the backstop |
@@ -51,7 +51,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 
 | Milestone | Tables |
 |---|---|
-| M242 | A per-fleet unsettled-count guard row for one-statement intake. `folded_into` on `fleet.admissions` and `fleet.events`. `compacting_since` on `runner.fleet_slots`. |
+| M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims on `fleet.admissions`. |
 | M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.leases`. |
 | M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.obligations`. |
 | M245 | None expected: caches are keyed by existing revision columns. |
@@ -65,18 +65,18 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 ```
 client          agentsfleetd                       Postgres                        runner
   │ POST message    │                                 │                              │
-  │────────────────►│ one statement: repeat check,    │                              │
-  │                 │ policy, budget guard, insert ──►│ admission row (accepted)     │
-  │                 │◄────────────────────────────────│ disposition                  │
-  │◄────────────────│ started | folded | queued |     │                              │
-  │                 │ waiting_compaction              │                              │
+  │────────────────►│ one statement: fleet lock,      │                              │
+  │                 │ repeat, status, policy, ceiling,│                              │
+  │                 │ insert ────────────────────────►│ admission row (accepted)     │
+  │                 │◄────────────────────────────────│ live-run facts               │
+  │◄────────────────│ started | folded | queued       │                              │
   │                 │ ping af.wake.<shard> (lossy)    │                              │
   │                 │──── offer on the runner stream ─────────────────────────────►│ idle fleet: start
-  │                 │                                 │◄─ read pending input ────────│ busy fleet: next
-  │                 │                                 │   under the fence            │ model call folds it
+  │                 │                                 │◄─ claim pending input ───────│ durable-task run:
+  │                 │                                 │   under the fence (#803)     │ next safe boundary
 ```
 
-During compaction the runner reads no input. The message waits, its disposition is `waiting_compaction`, and it folds at the first model call after compaction.
+A live durable-task run claims a person's later message in its conversation at its next safe boundary, through #803's input claims. Which fleets fold, and the burst bar, are open for Indy (M242_002 Discovery).
 
 ### A runner connects, and reconnects
 
@@ -152,7 +152,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | Milestone | Delivers | Proof of done |
 |---|---|---|
 | M241 | This page, honest counters, statements per chat by path, the burst bench | Baselines below |
-| M242 | One-statement intake; folding with a disposition | Burst pickup p95 under 1 s; one statement per accepted message |
+| M242 | One-statement intake; folding with a disposition | One statement per accepted message; a durable-task run takes a person's mid-run message |
 | M243 | One runner stream; the Bus seam with a Dragonfly implementation | Activity path near 0 statements; no poll; reconnect and revocation tests |
 | M244 | Core NATS behind the Bus; durable jobs in Postgres; Dragonfly deleted | Tail and wake p99 and a kill drill, Dragonfly then NATS |
 | M245 | Revision-keyed caches, a one-statement report, batched renewal | 15 to 20 statements per chat |
@@ -193,5 +193,22 @@ A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets fo
 The headline is pickup p95: 54.2 s, between 53.4 s and 54.5 s. The median run is committed as `lease-burst.rig.json`.
 
 In it, 29,953 messages were accepted, none were refused, and 29,729 were still unleased at the close. Pickup p50 is 28.5 s and append p95 is 35.7 ms.
+
+### M242: one-statement intake
+
+Measured on Indy's laptop on Nov 07, 2026, with `make bench-steer PROFILE=rig`'s lane. Base `6ce61641d` and branch `43d828970` ran interleaved, each on a reset rig. The median branch run is committed as `steer.rig.json`.
+
+| Shape | Base, three runs | Branch, three runs |
+|---|---|---|
+| Default: Postgres statements per steer | 4.003, 4.005, 4.004 | 1.003, 1.003, 1.003 |
+| Default: accepted per second | 1698, 1260, 1238 | 1956, 2390, 2191 |
+| Default: p95 ms | 6.96, 13.6, 15.8 | 12.1, 10.1, 9.52 |
+| One fleet, 16 senders, 3 s: accepted per second | 528, 330, 532 | 316, 837, 210 |
+| One fleet, 16 senders, 10 s: accepted per second | 312, 342, 383 | 929, 933, 1031 |
+| One fleet, 16 senders, 10 s: p95 ms | 6.46, 4.03, 3.76 | 1.42, 1.21, 1.13 |
+
+The 3 s one-fleet window scattered from 210 to 837 on the branch, so the 10 s runs are the comparison. One fleet now admits about 2.7 times as many messages a second.
+
+A burst on the branch measured pickup p95 at 54.7 s, unchanged from M241, because nothing folds yet.
 
 Tail and wake p99 and the broker-kill drill are measured in M244, on Dragonfly and then on NATS, against the same code.

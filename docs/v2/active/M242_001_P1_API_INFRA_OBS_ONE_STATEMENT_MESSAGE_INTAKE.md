@@ -197,8 +197,8 @@ The statement's steps are common table expressions (CTEs), each read by the next
 
 On Indy's laptop, `make bench-steer PROFILE=rig` runs three times on the base revision and three times on the branch, interleaved. The median branch run is copied to `bench/baselines/steer.rig.json`. The one-fleet shape, `BENCH_FLEETS=1 BENCH_CONCURRENCY=16 BENCH_WINDOW_SECONDS=3`, runs the same way, with `failures` 0 so the ceiling never refuses. `make bench-lease PROFILE=rig BENCH_SHAPE=burst` runs once on the branch. `push_scheduler.md` §M242 records every value beside M241's baselines, and `datastore_scaling.md` and `scaling.md` change with them. **Implementation default:** `bench-steer` is the gate because its lane appends through `Steer::append`. No trigger runs inside the statement, so the gate reads at most 1.05.
 
-- **Dimension 5.1** — statements per steer halve → Test `make bench-steer PROFILE=rig` (integration): `postgres_statements_per_steer` is at most 1.05 in the committed baseline, from about 4.0 on the base.
-- **Dimension 5.2** — the numbers are median real runs → Test `intake_numbers_recorded` (manual): §M242 lists three base and three branch values for rate, p95 and statements per steer in both shapes, plus the burst's `burst_append_p95_ms` and `burst_refused`; the committed file holds the median run.
+- **Dimension 5.1** — DONE — statements per steer halve → Test `make bench-steer PROFILE=rig` (integration): `postgres_statements_per_steer` is at most 1.05 in the committed baseline, from about 4.0 on the base.
+- **Dimension 5.2** — DONE — the numbers are median real runs → Test `intake_numbers_recorded` (manual): §M242 lists three base and three branch values for rate, p95 and statements per steer in both shapes, plus the burst's `burst_append_p95_ms` and `burst_refused`; the committed file holds the median run.
 - **Dimension 5.3** — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the four changed architecture pages.
 
 ### §6 — Intake runs under the login role's bounds
