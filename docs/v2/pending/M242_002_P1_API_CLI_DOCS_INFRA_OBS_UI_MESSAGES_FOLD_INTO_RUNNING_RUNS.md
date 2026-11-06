@@ -121,6 +121,7 @@ report {folded_through_event_id} ─► meter_lease.sql says folds wait ─► s
 | `docs/architecture/push_scheduler.md`, `runner_fleet.md`, `lease_flow.md`, `data_flow.md`, `api_resources.md`, `context_lifecycle.md`, `runner_execution.md` | EDIT | §7: steers fold; compaction holds input; the new columns and baselines |
 | `playbooks/operations/acceptance/baselines/M242_002-<sha>.md` | CREATE | §7: the manual evidence |
 | `~/Projects/docs`: `fleets/running.mdx`, `cli/agentsfleet.mdx`, `changelog.mdx` on `chore/m242-002-folding-changelog` | EDIT | §7: public behaviour; API pages after this Pull Request merges |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/PolicyFields.tsx`, `admin/runners/[runnerId]/components/RunnerIdentityLine.tsx` and their tests | EDIT | a "Durable tasks" on/off control beside Isolation mode and Network egress, defaulting on; the daemon already stores `AssignedPolicy.durable_tasks_enabled` per runner (Indy, Discovery). CHORE(open) confirms off stops durable work reaching that runner |
 
 ## Applicable Rules
 
@@ -376,6 +377,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 04:06 PM): chose "Next model call (Recommended)" for the 1 s target — context: a folded message joins at the run's next model call, as Codex does; the in-flight call is never interrupted, and the bench's 500 ms call keeps pickup p95 under 1 s.
   > Indy (Nov 06, 2026: 04:06 PM): chose "Not now (Recommended)" for webhook and Slack coalescing — context: out of the programme until a webhook burst is measured; chat folding covers the 50 fleets × 10 messages a second burst.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
+  > Indy (Nov 06, 2026: 09:20 PM): "Well i mean the ui currently captures on a per runner  (eg: landlock, allow network egress and so on, similarly this must be configured from the runner config) is my request." — context: `durable_tasks_v1` set per runner in the admin UI, carried in this Pull Request.
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review of this spec runs before it leaves `pending/`.
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

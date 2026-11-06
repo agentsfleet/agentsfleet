@@ -151,7 +151,7 @@ One new architecture page holds:
 The page states the target as the design (SPEC-FRAME). **Implementation default:** no column listings, because each milestone's spec fixes its own schema when it starts (Indy, Discovery).
 
 - **Dimension 2.1** — DONE — the page reads clean → Test `orly gate verify` (integration): 0 `docs.language` findings on `docs/architecture/push_scheduler.md`.
-- **Dimension 2.2** — Indy approves the decisions section → Test `decisions_approved` (manual): Indy reads §Decisions and §Superseded rules; his reply is quoted in the Pull Request Session Notes.
+- **Dimension 2.2** — DONE — Indy approves the decisions section → Test `decisions_approved` (manual): Indy reads §Decisions and §Superseded rules; his reply is quoted in the Pull Request Session Notes.
 
 ### §3 — Delete the poll counters that undercount
 
@@ -289,6 +289,7 @@ N/A: no user surface.
   > Indy (Nov 06, 2026: 01:12 PM): "Since this a underlying architechture change what milestones will be broken into. Indy will need a full list of table, and code changes before a new agents start on the milestone." then (01:18 PM) "i wanted the code changes when you start the milestone not now." — context: §2 proposes tables per milestone; each milestone's spec carries its own change list.
   > Indy (Nov 06, 2026: 01:31 PM): "i prefer to have it in my laptop, upon deployment we move to the api-dev machines." — context: the rig for §4–§7.
   > Indy (Nov 06, 2026: 01:36 PM): "what will spec 241_001 pr contain, i prefer we add all into this and start M242 and ship the M242 PR." — context: this spec ships with its build in one Pull Request.
+  > Indy (Nov 06, 2026: 09:08 PM): "decisions approved" — context: Dimension 2.2, after reading `push_scheduler.md` §Decisions and §Rules this design retires.
 - **Model reviews** —
   - EGM brainstorm, first pass (Claude Fable 5.1, six Goldfish lenses): 6 blockers, 16 majors, recorded in the brief; B1 and B2 accepted by Indy.
   - Second pass (Claude Opus 5.5; design, codebase-details, zoom-out): 3 blockers, 11 majors, 12 minors, all applied to the brief.
