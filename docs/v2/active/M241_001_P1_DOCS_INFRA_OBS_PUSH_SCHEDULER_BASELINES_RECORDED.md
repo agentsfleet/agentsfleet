@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, the push-scheduler milestones change how every chat reaches a runner, and none of them can prove a gain without a baseline measured first
 
