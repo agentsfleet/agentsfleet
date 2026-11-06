@@ -79,7 +79,7 @@ deadlines ─► sweeper:expiry (daemon) and one host timer (runner)
   2. M244 moved approval-gate references to Postgres, so `select_event_gate.sql` is the only gate lookup left to merge.
   3. The bench chat is M241's: one lease, a 10 s turn, two renewals, one report. Activity costs about 0 after M243.
   4. The funds check stays behind `Arc<dyn Biller>`, because billing §11 keeps lease code unchanged when the biller moves (`billing_and_provider_keys.md:77,557`).
-  5. The dev cutover may reset data (brief), but both new columns backfill anyway, because each costs one `UPDATE`.
+  5. The dev cutover resets data (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM), so both new columns are added `NOT NULL` with no backfill; a slot that meets existing rows fails loud.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
 ## Implementing agent — read these first
@@ -97,8 +97,8 @@ deadlines ─► sweeper:expiry (daemon) and one host timer (runner)
 | `docs/v2/pending/M245_001_P1_DOCS_INFRA_OBS_CHAT_COSTS_TWENTY_STATEMENTS.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
 | `docs/architecture/runner_fleet.md`, `concurrency.md`, `lease_flow.md`, `billing_and_provider_keys.md`, `postgres_schemas.md` | EDIT | §1: the config-cache and timer reversals, renewal and report steps, the funds cadence, the two columns' readers |
 | `docs/architecture/push_scheduler.md` | EDIT | §1: renewal takes no host lock, M245's table row; §8: the M245 baseline |
-| `schema/2950_runner_leases_daemon_line_count.sql` | CREATE | §2: the column, its backfill and `NOT NULL` |
-| `schema/2960_vault_secrets_resource_version.sql` | CREATE | §2: the column, its backfill, `NOT NULL` and the update trigger |
+| `schema/2950_runner_leases_daemon_line_count.sql` | CREATE | §2: the column, `NOT NULL` |
+| `schema/2960_vault_secrets_resource_version.sql` | CREATE | §2: the column, `NOT NULL` and the update trigger |
 | `rustd/crates/afd_db/src/migration.rs`, `afd_db/tests/integration_migrate/**` | EDIT | §2: register both slots; positions and grants follow (MIG) |
 | `rustd/crates/afd_vault/src/sql/insert_secret_if_absent.sql` and its binder | EDIT | §2: binds the initial version constant |
 | `rustd/crates/afd_admin/src/platform_key.rs` | EDIT | §2: `set` and `deactivate` bump `catalogue_version` |
@@ -172,13 +172,13 @@ One doc-only commit lands before any code (ARCH-LAND). `runner_fleet.md` replace
 
 ### §2 — Two version columns, and the writers that skipped a bump
 
-Slot 2950 adds `runner.leases.daemon_line_count INTEGER`, the tally the meter's `daemon_lines` alias counts today, named per SQL-COUNTER. It is backfilled per lease from `billing.usage_lines` rows numbered at or above `DAEMON_SEQ_BASE`, then set `NOT NULL`. Its readers are `renew_batch.sql`, `commit_report.sql` and `bill_expired_slice.sql`, each of which reads and advances it under the lease row lock.
+Slot 2950 adds `runner.leases.daemon_line_count INTEGER`, the tally the meter's `daemon_lines` alias counts today, named per SQL-COUNTER. It is added `NOT NULL` with no backfill, because the dev cutover resets data. Its readers are `renew_batch.sql`, `commit_report.sql` and `bill_expired_slice.sql`, each of which reads and advances it under the lease row lock.
 
-Slot 2960 adds `vault.secrets.resource_version BIGINT`, backfilled to 1 and set `NOT NULL`. A `BEFORE UPDATE` trigger sets it to the old value plus one. The insert binds `SECRET_FIRST_VERSION` (SQL-DEFAULT). Its readers are the claim and the platform key cache. **Implementation default:** a trigger rather than a bump in each writer, because a vault writer added later then cannot skip it. Today a same-KEK (key-encryption key) replace in `update_secret.sql` keeps the row's id and `kek_version`; only the ciphertext hash `platform.sql` computes on every read notices it.
+Slot 2960 adds `vault.secrets.resource_version BIGINT`, added `NOT NULL` with no backfill. A `BEFORE UPDATE` trigger sets it to the old value plus one. The insert binds `SECRET_FIRST_VERSION` (SQL-DEFAULT). Its readers are the claim and the platform key cache. **Implementation default:** a trigger rather than a bump in each writer, because a vault writer added later then cannot skip it. Today a same-KEK (key-encryption key) replace in `update_secret.sql` keeps the row's id and `kek_version`; only the ciphertext hash `platform.sql` computes on every read notices it.
 
 `platform_key.rs` `set` and `deactivate` run `bump_catalogue_version.sql` in their transactions, as `model.rs` does; the `afd_db` test seeds do the same. The fleet `resource_version` gap closes by design: no cache keys on it, because the memory flags ride the claim (§3). Bumping it in `update_access.sql`, `pause_fleet.sql`, `stream_ready.sql` and `initial.sql` would move the fleet's ETag (entity tag, `afd_authoring/src/creation/patch.rs:45`), failing an editor's next save for no edit of theirs. Slot numbers are renumbered from `origin/main` at CHORE(open), because PR #803 takes `schema/2190`–`2690`.
 
-- **Dimension 2.1** — the count backfills from logged lines → Test `daemon_line_count_backfills_from_logged_lines` (integration): a lease with runtime lines at `BASE` and `BASE + 1` reads 2 after the slot; a lease with none reads 0.
+- **Dimension 2.1** — CUT — no backfill (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
 - **Dimension 2.2** — a same-KEK replace moves the version → Test `secret_version_moves_on_same_kek_replace` (integration): `update_secret` with an unchanged `kek_version` moves 1 → 2, a KEK rewrap 2 → 3. Without the trigger, both stay 1.
 - **Dimension 2.3** — a platform default change moves the catalogue → Test `platform_default_change_bumps_catalogue_version` (integration): `set` then `deactivate` move it by 2; a `set` refused for an uncatalogued model moves it by 0.
 

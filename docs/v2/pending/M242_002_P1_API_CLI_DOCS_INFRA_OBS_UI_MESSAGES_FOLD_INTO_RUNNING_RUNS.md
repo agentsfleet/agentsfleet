@@ -193,7 +193,7 @@ Authority is `settled_at IS NULL` beside `lease_fence`; everything rides the rep
 
 `afr_agent` gains an `Inbox` port beside `ContextCheckpoints`, carried on `AgentRun`. Only `Harness::root` holds it. At each boundary the root runs preflight, reads its inbox, and runs preflight again when the read returned input, so folded text sits inside the window the call is sized for. Before `effects::compact` the root marks compacting; that read returns nothing. An answered turn reads once more before ending: input keeps the loop going with the answer kept in the conversation, as Codex continues. The reply joins each answering turn's text with a blank line. `RunOutput` carries the last folded event id, whatever the ending.
 
-A failed read logs `lease_input_read_failed` at `warn` with its `error_code` and the run goes on; the next boundary reads again. `afr_supervisor`'s `LeaseInbox` calls the folds route through `retrying`, and the report carries the cursor. Release order: the daemon ships first, because `ReportRequest` refuses unknown keys (`agentsfleetd/tests/integration_rust_runner.rs:1-7`, `runner_fleet.md:525`); an older runner never folds, and Dimension 2.6 covers its sends. **Implementation default:** the first model call drains too, unlike Codex, because the head's followers waited in the ledger before the run began.
+A failed read logs `lease_input_read_failed` at `warn` with its `error_code` and the run goes on; the next boundary reads again. `afr_supervisor`'s `LeaseInbox` calls the folds route through `retrying`, and the report carries the cursor. The daemon, runner, command-line interface (CLI) and web app ship together, so no build meets another's older wire (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM). **Implementation default:** the first model call drains too, unlike Codex, because the head's followers waited in the ledger before the run began.
 
 - **Dimension 3.1** — input joins the next call → Test `inbox_input_joins_the_next_model_call` (unit): turn 1 calls a tool; the inbox holds "m2" → turn 2's request ends with the tool result, then user "m2".
 - **Dimension 3.2** — compaction holds input to the first call after → Test `input_during_compaction_folds_at_the_next_call` (unit): "m2" arrives while compaction runs → the summary input lacks "m2"; the first request after carries it; the inbox saw the compacting mark first.
@@ -223,17 +223,17 @@ The 202 keeps `status`, `event_id` and `replayed`. `TailFrame::EventFolded` and 
 - **Dimension 5.1** — a folded send renders its run after the fold → Test `steer renders the run after its fold` (integration, mock API): 202 `folded`; a chunk for `h`, then `event_folded`, then a chunk for `h` → only the second chunk prints; exit 0 on `event_complete`.
 - **Dimension 5.2** — compaction is named → Test `steer says compacting while it waits` (unit): 202 `waiting_compaction` → the compacting line prints once.
 - **Dimension 5.3** — a lost fold frame falls back → Test `steer settles a folded send from the poll when its fold frame is lost` (integration, mock API): no `event_folded`, tail timeout → the poll reads `s1` linked to `h` and renders `h`'s reply.
-- **Dimension 5.4** — an older daemon reads as today → Test `steer treats a missing disposition as started` (unit): a 202 without `disposition` → no extra line, today's rendering.
+- **Dimension 5.4** — CUT — every component ships together (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
 - **Dimension 5.5** — scripts see the disposition → Test `steer --json prints the disposition` (unit): 202 `folded` → the JSON line holds `disposition` and `folded_into_event_id`.
 
 ### §6 — The chat shows a folded message in its run
 
-`postSteer` reads `disposition` as a string and `folded_into_event_id` as optional, through `zod`. A known value labels the pending row: "Added to the current reply", "Waiting: compacting context" or "Queued"; `started` keeps today's row. `applyEventFolded` links a waiting row to its run on the `event_folded` frame. The thread renders a run's folded messages between its message and its reply, so the reply moves below a new fold once. The existing "Context summarizing…" status is unchanged.
+`postSteer` reads `disposition` as its four-value enum and `folded_into_event_id` as optional, through `zod`. A known value labels the pending row: "Added to the current reply", "Waiting: compacting context" or "Queued"; `started` keeps today's row. `applyEventFolded` links a waiting row to its run on the `event_folded` frame. The thread renders a run's folded messages between its message and its reply, so the reply moves below a new fold once. The existing "Context summarizing…" status is unchanged.
 
 - **Dimension 6.1** — a folded send is labelled → Test `useFleetMessageDelivery labels a folded send` (unit): 202 `folded` → the row reads "Added to the current reply".
 - **Dimension 6.2** — the frame links a waiting row → Test `applyEventFolded marks the waiting row folded` (unit): a queued row for `s1` and `event_folded(s1 → h)` → the row links to `h`.
 - **Dimension 6.3** — the reply follows its folds → Test `thread entries place folded messages before the run's reply` (unit): `h`, its reply and `s1` linked to `h` → order `h`, `s1`, reply.
-- **Dimension 6.4** — an unknown value from a newer daemon is harmless → Test `postSteer accepts an unknown disposition` (unit): `disposition: "later"` → `ok: true`, no label.
+- **Dimension 6.4** — CUT — every component ships together (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
 - **Dimension 6.5** — the page renders a folded send → Test `fleet-fold.spec.ts renders a folded send` (e2e, dry lane): stubbed 202 `folded` and frames → the label shows and the reply sits below the folded message.
 
 ### §7 — The burst proves it, and the pages say it
@@ -270,7 +270,7 @@ The drain's simulated runner reads the folds verb through `Plane` every `BENCH_M
 | Runner killed after folding | failure | crash, `SIGKILL` | the next fence re-folds; the late report is `Fenced` | `test_a_killed_runners_folds_refold_once` |
 | Run ends before consuming a link | failure | final read reply lost, stop | the link is released and runs next | `test_rows_past_folded_through_are_released` |
 | Head refused at issue | failure | budget or gate refusal on redelivery | links released, each runs in order | `test_a_refused_head_releases_its_folds` |
-| Runner never reads | failure | an older runner | the predicted fold starts the next run | `test_an_unread_fold_runs_as_the_next_head` |
+| Runner never reads | failure | a runner that dies before its first read | the predicted fold starts the next run | `test_an_unread_fold_runs_as_the_next_head` |
 | Runner died compacting | failure | crash mid-summary | a claim clears the marker; a lapsed one is ignored | `test_a_reclaim_clears_compacting` |
 | Fold read fails on the runner | failure | daemon unreachable, or the read times out | `warn`, the run goes on, the next boundary retries | `failed_inbox_read_keeps_the_run_going` |
 | Malformed fold body | failure | unknown field, bad bound | 400 | `test_a_fold_request_with_an_unknown_field_is_400` |
@@ -279,7 +279,6 @@ The drain's simulated runner reads the folds verb through `Plane` every `BENCH_M
 | Parked head | failure | an open approval gate | `queued`; no fold | `test_a_parked_head_takes_no_folds` |
 | Non-steer between | failure | a webhook queued after the head | the fold stops before it; order holds | `test_a_webhook_between_stops_the_fold` |
 | Fold frame lost | failure | tail drop | the CLI polls; the chat reads the event detail | `steer settles a folded send from the poll when its fold frame is lost` |
-| Newer daemon value | failure | an unknown disposition | no label; the send succeeds | `postSteer accepts an unknown disposition` |
 | Run stopped after folding | failure | lease stop | consumed folds settle with the run's failure | `stopped_run_reports_its_folded_through` |
 
 ## Invariants

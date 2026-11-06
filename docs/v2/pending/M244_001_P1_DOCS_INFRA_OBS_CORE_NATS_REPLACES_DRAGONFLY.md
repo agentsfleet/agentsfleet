@@ -206,16 +206,16 @@ Three interleaved pairs of `bench-tail`, Dragonfly then NATS, run on Indy's lapt
 
 ### §4 — Outbound claiming moves to Postgres
 
-`fleet.obligations` gains `claimed_until` and `next_attempt_at`, both `TIMESTAMPTZ(3)` NULL markers, and an open-lane partial index on `(provider, workspace_id, sequence)`. The two scan indexes go. `receipt` becomes the holder's token: the report writes a fresh token and `claimed_until = clock_timestamp()`, so a new row is free to claim. One statement claims lane heads: a row is open, due, unheld, and no earlier open row shares its `(provider, workspace_id)`; `FOR UPDATE SKIP LOCKED` picks them in `sequence` order. A claim writes a new token and `claimed_until = clock_timestamp() + CLAIM_TTL` (30 s). The holder renews every 10 s while delivering. Stamps, attempt counts and releases match the holder's token, so a lapsed holder's late write changes nothing. After a committed report the reporter publishes `af.outbound.wake`; each replica also runs the claim every `CLAIM_PASS` (30 s). Every claim statement runs under the shared timeout helper (SQL-TIMEOUT) and compares deadlines with `statement_timestamp()` (SQL-SWEEPCLOCK). The stream, its reader, the producer's re-append and both receipt scans are deleted.
+`fleet.obligations` gains `claimed_until TIMESTAMPTZ(3) NOT NULL` and `next_attempt_at`, a `TIMESTAMPTZ(3)` NULL marker, and an open-lane partial index on `(provider, workspace_id, sequence)`. The two scan indexes go. `receipt` becomes the holder's token: the report writes a fresh token and `claimed_until = clock_timestamp()`, so a new row is free to claim. One statement claims lane heads: a row is open, due, unheld, and no earlier open row shares its `(provider, workspace_id)`; `FOR UPDATE SKIP LOCKED` picks them in `sequence` order. A claim writes a new token and `claimed_until = clock_timestamp() + CLAIM_TTL` (30 s). The holder renews every 10 s while delivering. Stamps, attempt counts and releases match the holder's token, so a lapsed holder's late write changes nothing. After a committed report the reporter publishes `af.outbound.wake`; each replica also runs the claim every `CLAIM_PASS` (30 s). Every claim statement runs under the shared timeout helper (SQL-TIMEOUT) and compares deadlines with `statement_timestamp()` (SQL-SWEEPCLOCK). The stream, its reader, the producer's re-append and both receipt scans are deleted.
 
-The ownership rule makes the rolling cutover safe. A row with `claimed_until` NULL was written by the retired stream path, and is held until 300 s (`LOST_AFTER`) after its last update — that path's own loss rule. The retired unreceipted scan never sees a new row, because every new row carries a token. The retired lost-entry scan never sees one either, because every claim, attempt and release touches `updated_at`, and `CYCLE_SPACING + CLAIM_PASS + CLAIM_TTL < LOST_AFTER` is asserted at compile time. **Implementation default:** keep the rule after the rollout, because it is one predicate and strands nothing (legacy consult, Discovery). Order is per lane, among committed rows; two reports racing to commit in one lane deliver in commit order, as stream appends did.
+The cutover is stop-the-world on dev: the deploy stops the old daemons, resets dev data and starts the new ones, so no stream-path row survives and no old replica runs beside a new one (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM). With no stream-path rows, `claimed_until` is `NOT NULL`: the report sets it as it writes the row, and the claim has no `IS NULL` branch. Order is per lane, among committed rows; two reports racing to commit in one lane deliver in commit order, as stream appends did.
 
 - **Dimension 4.1** — one lane stays in order with two workers → Test `two_workers_keep_one_lane_in_order` (integration): 10 rows in lane A and 10 in lane B, two claimers; A posts 1..10 in order, and no lane ever has two rows held.
 - **Dimension 4.2** — a failing head blocks only its lane → Test `failing_head_blocks_only_its_lane` (integration): A's head fails retryably; A's second row is never claimed before it, and B drains.
 - **Dimension 4.3** — a dead holder's row is retaken once → Test `lapsed_claim_is_retaken_and_the_late_stamp_refused` (integration): `claimed_until` backdated; a second worker delivers; the first holder's stamp updates 0 rows; one post in total.
 - **Dimension 4.4** — a lost ping costs only latency → Test `lost_ping_is_caught_by_the_claim_pass` (integration): no ping is published; the next pass claims and delivers the row, and `agentsfleet_outbound_claims_total{via="scan"}` rises by 1.
-- **Dimension 4.5** — a stream-path row waits out its loss rule → Test `a_stream_queued_row_is_held_until_lost_after` (integration): a receipted row without `claimed_until`, updated 10 s ago, is not claimed; backdated 301 s, it is.
-- **Dimension 4.6** — new rows never match the retired scans → Test `postgres_path_rows_never_match_the_retired_scans` (integration): the previous release's two scan statements, kept as test fixtures, return 0 rows over rows inserted, claimed, failed and released by the new path.
+- **Dimension 4.5** — CUT — no stream-path rows survive the stop-the-world cutover (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
+- **Dimension 4.6** — CUT — no stream-path rows survive the stop-the-world cutover (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
 - **Dimension 4.7** — the claim uses its index → Test `claim_reads_the_open_lane_index` (integration): `EXPLAIN (ANALYZE, BUFFERS)` over 10,000 delivered and 100 open rows after `ANALYZE` names `idx_obligations_open_lane`.
 
 ### §5 — Device sessions, nonces, gate references and the anomaly brake leave the datastore
@@ -296,7 +296,6 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 | Outbound ping lost | network blip | at-most-once publish | claim pass delivers within 30 s | `lost_ping_is_caught_by_the_claim_pass` |
 | Worker dies holding a claim | timeout | `SIGKILL` mid-delivery | claim lapses; retaken; late stamp refused | `lapsed_claim_is_retaken_and_the_late_stamp_refused` |
 | Lane head keeps failing | failure | destination refuses | only that lane waits; abandoned after `MAX_DELIVERY_CYCLES` | `failing_head_blocks_only_its_lane` |
-| Old and new replicas both deliver | race | rolling overlap | ownership rule; one owner per row | `postgres_path_rows_never_match_the_retired_scans` |
 | Online code brute force | security | concurrent wrong codes | locked out at five; the handler's answers are unchanged | `concurrent_wrong_codes_lock_out_at_five` |
 | Ciphertext replay | replay | repeated verify | one `Success`; same request replays inside 60 s | `concurrent_redemptions_consume_once` |
 | OAuth callback replay | replay | a nonce presented twice | one spend succeeds | `nonce_spends_once_under_contention` |
@@ -308,10 +307,9 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 
 1. NATS holds no state. `async-nats` is declared without default features, so `async_nats::jetstream` does not compile, and boot refuses a server reporting `jetstream`; R4 and `boot_refuses_an_unsuitable_nats_server` hold it.
 2. A lane has at most one held row. The claim statement's earlier-open-row test and `SKIP LOCKED` decide it, every write matches the holder's token, and the claim commits before the post; `two_workers_keep_one_lane_in_order` is the counterexample test.
-3. No retired scan selects a new-path row, so a rolling overlap cannot deliver twice. Every new row carries a token, and `CYCLE_SPACING + CLAIM_PASS + CLAIM_TTL < LOST_AFTER` is a compile-time assertion; `postgres_path_rows_never_match_the_retired_scans` holds it.
-4. A device code redeems once and five wrong codes abort the session. The row lock is the authority, and the transition commits before the response; `concurrent_wrong_codes_lock_out_at_five` and `concurrent_redemptions_consume_once` hold it.
-5. A nonce spends once: `DELETE … RETURNING` answers one caller; `nonce_spends_once_under_contention`.
-6. Every lost frame is preceded by a gap at the subscriber; `every_lost_frame_follows_a_gap`.
+3. A device code redeems once and five wrong codes abort the session. The row lock is the authority, and the transition commits before the response; `concurrent_wrong_codes_lock_out_at_five` and `concurrent_redemptions_consume_once` hold it.
+4. A nonce spends once: `DELETE … RETURNING` answers one caller; `nonce_spends_once_under_contention`.
+5. Every lost frame is preceded by a gap at the subscriber; `every_lost_frame_follows_a_gap`.
 
 ## Metrics & Observability
 
@@ -388,7 +386,7 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   - Unverified: `nats-server` accepts `--no_advertise` and `--cluster_name` as flags on the pinned tag; §2's compose commit settles it.
   - Active M233_002 edits `deploy/fly/dragonfly-dev/fly.toml`; CHORE(open) checks whether it merged before §8 deletes that file.
 - **SPEC-BOUNDARY consult** — device sessions move inside this spec, because Dragonfly cannot be deleted while they live there. Endpoints, codes and the flow are unchanged; §5 lands as its own commit so its review reads `docs/AUTH.md` and the threat table against one diff.
-- **Legacy consult (§4's ownership rule)** — A: keep the `claimed_until IS NULL` branch after the rollout (chosen: one predicate, nothing stranded). B: drop it in a follow-up, which needs Indy's quote. C: backfill and add `NOT NULL` now, which strands rows an old replica writes during the overlap.
+- **Legacy consult (§4's ownership rule)** — superseded: the cutover is stop-the-world and dev data is reset, so the `claimed_until IS NULL` branch is not built (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
 - **Owner decisions** —
   > Indy (Nov 06, 2026: 08:50 AM): "And we are not in production yet, so i want to rethink the approach on admissions, lease, and so on as i am focussed on scale. If something fails in one host bare metal, it should automatically cordon and respawn in another runner" — context: failure handling is the reason for this milestone.
   > Indy (Nov 06, 2026: 11:57 AM): "Yes i am ok with postgres store and accepting messages, fences runs" — context: Postgres takes every durable job.
