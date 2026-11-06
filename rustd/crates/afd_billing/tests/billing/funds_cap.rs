@@ -8,6 +8,7 @@
 use std::time::{Duration, Instant};
 
 use afd_billing::biller::{Account, Ask, Biller, Funds, OutagePolicy, WithOutagePolicy, WorkKey};
+use afd_billing::ledger::FUNDS_READ_TIMEOUT;
 use afd_db::test_util::mint_uuid7;
 use jiff::Timestamp;
 use sqlx::Connection as _;
@@ -15,18 +16,43 @@ use sqlx::Connection as _;
 use crate::biller::{LINE, ledger};
 use crate::lane::Lane;
 
-/// The cap `BEGIN_READ` sets on a funds read.
-const CAP: Duration = Duration::from_secs(1);
-
 /// Long enough for the cap on a loaded lane; a read still waiting past it hung.
 const BOUND: Duration = Duration::from_secs(10);
 
 /// Takes the lock every read of the usage log waits behind.
 const LOCK_LINES: &str = "LOCK TABLE billing.usage_lines IN ACCESS EXCLUSIVE MODE";
 
+/// Postgres cancelled the statement at its timeout.
+const QUERY_CANCELED: &str = "57014";
+
+/// The funds read's cap, read from the biller's own setting.
+fn cap() -> Duration {
+    let millis = FUNDS_READ_TIMEOUT
+        .strip_suffix("ms")
+        .and_then(|millis| millis.parse().ok())
+        .expect("the cap is set in milliseconds");
+    Duration::from_millis(millis)
+}
+
+/// The SQLSTATE somewhere in `fault`'s causes, if a database answered one.
+fn sqlstate(fault: &afd_billing::Error) -> Option<String> {
+    let mut cause = std::error::Error::source(fault);
+    while let Some(current) = cause {
+        if let Some(code) = current
+            .downcast_ref::<sqlx::Error>()
+            .and_then(sqlx::Error::as_database_error)
+            .and_then(sqlx::error::DatabaseError::code)
+        {
+            return Some(code.into_owned());
+        }
+        cause = current.source();
+    }
+    None
+}
+
 /// With the usage log locked, a funds check and a balance read each end at
-/// the cap with an error the outage policy counts as unanswered, and an open
-/// policy runs the work. Once the lock goes, the same check answers.
+/// the cap, cancelled by Postgres, with an error the outage policy counts as
+/// unanswered, and an open policy runs the work. Once the lock goes, the same check answers.
 ///
 /// A private database, because the table lock would stall every other test
 /// on the shared lane.
@@ -60,13 +86,22 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         .await
         .expect("the check gives up on its own")
         .expect_err("a check past its cap fails");
+    assert_eq!(
+        sqlstate(&refused).as_deref(),
+        Some(QUERY_CANCELED),
+        "{refused}"
+    );
     assert!(refused.is_unanswered(), "{refused}");
-    assert!(started.elapsed() >= CAP, "it waited out the cap");
+    assert!(started.elapsed() >= cap(), "it waited out the cap");
     let unread = tokio::time::timeout(BOUND, biller.balance(&payer))
         .await
         .expect("the balance read gives up on its own")
         .expect_err("a balance read past its cap fails");
-    assert!(unread.is_unanswered(), "{unread}");
+    assert_eq!(
+        sqlstate(&unread).as_deref(),
+        Some(QUERY_CANCELED),
+        "{unread}"
+    );
     let open = WithOutagePolicy::new(ledger(&lane), OutagePolicy::Open);
     let answered = tokio::time::timeout(BOUND, open.check(&ask))
         .await
