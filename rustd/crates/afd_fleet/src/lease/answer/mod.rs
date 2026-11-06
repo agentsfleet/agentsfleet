@@ -7,6 +7,7 @@
 
 use afd_core::id::Uuid7;
 use afd_core::timing::NO_WORK_RETRY_AFTER;
+use afd_wire::decision::DecisionAssignment;
 use afd_wire::event::{EventEnvelope, EventType};
 use afd_wire::lease::{LeasePayload, LeaseResponse, SecretDelivery, TaggedLease, Turn};
 use afd_wire::memory::MemoryHydrateResponse;
@@ -71,6 +72,10 @@ pub(super) fn answer(lease: Option<LeasePayload<'_>>) -> Result<String> {
 pub(super) struct Context<'a> {
     pub(super) history: Vec<Turn<'a>>,
     pub(super) memory: Option<MemoryHydrateResponse<'a>>,
+    pub(super) decision: Option<Box<DecisionAssignment>>,
+    pub(super) task: Option<afd_wire::task::TaskContext<'static>>,
+    pub(super) expires_at: Option<jiff::Timestamp>,
+    pub(super) execution_deadline: Option<jiff::Timestamp>,
 }
 
 /// The issued lease, as the bytes a runner executes from.
@@ -88,7 +93,8 @@ pub(super) fn render<'a>(
     answer(Some(LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
-        lease_expires_at: acquired.leased_until,
+        lease_expires_at: context.expires_at.unwrap_or(acquired.leased_until),
+        execution_deadline: context.execution_deadline,
         // The one delivery this port serves. `scoped` and `proxy` are wire
         // values with no implementation on either side.
         secret_delivery: SecretDelivery::Inline,
@@ -107,6 +113,9 @@ pub(super) fn render<'a>(
         limits: None,
         history: context.history,
         resume_hold: acquired.resume_hold,
+        decision: context.decision,
+        task: context.task,
+        durable_tasks: installed.config.decision_policy().is_some(),
         memory: context.memory,
     }))
 }

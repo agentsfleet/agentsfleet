@@ -181,31 +181,40 @@ async fn a_mapped_team_with_no_bot_grant_is_dropped_as_unmapped() {
     fixture.cleanup().await;
 }
 
-/// A team whose identifier is too long to form the resident's fleet name has
-/// no resident to answer an unaddressed mention, and nothing is installed.
+/// A connected team's identity is not a fleet name. Without a configured channel,
+/// a verified mention creates neither a fleet nor work, including on retry.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_team_too_long_to_name_a_resident_is_dropped() {
+async fn a_connected_long_team_identity_does_not_create_an_implicit_fleet() {
     let mut fixture = Fixture::create().await;
-    // Past the fleet-name ceiling once `slack-channel-` and the channel are
-    // added around it.
     fixture.team.push_str("LONGERTHANANAME");
     fixture.seed().await;
     let router = fixture.router();
-
+    let before = unconfigured_state(&fixture).await;
     let body = mention(
         &fixture.team,
         "EvLong01",
         PERSON,
         &format!("<@{BOT_USER}> hi"),
     );
-    let document = json_body(deliver(&router, &body).await).await;
-    assert_eq!(
-        document.get("ignored").and_then(Value::as_str),
-        Some("unreadable_body"),
-        "{document}"
-    );
+    for _ in 0..2 {
+        let response = deliver(&router, &body).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let document = json_body(response).await;
+        assert_eq!(
+            document.get("ignored").and_then(Value::as_str),
+            Some("channel_not_configured"),
+            "{document}"
+        );
+    }
     assert_eq!(fixture.admissions().await, 0);
-
+    assert_eq!(unconfigured_state(&fixture).await, before);
     fixture.cleanup().await;
+}
+
+async fn unconfigured_state(fixture: &Fixture) -> (i64, i64, i64, i64) {
+    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid), (SELECT count(*) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1::uuid), (SELECT count(*) FROM connector.channels WHERE provider=$2 AND external_account_id=$3), (SELECT count(*) FROM fleet.obligations WHERE workspace_id=$1::uuid)")
+        .bind(fixture.workspace().as_str()).bind(PROVIDER.id()).bind(&fixture.team)
+        .fetch_one(&mut *fixture.database().acquire().await.expect("side effect observer"))
+        .await.expect("fleets, revisions, channel bindings and obligations")
 }

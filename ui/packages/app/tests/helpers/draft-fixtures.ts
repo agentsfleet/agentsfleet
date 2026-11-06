@@ -1,4 +1,4 @@
-import type { Draft, Fleet, Message, Review, WorkspaceModel } from "@/lib/api/draft-types";
+import type { Draft, Fleet, Message, Review, Schedule, WorkspaceModel } from "@/lib/api/draft-types";
 import { DRAFT_STATE, MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { START_KIND } from "@/lib/api/draft-vocabulary";
 import { NANOS_PER_USD } from "@/lib/types";
@@ -23,6 +23,11 @@ export const FLEET: Fleet = {id: FLEET_ID, name: "repairer", status: "installing
   setup_revision: "1", webhook_urls: [], setup: {state: "waiting", checks: [{kind: "credentials", subject: "github", state: "blocked",
     next_action: {kind: "workspace_connections", label: "Connect GitHub", href: `/w/${WORKSPACE}/integrations`}}]}, start: {kind: START_KIND.none},
   schedules: []};
+export const SCHEDULE: Schedule = {schedule_id: "0199a801-1000-7000-8000-000000000008", fleet_id: FLEET_ID,
+  cron: "0 9 * * *", timezone: "Asia/Kolkata", message: "Review support failures — 東京 🦉", status: "active", sync: "synced",
+  description: "At 9:00 AM (Asia/Kolkata)", run_state: "scheduled", next_run_at: "2026-11-05T03:30:00Z"};
+export const FAILED_SCHEDULE: Schedule = {...SCHEDULE, sync: "failed", run_state: "next_run_unavailable", next_run_at: null};
+export const PENDING_SCHEDULE: Schedule = {...SCHEDULE, sync: "syncing", run_state: "activation_pending", next_run_at: null};
 export const FLEET_DETAIL = {...FLEET, definition: REVIEW.effective.definition, created_at: "1970-01-01T00:00:00Z", updated_at: "1970-01-01T00:00:00Z",
   policy_semantics: REVIEW.policy_semantics, events_processed: "3", budget_used_nanos: "9007199254740993",
   pending_approvals: 2, memory_access: {read: true, publish: false}};

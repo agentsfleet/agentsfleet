@@ -36,6 +36,7 @@ use crate::protocol::{
     METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
     ReadParams, ReadResult, SpawnParams, WriteFileParams, WriteParams, decoded, request,
 };
+use crate::timing::CALL_DEADLINE;
 
 mod call;
 mod link;
@@ -45,10 +46,6 @@ use self::link::Link;
 
 /// How many calls may wait for the link to send them.
 const CALL_BACKLOG: usize = 64;
-/// How long a call waits for the executor's answer. Every call is answered
-/// promptly by a live executor — a write is answered once queued, a read is
-/// capped — so this bounds a stopped one, not a slow one.
-pub(crate) const CALL_DEADLINE: Duration = Duration::from_secs(30);
 /// The pause between attempts to reach a socket that is not listening yet.
 const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(10);
 /// The longest line a call may be: a frame the executor reads, and its
@@ -126,6 +123,9 @@ impl Client {
         params: &P,
         wrap: impl FnOnce(oneshot::Sender<Result<T>>) -> Reply,
     ) -> Result<T> {
+        if self.lost.is_cancelled() {
+            return Err(error::connection_lost());
+        }
         let id = self.ids.next();
         let line = request(id, method, params)?;
         if line.len() > MAX_LINE_BYTES {
@@ -138,11 +138,14 @@ impl Client {
             reply: wrap(reply),
         };
         let answered = tokio::time::timeout(self.deadline, async {
-            self.calls
-                .send(call)
-                .await
-                .map_err(|_closed| error::connection_lost())?;
-            answer.await.map_err(|_closed| error::connection_lost())?
+            tokio::select! {
+                biased;
+                () = self.lost.cancelled() => Err(error::connection_lost()),
+                result = async {
+                    self.calls.send(call).await.map_err(|_closed| error::connection_lost())?;
+                    answer.await.map_err(|_closed| error::connection_lost())?
+                } => result,
+            }
         })
         .await;
         answered.unwrap_or_else(|_elapsed| {
@@ -250,3 +253,6 @@ impl Executor for Client {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod invalidation_tests;

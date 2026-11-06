@@ -20,11 +20,12 @@ use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 
 use super::{
-    ACTIVITY_FRAMES_DROPPED, Families, MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED,
-    PROVIDER_RETRIES, PROVIDER_TURN_DURATION, SANDBOX_BUILDS, SANDBOX_HOLDS,
-    SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION, SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED,
-    TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
+    ACTIVITY_FRAMES_DROPPED, DECISION_DURATION, DECISION_EVALUATIONS, Families,
+    MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED, PROVIDER_RETRIES, PROVIDER_TURN_DURATION,
+    SANDBOX_BUILDS, SANDBOX_HOLDS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
+    SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
 };
+use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
     SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
@@ -127,8 +128,16 @@ fn test_every_runner_census_family_has_a_producer() {
 }
 
 /// Each family, and how many series its closed sets can produce.
-fn label_products() -> [(&'static str, usize); 14] {
+fn label_products() -> [(&'static str, usize); 16] {
     [
+        (
+            DECISION_EVALUATIONS.wire_name(),
+            DecisionProvider::ALL.len() * DecisionPurpose::ALL.len() * DecisionOutcome::ALL.len(),
+        ),
+        (
+            DECISION_DURATION.wire_name(),
+            DecisionProvider::ALL.len() * DecisionPurpose::ALL.len() * DecisionOutcome::ALL.len(),
+        ),
         (
             super::MEMORY_SOURCES.wire_name(),
             crate::labels::MemorySource::ALL.len(),
@@ -233,6 +242,12 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
 fn record_every_family(families: &Families) {
     let elapsed = Duration::from_millis(5);
 
+    families.decision(
+        DecisionProvider::Typesafe,
+        DecisionPurpose::Goal,
+        DecisionOutcome::Completed,
+        elapsed,
+    );
     families.memory_source(crate::labels::MemorySource::Inline);
     families.memory_source(crate::labels::MemorySource::Fallback);
     families.turn(Provider::of("fireworks"), TurnOutcome::Completed, elapsed);

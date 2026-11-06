@@ -116,7 +116,8 @@ async fn replace_recipes(lane: &CronLane, recipes: &[Recipe]) -> afd_cron::Resul
     let (workspace, fleet) = (lane.workspace_id(), lane.fleet_id());
     let mut connection = lane.connection().await;
     let mut tx = connection.begin().await.expect("recipe transaction");
-    lane.store
+    let _announcement = lane
+        .store
         .replace_recipes_on(
             &mut tx,
             RecipeSet {

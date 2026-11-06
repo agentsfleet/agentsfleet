@@ -30,6 +30,8 @@ const COLUMN_RUNNER_ID: &str = "runner_id";
 /// The columns every runner read selects, by name.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct ItemRow {
+    durable_tasks_enabled: bool,
+    decision_model_id: Option<String>,
     id: String,
     host_id: String,
     sandbox_tier: String,
@@ -83,6 +85,8 @@ impl ItemRow {
     /// The list row, its identifier, status and stored JSON proven.
     pub(super) fn parse(self) -> Result<RunnerItem> {
         let columns = AssignmentColumns {
+            durable_tasks_enabled: self.durable_tasks_enabled,
+            decision_model_id: self.decision_model_id,
             sandbox_tier: self.sandbox_tier,
             network_policy: self.network_policy,
             registry_allowlist_json: self.registry_allowlist,
@@ -154,6 +158,10 @@ impl EventRow {
 
 fn own_policy(policy: AssignedPolicy<'_>) -> AssignedPolicy<'static> {
     AssignedPolicy {
+        durable_tasks_enabled: policy.durable_tasks_enabled,
+        decision_model_id: policy
+            .decision_model_id
+            .map(|model| Cow::Owned(model.into_owned())),
         sandbox_tier: policy.sandbox_tier,
         network_policy: policy.network_policy,
         registry_allowlist: policy
@@ -176,6 +184,7 @@ fn own_bind(bind: ExtraBind<'_>) -> ExtraBind<'static> {
 
 fn own_capability(report: CapabilityReport<'_>) -> CapabilityReport<'static> {
     CapabilityReport {
+        durable_tasks_v1: report.durable_tasks_v1,
         build_id: report.build_id.map(|value| Cow::Owned(value.into_owned())),
         landlock: report.landlock,
         seccomp: report.seccomp,

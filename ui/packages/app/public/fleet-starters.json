@@ -1,0 +1,14 @@
+[
+  {
+    "title": "Review pull requests",
+    "prompt": "Help me set up a fleet to review GitHub pull requests.\n\nAsk me which repositories it should review, when it should run, and where I want its findings. Do not assume a repository or destination.\n\nReview the exact pull request I provide and its current head. Read the relevant diff, source, tests, and check results. Report concrete correctness, security, and regression risks with file/line or check evidence. A clean review is a valid result; do not invent findings.\n\nKeep the work unfinished when required evidence is missing or a required check is pending, and explain the next useful action.\n\nComment only. Do not push code, approve, merge, close, or deploy.\n\nPropose these completion questions for me to review and edit:\n\n1. Does the review cover the requested pull request at its current head?\n   Yes: the relevant diff and source were inspected at that head, with the agreed checks accounted for.\n   No: the target or head differs, or required review evidence is missing or incomplete.\n\n2. Are the findings supported by concrete code or check evidence?\n   Yes: each finding has supporting evidence, or the review clearly reports no confirmed findings.\n   No: findings are speculative, contradictory, unsupported, or based on stale evidence.\n\nKeep my wording when I edit these questions or their yes/no criteria. Work through the setup with me before I save the fleet."
+  },
+  {
+    "title": "Watch for errors",
+    "prompt": "Watch production errors and prepare a repair for review."
+  },
+  {
+    "title": "Morning brief",
+    "prompt": "Summarize the work my team should act on each morning."
+  }
+]

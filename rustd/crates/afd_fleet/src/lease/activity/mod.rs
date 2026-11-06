@@ -11,10 +11,10 @@
 //! presenting runner, because without that check a runner could publish onto a
 //! fleet it holds no lease on and write into somebody else's live tail.
 //!
-//! No fencing, deliberately. A superseded holder's cosmetic frames are
-//! harmless, and the tail is never a source of truth — which is why the load
-//! below has no `status` predicate either. The fence is read all the same, to
-//! scope the call ids a lease publishes (`activity/published.rs`).
+//! Ordinary cosmetic frames remain available after supersession. Durable task
+//! progress additionally checks and locks current slot and lease ownership in
+//! its write statement before assigning daemon observation sequences. The fence
+//! also scopes call ids a lease publishes (`activity/published.rs`).
 //!
 //! # The vocabulary bridge
 //!
@@ -37,6 +37,7 @@ use crate::error::{Result, query, row_malformed};
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
+mod history;
 mod published;
 #[cfg(feature = "test-util")]
 mod vocabulary;
@@ -49,6 +50,10 @@ const CONTEXT_TARGET: &str = "activity lease load";
 
 /// A frame could not be published; the tail loses it and the run does not care.
 const EVENT_DROPPED: &str = "activity_frame_dropped";
+
+/// Match the public history window; keep JSON overhead below the stored row cap.
+const TASK_HISTORY_FACTS: i64 = 128;
+const TASK_HISTORY_BYTES: i64 = 120_000;
 
 /// What one publish needs: whose channel, and which event the frames belong to.
 #[derive(Debug, Clone)]
@@ -72,6 +77,38 @@ pub struct Target {
 }
 
 impl Leases {
+    /// Retain task observations only while the supplied lease still owns its slot.
+    /// Returns no history when ownership changed or a competing transaction holds it.
+    ///
+    /// # Errors
+    /// Reports database failures while saving bounded progress.
+    pub async fn retain_task_activity(
+        &self,
+        target: &Target,
+        runner_id: &Uuid7,
+        lease_id: &str,
+        records: &[afd_wire::activity::TaskActivityRecord],
+    ) -> Result<Option<afd_wire::activity::TaskActivityHistory>> {
+        let mut connection = self.pool().acquire().await?;
+        let history: Option<sqlx::types::Json<afd_wire::activity::TaskActivityHistory>> =
+            sqlx::query_scalar(include_str!("task_history.sql"))
+                .bind(target.fleet_id.as_str())
+                .bind(&target.event_id)
+                .bind(sqlx::types::Json(records))
+                .bind(lease_id)
+                .bind(runner_id.as_str())
+                .bind(target.fence)
+                .bind(sql::LEASE_STATUS_ACTIVE)
+                .bind(TASK_HISTORY_FACTS)
+                .bind(TASK_HISTORY_BYTES)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(query(
+                    "retain bounded task progress before live publication",
+                ))?;
+        Ok(history.map(|value| value.0))
+    }
+
     /// Publish one batch of frames to `target`'s channel.
     ///
     /// Never fails the verb. Each frame is encoded independently so one
@@ -192,8 +229,28 @@ impl crate::lease::pull::Plane {
         else {
             return Err(crate::error::lease_not_found());
         };
+        let retained: Vec<_> = frames
+            .iter()
+            .filter_map(ActivityFrame::task_activity)
+            .collect();
+        let published = if retained.is_empty() {
+            frames.to_vec()
+        } else if target.timing_eligible {
+            let history = self
+                .leases
+                .retain_task_activity(&target, runner_id, lease_id, &retained)
+                .await?;
+            history::canonical(frames, &history.unwrap_or_default())
+        } else {
+            // A superseded worker cannot attach unsequenced task progress to a live event.
+            frames
+                .iter()
+                .filter(|frame| frame.task_activity().is_none())
+                .cloned()
+                .collect()
+        };
         record_first_chunk(&target, frames);
-        self.leases.publish_activity(&target, frames).await;
+        self.leases.publish_activity(&target, &published).await;
         Ok(())
     }
 }

@@ -11,6 +11,7 @@ struct Stored {
     id: String,
     slot: i64,
     recipe: Option<String>,
+    desired_status: String,
     held: bool,
 }
 

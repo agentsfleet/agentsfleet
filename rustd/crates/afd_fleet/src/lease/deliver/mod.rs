@@ -152,7 +152,7 @@ impl Plane {
         // LAST, and only once everything above succeeded.
         let Some(issued) = self
             .leases
-            .issue(
+            .issue_for_revision(
                 runner_id,
                 &admitted.acquired,
                 Billed {
@@ -162,6 +162,7 @@ impl Plane {
                     model: &admitted.billed.model,
                 },
                 now,
+                admitted.installed.issue_revision.as_ref(),
             )
             .await?
         else {
@@ -192,7 +193,14 @@ impl Plane {
             admitted.event_type,
             &admitted.installed,
             policy,
-            Context { history, memory },
+            Context {
+                history,
+                memory,
+                decision: issued.decision,
+                task: issued.task,
+                expires_at: Some(issued.expires_at),
+                execution_deadline: Some(issued.execution_deadline),
+            },
         )
         .map(|answer| Step::Go(Leased(answer)))
     }

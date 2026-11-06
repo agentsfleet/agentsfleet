@@ -18,3 +18,6 @@ workspace = true
 # The rules are garde `custom` functions, `Limit` is a garde struct proved
 # against its route's ceiling as context, and `Sentences` reads a garde report.
 garde.workspace = true
+# Measures complete serialized request bounds without retaining a second buffer.
+serde.workspace = true
+serde_json.workspace = true

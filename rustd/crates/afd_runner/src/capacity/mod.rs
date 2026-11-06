@@ -22,6 +22,7 @@ pub struct Capacity {
     claims_allowed: bool,
     renewals_allowed: bool,
     lease_version: i64,
+    decision_selected: bool,
 }
 
 impl Capacity {
@@ -29,6 +30,13 @@ impl Capacity {
     #[must_use]
     pub const fn now(self) -> Timestamp {
         self.now
+    }
+
+    /// Whether this locked host selected a decision model. Unconfigured hosts
+    /// need no catalogue read on the ordinary lease path.
+    #[must_use]
+    pub const fn decision_selected(self) -> bool {
+        self.decision_selected
     }
 
     /// Whether one additional lease fits the currently assigned worker limit.
@@ -51,6 +59,7 @@ struct Host {
     status: String,
     degraded: bool,
     lease_version: i64,
+    decision_selected: bool,
 }
 
 /// [`sql::CENSUS`]'s row.
@@ -92,6 +101,7 @@ pub async fn lock(
         claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
         renewals_allowed: !host.degraded && renewable_state(&host.status),
         lease_version: host.lease_version,
+        decision_selected: host.decision_selected,
     }))
 }
 

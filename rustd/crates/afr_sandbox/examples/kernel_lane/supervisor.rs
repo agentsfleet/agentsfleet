@@ -46,6 +46,7 @@ pub(crate) struct Case {
     pub(crate) repository: bool,
     pub(crate) fail_mutations: bool,
     pub(crate) cancel_running: bool,
+    pub(crate) recovery: Option<crate::supervisor_recovery::Mode>,
 }
 
 pub(crate) struct Observed {
@@ -91,7 +92,18 @@ async fn exercise(lane: &Lane, case: Case) -> Result<Observed, Failed> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let mut server = Server::start(&tools, case.repository, case.fail_mutations).await?;
+    let recovery = case
+        .recovery
+        .map(|mode| {
+            crate::supervisor_recovery::Config::new(
+                mode,
+                &initial,
+                lane.config.toolbox.digest(),
+                root.path(),
+            )
+        })
+        .transpose()?;
+    let mut server = Server::start(&tools, case.repository, case.fail_mutations, recovery).await?;
     let mut upstream = upstream().await;
     let outcome = drive(lane, &case, root.path(), &server, &upstream).await;
     let outbound = upstream.seen();
@@ -99,14 +111,7 @@ async fn exercise(lane: &Lane, case: Case) -> Result<Observed, Failed> {
     let stopped = server.stop().await;
     let (asked, prepared, reaped) = outcome?;
     stopped?;
-    expect(
-        !lane.lease_dir(LEASE_ID).exists(),
-        "lease directory removed after supervisor shutdown",
-    )?;
-    expect(
-        !lane.config.cgroup_root.join(LEASE_ID).exists(),
-        "lease cgroup removed after shutdown",
-    )?;
+    removed(lane)?;
     let origin_unchanged = initial == fs::read(origin_ref)?;
     Ok(Observed {
         asked,
@@ -225,4 +230,16 @@ async fn until_done(lane: &Lane, case: &Case, reported: &Notify) -> Result<Vec<u
         "the marker belongs to a running sandbox process tree",
     )?;
     Ok(pids)
+}
+
+fn removed(lane: &Lane) -> Result<(), Failed> {
+    expect(
+        !lane.lease_dir(LEASE_ID).exists(),
+        "lease directory removed after supervisor shutdown",
+    )?;
+    expect(
+        !lane.config.cgroup_root.join(LEASE_ID).exists(),
+        "lease cgroup removed after shutdown",
+    )?;
+    Ok(())
 }

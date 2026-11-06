@@ -142,6 +142,25 @@ impl Plane {
         };
 
         let lease_key = Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
+        let task_plan = match &self.task_reports {
+            Some(owner) => {
+                owner
+                    .prepare_report(
+                        crate::task::TaskLease {
+                            runner_id,
+                            lease_id: &lease_key,
+                            fencing_token: request.fencing_token,
+                        },
+                        request,
+                    )
+                    .await?
+            }
+            None => None,
+        };
+        let task_settlement = match &task_plan {
+            Some(plan) => Some(plan.settlement().await?),
+            None => None,
+        };
         let tool_calls = stored_trace(&lease, request);
         let pricing = Pricing::load(
             self.leases.pool(),
@@ -151,7 +170,7 @@ impl Plane {
             lease_id,
         )
         .await;
-        let report = terminal(
+        let mut report = terminal(
             Subject {
                 id: lease_id,
                 key: &lease_key,
@@ -164,11 +183,12 @@ impl Plane {
             now,
         );
 
+        report.task_settlement = task_settlement;
         // Boxed: the capture's state would otherwise ride inside every report
         // future, past the large-future bound, for a step most reports skip.
         Box::pin(self.capture_reported(runner_id, &lease, request, now)).await;
         match self.leases.commit_report(report).await? {
-            Committed::Fenced => Err(stale_fence()),
+            Committed::Fenced { .. } => Err(stale_fence()),
             Committed::AlreadySettled => {
                 Self::record_repeat(&lease, lease_id);
                 Ok(reconciled(
@@ -183,15 +203,26 @@ impl Plane {
                 settlement,
                 closed,
                 owed,
+                notice,
             } => {
+                if let Some(plan) = &task_plan {
+                    plan.announce().await;
+                }
                 let charged = usage::charged(settlement.as_deref());
+                let answer = notice.unwrap_or(request.response_text.as_ref());
                 let completed_at = self
-                    .announce(runner_id, request, &lease, closed, charged, now)
+                    .announce(
+                        runner_id,
+                        request,
+                        &lease,
+                        steps::Completion { closed, answer },
+                        charged,
+                        now,
+                    )
                     .await;
                 timing::completed(&lease, now, completed_at);
                 if let Some(owing) = owed {
-                    self.queue_owed_answer(&owing, &lease, request.response_text.as_ref())
-                        .await;
+                    self.queue_owed_answer(&owing, &lease, answer).await;
                 }
                 let tokens = self.leases.run_tokens(&lease_key).await;
                 Ok(reconciled(lease, charged, false, tokens, completed_at))
@@ -244,6 +275,7 @@ fn terminal<'a>(
         last_event_id: request.checkpoint.last_event_id.as_ref(),
         last_response: request.checkpoint.last_response.as_ref(),
         held_until: request.held_until,
+        task_settlement: None,
         now,
     }
 }

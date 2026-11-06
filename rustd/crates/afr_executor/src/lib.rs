@@ -27,6 +27,7 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;
+pub mod timing;
 
 mod api;
 mod client;

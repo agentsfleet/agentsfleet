@@ -712,6 +712,30 @@ A runner principal reaches only `/v1/runners/me/*`, and every route there requir
 
 The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
 
+### Decision-provider credentials
+
+Durable Task decisions use keys set by the platform administrator in Secrets.
+The daemon's `PLATFORM_ADMIN_WORKSPACE_ID` selects that workspace; neither a fleet nor a runner request supplies its identity.
+The configured decision API selects a fixed bag: `typesafe`, `openai`, `perplexity` or `cloudflare`, each containing `api_key`.
+
+`Providers::resolve_decision_key` reuses the credential vault reader in `rustd/crates/afd_credential/src/provider/decision.rs`.
+Each read opens that admin workspace's current envelope without a key cache, tenant fallback or environment fallback.
+Missing, empty and malformed keys refuse resolution; damaged envelopes and unavailable storage retain their causes.
+
+Recovered plaintext and parsed key allocations use `SecretBytes` and `SecretString`.
+Parsing failures keep value-free diagnostics; prompts, tools, model configuration, checkpoints and customer-facing responses exclude these keys.
+The native reservation response delivers a key to its trusted runner once; retries return saved state without another credential.
+
+Parser scratch/error buffers, HTTP headers and transport buffers remain outside those owned-buffer wiping guarantees.
+
+`POST /v1/runners/me/leases/{lease_id}/tasks/decisions` reserves and funds a physical call before resolving its current key.
+`PATCH /v1/runners/me/leases/{lease_id}/tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
+Handlers live in `rustd/crates/afd_api_runner/src/handler/runner/decisions.rs`.
+The runner prepares intent before durable work and assesses completed action groups through `afr_agent/src/decision/` and `afr_agent/src/loop/task.rs`.
+Native report preparation independently checks task authority and completion evidence; live end-to-end verification remains pending.
+
+The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and runner integration.
+
 ### The token never enters the sandboxed child
 
 `AGENTSFLEET_RUNNER_TOKEN` lives in the **supervisor's** environment: the trusted `agentsfleet-runner` process that speaks the control protocol and runs outside every sandbox ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Process model"). A lease's tool calls run in a bubblewrap sandbox that starts with an empty environment.
@@ -1088,7 +1112,12 @@ The provider returns to `GET https://<APP_HOST>/api/connectors/{provider}/callba
 
 A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or identity-mismatched state returns `UZ-CONN-002 connector_state_invalid`. Vendor exchanges and ownership probes run deadline-armed ([`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound: every vendor call has a deadline"); a stalled vendor returns 502 `UZ-CONN-003` with no vault write. The authenticated callbacks endpoint then hands provider-specific persistence to the registry hook:
 
-- **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `connector.installs` routing row.
+- **Slack** exchanges the `code` for a bot token, then writes the vault handle and `connector.installs` routing row atomically.
+  When OAuth supplies `authed_user.id`, the subject-checked callback also links that person through `connector.person_links`.
+  Current workspace membership and installation ownership remain required; a bot-only grant establishes no person authority.
+  Installation deletion cascades the link. Reconnecting never silently transfers an existing person's link to a different account.
+  Durable-task interpretation uses the signed sender's own mention text, never quoted thread messages or a display name.
+  Retained origin and applied-input identities are rechecked at native task execution boundaries.
 - **GitHub** starts with GitHub user authorization. The callback exchanges the one-time `code` using platform client credentials. When GitHub supplies `installation_id`, the user token must access that claimed installation. When an external App installation survived an `agentsfleet` datastore rebuild, the callback lists installations accessible through this App and accepts exactly one. Zero installations return 403 `UZ-CONN-008` with the install-the-App-first sentence, and the person connects again after installing it: the daemon carries no App slug and so no redirect to GitHub's install page (recorded in M187_001). More than one returns 403 `UZ-CONN-008` instead of selecting an organisation silently. Only a verified installation writes the encrypted workspace vault handle and non-secret `connector.installs` route. The token never enters provider-visible state and is discarded after the probe.
 - **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**: the callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below) — the runner never sees the refresh token.
 - **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector: there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`, and the fleet's reviewed setup names it under `credentials`, so a tool call references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.

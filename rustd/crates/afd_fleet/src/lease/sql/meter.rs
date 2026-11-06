@@ -47,7 +47,8 @@ use afd_db::statement::Bound;
 /// status, `$5` whether this settles, `$6` the lease lifetime a renewal grants,
 /// `$7` the hard cap on a run, `$8` the reported status, `$9` whether the run
 /// succeeded, `$10` the usage lines' work type, `$11` the first daemon line
-/// number. The metering instant is `clock_timestamp()`, read once the rows are
+/// number, `$12` the first decision sequence (runtime's exclusive upper bound).
+/// The metering instant is `clock_timestamp()`, read once the rows are
 /// locked.
 pub const METER_LEASE: &str = include_str!("meter_lease.sql");
 
@@ -94,5 +95,7 @@ impl<'a> Metering<'a> {
             .bind(succeeded)
             .bind(afd_billing::sql::work::FLEET_LEASE)
             .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+            .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+            .bind(afd_wire::task::TaskState::Running.as_str())
     }
 }

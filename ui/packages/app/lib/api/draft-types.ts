@@ -65,6 +65,8 @@ export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_L
 // The published schedule `View`; sync stays an open string so an unknown state counts as not registered.
 export const ScheduleSchema = z.object({
   schedule_id: z.string(), fleet_id: z.string(), sync: z.string(), last_error: z.string().nullable().optional(),
+  cron: z.string(), timezone: z.string(), message: z.string(), status: z.string(),
+  description: z.string().min(1), run_state: z.string(), next_run_at: Instant.nullable(),
 });
 export const FleetSchema = z.object({
   id: z.uuidv7(), name: z.string(), status: z.string(), etag: z.string(), setup_etag: z.string(), setup_revision: decimal,

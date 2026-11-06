@@ -9,6 +9,13 @@ pub use afd_http::{admission, auth, envelope, etag, request_id, route, services}
 
 pub(crate) mod handler;
 
+/// Native response vocabulary shared by served HTTP assertions.
+#[cfg(feature = "test-util")]
+pub mod test_util {
+    /// Refusal for a catalogue page size outside the native bound.
+    pub const MODEL_PAGE_LIMIT_DETAIL: &str = crate::handler::admin::models::DETAIL_LIMIT;
+}
+
 // The document generator, compiled only when it is asked for.
 #[cfg(feature = "openapi")]
 pub mod openapi;

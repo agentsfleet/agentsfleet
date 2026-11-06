@@ -26,6 +26,8 @@ pub enum Producer {
     ScheduleFire,
     /// The event an approved gate continues with, keyed by the gate's action.
     GateContinuation,
+    /// Native task continuation, keyed by its task/generation/wake identity.
+    TaskContinuation,
     /// A chat mention of the bot, keyed by the provider's own event id, which
     /// the provider signs and repeats on every retry.
     SlackMention,
@@ -41,6 +43,7 @@ impl Producer {
             Self::WebhookApp => "webhook_app",
             Self::ScheduleFire => "schedule_fire",
             Self::GateContinuation => "gate_continuation",
+            Self::TaskContinuation => "task_continuation",
             Self::SlackMention => "slack_mention",
         }
     }

@@ -182,12 +182,17 @@ afr_tools = { path = "crates/afr_tools" }
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+# Tagged answer enums retain numeric JSON map keys through Serde's buffered data.
+serde_with = { version = "3.24.0", default-features = false, features = ["std"] }
 # The metric census is a tab-separated contract, and this is the crate that
 # reads one: delimiter, `#` comment lines, header-to-field mapping, unequal-row
 # detection and serde-typed deserialization are all its job rather than ours,
 # and every error it raises already carries the record and line it failed on.
 csv = "1.4.0"
 serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
+# Test-only Rust tokenization and literal decoding for the compiled-prompt guard.
+proc-macro2 = "=1.0.107"
+syn = { version = "=2.0.119", default-features = false, features = ["parsing"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
@@ -238,7 +243,7 @@ clap = { version = "4.6.7", default-features = false, features = ["std", "derive
 
 # RustCrypto. Pure Rust with no C linkage, the workspace's posture, and the
 # AES-256-GCM construction every stored vault row was sealed with.
-aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc", "zeroize"] }
 hmac = { version = "0.13.0", default-features = false }
 sha2 = { version = "0.11.1", default-features = false }
 # Lower-case hex, for the credential digests and minted token bodies every
@@ -275,6 +280,9 @@ getrandom = { version = "0.4.3", default-features = false }
 # lock at this version, so this is a feature flag on a compiled crate rather
 # than a new dependency.
 url = { version = "2.5.8", default-features = false }
+
+# Return completed SQL sessions to the pool; detach cancelled task transactions.
+scopeguard = "1.2.0"
 
 uuid = { version = "1.29.0", default-features = false, features = ["v7", "std"] }
 
@@ -322,7 +330,7 @@ uuid = { version = "1.29.0", default-features = false, features = ["v7", "std"] 
 # `/usr/share/zoneinfo` (gcr.io/distroless/static-debian12:nonroot, verified).
 # It lets a zone name be VALIDATED against the real database instead of
 # pattern-matched — see `afd_cron::validate::timezone`.
-jiff = { version = "0.2.38", default-features = false, features = [
+jiff = { version = "0.2.39", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
   # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in
@@ -333,7 +341,7 @@ jiff = { version = "0.2.38", default-features = false, features = [
 # every crate here from implementing sqlx's traits for jiff's type, so row
 # fields decode through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]` and binds go
 # through `ToSqlx`. Postgres only; its sqlite half stays off.
-jiff-sqlx = { version = "0.2.0", default-features = false, features = ["postgres"] }
+jiff-sqlx = { version = "0.2.1", default-features = false, features = ["postgres"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
@@ -342,6 +350,12 @@ jiff-sqlx = { version = "0.2.0", default-features = false, features = ["postgres
 # hand-written unsafe of its own, and a JWKS document is three kilobytes read
 # twice a day — there is no throughput here to trade the posture for.
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
+# Bounded YAML decoding for native GitHub validation-workflow inspection.
+serde-saphyr = { version = "2.1.0", default-features = false, features = ["deserialize"] }
+# Immutable private checkpoint objects and native SigV4 transfer authorizations.
+object_store = { version = "0.14.2", default-features = false, features = ["aws"] }
+aws-sigv4 = "=1.6.4"
+aws-credential-types = "=1.3.1"
 
 # The ONE cryptographic backend this workspace links.
 #
@@ -450,7 +464,7 @@ html2text = { version = "0.17.4", default-features = false }
 # their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
 # change. No default features: the transport is ours, so no HTTP stack, async
 # runtime or TLS comes with it.
-rig-core = { version = "=0.45.0", default-features = false }
+rig-core = { version = "=0.46.0", default-features = false }
 
 # A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
 # the lock through hyper, which parses the same header family with it.
@@ -842,7 +856,7 @@ libc = { version = "0.2.191", default-features = false }
 # and netfilter packet crates share one `netlink-packet-core`.
 netlink-sys = { version = "0.9.0", default-features = false }
 netlink-packet-core = { version = "0.9.0", default-features = false }
-netlink-packet-route = { version = "0.33.0", default-features = false }
+netlink-packet-route = { version = "0.34.0", default-features = false }
 netlink-packet-netfilter = { version = "0.4.0", default-features = false }
 # The sandbox's kernel lane is an example with its own `main`, so a test
 # binary cannot run it by accident; this gives it libtest's reporting and

@@ -15,7 +15,7 @@ const RUNNER: RunnerListItem = {
   labels: [],
   last_seen_at: "1970-01-01T00:00:00Z",
   created_at: "1970-01-01T00:00:00Z",
-  assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
+  assigned_policy: { durable_tasks_enabled: true,sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
   achievable: null,
   degraded: false,
   degraded_reason: null,

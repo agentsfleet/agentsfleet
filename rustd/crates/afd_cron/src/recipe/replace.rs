@@ -14,15 +14,19 @@ impl Schedules {
         &self,
         connection: &mut PgConnection,
         set: RecipeSet<'_>,
-    ) -> Result<()> {
+    ) -> Result<afd_events::activity::Announcement> {
         let rows = guard::lock(connection, &set).await?;
+        let mut announcement = afd_events::activity::Announcement::default();
         for (index, recipe) in set.recipes.iter().enumerate() {
             let slot = i64::try_from(index).map_err(|_overflow| ErrorKind::Exhausted)?;
             let old = rows.iter().find(|row| row.slot == slot);
-            self.write_recipe(connection, &set, recipe, slot, old)
-                .await?;
+            announcement.append(
+                self.write_recipe(connection, &set, recipe, slot, old)
+                    .await?,
+            );
         }
-        retire::removed(connection, &rows, &set).await
+        announcement.append(retire::removed(connection, &rows, &set).await?);
+        Ok(announcement)
     }
 }
 
@@ -31,19 +35,23 @@ pub(super) fn inherited(
     recipe: &Recipe,
     version: i64,
     slot: i64,
-) -> Result<Inherited> {
+) -> Result<(Inherited, bool)> {
     let Some(old) = old else {
-        return Ok(Inherited {
-            slot,
-            base: recipe.clone(),
-            recipe_revision: 1,
-            setup_revision: version,
-            override_revision: 0,
-            overrides: None,
-        });
+        return Ok((
+            Inherited {
+                slot,
+                base: recipe.clone(),
+                recipe_revision: 1,
+                setup_revision: version,
+                override_revision: 0,
+                overrides: None,
+            },
+            true,
+        ));
     };
     let mut old: Inherited = serde_json::from_str(old)?;
-    if old.base != *recipe {
+    let changed = old.base != *recipe;
+    if changed {
         old.recipe_revision = old
             .recipe_revision
             .checked_add(1)
@@ -51,5 +59,5 @@ pub(super) fn inherited(
     }
     old.base = recipe.clone();
     old.setup_revision = version;
-    Ok(old)
+    Ok((old, changed))
 }

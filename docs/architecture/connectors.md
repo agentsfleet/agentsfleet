@@ -38,7 +38,7 @@ Each trap is enforced in its owner section; this list is the index.
 | Term | Means | Lives in |
 |---|---|---|
 | **connector** | auth + credential plumbing for a third-party provider: the connect/callback/status routes, the vaulted per-workspace credential handle, the platform app secrets | `rustd/crates/afd_connector/` (provider catalogue, connect flow, grant handle), `rustd/crates/afd_credential/` (token minting from the handle), and the routes in `rustd/crates/afd_http/src/route/connector.rs` |
-| **integration** | a product-facing capability built ON a connector's credential (the Slack resident bot, GitHub fleet triggers, future Zoho/Jira/Linear surfaces) | feature code that consumes the vault handle |
+| **integration** | a product-facing capability built ON a connector's credential (configured Slack fleet mentions, GitHub fleet triggers, future Zoho/Jira/Linear surfaces) | feature code that consumes the vault handle |
 
 A workspace *connects* a provider once (connector); everything fleets then do with that credential is *integration*. Specs, UI copy, and code comments follow this split — "Slack integration is broken" and "Slack connector is broken" name different layers.
 
@@ -76,7 +76,15 @@ The connector registry is the closed `Provider` enum (`rustd/crates/afd_connecto
 Concurrent first Connect and Disconnect can leave a vaulted handle without its routing row.
 Complete a fresh Connect to restore the binding, or Disconnect again when removal is intended.
 
-- **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live in `rustd/crates/afd_ingress/src/app/mod.rs`. Slack keeps `POST /v1/connectors/slack/events` (the `/v1/connectors/{provider}/events` route) because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention once, under the `slack_mention` admission producer, on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention/mod.rs`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
+- **Inbound routing follows the provider.** GitHub's app webhook uses `POST /v1/ingress/github` and its own routing statements in `afd_ingress/src/app/mod.rs`.
+
+  Slack keeps `POST /v1/connectors/slack/events` for its signature, challenge, retry, channel and thread rules.
+  Only a configured addressed fleet or sole eligible subscriber receives a `slack_mention` admission.
+  An unconfigured channel returns `channel_not_configured` without creating a fleet or calling a model.
+
+  [Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns selection and fixed notices.
+  Jira and Linear have connected credentials but no inbound integration yet.
+  Shared connection storage does not imply shared event behavior.
 
 ## Workspace connection reads and browser returns
 

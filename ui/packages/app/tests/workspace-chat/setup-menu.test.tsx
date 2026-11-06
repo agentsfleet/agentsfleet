@@ -39,7 +39,7 @@ it("offers editing before the first message without allowing an unreviewed save 
   const dialog = await screen.findByRole("dialog", {name: EDIT});
   expect(dialog.className).toContain("ph-no-capture");
   expect(dialog.className).toContain("ph-no-record");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
+  expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
   fireEvent.click(screen.getByRole("button", {name: "Close"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(document.activeElement).toBe(screen.getByRole("button", {name: MENU}));

@@ -1,10 +1,10 @@
 //! A committed edit already owns the sync fence before any upstream call.
 
 use super::{EditRequest, input, sql};
+use crate::store::history::{Fact, Receipt};
 use crate::store::{SYNC_LEASE, fire_at};
 use crate::{Result, Schedule, Schedules, SyncStatus, error};
 use afd_core::id::Uuid7;
-use sqlx::Acquire as _;
 
 const CONTEXT: &str = "conditionally edit a schedule";
 
@@ -17,8 +17,9 @@ impl Schedules {
     /// # Errors
     /// Refuses hidden resources, stale/missing tags, invalid edits and live syncs.
     pub async fn edit(&self, request: EditRequest<'_>, token: &Uuid7) -> Result<Schedule> {
-        let mut connection = self.database.acquire().await?;
-        let mut tx = connection.begin().await.map_err(error::query(CONTEXT))?;
+        let mut tx = sqlx::Transaction::begin(self.database.acquire().await?, None)
+            .await
+            .map_err(error::query(CONTEXT))?;
         let row = super::guard::lock(&mut tx, &request).await?;
         let (effective, inherited) = input::replacement(&row, request.patch)?;
         let encoded = inherited.as_ref().map(serde_json::to_string).transpose()?;
@@ -47,7 +48,15 @@ impl Schedules {
         } else {
             edited
         };
-        tx.commit().await.map_err(error::query(CONTEXT))?;
+        let status = (edited.desired_status != row.desired_status).then_some(edited.desired_status);
+        let announcement = Receipt {
+            schedule: &edited,
+            operation: token.as_str(),
+            fact: Fact::mutation(status),
+        }
+        .record_on(&mut tx, request.workspace)
+        .await?;
+        self.commit_activity(tx, announcement).await?;
         Ok(edited)
     }
 }

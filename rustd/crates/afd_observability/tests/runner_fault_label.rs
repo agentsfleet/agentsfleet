@@ -26,6 +26,9 @@
 #[path = "billing_capture.rs"]
 mod billing_capture;
 
+#[path = "task_capture.rs"]
+mod task_capture;
+
 use afd_observability::producers::fleet::runner;
 use afd_observability::test_util::Capture;
 use afd_wire::report::FailureClass;

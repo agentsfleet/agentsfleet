@@ -8,6 +8,8 @@
 //! as the [`Settlement`] the lease's transaction logs and the billing relay
 //! settles (billing §11).
 
+mod original;
+
 use afd_billing::Nanos;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
@@ -15,10 +17,10 @@ use afd_billing::rates::Posture;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use afd_wire::usage::{DAEMON_SEQ_BASE, RequestUsage, UsageLine};
+use afd_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RequestUsage, UsageLine};
 use jiff::Timestamp;
 
-use crate::error::{Result, row_malformed};
+use crate::error::{Result, row_malformed, sequence_corrupt};
 
 /// Logged when a pass could not read its prices and logged its tokens
 /// unpriced.
@@ -111,13 +113,16 @@ impl Pricing {
         requests: &[RequestUsage],
     ) -> Result<Option<Settlement>> {
         let runtime_ms = count(slice.runtime_ms);
-        let runtime = (runtime_ms > 0).then(|| {
-            UsageLine::runtime(
-                DAEMON_SEQ_BASE.saturating_add(count(slice.daemon_lines)),
-                slice.checked_at,
-                runtime_ms,
-            )
-        });
+        let runtime = (runtime_ms > 0)
+            .then(|| -> Result<UsageLine> {
+                let seq = u32::try_from(slice.daemon_lines)
+                    .ok()
+                    .and_then(|count| DAEMON_SEQ_BASE.checked_add(count))
+                    .filter(|seq| *seq <= DAEMON_SEQ_MAX)
+                    .ok_or_else(sequence_corrupt)?;
+                Ok(UsageLine::runtime(seq, slice.checked_at, runtime_ms))
+            })
+            .transpose()?;
         let lines: Vec<UsageLine> = requests
             .iter()
             .map(|request| request.line())
@@ -236,11 +241,12 @@ pub(crate) async fn log_measured(
     entropy: &afd_crypto::entropy::Entropy,
     now: Timestamp,
     settlement: Option<&Settlement>,
-) -> Result<()> {
+) -> Result<bool> {
     if let Some(settled) = settlement {
-        afd_billing::ledger::log_lines(connection, entropy, now, settled).await?;
+        let fresh = afd_billing::ledger::log_lines(&mut *connection, entropy, now, settled).await?;
+        return crate::task::usage::record(connection, settled.work.id().as_str(), fresh).await;
     }
-    Ok(())
+    Ok(true)
 }
 
 /// A non-negative count as the line type holds it, saturating rather than

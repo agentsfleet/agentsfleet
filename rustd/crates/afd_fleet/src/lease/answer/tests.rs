@@ -39,6 +39,7 @@ fn document() -> String {
 /// The fleet as the claim read it, built from no bundle.
 fn installed() -> Installed {
     Installed {
+        issue_revision: None,
         workspace_id: test_dead::id(2),
         name: FLEET_NAME.to_owned(),
         config: FleetConfig::authored(&document()).expect("the fixture document is authorable"),

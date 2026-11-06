@@ -12,7 +12,7 @@ use rig_core::{
 use serde::Deserialize;
 
 use super::super::{ModelCallInput, ModelCallResult, budget};
-use super::prompt::TOOL;
+use super::tools::TOOL;
 use crate::{Result, error::ErrorKind};
 
 #[cfg(test)]

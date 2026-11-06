@@ -20,18 +20,17 @@
 //! build cannot read is a datastore fault and fails the read: a partial
 //! assignment is never silently completed with defaults.
 //!
-//! `sandbox_config` is the exception. An absent configuration is the NORMAL
-//! state — enrolment never writes the column, so it reads NULL until an
-//! operator assigns a policy — so its binds resolve to empty. A garbled value
-//! reads the same, and neither can widen the sandbox: the operator's additions
-//! are dropped, never invented.
+//! Enrollment and editing both write `sandbox_config`. An absent or garbled
+//! configuration resolves to empty binds, so a missing value cannot widen
+//! the sandbox or invent operator additions.
 
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, ExtraBind};
 use serde::{Deserialize, Serialize};
 
+use afd_core::id::Uuid7;
 use afd_core::limits::WorkerCount;
 
-use crate::error::{Result, assignment_malformed, stored_json};
+use crate::error::{Result, assignment_malformed, row_malformed, stored_json};
 use crate::reconcile::Verdict;
 
 const TABLE_RUNNERS: &str = "runner.runners";
@@ -39,7 +38,7 @@ const COLUMN_SANDBOX_TIER: &str = "sandbox_tier";
 const COLUMN_NETWORK_POLICY: &str = "network_policy";
 const COLUMN_REGISTRY_ALLOWLIST: &str = "registry_allowlist";
 
-/// The five columns an assignment is stored in, owned.
+/// The columns an assignment is stored in, owned.
 ///
 /// Owned because the pooled connection is released before the caller decodes:
 /// the JSON columns stay as stored TEXT so a borrowing wire type can be
@@ -47,6 +46,10 @@ const COLUMN_REGISTRY_ALLOWLIST: &str = "registry_allowlist";
 /// documents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssignmentColumns {
+    /// Whether this runner accepts new durable task leases.
+    pub durable_tasks_enabled: bool,
+    /// Optional reviewed catalogue identity selected by the operator.
+    pub decision_model_id: Option<String>,
     /// `runner.runners.sandbox_tier`, as its wire spelling.
     pub sandbox_tier: String,
     /// `runner.runners.network_policy`, as its wire spelling.
@@ -71,7 +74,16 @@ impl AssignmentColumns {
     /// Refuses a tier or posture outside its wire enum, and a registry list
     /// that is not a JSON array of hosts.
     pub fn decode(&self) -> Result<AssignedPolicy<'_>> {
+        if let Some(model) = self.decision_model_id.as_deref() {
+            Uuid7::parse(model)
+                .map_err(row_malformed(TABLE_RUNNERS, "decision_platform_model_id"))?;
+        }
         Ok(AssignedPolicy {
+            durable_tasks_enabled: self.durable_tasks_enabled,
+            decision_model_id: self
+                .decision_model_id
+                .as_deref()
+                .map(std::borrow::Cow::Borrowed),
             sandbox_tier: parse_wire(&self.sandbox_tier)
                 .ok_or_else(|| assignment_malformed(COLUMN_SANDBOX_TIER))?,
             network_policy: parse_wire(&self.network_policy)

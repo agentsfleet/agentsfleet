@@ -81,6 +81,7 @@ pub(super) struct Stored {
     pub(super) resource_version: i64,
     /// The head `fleet.revisions.revision`: 1 at Save, +1 per Apply.
     pub(super) head_revision: i64,
+    pub(super) head_revision_id: Uuid7,
     pub(super) created_at: Timestamp,
     pub(super) updated_at: Timestamp,
     pub(super) events_processed: i64,
@@ -107,6 +108,7 @@ pub(super) struct StoredRow {
     memory_reads_workspace: bool,
     memory_publishes_workspace: bool,
     head_revision: i64,
+    head_revision_id: String,
     definition: String,
     runtime_model_ref: Option<String>,
     review_context: Option<String>,
@@ -156,6 +158,7 @@ impl StoredRow {
             runtime_model_ref: self.runtime_model_ref,
             resource_version: self.resource_version,
             head_revision: self.head_revision,
+            head_revision_id: Uuid7::parse(&self.head_revision_id)?,
             created_at: self.created_at,
             updated_at: self.updated_at,
             events_processed: self.events_processed,

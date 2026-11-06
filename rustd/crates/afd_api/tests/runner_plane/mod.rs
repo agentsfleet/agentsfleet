@@ -23,6 +23,8 @@
 #![cfg(feature = "test-util")]
 
 use crate::harness;
+
+mod decision_lifecycle;
 use crate::harness::code_of;
 
 use afd_auth::directory::Liveness;
@@ -259,6 +261,8 @@ async fn test_heartbeat_is_guarded_like_every_other_runner_verb() {
 }
 
 mod authorization;
+
+mod decisions;
 
 mod memory;
 

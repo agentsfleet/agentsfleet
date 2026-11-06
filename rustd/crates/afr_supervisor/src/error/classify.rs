@@ -89,8 +89,10 @@ impl Error {
             | ErrorKind::Crypto { .. }
             | ErrorKind::Persist { .. }
             | ErrorKind::Config { .. }
+            | ErrorKind::Boundary { .. }
             | ErrorKind::Address { .. }
             | ErrorKind::Client { .. }
+            | ErrorKind::CheckpointTransfer { .. }
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }

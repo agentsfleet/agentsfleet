@@ -14,7 +14,7 @@ use bytes::Bytes;
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType, ToolResultContent};
 
 /// The kinds of image the wires take.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ImageKind {
     /// Portable Network Graphics.
     Png,
@@ -39,7 +39,7 @@ impl ImageKind {
 }
 
 /// An image a call read, for the model to see with the call's result.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ImageInput {
     /// What kind of image it is.
     pub kind: ImageKind,

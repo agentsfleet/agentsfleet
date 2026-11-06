@@ -14,7 +14,7 @@ const RUNNER: RunnerDetail = {
   labels: [],
   last_seen_at: new Date(Date.now() - 8_000).toISOString(),
   created_at: new Date(Date.now() - 86_400_000).toISOString(),
-  assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
+  assigned_policy: { durable_tasks_enabled: true,sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
   achievable: null,
   degraded: false,
   selftest_requested_at: null,

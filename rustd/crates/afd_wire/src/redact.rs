@@ -21,6 +21,7 @@ use std::fmt::{self, Debug, Formatter};
 use crate::credentials::MintCredentialResponse;
 use crate::policy::ExecutionPolicy;
 use crate::runner::RegisterResponse;
+use crate::task::{DecisionDispatch, DecisionRecorded, DecisionReservationResult};
 
 /// What a redacted field renders as. One spelling, so a log grep for leaked
 /// credentials has exactly one negative to look for.
@@ -85,5 +86,43 @@ impl Debug for MintCredentialResponse<'_> {
             .field("token", &redacted(&self.token))
             .field("expires_at", &self.expires_at)
             .finish()
+    }
+}
+
+impl Debug for DecisionDispatch<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DecisionDispatch")
+            .field("call_id", &self.request.call_id)
+            .field("model_id", &self.assignment.profile.model_id)
+            .field("profile_revision", &self.assignment.revision_id)
+            .field("api_key", &redacted(&self.api_key))
+            .field("expires_at", &self.expires_at)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Debug for DecisionReservationResult<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dispatch { call_id, dispatch } => f
+                .debug_struct("DecisionReservationResult::Dispatch")
+                .field("call_id", call_id)
+                .field("dispatch", dispatch)
+                .finish(),
+            Self::Existing { call_id, state, .. } => f
+                .debug_struct("DecisionReservationResult::Existing")
+                .field("call_id", call_id)
+                .field("state", state)
+                .finish(),
+        }
+    }
+}
+
+impl Debug for DecisionRecorded {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DecisionRecorded")
+            .field("call_id", &self.request.call_id)
+            .field("disposition", &self.disposition)
+            .finish_non_exhaustive()
     }
 }

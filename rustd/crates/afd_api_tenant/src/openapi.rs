@@ -25,6 +25,9 @@ afd_http::plane_collector! {
     /// The collector. Private: [`document`] is the whole of what this module offers.
     struct Plane;
     paths(
+        crate::handler::fleet::tasks::read::list,
+        crate::handler::fleet::tasks::read::one,
+        crate::handler::fleet::tasks::control::change,
         crate::handler::approval::detail,
         crate::handler::approval::list,
         crate::handler::approval::resolve::resolve,

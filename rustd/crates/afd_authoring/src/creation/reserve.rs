@@ -185,17 +185,19 @@ impl Creations {
             accepted: &accepted,
             model: checked.effective.runtime_model_ref.as_deref(),
         };
-        let announcement =
+        let mut announcement =
             insert_revision(connection, id, &captured.candidate.definition, head).await?;
-        self.replace_schedules(
-            connection,
-            &captured.context.workspace_id,
-            id,
-            INITIAL_VERSION,
-            &captured.candidate.definition,
-            now,
-        )
-        .await?;
+        announcement.append(
+            self.replace_schedules(
+                connection,
+                &captured.context.workspace_id,
+                id,
+                INITIAL_VERSION,
+                &captured.candidate.definition,
+                now,
+            )
+            .await?,
+        );
         if let Some(draft) = &captured.draft {
             sqlx::query(sql::LINK)
                 .bind(draft.id.as_str())
@@ -247,9 +249,9 @@ pub(super) async fn insert_revision(
         &head.accepted.context.workspace_id,
         fleet,
         &identity,
-        afd_events::activity::Activity::SetupSaved {
-            revision: &number,
-            origin: head.origin.map(SaveOrigin::as_str),
+        afd_api_wire::activity::FleetActivity::SetupSaved {
+            revision: number.as_str().into(),
+            origin: head.origin.map(|origin| origin.as_str().into()),
         },
     )
     .await

@@ -253,6 +253,8 @@ pub async fn runner_with(
     let request = RegisterRequest {
         host_id: host.into(),
         assigned_policy: AssignedPolicy {
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowListEgress,
             registry_allowlist: Vec::new(),
@@ -285,6 +287,7 @@ pub async fn runner_with(
 /// A host that proves every confinement the enrolment asks for.
 fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        durable_tasks_v1: false,
         build_id: None,
         landlock: true,
         seccomp: true,

@@ -109,6 +109,10 @@ the workload.
 
 ## Service Level Objectives
 
+The [DT read component](durable_tasks.md#status-and-ownership) uses the existing task operation counter and duration measurements.
+Structured failures distinguish the whole-read deadline from server statement cancellation using bounded reason codes.
+Task and lease identifiers belong in traces and structured events; prompts, criteria and private evidence never become metric labels.
+
 Three candidate objectives have metric producers. Their targets remain unproven;
 the table records the available measurements. Backlog age is a diagnostic until
 a pickup objective is measured.

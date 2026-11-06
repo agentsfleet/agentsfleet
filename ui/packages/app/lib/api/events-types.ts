@@ -41,6 +41,10 @@ export function buildQuery(opts?: EventsQuery): string {
 // `gate_resolved` when a human is asked and answers. Keep every spelling in
 // sync with those enums.
 export const FRAME_KIND = {
+  TASK_CHANGED: "task_changed",
+  TASK_DECISION_STARTED: "task_decision_started",
+  TASK_DECISION_COMPLETED: "task_decision_completed",
+  TASK_TRANSFER_PROGRESS: "task_transfer_progress",
   EVENT_ADMITTED: "event_admitted",
   EVENT_RECEIVED: "event_received",
   TOOL_CALL_STARTED: "tool_call_started",

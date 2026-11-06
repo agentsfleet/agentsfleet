@@ -1,6 +1,6 @@
 # Scenario — Incident responder in a Slack thread
 
-> Parent: [`README.md`](./README.md) · References: [`slack-channel-resident.md`](./slack-channel-resident.md) (the channel's resident), [`github-pr-reviewer.md`](./github-pr-reviewer.md) (the repository subscription this mirrors), [`production-deploy-repair.md`](./production-deploy-repair.md) (the repair crew), [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
+> Parent: [`README.md`](./README.md) · References: [`github-pr-reviewer.md`](./github-pr-reviewer.md) (the repository subscription this mirrors), [`production-deploy-repair.md`](./production-deploy-repair.md) (the repair crew), [`../connectors.md`](../connectors.md), [`../data_flow.md`](../data_flow.md), [`../memory.md`](../memory.md).
 >
 > **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`; M206_004 is in `docs/v2/done/` with its live drills (its own §3) parked until 001–003 reach `api-dev`. Line citations were rechecked against source on 2026-10-14; the scenario's original "today" claims were read at `b1bc6f0c4`.
 
@@ -11,43 +11,30 @@ Legend: ✅ in the Rust daemon · 🟡 in the Rust daemon, broken.
 ## 1. The flow
 
 ```text
-GitHub Actions --(GitHub's own Slack app, external)--> #ci-dev  "PR run 123 failed against dev"
-                                                            |
-a person, in that thread:  "@agentsfleet-dev why did this fail?"
-                                                            |  signed app_mention
-                                                            v
-agentsfleetd:  check signature -> Slack team -> workspace -> who listens in this channel?
-                                                            |
-        +----------------------+----------------------------+----------------------------+
-        | nobody               | one fleet                  | several fleets             |
-        v                      v                            v
-  the channel's resident   that fleet             "@agentsfleet-dev <name> ..." -> that fleet
-  (read-only, no tools)                           no name -> one notice listing the names
-        |                      |
-        +----------+-----------+
-                   v
-  read the thread: the announcement + the latest replies, capped
-                   v
-  admit ONE event, keyed by Slack's own event id  (a Slack retry changes nothing)
-                   v
-  runner: GitHub reads + Grafana reads + the fleet's memory, all read-only
-                   v
-  answer is owed to that thread -> daemon posts it with chat.postMessage(thread_ts)
+GitHub Actions -> #ci-dev: PR run failed
+Person -> Slack thread: @agentsfleet-dev why did this fail?
+Slack -> agentsfleetd: signed app_mention
+agentsfleetd -> connector install: resolve team and current workspace
+agentsfleetd -> reviewed subscriptions: choose configured fleet
+    no subscriber -> channel_not_configured; no fleet or model call
+    ambiguous / paused / needs name -> fixed notice through existing outbound ledger
+    addressed or sole eligible fleet -> one slack_mention admission
+Configured fleet -> GitHub + Grafana: read permitted evidence
+Fleet report -> recorded Slack thread: answer through existing outbound poster
 
-later, in the same thread:  "@agentsfleet-dev ci-dev-repairer open the fix"
-  -> the repairer attached to this channel runs; no per-request approval (as in Claude Tag)
-  -> one draft PR on one daemon-issued branch -> its link lands in the thread
-  -> a person merges in GitHub -> the pipeline deploys -> verdicts belong in #release-*
+Person -> same thread: @agentsfleet-dev ci-dev-repairer open the fix
+Configured repairer -> approved branch/draft PR scope -> reply with PR link
+Human -> review/merge/deployment; no additional authority comes from the mention
 ```
 
 ## 2. Three things that get confused
 
-| | Slack connector | Channel resident | Channel subscription |
+| | Slack connector | Channel notice owner | Channel subscription |
 |---|---|---|---|
-| What it is | a workspace's Slack credential and team routing | the channel's memory namespace and front desk | a fleet that answers mentions in one channel |
-| Where it lives | vault handle `slack` + `connector.installs (slack, team_id)` | `connector.channels`, `kind` resident, one row per channel | the fleet's reviewed setup: a trigger with `type: mention`, `source: slack`, `channels: [<channel identifier>]` |
-| Created by | Connect Slack (Open Authorization (OAuth)) | the first mention in the channel | a workspace member who asks for the channel in chat, reviews the setup and Saves it, or applies a reviewed improvement |
-| Proves | the daemon may post into that team | nothing about which fleet answers | this fleet answers mentions here |
+| What it is | Workspace Slack credential and team routing. | Stable owner for fixed routing notices only. | A configured fleet whose reviewed setup names the channel. |
+| Where it lives | Vault handle and `connector.installs`. | Existing `connector.channels` binding; no new schema. | A `mention` trigger with `source: slack` and channel identifiers. |
+| Created by | Workspace administrator connects Slack. | First eligible notice binds an existing subscriber when no valid owner exists. | A workspace member reviews and saves the fleet setup. |
+| Proves | The daemon can use the workspace's connector. | Notice ownership only; never model or admission authority. | This fleet is a candidate for mention routing. |
 
 A connected card proves only the first column. The catalogue's "Connected" is vault-key membership (`held`, `afd_connector/src/grant/holding.rs:141-156`); the per-provider status reads a JSON handle with an `integration` field (`connection`, `holding.rs:107-127`). Neither checks a token is alive, an event subscription exists, or a channel is bound. The journey is proven by the drill in M206_004, never by a card.
 
@@ -59,7 +46,7 @@ A connected card proves only the first column. The catalogue's "Connected" is va
 | Workspace routing | `installation.id` → `connector.installs` (`SELECT_INSTALL_WORKSPACE`, `afd_ingress/src/sql.rs:43-46`) | `team_id` → the same table and statement |
 | Subscription | `webhook` trigger: `source: github`, `repositories`, `events` | `mention` trigger: `source: slack`, `channels` |
 | Subscription identity | repository full name, compared case-insensitively (`serves_repository`, `afd_ingress/src/binding/mod.rs:250-256`); a rename stops routing | channel identifier (ID); a rename changes nothing |
-| Who receives it | every matching fleet (fan-out) | exactly one fleet, or one notice |
+| Who receives it | every matching fleet (fan-out) | one configured fleet, a fixed notice, or an unconfigured drop |
 | Replay key | producer `webhook_app`, `<fleet>:<body digest>` (`afd_ingress/src/deliver.rs:104-106`) | producer `slack_mention`, `<team_id>:<event_id>` |
 | Credential | the fleet mints an installation token behind an approved `github` grant | the fleet holds no Slack credential; the daemon posts |
 
@@ -71,7 +58,7 @@ The GitHub subscription keys on a repository's name, so renaming a repository si
 |---|---|
 | one agent; an admin attaches access bundles (credentials, domains, plugins) to a channel or the workspace | a fleet (instructions, credentials, allowlist, budget) attached to one channel |
 | a sandbox session per thread | one run per mention |
-| memory per channel; public channels share it workspace-wide | memory per fleet; the resident's never leaves its channel |
+| memory per channel; public channels share it workspace-wide | memory per configured fleet, subject to its saved grants |
 | a service account in channels, no per-user linking | the workspace bot token and the GitHub App: the same |
 | opens draft PRs with no approval step | the same: an attached write fleet opens one draft PR per request (§7) |
 | live progress checklist in the thread | the final answer and notices; progress comes later |
@@ -80,23 +67,49 @@ Fleets are attached, never created per message: a fleet per message would start 
 
 ## 4. Routing a mention
 
-One mention produces one event or one notice, never both and never two.
+The handler admits only a configured `Addressed` or `Sole` fleet.
+An unconfigured channel returns `channel_not_configured` without creating a fleet, scheduling a lease or calling a model.
+The route does not use historical channel fleets as fallback responders.
 
-1. **Filter.** Only `event_callback` with `event.type` `app_mention`. A message carrying `bot_id` or `subtype`, or sent by the bot user itself (`bot_user_id` is in the Slack handle, `afd_connector/src/grant/parse/mod.rs:146-149`; compared at `afd_api_ingress/src/handler/mention/mod.rs:252`), is acknowledged and dropped.
-2. **Name.** Strip the leading bot mention. If the first word, without a trailing `:` or `,`, equals one subscribed fleet's name ignoring case, the mention is **addressed** to that fleet. Names are unique per workspace but case-sensitive (`schema/1500_fleet_fleets.sql:56`), so two subscribed fleets whose names differ only in case make that word ambiguous.
-3. **Choose.**
+1. Validate the signed event and resolve its Slack team to the current workspace.
+2. Drop bot messages, unsupported event types and replayed deliveries through the existing ingress rules.
+3. Read the channel's reviewed fleet subscriptions.
+4. Match an explicit leading fleet name or choose the sole eligible unaddressed subscriber.
+5. Admit the selected fleet or record the fixed routing notice described below.
 
-| Subscribed fleets in the channel | Addressed | Unaddressed |
-|---|---|---|
-| none | no name can match, so it is unaddressed | the resident answers |
-| one read-only | that fleet | that fleet |
-| one write-bound | that fleet: at most one draft PR (§7) | notice naming it; it takes addressed requests only |
-| several | the named one | notice listing the names; no model runs |
-| any paused, named | notice: paused, and who can resume it | not eligible |
+| Subscription state | Native outcome |
+|---|---|
+| No subscribers | `Unconfigured`; return `channel_not_configured`, without a model or fleet creation. |
+| One matching name, runnable | `Addressed`; admit that configured fleet. |
+| Matching name paused | `Paused` notice; no model call. |
+| Several names match ignoring case | `Ambiguous` notice; no arbitrary selection. |
+| No matching name, one eligible unaddressed subscriber | `Sole`; admit that configured fleet. |
+| No matching name, no eligible unaddressed subscriber | `AddressIt` notice naming configured candidates. |
+| No matching name, several eligible unaddressed subscribers | `Choose` notice; ask which fleet should receive the request. |
 
-4. **Admit.** One `fleet.admissions` row, producer `slack_mention`, key `<team_id>:<event_id>`. The unique `(producer, producer_key)` (`schema/1720_fleet_admissions.sql`) turns every Slack retry into the first answer. Notices are keyed the same way, so a retried ambiguous mention is not answered twice.
+Addressed-only repairers require their configured name even when they are the channel's only subscriber.
+The [native route](../../../rustd/crates/afd_ingress/src/slack/route.rs) owns eligibility and name matching.
+The [mention handler](../../../rustd/crates/afd_api_ingress/src/handler/mention/mod.rs) owns admission and the unconfigured outcome.
 
-The resident is materialised on the first mention in any channel, whatever the routing outcome, because it owns the channel's notices. It answers with a model only when no fleet subscribes, and when asked for something it cannot reach it names the attach command with this channel's identifier filled in.
+Fixed ambiguity, paused and addressing notices use the existing outbound ledger and Slack poster.
+The existing `connector.channels` row supplies a stable notice-only owner.
+If no valid binding exists, notice handling binds an existing configured candidate rather than creating a fleet.
+
+The binding must match the current workspace and installed team.
+Deleted owners and moved-team bindings cannot supply stale authority; a killed owner cannot acquire another outbound obligation.
+Concurrent notices converge on the channel's existing unique binding.
+
+[Notice ownership](../../../rustd/crates/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
+Slack retries reuse the existing deterministic notice identity.
+No second outbound path or new schema is required.
+
+Historical stored fleets and setup revisions remain unchanged.
+Their channel bindings can carry notices only when current ownership checks permit them.
+The new route cannot run them as an unconfigured-channel fallback.
+
+A configured fleet can use its permitted memory tools across threads.
+The thread remains a reply destination; [memory](../memory.md#4-slack-threads-and-fleet-memory) owns the memory scope.
+Connecting Slack or saving a notice binding proves no memory capture or recall.
 
 ## 5. What the fleet is told
 
@@ -159,7 +172,7 @@ The installed grant bounds writes as described in [trust anchors](../connectors.
 |---|---|---|---|
 | Signed Slack delivery | ✅ signature, 5-minute window, `url_verification` echo (`afd_api_ingress/src/handler/events/mod.rs:156,197`, `afd_connector/src/registry/mod.rs:271-277`) | unchanged | — |
 | Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs:59-64`, `afd_admission/src/admission.rs:33`) | — | M206_002 |
-| Channel → fleet | ✅ subscriptions: a `mention` trigger in the reviewed setup names the channel, matched by `is_attached_to` (`afd_fleet_runtime/src/config/attach.rs:17`) and read per mention (`mention_subscribers`, `afd_ingress/src/slack/mod.rs:73`); the resident: written as native system setup on the first mention in a channel and bound once (`resident`, `afd_api_ingress/src/handler/mention/resident.rs:110`; `Creations::materialise`, `afd_authoring/src/creation/system.rs:46`) | — | M206_002 |
+| Channel → fleet | Reviewed subscriptions route only configured Addressed/Sole fleets. Unconfigured channels return `channel_not_configured`; existing bindings carry fixed notices only. | Combined live drill remains pending. | M236 |
 | Thread context | ✅ `conversations.replies` under 1.5 s, parent plus latest replies, capped, under a fixed untrusted-data heading (`afd_connector/src/slack/replies/mod.rs:48-51,183`, `afd_ingress/src/slack/message.rs:20,52`) | — | M206_002 |
 | Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slot 1740) | — | M206_001 |
 | Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack/mod.rs`) | — | M206_001 |
@@ -197,7 +210,9 @@ Both channels subscribe to `agentsfleet/linkwarden`: development selects pull re
 
 Nothing here is proven live. The Slack registration playbook's live check, a threaded reply to a mention (`playbooks/operations/slack_app_registration/001_playbook.md:87-99`), has not been recorded against the Rust daemon. M206_004 records the development and production drills; this section changes to one line per proven stage when they land.
 
-## Proposed durable follow-on
+## Durable repair follow-on
 
-The [durable repair scenario](durable-repair.md) extends the addressed manual path with later-CI continuation, existing-PR authority, worker recovery and Jev goal evaluation. These are proposed capabilities, not effects of saving the current setup.
-A scheduled Grafana diagnosis needs an explicitly configured notification destination and repair authority; no implicit cross-fleet handoff or arbitrary channel routing is supplied today.
+The [durable repair scenario](durable-repair.md) extends the addressed manual path with later-CI continuation, existing-PR authority, worker recovery and Jev goal evaluation. M236 contains source for these capabilities; combined live acceptance remains unfinished. Saving setup alone does not demonstrate them.
+
+A scheduled Grafana diagnosis needs a configured notification destination and explicit repair authority.
+The fleet receives no implicit cross-fleet handoff or arbitrary channel routing.

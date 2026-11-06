@@ -22,6 +22,8 @@ fn bind(path: &str) -> ExtraBind<'_> {
 
 fn policy(registry_allowlist: Vec<Cow<'_, str>>, worker_count: u32) -> AssignedPolicy<'_> {
     AssignedPolicy {
+        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        decision_model_id: None,
         sandbox_tier: SandboxTier::LandlockFull,
         network_policy: NetworkPolicy::AllowListEgress,
         registry_allowlist,
@@ -54,6 +56,43 @@ fn binds_refusal(path: &str) -> Option<&'static str> {
     assignment(&with_binds(vec![bind(path)]))
         .err()
         .map(|error| error.detail())
+}
+
+#[test]
+fn decision_model_identity_is_canonical_bounded_and_preserves_the_parser_cause() {
+    use std::error::Error as _;
+    let mut selected = policy(Vec::new(), 2);
+    let id = "0199f0c0-0000-7000-8000-000000000001";
+    selected.decision_model_id = Some(Cow::Borrowed(id));
+    let accepted = assignment(&selected).expect("canonical model selection");
+    assert_eq!(
+        accepted.decision_model_id.as_ref().map(Uuid7::as_str),
+        Some(id)
+    );
+    assert_eq!(accepted.worker_count.get(), 2);
+    for malformed in [
+        "",
+        "not-a-model",
+        "0199F0C0-0000-7000-8000-000000000001",
+        "0199f0c0-0000-4000-8000-000000000001",
+    ] {
+        selected.decision_model_id = Some(Cow::Borrowed(malformed));
+        let refused = assignment(&selected).expect_err("invalid operator input");
+        assert_eq!(refused.code(), afd_core::error_code::INVALID_REQUEST);
+        assert_eq!(refused.detail(), DETAIL_DECISION_MODEL_ID);
+        assert!(refused.is_rejected());
+        assert!(!refused.to_string().contains(malformed) || malformed.is_empty());
+        if malformed.len() == 36 {
+            assert!(refused.source().is_some(), "semantic parse cause survives");
+        }
+    }
+    selected.decision_model_id = None;
+    assert!(
+        assignment(&selected)
+            .expect("clear selection")
+            .decision_model_id
+            .is_none()
+    );
 }
 
 #[test]

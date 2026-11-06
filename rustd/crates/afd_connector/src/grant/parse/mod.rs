@@ -98,6 +98,8 @@ pub enum InstallClaim {
 /// A parsed grant: the document to seal, and the routing row it implies.
 #[derive(Debug, Clone)]
 pub struct Grant {
+    /// OAuth-proved external person; absent for bot-only or non-Slack grants.
+    pub external_person_id: Option<String>,
     /// The handle, as the runner plane will read it back.
     ///
     /// A `Map` rather than a struct per provider, because the shape IS
@@ -144,6 +146,11 @@ pub fn slack(body: &Value, delimiter: char) -> Option<Grant> {
     handle.insert(HANDLE_SCOPES.into(), scope.into());
 
     Some(Grant {
+        external_person_id: body
+            .get("authed_user")
+            .and_then(|user| non_empty_str(user, WIRE_ID))
+            .filter(|id| garde::Validate::validate(&SlackPerson { value: id }).is_ok())
+            .map(str::to_owned),
         handle,
         install: Some(Install {
             external_account_id: team_id.to_owned(),
@@ -158,6 +165,12 @@ pub fn slack(body: &Value, delimiter: char) -> Option<Grant> {
             claim: InstallClaim::Repoint,
         }),
     })
+}
+
+#[derive(garde::Validate)]
+struct SlackPerson<'a> {
+    #[garde(length(bytes, min = 2, max = 64), pattern(r"^[UW][A-Z0-9]+$"))]
+    value: &'a str,
 }
 
 /// The refresh-token triple, as the handle a broker later mints from.
@@ -195,6 +208,7 @@ pub fn refresh_triple(
     handle.insert(HANDLE_LABEL.into(), label.into());
 
     Some(Grant {
+        external_person_id: None,
         handle,
         // No inbound events, so nothing to route back: these three are asked
         // questions by a fleet and never wake one.

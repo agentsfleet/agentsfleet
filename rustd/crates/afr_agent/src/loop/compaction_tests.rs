@@ -146,6 +146,8 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
     let frames = Frames::default();
     let output = engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

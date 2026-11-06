@@ -32,6 +32,8 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod aad;
+pub mod checkpoint;
+pub mod checkpoint_digest;
 pub mod entropy;
 pub mod envelope;
 pub mod error;

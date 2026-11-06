@@ -28,6 +28,7 @@ const_format.workspace = true
 # Deliberately NOT afd_core. See the module documentation in src/lib.rs: wire
 # types carry primitives, and validating at parse would break byte parity.
 serde.workspace = true
+serde_with.workspace = true
 # Every `_at` field is a `jiff::Timestamp`, written by `crate::instant` as RFC
 # 3339 in UTC with three fraction digits.
 jiff.workspace = true

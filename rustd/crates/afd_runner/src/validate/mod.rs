@@ -12,6 +12,7 @@
 
 use std::borrow::Cow;
 
+use afd_core::id::Uuid7;
 use afd_core::limits::WorkerCount;
 use afd_validate::Sentences;
 use afd_wire::runner::{
@@ -21,7 +22,10 @@ use afd_wire::runner::{
 use const_format::concatcp;
 use garde::Validate as _;
 
-use crate::error::{DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST, Result, rejected};
+use crate::error::{
+    DETAIL_DECISION_MODEL_ID, DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST, Result,
+    decision_model_id, rejected,
+};
 
 /// The refusal for a bind path that is relative, non-canonical, out of
 /// bounds, or overlapping a daemon-owned or sensitive subtree.
@@ -54,6 +58,8 @@ pub const DETAIL_LABELS: &str = concatcp!(
 );
 
 const PATH_HOST_ID: &str = "host_id";
+const PATH_DECISION_MODEL: &str = "decision_model_id";
+const PATH_POLICY_DECISION_MODEL: &str = "assigned_policy.decision_model_id";
 const PATH_LABELS: &str = "labels";
 const PATH_ALLOWLIST: &str = "registry_allowlist";
 const PATH_ALLOWLIST_ENTRY: &str = "registry_allowlist[]";
@@ -71,6 +77,7 @@ const PATH_POLICY_BIND_PATH: &str = "assigned_policy.extra_binds[].path";
 /// they moved onto the type: the allowlist, then the binds.
 const POLICY: Sentences = Sentences::new(
     &[
+        (PATH_DECISION_MODEL, DETAIL_DECISION_MODEL_ID),
         (PATH_ALLOWLIST, DETAIL_REGISTRY_ALLOWLIST),
         (PATH_ALLOWLIST_ENTRY, DETAIL_REGISTRY_ALLOWLIST),
         (PATH_BINDS, DETAIL_EXTRA_BINDS_COUNT),
@@ -85,6 +92,7 @@ const POLICY: Sentences = Sentences::new(
 const REGISTRATION: Sentences = Sentences::new(
     &[
         (PATH_HOST_ID, DETAIL_HOST_ID_BOUNDS),
+        (PATH_POLICY_DECISION_MODEL, DETAIL_DECISION_MODEL_ID),
         (PATH_POLICY_ALLOWLIST, DETAIL_REGISTRY_ALLOWLIST),
         (PATH_POLICY_ALLOWLIST_ENTRY, DETAIL_REGISTRY_ALLOWLIST),
         (PATH_POLICY_BINDS, DETAIL_EXTRA_BINDS_COUNT),
@@ -101,8 +109,10 @@ const REGISTRATION: Sentences = Sentences::new(
 /// what is echoed to the enrolling operator must be what the host will apply,
 /// and a clamp written back into the request would leave two values in scope
 /// with only a comment saying which is authoritative.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredAssignment {
+    /// Proved canonical catalogue selection; absence disables decisions.
+    pub decision_model_id: Option<Uuid7>,
     /// The clamped worker ceiling.
     pub worker_count: WorkerCount,
 }
@@ -111,10 +121,16 @@ impl StoredAssignment {
     /// What a proved assignment stores. Clamped, never refused: the count is
     /// clamped into the shared bounds so what is echoed is what runs, and
     /// `WorkerCount::clamping` is that rule as a type.
-    fn of(policy: &AssignedPolicy<'_>) -> Self {
-        Self {
+    fn of(policy: &AssignedPolicy<'_>) -> Result<Self> {
+        Ok(Self {
+            decision_model_id: policy
+                .decision_model_id
+                .as_deref()
+                .map(Uuid7::parse)
+                .transpose()
+                .map_err(decision_model_id)?,
             worker_count: WorkerCount::clamping(policy.worker_count),
-        }
+        })
     }
 }
 
@@ -136,7 +152,7 @@ pub fn assignment(policy: &AssignedPolicy<'_>) -> Result<StoredAssignment> {
     policy
         .validate()
         .map_err(|report| rejected(POLICY.pick(&report)))?;
-    Ok(StoredAssignment::of(policy))
+    StoredAssignment::of(policy)
 }
 
 /// Proves a whole enrolment — host id, assignment and labels — and resolves
@@ -149,7 +165,7 @@ pub fn registration<'a>(request: &RegisterRequest<'a>) -> Result<StoredEnrolment
         .validate()
         .map_err(|report| rejected(REGISTRATION.pick(&report)))?;
     Ok(StoredEnrolment {
-        assignment: StoredAssignment::of(&request.assigned_policy),
+        assignment: StoredAssignment::of(&request.assigned_policy)?,
         labels: distinct(&request.labels),
     })
 }

@@ -166,6 +166,10 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &str, runner: &Uuid7) 
         .bind(sql::RUNNER_STATUS_ACTIVE)
         .bind(sql::LEASE_STATUS_ACTIVE)
         .bind(sql::LEASE_STATUS_EXPIRED)
+        .bind(afd_wire::task::CAPABILITY)
+        .bind(afd_wire::task::TaskState::Ready.as_str())
+        .bind(afd_wire::task::TaskState::Running.as_str())
+        .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .fetch_optional(&mut *tx)
         .await
         .expect("claim checks the same gate rule");

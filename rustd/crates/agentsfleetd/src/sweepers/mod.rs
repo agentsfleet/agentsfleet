@@ -22,6 +22,8 @@ use crate::supervisor::Supervisor;
 
 mod authoring;
 mod billing;
+mod checkpoints;
+mod tasks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
 // asserts the supervisor's INVENTORY, and a test spelling these as literals
@@ -42,13 +44,22 @@ pub const AUTHORING: &str = "sweeper:authoring";
 
 /// The supervised name of the billing sweeper.
 pub const BILLING: &str = "sweeper:billing";
+/// Native task waits, effect readback and storage cleanup; never a second work queue.
+pub const TASKS: &str = "sweeper:tasks";
+/// Bounded private checkpoint collection and acknowledged remote deletion.
+pub const TASK_STORAGE: &str = "sweeper:task-storage";
 
 /// Starts every background sweeper under `supervisor`.
 ///
 /// Called after the datastores are open and before the listener binds: a
 /// sweeper touching a pool that is not yet connected would fail its first pass
 /// for a reason that has nothing to do with the rows it reads.
-pub fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
+pub fn spawn(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    analytics: &Analytics,
+    tasks: afd_fleet::task::Tasks,
+) {
     let liveness = Liveness::new(database.clone(), Entropy::new());
     supervisor.spawn(LIVENESS, move |token| sweep::run(liveness, token));
 
@@ -64,5 +75,7 @@ pub fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) 
 
     // Usage logged without its settlement, and holds outlived by their lease:
     // money the request path owes and could not finish.
-    billing::spawn(supervisor, database);
+    tasks::spawn(supervisor, tasks.clone());
+    checkpoints::spawn(supervisor, tasks.clone());
+    billing::spawn(supervisor, database, tasks);
 }

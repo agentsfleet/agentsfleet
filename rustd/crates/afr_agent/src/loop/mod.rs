@@ -57,6 +57,22 @@ impl Loop {
 
 #[async_trait::async_trait]
 impl AgentEngine for Loop {
+    async fn prepare_task(
+        &self,
+        lease: &afd_wire::lease::LeasePayload<'_>,
+        verbs: &dyn afr_tools::LeaseVerbs,
+        meter: &crate::Meter,
+        stop: &CancellationToken,
+    ) -> Result<Option<crate::PreparedTask>> {
+        if !lease.durable_tasks {
+            return Ok(None);
+        }
+        let provider = self.connect.connect(lease)?;
+        crate::decision::prepare(lease, verbs, provider.as_ref(), meter, stop)
+            .await
+            .map(Some)
+    }
+
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<Needs> {
         self.connect.admit(policy)?;
         let sandbox = self.catalog.select(&policy.tools)?.needs_sandbox();
@@ -65,12 +81,30 @@ impl AgentEngine for Loop {
 
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
         let policy = &run.lease.policy;
-        let selection = self.catalog.select(&policy.tools)?;
+        if run.lease.durable_tasks && run.prepared_task.is_none() {
+            return Err(crate::decision::unavailable());
+        }
+        let tools = if run
+            .prepared_task
+            .is_some_and(|prepared| !prepared.allow_actions)
+        {
+            &[][..]
+        } else {
+            &policy.tools
+        };
+        let selection = self.catalog.select(tools)?;
         let provider = self.connect.connect(run.lease)?;
         let scrub = Scrub::new(policy)?;
         let span = spans::invoke_agent(policy);
         let prompt = Prompt::new(run.lease);
-        let instructions = scrub.clean(prompt.instructions).into_inner();
+        let mut instructions = scrub.clean(prompt.instructions).into_inner();
+        if let Some(prepared) = run.prepared_task {
+            let native = serde_json::json!({ "current_task": prepared.inputs.current_task,
+                "accepted_interpretation": prepared.inputs.current_interpretation,
+                "accepted_inputs": prepared.inputs.accepted_inputs });
+            instructions.push_str("\n\nNative task scope: execute only the current task's accepted objective and items marked applies_here. Other accepted items retain their original reply obligations but grant no permission to execute another task. A conversational answer does not complete the task. The coordinator assesses progress after complete action groups.\n");
+            instructions.push_str(&scrub.clean(native.to_string()).into_inner());
+        }
         // Every earlier turn passes the scrub the current message does: a
         // secret said in an earlier message is still a secret.
         let mut opening: Vec<Message> = prompt
@@ -87,7 +121,22 @@ impl AgentEngine for Loop {
                 ]
             })
             .collect();
-        opening.push(Message::User(scrub.clean(prompt.message).into_inner()));
+        if let Some(recovered) = run.recovered_task {
+            let current = run
+                .prepared_task
+                .and_then(|prepared| prepared.inputs.current_task.as_ref())
+                .ok_or_else(crate::decision::unavailable)?;
+            opening = crate::TaskRecovery::restore(
+                &recovered.history,
+                current,
+                &policy.context.model,
+                &policy.provider,
+                &scrub,
+            )?;
+            opening.push(Message::User("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.".to_owned()));
+        } else {
+            opening.push(Message::User(scrub.clean(prompt.message).into_inner()));
+        }
         let (registry, requests) = Registry::new();
         let shared = Shared::new(
             &run,
@@ -119,6 +168,12 @@ pub(crate) enum Ending {
 
 /// One loop in progress: the root, or a child.
 pub(crate) struct Harness<'s, 'run> {
+    task: Option<crate::PreparedTask>,
+    incorporated_input_sequence: u64,
+    reconciled_effect_ordinal: u64,
+    confirmed_effect_watermark: u64,
+    task_report: Option<afd_wire::task::TaskReport>,
+    group_start: usize,
     pub(crate) shared: &'s Shared<'run>,
     /// How many loops this one is inside: zero for the root.
     pub(crate) depth: u8,
@@ -144,7 +199,23 @@ impl<'s, 'run> Harness<'s, 'run> {
     /// with the fleet's earlier turns and then the event's message.
     fn root(shared: &'s Shared<'run>, opening: Vec<Message>) -> Self {
         let selection = shared.selection;
-        Self {
+        let mut root = Self {
+            task: shared.prepared_task.cloned(),
+            incorporated_input_sequence: shared
+                .recovered_task
+                .map_or(0, |recovery| recovery.task.covered_input_sequence),
+            reconciled_effect_ordinal: shared
+                .recovered_task
+                .map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
+            confirmed_effect_watermark: shared
+                .recovered_task
+                .map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
+            task_report: None,
+            group_start: if shared.recovered_task.is_some() {
+                0
+            } else {
+                opening.len()
+            },
             shared,
             depth: 0,
             stop: shared.stop.clone(),
@@ -154,10 +225,21 @@ impl<'s, 'run> Harness<'s, 'run> {
             hosted: offer::hosted(selection),
             live: Live::new(shared.events, shared.scrub, shared.started),
             checkpoints: Checkpoints::new(shared.context),
-            context: context::State::new(opening.len().saturating_sub(1)),
+            context: context::State::new(if shared.recovered_task.is_some() {
+                0
+            } else {
+                opening.len().saturating_sub(1)
+            }),
             messages: opening,
             child: None,
+        };
+        if root.task.is_some() {
+            root.live.hide_reasoning();
         }
+        if root.publication_allowed() {
+            root.specs.push(publication::spec());
+        }
+        root
     }
 
     /// A child loop over `selection`, opening with its seat's task. Its text
@@ -171,6 +253,12 @@ impl<'s, 'run> Harness<'s, 'run> {
         guard: &'s Guard<'s, 'run>,
     ) -> Self {
         Self {
+            task: None,
+            incorporated_input_sequence: 0,
+            reconciled_effect_ordinal: 0,
+            confirmed_effect_watermark: 0,
+            task_report: None,
+            group_start: 1,
             shared,
             depth: seat.depth,
             stop: seat.stop,
@@ -191,28 +279,85 @@ impl<'s, 'run> Harness<'s, 'run> {
 
     /// Runs the loop's turns to their end.
     pub(crate) async fn drive(&mut self) -> Ending {
+        if self.depth != 0 || !self.task.as_ref().is_some_and(|task| task.allow_actions) {
+            return self.drive_work().await;
+        }
+        let Some(budget) = self.task_execution_budget() else {
+            return Ending::Stopped;
+        };
+        match tokio::time::timeout(budget, self.drive_work()).await {
+            Ok(ending) => ending,
+            Err(_deadline) => {
+                // An interrupted group never carries a prior group's completion authority.
+                self.task_report = None;
+                Ending::Stopped
+            }
+        }
+    }
+
+    async fn drive_work(&mut self) -> Ending {
         let mut turns: u64 = 0;
         loop {
             turns += 1;
             self.read_input();
+            if self.incorporate_task_inputs().await.is_err() {
+                break Ending::Stopped;
+            }
+            if self.reconcile_task_effects().await.is_err() {
+                break Ending::Stopped;
+            }
+            if self.answer_task_inputs().await.is_err() {
+                break Ending::Stopped;
+            }
+            if let Some(answer) = self.accepted_answer() {
+                break Ending::Answered(answer);
+            }
+            if turns == 1
+                && self.shared.recovered_task.is_some()
+                && let Some(ending) = self
+                    .assess_task("Recovery reconciled; no new action has run.")
+                    .await
+            {
+                break ending;
+            }
+            if self.task_yield_due() {
+                break self
+                    .assess_task(
+                        "Execution slice is ending; preserve current work for continuation.",
+                    )
+                    .await
+                    .unwrap_or(Ending::Stopped);
+            }
             if let Err(error) = self.preflight().await {
                 if self.stop.is_cancelled() {
                     break Ending::Stopped;
                 }
                 break Ending::Failed(afr_providers::Error::lost(error));
             }
+            self.group_start = self.messages.len();
             let turn = match self.turn(turns, false).await {
                 Some(Ok(turn)) => turn,
                 Some(Err(failure)) => break Ending::Failed(failure),
                 None => break Ending::Stopped,
             };
+            if self.task.is_some() && (!turn.finished || turn.cut) {
+                break Ending::Stopped;
+            }
             if turn.calls.is_empty() {
-                // A run that never called a tool and ends with no text did
-                // nothing a person can read; reporting it as an answer shows
-                // an empty reply as a success. After tool calls the work is
-                // done, so a closing turn without text still answers.
+                // An empty first turn must not turn a silent failure into task success.
                 if turns == 1 && turn.text.trim().is_empty() {
                     break Ending::Failed(afr_providers::Error::silent(turn.cut));
+                }
+                if let Some(ending) = self.assess_task(&turn.text).await {
+                    break ending;
+                }
+                if self.task_report.as_ref().is_some_and(|report| {
+                    report.disposition == afd_wire::task::TaskDisposition::Continue
+                }) {
+                    let said = self.remembered(turn.text, turn.calls, turn.replay);
+                    self.messages.push(said);
+                    self.messages.push(Message::User("The accepted task goal remains incomplete. Continue the next bounded action group using the current evidence.".to_owned()));
+                    continue;
                 }
                 break Ending::Answered(turn.text);
             }
@@ -232,6 +377,14 @@ impl<'s, 'run> Harness<'s, 'run> {
             if self.stop.is_cancelled() {
                 break Ending::Stopped;
             }
+            if self.incorporate_task_inputs().await.is_err()
+                || self.reconcile_task_effects().await.is_err()
+            {
+                break Ending::Stopped;
+            }
+            if let Some(ending) = self.assess_task("").await {
+                break ending;
+            }
         }
     }
 
@@ -243,6 +396,9 @@ impl<'s, 'run> Harness<'s, 'run> {
         let handler = async {
             if cut {
                 return router::cut(&call.name);
+            }
+            if call.name == publication::NAME {
+                return self.publish_task(&call.arguments).await;
             }
             if let Some(output) = nested::run(self, call).await {
                 return output;
@@ -277,10 +433,19 @@ mod context;
 mod conversation;
 mod finish;
 mod model_turn;
+mod publication;
 pub(crate) mod shared;
+mod task;
+mod task_effects;
+mod task_evidence;
+mod task_replies;
+mod task_slice;
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+#[cfg(test)]
+mod task_tests;
 
 #[cfg(test)]
 mod image_tests;

@@ -291,7 +291,7 @@ impl Fixture {
         let unsettled = afd_billing::ledger::unsettled_work(&mut *self.connection().await, &work)
             .await
             .expect("the attempt's lines read");
-        if let Some(settlement) = unsettled {
+        for settlement in unsettled {
             ledger(&self.db)
                 .settle(&settlement)
                 .await

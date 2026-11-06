@@ -5,15 +5,17 @@
 //! name into them (`afd_admin::catalogue`).
 
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 
 /// Evidence and labels belonging to one exact provider/model identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Metadata {
     /// Human-readable label; never used to route a request.
     pub display_name: String,
-    /// Exact served limit from the provider's own models API.
+    /// Verified request-context ceiling from the provider's native metadata
+    /// or its published decision-model limits when that API omits the field.
     pub context_cap_tokens: i32,
-    /// The provider models API that supplied the limit.
+    /// Provider source that supplied the limit; coding entries use their models API.
     pub context_source_url: String,
     /// When that response was verified.
     pub context_verified_at: Timestamp,
@@ -26,7 +28,8 @@ pub struct Metadata {
 /// Every rate is integer nanodollars per million tokens. A missing cache-write
 /// rate is unknown or unsupported, never zero. Unspecified lifetimes must not
 /// be folded into either of the duration-specific categories.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Price {
     /// First instant this quote applies.
     pub effective_from: Timestamp,

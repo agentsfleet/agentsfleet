@@ -81,38 +81,13 @@ pub const SELECT_APP_SUBSCRIBERS: &str = include_str!("select_app_subscribers.sq
 /// `$1` workspace, `$2` the statuses a subscriber can be read in.
 pub const SELECT_MENTION_CANDIDATES: &str = include_str!("select_mention_candidates.sql");
 
-/// The fleet bound as a chat channel's resident in one workspace, and its
-/// status, when one is.
-///
-/// Scoped to the workspace the mention resolved to. A Slack team can move to
-/// another workspace (`InstallClaim::Repoint`) and its binding row does not
-/// move with it; read by channel alone, a mention in the new workspace would
-/// run the old workspace's fleet on that workspace's budget and memory.
-///
-/// `$1` provider, `$2` the provider's account (a Slack team), `$3` the channel,
-/// `$4` the binding type, `$5` the workspace.
-pub const SELECT_RESIDENT: &str = include_str!("select_resident.sql");
+/// Existing channel notice carrier, scoped to the resolved workspace regardless of binding kind.
+/// `$1` provider, `$2` team, `$3` channel, `$4` workspace.
+pub const SELECT_NOTICE_OWNER: &str = include_str!("select_notice_owner.sql");
 
-/// Binds a channel's resident once per workspace, answering whichever fleet
-/// is bound there.
+/// Bind once per channel/workspace; concurrent losers read the committed winner.
 ///
-/// Insert-once under the channel's unique constraint: a concurrent first mention
-/// that lost the race writes nothing, and the `UNION ALL` reads back the row
-/// the winner wrote, so both callers answer the same fleet. A row whose fleet
-/// sits in another workspace is a team that moved (see [`SELECT_RESIDENT`]),
-/// and is re-pointed rather than kept. The read-back is scoped the same way, so
-/// this never answers another workspace's fleet. Postgres stamps the row.
+/// A moved team's prior-workspace binding is repointed, never reused.
 ///
-/// `$1` binding id, `$2` provider, `$3` account, `$4` channel, `$5` fleet,
-/// `$6` binding type, `$7` the workspace.
-pub const INSERT_RESIDENT: &str = include_str!("insert_resident.sql");
-
-/// The fleet a workspace holds under a resident's name, and its status.
-///
-/// The third column says whether it IS that resident: its head revision's
-/// configuration equals the one the daemon writes, compared as JSON so
-/// formatting cannot make a difference. A fleet with no head revision yet is
-/// not the resident, since it carries no configuration to match.
-///
-/// `$1` workspace, `$2` name, `$3` the resident's configuration.
-pub const SELECT_RESIDENT_NAMED: &str = include_str!("select_resident_named.sql");
+/// `$1` id, `$2` provider, `$3` team, `$4` channel, `$5` fleet, `$6` kind, `$7` workspace.
+pub const INSERT_NOTICE_OWNER: &str = include_str!("insert_notice_owner.sql");

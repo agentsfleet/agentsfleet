@@ -53,6 +53,8 @@
 ///
 /// `$1` fleet, `$2` event, `$3` workspace, `$4` actor, `$5` type, `$6` body,
 /// `$7` resumes-event, `$8` status.
+/// Bind `$6` with `sqlx::types::Json`: cached statements retain that parameter's
+/// database type, so mixing text and JSONB binary encodings corrupts later writes.
 pub const INSERT_FLEET_EVENT: &str = include_str!("insert_fleet_event.sql");
 
 /// Access receipts: workspace, required service, actor, type, status, metadata.

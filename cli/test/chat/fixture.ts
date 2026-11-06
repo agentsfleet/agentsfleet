@@ -27,7 +27,7 @@ export const DRAFT: Draft = {
     canonical_digest: "definition-1", policy_semantics: REVIEW.policy_semantics}, review: REVIEW,
 };
 export const FLEET: Fleet = {
-  id: FLEET_ID, name: "argo", status: "active", etag: '"fleet-1"', setup_etag: '"setup-1"', setup_revision: "1",
+  id: FLEET_ID, name: "argo", status: "active", etag: '"fleet-1"', setup_etag: '"setup-1"', setup_revision: "1", setup_revision_id: REVISION_ID,
   setup: {state: "ready", checks: []}, start: {kind: "none"}, schedules: [],
 };
 export const SYNCED_SCHEDULE: Schedule = {schedule_id: SCHEDULE_ID, fleet_id: FLEET_ID, sync: SCHEDULE_SYNC.synced};

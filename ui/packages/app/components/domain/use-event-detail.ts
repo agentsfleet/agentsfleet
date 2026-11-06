@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { getFleetEventAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { EventDetail, EventLocator } from "@/lib/api/events";
+
+export type EventDetailState = {kind: "idle" | "loading" | "failed"} | {kind: "ready"; detail: EventDetail};
+type Loaded = {key: string; result: EventDetailState};
 
 /**
  * Fetch one event's bodies when its row is expanded.
@@ -17,42 +20,40 @@ import type { EventDetail, EventRow } from "@/lib/api/events";
  * (the ast-grep rule app-client-credential). That is also why this hook
  * takes no token and no caller threads one down.
  *
- * Returns `null` while in flight and on failure. Both render as "not recorded"
- * rather than an error banner — every other field in the dialog arrived with
- * the row and is already on screen, so a failed body fetch degrades one panel
- * instead of blanking the view.
+ * A chat row may hold only the address. Its loading/failure state must stay
+ * distinct from a confirmed record that happened to carry no result.
  */
-export function useEventDetail(row: EventRow | null): EventDetail | null {
-  const [detail, setDetail] = useState<EventDetail | null>(null);
+export function useEventDetail(row: EventLocator | null, refresh?: string): EventDetailState {
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
 
-  // Keyed on the identity of the open row, not the object: re-rendering the
-  // list must not re-fetch a body that is already on screen.
+  // Object churn is inert; a recorded status/update change refreshes the
+  // selected run once, without adding a polling loop.
   const workspaceId = row?.workspace_id ?? null;
   const fleetId = row?.fleet_id ?? null;
   const eventId = row?.event_id ?? null;
+  const key = JSON.stringify([workspaceId, fleetId, eventId, refresh]);
 
   useEffect(() => {
     if (workspaceId === null || fleetId === null || eventId === null) {
-      setDetail(null);
+      setLoaded(null);
       return;
     }
     // An AbortController rather than a `let cancelled` flag: the guard has to
     // survive an await, and `signal.aborted` reads as a live value where a
     // captured boolean reads to static analysis as never changing.
     const inflight = new AbortController();
-    // Cleared before the request so reopening on a different row never shows
-    // the previous row's answer while this one is still in flight.
-    setDetail(null);
+    setLoaded({key, result: {kind: "loading"}});
     void (async () => {
       const result = await getFleetEventAction(workspaceId, fleetId, eventId)
         .catch(() => ({ ok: false as const, error: "unreachable" }));
       if (inflight.signal.aborted) return;
-      setDetail(result.ok ? result.data : null);
+      setLoaded({key, result: result.ok ? {kind: "ready", detail: result.data} : {kind: "failed"}});
     })();
     return () => {
       inflight.abort();
     };
-  }, [workspaceId, fleetId, eventId]);
+  }, [workspaceId, fleetId, eventId, key]);
 
-  return detail;
+  if (row === null) return {kind: "idle"};
+  return loaded?.key === key ? loaded.result : {kind: "loading"};
 }

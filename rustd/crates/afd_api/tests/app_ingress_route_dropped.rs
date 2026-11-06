@@ -14,7 +14,8 @@
 )]
 
 use crate::app_ingress_route::{
-    APP_RUN_FAILURE, APP_SECRET, EVENT_WORKFLOW_RUN, SHIPPED, deliver, deployment, subscriber,
+    APP_RUN_FAILURE, APP_SECRET, EVENT_PULL_REQUEST, EVENT_WORKFLOW_RUN, SHIPPED, app_pull_request,
+    deliver, deployment, subscriber,
 };
 use crate::harness;
 
@@ -49,6 +50,30 @@ const EVENT_DEPLOYMENT_STATUS: &str = "deployment_status";
 
 /// The reason a delivery no rule classifies is answered with.
 const REASON_UNSUPPORTED: &str = "unsupported_event";
+
+#[tokio::test]
+async fn a_verified_workflow_completion_fails_closed_when_its_store_is_unavailable() {
+    let ingress = deployment(vec![subscriber(signed::FLEET)]);
+    let response = deliver(
+        &ingress,
+        SHIPPED,
+        EVENT_WORKFLOW_RUN,
+        APP_SECRET,
+        APP_RUN_FAILURE,
+    )
+    .await;
+    let status = response.status();
+    let document = json_body(response).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{document}");
+    assert_eq!(
+        harness::error_code(&document),
+        Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+    );
+    assert!(
+        ingress.deliveries().is_empty(),
+        "a completion must be retained before investigation fanout"
+    );
+}
 
 /// The reason a 200 carries, which is the whole answer on this surface.
 async fn dropped_for(response: axum::response::Response) -> String {
@@ -93,9 +118,9 @@ async fn a_delivery_no_fleet_subscribes_to_is_dropped() {
     let answered = deliver(
         &ingress,
         SHIPPED,
-        EVENT_WORKFLOW_RUN,
+        EVENT_PULL_REQUEST,
         APP_SECRET,
-        APP_RUN_FAILURE,
+        &app_pull_request(),
     )
     .await;
 

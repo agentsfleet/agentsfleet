@@ -123,6 +123,7 @@ impl Delivery {
 ///
 /// # Errors
 /// As [`Delivery::read`].
+#[cfg(test)]
 pub(crate) fn classify(
     policy: Policy,
     event: &str,

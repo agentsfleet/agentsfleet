@@ -65,6 +65,10 @@ pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<
             .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
             .bind(Vec::<String>::new())
             .bind(None::<&str>)
+            .bind(afd_wire::task::CAPABILITY)
+            .bind(afd_wire::task::TaskState::Ready.as_str())
+            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(afd_fleet::task::DECISION_POLICY_PATH)
             .fetch_all(&mut *connection)
             .await?;
         samples.push(started.elapsed());
@@ -124,6 +128,10 @@ pub(super) async fn postgres_at_population(
             .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
             .bind(Vec::<String>::new())
             .bind(None::<&str>)
+            .bind(afd_wire::task::CAPABILITY)
+            .bind(afd_wire::task::TaskState::Ready.as_str())
+            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(afd_fleet::task::DECISION_POLICY_PATH)
             .fetch_all(&mut *connection)
             .await?;
     if let Some(execution) = plan_time(&lines, EXECUTION_TIME) {

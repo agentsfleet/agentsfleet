@@ -254,3 +254,36 @@ fn a_fleet_without_a_reviewed_setup_is_told_to_review_it() {
     assert!(missing.is_config_permanent());
     assert!(!missing.is_datastore_unavailable());
 }
+
+#[test]
+fn external_target_overflow_preserves_refusal_and_cause() -> super::Result<()> {
+    for source in [i64::try_from(u64::MAX).err(), i32::try_from(u32::MAX).err()] {
+        let source =
+            source.ok_or_else(|| super::rejected("overflow fixture must fail conversion"))?;
+        let invalid = super::task_target_counter("repository_id")(source);
+        assert_eq!(invalid.code(), error_code::TASK_INVALID_TARGET);
+        assert_eq!(
+            invalid.detail(),
+            crate::task::TaskRefusal::InvalidTarget.detail()
+        );
+        assert!(
+            invalid
+                .source()
+                .is_some_and(<dyn std::error::Error>::is::<std::num::TryFromIntError>)
+        );
+        assert!(!invalid.is_datastore_unavailable());
+
+        let corrupt = Error::from(super::ErrorKind::TaskCounter {
+            column: "generation",
+            source,
+        });
+        assert_eq!(corrupt.code(), error_code::INTERNAL_DB_QUERY);
+        assert_eq!(corrupt.detail(), DETAIL_DATABASE_ERROR);
+        assert!(
+            corrupt
+                .source()
+                .is_some_and(<dyn std::error::Error>::is::<std::num::TryFromIntError>)
+        );
+    }
+    Ok(())
+}

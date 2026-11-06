@@ -67,7 +67,24 @@ impl Healthy {
                 Verb::AuthoringModel
                 | Verb::AuthoringActivity
                 | Verb::AuthoringRenew
-                | Verb::AuthoringReport,
+                | Verb::AuthoringReport
+                // Durable-task fixtures also supply their native receipts explicitly.
+                | Verb::TaskInputs
+                | Verb::TaskBindings
+                | Verb::TaskInputReceipt
+                | Verb::TaskDecisionReserve
+                | Verb::TaskDecisionRecord
+                | Verb::TaskEffectPublish
+                | Verb::TaskEffects
+                | Verb::TaskEffect
+                | Verb::TaskCheckpointPlan
+                | Verb::TaskCheckpointCommit
+                | Verb::TaskCheckpointPageWrite
+                | Verb::TaskCheckpointPage
+                | Verb::TaskCheckpointObjectsRegister
+                | Verb::TaskCheckpointUploads
+                | Verb::TaskCheckpointAuthorizations
+                | Verb::TaskCheckpointPin,
             ) => Value::Null,
             Some(Verb::ContextLoad | Verb::ContextCommit) => serde_json::json!({}),
             Some(Verb::Heartbeat) => self.heartbeat(),

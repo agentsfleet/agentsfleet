@@ -11,6 +11,7 @@ mod capability;
 mod context;
 mod continuation;
 mod dispatch;
+pub(crate) mod edit_intent;
 mod prepare;
 mod progress;
 mod provider;

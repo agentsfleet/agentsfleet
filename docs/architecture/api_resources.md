@@ -341,6 +341,20 @@ The capability grants no runtime tools, memory, schedules, fleet messages, or cr
 
 `Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown obligation. Unknown usage is never relabeled known by local estimates. Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon claim and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-leases).
 
+### Current task reads
+
+The existing tenant plane serves these `FleetRead` routes under `/v1/workspaces/{workspace_id}/fleets/{fleet_id}`.
+The [DT API target](durable_tasks.md#proposed-native-api) describes the remaining planned fields and mutations.
+
+| Method and suffix | Current response and behavior |
+|---|---|
+| `GET /tasks?starting_after=<cursor>&limit=20` | `{items,next_cursor}`; unfinished titles, states, versions, accepted revision identities and timestamps. Maximum page size 100; newest `(created_at,id)` first. Owned empty fleets return 200; missing or foreign scoped fleets return 404. |
+| `GET /tasks/{task_id}` | `{title,resource_version,setup_revision,context}`; accepted objective, questions, cumulative usage, limits and cursors. Strong ETag supports `If-None-Match` and empty 304; completed tasks remain readable. |
+
+Collection responses use `private, no-store`; detail responses use `private, no-cache` with revalidation.
+Dashboard proxies retain the resource tag and apply `no-store` without exposing bearer credentials to browser code.
+Native reads use one five-second deadline, including acquisition and commit, plus transaction-local three-second SQL cancellation.
+
 ## Errors
 
 Routine dependency/auth failures and the named specific failure symbols apply to each table row. All failures use existing `application/problem+json`: `{docs_uri,title,detail,error_code,request_id,user_message?}`. Existing extensions `current_state` on409 and `etag` on412 come from `rustd/crates/afd_http/src/envelope.rs:192–213`. Add `review_digest` only on a stale-review409. Do not invent nested errors or expose operator hints.

@@ -83,6 +83,7 @@ pub(super) async fn open_runtime(
         signup_writeback,
         sessions,
         platform_admin_workspace: config.platform_admin_workspace().cloned(),
+        checkpoint_storage: config.checkpoint_storage().cloned(),
         identity_webhook_secret: identity_webhook_secret(config),
         broker,
         live,

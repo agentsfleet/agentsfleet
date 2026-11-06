@@ -1,5 +1,6 @@
 //! Durable receipts join the fleet history without admitting or executing work.
 
+use afd_api_wire::activity::FleetActivity;
 use afd_core::{event::status::RECORDED, id::Uuid7};
 use afd_dragonfly::FleetStreams;
 use futures_util::StreamExt as _;
@@ -50,37 +51,6 @@ pub async fn commit(
     Ok(())
 }
 
-/// Metadata permitted in history. No credential body or instruction text fits.
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Activity<'a> {
-    /// An immutable setup revision committed.
-    SetupSaved {
-        /// The saved decimal revision.
-        revision: &'a str,
-        /// Optional display provenance; never a permission or identity claim.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        origin: Option<&'a str>,
-    },
-    /// The setup's checked activation committed.
-    SetupReady {
-        /// The checked decimal revision.
-        revision: &'a str,
-    },
-    /// Access was stored; this does not claim the provider accepted it.
-    AccessSaved {
-        /// The required credential name, never its value.
-        service: &'a str,
-    },
-    /// The fleet's two workspace memory permissions changed.
-    MemorySharingChanged {
-        /// Whether the fleet can read workspace memories.
-        read: bool,
-        /// Whether it can publish workspace memories.
-        publish: bool,
-    },
-}
-
 /// Adds a receipt on the mutation's connection, never on a queue.
 ///
 /// `identity` is stable for the mutation, so a repeated write converges.
@@ -93,7 +63,7 @@ pub async fn record_on(
     workspace: &Uuid7,
     fleet: &Uuid7,
     identity: &str,
-    activity: Activity<'_>,
+    activity: FleetActivity<'_>,
 ) -> Result<Announcement, sqlx::Error> {
     let (inserted, _id): (bool, String) = sqlx::query_as(crate::sql::INSERT_FLEET_EVENT)
         .bind(fleet.as_str())
@@ -130,14 +100,16 @@ pub async fn record_access_on(
         .bind(ACTOR_ACTIVITY)
         .bind(EVENT_TYPE_ACTIVITY)
         .bind(RECORDED)
-        .bind(sqlx::types::Json(Activity::AccessSaved { service }))
+        .bind(sqlx::types::Json(FleetActivity::AccessSaved {
+            service: service.into(),
+        }))
         .fetch_all(connection)
         .await?;
     Ok(Announcement { fleets })
 }
 
-/// Open tails recover committed history through their existing catch-up path.
-async fn announce(streams: &FleetStreams, fleet: &str) {
+/// Notify open tails after durable history commits; failure preserves reload.
+pub async fn announce(streams: &FleetStreams, fleet: &str) {
     streams
         .publish_frame(fleet, &Notice::CatchingUp { dropped: 0 })
         .await;
