@@ -17,7 +17,7 @@ use crate::{Ingress, sql};
 mod admit;
 mod message;
 mod notice;
-mod resident;
+mod notice_owner;
 mod route;
 
 pub use self::admit::MentionAdmission;
@@ -25,12 +25,9 @@ pub use self::message::{
     Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
 };
 pub use self::notice::{NoticeOwed, notice_key, notice_text};
-pub use self::resident::{BoundResident, KIND_RESIDENT, Named, Resident};
+pub use self::notice_owner::{KIND_NOTICE_OWNER, NoticeOwner};
 pub use self::route::{Notice, Route, route};
-/// The channel type every mention method takes, and the name a resident is
-/// found by, re-exported so a caller of this module needs no dependency on the
-/// document crate for them.
-pub use afd_fleet_runtime::FleetName;
+/// The channel type used by mention routing and notice ownership.
 pub use afd_fleet_runtime::config::ChannelId;
 
 /// Statement name, for the context a query failure carries.

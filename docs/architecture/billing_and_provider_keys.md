@@ -223,7 +223,7 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
 
 The native decision allocator assigns this range before dispatch in `rustd/crates/afd_fleet/src/task/decision/intent.rs`.
 Lease-scoped reservation and PATCH routes fund one send and record its receipt under the original payer and frozen prices.
-Automatic runner intent and goal integration remains incomplete; the [native decision billing design](goal_evaluation.md#native-billing-integration) records that boundary.
+The runner reserves and records intent and goal calls through these routes; the [native decision billing design](goal_evaluation.md#native-billing-integration) describes their accounting.
 
 | Step | What moves | Where |
 |---|---|---|
@@ -267,7 +267,8 @@ Its recovery counters count settlement groups, so one lease can contribute sever
 This avoids cloned map keys; no measured latency or allocation result follows from that source change.
 The [decision design](goal_evaluation.md#native-billing-integration) describes native call reservations, frozen rates and receipt accounting.
 
-Renew/report receipt integration remains incomplete.
+Renew/report usage records fresh coding deltas, and native report settlement commits the task outcome with its lease report.
+Unresolved physical decision calls retain their reserved funds. Live end-to-end verification remains pending.
 
 ## 4. The run charge
 

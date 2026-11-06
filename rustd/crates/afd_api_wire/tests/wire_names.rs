@@ -29,7 +29,7 @@ fn runner_item() -> Value {
         "labels": [],
         "last_seen_at": RAISED,
         "created_at": RAISED,
-        "assigned_policy": {
+        "assigned_policy": { "durable_tasks_enabled": true,
             "sandbox_tier": "dev_none", "network_policy": "allow_all",
             "registry_allowlist": [], "worker_count": 1, "extra_binds": []
         },

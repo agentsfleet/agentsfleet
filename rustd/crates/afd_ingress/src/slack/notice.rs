@@ -3,7 +3,7 @@
 //!
 //! No model runs. Each kind is fixed text naming the fleets it is about and the
 //! next step a person can take. It is owed through the ledger an answer is owed
-//! through (`afd_outbound::obligation`), by the channel's resident, under a key
+//! through (`afd_outbound::obligation`), by a stable channel notice owner, under a key
 //! derived from the chat event's own id, so a retried delivery owes it once.
 
 use afd_connector::Provider;
@@ -16,7 +16,7 @@ use crate::Ingress;
 use crate::error::Result;
 
 /// What a notice's obligation key ends in, so it can never share a key with an
-/// answer the same resident owes for an admitted event.
+/// answer the same owner owes for an admitted event.
 const KEY_SUFFIX: &str = "notice";
 
 /// What separates the fleet names a notice lists.
@@ -69,8 +69,8 @@ fn names(fleets: &[&Subscriber]) -> String {
 /// One notice, as the ledger owes it.
 #[derive(Debug, Clone, Copy)]
 pub struct NoticeOwed<'a> {
-    /// The channel's resident, which owns the notice.
-    pub resident: &'a Uuid7,
+    /// The stable channel carrier, which owns only this notice.
+    pub owner: &'a Uuid7,
     /// The workspace whose grant posts it.
     pub workspace: &'a Uuid7,
     /// The connector that carries it back.
@@ -100,7 +100,7 @@ impl Ingress {
             connection.as_mut(),
             row.as_str(),
             Delivery {
-                fleet_id: owed.resident.as_str(),
+                fleet_id: owed.owner.as_str(),
                 workspace_id: owed.workspace.as_str(),
                 provider: owed.provider,
                 destination: owed.address,

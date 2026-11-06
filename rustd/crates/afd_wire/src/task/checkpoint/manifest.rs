@@ -35,6 +35,7 @@ pub struct CheckpointFile {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CheckpointEntry {
     /// Ordinary file; special files are never captured.
+    #[cfg_attr(feature = "openapi", schema(value_type = TaggedCheckpointFile))]
     File(#[garde(dive)] CheckpointFile),
     /// An explicit directory, including empty directories.
     Directory {
@@ -58,6 +59,39 @@ pub enum CheckpointEntry {
         path: String,
     },
 }
+
+/// The tagged view retains the derived file fields and its closed-object rule.
+/// Utoipa composes tuple variants with `allOf`, so the file member must also
+/// recognize the discriminator that serde consumes before decoding the file.
+#[cfg(feature = "openapi")]
+#[derive(Debug)]
+struct TaggedCheckpointFile;
+
+#[cfg(feature = "openapi")]
+impl utoipa::PartialSchema for TaggedCheckpointFile {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::openapi::{
+            RefOr,
+            schema::{ObjectBuilder, Schema, Type},
+        };
+
+        let mut schema = <CheckpointFile as utoipa::PartialSchema>::schema();
+        if let RefOr::T(Schema::Object(object)) = &mut schema {
+            object.properties.insert(
+                "kind".to_owned(),
+                ObjectBuilder::new()
+                    .schema_type(Type::String)
+                    .enum_values(Some(["file"]))
+                    .into(),
+            );
+            object.required.push("kind".to_owned());
+        }
+        schema
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::ToSchema for TaggedCheckpointFile {}
 
 impl CheckpointEntry {
     /// Common path for globally ordered native validation.

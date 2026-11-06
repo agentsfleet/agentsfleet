@@ -232,6 +232,7 @@ mod tests {
 
     fn policy() -> afd_wire::runner::AssignedPolicy<'static> {
         afd_wire::runner::AssignedPolicy {
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: afd_wire::runner::SandboxTier::DevNone,
             network_policy: afd_wire::runner::NetworkPolicy::AllowAll,
@@ -309,7 +310,7 @@ mod tests {
     /// misspelled key inside it is still refused, so no policy lands half-read.
     #[test]
     fn a_misspelled_key_inside_the_assigned_policy_is_refused() {
-        let body = br#"{"action":null,"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1,"extra_binds":[],"wroker_count":4}}"#;
+        let body = br#"{"action":null,"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":1,"extra_binds":[],"wroker_count":4,"durable_tasks_enabled":true}}"#;
 
         let refused = afd_http::handler::read_strict_body::<RunnerAdminPatchRequest<'_>>(body)
             .err()

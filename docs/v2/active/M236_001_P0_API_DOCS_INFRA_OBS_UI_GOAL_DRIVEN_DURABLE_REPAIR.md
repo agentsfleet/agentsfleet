@@ -16,6 +16,53 @@
 **Provenance:** agent-drafted from Indy's decisions; historical scenario reviews plus a fresh-context Astra design review and verified correction pass
 **Canonical architecture:** `docs/architecture/scenarios/durable-repair.md` owns the combined outcome; topic pages retain their existing mechanisms
 **Additional authorized work:** [Runner deadline correction](M236_002_P1_INFRA_OBS_RUNNER_ENDING_DEADLINE.md), [schedule activity](M236_003_P1_API_DOCS_OBS_UI_FLEET_SCHEDULE_ACTIVITY.md) and the [pending signal audit](../pending/M240_001_P1_INFRA_OBS_EXECUTOR_SIGNAL_ISOLATION_AUDIT.md) stay in PR #803, per Indy's “no new PR”.
+## Nov 06 completion direction
+
+Indy: "I want this to be turned on, not guarded behind a feature flag"
+and "and proceed to finish the PR and move 236 to DONE".
+Indy clarified that the runner reads its saved UI configuration: "By default it must be turned on."
+Save **Durable tasks**, On by default, through existing runner configuration and assignment.
+The saved policy and default-On UI are implemented; full verification remains pending.
+Keep older-worker capability checks, lease and generation checks, and all ownership/accounting guards.
+This supersedes the earlier disabled-runner direction; verification and acceptance remain required.
+
+Indy: "I dont want them at the top" and "if they are PRs why no have them on the right?"
+Place work and PR links in a simple right sidebar, with a mobile drawer.
+Keep inline recorded activity minimal; defer a new local-diff viewer and its APIs.
+An ordinary chat message remains the input for questions, directions and new work.
+Do not require work selection, a steering mode or task identifiers.
+Incoming progress must preserve the draft and reading position while composing or reading earlier messages.
+Indy requested sidebar sections **Changes**, **Outputs**, **Durable tasks** and **Sources**, using Codex as a reference rather than an exact replica.
+Show current configured repository scope under Sources, not every connected repository.
+The queued-message menu remains a presentation proposal until native edit/cancel support exists.
+Existing natural-language message interpretation remains the default; CLI steer syntax and core acceptance criteria stay unchanged.
+
+Indy approved the polished four-section presentation on Nov 06: "Okay approve".
+Use standard Lucide PR/file/source icons, clickable native PR titles and numbers, one progress line, and details behind expansion.
+PR numbers use `GitPullRequest`; the Durable tasks section uses `ListTodo`.
+Remove demo controls and explanatory panel paragraphs; preserve the conversation/composer structure.
+This approves implementation of that presentation with existing reads and streaming; accepted-message edit/cancel remains outside the implemented menu.
+
+Current main `14539a73e8f3cb8d67c1e7e731b089c66f10e2c1` is integrated in `9d28968d4`, after the earlier `7a118a2b9` integration in `d4d264288`.
+The merge retains main's billing relay and M236's decision, task and recovery guards.
+Main owns shipped slots 2210 and 2220; unmerged M236 slots now span 2230–2680, with runner configuration at 2690.
+
+Indy requested one scenario document, "Admin SQL - fix that", and "Fix this as needed" on Nov 06.
+The canonical repair scenario now includes the three-task walkthrough; the separate walkthrough page is removed.
+
+Admin default activation/deactivation now shares the catalogue parent lock.
+The existing admin model endpoint gains version-bound keyset pages, with a default of 50 and maximum of 100.
+Browser and local-bootstrap consumers follow those pages. All 12 native admin scenarios passed, including concurrent defaults and 4,096-row generic prepared query plans.
+
+Indy reiterated that compiled resident prompts and hardcoded setup-authoring behaviour must be removed.
+Rust sources now contain zero Markdown files; setup requests carry user conversation and native tool schemas without a baked-in role.
+Unconfigured Slack channels create no fleet or model call.
+
+Configured fleets retain ordinary routing; deterministic notices keep a stable, workspace-scoped owner through the existing channel binding and outbound ledger.
+Stored fleets and user-authored revisions remain unchanged; no empty-instruction Save bypass or new delivery path is introduced.
+
+Generic compaction, typed intent and factual-evidence protocol instructions remain, alongside tool/schema descriptions; this is not a claim of zero fixed model-facing text.
+
 ## Nov 05 continuation implementation
 
 The remaining presentation and byte-progress source is implemented; source review
@@ -37,7 +84,7 @@ then merge only with green exact-head CI and all Greptile threads resolved.
 **Design flow:** message admission → configured intent decision → native DT creation/association → action/evidence → goal assessment → native transition.
 
 Indy approved these mechanisms for implementation on November 3, 2026.
-Native ownership, task reads and decision accounting are implemented; automatic work, effects, waits and R2 recovery remain pending.
+Native ownership, task reads, decisions, automatic work, effects, waits and R2 recovery are implemented in source; full verification and live acceptance remain pending.
 Indy selected Durable Tasks (DTs), configurable decisions per runner, initial TypeSafe `jev-latest` and Cloudflare R2. Concrete interfaces and default limits are defined below and in their owning architecture pages.
 Runtime implementation is authorized; live activation requires the declared configuration and proof. Production launch and a new Firecracker backend are excluded.
 
@@ -74,7 +121,6 @@ The extra-high Astra review and correction check are recorded in Discovery; impl
 8. `docs/reviews/space-sandbox/next-specs-handoff.md` — accepted direction and work order; implementation remains pending.
 9. `docs/architecture/durable_tasks.md`, `docs/architecture/goal_evaluation.md` — lifecycle and configurable decision providers.
 10. `https://docs.typesafe.ai/llms.txt` — discover provider API, primitives, limits and current model meanings.
-11. `docs/architecture/scenarios/durable-tasks-three-prs.md` — three-task caller/steer/trigger walkthrough with existing and proposed code boundaries.
 
 ## Files Changed (blast radius)
 
@@ -83,19 +129,21 @@ The following module boundaries and interface definitions scope implementation; 
 Topic mechanisms are linked instead of copied into additional scenario documents.
 | Files | Action | Role |
 | --- | --- | --- |
-| `schema/{2190–2640}_*.sql` (explicit registered slots only); `rustd/crates/afd_db/src/{migration.rs,test_util/}`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model selection, retained decision/effect and checkpoint retry receipts, private storage/quota/pins, test cleanup ownership and explicit migration/schema/role inventories, signed completion/wait ownership and task-aware lease/report cursors |
+| `schema/{2230–2690}_*.sql` (explicit registered slots only); `rustd/crates/afd_db/src/{migration.rs,test_util/}`, `tests/{integration_migrate/,integration_admissions_queue.rs}`; `docs/architecture/postgres_schemas.md` | CREATE / EDIT | task ownership, runner model/configuration selection, retained decision/effect and checkpoint retry receipts, private storage/quota/pins, test cleanup ownership and explicit migration/schema/role inventories, signed completion/wait ownership and task-aware lease/report cursors |
 | `rustd/crates/afd_fleet/src/{task/,error/}`; `lease/{claim,issue,reclaim,finalize,settle,commit,context,decision,coverage,billing_sweep,holds,money,installed,mod}.rs`, `lease/{report,renew,usage,answer,deliver,assign,pull,mint}/`, `lease/sql/`; tests | CREATE / EDIT | guarded DT ownership, lifecycle scenarios with gated accepted-plan fixtures, bounded reads, effects, snapshots and settlement integration |
 | `rustd/crates/afd_bench/src/lane/cardinality/probe.rs` | EDIT | keep the two existing candidate-query measurements compatible with the changed production parameter list; no benchmark scope or gate changes |
 | `rustd/crates/afd_wire/src/{decision,lease,policy,report,task}/`; matching wire tests | EDIT | explicit task generation, goal revision and decision/evidence boundaries |
 | `rustd/crates/afr_agent/src/{prompt,loop}/`; matching agent tests | EDIT | current intent, consumed human input and goal-aware action/decision loop |
 | `rustd/crates/afr_agent/src/decision/{mod,questions,routing,goal}.rs`; `afr_providers/src/{decision/,lib.rs,error/,retry/}`, `afr_providers/tests/decisions/`; `afd_fleet_runtime/src/{config/,definition/}`; `afd_authoring/src/model/{provider/,edit_intent/,dispatch/}`; authoring message, billing, candidate owners and daemon wiring; existing authoring review/Apply owners and tests | CREATE / EDIT | one typed decision trait/client; customer-owned instructions/questions; user-authored setup and native edit-intent checks; linkable starters reuse immutable Library copies and existing setup chat |
 | `rustd/crates/afd_gate/src/policy/`; `rustd/crates/afd_credential/src/credential/github/`; matching policy tests | EDIT | reviewed task/existing-PR authority and selected publication precondition |
-| `rustd/crates/afr_supervisor/src/{holds,lease_loop}/`; matching recovery tests | EDIT | compatible task-bound workspace recovery and effect reconciliation |
+| `rustd/crates/afr_supervisor/src/{holds,lease_loop,capability,heartbeat}/`; matching recovery tests | EDIT | compatible task-bound workspace recovery, effect reconciliation and automatic durable-task capability advertisement |
 | `rustd/crates/afd_api_ingress/{Cargo.toml,src/handler/webhook/{app_route.rs,github_route.rs,github/}}`; `afd_ingress/src/app/`; `afd_cron/src/fire/`; `agentsfleetd/src/sweepers/`, `serve/{mod,runtime}.rs`, `preflight/` and supervisor inventory/tests | EDIT / CREATE | signed completion matching, existing scheduler observation, validated optional private R2 configuration and supervised bounded task/storage maintenance; financial expiry shares the billing loop |
 | `rustd/crates/afd_api_tenant/src/handler/{fleet/tasks,stream}/`; `afd_api_runner/src/{handler/runner/{task_*,decisions.rs,mod.rs},lib.rs,openapi.rs}`; `afd_api_wire/src/fleet/`; `afd_wire/src/{lease,report,paths,usage}`; `afd_http/src/{route/,envelope.rs,services/contract.rs}`; `afd_api/tests/{route_*,fleet_tasks.rs,openapi_stream_frames.rs,integration_fleet_tasks/,harness/,runner_plane/,runner_plane_suite.rs,tenant_plane_suite.rs}`; `agentsfleetd/src/plane/{mod,services,config}.rs`; `public/openapi.json` | CREATE / EDIT / GENERATE | authenticated task/lease APIs and capability negotiation defined by Interfaces |
 | `package.json`, `bun.lock`, `ui/packages/{app,design-system,website}/package.json`; `ui/packages/app/components/domain/chat/{TaskPanel,TaskDetail,TaskControls,SetupQuestions,ChatThread,ChatComposerFrame,DraftConversation,UnfinishedSetups}.tsx`, `{use-task-read,chat-defaults}.ts`; `ui/packages/app/public/fleet-starters.json`; `ui/packages/app/components/{domain/SteerComposer,layout/{DraftChatList,DraftSidebarItem}}.tsx`; existing fleet thread, setup/review/history, streaming, `app/live/` and `lib/api/{tasks,decision-policy,fleet-paths,live-json-proxy}.ts`; related tests | CREATE / EDIT | retain setup/chat layout, spinner, theming/save flow; editable customer-selected starters, aligned Resume action, concise fleet-chat guidance, compact work summaries, criteria/revisions and recovery; omit routing rules from setup display |
 | `docs/architecture/` owning topics; `docs/AUTH.md`; this spec and eventual done destination; `docs/DESIGN_SYSTEM.md` | EDIT / MOVE | architecture, credential custody and actual final evidence without duplicate owners |
 | `rustd/crates/afd_outbound/src/` | REUSE | no default edits; DT records correlate existing obligations and Slack markers |
+| `rustd/crates/afd_ingress/src/{slack/,sql/}`; `afd_api_ingress/src/handler/mention/`; `afd_http/src/services/ingress.rs`; matching native/served tests | EDIT / DELETE | remove compiled resident instructions and automatic fallback; preserve configured Slack routing and stable workspace-scoped notice ownership through the existing outbound ledger |
+| `rustd/crates/afd_admin/{Cargo.toml,src/,tests/}`; `afd_api_operator/src/handler/admin/models/`; `afd_api_wire/src/admin_catalogue.rs`; matching served/wire tests; `ui/packages/app/lib/api/admin_model_library{,.test}.ts`; `deploy/local/bootstrap.ts` | EDIT / CREATE | serialize platform defaults before provider/model locks; bound admin catalogue reads with version-bound keyset pages and complete client walks; verify real seeded query plans |
 | `tests/fixtures/fleets/goal-repair/{cases,decision-policy}.json`; `playbooks/operations/acceptance/baselines/M236_001-autonomy.md`; `scripts/toolbox/build.sh`, `rustd/crates/afr_sandbox/examples/kernel_lane/trials.rs`; `rustd/crates/afd_api/{build.rs,src/lib.rs,tests/{build_stamp.rs,http_substrate_suite.rs}}`; `make/test-integration-rustd.mk`, `codecov.yml`, `.github/workflows/{test-integration-rustd,test-unit-rustd}.yml` | CREATE / EDIT | shared questions, evidence, build diagnostics/cache correctness, the 99.51% Rust patch floor and approved CI worker resource bounds |
 | `docs/architecture/scenarios/durable-repair.md`; scenario index | EDIT | acceptance results and current/proposed distinction |
 | `docs/architecture/{durable_tasks,goal_evaluation}.md` | CREATE | lifecycle and decision-provider owners |
@@ -106,7 +154,7 @@ Topic mechanisms are linked instead of copied into additional scenario documents
 | `rustd/{Cargo.toml,Cargo.lock}`; `rustd/crates/afd_crypto/src/{lib.rs,aad.rs,checkpoint.rs,checkpoint_digest.rs,envelope.rs,entropy.rs}` and tests; affected Cargo manifests | CREATE / EDIT | latest stable direct dependencies, domain-separated object encryption and guarded key buffers using existing AES-256-GCM; preserve vault bytes; no TLS-policy changes |
 | `rustd/crates/afd_billing/{Cargo.toml,src/}`; `afd_core/src/catalogue.rs`; `afd_wire/src/usage/`; `afd_fleet/src/lease/usage/`; tests | EDIT | frozen decision-protocol price schedules and one call-linked billing line across receipt/renew/report |
 | `rustd/crates/afd_core/src/{error_code,problem}/`; `afd_validate/{Cargo.toml,src/{lib.rs,serialized.rs}}`; registry, problem and bounded-serialization tests | CREATE / EDIT | UZ-DT errors and one allocation-free JSON size proof in the existing validation leaf, shared by decision config and wire |
-| `docs/architecture/scenarios/durable-tasks-three-prs.md` | CREATE | three-picture implementation-readiness walkthrough requested by Indy |
+| `docs/architecture/scenarios/durable-tasks-three-prs.md`, `slack-channel-resident.md` | DELETE | consolidate the worked example into the canonical repair scenario and retire removed automatic-resident behaviour |
 | `rustd/crates/afd_wire/src/{task/,activity/,redact.rs}`; `afd_api_wire/src/tail/`; `afd_observability/src/{producers,metrics,semconv}/` and capture tests; `docs/metrics{,.runner}.census.tsv`; `afr_telemetry/src/` and tests; CLI/UI stream decoders and tests | CREATE / EDIT | typed task context, credential-safe diagnostics, frozen decisions, fair financial recovery, bounded attempt/age metrics and transfer readback |
 | `rustd/crates/afr_tools/src/verbs/`; `afr_supervisor/src/{verbs/,client/{lease_verbs/,task/,mod.rs,verb.rs}}`; matching tests | EDIT / CREATE | extend existing native LeaseVerbs for typed task calls and the existing closed runner transport vocabulary; keep physical decision keys and checkpoint transfers outside model/sandbox custody |
 | `rustd/crates/afd_runner/{Cargo.toml,src/{store,edit,record,decision,decision_profile}.rs,src/{capacity,policy,heartbeat,view,validate,error,sql}/,tests/}`; `afd_wire/src/runner/`; `afd_api_operator/src/handler/operator/`; `afd_api_wire/src/admin/`; runner edit/catalogue UI codecs and tests | EDIT / CREATE | reviewed decision-model selection through existing enrolment/edit/heartbeat, native catalogue checks and frozen lease profile |
@@ -116,7 +164,7 @@ Continuation source additions remain within the approved implementation: `afr_ag
 root publication/evidence helpers, `afr_supervisor/src/recovery/` and `report_spool/decision/`,
 `afd_connector` subject-checked person linkage, slot 2610, and slot 2620's bounded event activity.
 Matching event-detail readers, wire decoders, CLI/chat presentation and adversarial fixtures share those owners.
-Kishore's latest instruction pauses every gate until the implementation report and explicit signoff; do not merge.
+Kishore authorizes gates and completion on the existing PR, with merge conditional on green exact-head CI and all Greptile threads resolved.
 
 ## Applicable Rules
 
@@ -286,8 +334,10 @@ A new Firecracker backend remains separate from proving these task outcomes on t
 
 ### §6 — Present progress and prove the Grafana/scheduler outcome
 
-Add compact Current work above the shared fleet-chat composer with DT title, state, next dependency and confirmed result links.
-Expand local/published files, checks, attempts, subagents and evidence; subagents remain helpers within work.
+Place Current work beside the shared fleet chat, with title, recorded action, dependency and confirmed result links.
+Use a mobile drawer; opening details never changes the message's meaning or draft.
+Keep recorded tools and commands inline and expandable; defer the new local-diff viewer and additional diff APIs.
+Expand saved publication, checks, attempts and evidence; subagents remain helpers within work.
 Preserve composer access, selected reading position and confirmed progress across recovery.
 Show the selected provider/model during routing and goal activity and transfer preparation/upload/verification stages in both CLI and browser, with bounded native progress events.
 Chat and CLI must show a Codex-style activity timeline: concise progress explanations, current tools and commands, bounded output, file diffs, check results, exact-head publication, waits and checkpoint capture/restore.
@@ -457,7 +507,7 @@ M224 closure and Orly 0.28 cleanup keep their separate owners.
 6. **What we do NOT build** — Automatic production actions or a second independent PR writer.
 7. **Fit with existing features** — Reuses setup revisions, compaction and grants without treating memory as authority.
 8. **Surface order** — Shared native task semantics, then existing chat/Slack surfaces; no separate CLI engine.
-9. **Dashboard restraint** — Preserve the approved status pill and compact inline work rows above the composer. Use bundled fonts, current spacing/colors, 14px chat, 13px rows and 12px metadata.
+9. **Dashboard restraint** — Use the Nov 06 right-sidebar direction with a mobile drawer and ordinary composer. Preserve bundled fonts, spacing/colors and 14px chat.
 10. **Confused-user next step** — Show the missing evidence, permission or decision and the action needed to resume.
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -485,6 +535,7 @@ A backend rewrite cannot supply task authority; neither is a substitute for this
 > Owner (Indy, Nov 01, 2026, time not recorded): "So i assume in 1 spect all the above + the goal driven JEV based autonomous agent will exists?" — one unified scope selected; writing a spec does not claim implemented autonomy.
 
 ### Owner decisions from this session
+> Indy, Nov 06, 2026: "which test failed once you fix that, only rerun that since target"; "donot run all through again, that is a bunch of crap" — rerun failed local targets without restarting passing suites; final-head merge conditions remain unchanged.
 > Indy, Nov 05, 2026: "user will author"; "The initial prompt templates as i told you will be available in `Review Pull requests` when user selects that a template text will popup on the chat box." — remove compiled prompt Markdown; retain editable starters, schema descriptions and native checks. "i need the code complete first" — complete implementation before broad checks.
 > Indy, Nov 05, 2026: "Also ensure i need the activities displayed to the user in chat and cli must be like what codex app is showing me. So be elaborate."
 > Indy, Nov 05, 2026: "OKAY DO YOU WANT TO CONTEXT-SAVE SO A NEW CLOUD SESSION WITH A NEW AGENT CAN COMMENCE?" Then: "Well i want you to commit and push all the files and five me a prompt to have a new agent start from that branch?"; "undraft it. Indy knows its a draft" — publish the unfinished checkpoint on the existing branch and remove draft status; full implementation and final checks remain due.

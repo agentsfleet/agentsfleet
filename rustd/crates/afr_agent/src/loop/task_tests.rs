@@ -9,6 +9,8 @@ use afd_wire::task::*;
 use afr_tools::{LeaseVerbs, ScheduleCall, verbs::Unanswered};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+mod behavior;
+
 const SOURCE: &str = "019f0000-0000-7000-8000-000000000001";
 const PENDING: &str = "019f0000-0000-7000-8000-000000000002";
 const ITEM: &str = "019f0000-0000-7000-8000-000000000003";
@@ -149,7 +151,7 @@ fn pending_inputs() -> TaskInputsResponse<'static> {
 async fn run(
     engine: &super::Loop,
     lease: &afd_wire::lease::LeasePayload<'_>,
-    native: &Native,
+    native: &dyn LeaseVerbs,
     prepared: &PreparedTask,
 ) -> crate::Result<crate::RunOutput> {
     engine

@@ -11,14 +11,13 @@ use afd_wire::inference::ModelInference;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::types::Json;
-use sqlx::{Acquire as _, Connection as _, PgConnection};
+use sqlx::{Acquire as _, PgConnection};
 
-use crate::catalogue::{ModelRow, PriceProtocol, prices_for, replace_schedules};
+use crate::catalogue::replace_schedules;
 use crate::error::{Result, query};
 use crate::model_validation::{CurrentSettings, validate};
 use crate::sql;
 
-const CONTEXT_LIST: &str = "list admin models";
 const CONTEXT_CREATE: &str = "create admin model";
 const CONTEXT_UPDATE: &str = "update admin model";
 const CONTEXT_DELETE: &str = "delete admin model";
@@ -98,7 +97,7 @@ pub enum DeleteModel {
 /// Model catalogue repository.
 #[derive(Debug, Clone)]
 pub struct Models {
-    database: Db,
+    pub(crate) database: Db,
     entropy: Entropy,
 }
 
@@ -114,7 +113,7 @@ impl Models {
     /// # Errors
     /// Reports a query or malformed-row failure.
     pub async fn list(&self) -> Result<Vec<Model>> {
-        self.read(None).await
+        self.read(None, None).await.map(|(rows, _)| rows)
     }
 
     /// Reads at most `limit` catalogue entries and reports a clipped snapshot.
@@ -122,39 +121,10 @@ impl Models {
     /// # Errors
     /// As [`Self::list`].
     pub async fn bounded(&self, limit: u32) -> Result<(Vec<Model>, bool)> {
-        let mut rows = self.read(Some(i64::from(limit) + 1)).await?;
+        let mut rows = self.read(Some(i64::from(limit) + 1), None).await?.0;
         let clipped = rows.len() > limit as usize;
         rows.truncate(limit as usize);
         Ok((rows, clipped))
-    }
-
-    async fn read(&self, limit: Option<i64>) -> Result<Vec<Model>> {
-        let mut connection = self.database.acquire().await?;
-        let mut transaction = connection
-            .as_mut()
-            .begin_with(sql::BEGIN_MODEL_SNAPSHOT)
-            .await
-            .map_err(query(CONTEXT_LIST))?;
-        let rows: Vec<ModelRow> = sqlx::query_as(sql::LIST_PLATFORM_MODELS)
-            .bind(limit)
-            .fetch_all(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_LIST))?;
-        let ids: Vec<&str> = rows.iter().map(|model| model.id.as_str()).collect();
-        let mut prices = prices_for(&mut *transaction, &ids, PriceProtocol::Coding)
-            .await
-            .map_err(query(CONTEXT_LIST))?;
-        let mut decision_prices = prices_for(&mut *transaction, &ids, PriceProtocol::Decision)
-            .await
-            .map_err(query(CONTEXT_LIST))?;
-        transaction.commit().await.map_err(query(CONTEXT_LIST))?;
-        rows.into_iter()
-            .map(|model| {
-                let schedule = prices.take(&model.id);
-                let decisions = decision_prices.take(&model.id);
-                model.parse(schedule, decisions)
-            })
-            .collect()
     }
 
     /// Files a model and advances the catalogue version atomically.
@@ -294,6 +264,7 @@ impl Models {
 
 /// Advances the catalogue version, taking the row lock that serializes edits.
 async fn bump(connection: &mut PgConnection, context: &'static str) -> Result<()> {
+    crate::bounds::apply(connection, context).await?;
     sqlx::query(sql::BUMP_CATALOGUE_VERSION)
         .execute(connection)
         .await

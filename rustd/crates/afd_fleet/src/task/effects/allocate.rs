@@ -146,6 +146,12 @@ async fn publication_context(
     owned: &execution::Owned,
     input: &TaskEffectInput,
 ) -> Result<PublicationContext> {
+    if matches!(
+        owned.snapshot.context.target,
+        afd_wire::task::TaskTarget::ApiOnly
+    ) {
+        return Err(TaskRefusal::InvalidTarget.into());
+    }
     let target: PublicationContext = sqlx::query_as(include_str!("sql/target.sql"))
         .bind(&input.task.task_id)
         .bind(&input.source_item_id)

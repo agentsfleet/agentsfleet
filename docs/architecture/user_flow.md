@@ -33,7 +33,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Model identity | selected at lease time | the revision's `runtime_model_ref` resolves to a credentialed saved model; authored model text cannot replace it | §8.7 |
 | Context limits | saved physical window and separate operating cap | each lease reads the saved model window; an absent or zero operating cap inherits it, without a provider lookup | §8.7 |
 | Conversation compaction | Defaults to 90 percent of the selected physical window | An authored operating threshold or output headroom can trigger earlier; valid checkpoints let the same run continue with tools. | §8.7 |
-| Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended; shipped by M206_002 | §8.8 |
+| Slack surface | Configured fleet routing | Only configured Addressed/Sole fleets receive admissions; unconfigured channels return `channel_not_configured`. | §8.8 |
 
 ## Traps
 
@@ -48,7 +48,7 @@ Each trap is enforced in its owner section; this list is the index.
 - The browser never automatically repeats a failed workspace POST (§8.4).
 - Readiness never blocks Save; a fleet short of a credential, grant, or funds waits in `installing` (§8.2.2).
 - Instructions are prose and grant nothing; capability comes only from the reviewed `config` and approved grants (§8.1).
-- The Rung 0 Slack bot never acts unattended; unattended action is Rung 1, a separate spec (§8.8).
+- A Slack mention creates no default fleet and grants no unattended work authority (§8.8).
 
 ## Topology
 
@@ -310,9 +310,12 @@ The lease reads saved catalogue metadata instead of querying the inference provi
 
 **Dashboard equivalent — the Models page (`/w/{workspace_id}/settings/models`).** A browser user can use the platform default or connect a provider through the owner registry. The draft's model picker lists eligible configured models and selects a default. The platform administrator manages the shared catalogue and default; users manage their own registrations and credentials. Saved credentials are never returned to the browser. The former `/credentials` page remains removed; custom secrets live on `/secrets`.
 
-## §8.8 Slack as a resident surface (Rung 0) — M106
+## §8.8 Slack mentions and configured fleets
 
-> **Status.** Shipped in `agentsfleetd` by M206_002, which also adds fleets that subscribe to one channel by its ID; [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) walks the zero-, one- and several-fleet cases.
+A workspace administrator connects Slack, then a member reviews and saves the fleet's channel subscription.
+Only a configured addressed fleet or sole eligible subscriber receives a mention admission.
+An unconfigured channel returns `channel_not_configured` without a model call or fleet creation.
 
-After a workspace admin connects Slack once, an `@mention` lands as one `slack_mention` admission and routes to a fleet subscribed to that channel, or else to the channel's resident fleet ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"; channel memory: [`memory.md`](./memory.md) §"4. The M106 channel pattern").
-The bot answers on mention and never acts unattended; acting unattended with approval is Rung 1 ([`high_level.md`](./high_level.md) §"5.2 Slack-resident channel bot — the on-ramp (M106)").
+[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns name matching, notice-only channel bindings and current workspace checks.
+The configured fleet's tools, grants and accepted task determine its permitted work.
+Historical stored fleets remain unchanged and supply no fallback model route.

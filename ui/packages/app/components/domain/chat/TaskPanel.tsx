@@ -1,52 +1,80 @@
 "use client";
 
-import { useCallback } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, SignalSpinner } from "@agentsfleet/design-system";
-import { readTasks, type TaskStatus, type TaskSummary } from "@/lib/api/tasks";
-import { TaskDetail } from "./TaskDetail";
-import { confirmed, useTaskRead } from "./use-task-read";
+import { CircleDot, Clock3, ListTodo, TriangleAlert } from "lucide-react";
+import { type TaskSummary, type TaskPage } from "@/lib/api/tasks";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { taskActivityLabel } from "@/lib/task-activity";
+import { TaskDetailView } from "./TaskDetail";
+import { confirmed, type TaskResource } from "./use-task-read";
+import { type TaskDetails } from "./use-task-details";
+import { FleetTaskProvider, useFleetTaskView, type FleetTaskProps } from "./FleetTaskProvider";
+import { workActivity } from "./WorkActivity";
+import { WorkChanges, WorkOutputs, WorkSection, WorkSources } from "./WorkContextSections";
 
-type Props = {workspaceId: string; fleetId: string; subject: string | null; revision: number};
-const LABELS: Record<TaskStatus, string> = {
-  ready: "Queued", running: "In progress", waiting: "Waiting", blocked: "Needs attention",
-  paused: "Paused", done: "Completed", cancelled: "Cancelled", exhausted: "Limit reached",
-};
+const EMPTY_TASKS: readonly TaskSummary[] = [];
+const EMPTY_EVENTS: readonly FleetEvent[] = [];
 
-export function TaskPanel(props: Props) {
-  if (!props.subject) return null;
-  return <CurrentWork key={`${props.subject}:${props.workspaceId}:${props.fleetId}`} {...props} />;
+/** Standalone consumers share the same owner; the fleet chat supplies it above both surfaces. */
+export function TaskPanel(props: FleetTaskProps) {
+  const view = useFleetTaskView();
+  return view ? <CurrentWork /> : <FleetTaskProvider {...props}><CurrentWork /></FleetTaskProvider>;
 }
 
-function CurrentWork({workspaceId, fleetId, revision}: Props) {
-  const load = useCallback((signal: AbortSignal) => readTasks(workspaceId, fleetId, signal), [workspaceId, fleetId]);
-  const {resource, retry} = useTaskRead(load, revision);
+function CurrentWork() {
+  const view = useFleetTaskView();
+  if (!view?.subject) return null;
+  const {workspaceId, fleetId, sources, events = EMPTY_EVENTS, read} = view;
+  if (!read) return <section aria-label="Current work"><WorkLoading /></section>;
+  const {resource, details, retry, retryDetails} = read;
   const page = confirmed(resource);
-  if (resource.kind === "ready" && resource.value.items.length === 0) return null;
-  return <section aria-label="Current work" className="ph-no-capture ph-no-record mx-auto mb-sm min-h-0 max-h-[min(24rem,35dvh)] w-full max-w-chat overflow-y-auto overscroll-contain rounded-lg border border-border px-lg pt-md">
-    <div className="flex items-center justify-between gap-sm">
-      <h2 className="text-label font-medium">Current work{page ? ` · ${page.items.length}` : ""}</h2>
-      <Button variant="ghost" size="sm" onClick={retry} aria-label="Refresh current work">Refresh</Button>
-    </div>
-    {resource.kind === "loading" ? <output className="inline-flex items-center gap-xs pb-sm text-body-sm text-muted-foreground"><SignalSpinner aria-hidden="true" />Reading current work…</output> : null}
-    {resource.kind === "failed" ? <output className="block pb-sm text-eyebrow text-muted-foreground">{page ? "Couldn’t refresh. Last confirmed progress is shown." : "Current work is unavailable. Refresh to try again."}</output> : null}
-    {page ? <>
-      <p className="pb-sm text-eyebrow text-muted-foreground">{overview(page.items)}</p>
-      <Accordion type="single" collapsible>
-        {page.items.map(task => <AccordionItem key={task.id} value={task.id} className="border-t border-border">
-          <AccordionTrigger className="min-h-11 gap-sm py-sm text-label font-normal md:min-h-9">
-            <span className="min-w-0 flex-1 break-words">{task.title}</span>
-            <span className={task.status === "running" ? "shrink-0 text-info" : "shrink-0 text-muted-foreground"}>{LABELS[task.status]}</span>
-          </AccordionTrigger>
-          <AccordionContent className="pr-sm"><TaskDetail workspaceId={workspaceId} fleetId={fleetId} task={task} onChanged={retry} /></AccordionContent>
-        </AccordionItem>)}
-      </Accordion>
-      <p className="py-sm text-eyebrow text-muted-foreground">Expand work for its saved criteria.</p>
-    </> : null}
+  const tasks = page?.items ?? EMPTY_TASKS;
+  return <section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-lg">
+    <WorkReadStatus resource={resource} retry={retry} />
+    {page ? <><WorkSection title="Durable tasks" icon={<ListTodo size={16} aria-hidden="true" />}>
+      {!tasks.length ? <p className="text-eyebrow text-muted-foreground">No unfinished tasks.</p> : <TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={details} events={events} retry={retry} retryDetails={retryDetails} />}
+    </WorkSection><WorkOutputs details={details} /><WorkChanges events={events} /><WorkSources sources={sources} /></> : null}
   </section>;
 }
 
-function overview(tasks: readonly TaskSummary[]): string {
-  const counts = new Map<TaskStatus, number>();
-  for (const task of tasks) counts.set(task.status, (counts.get(task.status) ?? 0) + 1);
-  return [...counts].map(([state, count]) => `${count} ${LABELS[state].toLowerCase()}`).join(" · ");
+function WorkLoading() {
+  return <output className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground"><SignalSpinner aria-hidden="true" />Reading current work…</output>;
+}
+
+function WorkReadStatus({resource, retry}: {resource: TaskResource<TaskPage>; retry: () => void}) {
+  if (resource.kind === "loading") return <WorkLoading />;
+  if (resource.kind !== "failed") return null;
+  return <><output className="block text-eyebrow text-muted-foreground">{confirmed(resource) ? "Connection interrupted. Last confirmed progress is shown while we reconnect." : "Current work is unavailable."}</output><Button variant="ghost" size="sm" onClick={retry}>Retry connection</Button></>;
+}
+
+type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; events: readonly FleetEvent[]; retry: () => void; retryDetails: () => void};
+function TaskRows({workspaceId, fleetId, tasks, details, events, retry, retryDetails}: RowsProps) {
+  return <Accordion type="single" collapsible>
+    {tasks.map(task => <AccordionItem key={task.id} value={task.id} className="border-0">
+      <AccordionTrigger className="min-h-11 gap-sm py-sm text-label font-normal md:min-h-9">
+        <TaskIcon task={task} /><span className="min-w-0 flex-1 break-words">{task.title}<TaskAction task={task} details={details} events={events} /></span>
+      </AccordionTrigger>
+      <AccordionContent className="pr-sm"><TaskDetailView workspaceId={workspaceId} fleetId={fleetId} task={task} onChanged={retry}
+        resource={details.get(task.id) ?? {kind: "loading", previous: null}} retry={retryDetails} /></AccordionContent>
+    </AccordionItem>)}
+  </Accordion>;
+}
+
+function TaskAction({task, details, events}: Pick<RowsProps, "details" | "events"> & {task: TaskSummary}) {
+  const resource = details.get(task.id);
+  const detail = resource ? confirmed(resource) : null;
+  const dependency = detail?.dependency;
+  const pending = dependency?.checks.find(check => check.status !== "completed");
+  const latest = workActivity(events, task.id).items.at(-1);
+  const action = dependency?.active ? pending
+    ? `Waiting for ${pending.run_number ? `CI run #${pending.run_number}` : "recorded checks"} on ${dependency.head.slice(0, 7)}`
+    : "Recorded check wait is still active"
+    : latest ? taskActivityLabel(latest) : detail ? `Objective: ${detail.context.objective}` : "Reading saved progress…";
+  return <span className="line-clamp-2 pt-xs text-eyebrow text-muted-foreground">{action}{resource?.kind === "failed" && detail ? " · last confirmed" : ""}</span>;
+}
+
+function TaskIcon({task}: {task: TaskSummary}) {
+  if (task.status === "running") return <CircleDot size={14} className="shrink-0 text-info" aria-label="In progress" />;
+  if (task.status === "blocked" || task.status === "exhausted") return <TriangleAlert size={14} className="shrink-0 text-warning" aria-label="Needs attention" />;
+  return <Clock3 size={14} className="shrink-0 text-muted-foreground" aria-label={task.status === "waiting" ? "Waiting" : task.status === "paused" ? "Paused" : "Queued"} />;
 }

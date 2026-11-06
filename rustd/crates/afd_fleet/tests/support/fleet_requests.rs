@@ -34,6 +34,7 @@ pub(crate) fn enrolment(
         host_id: Cow::Borrowed("host-01.fixture.test"),
         assigned_policy: AssignedPolicy {
             decision_model_id: None,
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             sandbox_tier: tier,
             network_policy: network,
             registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],

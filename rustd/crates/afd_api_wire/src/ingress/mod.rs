@@ -197,7 +197,7 @@ pub struct MentionRequest<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct MentionRoute<'a> {
-    /// `addressed`, `sole` or `resident`.
+    /// `addressed` or `sole`.
     #[serde(borrow)]
     pub verdict: Cow<'a, str>,
     /// The fleet's name.

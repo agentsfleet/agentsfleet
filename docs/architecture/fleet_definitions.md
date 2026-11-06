@@ -18,7 +18,7 @@ Setup chat saves a capability ceiling and fleet revision; fleet chat receives au
 The fleet owner drafts or changes questions through setup chat or CLI, then reviews and applies a new immutable revision.
 Review and history display success criteria and their revision separately from instruction prose; task views identify their accepted criteria.
 
-Normal setup omits routing rules and model terminology. The parser and setup display are written; task integration remains pending.
+Normal setup omits routing rules and model terminology. Task inputs and goal decisions use the accepted setup revision; live acceptance remains pending.
 
 A DT freezes its accepted goal revision.
 Applying fleet setup does not silently replace an unfinished objective.

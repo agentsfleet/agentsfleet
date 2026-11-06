@@ -20,7 +20,10 @@ pub(super) fn spawn(supervisor: &mut Supervisor, tasks: Tasks) {
                     match result {
                         Ok(Ok(result)) => tracing::info!(event = "dt_storage_collection_completed", private_generations = result.owners,
                             bases = result.bases, objects = result.objects, purged = result.purged, deferred = result.deferred),
-                        Ok(Err(error)) => tracing::warn!(event = "dt_storage_collection_deferred", error_code = %error.code()),
+                        Ok(Err(error)) => {
+                            let error_code = error.code();
+                            tracing::warn!(event = "dt_storage_collection_deferred", %error_code);
+                        }
                         Err(_deadline) => tracing::warn!(event = "dt_storage_collection_deadline"),
                     }
                 }

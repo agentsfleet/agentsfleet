@@ -31,7 +31,7 @@ Fleet 1 never wakes Fleet 2 automatically. Its diagnosis may inform a later huma
 
 ## Proposed Grafana-only development extension
 
-The [durable repair scenario](durable-repair.md) defines a future development demonstration using Grafana and GitHub without Elasticsearch. It combines scheduled observation, Jev goal decisions, an authorized existing PR, later-CI continuation and worker recovery.
+The [durable repair scenario](durable-repair.md) defines the controlled development acceptance flow using Grafana and GitHub without Elasticsearch. It combines scheduled observation, Jev goal decisions, an authorized existing PR, later-CI continuation and worker recovery.
 The Elasticsearch-dependent walkthrough below remains a separate scenario, parked outside M224 closure; neither its automatic repair handoff nor post-deployment verification is implemented.
 
 ## 1. Start one incident

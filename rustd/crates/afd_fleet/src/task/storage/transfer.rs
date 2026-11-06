@@ -10,7 +10,7 @@ use object_store::{
     ObjectStore as _, ObjectStoreExt as _, PutMode, PutOptions,
     aws::AmazonS3,
     path::Path,
-    signer::{HeaderName, HeaderValue, Method, SignedUrlOptions, Signer as _},
+    signer::{Method, Signer as _},
 };
 use serde::Serialize;
 use std::{collections::BTreeMap, time::Duration};
@@ -116,28 +116,14 @@ impl StorageSession<'_> {
                     BASE64_STANDARD.encode(digest),
                 ),
             ]);
-            let mut options = SignedUrlOptions::new();
-            for (name, value) in &headers {
-                options = options.with_signed_header(
-                    HeaderName::from_bytes(name.as_bytes())
-                        .map_err(|_invalid| TaskRefusal::StorageUnavailable)?,
-                    HeaderValue::from_str(value)
-                        .map_err(|_invalid| TaskRefusal::StorageUnavailable)?,
-                );
-            }
-            let url = self
-                .backend
-                .signed_url_opts(
-                    Method::PUT,
-                    &object_path(workspace, repository, object),
-                    lifetime,
-                    &options,
-                )
-                .await?;
-            Ok(Authorization {
-                url: url.to_string(),
-                headers,
-            })
+            let url = super::signing::upload(
+                self,
+                &object_path(workspace, repository, object),
+                &headers,
+                lifetime,
+            )
+            .await?;
+            Ok(Authorization { url, headers })
         })
         .await
     }

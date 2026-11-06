@@ -22,6 +22,7 @@ import {
 } from "@agentsfleet/design-system";
 import {
   DEFAULT_ASSIGNED_NETWORK_POLICY,
+  DEFAULT_DURABLE_TASKS_ENABLED,
   DEFAULT_WORKER_COUNT,
   MAX_WORKER_COUNT,
   MIN_WORKER_COUNT,
@@ -45,6 +46,7 @@ import {
 } from "./policy-binds";
 import { PolicyBindsField } from "./PolicyBindsField";
 import { PolicyDecisionField } from "./PolicyDecisionField";
+import { PolicyDurableTasksField } from "./PolicyDurableTasksField";
 
 // The ASSIGNMENT section, shared verbatim by AddRunnerDialog (enrollment) and
 // EditPolicyDialog (re-assignment) so the two surfaces can never drift on what
@@ -76,6 +78,7 @@ const WORKERS_ASSIGNMENT_DESCRIPTION = `Concurrent workers on the host (${MIN_WO
 const WORKER_COUNT_RANGE_MESSAGE = `Between ${MIN_WORKER_COUNT} and ${MAX_WORKER_COUNT} workers`;
 
 export const policyFormSchema = z.object({
+  durable_tasks_enabled: z.boolean(),
   decision_model_id: z.union([z.uuidv7(), z.literal("")]).optional(),
   sandbox_tier: z.enum(SANDBOX_TIERS),
   network_policy: z.enum(NETWORK_POLICIES),
@@ -131,6 +134,7 @@ export const policyFormSchema = z.object({
 export type PolicyFormValues = z.infer<typeof policyFormSchema>;
 
 export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
+  durable_tasks_enabled: DEFAULT_DURABLE_TASKS_ENABLED,
   decision_model_id: "",
   sandbox_tier: DEFAULT_ASSIGNED_SANDBOX_TIER,
   network_policy: DEFAULT_ASSIGNED_NETWORK_POLICY,
@@ -148,6 +152,7 @@ export function policyFromForm(values: PolicyFormValues): {
   if (parsed.error) return { policy: null, error: parsed.error };
   return {
     policy: {
+      durable_tasks_enabled: values.durable_tasks_enabled,
       ...(values.decision_model_id ? {decision_model_id: values.decision_model_id} : {}),
       sandbox_tier: values.sandbox_tier,
       network_policy: values.network_policy,
@@ -162,6 +167,7 @@ export function policyFromForm(values: PolicyFormValues): {
 /** A stored assignment → form values, for the edit dialog's initial state. */
 export function formFromPolicy(policy: AssignedPolicy): PolicyFormValues {
   return {
+    durable_tasks_enabled: policy.durable_tasks_enabled,
     decision_model_id: policy.decision_model_id ?? "",
     sandbox_tier: policy.sandbox_tier,
     network_policy: policy.network_policy,
@@ -302,6 +308,7 @@ export function PolicyFields({
         />
       </div>
       <PolicyBindsField control={c} />
+      <PolicyDurableTasksField control={c} />
       <PolicyDecisionField control={c} />
     </>
   );

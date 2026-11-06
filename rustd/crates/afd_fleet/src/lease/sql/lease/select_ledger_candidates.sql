@@ -2,14 +2,14 @@ WITH instant AS MATERIALIZED (
   SELECT statement_timestamp() AS read_at
 ), eligible AS MATERIALIZED (
   SELECT z.id, s.last_runner_id, instant.read_at,
-         COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false) AS task_capable
+         (host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false)) AS task_capable
   FROM fleet.fleets z
   CROSS JOIN instant
   JOIN runner.runners host ON host.id = $2::uuid
   LEFT JOIN runner.fleet_slots s ON s.fleet_id = z.id
   LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
   WHERE z.status = $1
-    AND (COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false)
+    AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     AND EXISTS (SELECT 1 FROM fleet.admissions WHERE settled_at IS NULL)
     AND (s.lease_expires_at IS NULL OR s.lease_expires_at < instant.read_at)

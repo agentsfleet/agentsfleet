@@ -117,6 +117,7 @@ impl PlatformKeys {
     pub async fn set(&self, input: PlatformKeyInput) -> Result<SetPlatformKey> {
         let mut connection = self.0.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_SET))?;
+        lock_catalogue(&mut transaction, CONTEXT_SET).await?;
         let upserted: std::result::Result<Option<jiff_sqlx::Timestamp>, _> =
             sqlx::query_scalar(sql::UPSERT_PLATFORM_DEFAULT)
                 .bind(&input.provider)
@@ -154,11 +155,33 @@ impl PlatformKeys {
     /// Reports a query failure.
     pub async fn deactivate(&self, provider: &str) -> Result<bool> {
         let mut connection = self.0.acquire().await?;
-        sqlx::query(sql::DEACTIVATE_PLATFORM_DEFAULT)
-            .bind(provider)
-            .execute(&mut *connection)
+        let mut transaction = connection
+            .begin()
             .await
-            .map(|done| done.rows_affected() != 0)
-            .map_err(query(CONTEXT_DEACTIVATE))
+            .map_err(query(CONTEXT_DEACTIVATE))?;
+        lock_catalogue(&mut transaction, CONTEXT_DEACTIVATE).await?;
+        let changed = sqlx::query(sql::DEACTIVATE_PLATFORM_DEFAULT)
+            .bind(provider)
+            .execute(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_DEACTIVATE))?
+            .rows_affected()
+            != 0;
+        transaction
+            .commit()
+            .await
+            .map_err(query(CONTEXT_DEACTIVATE))?;
+        Ok(changed)
     }
+}
+
+/// Model edits already lock this singleton before model rows. Default edits
+/// follow the same order, including when neither provider row exists yet.
+async fn lock_catalogue(connection: &mut sqlx::PgConnection, context: &'static str) -> Result<()> {
+    crate::bounds::apply(connection, context).await?;
+    sqlx::query_scalar::<_, i16>(include_str!("sql/lock_catalogue.sql"))
+        .fetch_one(connection)
+        .await
+        .map_err(query(context))?;
+    Ok(())
 }

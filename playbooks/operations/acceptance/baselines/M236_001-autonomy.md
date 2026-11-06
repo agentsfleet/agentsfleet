@@ -2,6 +2,164 @@
 
 ## Current continuation point
 
+### Completion session — Nov 06, 2026
+
+Latest correction direction: Indy requested one scenario document, "Admin SQL - fix that", and "Fix this as needed".
+`durable-repair.md` now owns the complete three-task example; the separate walkthrough and obsolete automatic-resident scenario are removed.
+
+Admin defaults serialize on the existing catalogue parent row; the existing model endpoint uses version-bound keyset pages (50 default, 100 maximum).
+The browser and local bootstrap follow every page. All 12 native admin scenarios passed in the latest integration attempt, including concurrent defaults and 4,096-row prepared generic query plans.
+
+Indy reiterated removal of compiled Slack resident and setup-authoring behaviour.
+The working Rust source tree now has zero Markdown files, and setup requests have no baked-in role/preamble.
+Unconfigured Slack mentions return `channel_not_configured` without creating a fleet or starting a model.
+
+Configured fleet routing remains; fixed notices reuse a stable current-workspace channel owner and the existing outbound ledger.
+Historical fleets/revisions remain untouched. Generic compaction, typed intent and factual-evidence protocol instructions remain, alongside native tool/schema descriptions.
+Do not claim zero fixed model-facing text or a completed live acceptance from this source correction.
+
+Current verification:
+
+| Check | Current evidence |
+| --- | --- |
+| Production Rust/OpenAPI | `cargo run --locked --all-features --package agentsfleetd -- --no-banner openapi` passed; generated 123 paths, required runner-policy boolean and admin `limit`/`starting_after` query parameters |
+| TypeScript coverage | Earlier full `make test-coverage-all` passed: app 4,740, website 133, CLI 2,025 plus 16 existing live skips, design system 522; 100% thresholds retained. Admin pagination was added afterward and needs a fresh run. |
+| Browser | Full `make dry-app` reached 61 passed / one fixture assertion failure. The corrected desktop/mobile chat and native PR-badge cases then passed all 18 focused tests. These are focused results. |
+| Native integration | Latest clean `make test-integration-rustd` passed 1,258 tests and failed one checkpoint test; its fleet binary passed 324/325. Admin 12/12, Slack ingress 61/61 and served runner APIs 7/7 passed. The run stopped at fleet; later binaries were not executed. |
+| Failed-target correction | `make -f /workspace/scratch/m236-checkpoint-only.mk m236-checkpoint-only` passed the original checkpoint regression: 1 passed, zero failed, 332 filtered out; runtime 2.11 seconds after compilation. The official signer binds length, checksum and create-only headers. Signature mutation/omission, encrypted restore and private-log checks passed. The prior 324 passing fleet tests were not rerun. |
+| Source lint | A new admin plan test directly included SQL from a repository file. The test now uses the production owner's existing test-util seam. `make lint-source` passed: 44 rule tests, zero failures, source scan clean. No lint rule changed. |
+| Review | All 250 eligible prior gate hunks reviewed; no unjustified weakening found. Shutdown cancellation and relay fixture corrections were independently reread. Signer review found private SDK trace diagnostics; scoped suppression retains native operation spans. The reviewer verified that correction closed; the focused runtime check also passed. |
+| Publication | Local HEAD `9d28968d4`; latest pushed head remains `fd6d5670`. No merge or M236 runtime deployment. |
+
+Indy directed: "which test failed once you fix that, only rerun that since target" and "donot run all through again".
+Local correction checks now rerun the failed target only; preserve previous passing results and identify tests that have not run.
+This direction does not establish a full final-head gate pass. Exact-head Continuous Integration and resolved Greptile threads remain merge conditions.
+
+Latest approval: Indy said "Okay approve" for the polished four-section sidebar with the existing conversation/composer structure.
+Implement proper icons, concise rows, clean PR links and expandable details; remove the sample-update control and panel explanations.
+Accepted-message editing/cancellation remains a separate unimplemented proposal; ordinary chat steering keeps the existing path.
+
+Current main `14539a73e8f3cb8d67c1e7e731b089c66f10e2c1` is integrated in local merge commit `9d28968d4`.
+The earlier merge `d4d264288` integrated main `7a118a2b9`; the second merge retains PR #810's bounded funds reads and isolated billing tests.
+Main's billing relay replaces holds; M236 retains grouped decision pricing, unknown-call reservations, native authority and bounded task/recovery maintenance.
+Main owns schema slots 2210/2220; M236's 45 unmerged slots moved forward to 2230–2680, preserving their SQL bytes.
+Slot 2690 adds the default-On runner configuration.
+Merge preparation passed native pre-commit checks; full-history gitleaks scanned 7,740 commits with no leaks.
+All pre-merge work was saved and reapplied cleanly; the safety stash remains until final changes are committed.
+The earlier combined source passed all three native Rust unit shards: runner 1,674, daemon 151 and libraries 3,441, totaling 5,266.
+Those results precede the second main merge and do not establish a current aggregate pass.
+Earlier integration reached the runner API suite with five passes and two fixture failures.
+The corrected fixtures assert main's asynchronous ledger relay and remove obsolete hold-table cleanup. The later run passed all seven served runner tests.
+`make lint-app` passed after the request-cancellation and runner-policy fixture corrections.
+The full TypeScript coverage run passed before the latest admin pagination changes; fresh verification remains required.
+Full compile, runtime, coverage and live acceptance evidence remain pending for the combined source.
+
+Indy: "I want this to be turned on, not guarded behind a feature flag"
+and "and proceed to finish the PR and move 236 to DONE".
+This supersedes the earlier disabled-runner direction. Indy clarified that
+**Durable tasks** belongs in runner configuration, On by default, and the runner reads that assignment.
+Software capability advertisement and saved default-On configuration are implemented through the existing assignment path; final integration remains pending.
+Compatibility, ownership, accounting and lease checks remain required.
+
+Latest chat direction: place PRs/work in a simple right sidebar, with a mobile drawer.
+Keep one ordinary composer and infer message intent through existing routing.
+Do not require task selection or a steering mode; defer the new local-diff viewer and its APIs.
+The revised standalone preview uses sample data and has no live fleet or GitHub effects.
+Its draft and reading position survived simulated incoming progress on desktop and mobile.
+Production layout and composing-scroll corrections are under browser verification; they are not yet a live acceptance pass.
+
+The approved presentation adds four sidebar sections: **Durable tasks**,
+**Outputs**, **Changes** and **Sources**. Sources must reflect configured fleet scope.
+The standalone presentation also illustrates an optional queued-message menu.
+Indy requested proper PR icons, cleaner links, shorter labels and removal of the sample-update button.
+The polished preview keeps the conversation/composer structure and uses compact activity disclosures.
+Sidebar rows use installed Lucide icons, clickable PR titles/numbers and one progress line; expanded rows hold further detail.
+Indy clarified "follow standard icons" across the UI: `GitPullRequest` denotes a native PR number, while `ListTodo` identifies the Durable tasks section.
+Production message badges render the native PR URL/number from shared task detail reads; mock #123/#124 values exist only in fixtures/presentation assets.
+Desktop/mobile preview checks passed for disclosures, links, overflow and draft/scroll preservation; these remain sample-data presentation checks.
+Current `useFleetSteerQueue` sends messages directly to the daemon; its edit, move and remove callbacks do nothing.
+Editing or cancelling accepted messages therefore remains a proposal, not implemented functionality.
+Ordinary messages already enter the existing intent/association checks without a required task selector.
+
+The first production-sidebar check ran 4,711 app tests: 4,703 passed and eight failed.
+Corrections address shell renders during text flushes, empty-page accordion initialization, mobile test setup and test matcher/selector errors.
+The existing 100-flush shell/composer guard remains unchanged.
+`make lint-app` then found four request-stringification errors in new tests; native request-path narrowing corrects them without suppressions.
+The sequential `make lint-app dry-app` rerun passed lint/type checks and all 4,711 unit tests.
+Browser checks passed 58 cases and failed two sidebar selectors during accordion transitions.
+The corrected selectors address the selected task's labelled details; their focused desktop/mobile rerun passed both cases.
+That focused result does not constitute a complete `make dry-app` pass.
+The new composing/scroll-preservation browser cases passed on both desktop and mobile in the full attempt.
+Independent source review found no concrete blocking issue in the changed chat owners.
+
+Latest served API verification exposed a genuine API-only publication allocation bug:
+the PR-only target decoder returned HTTP 500 before rejecting the target.
+`afd_fleet/src/task/effects/allocate.rs` now rejects API-only targets after existing execution/ownership checks and before PR decoding.
+Its served regression requires HTTP 409 / UZ-DT-004 and an unchanged empty effect list; it passed in the latest served runner suite.
+
+Runner configuration wiring must keep software capability true and use a separate assigned-policy setting, defaulting to On.
+Turning that setting Off must affect new durable lease selection only.
+Existing frozen task leases must retain input, recovery, decision and settlement access; deriving live capability from the switch would strand them.
+Implementation now follows the reviewed wiring plan after Indy's presentation approval.
+
+Fetched source matches `fd6d567031b9286771b7029a2066df7f6ad31f6f`.
+Fetched main is `14539a73e8f3cb8d67c1e7e731b089c66f10e2c1`, integrated in `9d28968d4`.
+The existing docs branch matches `437f9c1952dd5203ab2e48cdcec5249786038676`.
+
+The real-model case inventory now contains 24 cases in
+`tests/fixtures/fleets/goal-repair/cases.json`, partially bound and not run.
+Indy selected the latest `agentsfleet/linkwarden` PR: current REST inspection
+identifies open draft #6, head `0fcbb15bfe09e26b942414a13e0f7ba13286a584`, base `dev`.
+Its existing title-regression run 41308186183 and Playwright run 41308186210
+passed at that head; this is starting-state evidence, not a new M236 repair.
+Controlled Grafana symptom, runtime setup and Slack bindings still need current
+validation before the acceptance demonstration.
+M236 remains IN_PROGRESS until its required evidence exists.
+
+Earlier completion evidence, before the approved sidebar and current-main integration:
+
+| Check | Evidence | Disposition |
+| --- | --- | --- |
+| Exact fd6d5670 CI retry | Run 42144233743: all four Rust shards passed; merged overall coverage 90.4395% and patch coverage 53.1008% | BLOCKED; retain overall 99.5% and patch 99.51% floors; add behavior tests and rerun |
+| Exact fd6d5670 Greptile | Score 5/5; six threads resolved | Historical head only; recheck after pushing corrections |
+| Source review | Three API schema issues corrected: closed checkpoint-file discriminator, string score-map keys, replay HTTP 200 | Native OpenAPI generation passed; served schema tests added, pending execution |
+| Source and docs secret scans | Full-history gitleaks passed in both clones | Repeat for final changes as required |
+| Companion docs | `make lint` passed after completion wording edits and native schema regeneration | Current local evidence; no new docs PR |
+| App unit checks | 483 files / 4,702 tests passed | First attempt lacked Chromium; after installing it, full `make dry-app` passed with all 58 desktop/mobile browser tests |
+| Current Rust integration attempts | Clean reset/migrations passed; first attempt found two API fixture compile errors, second found one fleet fixture borrow error | Correcting tests; no current full integration pass |
+| Current Rust unit shards | Runner 1,673 passed; daemon 145 passed; daemon libraries 3,441 passed | All three native shards green; full aggregate unit/TypeScript coverage gate still pending |
+| Live environment inspection | Development API reports 0.73.0 at 86fb50b without build identity; Slack connection/channel and Grafana datasource reads succeed | No M236 runtime correlation, Linkwarden symptom or acceptance pass claimed |
+
+Live observability inspection was read-only: the Loki datasource
+`grafanacloud-logs` returned only `agentsfleetd` from its `service_name` label
+values over approximately Nov 05–06, 2026, 03:23 UTC. No Linkwarden log-content
+query, alternative-label search or all-history search was performed. This does
+not prove that Linkwarden telemetry is absent generally. No Slack message,
+Linkwarden push, repair trigger or deployment was performed in this session.
+
+Additional local evidence in this completion session:
+
+- `make test-unit-cli`: 2,025 passed, 16 skipped, zero failed. The skipped live
+  acceptance tests do not constitute an acceptance pass.
+- The passing browser gate captured editable starters, ordinary conversation,
+  recorded tool activity, setup-check clarity and three concurrent work items.
+  A supplementary production-component fixture capture checked the saved setup
+  status/Open fleet link and expanded work on desktop/mobile (16 checks passed).
+  These use deterministic fixture data, not a live Linkwarden repair, and do not
+  establish comparison with the original approved HTML.
+- The actual existing `steer` implementation rendered a captured fixture stream
+  with decisions, local edit diffs, command status, recovery byte counters and
+  saved check provenance. No model call, shell repair or GitHub write occurred
+  during that presentation capture.
+- Clean focused fleet run: 314 passed / three new fixture failures (317 executed).
+  The S3 fixture lacked SDK multi-delete replies; the persisted crash fixture
+  omitted its task effect cursor. Both fixtures are corrected, pending rerun;
+  production guards and schema constraints were retained.
+- Agent unit tests: 188 passed including all 22 new behavior scenarios. Supervisor
+  tests reached 432 passed / one fixture expectation failure; the receipt drain
+  assertion is corrected to verify one delivery followed by cursor cleanup,
+  pending full unit rerun.
+
 ### New cloud session continuation — Nov 06, 2026
 
 Indy requested: **“push all you changes and give me a handoff”** to start a new
@@ -1320,7 +1478,7 @@ These checks use controlled data and do not establish live DT acceptance.
 
 | Owner | Change |
 |---|---|
-| `schema/2280_runner_decision_calls.sql`, `2290_runner_decision_payloads.sql`; migration, role and upgrade inventories | Retain financial call identity after live-owner deletion; cascade private request/results with their owners; enforce operation, retry and sequence uniqueness. |
+| `schema/2320_runner_decision_calls.sql`, `2330_runner_decision_payloads.sql`; migration, role and upgrade inventories | Retain financial call identity after live-owner deletion; cascade private request/results with their owners; enforce operation, retry and sequence uniqueness. |
 | `afd_fleet/src/task/decision/{ownership,prepare,compile,request,context}.rs` | Resolve trusted lease/source/task state and accepted criteria; compile complete bounded questions and native assessment identity. |
 | `afd_fleet/src/task/decision/{allocate,attempt,intent,fund,dispatch,row,replay,sql}.rs` and statements | Commit intent, bound retries, confirm whole-work credit, resolve fresh keys, issue once and return credential-free replays. |
 | `afd_fleet/src/task/decision/{account,journal,record,semantic}.rs` | Normalize usage, price the frozen quote, atomically record the original payer's charge and separately judge current answer usability. |

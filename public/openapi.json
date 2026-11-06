@@ -607,8 +607,30 @@
           "Admin"
         ],
         "summary": "List models",
-        "description": "Returns every shared model, ordered by provider and model identifier. Requires the `model:read` scope. ",
+        "description": "Returns a bounded page of shared models, ordered by provider and model identifier. Continue with next_cursor as starting_after; catalogue edits invalidate cursors. Requires the `model:read` scope. ",
         "operationId": "list_admin_models",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1–100; defaults to 50",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "description": "Continuation cursor from this catalogue generation and page size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -616,6 +638,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdminModelsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid page size or malformed, mismatched or stale cursor",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
                 }
               }
             }
@@ -6808,6 +6840,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Immutable checkpoint plan replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointPlan"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Native checkpoint result",
             "content": {
@@ -21348,7 +21390,14 @@
             "items": {
               "$ref": "#/components/schemas/AdminModelItem"
             },
-            "description": "Every priced row."
+            "description": "One bounded page of priced rows."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Continue with starting_after, or null at the end of this catalogue snapshot."
           },
           "request_id": {
             "type": "string",
@@ -21663,6 +21712,7 @@
         "type": "object",
         "description": "Sandbox isolation, outgoing network access, and concurrency settings assigned to this\nrunner.",
         "required": [
+          "durable_tasks_enabled",
           "sandbox_tier",
           "network_policy",
           "registry_allowlist",
@@ -21677,6 +21727,10 @@
             ],
             "format": "uuid",
             "description": "Canonical `UUIDv7` of the platform decision model; absent disables decisions."
+          },
+          "durable_tasks_enabled": {
+            "type": "boolean",
+            "description": "Permit new durable task leases; existing leases retain their issued mode."
           },
           "extra_binds": {
             "type": "array",
@@ -23051,7 +23105,7 @@
           {
             "allOf": [
               {
-                "$ref": "#/components/schemas/CheckpointFile",
+                "$ref": "#/components/schemas/TaggedCheckpointFile",
                 "description": "Ordinary file; special files are never captured."
               },
               {
@@ -23138,40 +23192,6 @@
           }
         ],
         "description": "Complete logical entry or explicit deletion relative to the retained base."
-      },
-      "CheckpointFile": {
-        "type": "object",
-        "description": "One bounded file represented by immutable encrypted chunks in order.",
-        "required": [
-          "path",
-          "executable",
-          "size",
-          "objects"
-        ],
-        "properties": {
-          "executable": {
-            "type": "boolean",
-            "description": "Ordinary file executable bit."
-          },
-          "objects": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Native chunk identities, in byte order."
-          },
-          "path": {
-            "type": "string",
-            "description": "Declared workspace-relative path; never followed during restoration."
-          },
-          "size": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Logical length; empty files require no objects.",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
       },
       "CheckpointMode": {
         "type": "string",
@@ -24782,9 +24802,7 @@
                   "format": "double"
                 },
                 "propertyNames": {
-                  "type": "integer",
-                  "format": "int32",
-                  "minimum": 0
+                  "type": "string"
                 }
               },
               "score": {
@@ -33872,6 +33890,47 @@
           "answer",
           "reasoning"
         ]
+      },
+      "TaggedCheckpointFile": {
+        "type": "object",
+        "description": "One bounded file represented by immutable encrypted chunks in order.",
+        "required": [
+          "path",
+          "executable",
+          "size",
+          "objects",
+          "kind"
+        ],
+        "properties": {
+          "executable": {
+            "type": "boolean",
+            "description": "Ordinary file executable bit."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file"
+            ]
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Native chunk identities, in byte order."
+          },
+          "path": {
+            "type": "string",
+            "description": "Declared workspace-relative path; never followed during restoration."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Logical length; empty files require no objects.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
       },
       "TaggedLease_Value": {
         "oneOf": [

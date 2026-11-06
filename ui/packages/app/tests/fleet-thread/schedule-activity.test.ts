@@ -26,7 +26,7 @@ it("retains native run identity for every expanded schedule fire in a burst", as
   mockStream([first, {...first, id: "second-fire"}]);
   renderThread();
   expect(screen.queryByRole("button", {name: "Run details"})).toBeNull();
-  await act(async () => {fireEvent.click(screen.getByRole("button", {expanded: false}));});
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: /×2/, expanded: false}));});
   expect(screen.getAllByRole("button", {name: "Run details"})).toHaveLength(2);
   expect(screen.getAllByText("Completed.")).toHaveLength(3);
   expect(screen.queryByRole("button", {name: "View event"})).toBeNull();
@@ -53,7 +53,7 @@ it("keeps excluded payload fields hidden when repeated schedule receipts are exp
   mockStream([first, {...first, id: "repeated-sync-failure"}]);
   const {container} = renderThread();
   expect(screen.getByTestId("group-count").textContent).toBe("×2");
-  await act(async () => {fireEvent.click(screen.getByRole("button", {expanded: false}));});
+  await act(async () => {fireEvent.click(screen.getByRole("button", {name: /×2/, expanded: false}));});
   expect(screen.getAllByText(/Scheduler refused. Will retry on the next sync./)).toHaveLength(3);
   expect(screen.queryByRole("button", {name: "View event"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Run details"})).toBeNull();

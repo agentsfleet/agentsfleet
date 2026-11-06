@@ -49,6 +49,9 @@ reqwest.workspace = true
 serde-saphyr.workspace = true
 base64.workspace = true
 object_store.workspace = true
+http.workspace = true
+aws-sigv4.workspace = true
+aws-credential-types.workspace = true
 bytes.workspace = true
 # A lease's two post-issue reads, the thread's turns and the memory window,
 # run overlapped (`future::join`).
@@ -145,6 +148,10 @@ garde.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+# Real HTTPS object-store fixtures use an ephemeral CA and pinned local DNS.
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
 # Checkpoint scenarios construct the same bounded client as daemon wiring.
 afd_identity.workspace = true
 # Price-change scenarios and their shared fixtures use the native catalogue owner.

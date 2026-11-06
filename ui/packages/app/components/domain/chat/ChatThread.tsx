@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ThreadPrimitive } from "@assistant-ui/react";
+import { ThreadPrimitive, useAuiState } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
 import { Button, Section } from "@agentsfleet/design-system";
 
@@ -9,9 +9,10 @@ import { Button, Section } from "@agentsfleet/design-system";
 export function ChatThread({children, footer, label, testId, autoScroll = true}: {
   children: ReactNode; footer: ReactNode; label: string; testId?: string; autoScroll?: boolean;
 }) {
+  const composing = useAuiState(state => state.composer.text.length > 0);
   return <ThreadPrimitive.Root asChild data-testid={testId}>
     <Section aria-label={label} className="relative flex min-h-0 flex-1 flex-col overflow-clip bg-background">
-    <ThreadPrimitive.Viewport turnAnchor="top" autoScroll={autoScroll} scrollToBottomOnInitialize={autoScroll} scrollToBottomOnThreadSwitch={autoScroll} role="presentation"
+    <ThreadPrimitive.Viewport turnAnchor="top" autoScroll={autoScroll && !composing} scrollToBottomOnInitialize={autoScroll} scrollToBottomOnThreadSwitch={autoScroll} role="presentation"
       className="flex min-h-0 flex-1 flex-col overflow-y-auto px-xl sm:px-chat-inset">
       {children}
       <ThreadPrimitive.ViewportFooter data-testid="fleet-chat-footer"

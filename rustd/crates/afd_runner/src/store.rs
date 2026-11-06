@@ -150,6 +150,7 @@ impl Runners {
         .await?
         .allow_change_from(None)?;
         sql::runner::RegisterRow {
+            durable_tasks_enabled: assigned.durable_tasks_enabled,
             sandbox_config_json: &sandbox_config_json,
             decision_model_id: stored.assignment.decision_model_id.as_ref(),
             runner_id: &runner_id,

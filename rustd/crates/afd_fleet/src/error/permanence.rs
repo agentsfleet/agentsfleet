@@ -88,6 +88,9 @@ impl Error {
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
             | ErrorKind::TaskStorageDeadline { .. }
             | ErrorKind::TaskRemoteStatus { .. }
             | ErrorKind::TaskRemoteDeadline { .. }

@@ -12,6 +12,8 @@
 
 mod decision;
 mod decision_races;
+mod durable_policy;
+mod durable_upgrade;
 mod faults;
 mod lifecycle;
 mod operator;
@@ -39,6 +41,7 @@ fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("host-01.plane.test"),
         assigned_policy: AssignedPolicy {
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::DevNone,
             network_policy: NetworkPolicy::AllowAll,

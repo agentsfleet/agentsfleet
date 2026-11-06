@@ -16,7 +16,7 @@ beforeEach(() => {
   updateRunnerActionMock.mockReset();
 });
 
-const CURRENT: AssignedPolicy = {
+const CURRENT: AssignedPolicy = { durable_tasks_enabled: true,
   sandbox_tier: "container_nested",
   network_policy: "allow_all",
   registry_allowlist: ["pypi.org"],
@@ -239,4 +239,22 @@ it("preserves labels and shows the server's 400 sentence", async () => {
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining(sentence));
   expect(screen.getByLabelText(LABELS)).toHaveProperty("value", "gpu");
   expect(saved).not.toHaveBeenCalled();
+});
+
+it("saves disabling durable tasks and reopens the stored disabled assignment", async () => {
+  const disabled = {...CURRENT, durable_tasks_enabled: false};
+  updateRunnerActionMock.mockResolvedValue({ok: true, data: {id: "durable-runner", status: "active", assigned_policy: disabled}});
+  const saved = vi.fn();
+  const view = render(<EditPolicyDialog runnerId="durable-runner" current={CURRENT} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  const setting = screen.getByRole("switch", {name: "Durable tasks"});
+  expect(setting.getAttribute("aria-checked")).toBe("true");
+  await userEvent.setup().click(setting);
+  expect(setting.getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(updateRunnerActionMock).toHaveBeenCalledWith("durable-runner", {assigned_policy: disabled}));
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  view.rerender(<EditPolicyDialog runnerId="durable-runner" current={disabled} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  expect(screen.getByRole("switch", {name: "Durable tasks"}).getAttribute("aria-checked")).toBe("false");
 });

@@ -29,11 +29,8 @@ pub enum Route<'s, 'm> {
         /// The whole message.
         message: &'m str,
     },
-    /// Nothing subscribes, so the channel's resident answers.
-    Resident {
-        /// The whole message.
-        message: &'m str,
-    },
+    /// No saved fleet subscribes to this channel.
+    Unconfigured,
     /// No model runs; one fixed text answers in the thread.
     Notice(Notice<'s>),
 }
@@ -73,7 +70,7 @@ impl Route<'_, '_> {
         match self {
             Self::Addressed { .. } => "addressed",
             Self::Sole { .. } => "sole",
-            Self::Resident { .. } => "resident",
+            Self::Unconfigured => "channel_not_configured",
             Self::Notice(notice) => notice.kind(),
         }
     }
@@ -96,7 +93,7 @@ impl Notice<'_> {
 ///
 /// A first word equal to one subscriber's name, ignoring case and a trailing
 /// `:` or `,`, addresses it; equal to two, it is ambiguous. A mention naming
-/// no subscriber is unaddressed: nobody attached → the resident; exactly one
+/// no subscriber is unaddressed: nobody attached → unconfigured; exactly one
 /// eligible subscriber (runnable and not addressed-only) → that fleet;
 /// several → choose; none → address it.
 #[must_use]
@@ -125,7 +122,7 @@ pub fn route<'s, 'm>(subscribers: &'s [Subscriber], text: &'m str) -> Route<'s, 
 /// A mention naming no subscriber.
 fn unaddressed<'s, 'm>(subscribers: &'s [Subscriber], text: &'m str) -> Route<'s, 'm> {
     if subscribers.is_empty() {
-        return Route::Resident { message: text };
+        return Route::Unconfigured;
     }
     let eligible: Vec<&Subscriber> = subscribers
         .iter()

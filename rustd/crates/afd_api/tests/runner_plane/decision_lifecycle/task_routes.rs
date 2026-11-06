@@ -1,0 +1,203 @@
+//! Served task acceptance retains the paid proof and immutable recovery receipts.
+#![expect(
+    clippy::panic,
+    reason = "synthetic decision question drift must fail the fixture"
+)]
+
+mod binding;
+mod checkpoints;
+mod errors;
+
+use afd_core::etag::sha256_hex;
+use afd_db::test_util::mint_uuid7;
+use afd_wire::{
+    decision::{DecisionAnswer, DecisionOutcome},
+    task::{
+        DecisionReceipt, DecisionReceiptInput, TaskBindingItem, TaskBindingsInput, TaskInputAction,
+        TaskProposedItem, TaskRequestedTarget,
+    },
+};
+use http::{Method, StatusCode};
+use serde_json::{Value, json};
+
+use super::{Fixture, assertions, setup, success};
+use crate::harness::{json_body, send};
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn accepted_task_http_recovers_without_reclassifying_or_reapplying() {
+    let fixture = Fixture::create().await;
+    let (binding, accepted) = binding::bind(&fixture).await;
+    errors::refuse_malformed_requests(&fixture).await;
+    let task = json!({"task_id":accepted["current_task"]["task_id"],
+        "generation":accepted["current_task"]["generation"]});
+    receipts(&fixture, &binding, &accepted, &task).await;
+    checkpoints::exercise(&fixture, &task).await;
+    effects(&fixture, &task, &accepted["items"][0]["item_id"]).await;
+    fixture.finish().await;
+}
+
+async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
+    let route = path(fixture, "effects");
+    let query = format!(
+        "{route}?fencing_token={}&task_id={}",
+        fixture.lease.fence,
+        task["task_id"].as_str().expect("bound task")
+    );
+    let empty = success(fixture, Method::GET, &query, "", StatusCode::OK).await;
+    assert_eq!(empty, json!({"effects":[],"next_cursor":null}));
+    let missing = format!(
+        "{route}/{}?fencing_token={}",
+        mint_uuid7(),
+        fixture.lease.fence
+    );
+    let response = send(
+        &fixture.router,
+        Method::GET,
+        &missing,
+        Some(&fixture.runner.token),
+        "",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let publish = json!({"operation_id":mint_uuid7(),"fencing_token":fixture.lease.fence,
+        "task":task,"source_item_id":item,"covered_input_sequence":0,
+        "expected_head":"0".repeat(40),"tested_tree":"1".repeat(40),
+        "changes":[{"path":"README.md","contents":"aGk="}]});
+    // An API-only task has no native GitHub publication authority.
+    let refused = call(
+        fixture,
+        Method::POST,
+        &route,
+        &publish,
+        StatusCode::CONFLICT,
+    )
+    .await;
+    assert_eq!(refused["error_code"], "UZ-DT-004");
+    let unchanged = success(fixture, Method::GET, &query, "", StatusCode::OK).await;
+    assert_eq!(unchanged, empty, "refused target allocates no publication");
+}
+
+fn path(fixture: &Fixture, resource: &str) -> String {
+    format!(
+        "/v1/runners/me/leases/{}/tasks/{resource}",
+        fixture.lease.id
+    )
+}
+
+async fn call(
+    fixture: &Fixture,
+    method: Method,
+    route: &str,
+    body: &Value,
+    status: StatusCode,
+) -> Value {
+    let response = send(
+        &fixture.router,
+        method,
+        route,
+        Some(&fixture.runner.token),
+        &body.to_string(),
+    )
+    .await;
+    let actual = response.status();
+    if actual.is_success() {
+        assert_eq!(
+            response
+                .headers()
+                .get(http::header::CACHE_CONTROL)
+                .expect("sensitive task responses prohibit caching"),
+            "no-store"
+        );
+    }
+    let value = json_body(response).await;
+    assert_eq!(actual, status, "{route}: {value}");
+    value
+}
+
+async fn foreign_and_stale(fixture: &Fixture, route: &str, body: &Value) {
+    for token in [None, Some(fixture.other.token.as_str())] {
+        let response = send(
+            &fixture.router,
+            Method::POST,
+            route,
+            token,
+            &body.to_string(),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            if token.is_none() {
+                StatusCode::UNAUTHORIZED
+            } else {
+                // Native ownership lookup hides leases belonging to another runner.
+                StatusCode::NOT_FOUND
+            }
+        );
+        if token.is_some() {
+            assert_eq!(crate::harness::code_of(response).await, "UZ-RUN-006");
+        }
+    }
+    let mut stale = body.clone();
+    stale["fencing_token"] = json!(fixture.lease.fence + 1);
+    call(fixture, Method::POST, route, &stale, StatusCode::CONFLICT).await;
+}
+
+async fn receipts(fixture: &Fixture, binding: &TaskBindingsInput, accepted: &Value, task: &Value) {
+    let input_path = path(fixture, "inputs");
+    let inputs = success(
+        fixture,
+        Method::GET,
+        &format!("{input_path}?fencing_token={}", fixture.lease.fence),
+        "",
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(inputs["current_task"]["task_id"], task["task_id"]);
+    assert_eq!(
+        inputs["current_interpretation"]["plan_digest"],
+        binding.plan_digest
+    );
+    let receipt = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_uuid7(),
+        "source_admission_id":fixture.lease.source,"plan_digest":binding.plan_digest,
+        "item_id":accepted["items"][0]["item_id"],"task":task,
+        "mode":"answered","response_text":"I will inspect the failed checks."});
+    acknowledge(fixture, &receipt).await;
+}
+
+async fn acknowledge(fixture: &Fixture, receipt: &Value) {
+    let receipt_path = path(fixture, "input-receipts");
+    let first = call(
+        fixture,
+        Method::POST,
+        &receipt_path,
+        receipt,
+        StatusCode::CREATED,
+    )
+    .await;
+    assert_eq!(first["replayed"], false);
+    let replay = call(
+        fixture,
+        Method::POST,
+        &receipt_path,
+        receipt,
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(
+        first["covered_input_sequence"],
+        replay["covered_input_sequence"]
+    );
+    let mut changed = receipt.clone();
+    changed["response_text"] = json!("A conflicting second answer");
+    call(
+        fixture,
+        Method::POST,
+        &receipt_path,
+        &changed,
+        StatusCode::CONFLICT,
+    )
+    .await;
+    foreign_and_stale(fixture, &receipt_path, receipt).await;
+}

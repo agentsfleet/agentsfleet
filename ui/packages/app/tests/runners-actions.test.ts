@@ -54,7 +54,7 @@ import {
   requestRunnerSelftestAction,
 } from "@/app/(dashboard)/admin/runners/actions";
 
-const POLICY_TO_ASSIGN = {
+const POLICY_TO_ASSIGN = { durable_tasks_enabled: true,
   sandbox_tier: "landlock_full" as const,
   network_policy: "deny_all_egress" as const,
   registry_allowlist: ["pypi.org"],
@@ -92,7 +92,7 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     hasScopeMock.mockResolvedValueOnce(false);
     const body = {
       host_id: "web-prod-1",
-      assigned_policy: {
+      assigned_policy: { durable_tasks_enabled: true,
         sandbox_tier: "landlock_full" as const,
         network_policy: "allow_all" as const,
         registry_allowlist: [],
@@ -206,7 +206,7 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     createRunnerMock.mockResolvedValueOnce({ runner_id: "r1", runner_token: "agt_rabc" });
     // The dialog now collects the WHOLE assignment; the action forwards the
     // envelope verbatim — no defaults injected between the form and the wire.
-    const assigned_policy = {
+    const assigned_policy = { durable_tasks_enabled: true,
       sandbox_tier: "container_nested" as const,
       network_policy: "deny_all_egress" as const,
       registry_allowlist: ["pypi.org"],

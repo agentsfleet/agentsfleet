@@ -8,8 +8,10 @@ use self::harness::{Fleet, json_body, send};
 use crate::harness;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::test_util::{PlatformDefault, mint_id};
+use futures_util::FutureExt as _;
 use http::{Method, StatusCode};
 use serde_json::Value;
+use std::panic::AssertUnwindSafe;
 const SUBJECT: &str = "user_live_platform_catalogue";
 const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","metadata":{"display_name":"Fixture model","context_cap_tokens":200000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
 const MODEL_UPDATE: &str = r#"{"metadata":{"display_name":"Fixture model","context_cap_tokens":250000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"6","cached_input_nanos_per_mtok":"2","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"30","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
@@ -18,12 +20,24 @@ mod fixture;
 use fixture::Fixture;
 #[path = "integration_admin/decision_models.rs"]
 mod decision_models;
+#[path = "integration_admin/model_pages.rs"]
+mod model_pages;
 #[path = "integration_admin/model_refusals.rs"]
 mod model_refusals;
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn platform_models_and_keys_complete_real_http_lifecycles() {
     let fixture = Fixture::create().await;
+    let result = AssertUnwindSafe(exercise_admin(&fixture))
+        .catch_unwind()
+        .await;
+    fixture.cleanup().await;
+    if let Err(failure) = result {
+        std::panic::resume_unwind(failure);
+    }
+}
+
+async fn exercise_admin(fixture: &Fixture) {
     fixture.seed().await;
     let router = Fleet::live(
         fixture.database.clone(),
@@ -32,12 +46,12 @@ async fn platform_models_and_keys_complete_real_http_lifecycles() {
     )
     .router();
     exercise_models(&router, &fixture.token).await;
-    decision_models::lifecycle(&router, &fixture).await;
+    decision_models::lifecycle(&router, fixture).await;
     // The platform-key route creates this provider's default through the
     // product; the hold removes it even when an assertion fails first.
     let platform_default =
         PlatformDefault::adopt(&fixture.database, &fixture.provider, &fixture.workspace).await;
-    exercise_platform_keys(&router, &fixture).await;
+    exercise_platform_keys(&router, fixture).await;
     drop(platform_default);
 
     // The platform library list answers over the live authoring store; what
@@ -58,7 +72,6 @@ async fn platform_models_and_keys_complete_real_http_lifecycles() {
             .is_some_and(Value::is_array),
         "the list carries an entries array"
     );
-    fixture.cleanup().await;
 }
 
 async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
@@ -185,9 +198,13 @@ async fn deactivation_answers_inactive_every_time(
 async fn exercise_models(router: &axum::Router, token: &str) {
     let id = a_model_is_created_once(router, token).await;
 
-    let listed = send(router, Method::GET, "/v1/admin/models", Some(token), "").await;
-    assert_eq!(listed.status(), StatusCode::OK);
-    assert!(contains_id(&json_body(listed).await, "models", &id));
+    model_pages::check(router, token).await;
+    assert!(
+        model_pages::all(router, token)
+            .await
+            .iter()
+            .any(|row| row["id"] == id)
+    );
 
     let updated = send(
         router,

@@ -565,7 +565,7 @@ An accepted fire stores its message and resolved schedule description on the ori
 The app renders the message and recorded outcome directly; native run details become available once the event exists.
 Historical receipt snapshots stay separate from current registration and retry controls.
 
-The proposed [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
+The [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
 
 `agentsfleetd` stores the desired schedule, pushes each mutation to QStash synchronously, and receives the fires. The runner owns no schedule timer ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 

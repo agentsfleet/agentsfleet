@@ -22,7 +22,13 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub(super) async fn create() -> Self {
-        let lane = TestDatabase::shared();
+        let lane = TestDatabase::create().await;
+        let migrator = lane.open(DbRole::Migrator, &[]).await;
+        afd_db::Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("isolated admin schema");
+        migrator.close().await;
         let first = mint_id().replace('-', "");
         let second = mint_id().replace('-', "");
         let provider = mint_id().replace('-', "");

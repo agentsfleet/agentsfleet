@@ -730,9 +730,11 @@ Parser scratch/error buffers, HTTP headers and transport buffers remain outside 
 
 `POST /v1/runners/me/leases/{lease_id}/tasks/decisions` reserves and funds a physical call before resolving its current key.
 `PATCH /v1/runners/me/leases/{lease_id}/tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
-Handlers live in `rustd/crates/afd_api_runner/src/handler/runner/decisions.rs`; automatic runner intent and goal integration remains incomplete.
+Handlers live in `rustd/crates/afd_api_runner/src/handler/runner/decisions.rs`.
+The runner prepares intent before durable work and assesses completed action groups through `afr_agent/src/decision/` and `afr_agent/src/loop/task.rs`.
+Native report preparation independently checks task authority and completion evidence; live end-to-end verification remains pending.
 
-The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and the remaining runner integration.
+The [decision architecture](architecture/goal_evaluation.md) owns model selection, question ownership and runner integration.
 
 ### The token never enters the sandboxed child
 

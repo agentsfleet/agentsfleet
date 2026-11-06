@@ -16,11 +16,12 @@ pub(super) async fn measure<T>(
     success: impl FnOnce(&T) -> TaskOutcome,
 ) -> Result<T> {
     let started = Instant::now();
+    let operation_label = operation.as_str();
     let interrupted = scopeguard::guard(started, |started| {
         producers::task::operation_completed(operation, TaskOutcome::Cancelled, started.elapsed());
         tracing::info!(
             event = "dt_operation_cancelled",
-            operation = operation.as_str(),
+            operation = operation_label,
             reason = "operation_dropped"
         );
     });
@@ -32,9 +33,14 @@ pub(super) async fn measure<T>(
     };
     producers::task::operation_completed(operation, outcome, started.elapsed());
     if let Err(error) = &result {
-        tracing::warn!(event = "dt_operation_failed", operation = operation.as_str(),
-            outcome = outcome.as_str(), error_code = %error.code(),
-            reason = error.task_timeout_reason().or_else(|| error.decision_failure_reason()).unwrap_or("operation_failed"));
+        let outcome_label = outcome.as_str();
+        let error_code = error.code();
+        let reason = error
+            .task_timeout_reason()
+            .or_else(|| error.decision_failure_reason())
+            .unwrap_or("operation_failed");
+        tracing::warn!(event = "dt_operation_failed", operation = operation_label,
+            outcome = outcome_label, %error_code, reason);
     }
     result
 }

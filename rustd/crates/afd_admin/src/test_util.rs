@@ -11,6 +11,10 @@ use afd_crypto::entropy::Entropy;
 use afd_db::{Db, test_util::mint_id};
 use serde_json::json;
 
+/// The production catalogue statement, exposed for executed query-plan proofs.
+/// Parameters are the row limit, provider boundary and model-name boundary.
+pub const MODEL_PAGE_QUERY: &str = crate::sql::LIST_PLATFORM_MODELS;
+
 /// A unique reviewed decision model created through the real admin API.
 #[derive(Debug)]
 pub struct DecisionModelFixture {
