@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, the push-scheduler milestones change how every chat reaches a runner, and none of them can prove a gain without a baseline measured first
 
@@ -227,17 +227,17 @@ Tail and wake p99 move to M244, where Dragonfly is measured on the code as it st
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | M240_001 is parked (§1) | `grep -c "Status:\*\* DEFERRED" docs/v2/done/M240_001_P1_API_DOCS_INFRA_OBS_LEASE_QUEUE_ONE_STATEMENT_CLAIM.md` | `1` | P1 | |
-| R2 | The decisions page reads clean (§2) | `orly gate verify` | exit 0 | P0 | |
-| R3 | The undercounting counters are gone (§3) | `git grep -n -w -e agentsfleet_lease_poll_db_roundtrips_total -e agentsfleet_lease_poll_dragonfly_commands_total -- ':!docs/v2'` | no output | P0 | |
-| R4 | Statements per chat by path are a baseline (§4, §7) | `grep -c drain_statements_per_lease_activity bench/baselines/lease.rig.json` | `1` | P0 | |
-| R5 | Burst pickup is a baseline (§5, §7) | `grep -c burst_pickup_p99_ms bench/baselines/lease-burst.rig.json` | `1` | P0 | |
-| R6 | Every later milestone has a spec (Discovery) | `ls docs/v2/pending/M242_001_*.md docs/v2/pending/M242_002_*.md docs/v2/pending/M243_001_*.md docs/v2/pending/M244_001_*.md docs/v2/pending/M245_001_*.md docs/v2/pending/M246_001_*.md docs/v2/pending/M247_001_*.md` | seven paths, exit 0 | P1 | |
-| S1 | Lint | `make lint-all` | exit 0 | P0 | |
-| S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Version | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| R1 | M240_001 is parked (§1) | `grep -c "Status:\*\* DEFERRED" docs/v2/done/M240_001_P1_API_DOCS_INFRA_OBS_LEASE_QUEUE_ONE_STATEMENT_CLAIM.md` | `1` | P1 | ✅ `1` |
+| R2 | The decisions page reads clean (§2) | `orly gate verify` | exit 0 | P0 | ✅ `orly gate verify` exit 0: docs.language clean, lint and version green |
+| R3 | The undercounting counters are gone (§3) | `git grep -n -w -e agentsfleet_lease_poll_db_roundtrips_total -e agentsfleet_lease_poll_dragonfly_commands_total -- ':!docs/v2'` | no output | P0 | ✅ no output (`git grep` exit 1) |
+| R4 | Statements per chat by path are a baseline (§4, §7) | `grep -c drain_statements_per_lease_activity bench/baselines/lease.rig.json` | `1` | P0 | ✅ `1` |
+| R5 | Burst pickup is a baseline (§5, §7) | `grep -c burst_pickup_p99_ms bench/baselines/lease-burst.rig.json` | `1` | P0 | ✅ `1` |
+| R6 | Every later milestone has a spec (Discovery) | `ls docs/v2/pending/M242_001_*.md docs/v2/pending/M242_002_*.md docs/v2/pending/M243_001_*.md docs/v2/pending/M244_001_*.md docs/v2/pending/M245_001_*.md docs/v2/pending/M246_001_*.md docs/v2/pending/M247_001_*.md` | seven paths, exit 0 | P1 | ✅ seven paths, exit 0 |
+| S1 | Lint | `make lint-all` | exit 0 | P0 | ✅ `make lint-all` exit 0, inside `orly gate verify` |
+| S2 | Unit | `make test-unit-all` | exit 0 | P0 | ⏳ graded at `orly gate pr`, because this PR also carries M242 |
+| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | ⏳ graded at `orly gate pr`, because this PR also carries M242 |
+| S4 | Version | `make check-version` | exit 0 | P0 | ✅ `all versions match 0.73.0` |
+| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | ✅ `no leaks found` |
 
 ## Dead Code Sweep
 
