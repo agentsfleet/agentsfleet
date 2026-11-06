@@ -323,7 +323,7 @@ N/A: no files or symbols are deleted. `read_input` stays for child loops.
 
 ## Out of Scope
 
-- Webhook and Slack same-thread coalescing: each owes a reply to its own destination, and no bench measures a webhook burst. Open blocker 2 asks Indy.
+- Webhook and Slack same-thread coalescing: out of the programme until a webhook burst is measured (Indy, Discovery); each owes a reply to its own destination.
 - Interrupting a model call for new input: a fold waits for the call in flight, as in Codex. Open blocker 1 asks Indy.
 - Carrying this read on the runner stream: M243 moves the folds request onto the stream, and nothing pushes input down it.
 - Gate checks at fold time: the head's gates admitted the run's tools at issue, renewal meters money, and a message adds no capability.
@@ -371,8 +371,8 @@ N/A: no files or symbols are deleted. `read_input` stays for child loops.
   > Indy (Nov 06, 2026: 10:43 AM): "1. Yes placement rules are via the tags and labels 2. Respawn across ownership - this is a tenant setting ... Based on the scope i would like to build this ... 4. Yes, but donot overengineer now, we can improve this." — context: no daemon-side queue, no fold cap, no gate check at fold time.
   > Indy (Nov 06, 2026: 11:57 AM): "Yes i am ok with postgres store and accepting messages, fences runs" and "The message has to wait. I assume you show message like compacting" and "assume atleast 50 fleets" — context: Postgres holds the queue and the fence; `waiting_compaction`; the 50-fleet burst.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
+  > Indy (Nov 06, 2026: 04:06 PM): chose "Next model call (Recommended)" for the 1 s target — context: a folded message joins at the run's next model call, as Codex does; the in-flight call is never interrupted, and the bench's 500 ms call keeps pickup p95 under 1 s.
+  > Indy (Nov 06, 2026: 04:06 PM): chose "Not now (Recommended)" for webhook and Slack coalescing — context: out of the programme until a webhook burst is measured; chat folding covers the 50 fleets × 10 messages a second burst.
 - **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review of this spec runs before it leaves `pending/`.
-- **Open blockers** —
-  1. **The 1 s target.** A fold reaches the model at its next call, so a real message also waits out the call in flight. The bench's simulated call is 500 ms. Question for Indy: does "pickup p95 under 1 s" mean agent-visible at the next model call, or do you want an interrupt-on-input design? Resolving action: his answer, quoted here.
-  2. **Webhook and Slack coalescing.** The design brief lists webhook coalescing as a programme goal "only where it pays", and no milestone carries it. Question for Indy: does it leave the programme until a webhook burst is measured, or which milestone owns it? Resolving action: his answer, quoted here, and a deferral line below if it leaves.
+- **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
