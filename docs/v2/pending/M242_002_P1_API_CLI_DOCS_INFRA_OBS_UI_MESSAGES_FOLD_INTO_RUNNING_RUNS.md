@@ -414,6 +414,6 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   --   (SELECT waiting FROM earlier_waiting) AS earlier_waiting
   ```
 
-- **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review of this spec runs before it leaves `pending/`.
+- **Model reviews** — skipped on Indy's call: chose "Skip it (Recommended)" (Nov 06, 2026: 11:41 PM), as for M242_001.
 - **Open blockers** — none; Indy answered both on Nov 06 (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
