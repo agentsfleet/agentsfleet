@@ -16,6 +16,52 @@ use jiff::Timestamp;
 
 use super::{Published, Target, first_visible_candidate_ms};
 
+#[test]
+fn live_task_frames_use_the_saved_counter_and_sequence() {
+    use afd_wire::activity::{
+        TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
+        TaskActivityRecord,
+    };
+    let incoming = TaskActivity {
+        activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
+        task_id: None,
+        source_admission_id: None,
+        operation: TaskActivityOperation::Capture,
+        phase: TaskActivityPhase::Uploading,
+        provider: None,
+        model: None,
+        completed: 1,
+        total: Some(4),
+        bytes: None,
+        sequence: Some(999_999),
+    };
+    let saved = TaskActivity {
+        completed: 3,
+        sequence: Some(7),
+        ..incoming.clone()
+    };
+    let history = TaskActivityHistory {
+        items: vec![TaskActivityRecord::TaskTransferProgress(saved.clone())],
+        truncated: false,
+    };
+    let mut absent = incoming.clone();
+    absent.phase = TaskActivityPhase::Verifying;
+    let frames = [
+        ActivityFrame::TaskTransferProgress(incoming),
+        ActivityFrame::TaskTransferProgress(absent),
+    ];
+    let canonical = super::history::canonical(&frames, &history);
+    assert_eq!(canonical.len(), 1, "unsaved progress is not published");
+    let frame = canonical.first().expect("saved canonical frame");
+    assert_eq!(
+        frame.task_activity().expect("task activity").progress(),
+        &saved
+    );
+    let value = published(frame);
+    assert_eq!(value["progress"]["sequence"], 7);
+    assert_eq!(value["progress"]["completed"], 3);
+}
+
 /// The fencing token the fixture lease holds.
 const FENCE: i64 = 7;
 

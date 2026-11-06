@@ -109,6 +109,7 @@ async fn test_follow_up_lease_is_issued_when_its_thread_will_not_answer() {
         .ask(EventType::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
     let silent = Plane {
+        task_reports: None,
         thread: Arc::new(History::new(unreachable_db())),
         ..chat.fixtures.plane()
     };

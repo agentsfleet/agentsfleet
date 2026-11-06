@@ -31,6 +31,9 @@ export type EventStatusValue = EventStatus | (string & {});
 
 export type EventTypeValue = EventType | (string & {});
 
+/** One native event address; the server checks both workspace and fleet ownership. */
+export type EventLocator = Pick<EventRow, "workspace_id" | "fleet_id" | "event_id">;
+
 /**
  * One event with everything recorded about it — the list row plus the two
  * bodies the list read omits. Fetched when a row is expanded, never for a page:
@@ -49,6 +52,8 @@ export type EventDetail = EventRow & {
    * shows the same rows the live tail did. `null` when none were recorded.
    */
   tool_calls: SavedToolTrace | null;
+  /** Bounded public stages retained independently of private recovery state. */
+  task_activity?: unknown;
 };
 
 /** `afd_wire::tool_trace::ToolTrace`: the calls in order, and how many the
@@ -169,6 +174,7 @@ export type FleetCountersSnapshot = {
 };
 
 export type ActivityLiveFrame =
+  | {kind: typeof FRAME_KIND.TASK_CHANGED; task_id: string; resource_version: number}
   // A person's message, accepted and waiting for a runner: the id the send's
   // 202 names, who sent it, and what they typed. Fields past the identifier
   // are optional on the TYPE because the wire is untrusted.
@@ -212,6 +218,7 @@ export type ActivityLiveFrame =
     }
 
   | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
+  | {kind: typeof FRAME_KIND.TASK_DECISION_STARTED | typeof FRAME_KIND.TASK_DECISION_COMPLETED | typeof FRAME_KIND.TASK_TRANSFER_PROGRESS; event_id: string; progress: unknown}
   | ({ kind: typeof FRAME_KIND.CONTEXT_PROGRESS; event_id: string } & ContextProgress)
 
   // Status is required; output edges and exit codes depend on the tool.

@@ -19,6 +19,8 @@
 //! at every catch site deciding it privately.
 
 pub mod classify;
+mod kind;
+pub(crate) use kind::ErrorKind;
 pub mod detail;
 pub mod lift;
 pub mod permanence;
@@ -52,7 +54,7 @@ pub(crate) use self::refuse::{
     budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
     github_reconnect_required, grant_required, integration_not_connected, lease_lost,
     lease_max_runtime, lease_not_found, message_limit_reached, message_no_channel,
-    mint_unconfigured, renewal_no_credits, stale_fence,
+    mint_unconfigured, renewal_no_credits, stale_fence, task_target_counter,
 };
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.
@@ -79,177 +81,6 @@ afd_core::error_shell!(
     /// (`clippy::result_large_err`).
     pub struct Error(ErrorKind);
 );
-
-/// What actually went wrong. Private so a new variant is not a breaking change.
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum ErrorKind {
-    #[error("the private working context could not be accessed")]
-    Context {
-        #[source]
-        source: afd_context::Error,
-    },
-    #[error("private authoring admission could not complete")]
-    Authoring {
-        #[source]
-        source: afd_authoring::Error,
-    },
-    #[error("the datastore backing the runner plane would not answer")]
-    Datastore {
-        #[source]
-        source: afd_db::Error,
-    },
-
-    #[error("the runner host could not establish lease capacity")]
-    Runner {
-        #[source]
-        source: afd_runner::Error,
-    },
-
-    #[error("the gate plane could not answer for the runner plane")]
-    Gate {
-        #[source]
-        source: afd_gate::Error,
-    },
-
-    #[error("the credential plane could not answer for the runner plane")]
-    Credential {
-        #[source]
-        source: afd_credential::Error,
-    },
-
-    #[error("the queue backing the runner plane would not answer")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
-    #[error("the billing store could not answer for the runner plane")]
-    Billing {
-        #[source]
-        source: afd_billing::Error,
-    },
-
-    #[error("statement failed during {context}")]
-    Query {
-        context: &'static str,
-        #[source]
-        source: sqlx::Error,
-    },
-
-    #[error("a {table} row holds a value this daemon cannot read: {column}")]
-    RowMalformed {
-        table: &'static str,
-        column: &'static str,
-        #[source]
-        source: afd_core::error::Error,
-    },
-
-    #[error("the event store could not answer for the runner plane")]
-    Events {
-        #[source]
-        source: afd_events::Error,
-    },
-
-    /// The delivery ledger would not answer.
-    ///
-    /// `afd_outbound` owns `fleet.obligations`, and the report path commits
-    /// an obligation through it inside its own transaction — so a failure there
-    /// is a failure of THIS transaction and has to reach the caller as one.
-    /// Distinct from [`Self::Datastore`] because the obligation is a PostgreSQL
-    /// row, not a queue entry, and the two fail for different reasons.
-    #[error("the delivery ledger could not answer for the runner plane")]
-    Outbound {
-        #[source]
-        source: afd_outbound::Error,
-    },
-
-    #[error("{detail}")]
-    Rejected { detail: &'static str },
-
-    #[error("an identifier could not be minted from the current instant")]
-    Mint {
-        #[from]
-        source: afd_core::error::Error,
-    },
-
-    #[error("could not draw the entropy a credential is minted from")]
-    Entropy {
-        #[source]
-        source: afd_crypto::error::Error,
-    },
-
-    #[error("the fleet's stored configuration cannot be read")]
-    ConfigUnreadable {
-        #[from]
-        source: afd_fleet_runtime::Error,
-    },
-
-    #[error("the fleet needs a reviewed native setup before it can run")]
-    SetupUnavailable,
-
-    #[error("a stored credential body is not the JSON object the tool bridge addresses")]
-    VaultDataInvalid,
-
-    #[error("a stored fencing sequence is not a sequence")]
-    SequenceCorrupt,
-
-    #[error("the reporting holder's fence is behind the fleet's live sequence")]
-    StaleFence,
-
-    #[error("no lease with that id belongs to the presenting runner")]
-    LeaseNotFound,
-
-    #[error("the lease is no longer this runner's to renew")]
-    LeaseLost,
-
-    #[error("the lease reached the hard ceiling on one run's wall time")]
-    LeaseMaxRuntime,
-
-    #[error("the tenant's credit pool cannot fund another slice of this run")]
-    RenewalNoCredits,
-
-    #[error("the fleet reached a spend ceiling its own author declared")]
-    BudgetExhausted,
-
-    #[error("the leased event recorded no thread a message can go to")]
-    MessageNoChannel,
-
-    #[error("the lease already posted as many messages as one run may")]
-    MessageLimitReached,
-
-    #[error("the fleet's secret values could not be gathered into a mask")]
-    Scrub {
-        #[source]
-        source: afr_secrets::Error,
-    },
-
-    #[error("this workspace has connected no integration under that name")]
-    IntegrationNotConnected,
-
-    #[error("this deployment holds no platform credential for that connector")]
-    MintUnconfigured,
-
-    #[error("the GitHub App installation this handle names is gone")]
-    GithubReconnectRequired,
-
-    #[error("GitHub returned no installation token this daemon would hand over")]
-    GithubMintFailed,
-
-    #[error("the connector's stored authorization is no longer redeemable")]
-    ConnectorReconnectRequired,
-
-    #[error("the connector's token exchange produced no credential")]
-    ConnectorMintFailed,
-
-    #[error("the fleet holds no approved grant for that integration")]
-    GrantRequired,
-
-    #[error("the fleet's memory could not be read or written")]
-    Memory {
-        #[source]
-        source: afd_memory::Error,
-    },
-}
 
 /// The refusals a suite outside this crate needs to CONSTRUCT.
 ///

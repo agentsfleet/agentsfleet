@@ -24,6 +24,8 @@ import { withMockApi } from "./helpers-mock-api.ts";
 import {
   FLEET_ID,
   EVENT_ID,
+  WS_ID,
+  POST,
   CALL_STREAM_OPEN,
   CALL_POST,
   authedScope,
@@ -107,10 +109,10 @@ describe("steer — SSE frame callbacks", () => {
     expect(rec.stdout.some((l) => l.includes("read_file") && l.includes("starting"))).toBe(true);
   });
 
-  test("tool_call_completed prints tool name, 'done', and ms (lines 101-103)", async () => {
+  test.each(["succeeded", "failed", undefined] as const)("tool completion presents recorded status %s without inferring success", async status => {
     const rec = makeRecorder();
     const events = [
-      { id: null, type: KIND_TOOL_CALL_COMPLETED, data: { event_id: EVENT_ID, name: "write_file", ms: 42 } },
+      { id: null, type: KIND_TOOL_CALL_COMPLETED, data: { event_id: EVENT_ID, name: "write_file", ms: 42, ...(status ? {status} : {}) } },
       { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
     ] satisfies Parameters<StreamGetCallback>[0][];
     const exit = await Effect.runPromiseExit(
@@ -121,7 +123,7 @@ describe("steer — SSE frame callbacks", () => {
       }).pipe(Effect.provide(makeLayer(rec))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.stdout.some((l) => l.includes("write_file") && l.includes("done") && l.includes("42ms"))).toBe(true);
+    expect(rec.stdout.some((l) => l.includes("write_file") && l.includes(status ?? "outcome unavailable") && l.includes("42ms"))).toBe(true);
   });
 
   test("unknown event type is silently skipped (line 110)", async () => {
@@ -247,8 +249,8 @@ describe("steer — the tail opens before the message posts", () => {
       options?.onOpen?.();
       cb({ id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } });
     };
-    const httpReply = <T>(_input: HttpRequestInput): T => {
-      calls.push(CALL_POST);
+    const httpReply = <T>(input: HttpRequestInput): T => {
+      calls.push(input.method === POST ? CALL_POST : `read:${input.path}`);
       return { event_id: EVENT_ID } as T;
     };
     const exit = await Effect.runPromiseExit(
@@ -259,6 +261,7 @@ describe("steer — the tail opens before the message posts", () => {
       }).pipe(Effect.provide(makeLayer(rec, httpReply))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(calls).toEqual([CALL_STREAM_OPEN, CALL_POST]);
+    expect(calls).toEqual([CALL_STREAM_OPEN, CALL_POST, `read:/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`]);
+    expect(rec.requests.filter(request => request.method === POST).map(request => request.body)).toEqual([{message: "go"}]);
   });
 });

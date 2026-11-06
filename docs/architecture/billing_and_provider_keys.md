@@ -203,11 +203,12 @@ There are no plan tiers in the cost function. The `Rater` in §4 takes no plan p
 
 A fleet run is charged for what it uses, and only that: no event costs anything to receive. The run's usage is logged inside the lease's own transactions and the money moves afterwards, through the `Biller` every product path holds (§11).
 
-```
+```text
  ONE event → the fleet runs in a sandbox, renewing as it works:
    issue ─renew─ renew ─renew─ … ─report─►   each step carries the runner's request lines:
      request line = one provider request, numbered by the runner (seq < 2^31)
-     runtime line = run time since the lease's cursor, numbered by the daemon (seq >= 2^31)
+     runtime line = run time since the lease's cursor (2^31 <= seq < 3 * 2^30)
+     native decisions reserve the upper quarter (seq >= 3 * 2^30)
      each line priced by the Rater: run fee (both postures) + tokens (platform), rounded UP
 
    inside the lease's transaction (fenced; a lost or capped pass writes nothing):
@@ -219,6 +220,10 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
      report → nothing
    sweeper:billing, the relay, every 2 s: settle(lines)
 ```
+
+The native decision allocator assigns this range before dispatch in `rustd/crates/afd_fleet/src/task/decision/intent.rs`.
+Lease-scoped reservation and PATCH routes fund one send and record its receipt under the original payer and frozen prices.
+The runner reserves and records intent and goal calls through these routes; the [native decision billing design](goal_evaluation.md#native-billing-integration) describes their accounting.
 
 | Step | What moves | Where |
 |---|---|---|
@@ -253,6 +258,17 @@ Setup rows have `charge_type: authoring` and `authoring_attempt_id`; `event_id` 
 The dashboard labels setup records **Setup chat**, using **Fleet setup** when no fleet link exists. The command-line interface requests a bounded raw charge page and keeps every returned record before forwarding its cursor.
 
 ---
+
+Delayed settlement reconstructs separate provider/model/posture groups under the original work identity.
+The sweeper selects its oldest bounded batch before grouping; sequence numbers remain unique across the whole work, including different providers.
+Its recovery counters count settlement groups, so one lease can contribute several successful settlements.
+
+`afd_billing::ledger::unsettled` sorts borrowed keys in place and moves owned headers into the resulting groups.
+This avoids cloned map keys; no measured latency or allocation result follows from that source change.
+The [decision design](goal_evaluation.md#native-billing-integration) describes native call reservations, frozen rates and receipt accounting.
+
+Renew/report usage records fresh coding deltas, and native report settlement commits the task outcome with its lease report.
+Unresolved physical decision calls retain their reserved funds. Live end-to-end verification remains pending.
 
 ## 4. The run charge
 

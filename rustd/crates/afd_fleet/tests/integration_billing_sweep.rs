@@ -8,16 +8,18 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
+use std::{panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
-use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
+use afd_billing::biller::{Account, Attribution, Biller, Settlement, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines};
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::{BillingSwept, GRACE, sweep};
-use afd_wire::usage::{DAEMON_SEQ_BASE, UsageLine};
+use afd_fleet::lease::{Renewed, sql::meter::Metering};
+use afd_wire::usage::{DAEMON_SEQ_BASE, DECISION_SEQ_BASE, UsageLine};
+use futures_util::FutureExt as _;
 
 use crate::report_seed::{DEEP_POOL, Held, held_in};
 use crate::support::Fixtures;
@@ -81,35 +83,139 @@ async fn the_relay_settles_orphaned_lines() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_fleet_expiry_bills_its_last_slice() {
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let outcome = AssertUnwindSafe(tokio::time::timeout(
+        Duration::from_secs(45),
+        expiry_after_decision(&held),
+    ))
+    .catch_unwind()
+    .await;
+    tokio::time::timeout(Duration::from_secs(10), held.fixtures.cleanup())
+        .await
+        .expect("owned fixture cleanup remains bounded after failure");
+    match outcome {
+        Ok(result) => result.expect("renewal and expiry scenario is bounded"),
+        Err(failure) => std::panic::resume_unwind(failure),
+    }
+}
+
+async fn expiry_after_decision(held: &Held) {
     let database = &held.fixtures.database;
     let biller = LedgerBiller::new(
         database.clone(),
         Entropy::new(),
         Arc::new(afd_core::clock::SystemClock),
     );
-    let tail_ms = abandon(&held).await;
+    // Seed one known decision charge through the real ledger. Physical-call
+    // reservation is a separate component; this tests its reserved namespace.
+    let mut decision = settlement(held).await;
+    "typesafe".clone_into(&mut decision.provider);
+    "jev-latest".clone_into(&mut decision.model);
+    decision.lines = vec![RatedLine {
+        usage: UsageLine {
+            seq: DECISION_SEQ_BASE,
+            at: held.now,
+            input_tokens: 1_000,
+            cached_input_tokens: 0,
+            cache_write_tokens: 0,
+            cache_write_5m_tokens: 0,
+            cache_write_1h_tokens: 0,
+            output_tokens: 0,
+            runtime_ms: 0,
+        },
+        price: None,
+        charged: DECISION_CHARGE,
+        unpriced_tokens: 0,
+    }];
+    biller
+        .settle(&decision)
+        .await
+        .expect("known decision charge");
+    let first_ms = renew_runtime(held, &biller).await;
+    assert_eq!(
+        runtime_lines(held).await,
+        [(i64::from(DAEMON_SEQ_BASE), first_ms)],
+        "renewal counts runtime only, despite the existing decision receipt"
+    );
+    let before = DEEP_POOL - DECISION_CHARGE.as_i64() - crate::report_seed::run_fee(first_ms);
+    assert_eq!(held.fixtures.balance(&held.tenant).await, Some(before));
+    let tail_ms = abandon(held).await;
+    assert_eq!(
+        held.fixtures.balance(&held.tenant).await,
+        Some(before),
+        "abandonment preserves previously charged work"
+    );
 
     let swept = sweep(database, &biller, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
-    assert_eq!(swept.expired_billed, 1, "{swept:?}");
     assert_eq!(
-        runtime_lines(&held).await,
-        [(i64::from(DAEMON_SEQ_BASE), tail_ms)],
-        "one runtime line, in the daemon's range, for the run time since the last renewal"
+        swept,
+        BillingSwept {
+            expired_billed: 1,
+            ..BillingSwept::default()
+        }
+    );
+    assert_eq!(
+        runtime_lines(held).await,
+        [
+            (i64::from(DAEMON_SEQ_BASE), first_ms),
+            (i64::from(DAEMON_SEQ_BASE) + 1, tail_ms)
+        ],
+        "expiry uses the next runtime sequence without counting decision usage"
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
-        Some(DEEP_POOL - crate::report_seed::run_fee(tail_ms)),
+        Some(before - crate::report_seed::run_fee(tail_ms)),
         "the last slice is charged once"
     );
 
     let again = sweep(database, &biller, &Entropy::new(), held.now, None)
         .await
         .expect("the pass reads");
-    assert_eq!(again.expired_billed, 0, "the cursor reached the deadline");
+    assert_eq!(
+        again,
+        BillingSwept::default(),
+        "the cursor reached the deadline"
+    );
+    assert_eq!(
+        held.fixtures.balance(&held.tenant).await,
+        Some(before - crate::report_seed::run_fee(tail_ms))
+    );
+}
 
-    held.fixtures.cleanup().await;
+/// Recorded normalized usage, independent of the provider-rate integration.
+const DECISION_CHARGE: Nanos = Nanos::from_i64(42_000);
+
+async fn renew_runtime(held: &Held, biller: &LedgerBiller) -> i64 {
+    held.run_a_slice().await;
+    let renewed = held
+        .leases
+        .extend(
+            Metering {
+                lease_id: held.issued.lease_id.as_str(),
+                runner_id: &held.runner,
+                requests: &[],
+            },
+            &held.lease_key,
+            &held.pricing,
+            held.now,
+        )
+        .await
+        .expect("current lease renews");
+    let settlement = match renewed {
+        Renewed::Extended { settlement, .. } => settlement,
+        _ => None,
+    }
+    .expect("renewal measured positive runtime");
+    assert_eq!(settlement.lines.len(), 1, "coding request list was empty");
+    let line = settlement.lines.first().expect("one runtime line");
+    assert!(line.usage.runtime_ms >= 1_000);
+    let millis = i64::from(line.usage.runtime_ms);
+    biller
+        .settle(&settlement)
+        .await
+        .expect("first runtime charge");
+    millis
 }
 
 /// The expiry sweep and a late report race on one abandoned lease: whichever
@@ -153,7 +259,6 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 /// both pushed back past the sweeper's grace, with three seconds of run time
 /// between them that no renewal billed. Answers that tail in milliseconds.
 pub(crate) async fn abandon(held: &Held) -> i64 {
-    held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     let lease = held.issued.lease_id.as_str();
     let mut connection = held
         .fixtures
@@ -181,10 +286,11 @@ const TAIL: std::time::Duration = std::time::Duration::from_secs(3);
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     sqlx::query_as(
         "SELECT seq, runtime_ms FROM billing.usage_lines \
-         WHERE work_id = $1::uuid AND seq >= $2 ORDER BY seq",
+         WHERE work_id = $1::uuid AND seq >= $2 AND seq < $3 ORDER BY seq",
     )
     .bind(held.lease_key.as_str())
     .bind(i64::from(DAEMON_SEQ_BASE))
+    .bind(i64::from(DECISION_SEQ_BASE))
     .fetch_all(
         &mut *held
             .fixtures

@@ -195,7 +195,7 @@ Also test private scope isolation and deletion, stale authority/generation, canc
 
 ## Preparation and future sandbox boundary
 
-The proposed [durable repair scenario](scenarios/durable-repair.md) adds task-bound recovery and Jev goal evaluation. Compaction remains the model-input mechanism; a summary cannot select a PR, authorize a write or prove that a remote action completed.
+The [durable repair scenario](scenarios/durable-repair.md) adds task-bound recovery and Jev goal evaluation. Compaction remains the model-input mechanism; a summary cannot select a PR, authorize a write or prove that a remote action completed.
 
 **Owner request, Oct 24, 2026: 10:21 PM:**
 
@@ -240,3 +240,35 @@ Database writes retain generation checks and live-lease fencing. Cancellation an
 
 A new checkpoint-storage crate is conditional on a demonstrated dependency benefit. No acceptance limits or gate implementation changes.
 
+
+## Proposed DT handoff and steering
+
+M236 adds an authorized cross-lease handoff through [Durable Task manifests](durable_tasks.md).
+The manifest binds conversation coverage, source digest, file/Git generation and confirmed effects together.
+Keep current lease-scoped validation until that explicit handoff succeeds.
+
+A new chat lease currently carries up to eight finished question/answer turns, bounded by 65,536 bytes overall and 16,384 bytes per text.
+See `afd_fleet/src/lease/history.rs` and `afd_wire/src/lease/payload.rs`.
+That window does not replay every previous tool record or inherit another lease's summary.
+
+```text
+Current request: instructions + bounded prior chat + newest event
+Within lease:   prepared history + assistant calls + matching tool results
+After compact:  instructions + validated summary + retained groups + new input
+DT resume:      compatible handoff + accepted input beyond checkpoint cursor
+```
+
+Codex source comparison uses `openai/codex` revision `05c08d76552371400d273d4539c2a116d6340755`.
+Codex [turn handling](https://github.com/openai/codex/blob/05c08d76552371400d273d4539c2a116d6340755/codex-rs/core/src/session/turn.rs) drains eligible pending input before prompt assembly and prepares history with current tools.
+Its `client.rs` can send a full prepared request or an eligible WebSocket continuation with `previous_response_id` and incremental input.
+
+That transport shortcut preserves logical context and does not establish hidden server behavior.
+Its `compact.rs` replaces and saves working history through an explicit compaction path.
+These observations come from source inspection, not a captured request from Indy's desktop session.
+
+M236 consumes steering between complete action groups through one native input claim.
+The runner-assigned decision model classifies the input; native receipts prevent replay through later queued admission.
+The next request carries accepted questions, DT state, compatible history, current tools and accepted input beyond the checkpoint cursor.
+
+Removing a steer from the queue does not mark its meaning or effects checkpointed.
+Recovery replays accepted input and reconciles recorded effects before another action.

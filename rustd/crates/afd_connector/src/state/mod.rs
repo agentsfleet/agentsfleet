@@ -116,14 +116,23 @@ impl Rejected {
 /// [`Verified::subject_matches`], asked by the caller against the person it
 /// authenticated, and it is a separate step because a genuine state presented
 /// by the wrong person is a different refusal from a forged one.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Verified {
+    pub(crate) authenticated_subject: Option<String>,
     /// The workspace the connect was started for.
     workspace: String,
     /// The keyed tag of the person who started it.
     subject_tag: String,
     /// What the single-use slot is remembered under.
     nonce: String,
+}
+
+impl std::fmt::Debug for Verified {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Verified")
+            .field("workspace", &self.workspace)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Verified {
@@ -226,6 +235,7 @@ pub fn verify(
     }
 
     Ok(Verified {
+        authenticated_subject: None,
         workspace: workspace.to_owned(),
         subject_tag: subject_tag.to_owned(),
         nonce: nonce.to_owned(),

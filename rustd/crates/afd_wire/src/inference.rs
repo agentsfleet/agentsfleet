@@ -3,6 +3,9 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+/// Largest provider-native requested model identity, shared with the catalogue.
+pub const MODEL_ID_MAX_BYTES: usize = 256;
+
 /// The provider API rig uses for this configured model.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

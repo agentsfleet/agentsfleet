@@ -13,7 +13,6 @@
 //! so a model trained on Codex's harness reads it unprompted.
 
 use afr_executor::{EDGE_BYTES, Ending, Process, ProcessEvent};
-use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time::Instant;
 
 use crate::runtime::ToolErrorCode;
@@ -56,13 +55,6 @@ pub(super) struct Collected {
 }
 
 impl Collected {
-    /// Waits for `process` to end, then reads it: `Interrupted` when its
-    /// events finished with no ending, as they do when the executor goes away.
-    pub(super) async fn read_to_end(&mut self, process: &mut Process) -> Ending {
-        process.events.finished().await;
-        self.arrived(process).unwrap_or(Ending::Interrupted)
-    }
-
     /// Waits until `process` ends or `deadline` passes, then reads what
     /// arrived; `None` while it still runs.
     pub(super) async fn until(
@@ -77,17 +69,13 @@ impl Collected {
     /// Takes what already arrived, without waiting: the ending when it was
     /// among it, and `Interrupted` for events that finished with none.
     pub(super) fn arrived(&mut self, process: &mut Process) -> Option<Ending> {
-        loop {
-            match process.events.try_recv() {
-                Ok(event) => {
-                    if let Some(ending) = self.take(event) {
-                        return Some(ending);
-                    }
-                }
-                Err(TryRecvError::Empty) => return None,
-                Err(TryRecvError::Disconnected) => return Some(Ending::Interrupted),
+        let (events, finished) = process.events.take_ready();
+        for event in events {
+            if let Some(ending) = self.take(event) {
+                return Some(ending);
             }
         }
+        finished.then_some(Ending::Interrupted)
     }
 
     /// Keeps one event; the ending when it was the last.

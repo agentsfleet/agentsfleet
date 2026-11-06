@@ -21,7 +21,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     mockStream(["one", "two"].map(id => ev({id, role: "system", actor: "slack:member", text: "Message received", reply: "", status: "processed",
       custom: {requestJson: JSON.stringify({message: `Inspect ${id}`, channel_id: "private-channel"})}})));
     const {container} = renderThread();
-    await act(async () => {fireEvent.click(screen.getByRole("button", {expanded: false}));});
+    await act(async () => {fireEvent.click(screen.getByRole("button", {name: /×2/, expanded: false}));});
     const disclosures = screen.getAllByRole("button", {name: "View message"});
     expect(disclosures).toHaveLength(2);
     for (const disclosure of disclosures) await act(async () => {fireEvent.click(disclosure);});

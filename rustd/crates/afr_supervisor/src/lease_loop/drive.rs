@@ -2,9 +2,9 @@
 //! has one, and reaches the sandbox's executor through the build's slot.
 
 use std::panic::AssertUnwindSafe;
-use std::time::Duration;
 
 use afd_core::error_code;
+use afd_core::timing::ENGINE_STOP_GRACE;
 use afd_wire::report::FailureClass;
 use afr_agent::AgentRun;
 use afr_executor::ExecutorSource;
@@ -19,10 +19,6 @@ use crate::report::Ending;
 use crate::verbs::FencedVerbs;
 
 const DETAIL_ENGINE: &str = "the agent engine stopped before the turn ended";
-/// How long a stopped engine has to close its open calls and hand back what
-/// it has. The run's tokens and memory ride that output, so dropping the
-/// engine the moment the lease ends would bill and keep nothing.
-const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
 const DETAIL_PANIC: &str = "the agent engine panicked";
 const EVENT_ENGINE_FAILED: &str = "engine_run_failed";
 const EVENT_ENGINE_PANICKED: &str = "engine_panicked";
@@ -35,6 +31,8 @@ impl LeaseRun<'_> {
         memory: Seed<'_>,
         executor: &dyn ExecutorSource,
         sink: ActivitySink,
+        prepared_task: Option<&afr_agent::PreparedTask>,
+        recovered_task: Option<&afr_agent::TaskRecovery>,
     ) -> Ending {
         let mint = LeaseMint::new(&self.lessee.plane, &self.ids.lease);
         let checkpoint = LeaseCheckpoint::new(&self.lessee.plane, &self.ids.fleet, self.lease);
@@ -47,8 +45,13 @@ impl LeaseRun<'_> {
             &self.lessee.plane,
             &self.ids.lease,
             self.lease.fencing_token,
+            &self.lessee.spool,
+            &self.lessee.held,
+            &self.interrupt,
         );
         let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
+            recovered_task,
+            prepared_task,
             lease: self.lease,
             memory,
             executor,
@@ -77,7 +80,7 @@ impl LeaseRun<'_> {
         drop(sink);
         match output {
             Some(Ok(Ok(output))) => Ending::Ran {
-                output,
+                output: Box::new(output),
                 first_chunk,
             },
             Some(Ok(Err(failure))) => self.fail(

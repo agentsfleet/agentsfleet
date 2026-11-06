@@ -28,6 +28,7 @@ use crate::error::{Error, Result, UNAUTHORIZED};
 use crate::storage_home::StorageHome;
 
 pub(crate) mod authoring;
+pub(crate) mod decision;
 
 /// The extension every spooled report carries.
 const EXTENSION: &str = "json";

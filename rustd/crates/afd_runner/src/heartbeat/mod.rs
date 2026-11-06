@@ -88,6 +88,8 @@ struct PolicyRow {
 /// one pending", and nothing downstream has a use for when it was asked.
 #[derive(Debug, sqlx::FromRow)]
 struct PolicyColumns {
+    durable_tasks_enabled: bool,
+    decision_model_id: Option<String>,
     sandbox_tier: String,
     network_policy: String,
     registry_allowlist: String,
@@ -102,6 +104,8 @@ impl From<PolicyColumns> for PolicyRow {
     fn from(row: PolicyColumns) -> Self {
         Self {
             assignment: AssignmentColumns {
+                durable_tasks_enabled: row.durable_tasks_enabled,
+                decision_model_id: row.decision_model_id,
                 sandbox_tier: row.sandbox_tier,
                 network_policy: row.network_policy,
                 registry_allowlist_json: row.registry_allowlist,

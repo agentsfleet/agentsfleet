@@ -45,6 +45,8 @@ afd_validate.workspace = true
 const_format.workspace = true
 garde.workspace = true
 afd_events.workspace = true
+# Native task ownership and keyset values used by fleet task reads.
+afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_runtime.workspace = true
 afd_http.workspace = true

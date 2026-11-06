@@ -16,7 +16,7 @@ impl Creations {
         version: i64,
         definition: &Definition,
         now: Timestamp,
-    ) -> Result<()> {
+    ) -> Result<afd_events::activity::Announcement> {
         let recipes: Vec<_> = definition
             .runtime()
             .triggers()
@@ -30,7 +30,8 @@ impl Creations {
                 _ => None,
             })
             .collect::<afd_cron::Result<_>>()?;
-        self.schedules
+        Ok(self
+            .schedules
             .replace_recipes_on(
                 connection,
                 afd_cron::RecipeSet {
@@ -41,7 +42,6 @@ impl Creations {
                     now,
                 },
             )
-            .await?;
-        Ok(())
+            .await?)
     }
 }

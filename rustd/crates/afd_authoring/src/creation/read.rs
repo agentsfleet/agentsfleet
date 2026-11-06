@@ -31,6 +31,8 @@ pub struct SavedFleet {
     pub setup_etag: String,
     /// Decimal setup revision.
     pub setup_revision: String,
+    /// Exact immutable setup identity for explicit adoption by existing work.
+    pub setup_revision_id: Uuid7,
     /// Policy interpretation of this setup.
     pub policy_semantics: String,
     /// Shared immutable setup, without conversation or credentials.
@@ -126,6 +128,7 @@ fn project(row: Stored, review: &Review) -> SavedFleet {
         etag: etag(&row.id, row.resource_version),
         setup_etag: etag(&row.id, row.head_revision),
         setup_revision: row.head_revision.to_string(),
+        setup_revision_id: row.head_revision_id,
         policy_semantics: row.accepted.policy_semantics,
         id: row.id,
         name: row.name,

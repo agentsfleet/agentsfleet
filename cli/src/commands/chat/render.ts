@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { OUTPUT_FORMAT, type Output } from "../../services/output.ts";
 import { MESSAGE_ROLE, MESSAGE_STATE, SCHEDULE_SYNC, type Applied, type Message, type Review, type Fleet,
   type Schedule } from "./protocol.ts";
+import { remainingConfig, renderQuestions } from "./questions.ts";
 
 const JSON_INDENT = 2;
 export const FLEET_ACTIVE = "active";
@@ -26,7 +27,14 @@ export function renderReview(output: Output, review: Review): Effect.Effect<void
   return Effect.gen(function* () {
     yield* output.info(`Instance: ${review.effective.instance_name}`);
     yield* output.info(`Runtime model: ${review.effective.runtime_model_ref ?? "selection required"}`);
-    yield* output.info(JSON.stringify(review.effective.definition, null, JSON_INDENT));
+    yield* output.info(review.effective.target_setup_revision
+      ? `Saved setup revision: R${review.effective.target_setup_revision}. Saving changes creates a new revision.`
+      : "Proposed setup. Saving creates setup revision R1.");
+    const definition = review.effective.definition;
+    yield* output.info(`Purpose: ${definition.description}`);
+    yield* output.info(`Instructions\n${definition.instructions_md || "No instructions configured."}`);
+    yield* renderQuestions(output, definition.config);
+    yield* output.info(`Configuration: ${JSON.stringify(remainingConfig(definition.config), null, JSON_INDENT)}`);
     yield* output.info(`Required access: ${JSON.stringify(review.requirements, null, JSON_INDENT)}`);
     for (const check of review.readiness) {
       yield* output.info(`${check.kind} ${check.subject}: ${check.state}${check.next_action?.href ? ` → ${check.next_action.href}` : ""}`);
@@ -38,6 +46,7 @@ export function renderReview(output: Output, review: Review): Effect.Effect<void
 export function renderFleet(output: Output, fleet: Fleet): Effect.Effect<void> {
   return Effect.gen(function* () {
     yield* renderResult(output, `Fleet ${fleet.name}: ${fleet.status}`, fleet);
+    if (output.format === OUTPUT_FORMAT.text) yield* output.info(`Saved setup revision: R${fleet.setup_revision}`);
     if (setupPartial(fleet)) {
       for (const check of fleet.setup.checks) {
         yield* output.warn(`${check.kind} ${check.subject}: ${check.state}${check.next_action?.href ? ` → ${check.next_action.href}` : ""}`);

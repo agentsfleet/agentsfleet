@@ -33,6 +33,8 @@ pub(super) const EVENT_BUILD_FAILED: &str = "sandbox_build_failed";
 
 /// What one lease's build works from, every check before the turn passed.
 pub(super) struct Build<'b> {
+    pub(super) prepared_task: Option<&'b afr_agent::PreparedTask>,
+    pub(super) recovery: &'b OnceLock<super::recovery::State>,
     /// The key a held sandbox is found under, and the new one filed under.
     pub(super) key: &'b HoldKey,
     /// The size the sandbox enforces.
@@ -147,11 +149,24 @@ impl LeaseRun<'_> {
         let (sandbox, held) = self.acquire(build).await?;
         let landed = match build.plan {
             // A held sandbox keeps the repositories its last lease left.
-            Some(plan) if !held => {
+            Some(plan)
+                if !held
+                    && build
+                        .prepared_task
+                        .and_then(|prepared| prepared.inputs.current_task.as_ref())
+                        .is_none_or(|task| task.checkpoint_id.is_none()) =>
+            {
                 let _checking_out = self.timeline.start(Segment::Checkout);
                 self.check_out(sandbox.as_ref(), plan, build.stop).await
             }
             _nothing_to_land => Ok(()),
+        };
+        let landed = match landed {
+            Ok(()) => self
+                .prepare_recovery(sandbox.as_ref(), build)
+                .await
+                .map_err(|failure| Ended::Failed(Unavailable::Prepare, failure.logged())),
+            Err(failure) => Err(failure),
         };
         // A stop outranks what the last step answered: the turn already ended.
         let landed = if build.stop.is_cancelled() {
@@ -173,7 +188,16 @@ impl LeaseRun<'_> {
     /// watch records when it drops, so a refused build is timed too.
     async fn acquire(&self, build: &Build<'_>) -> Result<(Box<dyn Sandbox>, bool), Ended> {
         let _preparing = self.timeline.start(Segment::Prepare);
-        let held = self.revive(build.key, build.bound).await;
+        let held = if build.prepared_task.is_some() {
+            // Durable state has one restore owner; an unrelated warm workspace
+            // cannot silently replace the native checkpoint generation.
+            self.lessee
+                .holds
+                .release(self.ids.fleet.clone(), Release::Superseded);
+            None
+        } else {
+            self.revive(build.key, build.bound).await
+        };
         mark_reused(held.is_some());
         match held {
             Some(sandbox) => Ok((sandbox, true)),

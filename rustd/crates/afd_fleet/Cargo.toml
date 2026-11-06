@@ -41,6 +41,18 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# Shared boundary validation for private checkpoint storage configuration.
+afd_validate.workspace = true
+afd_vault.workspace = true
+# Native publication owns guarded HTTP, bounded workflow parsing and Git blobs.
+reqwest.workspace = true
+serde-saphyr.workspace = true
+base64.workspace = true
+object_store.workspace = true
+http.workspace = true
+aws-sigv4.workspace = true
+aws-credential-types.workspace = true
+bytes.workspace = true
 # A lease's two post-issue reads, the thread's turns and the memory window,
 # run overlapped (`future::join`).
 futures-util.workspace = true
@@ -68,6 +80,7 @@ afd_gate.workspace = true
 afd_core.workspace = true
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
+scopeguard.workspace = true
 # `fleet.events`. The table's statements moved out of this crate's
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on leases, money, policy and four sweepers.
@@ -106,6 +119,7 @@ afd_fleet_runtime.workspace = true
 # The entropy a runner token is minted from. Drawn through the workspace's one
 # entropy surface, never through a second call to the operating system.
 afd_crypto.workspace = true
+hex.workspace = true
 # The wire shapes this plane answers with. Frozen by M175; consumed, never
 # authored here.
 afd_api_wire.workspace = true
@@ -126,8 +140,25 @@ serde.workspace = true
 # `metadata` a runner event carries are all `jsonb`, built and read as values.
 serde_json.workspace = true
 tracing.workspace = true
+# Task progress reads bound both connection acquisition and connected queries.
+tokio = { workspace = true, features = ["time", "sync"] }
+# Both HTTP and internal decision owners accept already validated wire input.
+garde.workspace = true
+# An encoded one-use credential is wiped if issuance or response construction fails.
+zeroize.workspace = true
 
 [dev-dependencies]
+# Parse SDK batch-delete XML and verify the local GitHub App exchange signature.
+quick-xml = { version = "=0.41.0", features = ["serialize"] }
+jsonwebtoken.workspace = true
+# Real HTTPS object-store fixtures use an ephemeral CA and pinned local DNS.
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+# Checkpoint scenarios construct the same bounded client as daemon wiring.
+afd_identity.workspace = true
+# Price-change scenarios and their shared fixtures use the native catalogue owner.
+afd_admin = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
@@ -135,8 +166,6 @@ afd_core = { workspace = true, features = ["test-util"] }
 afd_events = { workspace = true, features = ["test-util"] }
 # The credential plane moved out; its client and the zeroizing wrapper are
 # still what the lease suite constructs a stub broker with.
-reqwest.workspace = true
-zeroize.workspace = true
 afd_credential = { workspace = true, features = ["test-util"] }
 afd_runner = { workspace = true, features = ["test-util"] }
 # The suites need REAL parallelism: every contention proof in this crate — the

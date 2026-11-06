@@ -1,0 +1,49 @@
+--- a/rustd/crates/afd_db/tests/integration_migrate/names.rs
++++ b/rustd/crates/afd_db/tests/integration_migrate/names.rs
+@@ -16 +16 @@
+-SELECT src.relname::text, src_col.attname::text, dst.relname::text, dst_col.attname::text
++SELECT src.relname::text, src_col.attname::text, dst.relname::text, dst_col.attname::text, cardinality(con.conkey)::int4
+@@ -60 +60 @@
+-    let keys: Vec<(String, String, String, String)> = sqlx::query_as(FOREIGN_KEY_COLUMNS)
++    let keys: Vec<(String, String, String, String, i32)> = sqlx::query_as(FOREIGN_KEY_COLUMNS)
+@@ -65 +65 @@
+-    for (table, column, target, target_column) in &keys {
++    for (table, column, target, target_column, arity) in &keys {
+@@ -68,6 +68 @@
+-        let named = if target_column == "id" {
+-            column.ends_with(&format!("{}_id", singular(target)))
+-                || ROLE_NAMED.contains(&(column.as_str(), target.as_str()))
+-        } else {
+-            column == target_column
+-        };
++        let named = key_names_match(table, column, target, target_column, *arity);
+@@ -75 +70 @@
+-            column.ends_with("_id") && named,
++            named,
+@@ -90,0 +86,26 @@
++
++/// Scope dimensions repeat their target only inside a composite reference.
++/// The sole primary-id role below closes the task/checkpoint ownership cycle.
++fn key_names_match(table: &str, column: &str, target: &str, target_column: &str, arity: i32) -> bool {
++    if target_column == "id" {
++        column.ends_with("_id") && (column.ends_with(&format!("{}_id", singular(target)))
++            || ROLE_NAMED.contains(&(column, target)))
++    } else {
++        arity > 1 && (column == target_column
++            || (table == "tasks" && column == "id"
++                && target == "task_checkpoints" && target_column == "task_id"))
++    }
++}
++
++#[test]
++fn composite_scope_columns_preserve_target_identity() {
++    assert!(key_names_match("task_checkpoints", "task_base_id", "task_bases", "id", 1));
++    assert!(key_names_match("task_checkpoints", "repository", "task_bases", "repository", 3));
++    assert!(key_names_match("tasks", "id", "task_checkpoints", "task_id", 4));
++    assert!(!key_names_match("task_checkpoints", "base_id", "task_bases", "id", 1));
++    assert!(!key_names_match("task_checkpoints", "wrong_repository", "task_bases", "repository", 3));
++    assert!(!key_names_match("other_tasks", "id", "task_checkpoints", "task_id", 4));
++    assert!(!key_names_match("tasks", "id", "task_checkpoints", "other_task_id", 4));
++    assert!(!key_names_match("members", "email", "users", "email", 1));
++    assert!(!key_names_match("tasks", "id", "task_checkpoints", "task_id", 1));
++}

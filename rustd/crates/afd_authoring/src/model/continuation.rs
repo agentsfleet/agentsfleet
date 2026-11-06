@@ -68,6 +68,21 @@ pub(super) fn save(
     Ok(Some(serde_json::from_str(&raw).map_err(stored)?))
 }
 
+pub(super) fn refresh_result(
+    continuation: &mut Option<Value>,
+    request: &garde::Valid<ModelCallInput>,
+    result: &ModelCallResult,
+) -> Result<()> {
+    if let Some(native) = continuation {
+        native["digest"] = Value::String(replay::digest(&(
+            &request.request.messages,
+            crate::message::normalize(&result.text),
+            &result.proposal_calls,
+        ))?);
+    }
+    Ok(())
+}
+
 pub(super) async fn read(
     connection: &mut PgConnection,
     attempt: &Attempt,

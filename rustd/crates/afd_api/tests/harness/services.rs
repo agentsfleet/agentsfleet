@@ -88,6 +88,10 @@ impl Services for Fleet {
         &self.leases
     }
 
+    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+        &self.tasks
+    }
+
     fn sessions(&self) -> &Logins {
         &self.logins
     }

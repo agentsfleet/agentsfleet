@@ -53,9 +53,9 @@ const BATCH_LIMIT: i64 = 500;
 /// What one pass did.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BillingSwept {
-    /// Works whose unsettled lines this pass settled.
+    /// Work/provider/model/posture groups this pass settled.
     pub resettled: u64,
-    /// Lines' works it could not settle; they wait for the next pass.
+    /// Settlement groups it could not settle; they wait for the next pass.
     pub settle_failures: u64,
     /// Expired leases whose last slice this pass logged and settled.
     pub expired_billed: u64,
@@ -176,6 +176,7 @@ async fn log_last_slice(
         .bind(afd_billing::nanos::MS_PER_SEC)
         .bind(afd_billing::sql::work::FLEET_LEASE)
         .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+        .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
         .fetch_optional(&mut *transaction)
         .await
         .map_err(query(CONTEXT_EXPIRED))?

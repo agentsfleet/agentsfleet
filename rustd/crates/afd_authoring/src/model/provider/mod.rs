@@ -3,12 +3,13 @@
 mod dispatch;
 mod edits;
 mod network;
-mod prompt;
 mod rejections;
 mod request;
 mod resolver;
 mod response;
 mod schema;
+mod tools;
+mod triggers;
 mod verbatim;
 
 #[cfg(test)]
@@ -32,7 +33,6 @@ const KEY_TYPE: &str = "type";
 const KEY_DESCRIPTION: &str = "description";
 /// The single argument carries the native proposal object without JSON-in-JSON.
 const PROPOSAL_ARGUMENT: &str = "proposal";
-pub(super) use prompt::system;
 pub(super) use request::body;
 pub(super) use response::{Decoded, decode, decode_summary};
 

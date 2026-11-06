@@ -20,7 +20,8 @@ SELECT p.lease_expires_at AS checked_at, p.created_at AS started_at,
        p.fleet_id::text AS fleet_id, p.event_id,
        (SELECT f.name FROM fleet.fleets f WHERE f.id = p.fleet_id) AS fleet_name,
        (SELECT count(*) FROM billing.usage_lines u
-         WHERE u.work_type = $4 AND u.work_id = p.id AND u.seq >= $5)::bigint AS daemon_lines,
+         WHERE u.work_type = $4 AND u.work_id = p.id
+           AND u.seq >= $5 AND u.seq < $6)::bigint AS daemon_lines,
        p.posture, p.provider, p.model
 FROM probe p
 JOIN moved m ON m.id = p.id

@@ -9,9 +9,7 @@ use afd_admission::Repeated;
 use afd_api::services::WebhookIngress;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{
-    BoundResident, ChannelId, MentionAdmission, Named, NoticeOwed, Resident, Subscriber,
-};
+use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, NoticeOwner, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
 use jiff::Timestamp;
 
@@ -119,25 +117,25 @@ impl WebhookIngress for HarnessIngress {
         }
     }
 
-    // A script arranges no chat channel, so no resident is bound, a binding
-    // answers the fleet it was handed, and no fleet is found by name. The live
-    // suite owns materialisation.
-    async fn resident(
+    // Scripts arrange no channel carrier; the live suite owns binding races.
+    async fn notice_owner(
         &self,
         workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
-    ) -> IngressResult<Option<BoundResident>> {
+    ) -> IngressResult<Option<NoticeOwner>> {
         match self {
             Self::Unreachable(ingress) => {
-                ingress.resident(workspace, provider, team, channel).await
+                ingress
+                    .notice_owner(workspace, provider, team, channel)
+                    .await
             }
             Self::Scripted(_) => Ok(None),
         }
     }
 
-    async fn bind_resident(
+    async fn bind_notice_owner(
         &self,
         workspace: &Uuid7,
         provider: &str,
@@ -149,21 +147,10 @@ impl WebhookIngress for HarnessIngress {
         match self {
             Self::Unreachable(ingress) => {
                 ingress
-                    .bind_resident(workspace, provider, team, channel, fleet, now)
+                    .bind_notice_owner(workspace, provider, team, channel, fleet, now)
                     .await
             }
             Self::Scripted(_) => Ok(fleet.clone()),
-        }
-    }
-
-    async fn resident_named(
-        &self,
-        workspace: &Uuid7,
-        resident: &Resident,
-    ) -> IngressResult<Option<Named>> {
-        match self {
-            Self::Unreachable(ingress) => ingress.resident_named(workspace, resident).await,
-            Self::Scripted(_) => Ok(None),
         }
     }
 

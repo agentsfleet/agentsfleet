@@ -39,6 +39,7 @@
 mod cases;
 mod disconnect;
 mod handle_shapes;
+mod person;
 mod routing;
 mod vendor;
 

@@ -65,6 +65,8 @@ pub enum ProposalRejection {
     InstructionsAmbiguous,
     /// The edit does not name the reserved candidate version.
     StaleCandidate,
+    /// The newest user message did not request a setup change.
+    EditNotRequested,
 }
 
 #[cfg(test)]

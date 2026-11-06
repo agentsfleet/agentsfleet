@@ -89,6 +89,15 @@ pub(crate) struct Runtime {
     /// Context-size settings for each run.
     #[garde(dive)]
     pub(crate) context: Option<Context>,
+    /// Owner-reviewed routing and completion questions, versioned with this setup.
+    /// Omit for ordinary fleets; an explicit null or partial policy is refused.
+    #[serde(
+        default,
+        deserialize_with = "crate::config::decision::raw::present_object"
+    )]
+    #[garde(dive)]
+    #[cfg_attr(feature = "openapi", schema(nullable = false))]
+    pub(crate) decision_policy: Option<crate::config::decision::raw::Policy>,
     /// The repositories this fleet's GitHub credentials may reach, as `owner/name`.
     /// Set together with `repository_access`.
     // Refuses an empty list: a binding that names nothing is not "every
@@ -101,6 +110,12 @@ pub(crate) struct Runtime {
     /// How far those credentials reach. Set together with `repositories`.
     #[garde(skip)]
     pub(crate) repository_access: Option<Access>,
+    /// Reviewed write mode; `existing_pr` reserves branch publication for native tasks.
+    #[garde(skip)]
+    pub(crate) repository_publication: Option<crate::config::RepositoryPublication>,
+    /// Exact owner-reviewed validation-only workflows for existing PR publication.
+    #[garde(dive)]
+    pub(crate) repository_validation_workflows: Option<ValidationWorkflows>,
     /// The branch every pull request opens against. Required with `write`, refused with `read`.
     #[garde(inner(length(chars, min = 1, max = MAX_BASE_BRANCH_LEN), custom(is_branch_name)))]
     pub(crate) repository_base: Option<String>,
@@ -111,3 +126,12 @@ pub(crate) struct Runtime {
     #[cfg_attr(feature = "openapi", schema(ignore))]
     pub(crate) extra: Map<String, Value>,
 }
+
+/// Keep collection bounds alongside element validation, including optional input.
+#[derive(Debug, Deserialize, Validate)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(transparent)]
+pub(crate) struct ValidationWorkflows(
+    #[garde(length(min = 1, max = 16), dive)]
+    pub(crate)  Vec<crate::config::repository::ValidationWorkflow>,
+);

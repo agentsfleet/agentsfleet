@@ -146,7 +146,7 @@ fn answered(sent: reqwest::Result<Response>) -> std::result::Result<Response, Un
     clippy::disallowed_methods,
     reason = "the HTTP date parses to a SystemTime and the wait is a Duration between two SystemTimes; afd_core::clock::now returns a jiff Timestamp, and converting one side would add a step the arithmetic does not need"
 )]
-fn retry_after(headers: &HeaderMap) -> Option<Duration> {
+pub(crate) fn retry_after(headers: &HeaderMap) -> Option<Duration> {
     let value = headers.get(RETRY_AFTER)?.to_str().ok()?.trim();
     value
         .parse::<u64>()

@@ -44,6 +44,11 @@ pub(crate) fn rejected(detail: &'static str) -> Error {
     ErrorKind::Rejected { detail }.into()
 }
 
+/// Preserves the parser cause while identifying this operator input field.
+pub(crate) fn decision_model_id(source: afd_core::error::Error) -> Error {
+    ErrorKind::DecisionModelId { source }.into()
+}
+
 /// Reports an operator request addressed to no runner row.
 pub(crate) fn runner_not_found() -> Error {
     ErrorKind::RunnerNotFound.into()
@@ -125,6 +130,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             assignment_malformed("network_policy"),
         ),
         ("rejected", rejected(super::DETAIL_HOST_ID_BOUNDS)),
+        (
+            "decision model identifier",
+            decision_model_id(
+                afd_core::id::Uuid7::parse("malformed").expect_err("invalid fixture"),
+            ),
+        ),
         (
             "datastore",
             afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),

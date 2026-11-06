@@ -62,7 +62,7 @@ pub(super) fn probe() -> HostProbe {
 
 /// The assignment every answer here carries.
 fn policy() -> serde_json::Value {
-    serde_json::json!({"sandbox_tier": "landlock_full", "network_policy": "allow_all",
+    serde_json::json!({ "durable_tasks_enabled": true,"sandbox_tier": "landlock_full", "network_policy": "allow_all",
         "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
 }
 
@@ -154,6 +154,9 @@ async fn an_assignment_reaches_the_leases_and_labels_the_self_test_it_asks_for()
     );
     let calls = drain(&mut calls);
     assert!(calls.iter().all(|call| call.verb == Verb::Heartbeat));
+    assert!(calls.iter().all(|call| {
+        sent(call)["capability_report"]["durable_tasks_v1"] == serde_json::Value::Bool(true)
+    }));
     assert!(
         sent(&calls[0])["capability_report"]["landlock"]
             .as_bool()

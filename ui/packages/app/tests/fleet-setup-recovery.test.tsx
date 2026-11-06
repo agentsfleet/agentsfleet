@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { FleetRecovery } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecovery";
 import { FleetRecoveryContent } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetRecoveryContent";
 import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader";
-import { FLEET, FLEET_DETAIL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { FLEET, FLEET_DETAIL, SCHEDULE, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
 
@@ -90,7 +90,7 @@ it("keeps Edit setup before Fleet actions in the existing fleet workspace", () =
 });
 
 it.each(["installing", "active", "stopped"] as const)("retries an unregistered schedule while %s and reports a refusal", async (status) => {
-  const failed = {schedule_id: "sched-1", fleet_id: FLEET.id, sync: "failed", last_error: "refused"};
+  const failed = {...SCHEDULE, schedule_id: "sched-1", sync: "failed", last_error: "refused"};
   const fetchMock = vi.fn(async (_input: string, _init?: RequestInit) => new Response(JSON.stringify({...failed, sync: "synced", last_error: null}), {status: 200}));
   vi.stubGlobal("fetch", fetchMock);
   render(<FleetRecovery fleet={{...FLEET, status, start: {kind: "run_now", state: "accepted"}, schedules: [failed]}} workspace={WORKSPACE} />);
@@ -108,7 +108,7 @@ it.each(["installing", "active", "stopped"] as const)("retries an unregistered s
 // why_new=the fleet-page retry scenario covers failed registrations only; seam=none;
 // no_claim=external scheduler registration (HTTP response is fixture controlled).
 it.each(["failed", "syncing", "synced", "unconfirmed"])("reconciles an active fleet's %s schedule registration", async (sync) => {
-  const schedule = {schedule_id: "sched-matrix", fleet_id: FLEET.id, sync, last_error: null};
+  const schedule = {...SCHEDULE, schedule_id: "sched-matrix", sync, last_error: null};
   const fetchMock = vi.fn(async () => new Response(JSON.stringify({...schedule, sync: "synced"}), {status: 200}));
   vi.stubGlobal("fetch", fetchMock);
   render(<FleetRecovery fleet={{...FLEET, status: "active", start: {kind: "run_now", state: "accepted"}, schedules: [schedule]}} workspace={WORKSPACE} />);
@@ -119,14 +119,14 @@ it.each(["failed", "syncing", "synced", "unconfirmed"])("reconciles an active fl
     return;
   }
   expect(await screen.findByRole("button", {name: "Retry registration"})).toBeTruthy();
-  const warning = sync === "failed" ? "is saved but not registered, so it will not fire"
-    : "is saved but its registration was not confirmed, so it may not fire";
+  const warning = sync === "failed" ? "Scheduler sync failed. Will retry on the next sync."
+    : "Scheduler sync has not been confirmed.";
   expect(screen.getByText(new RegExp(warning))).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "Retry registration"}));
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
   expect(fetchMock).toHaveBeenCalledOnce();
   expect(fetchMock).toHaveBeenCalledWith(`/live/v1/workspaces/${WORKSPACE}/fleets/${FLEET.id}/schedules/sched-matrix/sync`, expect.objectContaining({method: "POST"}));
   expect(resume).not.toHaveBeenCalled();
-  expect(screen.getAllByRole("alert")).toHaveLength(1);
-  expect(screen.getByRole("alert", {name: "Schedule registration"})).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByRole("region", {name: "Schedules"})).toBeTruthy();
 });

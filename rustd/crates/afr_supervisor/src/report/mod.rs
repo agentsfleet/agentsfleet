@@ -17,7 +17,7 @@ pub(crate) enum Ending {
     /// the fleet caused.
     Ran {
         /// What the engine handed back.
-        output: RunOutput,
+        output: Box<RunOutput>,
         /// When the first answer chunk arrived, from the run's start.
         first_chunk: Option<Duration>,
     },
@@ -47,6 +47,9 @@ impl Ending {
                 mut output,
                 first_chunk,
             } => {
+                // A renewal cut revokes permission to request a task transition.
+                // Usage and ordinary report evidence still settle below.
+                output.task = None;
                 output.result.outcome = ResultOutcome::Failed(Failure {
                     class: Some(class),
                     detail: detail.into(),
@@ -89,6 +92,10 @@ pub(crate) fn report<'a>(
     });
     let tokens = result.map_or_else(|| meter.read().total(), |result| result.token_count);
     ReportRequest {
+        task: match ending {
+            Ending::Ran { output, .. } if outcome == Outcome::Processed => output.task.clone(),
+            Ending::Ran { .. } | Ending::Failed { .. } => None,
+        },
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),
         fencing_token: lease.fencing_token,

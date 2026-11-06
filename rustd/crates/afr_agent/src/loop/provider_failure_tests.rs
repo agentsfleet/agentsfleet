@@ -68,6 +68,8 @@ async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
     );
     let failure = engine
         .run(AgentRun {
+            recovered_task: None,
+            prepared_task: None,
             lease: &lease,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

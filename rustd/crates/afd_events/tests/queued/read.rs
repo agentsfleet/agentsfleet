@@ -25,6 +25,8 @@ async fn test_thread_read_includes_queued_steers() {
     assert_eq!(first.row.actor, ACTOR);
     assert_eq!(first.request_json, BODY);
     assert_eq!(first.response_text, None);
+    assert_eq!(first.task_activity.items, []);
+    assert!(!first.task_activity.truncated);
 
     lane.cleanup().await;
 }
@@ -65,5 +67,56 @@ async fn test_thread_read_dedupes_leased_steer() {
         Some(status::QUEUED)
     );
 
+    lane.cleanup().await;
+}
+
+/// The storage array and truncation scalar reconstruct the existing public history.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
+    let lane = EventsLane::open().await;
+    let event = "01924f4e-0000-7000-8000-000000000236";
+    lane.seed_event(event, jiff::Timestamp::now()).await;
+    let items = serde_json::json!([{
+        "kind": "task_decision_started",
+        "progress": {
+            "activity_id": event, "task_id": null, "source_admission_id": null,
+            "operation": "intent", "phase": "starting", "provider": null,
+            "model": null, "completed": 0, "total": null, "sequence": 2
+        }
+    }]);
+    let mut connection = lane.connection().await;
+    sqlx::query(
+        "UPDATE fleet.events SET task_activity = $3, task_activity_sequence = 2, \
+                 task_activity_truncated = true WHERE fleet_id = $1::uuid AND event_id = $2",
+    )
+    .bind(lane.fleet.as_str())
+    .bind(event)
+    .bind(&items)
+    .execute(&mut *connection)
+    .await
+    .expect("saved history fixture");
+    drop(connection);
+    let history = History::new(lane.database.clone());
+    let (workspace, fleet) = (uuid(&lane.workspace), uuid(&lane.fleet));
+    let detail = history
+        .detail(&workspace, &fleet, event)
+        .await
+        .expect("detail decodes split storage")
+        .expect("event exists");
+    let page = history
+        .thread_page(&workspace, &fleet, None, PAGE)
+        .await
+        .expect("thread decodes split storage");
+    let thread = page
+        .iter()
+        .find(|row| row.row.event_id == event)
+        .expect("saved event appears in thread");
+    assert_eq!(detail.task_activity, thread.task_activity);
+    assert!(detail.task_activity.truncated);
+    assert_eq!(
+        serde_json::to_value(&detail.task_activity.items).expect("public items serialize"),
+        items
+    );
     lane.cleanup().await;
 }

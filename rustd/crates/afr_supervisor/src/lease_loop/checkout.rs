@@ -42,17 +42,36 @@ impl LeaseRun<'_> {
     /// The lease's checkout, read off its policy before any model request:
     /// none when no sandbox tool works in a repository. A binding no checkout
     /// can serve, or a workspace id that is not one, ends the lease at
-    /// startup. The ending is boxed: it is large, and only a refusal
-    /// allocates one.
-    pub(super) fn plan(&self) -> Result<Option<Plan<'_>>, Box<Ending>> {
-        let wanted = checkouts(&self.lease.policy).map_err(|refusal| self.unready(&refusal))?;
+    /// startup. Refusals use the same owned ending as workspace admission.
+    pub(super) fn plan<'p>(
+        &'p self,
+        prepared: Option<&'p afr_agent::PreparedTask>,
+    ) -> Result<Option<Plan<'p>>, Box<Ending>> {
+        let mut wanted =
+            checkouts(&self.lease.policy).map_err(|refusal| Box::new(self.unready(&refusal)))?;
+        if let Some(task) = prepared.and_then(|prepared| prepared.inputs.current_task.as_ref()) {
+            match &task.target {
+                afd_wire::task::TaskTarget::ApiOnly => wanted.clear(),
+                afd_wire::task::TaskTarget::ExistingPr {
+                    repository, branch, ..
+                } => {
+                    wanted.retain(|checkout| checkout.repository == repository);
+                    let [checkout] = wanted.as_mut_slice() else {
+                        return Err(Box::new(self.unready(&error::config(
+                            "native task repository is outside checkout policy",
+                        ))));
+                    };
+                    checkout.base = branch;
+                }
+            }
+        }
         if wanted.is_empty() {
             return Ok(None);
         }
         // The workspace id becomes a directory of the mirror's path, so it is
         // read as an identifier before it is joined onto anything.
         let scope = Uuid7::parse(&self.lease.event.workspace_id)
-            .map_err(|refusal| self.unready(&refusal))?;
+            .map_err(|refusal| Box::new(self.unready(&refusal)))?;
         Ok(Some(Plan { wanted, scope }))
     }
 
@@ -122,8 +141,8 @@ impl LeaseRun<'_> {
 
     /// Logs why the lease's repositories could not be checked out, and ends
     /// it at startup.
-    fn unready(&self, failure: &impl Coded) -> Box<Ending> {
-        Box::new(self.refuse(failure, EVENT_CHECKOUT_REFUSED, DETAIL_CHECKOUT))
+    fn unready(&self, failure: &impl Coded) -> Ending {
+        self.refuse(failure, EVENT_CHECKOUT_REFUSED, DETAIL_CHECKOUT)
     }
 }
 

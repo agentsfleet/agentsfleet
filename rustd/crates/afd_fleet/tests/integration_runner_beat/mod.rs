@@ -188,6 +188,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     // Past `MAX_REPORT_CONTROLLERS`, which is a persistence-amplification
     // attempt rather than a capability claim.
     let flooded = CapabilityReport {
+        durable_tasks_v1: false,
         cgroup_controllers: vec![Cow::Borrowed("cpu"); 64],
         ..capable()
     };

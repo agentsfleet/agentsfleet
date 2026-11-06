@@ -2,9 +2,9 @@
 
 use crate::{Result, error};
 use std::{
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{Read as _, Write as _},
-    os::unix::fs::PermissionsExt as _,
+    os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
     path::Path,
 };
 use tempfile::NamedTempFile;
@@ -15,19 +15,32 @@ pub(super) const CONTENT: &str = "content.enc";
 pub(super) const KEY: &str = "content.key";
 pub(super) const CLOCK: &str = "clock.json";
 
-pub(super) fn directory(path: &Path) -> Result<()> {
+pub(in crate::report_spool) fn directory(path: &Path) -> Result<()> {
     fs::create_dir_all(path)?;
-    let metadata = fs::symlink_metadata(path)?;
-    if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return Err(error::config(
-            "the private report directory is not a directory",
-        ));
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(path)?;
+    directory.set_permissions(fs::Permissions::from_mode(0o700))?;
+    directory.sync_all()?;
+    // Fsyncing a receipt file does not make its newly created directory entry
+    // durable. Both levels precede any physical dispatch that relies on it.
+    if let Some(parent) = path.parent() {
+        let parent = if parent.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            parent
+        };
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY | libc::O_CLOEXEC)
+            .open(parent)?
+            .sync_all()?;
     }
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
     Ok(())
 }
 
-pub(super) fn write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(in crate::report_spool) fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| error::config("report path has no parent"))?;
@@ -39,17 +52,19 @@ pub(super) fn write(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn read(path: &Path, maximum: u64) -> Result<Vec<u8>> {
-    let metadata = fs::symlink_metadata(path)?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > maximum {
+pub(in crate::report_spool) fn read(path: &Path, maximum: u64) -> Result<Vec<u8>> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > maximum {
         return Err(error::config(
             "a private report component is not a bounded regular file",
         ));
     }
     let mut bytes = Vec::new();
-    File::open(path)?
-        .take(maximum + 1)
-        .read_to_end(&mut bytes)?;
+    file.take(maximum + 1).read_to_end(&mut bytes)?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > maximum {
         return Err(error::config(
             "a private report component grew beyond its bound",
@@ -58,7 +73,7 @@ pub(super) fn read(path: &Path, maximum: u64) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-pub(super) fn remove(path: &Path) -> Result<()> {
+pub(in crate::report_spool) fn remove(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
             fs::remove_dir_all(path)?;

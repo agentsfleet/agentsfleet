@@ -353,6 +353,7 @@ mod tests {
     /// A processed report; the totals under test come from the lines, not here.
     fn request() -> ReportRequest<'static> {
         ReportRequest {
+            task: None,
             lease_id: Cow::Borrowed("01924f4e-0000-7000-8000-00000000fee7"),
             event_id: Cow::Borrowed("event-fixture"),
             fencing_token: 1,

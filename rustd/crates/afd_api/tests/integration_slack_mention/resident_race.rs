@@ -8,9 +8,9 @@
 
 use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_ingress::slack::KIND_RESIDENT;
+use afd_ingress::slack::KIND_NOTICE_OWNER;
 
-use super::resident_bound::resident_document;
+use super::resident_bound::owner_document;
 use super::*;
 
 /// A bind that waited on a concurrent first mention's uncommitted binding
@@ -27,7 +27,7 @@ async fn a_bind_that_waited_on_a_concurrent_binding_answers_it() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let winner = fixture
-        .fleet(&resident_document(&fixture), FleetStatus::Active.as_str())
+        .fleet(&owner_document(), FleetStatus::Active.as_str())
         .await;
     let loser = fixture
         .fleet(
@@ -84,7 +84,7 @@ async fn write_uncommitted_binding(
     .bind(&fixture.team)
     .bind(CHANNEL)
     .bind(winner.as_str())
-    .bind(KIND_RESIDENT)
+    .bind(KIND_NOTICE_OWNER)
     .execute(&mut *connection)
     .await
     .expect("the concurrent binding is written, not yet committed");
@@ -102,7 +102,7 @@ fn spawn_latecomer_bind(
     let channel: afd_ingress::slack::ChannelId = CHANNEL.parse().expect("a channel id");
     tokio::spawn(async move {
         ingress
-            .bind_resident(
+            .bind_notice_owner(
                 &workspace,
                 PROVIDER.id(),
                 &team,

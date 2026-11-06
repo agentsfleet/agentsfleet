@@ -53,3 +53,5 @@ mod completion;
 mod failures;
 mod renewal;
 mod usage;
+
+mod recovery;

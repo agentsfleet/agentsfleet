@@ -7,11 +7,14 @@
 )]
 
 mod corpus;
+mod decision_policy;
 mod digest;
+mod edit_paths;
 mod edits;
 mod fields;
 mod mention;
 mod private_text;
+mod publication;
 mod roundtrip;
 #[cfg(feature = "openapi")]
 mod schema_parity;

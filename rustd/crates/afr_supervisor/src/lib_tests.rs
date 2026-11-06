@@ -126,7 +126,7 @@ async fn a_stop_on_the_first_beat_serves_nothing_and_a_report_the_daemon_cannot_
         leave_a_report(&home).await;
         let (plane, mut calls) = plane(daemon(|call| match call.verb {
             Verb::Heartbeat => Some(json(
-                &serde_json::json!({"status": "stop", "assigned_policy": {"sandbox_tier": "dev_none",
+                &serde_json::json!({"status": "stop", "assigned_policy": { "durable_tasks_enabled": true,"sandbox_tier": "dev_none",
                 "network_policy": "allow_all", "registry_allowlist": [], "worker_count": 1,
                 "extra_binds": []}, "degraded": false, "degraded_reason": null,
                 "selftest_requested": false, "heartbeat_interval_ms": INTERVAL_MS,

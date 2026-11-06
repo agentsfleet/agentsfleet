@@ -24,7 +24,7 @@ function runner(overrides: Partial<RunnerListItem> = {}): RunnerListItem {
     labels: ["gpu"],
     last_seen_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
-    assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
+    assigned_policy: { durable_tasks_enabled: true,sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
     achievable: null,
     degraded: false,
     degraded_reason: null,

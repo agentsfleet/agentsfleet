@@ -29,10 +29,11 @@ pub(super) const CONTEXT: &str = "reserve authoring model dispatch";
 /// The daemon's scoped model invocation service, with a physical transport seam.
 #[derive(Debug, Clone)]
 pub struct ModelCalls {
-    drafts: Drafts,
-    providers: Providers,
+    pub(in crate::model) drafts: Drafts,
+    pub(in crate::model) providers: Providers,
     transport: Arc<dyn Transport>,
     streams: Option<afd_dragonfly::FleetStreams>,
+    pub(in crate::model) decisions: Option<super::edit_intent::Configuration>,
 }
 
 pub(super) struct Intent {
@@ -99,7 +100,15 @@ impl ModelCalls {
             providers,
             transport,
             streams: None,
+            decisions: None,
         }
+    }
+
+    /// Enables setup edit decisions with platform-admin credentials and guarded HTTP.
+    #[must_use]
+    pub fn with_decisions(mut self, admin: Uuid7, client: reqwest::Client) -> Self {
+        self.decisions = Some(super::edit_intent::Configuration { admin, client });
+        self
     }
 
     /// Enables creator-private previews through the existing shared pub/sub bus.

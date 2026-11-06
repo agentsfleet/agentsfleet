@@ -33,10 +33,6 @@ const KNOB: &str = "GIT_COMMIT";
     reason = "a build script has no build-dependency on afd_core, and adding one for a single read would compile it for the host"
 )]
 fn main() {
-    // Re-run when HEAD moves. Without this cargo caches the stamp and a
-    // rebuild after a commit would report the previous one — a wrong answer,
-    // which is worse than the `unknown` this replaces.
-    println!("cargo:rerun-if-changed={GIT_HEAD}");
     println!("cargo:rerun-if-env-changed={KNOB}");
 
     // An explicit value wins: a container build has no `.git`, and `make` and
@@ -52,6 +48,10 @@ fn main() {
         println!("cargo:rustc-env={KNOB}={}", given.trim());
         return;
     }
+
+    // Only fallback builds consult Git. A linked checkout's .git is a file,
+    // so an unused .git/HEAD watch would invalidate every supplied-stamp build.
+    println!("cargo:rerun-if-changed={GIT_HEAD}");
 
     let described = Command::new(GIT)
         .args(["rev-parse", "--short=12", "HEAD"])

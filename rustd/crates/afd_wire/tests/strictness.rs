@@ -82,13 +82,25 @@ fn should_reject_a_field_of_the_wrong_type() {
 /// permissive.
 #[test]
 fn should_reject_an_unknown_enum_value() {
-    let policy = r#"{"sandbox_tier":"macos_seatbelt","network_policy":"allow_all",
-        "registry_allowlist":[],"worker_count":1,"extra_binds":[]}"#;
+    let policy = r#"{
+  "sandbox_tier": "macos_seatbelt",
+  "network_policy": "allow_all",
+  "registry_allowlist": [],
+  "worker_count": 1,
+  "extra_binds": [],
+  "durable_tasks_enabled": true
+}"#;
     let err = serde_json::from_str::<AssignedPolicy<'_>>(policy).unwrap_err();
     assert!(err.to_string().contains("macos_seatbelt"), "{err}");
 
-    let ok = r#"{"sandbox_tier":"landlock_full","network_policy":"allow_all",
-        "registry_allowlist":[],"worker_count":1,"extra_binds":[]}"#;
+    let ok = r#"{
+  "sandbox_tier": "landlock_full",
+  "network_policy": "allow_all",
+  "registry_allowlist": [],
+  "worker_count": 1,
+  "extra_binds": [],
+  "durable_tasks_enabled": true
+}"#;
     let _ = serde_json::from_str::<AssignedPolicy<'_>>(ok).unwrap();
 }
 
@@ -175,9 +187,22 @@ fn test_daemon_payload_with_unknown_field_decodes() {
 
 /// The assigned policy, as every reply that carries it spells it, with a bind
 /// and a key no build knows at both levels.
-const GROWN_POLICY: &str = r#"{"sandbox_tier":"landlock_full","network_policy":"allow_all",
-    "registry_allowlist":[],"worker_count":1,"future":1,
-    "extra_binds":[{"path":"/opt/cache","mode":"read_only","note":"cache","future":1}]}"#;
+const GROWN_POLICY: &str = r#"{
+  "sandbox_tier": "landlock_full",
+  "network_policy": "allow_all",
+  "registry_allowlist": [],
+  "worker_count": 1,
+  "future": 1,
+  "extra_binds": [
+    {
+      "path": "/opt/cache",
+      "mode": "read_only",
+      "note": "cache",
+      "future": 1
+    }
+  ],
+  "durable_tasks_enabled": true
+}"#;
 
 /// Every other reply the runner reads accepts a key it does not carry.
 ///

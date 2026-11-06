@@ -31,5 +31,6 @@
 
 pub mod error;
 pub mod lease;
+pub mod task;
 
 pub use crate::error::{Error, Result};

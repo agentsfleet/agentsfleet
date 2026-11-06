@@ -9,9 +9,9 @@
 //! its own clock, for the time the run held its lease.
 //!
 //! Lines are numbered per work and stored once per `(work, seq)`, so a retried
-//! renewal or report re-sends lines harmlessly. The two writers number from
-//! disjoint ranges: the runner below [`DAEMON_SEQ_BASE`], the daemon from it,
-//! so a runner line and a daemon runtime line can never claim one number.
+//! renewal or report re-sends lines harmlessly. Coding, runtime and native
+//! decisions use disjoint ranges, so their independently recorded receipts
+//! cannot claim one sequence number.
 
 use std::time::Duration;
 
@@ -51,11 +51,18 @@ pub const RUNTIME_MS_MAX: u32 = {
 /// The first line number the daemon's own runtime lines take.
 ///
 /// The runner numbers its request lines from zero up to [`RUNNER_SEQ_MAX`]; the
-/// daemon numbers its runtime lines from here, so the two never collide.
+/// daemon numbers runtime lines from here through [`DAEMON_SEQ_MAX`].
 pub const DAEMON_SEQ_BASE: u32 = 1 << 31;
 
 /// The highest number a runner's request line may take.
 pub const RUNNER_SEQ_MAX: u32 = DAEMON_SEQ_BASE - 1;
+
+/// First native decision sequence; the upper quarter is reserved for paid
+/// decision calls, including known receipts received after their lease ended.
+pub const DECISION_SEQ_BASE: u32 = 3 * (1 << 30);
+
+/// Last runtime sequence, before the native decision namespace begins.
+pub const DAEMON_SEQ_MAX: u32 = DECISION_SEQ_BASE - 1;
 
 /// Token counts for one provider request, without double counting.
 ///

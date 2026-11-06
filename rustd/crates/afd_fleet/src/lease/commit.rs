@@ -53,6 +53,8 @@ pub struct TerminalReport<'a> {
     /// When the sandbox the run left held for the fleet's next event lapses;
     /// none when the runner holds nothing.
     pub held_until: Option<Timestamp>,
+    /// Native task participant, prepared before taking report locks.
+    pub task_settlement: Option<crate::task::TaskSettlement<'a>>,
     /// The instant every row this transaction writes is stamped with.
     pub now: Timestamp,
 }
@@ -93,13 +95,18 @@ pub enum Committed {
         /// because the append is not part of the transaction and must not be
         /// able to fail it.
         owed: Option<Owing>,
+        /// Native replacement for a stale or unverified completion claim.
+        notice: Option<&'static str>,
     },
     /// This runner already settled this lease and the earlier report committed
     /// everything below. Nothing was written and nothing logged; what the
     /// runner is owed is the acknowledgement its lost response never carried.
     AlreadySettled,
-    /// A newer holder has the fleet. Nothing was written and nothing logged.
-    Fenced,
+    /// A newer holder has execution. Known original usage can still be recorded.
+    Fenced {
+        /// Original known requests commit independently of execution authority.
+        settlement: Option<Box<Settlement>>,
+    },
 }
 
 impl Leases {
@@ -123,6 +130,12 @@ impl Leases {
     pub async fn commit_report(&self, report: TerminalReport<'_>) -> Result<Committed> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
+        crate::task::lease::report_parents(
+            &mut transaction,
+            &report.lease.fleet_id,
+            &report.lease.workspace_id,
+        )
+        .await?;
         let _held_until_commit =
             afd_runner::capacity::lock(&mut transaction, report.runner_id).await?;
 
@@ -144,15 +157,37 @@ impl Leases {
         {
             Settled::Claimed(settlement) => settlement.map(Box::new),
             Settled::AlreadySettled => return Ok(Committed::AlreadySettled),
-            Settled::Fenced => return Ok(Committed::Fenced),
+            Settled::Fenced => {
+                let settlement = report
+                    .pricing
+                    .original_requests(
+                        &mut transaction,
+                        report.lease_key,
+                        report.runner_id,
+                        report.requests,
+                    )
+                    .await?;
+                super::usage::log_measured(
+                    &mut transaction,
+                    self.entropy(),
+                    report.now,
+                    settlement.as_ref(),
+                )
+                .await?;
+                transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
+                return Ok(Committed::Fenced {
+                    settlement: settlement.map(Box::new),
+                });
+            }
         };
-        let (closed, owed) = self.record_settled(&mut transaction, report).await?;
+        let (closed, owed, notice) = self.record_settled(&mut transaction, report).await?;
 
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {
             settlement,
             closed,
             owed,
+            notice,
         })
     }
 
@@ -164,13 +199,16 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         report: TerminalReport<'_>,
-    ) -> Result<(Option<Box<Closed>>, Option<Owing>)> {
+    ) -> Result<(Option<Box<Closed>>, Option<Owing>, Option<&'static str>)> {
         let TerminalReport {
             lease,
-            outcome,
+            mut outcome,
             last_event_id,
             last_response,
             held_until,
+            task_settlement,
+            lease_key,
+            runner_id,
             now,
             ..
         } = report;
@@ -180,7 +218,13 @@ impl Leases {
         // `last_response`, which is the session checkpoint and is truncated to
         // fit one, so delivering it would silently cut a long answer off at the
         // byte cap.
+        let notice =
+            crate::task::settle_report(connection, lease_key, runner_id, task_settlement).await?;
+        if let Some(notice) = notice {
+            outcome.response_text = notice;
+        }
         let answer = outcome.response_text;
+        let last_response = notice.unwrap_or(last_response);
 
         let closed = self
             .mark_terminal(connection, &lease.fleet_id, &lease.event_id, outcome)
@@ -212,6 +256,6 @@ impl Leases {
                 .map(|obligation| Owing { obligation, reply }),
             None => None,
         };
-        Ok((closed, owed))
+        Ok((closed, owed, notice))
     }
 }

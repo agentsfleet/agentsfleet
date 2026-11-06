@@ -516,7 +516,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
    CRON      QStash calls POST /v1/ingress/qstash/schedules
                → agentsfleetd verifies the signature with its boot-loaded
                  current or next signing key
-               → checks the stored schedule generation and Fleet state
+               → resolves the schedule header and checks current schedule/Fleet state
                → INSERT fleet.admissions with the scheduler replay key
                       actor=cron:<schedule_id>  type=cron
                       workspace_id=<ws>        request=<schedule-event-json>
@@ -547,7 +547,25 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 
 #### QStash owns the clock
 
-The proposed [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
+The callback signature covers its destination URL, exact body and message identity.
+Ingress selects the schedule through `Upstash-Schedule-Id`, outside that signature; cryptographic target and revision binding remain unresolved.
+Schedule activity snapshots describe database state at acceptance.
+
+Schedule history uses `afd_api_wire::activity::FleetActivity` and the existing `afd_events::activity` receipt writer.
+`afd_cron::store::history` records create/edit/pause/removal intent and fenced sync outcomes on the schedule transaction.
+Setup recipes append receipts to the author's transaction; confirmed deletion retains the held description and message.
+
+The transaction commits before its connection is released and the existing catch-up notice is published.
+These receipts admit no work and create no Durable Task.
+The history scope uses `FOR NO KEY UPDATE`, allowing a session's foreign-key check to progress during child-row waits.
+
+An accepted fire stores its message and resolved schedule description on the original cron admission.
+`afd_events::History::thread_page` includes queued `ScheduleFire` and `Steer` admissions, then reads the same identity after leasing.
+
+The app renders the message and recorded outcome directly; native run details become available once the event exists.
+Historical receipt snapshots stay separate from current registration and retry controls.
+
+The [durable repair scenario](scenarios/durable-repair.md) uses this existing scheduling path for Grafana observations. CI continuation needs a durable task wait and matching completion/fallback wake through the same admission path. A cron does not preserve PR ownership or task limits.
 
 `agentsfleetd` stores the desired schedule, pushes each mutation to QStash synchronously, and receives the fires. The runner owns no schedule timer ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 
@@ -750,3 +768,13 @@ lost wake -> the next idle poll still reads the ledger
 ```
 
 Do not delete the retained fleet on setup failure, claim activation after a zero-row update, or submit another initial event on retry. Undelivered, unsettled steer admissions participate in ordinary message history alongside delivered events in one statement snapshot, with stable event identity and pagination (`afd_events/src/history/statement/select_thread_page.sql`). No creation worker is introduced.
+
+## Proposed Durable Task admission
+
+M236 adds [Durable Tasks](durable_tasks.md) beneath fleets while retaining this admission ledger and one active lease per fleet.
+The daemon saves a message before acknowledging it; the runner then uses [runner-assigned decision routing](goal_evaluation.md#intent-routing) under its lease.
+Native code creates work or associates input only after current authority and target checks.
+
+A waiting DT has a settled run admission and a separate wait record.
+Another queued objective can use the fleet slot; a matched completion creates one continuation admission.
+Neither model classification nor an R2 checkpoint replaces queue or ownership authority.

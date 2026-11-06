@@ -28,6 +28,15 @@
 use super::{Error, ErrorKind};
 
 afd_core::error_lifts!(Error, ErrorKind:
+    object_store::Error => TaskStorage,
+    aws_sigv4::http_request::SigningError => TaskStorageSigning,
+    aws_sigv4::sign::v4::signing_params::BuildError => TaskStorageSigningParameters,
+    http::Error => TaskStorageRequest,
+    reqwest::Error => TaskRemote,
+    garde::Report => DecisionRequest,
+    tokio::time::error::Elapsed => TaskReadTimeout,
+    afd_core::json::Unreadable => TaskDocument,
+    afd_admission::Error => Admission,
     afd_authoring::Error => Authoring,
     afd_context::Error => Context,
     afd_db::Error => Datastore,

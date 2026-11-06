@@ -83,6 +83,10 @@ async fn claim_plan(connection: &mut PgConnection, fleet: &str, runner: &str) ->
     .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
     .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
     .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
+    .bind(afd_wire::task::CAPABILITY)
+    .bind(afd_wire::task::TaskState::Ready.as_str())
+    .bind(afd_wire::task::TaskState::Running.as_str())
+    .bind(afd_fleet::task::DECISION_POLICY_PATH)
     .fetch_one(connection)
     .await
     .expect("prepared production claim plan")

@@ -122,6 +122,8 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("host-e2e.fixture.test"),
         assigned_policy: AssignedPolicy {
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowListEgress,
             registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],

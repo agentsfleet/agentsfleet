@@ -40,7 +40,9 @@ impl Creations {
         guarded: &Guarded,
     ) -> Result<Announcement> {
         let attempt = &guarded.attempt;
-        if !message::save_requested(connection, &attempt.draft_id, attempt.message_sequence).await?
+        if !message::accepted(connection, &attempt.draft_id, attempt.message_sequence)
+            .await?
+            .save_requested
         {
             return Ok(Announcement::default());
         }

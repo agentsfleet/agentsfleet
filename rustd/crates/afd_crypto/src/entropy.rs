@@ -62,13 +62,10 @@ impl Source {
 /// system call" is a claim the dependency graph can be audited for, and it
 /// stops being auditable the moment another crate can draw its own bytes.
 ///
-/// # What this is NOT for
-///
-/// Key and nonce material. Those are [`crate::envelope::Sealer`]'s, which draws
-/// them where it uses them so a caller never holds them. This is for the
-/// non-secret identifiers a daemon mints — a request id, a correlation token —
-/// where the requirement is uniqueness rather than secrecy but a predictable
-/// sequence would still be worse than none.
+/// Envelope keys stay inside [`crate::envelope::Sealer`]. Checkpoint registration
+/// uses this source for its scoped object key and nonce before trusted transfer.
+/// The checkpoint owner guards plaintext keys and wraps them under the master
+/// key; identifiers and correlation tokens use the same entropy boundary.
 #[derive(Debug, Clone)]
 pub struct Entropy {
     source: Source,

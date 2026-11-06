@@ -133,7 +133,9 @@ impl Creations {
             access.workspace,
             fleet,
             &identity,
-            afd_events::activity::Activity::SetupReady { revision: &number },
+            afd_api_wire::activity::FleetActivity::SetupReady {
+                revision: number.as_str().into(),
+            },
         )
         .await
         .map_err(query(CONTEXT))?;

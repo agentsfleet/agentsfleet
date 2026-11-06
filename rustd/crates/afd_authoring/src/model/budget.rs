@@ -91,28 +91,38 @@ pub(crate) async fn funded(drafts: &Drafts, runner: &Uuid7, lease: &Uuid7) -> Re
         guard::peek(&mut connection, runner, lease).await
     };
     match attempt {
-        Ok(attempt) => covers(drafts.biller.as_ref(), &attempt).await,
+        Ok(attempt) => covers(&drafts.database, drafts.biller.as_ref(), &attempt).await,
         Err(_unreadable) => Ok(()),
     }
 }
 
 /// Whether the payer can still fund the attempt's whole bound.
 ///
-/// Called at renewal and before every model call. The attempt logs its lines
-/// only when it reports, so its own spend is not yet among the payer's
-/// unsettled lines and the bound is asked in full; [`Funds::Short`] means the
-/// balance can no longer fund the attempt.
-pub(crate) async fn covers(biller: &dyn Biller, attempt: &Attempt) -> Result<()> {
+/// Called at renewal and before every model call. Coding spend is logged at
+/// report time; edit-decision spend is logged immediately. Subtract those
+/// already logged costs from the bound because the ledger already subtracts
+/// them from available credit, whether settled or still owed to the relay.
+pub(crate) async fn covers(
+    database: &afd_db::Db,
+    biller: &dyn Biller,
+    attempt: &Attempt,
+) -> Result<()> {
     if attempt.reserved_nanos < bound(&attempt.model_snapshot)? {
         return Err(ErrorKind::Balance.into());
     }
+    let logged: i64 = sqlx::query_scalar(include_str!("budget_logged.sql"))
+        .bind(afd_billing::sql::work::AUTHORING_ATTEMPT)
+        .bind(attempt.id.as_str())
+        .fetch_one(&mut *database.acquire().await?)
+        .await
+        .map_err(crate::error::raise::query("read logged authoring budget"))?;
     let ask = Ask {
         work: WorkKey::AuthoringAttempt(attempt.id.clone()),
         payer: Account {
             tenant: attempt.tenant_id.clone(),
             workspace: attempt.workspace_id.clone(),
         },
-        next: Nanos::from_i64(attempt.reserved_nanos),
+        next: Nanos::from_i64(attempt.reserved_nanos.saturating_sub(logged).max(0)),
     };
     match biller.check(&ask).await {
         Ok(Funds::Covered | Funds::Unconfirmed) => Ok(()),

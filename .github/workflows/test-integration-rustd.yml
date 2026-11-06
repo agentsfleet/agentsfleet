@@ -66,6 +66,9 @@ jobs:
     # larger. Keep developers' dev-profile default intact; bound this lane only.
     env:
       CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_BUILD_JOBS: '2'
     # The suite shares one migrated database per shard; only migrator fault
     # tests create scratch databases because schema state is what they
     # exercise. This still covers a cold instrumented workspace build on an

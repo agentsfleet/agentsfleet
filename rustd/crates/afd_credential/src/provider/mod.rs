@@ -47,6 +47,7 @@
 
 mod activate;
 mod cap;
+mod decision;
 mod endpoint;
 pub mod entries;
 mod managed;

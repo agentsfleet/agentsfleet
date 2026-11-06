@@ -54,7 +54,7 @@ agentsfleet.billing.credit.consumed	counter	u64	{nanocredit}	cumulative	gen_ai.r
 agentsfleet_billing_funds_check_total	counter	u64	1	cumulative	work_type,outcome	-	fixed:6	no	traffic	funds checks by answer: covered, short, or unconfirmed when an outage admitted the work; a rising short share means tenants are running out
 agentsfleet_billing_settle_total	counter	u64	1	cumulative	work_type,outcome	-	fixed:6	no	errors	non-ok settlements wait for the sweeper; datastore_unavailable clears on its own, defect does not
 agentsfleet_billing_unpriced_tokens_total	counter	u64	{token}	cumulative	gen_ai.provider.name,gen_ai.request.model	-	shared:cost	no	errors	tokens charged nothing because the catalogue publishes no price for them
-agentsfleet_billing_sweeper_resettled_total	counter	u64	1	cumulative	work_type	-	fixed:2	no	health	works the billing relay settled; it grows with every finished run, so read it as throughput
+agentsfleet_billing_sweeper_resettled_total	counter	u64	1	cumulative	work_type	-	fixed:2	no	health	work/provider/model/posture settlement groups the billing relay settled; it grows with every finished run, so read it as throughput
 agentsfleet_billing_unsettled_nanos	gauge	u64	{nanocredit}	-	work_type	-	fixed:2	no	saturation	usage logged and not yet charged, as the last relay pass read it
 agentsfleet_billing_unsettled_oldest_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled line; normally a few seconds, and past a minute means the relay is not landing settlements
 agentsfleet_api_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	any growth: requests shed at the cap
@@ -125,6 +125,10 @@ agentsfleet_runner_active_leases	gauge	u64	{lease}	-	runner_id	-	runner:4096	no	
 #
 # runner:<n> is the exception, and the only one: runner_id is supplied by the
 # customer spinning up runners, so it is bounded by admission or not at all.
+agentsfleet_task_operations_total	counter	u64	1	cumulative	operation,outcome	-	fixed:275	no	errors	native task operations by bounded outcome; replays do not count as new task admissions
+agentsfleet_task_operation_seconds	histogram	f64	s	cumulative	operation,outcome	0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:275	no	latency	native task operation latency including lock waits and refusals
+agentsfleet_task_decision_recovery_attempts_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	errors	completed unsent-reservation recovery attempts by bounded outcome; retries count as further attempts
+agentsfleet_task_decision_recovery_overdue_seconds	histogram	f64	s	cumulative	-	1,5,10,30,60,300,900,3600,21600,86400	fixed:1	no	latency	candidate age beyond the original issuance deadline at each completed recovery attempt
 agentsfleet_model_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name,gen_ai.token.type	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
 agentsfleet_model_cache_read_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
 agentsfleet_model_cache_write_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent

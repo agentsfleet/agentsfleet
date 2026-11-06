@@ -82,6 +82,7 @@ mod tests {
                 },
                 prices: Vec::new(),
                 inference,
+                decision: None,
             },
         }
     }

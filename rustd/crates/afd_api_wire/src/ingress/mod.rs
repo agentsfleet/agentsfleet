@@ -173,6 +173,9 @@ pub enum IdentityAnswer<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct MentionRequest<'a> {
+    /// The signed sender's own command, without any quoted thread content.
+    #[serde(borrow)]
+    pub human_message: Cow<'a, str>,
     /// The mention with the bot and any addressed name removed, then the
     /// thread under a fixed heading when it could be read.
     #[serde(borrow)]
@@ -194,7 +197,7 @@ pub struct MentionRequest<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct MentionRoute<'a> {
-    /// `addressed`, `sole` or `resident`.
+    /// `addressed` or `sole`.
     #[serde(borrow)]
     pub verdict: Cow<'a, str>,
     /// The fleet's name.

@@ -14,6 +14,7 @@ import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
 import { useNameSender } from "./SenderNames";
 import { FleetReply } from "./FleetReplyBody";
 import { FleetMarkdown } from "./FleetMarkdown";
+import { FleetRunDetails } from "./FleetRunDetails";
 import {
   STATUS_AGENT_ERROR,
   STATUS_IN_FLIGHT,
@@ -39,6 +40,7 @@ import {
   senderLabelFor,
   steerMessageFrom,
   parsePayload,
+  SENDER,
 } from "@/lib/events/event-summary";
 
 const SOURCE_LINK_FALLBACK = "View source";
@@ -138,9 +140,10 @@ function FleetActivityMessage({
   // outcome does not earn a second row. A real reply does, and then this is
   // its split trigger.
   const recorded = status === FLEET_ACTIVITY.status;
-  const details = activityDetails(readActor(message), recorded ? undefined : payload);
+  const schedule = senderLabelFor(readActor(message)) === SENDER.SCHEDULE;
+  const details = activityDetails(readActor(message), recorded || schedule ? undefined : payload);
   const outcome = working || isSplitTrigger || recorded ? undefined : messageOutcome(message);
-  const link = eventLinkFrom(payload);
+  const link = recorded || schedule ? null : eventLinkFrom(payload);
   const reference = link ? eventReferenceFrom(payload) : null;
   return (
     <>
@@ -153,7 +156,7 @@ function FleetActivityMessage({
         messageRole={message.role}
         detailsLabel={details.label}
         annotation={
-          <ActivityAnnotation
+          schedule ? <FleetRunDetails eventId={message.id} status={status} /> : <ActivityAnnotation
             link={link}
             label={reference ?? SOURCE_LINK_FALLBACK}
             repositoryReference={reference !== null}
@@ -193,7 +196,9 @@ function FleetGroupMessage({ senderLabel, members }: { senderLabel: string; memb
     >
       {expanded
         ? members.map((member) => {
-          const details = activityDetails(member.actor, member.custom?.requestJson);
+          const schedule = senderLabelFor(member.actor) === SENDER.SCHEDULE;
+          const recorded = member.status === FLEET_ACTIVITY.status;
+          const details = activityDetails(member.actor, schedule || recorded ? undefined : member.custom?.requestJson);
           return (
             <FleetActivityRow
               key={member.id}
@@ -204,6 +209,7 @@ function FleetGroupMessage({ senderLabel, members }: { senderLabel: string; memb
               failed={member.status === STATUS_AGENT_ERROR}
               messageRole="system"
               detailsLabel={details.label}
+              annotation={schedule ? <FleetRunDetails eventId={member.id} status={member.status} /> : null}
             >
               {details.content}
             </FleetActivityRow>

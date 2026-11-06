@@ -3,7 +3,7 @@
 use super::super::edits::tests::candidate;
 use super::proposal;
 use crate::Result;
-use crate::model::provider::prompt::{TOOL, tool};
+use crate::model::provider::tools::{TOOL, tool};
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName};
 use serde_json::{Value, json};
 

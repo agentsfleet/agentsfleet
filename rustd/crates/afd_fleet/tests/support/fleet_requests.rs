@@ -33,6 +33,8 @@ pub(crate) fn enrolment(
     RegisterRequest {
         host_id: Cow::Borrowed("host-01.fixture.test"),
         assigned_policy: AssignedPolicy {
+            decision_model_id: None,
+            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             sandbox_tier: tier,
             network_policy: network,
             registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],
@@ -69,6 +71,7 @@ pub(crate) fn enrolment_tagged(
 /// A host that proves everything.
 pub(crate) fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        durable_tasks_v1: false,
         build_id: None,
         landlock: true,
         seccomp: true,

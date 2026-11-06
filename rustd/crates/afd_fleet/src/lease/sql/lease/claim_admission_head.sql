@@ -33,7 +33,20 @@ WITH locked_slot AS MATERIALIZED (
             prior.last_runner_id::text AS holder
 ), head AS MATERIALIZED (
   SELECT a.id FROM fleet.admissions a
+  JOIN fleet.fleets f ON f.id = a.fleet_id AND f.workspace_id = a.workspace_id
+  LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
+  JOIN runner.runners host ON host.id = $2::uuid
   WHERE a.fleet_id = $1::uuid AND a.settled_at IS NULL
+    AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
+         OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
+    AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR EXISTS (
+      SELECT 1 FROM fleet.tasks t JOIN runner.runners r ON r.id = $2::uuid
+      WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.fleet_id AND t.workspace_id = a.workspace_id
+        AND r.durable_tasks_enabled AND r.capability_report @> jsonb_build_object($8::text, true)
+        AND t.status IN ($9, $10) AND t.terminal_at IS NULL
+        AND t.expires_at > (SELECT checked_at FROM instant) AND t.used_leases < t.max_leases
+        AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
+        AND t.used_running_nanos < t.max_running_nanos))
   ORDER BY a.sequence
   LIMIT 1
 ), locked AS (

@@ -16,8 +16,8 @@
 //! ```
 //!
 //! The last three steps, for a mention routing gave one fleet, live in the
-//! `admit` module beside this one; a channel's resident is found or installed
-//! by `resident`, and a mention no fleet can take is owed a notice by `notice`.
+//! `admit` module beside this one; an unconfigured channel creates no fleet or work. Routing refusals
+//! are owed a deterministic notice by `notice`.
 //!
 //! The envelope is a `serde`-tagged enum, so "an `event_callback` whose event
 //! is an `app_mention`" is a type rather than three field lookups that have to
@@ -38,10 +38,8 @@ use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
 
 mod admit;
 mod notice;
-mod resident;
 
 use self::admit::Routed;
-use self::resident::Answering;
 
 /// Why a mention was dropped, named once each (RULE UFS). `unreadable_body`
 /// is the route's own, shared with a body that is not JSON at all, and
@@ -49,13 +47,10 @@ use self::resident::Answering;
 pub(super) const REASON_BOT_MESSAGE: &str = "bot_message";
 /// See [`REASON_BOT_MESSAGE`].
 pub(super) const REASON_TEAM_NOT_MAPPED: &str = "team_not_mapped";
-/// See [`REASON_BOT_MESSAGE`]. The channel's resident was killed and is not
-/// yet deleted; deletion releases the binding and the next mention installs
-/// a new one.
-pub(super) const REASON_RESIDENT_KILLED: &str = "resident_killed";
-/// See [`REASON_BOT_MESSAGE`]. A fleet somebody installed under the resident's
-/// name, with its own configuration, holds the channel's resident name.
-pub(super) const REASON_RESIDENT_NAME_TAKEN: &str = "resident_name_taken";
+/// No saved fleet is configured for this channel.
+pub(super) const REASON_CHANNEL_NOT_CONFIGURED: &str = "channel_not_configured";
+/// A killed notice owner cannot acquire another outbound obligation.
+pub(super) const REASON_NOTICE_OWNER_KILLED: &str = "notice_owner_killed";
 
 /// The event a datastore failure on this path is refused under.
 const EVENT_MENTION: &str = "slack_mention_failed";
@@ -245,20 +240,11 @@ pub(super) async fn admit<D: Services>(
         .mention_subscribers(&workspace, provider.id(), &asked.channel)
         .await
         .map_err(Refusal::at(EVENT_MENTION))?;
-    // Bound here and filled only on the resident arm, so every arm hands the
-    // admission a borrowed subscriber.
-    let installed;
     let routed = route(&subscribers, without_bot_mention(&asked.text));
     let verdict = routed.verdict();
     let (fleet, message) = match routed {
         Route::Addressed { fleet, message } | Route::Sole { fleet, message } => (fleet, message),
-        Route::Resident { message } => {
-            match resident::answering(services, provider, &workspace, asked).await? {
-                Answering::Resident(found) => installed = found,
-                Answering::Settled(outcome) => return Ok(outcome),
-            }
-            (&installed, message)
-        }
+        Route::Unconfigured => return Ok(Outcome::Dropped(REASON_CHANNEL_NOT_CONFIGURED)),
         Route::Notice(notice) => {
             return notice::owe(services, provider, &workspace, asked, &notice).await;
         }

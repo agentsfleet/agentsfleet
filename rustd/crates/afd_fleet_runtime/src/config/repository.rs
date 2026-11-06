@@ -16,7 +16,7 @@
 //! is exactly what declaring a binding exists to prevent. Absent entirely is
 //! fine and means the mint refuses.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::config::raw;
 use crate::error::{ErrorKind, Result};
@@ -28,6 +28,34 @@ const REASON_HALF_DECLARED: &str =
 const REASON_READ_WITH_BASE: &str = "a read binding opens no Pull Request, so it takes no base";
 /// See [`REASON_HALF_DECLARED`].
 const REASON_WRITE_WITHOUT_BASE: &str = "a write binding must name the base it opens against";
+
+/// Publication authority explicitly reviewed with the fleet setup.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryPublication {
+    /// Existing ordinary behavior: one event-owned branch and draft PR.
+    #[default]
+    EventDraft,
+    /// Native task publication to an exact human-assigned existing PR.
+    ExistingPr,
+}
+
+/// Exact workflow content reviewed by the owner as validation-only.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct ValidationWorkflow {
+    /// Only a direct YAML file inside GitHub's workflow directory.
+    #[garde(
+        length(bytes, min = 23, max = 255),
+        pattern(r"^\.github/workflows/[A-Za-z0-9_-]+\.ya?ml$")
+    )]
+    pub path: String,
+    /// SHA-256 of the complete reviewed UTF-8 workflow text.
+    #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]{64}$"))]
+    pub sha256: String,
+}
 
 /// How far a fleet's repository credentials reach.
 pub type Access = raw::Access;
@@ -75,9 +103,49 @@ pub struct RepositoryBinding {
     repositories: Box<[Box<str>]>,
     /// How far the reach goes, and against which base a write opens.
     reach: Reach,
+    publication: RepositoryPublication,
+    validation_workflows: Box<[ValidationWorkflow]>,
 }
 
 impl RepositoryBinding {
+    /// Whether only the native publisher may advance an assigned existing PR.
+    #[must_use]
+    pub const fn publication(&self) -> RepositoryPublication {
+        self.publication
+    }
+
+    /// Frozen validation-only content accepted with the setup revision.
+    #[must_use]
+    pub fn validation_workflows(&self) -> &[ValidationWorkflow] {
+        &self.validation_workflows
+    }
+
+    /// Narrows a native runner-visible token without widening repository scope.
+    #[must_use]
+    pub fn read_only(&self) -> Self {
+        Self {
+            repositories: self.repositories.clone(),
+            reach: Reach::Read,
+            publication: self.publication,
+            validation_workflows: Box::default(),
+        }
+    }
+
+    /// Exact repository evidence reads never retain a fleet's wider token scope.
+    #[must_use]
+    pub fn read_repository(&self, repository: &str) -> Option<Self> {
+        let held = self
+            .repositories
+            .iter()
+            .find(|held| held.eq_ignore_ascii_case(repository))?;
+        Some(Self {
+            repositories: vec![held.clone()].into_boxed_slice(),
+            reach: Reach::Read,
+            publication: self.publication,
+            validation_workflows: Box::default(),
+        })
+    }
+
     /// The repositories, as `owner/name`.
     #[must_use]
     pub fn repositories(&self) -> &[Box<str>] {
@@ -115,6 +183,8 @@ impl RepositoryBinding {
         Self {
             repositories: repositories.into_boxed_slice(),
             reach,
+            publication: RepositoryPublication::EventDraft,
+            validation_workflows: Box::default(),
         }
     }
 
@@ -126,6 +196,30 @@ impl RepositoryBinding {
     pub(crate) fn parse(authored: &mut raw::Runtime) -> Result<Option<Self>> {
         let repositories = authored.repositories.take();
         let base = authored.repository_base.take();
+        let publication = authored.repository_publication.unwrap_or_default();
+        let workflows = authored
+            .repository_validation_workflows
+            .take()
+            .map(|workflows| workflows.0)
+            .unwrap_or_default();
+        if publication == RepositoryPublication::ExistingPr
+            && authored.repository_access != Some(Access::Write)
+        {
+            return Err(ErrorKind::InvalidRepositoryBinding {
+                reason: "existing PR publication requires an explicit repository write binding",
+            }
+            .into());
+        }
+        if (publication == RepositoryPublication::ExistingPr) == workflows.is_empty()
+            || workflows.iter().enumerate().any(|(index, entry)| {
+                workflows
+                    .iter()
+                    .take(index)
+                    .any(|other| other.path == entry.path)
+            })
+        {
+            return Err(ErrorKind::InvalidRepositoryBinding { reason: "existing PR publication requires unique owner-reviewed validation workflow digests" }.into());
+        }
 
         match (repositories, authored.repository_access, base) {
             (None, None, None) => Ok(None),
@@ -135,6 +229,8 @@ impl RepositoryBinding {
                 // mint, so "names nothing" is not "every repository".
                 repositories: list.into_iter().map(Into::into).collect(),
                 reach: reach(access, base)?,
+                publication,
+                validation_workflows: workflows.into_boxed_slice(),
             })),
             _ => Err(ErrorKind::InvalidRepositoryBinding {
                 reason: REASON_HALF_DECLARED,
@@ -177,6 +273,10 @@ pub struct Recorded<'a> {
     /// matcher reads.
     #[serde(skip_serializing_if = "Option::is_none")]
     base: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    publication: Option<RepositoryPublication>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    validation_workflows: &'a [ValidationWorkflow],
 }
 
 impl RepositoryBinding {
@@ -190,6 +290,9 @@ impl RepositoryBinding {
             repositories: &self.repositories,
             access: self.reach.access(),
             base: self.reach.base(),
+            publication: (self.publication == RepositoryPublication::ExistingPr)
+                .then_some(self.publication),
+            validation_workflows: &self.validation_workflows,
         }
     }
 }

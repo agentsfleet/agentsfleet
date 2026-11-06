@@ -46,11 +46,16 @@ pub(super) fn authoring(
     providers: &Providers,
     admissions: &Admissions,
     transport: afd_authoring::Network,
+    decisions: Option<&afd_core::id::Uuid7>,
 ) -> Authoring {
     let setup = afd_authoring::Setup::new(drafts.clone(), Arc::clone(kek));
-    let models =
+    let decision_client = transport.guarded_client();
+    let mut models =
         afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
             .with_progress(afd_dragonfly::FleetStreams::new(queue.clone()));
+    if let Some(admin) = decisions {
+        models = models.with_decisions(admin.clone(), decision_client);
+    }
     let creations = afd_authoring::Creations::new(setup.clone(), admissions.clone());
     Authoring {
         drafts,

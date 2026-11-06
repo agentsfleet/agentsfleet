@@ -47,6 +47,7 @@ const DETAIL_SILENT: &str = "the thawed sandbox's executor did not answer";
 /// The sandbox a lease ran in, and the key it would be held under.
 #[derive(Debug)]
 pub(super) struct Kept {
+    pub(super) recovery: Option<super::recovery::State>,
     pub(super) sandbox: Box<dyn Sandbox>,
     pub(super) key: HoldKey,
 }
@@ -149,15 +150,26 @@ impl LeaseRun<'_> {
     /// lease ended processed and ran to its own end, the runner still takes
     /// leases and the sandbox still runs; kills it otherwise, for its release
     /// after the report.
-    pub(super) async fn keep(&self, kept: Option<Kept>, ending: &Ending) -> Fate {
-        let Some(Kept { mut sandbox, key }) = kept else {
+    pub(super) async fn keep(&self, kept: Option<Kept>, ending: &mut Ending) -> Fate {
+        let Some(Kept {
+            mut sandbox,
+            key,
+            recovery,
+        }) = kept
+        else {
+            self.capture_without_sandbox(ending).await;
             return Fate::Gone;
         };
         // Leasing is a child of serving, so a runner shutting down or stopped
         // counts too: it takes no lease that could take the hold.
         let leasing = !self.lessee.halt.leasing().is_cancelled();
-        let ran_out = ending.processed() && !self.interrupt.is_cancelled();
+        let durable = recovery.is_some();
+        let recoverable = matches!(ending, Ending::Ran { output, .. } if output.recovery.is_some());
+        let ran_out = (ending.processed() || recoverable) && !self.interrupt.is_cancelled();
         if !(ran_out && leasing && sandbox.is_running()) {
+            if durable {
+                super::recovery::capture_unavailable(ending);
+            }
             return self.kill(sandbox).await;
         }
         let lease_id = self.ids.lease.as_str();
@@ -172,10 +184,21 @@ impl LeaseRun<'_> {
                 event,
                 "a sandbox would not freeze, so it is destroyed rather than held"
             );
+            if durable {
+                super::recovery::capture_unavailable(ending);
+            }
             return self.kill(sandbox).await;
         }
         let event = EVENT_FREEZE_COMPLETED;
         tracing::debug!(lease_id, event);
+        self.capture_frozen(sandbox.as_ref(), recovery.as_ref(), ending)
+            .await;
+        // Durable tasks always restore a fresh workspace from the native
+        // checkpoint. Keeping their old process tree cannot accelerate that
+        // path and must not expose it to a later ordinary lease.
+        if durable || !ending.processed() {
+            return self.kill(sandbox).await;
+        }
         let lease = self.ids.lease.clone();
         match self.lessee.holds.park(key, lease, sandbox).await {
             Parked::Held(until) => Fate::Held(until),

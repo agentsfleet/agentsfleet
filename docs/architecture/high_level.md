@@ -191,25 +191,15 @@ Trigger modes:
 
 All three flow through the same reasoning loop. The fleet does not branch on actor type — its instructions describe the general outcome and the same `http_request` tool calls fire regardless of trigger source.
 
-### 5.2 Slack-resident channel bot — the on-ramp (M106)
+### 5.2 Slack as a configured fleet surface
 
-The first surface meets non-terminal users, including support and ops, where they already work.
-The first-party multi-tenant `@agentsfleet` Slack app uses one OAuth install per workspace.
-In any channel it is invited to, an `@mention` is answered in-thread, read-only.
+Slack brings the existing fleet runtime into the channel where a person asks for work.
+A workspace administrator connects Slack, and a member reviews the fleet's channel subscription.
+The connector alone creates no answering fleet.
 
-It is **reactive**: it answers and never acts unattended.
-This sets the boundary to the durable hired agent; §5.1's platform-ops is the active form.
-The reactive bot's job is to convert users to a durable agent.
-
-This is acquisition for that product rather than a second product.
-Agency, rather than memory, keeps v2 from becoming "just a chat UI over tools".
-This surface is specified in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002.
-
-The hired-agent Rung 1 is the follow-on.
-M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
-
-The built-in resident has no memory tools, so durable channel learning is unavailable.
-The [resident scenario](scenarios/slack-channel-resident.md#5-surface-in-agentsfleetd) records this boundary.
+[Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects one configured fleet or records a fixed notice.
+Unconfigured channels return `channel_not_configured` without a model call.
+Tools, memory and unattended work require the configured fleet's existing authority.
 
 ## 6. Where this points after v2
 
@@ -235,7 +225,7 @@ What does not change: the runtime architecture, the sandbox boundary, the trigge
 
 Where the human front door points after the CLI/dashboard wedge. M206 built the first hired-agent slice, a fleet attached to one channel whose writes are bounded to one draft Pull Request per request; its live drill is pending. **The follow-on is direction, not a commitment.**
 
-The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
+[Configured Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) supplies the human request surface. A channel mention creates no separate runtime or default agent.
 
 - **Rung 1 — hired durable agents (follow-on).** From the same Slack surface, a recurring need converts into a durable agent that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds Save from a pinned Library revision + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
 

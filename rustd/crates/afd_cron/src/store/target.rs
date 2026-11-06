@@ -16,6 +16,8 @@ struct FireRow {
     workspace_id: String,
     /// What the fleet is asked to do.
     message: String,
+    cron_expression: String,
+    timezone: String,
     /// Whether the schedule retires after this fire.
     once: bool,
     /// The schedule's intent word.
@@ -34,6 +36,7 @@ impl FireRow {
             workspace: Uuid7::parse(&self.workspace_id)
                 .map_err(|_shape| error::row_unreadable(COLUMN_WORKSPACE))?,
             message: self.message,
+            description: crate::run::describe(&self.cron_expression, &self.timezone),
             once: self.once,
             desired_status: DesiredStatus::parse(&self.desired_status)
                 .ok_or_else(|| error::row_unreadable(COLUMN_DESIRED_STATUS))?,

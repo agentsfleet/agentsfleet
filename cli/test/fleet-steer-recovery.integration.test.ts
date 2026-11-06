@@ -3,6 +3,8 @@ import { describe, expect, test, setSystemTime } from "bun:test";
 import { Effect, Exit, Layer, Redacted } from "effect";
 import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
 import { pollEventTerminal, STATUS_TIMEOUT } from "../src/commands/fleet_steer_events.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 import { ServerError } from "../src/errors/index.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { SIGINT } from "../src/constants/signals.ts";
@@ -90,7 +92,7 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
         EVENT_ID,
         Redacted.make(TOKEN),
         ctrl.signal,
-      ).pipe(Effect.provide(failingHttp)),
+      ).pipe(Effect.provide(Layer.merge(failingHttp, Layer.succeed(Output, outputDouble())))),
     );
     expect(outcome.kind).toBe(STATUS_TIMEOUT);
     expect(requestCount).toBe(1);

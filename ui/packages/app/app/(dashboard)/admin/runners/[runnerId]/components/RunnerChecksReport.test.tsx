@@ -11,7 +11,7 @@ afterEach(() => cleanup());
 const renderPanel = (ui: ReactElement) => render(ui, { wrapper: TooltipProvider });
 const NO_ADDITIONAL_MOUNTS = "No additional mounts.";
 
-const ASSIGNED: AssignedPolicy = {
+const ASSIGNED: AssignedPolicy = { durable_tasks_enabled: true,
   sandbox_tier: "landlock_full",
   network_policy: "deny_all_egress",
   registry_allowlist: [],

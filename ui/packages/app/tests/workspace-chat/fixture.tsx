@@ -72,6 +72,8 @@ export async function setupAction(name: string): Promise<HTMLElement> {
 
 export async function chooseSetupAction(name: string): Promise<void> {
   fireEvent.click(await setupAction(name));
+  // The instructions editor is loaded on demand; opening the dialog shell is not readiness.
+  if (name === "Instructions") await screen.findByRole("textbox", {name: "Instructions"});
 }
 
 export async function openPublication(): Promise<void> {

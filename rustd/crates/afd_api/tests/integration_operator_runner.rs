@@ -24,7 +24,7 @@ mod retirement;
 
 pub(crate) const SUBJECT: &str = "user_live_runner_operator";
 const NOW: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
-const POLICY: &str = r#"{"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":99,"extra_binds":[]}}"#;
+const POLICY: &str = r#"{"assigned_policy":{"sandbox_tier":"dev_none","network_policy":"allow_all","registry_allowlist":[],"worker_count":99,"extra_binds":[],"durable_tasks_enabled":true}}"#;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -196,16 +196,19 @@ async fn enrol(router: &axum::Router, token: &str) -> String {
         "/v1/runners",
         Some(token),
         r#"{
-          "host_id":"operator-live-enrolment",
-          "assigned_policy":{
-            "sandbox_tier":"dev_none",
-            "network_policy":"allow_all",
-            "registry_allowlist":[],
-            "worker_count":99,
-            "extra_binds":[]
-          },
-          "labels":["live-http"]
-        }"#,
+  "host_id": "operator-live-enrolment",
+  "assigned_policy": {
+    "sandbox_tier": "dev_none",
+    "network_policy": "allow_all",
+    "registry_allowlist": [],
+    "worker_count": 99,
+    "extra_binds": [],
+    "durable_tasks_enabled": true
+  },
+  "labels": [
+    "live-http"
+  ]
+}"#,
     )
     .await;
     assert_eq!(enrolled.status(), StatusCode::CREATED);

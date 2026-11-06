@@ -20,7 +20,7 @@ use super::*;
 /// tail so the three variants cannot drift; the head alone is no statement, so
 /// only the joined whole can be prepared. Enumerate with
 /// `git grep -n 'concatcp!' -- rustd/crates/*/src` and keep the SQL ones here.
-const JOINED: [(&str, &str); 3] = [
+const JOINED: [(&str, &str); 5] = [
     (
         "afd_fleet::lease::sql::standing::SELECT_STANDING",
         afd_fleet::lease::sql::standing::SELECT_STANDING,
@@ -32,6 +32,14 @@ const JOINED: [(&str, &str); 3] = [
     (
         "afd_fleet::lease::sql::tool_detail::SELECT_LIVE_LEASE",
         afd_fleet::lease::sql::tool_detail::SELECT_LIVE_LEASE,
+    ),
+    (
+        "afd_fleet::task::DECISION_BUDGET_STATEMENT",
+        afd_fleet::task::DECISION_BUDGET_STATEMENT,
+    ),
+    (
+        "afd_fleet::task::LOCKED_DECISION_CALL_STATEMENT",
+        afd_fleet::task::LOCKED_DECISION_CALL_STATEMENT,
     ),
 ];
 

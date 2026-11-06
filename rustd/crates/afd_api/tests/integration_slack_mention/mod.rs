@@ -157,7 +157,10 @@ async fn signed_mention_admits_one_event() {
         .await
         .expect("the mention was admitted");
     assert_eq!(admitted.fleet, responder.as_str());
-    assert_eq!(admitted.actor, format!("{}:{PERSON}", PROVIDER.id()));
+    assert_eq!(
+        admitted.actor,
+        format!("{}:{}:{PERSON}", PROVIDER.id(), fixture.team)
+    );
     assert_eq!(admitted.event_type, "chat");
     a_chat_is_owed_back_to_the_thread_it_was_asked_in(&admitted);
 

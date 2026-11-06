@@ -41,6 +41,8 @@ const DETAIL_RATES: &str =
 const DETAIL_INFERENCE_URL: &str = "inference.base_url must be 1–2048 bytes";
 const DETAIL_INFERENCE_DIALECT: &str = "inference.dialect must be 1–64 bytes when set";
 const DETAIL_INFERENCE_OUTPUT: &str = "inference.max_output_tokens must be > 0";
+const DETAIL_DECISION: &str =
+    "decision must contain a reviewed profile, valid thresholds, and a complete price schedule";
 
 /// A create body, proved against every bound its type declares. The store is
 /// reached only through the [`Valid`] this returns.
@@ -52,7 +54,7 @@ pub(super) fn create_request(body: &[u8]) -> Result<Valid<AdminModelCreate<'_>>,
         .map_err(|error| unreadable(&error))?;
     Unvalidated::new(request)
         .validate()
-        .map_err(|report| BOUNDS.pick(&report))
+        .map_err(|report| invalid(&report))
 }
 
 /// A patch body, proved the same way.
@@ -64,7 +66,20 @@ pub(super) fn patch_request(body: &[u8]) -> Result<Valid<AdminModelPatch<'_>>, &
         .map_err(|error| unreadable(&error))?;
     Unvalidated::new(patch)
         .validate()
-        .map_err(|report| BOUNDS.pick(&report))
+        .map_err(|report| invalid(&report))
+}
+
+/// Decision definitions nest several question policies; their inputs never
+/// appear in the static refusal shown to an operator.
+fn invalid(report: &garde::Report) -> &'static str {
+    if report
+        .iter()
+        .any(|(path, _error)| path.to_string().starts_with("decision"))
+    {
+        DETAIL_DECISION
+    } else {
+        BOUNDS.pick(report)
+    }
 }
 
 /// The sentence a body that would not parse earns.
@@ -93,8 +108,8 @@ fn unreadable(error: &serde_json::Error) -> &'static str {
 /// lives on the type and only the sentence stays here. Create and patch nest
 /// the evidence under `metadata` and the schedule under `prices`, so one table
 /// serves both. Every bound garde checks is listed; the schedule sentence is
-/// the fallback because every unlisted path is inside `prices`. Inference
-/// settings carry their own bounds.
+/// the fallback for unlisted price paths. Decision settings use their own
+/// sentence; inference settings carry field-specific bounds.
 const BOUNDS: Sentences = Sentences::new(
     &[
         (FIELD_PROVIDER, DETAIL_PROVIDER_LEN),

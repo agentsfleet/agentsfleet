@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction, openPublication } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
-import { CHAT_EXAMPLES, CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
+import { CHAT_PLACEHOLDER } from "@/components/domain/chat/chat-defaults";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
@@ -28,17 +28,33 @@ async function setup() {
 }
 
 describe("private chat Save", () => {
-  it("lets the user edit a suggested job before sending it", async () => {
+  it("loads editable starters and sends the reviewed questions only after the user submits", async () => {
     render(<WorkspaceChat {...CHAT_PROPS} />);
     const suggestion = await screen.findByRole("button", {name: /Review pull requests/});
     await waitFor(() => expect(suggestion).toHaveProperty("disabled", false));
+    for (const [title, text] of [
+      ["Watch for errors", "Watch production errors and prepare a repair for review."],
+      ["Morning brief", "Summarize the work my team should act on each morning."],
+    ]) {
+      fireEvent.click(screen.getByRole("button", {name: title}));
+      expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", text);
+    }
     fireEvent.click(suggestion);
-    expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", CHAT_EXAMPLES[0]);
+    const input = screen.getByLabelText(CHAT_PLACEHOLDER);
+    if (!(input instanceof HTMLTextAreaElement)) throw new Error("The setup composer must expose editable text");
+    expect(input.value).toContain("Does the review cover the requested pull request at its current head?");
+    expect(input.value).toContain("Are the findings supported by concrete code or check evidence?");
+    expect(input.value).toContain("Do not push code, approve, merge, close, or deploy.");
+    const edited = `${input.value}\n\nOnly review the API changes. Add a completion question about session expiry.`;
+    fireEvent.change(input, {target: {value: edited}});
     expect(fixture.writes()).toHaveLength(0);
+    expect(fixture.saveAttempts).toBe(0);
     fireEvent.click(screen.getByRole("button", {name: "Send message"}));
     await screen.findByText("Your setup is ready.");
     expect(fixture.writes()).toHaveLength(1);
-    expect(fixture.writes()[0]?.body).toMatchObject({message: CHAT_EXAMPLES[0]});
+    expect(fixture.writes()[0]?.body).toMatchObject({message: edited, source: {kind: "blank"}});
+    expect(fixture.saveAttempts).toBe(0);
+    await waitFor(() => expect(screen.getByRole("button", {name: "Save fleet"})).toHaveProperty("disabled", false));
   });
   it("sends ordinary text and saves from the header, and stays in setup chat", async () => {
     await converse();

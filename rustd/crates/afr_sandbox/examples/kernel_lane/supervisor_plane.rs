@@ -49,6 +49,7 @@ struct Plane {
     calls: mpsc::Sender<Received>,
     reported: Arc<Notify>,
     fail_mutations: bool,
+    recovery: Option<Mutex<crate::supervisor_recovery::Archive>>,
 }
 
 pub(crate) struct Server {
@@ -63,12 +64,15 @@ impl Server {
         tools: &[&str],
         repository: bool,
         fail: bool,
+        recovery: Option<crate::supervisor_recovery::Config>,
     ) -> Result<Self, Failed> {
         let (calls, received) = mpsc::channel();
         let reported = Arc::new(Notify::new());
         let granted_until = afd_core::clock::after(afd_core::clock::now(), GRANTED_FOR);
         let healthy = Healthy {
             assigned: AssignedPolicy {
+                durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+                decision_model_id: None,
                 sandbox_tier: SandboxTier::LandlockFull,
                 network_policy: NetworkPolicy::DenyAllEgress,
                 registry_allowlist: Vec::new(),
@@ -80,10 +84,18 @@ impl Server {
         };
         let plane = Arc::new(Plane {
             healthy,
-            lease: Mutex::new(Some(lease(tools, repository, granted_until)?)),
+            lease: Mutex::new(Some(lease(
+                tools,
+                repository,
+                granted_until,
+                recovery.as_ref(),
+            )?)),
             calls,
             reported: Arc::clone(&reported),
             fail_mutations: fail,
+            recovery: recovery
+                .map(crate::supervisor_recovery::Archive::new)
+                .map(Mutex::new),
         });
         let app = Router::new().fallback(reply).with_state(plane);
         let listener = crate::http_server::Server::serve(app).await?;
@@ -114,9 +126,21 @@ async fn reply(
         .send(Received {
             method: method.to_string(),
             path: path.to_owned(),
-            body,
+            body: body.clone(),
         })
         .unwrap_or_else(|_| unreachable!("the trial retains its HTTP transcript"));
+    if path.contains("/tasks/")
+        && let Some(recovery) = &plane.recovery
+    {
+        let response = recovery.lock().await.reply(&method, &uri, body);
+        return match response {
+            Ok(value) => (StatusCode::OK, Json(value)),
+            Err(failure) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"fixture_error":format!("{failure:?}")})),
+            ),
+        };
+    }
     if path == RUNNER_REPORTS {
         plane.reported.notify_one();
     }
@@ -158,7 +182,12 @@ fn response(plane: &Plane, method: &Method, path: &str) -> Value {
     }
 }
 
-fn lease(tools: &[&str], repository: bool, expires: jiff::Timestamp) -> Result<Value, Failed> {
+fn lease(
+    tools: &[&str],
+    repository: bool,
+    expires: jiff::Timestamp,
+    recovery: Option<&crate::supervisor_recovery::Config>,
+) -> Result<Value, Failed> {
     let mut lease: LeasePayload<'_> = serde_json::from_str(LEASE_JSON)?;
     lease.lease_id = LEASE_ID.into();
     lease.lease_expires_at = expires;
@@ -184,6 +213,9 @@ fn lease(tools: &[&str], repository: bool, expires: jiff::Timestamp) -> Result<V
             access: RepositoryAccess::Write,
             base_branch: "main".into(),
         });
+    }
+    if recovery.is_some() {
+        crate::supervisor_recovery::Config::configure(&mut lease)?;
     }
     // The poll reply tags each lease with its kind, as the daemon does.
     Ok(serde_json::to_value(afd_wire::lease::TaggedLease::<

@@ -19,7 +19,7 @@ use crate::image_input::ImageInput;
 const WEB_SEARCH: &str = "web_search";
 
 /// One tool call the model asked for.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Call {
     /// The provider's id for the call, echoed with its result.
     pub id: String,
@@ -35,7 +35,7 @@ pub struct Call {
 /// reasoning details. Opaque to the loop, which keeps it with the turn that
 /// produced it and hands it back unopened; a provider that reasons in the
 /// open, or not at all, leaves it empty.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Replay(pub(crate) AssistantMessage);
 
 impl Replay {
@@ -60,7 +60,7 @@ pub struct End {
 }
 
 /// One message of the conversation a turn continues.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Message {
     /// What the fleet was asked.
     User(String),

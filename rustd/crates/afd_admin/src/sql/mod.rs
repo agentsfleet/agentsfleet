@@ -6,7 +6,8 @@
 //! database's `now()` (`docs/architecture/postgres_schemas.md` rule 4).
 
 /// Every catalogued model's identity, in stable provider/model order; prices
-/// come from [`SELECT_MODEL_PRICES`].
+/// come from [`SELECT_MODEL_PRICES`]. `$1` optional limit, `$2` optional provider
+/// boundary, `$3` optional model-name boundary. The identity pair is unique.
 pub(crate) const LIST_PLATFORM_MODELS: &str = include_str!("list_platform_models.sql");
 
 /// Files a model, or writes nothing when `(provider, model_name)` is taken.
@@ -23,6 +24,11 @@ pub(crate) const UPDATE_PLATFORM_MODEL: &str = include_str!("update_platform_mod
 
 /// A model's saved inference settings, locking the row for the update that
 /// follows. `$1` id.
+pub(crate) const BEGIN_MODEL_SNAPSHOT: &str = include_str!("begin_model_snapshot.sql");
+pub(crate) const INSERT_DECISION_REVISION: &str = include_str!("insert_decision_revision.sql");
+pub(crate) const MATCH_DECISION_REVISION: &str = include_str!("match_decision_revision.sql");
+/// Selects `$2`'s immutable definition only under its owning model `$1`.
+pub(crate) const SELECT_DECISION_REVISION: &str = include_str!("select_decision_revision.sql");
 pub(crate) const SELECT_PLATFORM_MODEL_INFERENCE: &str =
     include_str!("select_platform_model_inference.sql");
 
@@ -39,6 +45,13 @@ pub(crate) const DELETE_PLATFORM_MODEL_PRICES: &str =
 
 /// Every price row of `$1`'s model ids, ordered by model, tier and start.
 pub(crate) const SELECT_MODEL_PRICES: &str = include_str!("select_model_prices.sql");
+
+/// Current reviewed decision quotes, with the same price columns as coding.
+pub(crate) const SELECT_DECISION_PRICES: &str = include_str!("select_decision_prices.sql");
+/// Decision schedule writes add `$15`, its reviewed definition revision.
+pub(crate) const UPSERT_DECISION_PRICES: &str = include_str!("upsert_decision_prices.sql");
+/// Prunes one decision revision's absent tiers; `$4` is its revision.
+pub(crate) const DELETE_DECISION_PRICES: &str = include_str!("delete_decision_prices.sql");
 
 /// Removes a model. A platform default still pointing at it refuses the delete
 /// through `ON DELETE RESTRICT`, which [`crate::Models::delete`] reports as

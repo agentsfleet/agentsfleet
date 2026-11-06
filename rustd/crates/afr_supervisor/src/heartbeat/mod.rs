@@ -330,3 +330,6 @@ mod closing_tests;
 
 #[cfg(test)]
 mod unanswered_tests;
+
+#[cfg(test)]
+mod durable_policy_tests;

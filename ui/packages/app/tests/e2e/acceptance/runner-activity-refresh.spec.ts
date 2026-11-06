@@ -16,7 +16,7 @@ test("Refresh replaces the mounted Runner activity with the new lifecycle record
   const client = clientFor(FIXTURE_KEY.policyEditor);
   const runner = z.object({runner_id: z.uuid()}).parse(await client.post<unknown>("/v1/runners", {
     host_id: `refresh-${crypto.randomUUID()}`, labels: [],
-    assigned_policy: {sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
+    assigned_policy: { durable_tasks_enabled: true,sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
   }));
   const path = `${RUNNERS}/${runner.runner_id}`;
   try {

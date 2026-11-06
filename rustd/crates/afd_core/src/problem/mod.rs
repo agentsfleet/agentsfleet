@@ -116,6 +116,7 @@ mod fleet;
 mod integration;
 mod invite;
 mod request;
+mod task;
 
 /// The families, in `REGISTRY` order — which is the order [`ENTRIES`] takes.
 ///
@@ -123,7 +124,8 @@ mod request;
 /// describing it live in comparable files. The order is load-bearing: it is
 /// what lets [`ENTRIES`] be flattened from the parts rather than written out
 /// a second time that could disagree with them.
-const FAMILIES: [&[Problem]; 6] = [
+const FAMILIES: [&[Problem]; 7] = [
+    self::task::TASK,
     self::request::REQUEST,
     self::auth::AUTH,
     self::fleet::FLEET,
@@ -138,7 +140,8 @@ const TOTAL: usize = FAMILIES[0].len()
     + FAMILIES[2].len()
     + FAMILIES[3].len()
     + FAMILIES[4].len()
-    + FAMILIES[5].len();
+    + FAMILIES[5].len()
+    + FAMILIES[6].len();
 
 /// One entry per code this workspace declares, in `REGISTRY` order.
 ///

@@ -167,6 +167,9 @@ pub struct ReportRequest<'a> {
     pub fencing_token: u64,
     /// The binary verdict.
     pub outcome: Outcome,
+    /// Safe-boundary task disposition, independently verified before changing task state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<crate::task::TaskReport>,
     /// The granular cause when the run failed.
     pub failure_reason: Option<FailureClass>,
     /// Human-readable cause, stored only on failure.

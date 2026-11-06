@@ -34,7 +34,8 @@ pub(crate) fn vault_data_invalid() -> Error {
 /// fences ITSELF out. The live sequence a memory push is checked against runs
 /// the other way: saturating it to zero would put it below every token in
 /// existence and admit every stale holder. There is no safe value, so there is
-/// no value.
+/// no value. Runtime usage allocation also refuses a count that would enter
+/// another writer's namespace rather than saturating onto an occupied number.
 pub(crate) fn sequence_corrupt() -> Error {
     Error::new(ErrorKind::SequenceCorrupt)
 }
@@ -46,7 +47,18 @@ pub(crate) fn sequence_corrupt() -> Error {
 /// so the chain a fatal renderer walks stays intact (`RUST_ERROR_STANDARD`
 /// rule 3).
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| Error::new(ErrorKind::Query { context, source })
+    move |source| {
+        if source
+            .as_database_error()
+            .and_then(sqlx::error::DatabaseError::code)
+            .as_deref()
+            == Some("57014")
+        {
+            Error::new(ErrorKind::TaskStatementCancelled { source })
+        } else {
+            Error::new(ErrorKind::Query { context, source })
+        }
+    }
 }
 
 /// Reports a column whose stored value is not a shape this daemon can read.

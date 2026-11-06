@@ -24,7 +24,8 @@ import {
   CircleXIcon,
   type LucideIcon,
 } from "lucide-react";
-import type { EventDetail, EventRow } from "@/lib/api/events";
+import type { EventDetail, EventLocator, EventRow } from "@/lib/api/events";
+import { byInstant } from "@/lib/api/decode";
 import { useEventDetail } from "./use-event-detail";
 import {
   formatRequestValue,
@@ -42,7 +43,8 @@ import {
 } from "@/lib/events/event-summary";
 
 type EventDetailsDialogProps = {
-  row: EventRow | null;
+  row: EventRow | EventLocator | null;
+  refresh?: string;
   onOpenChange: (open: boolean) => void;
 };
 
@@ -67,6 +69,7 @@ const NO_CAUSE_ADVICE =
   "This event did not record which check failed. Retry it once; if it fails again, ask a workspace administrator to investigate.";
 const LOCAL_TIME_FALLBACK = "Local time";
 const NO_RESULT = "No result recorded";
+const RESULT_UNCONFIRMED = "Latest result not yet available";
 const NO_REQUEST_CONTEXT = "No request context recorded";
 const REQUEST_CONTEXT_TITLE = "Request context";
 const REQUEST_CONTEXT_OMITTED = "Additional fields not shown";
@@ -99,14 +102,22 @@ const EVENT_TONES: Record<string, EventTone> = {
   },
 };
 
-export function EventDetailsDialog({ row, onOpenChange }: EventDetailsDialogProps) {
+export function EventDetailsDialog({ row, refresh, onOpenChange }: EventDetailsDialogProps) {
   // Fetched here rather than in `EventDetails` so the request is keyed on the
   // open row and is torn down with the dialog, not with a render.
-  const detail = useEventDetail(row);
+  const supplied = row && "status" in row ? row : null;
+  const revision = refresh ?? (supplied ? JSON.stringify([supplied.updated_at, supplied.status]) : undefined);
+  const loaded = useEventDetail(row, revision);
+  const detail = loaded.kind === "ready" ? loaded.detail : null;
+  const known = supplied && (!detail || byInstant(supplied.updated_at, detail.updated_at) > 0) ? supplied : detail;
+  const current = known === detail ? detail : null;
   return (
     <Dialog open={row !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-svh max-w-3xl overflow-y-auto">
-        {row ? <EventDetails row={row} detail={detail} /> : null}
+        {known ? <EventDetails row={known} detail={current} /> : row ? <DialogHeader>
+          <DialogTitle>{EVENT_DETAILS_TITLE}</DialogTitle>
+          <DialogDescription>{loaded.kind === "failed" ? "Run details unavailable. Close and try again." : "Loading run details…"}</DialogDescription>
+        </DialogHeader> : null}
       </DialogContent>
     </Dialog>
   );
@@ -117,7 +128,7 @@ function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | nu
   const failure = row.failure_label ? failurePresentationFor(row.failure_label) : null;
   // The chat and result keep a plain sentence; inspect gives operators the
   // recorded runner cause without presenting it as retry guidance.
-  const recordedResult = response || (failure ? outcomeFor(row) : "") || NO_RESULT;
+  const recordedResult = response || (failure ? outcomeFor(row) : "") || (detail ? NO_RESULT : RESULT_UNCONFIRMED);
   const result = truncateResult(recordedResult);
   const runnerDiagnostic = row.failure_label === "runner_crash" ? row.failure_detail?.trim() : null;
   const tone = EVENT_TONES[row.status] ?? WARNING_TONE;

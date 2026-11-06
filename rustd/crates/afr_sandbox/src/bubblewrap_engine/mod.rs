@@ -153,7 +153,7 @@ impl BubblewrapEngine {
                 client,
                 parts,
                 owner: self.owner,
-                _toolbox: Arc::clone(&self.config.toolbox),
+                toolbox: Arc::clone(&self.config.toolbox),
             }),
             Err(error) => {
                 // Released off the runtime; what it could not remove it logs.
@@ -285,11 +285,15 @@ struct Bubblewrapped {
     owner: (u32, u32),
     /// The toolbox it runs on, held until it is destroyed so retention never
     /// unmounts it from under a lease or a warm slot.
-    _toolbox: Arc<Toolbox>,
+    toolbox: Arc<Toolbox>,
 }
 
 #[async_trait::async_trait]
 impl Sandbox for Bubblewrapped {
+    fn toolbox_digest(&self) -> Option<&str> {
+        Some(self.toolbox.digest())
+    }
+
     fn executor(&self) -> &dyn Executor {
         &self.client
     }

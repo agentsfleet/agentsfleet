@@ -15,7 +15,7 @@ import { isSelftestStale } from "./runners-types";
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.resetAllMocks());
 
-const ASSIGNED: AssignedPolicy = {
+const ASSIGNED: AssignedPolicy = { durable_tasks_enabled: true,
   sandbox_tier: "landlock_full",
   network_policy: "deny_all_egress",
   registry_allowlist: ["pypi.org"],

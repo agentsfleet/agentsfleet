@@ -254,6 +254,14 @@ A runner needs a `agt_r` token before it can pull work. The **platform admin pre
 
 Configuration flows **down**. Sandbox tier, network policy, registry allowlist and worker count are attributes the control plane ASSIGNS to the runner row. They are written at enrollment and changed through `PATCH /v1/fleets/runners/{id} {assigned_policy}`. Each one rides the runner's identity on the enrollment read and on **every heartbeat reply**, so a dashboard change reaches the host within one beat and nobody visits the host.
 
+**Durable tasks** follows that assignment path through the required `durable_tasks_enabled` boolean.
+New and migrated assignments default to On; whole-policy writes must carry the saved value explicitly.
+An Off value prevents new durable leases, including initial work from durable-task setup, without changing ordinary work eligibility.
+
+Supported software still advertises `durable_tasks_v1` while its assignment is Off.
+Existing durable leases retain their frozen mode, input, recovery, accounting and report duties.
+The candidate, claim and final issue checks all require configured support before a new durable lease commits.
+
 The **heartbeat cadence travels the same way** (M205). `afd_core::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` served beneath it, and a compile-time assertion beside them keeps the served cadence strictly below the offline threshold. A host holds no interval of its own, so moving the threshold moves every host's beat within one cycle. The field is required rather than optional: a reply without it is refused at parse and the beat takes the existing backoff, because a runner guessing its own cadence is the drift this removes.
 
 The host never declares policy. The per-policy environment variables that once did are removed outright rather than deprecated, so there is no fallback path two sources of truth could diverge through. The failure that removes: a dev worker advertised `landlock_full` while refusing every lease for two days, because the dashboard's tier and the host's env file held different values and nothing compared them.
@@ -482,7 +490,7 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
 Two decisions by Indy on 2026-10-03, after the options below were weighed.
 
 1. **The runner reaches memory only through `agentsfleetd`'s runner API, whatever store holds it** ("Always via agentsfleetd"). Stores sit behind one trait inside `agentsfleetd`: Postgres by default; turbopuffer, mem0 or another later. A workspace's store is flipped in `agentsfleetd`, and a flip migrates the workspace's memory to the new store before it takes effect. The runner holds no credential for any store. This replaced option C, which Indy chose earlier the same day ("C: hybrid"), before the flip-with-migration requirement arrived. The flip shipped in M210_004 with no caller and was removed in M229 (Indy, 2026-10-18): no endpoint called it and no second store existed, so the trait, the flip and the in-memory store it was proved against come back with the first vendor store.
-2. **Memory carries both keys.** Every entry belongs to a workspace; a fleet-scoped entry also belongs to its fleet. A fleet reads and writes its own fleet-scoped memory as today. Workspace-scoped memory is shared by the workspace's fleets and reached only by a fleet granted that access. Indy: "we must have flexibility to have the memory have a key of the fleet_id, workspace_id as well. The workspace_id are restricted based on scope (access control)", refining an earlier "Workspace-wide only". A per-channel resident fleet keeps its channel's memory private by staying fleet-scoped.
+2. **Memory carries both keys.** Every entry belongs to a workspace; a fleet-scoped entry also belongs to its fleet. A fleet reads and writes its own fleet-scoped memory as today. Workspace-scoped memory is shared by the workspace's fleets and reached only by a fleet granted that access. Indy: "we must have flexibility to have the memory have a key of the fleet_id, workspace_id as well. The workspace_id are restricted based on scope (access control)", refining an earlier "Workspace-wide only". A configured Slack fleet keeps private memory fleet-scoped unless its reviewed grants permit sharing.
 
 | Option weighed | Who talks to the store | Credential the runner holds | `agentsfleetd` calls per run |
 |---|---|---|---|

@@ -1,3 +1,4 @@
+import { fleetSources } from "@/lib/fleet-sources";
 import { claims, requireCredential } from "@/lib/auth/credential";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
@@ -89,6 +90,7 @@ async function loadChatView(
     <ChatView
       workspaceId={workspaceId}
       fleetId={fleet.id}
+      sources={fleetSources(fleet.definition.config["x-agentsfleet"])}
       senderLabel={fleet.name}
       setupRevision={fleet.setup_revision}
       setup={<FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} showSaved />}

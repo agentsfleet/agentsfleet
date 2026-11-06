@@ -249,7 +249,7 @@ impl Inbox {
             .bind(&resolved.workspace_id)
             .bind(actor)
             .bind(afd_wire::event::EventType::Continuation.as_str())
-            .bind(CONTINUATION_BODY)
+            .bind(sqlx::types::Json(serde_json::json!({})))
             .bind(event_id)
             .bind(afd_core::event::status::RECEIVED)
             .fetch_one(&mut *connection)

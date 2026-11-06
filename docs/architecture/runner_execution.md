@@ -218,6 +218,21 @@ The runner is the harness, in Codex's shape: the catalog holds every tool the pu
 | `image` | supervisor reads the file through the executor and attaches it to the next model turn | a provider that takes images |
 | `browser`, `browser_open`, `screenshot` | sandbox under the Firecracker engine: Chromium from the toolbox, driven over the Chrome DevTools Protocol (CDP) through the process's pipes; the bubblewrap engine answers each with a code | the Firecracker engine; Chromium in the toolbox; the sandbox allowlist for any host beyond loopback |
 
+Shell and Git commands bound their ending wait in `afr_tools/src/sandbox/oneshot/mod.rs`.
+The allowance combines native kill/drain grace with a named reply slack; compile-time checks relate it to lease and engine bounds.
+Spawn requests retain the native client's separate 30-second reply deadline.
+
+A missing ending returns `interrupted`, retains available output and leaves the command's outcome unknown.
+Expiry invalidates the existing executor link; pending and subsequent calls refuse without waiting on that peer again.
+The tool performs no automatic repeat and does not claim remote death.
+
+The ending wait consumes Tokio cooperative budget when output notifications are ready.
+Output reads take one finite buffer snapshot, including its ending and channel state, under the existing lock.
+Later arrivals cannot extend that read; zero-byte frames consume no buffer entries.
+
+The warning `process_ending_deadline_exceeded` records lease/process identities and both timeout durations, without command text.
+The existing `agentsfleet_runner_tool_call_duration_seconds` family records this returned tool failure and its elapsed time through the agent ledger.
+
 A lease whose tools are all supervisor-side starts no sandbox. A lease offered any sandbox tool gets its bound repositories checked out before its turn, so a lease of file tools alone reads the repository rather than an empty workspace. git runs programs of its own accord, through hooks, `!` aliases and commands named in configuration, so a lease offered `git` can run what one offered `shell` can, inside the same sandbox; the sandbox is the boundary, and the `git` tool's refusal of remote subcommands is an answer to the model, not a wall.
 
 ## Sandbox engines
@@ -578,7 +593,7 @@ model tool call ─► Router::dispatch                 afr_agent/src/router/mod
   Supervisor ─► tool.call(executor None)            http_request: egress guard, then HTTP
   Sandbox    ─► slot.get(): waits for the build, then the executor, or
                SandboxUnavailable naming why; a wait is recorded
-               shell ─► oneshot::run_to_end            afr_tools/src/sandbox/oneshot.rs
+               shell ─► oneshot::run_to_end            afr_tools/src/sandbox/oneshot/mod.rs
                ─► Client::spawn
                "process/spawn" over the link ─► executor launcher
                pre_exec joins the tenant leaf ─► sh -c
@@ -622,7 +637,7 @@ An engine whose disk the host cannot mount, such as Firecracker, reports no host
 
 ## Workspace between leases
 
-The proposed [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
+The [durable repair scenario](scenarios/durable-repair.md) separates trusted task continuation from compatible conversation/file/Git recovery. Neither semantic memory nor context compaction implements workspace snapshots; a new Firecracker backend is not assumed for API-only continuation.
 
 The workspace is the fleet's, not the lease's. Holding a sandbox between messages is built. Workspace snapshots are the target: nothing saves or restores one yet, and the bullets that describe them are marked *Target, not built*.
 

@@ -1,4 +1,4 @@
-SELECT s.fleet_id::text, f.workspace_id::text, s.message, s.once,
+SELECT s.fleet_id::text, f.workspace_id::text, s.message, s.cron_expression, s.timezone, s.once,
        s.desired_status, f.status, s.fire_at AS scheduled_at
   FROM fleet.schedules s
   JOIN fleet.fleets f ON f.id = s.fleet_id

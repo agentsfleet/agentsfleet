@@ -149,6 +149,7 @@ connection or transaction; there is no generic repository trait.
 | `candidates` | A frozen numbered setup the model proposed | append-only |
 | `attempts` | One runner lease running one message, money reserved, model pinned | `reserved_nanos` is the ceiling its hold reserves; `outcome` is set once usage settles |
 | `dispatches` | One physical model call: intent before, result after; `native_reply` is the provider's own reply kept for replay, private like `result` |  |
+| `edit_decisions` | Setup edit-intent checks with frozen decision prices and measured usage | no private text or secrets; opaque setup-chat accounting survives deletion; unresolved calls retain their hold |
 | `activity_receipts` | Replay proof for "runner posted a setup" | append-only |
 | `answer_receipts` | Replay proof for "runner posted an answer" | append-only |
 | `replay_receipts` | Every authoring retry key: create draft, send message, publish | append-only, swept at a fixed age |
@@ -189,17 +190,41 @@ connection or transaction; there is no generic repository trait.
  identity.workspaces ◀── fleets ──▶ revisions (head_revision_id)
  fleets ◀── revisions, schedules, sessions (1:1), activity_counters (1:1),
             events ◀── tool_calls, admissions, approval_gates ──▶ connector.integration_grants,
-            obligations
+            obligations, task_items ◀── tasks ◀── task_inputs
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
 | `fleets` | The deployed agent |  |
 | `revisions` | Frozen setup history; rev 1 at Save, +1 per Apply | append-only |
+| `task_items` | Immutable interpretation receipts survive admission cleanup | append-only; task association closes a deferred cycle |
+| `task_adoptions` | Human goal-revision retry receipts | append-only opaque scope; goal text and native target remain on tasks |
+| `tasks` | One durable objective, its accepted setup, cumulative limits and lifecycle | one originating task item |
+| `task_inputs` | Accepted task input and its consumption order, separate from queue delivery | unique task/item and task/sequence |
+| `task_interpretations` | Complete private source message and accepted plan | append-only; survives admission settlement and cascades with fleet |
+| `task_input_receipts` | Immutable apply, queued and original-reply outcomes | unique item/mode and fleet/operation; private replies cascade with item |
+| `task_waits` | One native exact-head dependency owner | scoped task/generation/stop, separate read claim deadline and monotonic signal cursor; one continuation consumes the wait |
+| `task_completions` | Verified workflow completion inbox | immutable scoped run/attempt evidence; early-race backup; acknowledged rows collect after three days |
+| `task_completion_fanout` | Durable signal-delivery cursor for immutable completion evidence | bounded supervisor fanout; one wait lock per transaction; cannot allocate execution |
+| `task_effects` | Immutable native expected-head publication authority | retained opaque task/ordinal and task/operation identities |
+| `task_effect_states` | Acknowledgement and confirmed remote commit | cannot rewrite the effect request; retained with opaque effect |
+| `task_effect_payloads` | Private repository/branch/workflow binding | append-only; cascades with task |
+| `task_effect_recovery` | Expiring encrypted exact-repository read custody | survives owner deletion until reconciliation or expiry; no write credential |
+| `task_identity_keys` | Wrapped workspace/repository content-identity versions | one active version; independent of object encryption keys and master-key rewrapping |
+| `task_storage_quota` | Unique reserved/stored bytes per workspace | aggregate mutated under its source lock; pending deletion remains charged |
+| `task_bases` | Independently retained verified repository base | exact repository/commit/format/toolbox identity; outlives its first task |
+| `task_checkpoints` | Task capture plan and complete compatible recovery generation | native sequence, fixed pages/deadlines; ready incremental manifest alone becomes recovery pointer |
+| `task_checkpoint_operations` | Opaque capture-plan retry receipts | append-only; survives private plan retention and owner deletion |
+| `task_checkpoint_pages` | Bounded immutable incremental page bytes | native page identity/position; identical replay is read without update |
+| `task_base_pages` | Independently retained immutable base pages | cascades with base rather than its first task |
+| `task_objects` | Random scoped encrypted object, wrapped key and frozen ciphertext descriptor | one live keyed-content identity; quota charged once; erasure records purge custody |
+| `task_object_refs` | Workspace-scoped checkpoint/object or base/object edges | composite ownership keys; one owner per edge; referenced objects cannot be collected |
+| `task_object_pins` | One current capture/restore operation and deadline | versioned lease/fence; retention serializes with task pin acquisition |
+| `task_storage_purges` | Durable remote-delete custody and quota-release receipt | opaque object/location plus charged bytes/disposition; no owner foreign key |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler |  |
 | `sessions` | Resume bookmark `{last_event_id, last_response}` |  |
-| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)` |
-| `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row |  |
+| `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` retains an array of at most 128 public stages / 120 KB; native sequence and truncation are separate typed columns, within the public 128 KiB ceiling |
+| `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | optional task/item association; single-use active-loop input claim |
 | `approval_gates` | A risky action waiting for a person |  |
 | `obligations` | An answer owed to a destination until delivered or abandoned |  |
 | `tool_calls` | Full arguments and output of each tool call |  |
@@ -221,8 +246,10 @@ omit its model and review then resolves the tenant default.
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `runners` | An enrolled host: policy, health, self-test |  |
-| `leases` | One fleet event handed to one runner. No foreign key to the fleet or its event: a settled lease outlives a purge as runner history; the insert proves fleet, workspace and tenant in the same statement |  |
+| `runners` | An enrolled host: policy, health, self-test | optional reviewed decision-model selection; referenced models cannot be deleted |
+| `leases` | One fleet event handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, event, task or historical model revision |
+| `decision_calls` | Retained physical-call identity, frozen prices, reservations and canonical usage | opaque original ownership survives deletion; unresolved rows prevent whole-hold release |
+| `decision_payloads` | Bounded private evidence and answers for a call | fleet deletion removes payloads while accounting remains |
 | `fleet_slots` | Per-fleet claim: who may lease it, next fencing token, sticky runner, sandbox hold |  |
 | `events` | Append-only runner history | unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
 | `lifetime_counters` | Per-runner tallies |  |
@@ -243,19 +270,25 @@ leaves the index once metering reaches its expiry, so the index holds only the b
 | Table | Purpose |
 |---|---|
 | `installs` | Outside account (Slack team, GitHub installation) → workspace; credentials stay in the vault |
-| `channels` | Slack channel → resident fleet; rebinds when a team moves workspace |
+| `person_links` | OAuth-proved Slack person → current workspace member; installation deletion cascades the link |
+| `channels` | Stable Slack channel notice owner; current workspace/team checks reject stale bindings |
 | `integration_grants` | Whether a fleet may use a service; deny is stored as revoked |
 
 ## model
 
 | Table | Purpose |
 |---|---|
-| `platform_models` | Curated identities with exact provider API identifiers, display names and context evidence |
+| `platform_models` | Curated identities, context evidence and current decision selection |
 | `platform_model_prices` | Prices per prompt-size tier and effective date range, in integer nanos per million tokens; a separate table because one model has many prices |
+| `decision_revisions` | Immutable reviewed decision definitions; a model/revision label cannot acquire different bytes |
+| `decision_prices` | Separate decision-protocol rates preserve coding writers and historical revision accounting; composite revision/model reference proves quote ownership |
 | `catalogue_version` | Singleton edit counter, bumped by every catalogue edit and read with each runtime model resolution |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key |
 | `tenant_models` | A tenant's own models, each pointing at a vault key |
 | `tenant_selections` | The tenant's default; NULL means platform default |
+
+The current decision pointer uses a deferred identity reference and an ownership constraint trigger.
+The trigger checks final rows and locks their immutable revision, without granting update access or public access to the trigger function.
 
 `model_name` is the provider's name for a model and never a foreign key. `installs.scopes` is read
 by the setup review, which blocks a connection whose granted scopes fall short.
@@ -285,8 +318,8 @@ or account therefore never deletes a charge. The slots name the export that read
 | Draft (user delete or 30-day sweep) | messages, candidates, answer receipts, draft context checkpoint | attempts, dispatches, settlements, receipts | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, attempts, settlements | `dispatches.result` and `dispatches.native_reply` of their attempts |
 | Library card | its revisions | fleets installed from it; drafts started from it (`source_library_revision_id` set NULL) | — |
-| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases | charges; settled runner leases, for their own 30-day window (fleet and event shown as deleted); drafts linked to it (`fleet_id`, `source_fleet_revision_id` set NULL) | — |
-| Workspace | drafts, fleets (as above), installs, secrets, preferences | attempts, settlements, charges | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | charges; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently retained workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
+| Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, settlements, charges; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, settlements, charges (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), settlements; slots (`last_runner_id` set NULL) | — |
 

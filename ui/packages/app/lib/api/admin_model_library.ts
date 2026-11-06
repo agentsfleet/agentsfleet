@@ -45,8 +45,24 @@ export interface PlatformKeyList {
   keys: PlatformKey[];
 }
 
+const adminModelPageSchema = adminModelListSchema.extend({ next_cursor: z.string().min(1).nullable() });
+
 export async function listAdminModels(token: string): Promise<AdminModelList> {
-  return adminModelListSchema.parse(await request<unknown>(ADMIN_MODELS_PATH, { method: "GET" }, token));
+  const models: AdminModel[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const path = cursor === null ? ADMIN_MODELS_PATH
+      : `${ADMIN_MODELS_PATH}?${new URLSearchParams({ starting_after: cursor })}`;
+    const page = adminModelPageSchema.parse(await request<unknown>(path, { method: "GET" }, token));
+    models.push(...page.models);
+    cursor = page.next_cursor;
+    if (cursor !== null) {
+      if (seen.has(cursor)) throw new Error("Admin catalogue returned a repeated cursor");
+      seen.add(cursor);
+    }
+  } while (cursor !== null);
+  return { models };
 }
 
 export async function createAdminModel(token: string, body: LibraryModelInput): Promise<AdminModel> {

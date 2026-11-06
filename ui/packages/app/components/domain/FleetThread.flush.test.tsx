@@ -1,6 +1,7 @@
 import React, { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { summary } from "@/tests/helpers/task-reads";
 
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { OUTCOME } from "@/lib/events/event-summary";
@@ -87,6 +88,7 @@ const AGAIN_ID = "evt_flush_again";
 
 // Stable across flushes, as the registry's callbacks are.
 const STABLE = {
+  tasksSeq: 0,
   connectionStatus: CONNECTION_STATUS.LIVE,
   isRunning: false,
   appendOptimistic: vi.fn(),
@@ -112,7 +114,7 @@ function turn(reply: string, status: FleetEvent["status"]): FleetEvent {
 }
 
 function thread() {
-  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} />;
+  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} sources={{repositories: ["agentsfleet/agentsfleet"], access: "write", publication: "existing_pr"}} />;
 }
 
 function flush(view: ReturnType<typeof render>, event: FleetEvent) {
@@ -132,6 +134,39 @@ beforeEach(() => {
 });
 
 afterEach(cleanup);
+
+it("clears confirmed work and cancels its reads when the fleet stream revokes access", async () => {
+  const pending = Promise.withResolvers<Response>();
+  const network = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({items: [summary()], next_cursor: null})).mockReturnValueOnce(pending.promise);
+  vi.stubGlobal("fetch", network);
+  try {
+    const events = [{...turn("Last confirmed answer", AGENTSFLEET_EVENT_STATUS.PROCESSED), tools: [{name: "file_write", args: {path: "src/repair.ts"}, startedAtMs: 0, ms: 1, done: true, status: "succeeded" as const}]}];
+    shell.stream.mockReturnValue({...STABLE, events});
+    const view = render(thread());
+    const draft = screen.getByRole("textbox", {name: /^Message your fleet/});
+    fireEvent.change(draft, {target: {value: "Keep the existing redirect checks."}});
+    fireEvent.click(screen.getByRole("button", {name: "Work context"}));
+    expect(await screen.findByText("PR #123 repair")).toBeTruthy();
+    expect(screen.getByText("Last confirmed answer")).toBeTruthy();
+    expect(screen.getByText("agentsfleet/agentsfleet")).toBeTruthy();
+    expect(screen.getByText("1 recorded file")).toBeTruthy();
+    const requestSignal = network.mock.calls[0]?.[1]?.signal;
+    const detailSignal = network.mock.calls[1]?.[1]?.signal;
+    expect(detailSignal?.aborted).toBe(false);
+    expect(requestSignal?.aborted).toBe(false);
+    shell.stream.mockReturnValue({...STABLE, connectionStatus: CONNECTION_STATUS.REVOKED, events});
+    view.rerender(thread());
+    expect(screen.queryByRole("region", {name: "Current work"})).toBeNull();
+    expect(screen.queryByText("PR #123 repair")).toBeNull();
+    expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
+    expect(screen.queryByRole("region", {name: "Changes"})).toBeNull();
+    expect(screen.queryByText("agentsfleet/agentsfleet")).toBeNull();
+    expect(requestSignal?.aborted).toBe(true);
+    expect(detailSignal?.aborted).toBe(true);
+    expect(network).toHaveBeenCalledTimes(2);
+    expect(draft).toHaveProperty("value", "Keep the existing redirect checks.");
+  } finally {vi.unstubAllGlobals();}
+});
 
 it("does not decode runtime bodies as receipts and tolerates a recorded event with no payload", () => {
   const decode = vi.spyOn(activity, "readFleetActivity");

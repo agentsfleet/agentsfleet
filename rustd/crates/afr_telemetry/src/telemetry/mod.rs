@@ -103,11 +103,11 @@ impl Telemetry {
     }
 
     /// The layer that exports the runner's spans: `runner.lease`,
-    /// `invoke_agent`, `chat` and `execute_tool`, and nothing else.
+    /// `invoke_agent`, `chat`, `decision` and `execute_tool`.
     ///
     /// Filtered to the runner's own span target, so a library's span never
     /// leaves the host, and to spans alone, so no log record rides a span as
-    /// an event: the four constructors in `afr_agent` and `afr_supervisor` are
+    /// an event: the constructors in `afr_agent`, `afr_providers` and `afr_supervisor` are
     /// the only things that decide what a runner span carries, and none takes
     /// a prompt, a reply or a tool's output. The tool span names its tool by
     /// the catalog's closed set, never the model's own spelling.

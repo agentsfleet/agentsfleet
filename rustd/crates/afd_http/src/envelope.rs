@@ -40,6 +40,7 @@ pub struct ProblemResponse {
     etag: Option<String>,
     review_digest: Option<String>,
     resolution: Option<Resolution>,
+    effect: Option<afd_wire::task::TaskEffect>,
 }
 
 /// The standing answer a 409 on an approval gate reports.
@@ -79,6 +80,21 @@ impl ProblemResponse {
             etag: None,
             review_digest: None,
             resolution: None,
+            effect: None,
+        }
+    }
+
+    /// A saved publication conflict includes its immutable recovery identity.
+    #[must_use]
+    pub fn effect_conflict(
+        code: ErrorCode,
+        detail: &'static str,
+        request_id: impl Into<String>,
+        effect: afd_wire::task::TaskEffect,
+    ) -> Self {
+        Self {
+            effect: Some(effect),
+            ..Self::new(code, detail, request_id)
         }
     }
 
@@ -205,6 +221,9 @@ impl ProblemResponse {
         }
         if let Some(user_message) = self.problem.user_message() {
             body.insert("user_message".to_owned(), user_message.into());
+        }
+        if let Some(effect) = &self.effect {
+            body.insert("effect".to_owned(), serde_json::json!(effect));
         }
         Value::Object(body)
     }

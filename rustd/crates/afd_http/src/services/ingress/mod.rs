@@ -15,9 +15,7 @@
 
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
-use afd_ingress::slack::{
-    BoundResident, ChannelId, MentionAdmission, Named, NoticeOwed, Resident, Subscriber,
-};
+use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, NoticeOwner, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 use jiff::Timestamp;
 
@@ -116,27 +114,27 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         mention: MentionAdmission<'_>,
     ) -> impl Future<Output = IngressResult<Admitted>> + Send;
 
-    /// The fleet bound as a chat channel's resident in `workspace`, and its
+    /// The fleet bound as a chat channel's notice owner in `workspace`, and its
     /// status, when one is.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a row this build cannot
     /// read.
-    fn resident(
+    fn notice_owner(
         &self,
         workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
-    ) -> impl Future<Output = IngressResult<Option<BoundResident>>> + Send;
+    ) -> impl Future<Output = IngressResult<Option<NoticeOwner>>> + Send;
 
-    /// Binds `fleet` as the channel's resident unless `workspace` already has
+    /// Binds `fleet` as the channel's notice owner unless `workspace` already has
     /// one bound, and answers whichever fleet is bound there.
     ///
     /// # Errors
     /// Reports an identifier that would not mint, a datastore that would not
     /// answer, and a row this build cannot read.
-    fn bind_resident(
+    fn bind_notice_owner(
         &self,
         workspace: &Uuid7,
         provider: &str,
@@ -146,24 +144,11 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         now: Timestamp,
     ) -> impl Future<Output = IngressResult<Uuid7>> + Send;
 
-    /// What a workspace holds under a resident's name, when it holds anything:
-    /// the resident itself, or a fleet somebody else named that way.
+    /// Owes deterministic routing text through the ordinary outbound ledger.
+    /// Returns false for an already owed notice.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer and a row this build cannot
-    /// read.
-    fn resident_named(
-        &self,
-        workspace: &Uuid7,
-        resident: &Resident,
-    ) -> impl Future<Output = IngressResult<Option<Named>>> + Send;
-
-    /// Owes a notice to a mention's thread, once however often the mention
-    /// arrives. `true` when this call wrote it.
-    ///
-    /// # Errors
-    /// Reports an identifier that would not mint and a ledger that would not
-    /// record the obligation.
+    /// Reports identifier generation or ledger persistence failure.
     fn owe_notice(
         &self,
         owed: NoticeOwed<'_>,
@@ -239,17 +224,17 @@ impl WebhookIngress for Ingress {
         Self::admit_mention(self, mention)
     }
 
-    fn resident(
+    fn notice_owner(
         &self,
         workspace: &Uuid7,
         provider: &str,
         team: &str,
         channel: &ChannelId,
-    ) -> impl Future<Output = IngressResult<Option<BoundResident>>> + Send {
-        Self::resident(self, workspace, provider, team, channel)
+    ) -> impl Future<Output = IngressResult<Option<NoticeOwner>>> + Send {
+        Self::notice_owner(self, workspace, provider, team, channel)
     }
 
-    fn bind_resident(
+    fn bind_notice_owner(
         &self,
         workspace: &Uuid7,
         provider: &str,
@@ -258,15 +243,7 @@ impl WebhookIngress for Ingress {
         fleet: &Uuid7,
         now: Timestamp,
     ) -> impl Future<Output = IngressResult<Uuid7>> + Send {
-        Self::bind_resident(self, workspace, provider, team, channel, fleet, now)
-    }
-
-    fn resident_named(
-        &self,
-        workspace: &Uuid7,
-        resident: &Resident,
-    ) -> impl Future<Output = IngressResult<Option<Named>>> + Send {
-        Self::resident_named(self, workspace, resident)
+        Self::bind_notice_owner(self, workspace, provider, team, channel, fleet, now)
     }
 
     fn owe_notice(

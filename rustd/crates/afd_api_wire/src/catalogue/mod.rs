@@ -38,10 +38,11 @@ pub struct CatalogueMetadata<'a> {
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = DISPLAY_NAME_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub display_name: Cow<'a, str>,
-    /// The exact served context limit, from the provider's own models API.
+    /// Verified request-context ceiling for this model and protocol.
     #[garde(range(min = CONTEXT_CAP_MIN))]
     pub context_cap_tokens: i32,
-    /// The provider models API response that supplied the limit.
+    /// Provider limit source: models API for coding, published limits for a
+    /// decision API whose model metadata omits context.
     #[serde(borrow)]
     #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(afd_validate::rules::nul_free))]
     pub context_source_url: Cow<'a, str>,

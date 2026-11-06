@@ -79,3 +79,16 @@ describe("AddRunnerDialog assigns policy", () => {
     expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe(String(DEFAULT_WORKER_COUNT));
   });
 });
+
+it("enrolls with the operator's explicit disabled durable task preference", async () => {
+  createRunnerActionMock.mockResolvedValue({ok: true, data: {runner_id: "durable-runner", runner_token: "agt_rdurable"}});
+  openDialog();
+  const setting = screen.getByRole("switch", {name: "Durable tasks"});
+  expect(setting.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(setting);
+  fireEvent.change(screen.getByLabelText(/host name/i), {target: {value: "durable-host"}});
+  fireEvent.click(screen.getByRole("button", {name: "Create"}));
+  await waitFor(() => expect(createRunnerActionMock).toHaveBeenCalledWith(expect.objectContaining({
+    host_id: "durable-host", assigned_policy: expect.objectContaining({durable_tasks_enabled: false}),
+  })));
+});

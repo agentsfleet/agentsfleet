@@ -60,6 +60,7 @@ pub(super) fn payload<'s, D: Services>(
         etag: saved.etag,
         setup_etag: saved.setup_etag,
         setup_revision: saved.setup_revision,
+        setup_revision_id: saved.setup_revision_id.to_string(),
         policy_semantics: saved.policy_semantics,
         definition: saved.definition,
         setup: saved.setup,

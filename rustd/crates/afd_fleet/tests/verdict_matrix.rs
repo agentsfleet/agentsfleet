@@ -25,6 +25,8 @@ use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxT
 /// An assignment at `tier` under `network`, with nothing else set.
 fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static> {
     AssignedPolicy {
+        decision_model_id: None,
+        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         sandbox_tier: tier,
         network_policy: network,
         registry_allowlist: Vec::new(),
@@ -36,6 +38,7 @@ fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static
 /// A host that can enforce everything.
 fn capable() -> CapabilityReport<'static> {
     CapabilityReport {
+        durable_tasks_v1: false,
         build_id: None,
         landlock: true,
         seccomp: true,
@@ -160,6 +163,7 @@ fn test_each_unmet_guarantee_names_itself_in_a_fixed_order() {
 fn test_the_first_unmet_guarantee_wins() {
     let policy = assigned(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress);
     let nothing = CapabilityReport {
+        durable_tasks_v1: false,
         build_id: None,
         landlock: false,
         seccomp: false,
@@ -203,6 +207,7 @@ fn test_egress_control_is_demanded_by_the_posture_not_the_tier() {
 fn test_a_partial_controller_set_does_not_prove_resource_limits() {
     let policy = assigned(SandboxTier::ContainerNested, NetworkPolicy::AllowAll);
     let partial = CapabilityReport {
+        durable_tasks_v1: false,
         cgroup_controllers: vec![Cow::Borrowed("cpu"), Cow::Borrowed("memory")],
         ..capable()
     };

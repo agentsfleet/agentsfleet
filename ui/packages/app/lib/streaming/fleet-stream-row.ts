@@ -1,3 +1,4 @@
+import { readTaskActivityHistory, type TaskActivityHistory } from "../task-activity";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import type { ContextProgress } from "../context-progress";
 import { readNanos } from "@/lib/api/nanos";
@@ -105,6 +106,7 @@ export type FleetEvent = {
   /** The streamed draft awaits the durable final event detail. */
   replyRecovering?: boolean;
   contextProgress?: ContextProgress;
+  taskActivity?: TaskActivityHistory;
   contextProgressHidden?: true;
   /**
    * What the reply bubble says when `reply` is empty — the honest floor that
@@ -194,6 +196,7 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
     wallMs: figure(row.wall_ms),
     costNanos: readNanos(row.cost_nanos),
     custom: { requestJson: request_json },
+    taskActivity: readTaskActivityHistory(bodies.task_activity),
     ...(trace === null ? {} : { tools: trace.calls, omittedCallCount: trace.omitted }),
   };
 }

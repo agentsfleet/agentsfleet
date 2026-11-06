@@ -27,6 +27,11 @@ pub use self::replies::{MAX_MESSAGES, Message, READ_DEADLINE, Replies, Unavailab
 /// loopback through that end's own seam.
 pub const SLACK_API_BASE: &str = "https://slack.com/api";
 
+/// Complete native actor grammar, bound into current-membership SQL checks.
+pub const PERSON_ACTOR_PATTERN: &str = r"^slack:T[A-Z0-9]{1,63}:[UW][A-Z0-9]{1,63}$";
+/// Separator between the native actor's provider, team and human account.
+pub const PERSON_ACTOR_SEPARATOR: &str = ":";
+
 /// A Slack thread, as a reply destination's address.
 ///
 /// `channel_id` and `thread_ts` are required and non-empty: an address

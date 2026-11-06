@@ -1,287 +1,222 @@
-//! Resident selection, native installation, and channel memory through the live stores.
-
+//! Unconfigured mentions create no fleet; notices reuse an existing stable carrier.
 #![cfg(feature = "test-util")]
 
-use std::borrow::Cow;
-
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_ingress::slack::KIND_RESIDENT;
-use afd_memory::Memories;
-use afd_wire::memory::MemoryDelta;
-use jiff::Timestamp;
-
-use super::resident_bound::{resident_document, resident_name};
+use super::notice::owed;
+use super::resident_bound::{bind, bound};
 use super::*;
+use afd_ingress::slack::notice_key;
 
-/// A second channel in the same team, with no fleet attached either.
-const OTHER_CHANNEL: &str = "C0987654321";
-/// A second thread in [`CHANNEL`].
-const SECOND_THREAD: &str = "1700000000.000300";
-/// What every resident's name opens with.
-const RESIDENT_PREFIX: &str = "slack-channel-";
-
-/// One `app_mention` in `channel`, in the thread rooted at `thread_ts`.
-fn mention_at(team: &str, event_id: &str, channel: &str, thread_ts: &str) -> String {
-    let asked = format!("<@{BOT_USER}> who owns the deploy?");
-    app_mention(team, event_id, PERSON, &asked, channel, thread_ts)
+async fn stored(fixture: &Fixture) -> Value {
+    let mut connection = fixture.database().acquire().await.expect("observer");
+    sqlx::query_scalar("SELECT jsonb_build_object('fleets', COALESCE((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.id) FROM fleet.fleets f WHERE workspace_id=$1::uuid),'[]'::jsonb), 'revisions', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1::uuid),'[]'::jsonb))")
+        .bind(fixture.workspace().as_str()).fetch_one(&mut *connection).await.expect("fleet snapshot")
 }
 
-/// The resident fleets this workspace holds, by name.
-async fn residents(fixture: &Fixture) -> Vec<String> {
-    let mut connection = fixture.database().acquire().await.expect("a connection");
-    sqlx::query_scalar(
-        "SELECT name FROM fleet.fleets WHERE workspace_id = $1::uuid AND name LIKE $2 || '%' \
-         ORDER BY name",
-    )
-    .bind(fixture.workspace().as_str())
-    .bind(RESIDENT_PREFIX)
-    .fetch_all(&mut *connection)
-    .await
-    .expect("the fleets read")
-}
-
-/// How many resident bindings `channel` holds in the fixture's team.
-async fn bindings(fixture: &Fixture, channel: &str) -> i64 {
-    let mut connection = fixture.database().acquire().await.expect("a connection");
-    sqlx::query_scalar(
-        "SELECT COUNT(*) FROM connector.channels \
-         WHERE provider = $1 AND external_account_id = $2 AND external_channel_id = $3 \
-           AND binding_type = $4",
-    )
-    .bind(PROVIDER.id())
-    .bind(&fixture.team)
-    .bind(channel)
-    .bind(KIND_RESIDENT)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the bindings count")
-}
-
-/// The admission `event_id` produced, which must exist.
-async fn admitted(fixture: &Fixture, event_id: &str) -> Admitted {
-    fixture
-        .admission(&key(&fixture.team, event_id))
-        .await
-        .expect("the mention was admitted")
-}
-
-/// The resident runs: it is active and selects an immutable native revision
-/// under the current policy and a resolved runtime model, which is everything
-/// the lease reads.
-async fn assert_native_setup(fixture: &Fixture, fleet: &str) {
-    let mut connection = fixture.database().acquire().await.expect("a connection");
-    let (status, policy, model): (String, Option<String>, Option<String>) = sqlx::query_as(
-        "SELECT f.status, r.policy_semantics, r.runtime_model_ref FROM fleet.fleets f \
-         LEFT JOIN fleet.revisions r \
-           ON r.id = f.head_revision_id AND r.fleet_id = f.id \
-         WHERE f.id = $1::uuid",
-    )
-    .bind(fleet)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the resident's setup reads");
-    assert_eq!(status, "active");
-    assert_eq!(
-        policy.as_deref(),
-        Some(afd_fleet_runtime::definition::POLICY_SEMANTICS),
-        "the resident selects a native revision"
-    );
-    assert!(model.is_some(), "the resident runs on a resolved model");
-}
-
-/// Dimension 5.1 — two first mentions in one channel, delivered at once,
-/// leave one resident fleet and one binding, and both are admitted on it.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn concurrent_first_mentions_make_one_resident() {
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn unconfigured_mentions_do_not_create_fleets_or_admissions_or_notices() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let router = fixture.resident_router().await;
-
-    let deliveries = [("EvRes01", THREAD_TS), ("EvRes02", SECOND_THREAD)].map(|(event, thread)| {
-        let router = router.clone();
-        let body = mention_at(&fixture.team, event, CHANNEL, thread);
-        tokio::spawn(async move { deliver(&router, &body).await.status() })
-    });
-    for delivery in deliveries {
+    fixture
+        .fleet(
+            &document("release-review", "C0987654321", Some("write")),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let before = stored(&fixture).await;
+    let body = mention(
+        &fixture.team,
+        "EvUnconfigured",
+        PERSON,
+        &format!("<@{BOT_USER}> help deploy"),
+    );
+    for _ in 0..2 {
+        let response = json_body(deliver(&fixture.router(), &body).await).await;
         assert_eq!(
-            delivery.await.expect("the delivery completes"),
-            StatusCode::OK
+            response.get("ignored").and_then(Value::as_str),
+            Some("channel_not_configured")
         );
     }
-
-    assert_eq!(residents(&fixture).await.len(), 1, "one resident fleet");
-    assert_eq!(bindings(&fixture, CHANNEL).await, 1, "one binding");
-    let first = admitted(&fixture, "EvRes01").await;
-    let second = admitted(&fixture, "EvRes02").await;
-    assert_eq!(
-        first.fleet, second.fleet,
-        "both answered by the one resident"
-    );
-    assert_native_setup(&fixture, &first.fleet).await;
-    let request: Value = serde_json::from_str(&first.request_json).expect("the body is JSON");
-    assert_eq!(
-        request.pointer("/route/verdict").and_then(Value::as_str),
-        Some("resident")
-    );
-
-    fixture.cleanup().await;
-}
-
-/// The install that loses the race for the resident's name converges on the
-/// fleet that won it: that fleet is found by name, bound, and answers.
-///
-/// Arranged rather than raced, so the losing branch runs every time: the
-/// resident's fleet already exists under its name with no binding yet, which
-/// is the state a concurrent first mention leaves between its install and its
-/// bind.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn a_first_mention_that_loses_the_name_converges_on_the_winner() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let name = resident_name(&fixture);
-    let winner = fixture
-        .fleet(&resident_document(&fixture), FleetStatus::Active.as_str())
-        .await;
-    let router = fixture.resident_router().await;
-
-    let body = mention_at(&fixture.team, "EvRes03", CHANNEL, THREAD_TS);
-    assert_eq!(deliver(&router, &body).await.status(), StatusCode::OK);
-
-    assert_eq!(residents(&fixture).await, [name], "no second resident");
-    assert_eq!(bindings(&fixture, CHANNEL).await, 1, "the winner is bound");
-    assert_eq!(admitted(&fixture, "EvRes03").await.fleet, winner.as_str());
-
-    fixture.cleanup().await;
-}
-
-/// Dimension 5.3 — the resident's memory is its channel's: every thread in a
-/// channel reaches one resident, a fact it captured is there for the next
-/// thread, and another channel's resident does not read it.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn resident_memory_is_the_channel() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let router = fixture.resident_router().await;
-
-    for (event, channel, thread) in [
-        ("EvMem01", CHANNEL, THREAD_TS),
-        ("EvMem02", CHANNEL, SECOND_THREAD),
-        ("EvMem03", OTHER_CHANNEL, THREAD_TS),
-    ] {
-        let body = mention_at(&fixture.team, event, channel, thread);
-        assert_eq!(deliver(&router, &body).await.status(), StatusCode::OK);
-    }
-    let first_thread = admitted(&fixture, "EvMem01").await.fleet;
-    let second_thread = admitted(&fixture, "EvMem02").await.fleet;
-    let other_channel = admitted(&fixture, "EvMem03").await.fleet;
-    assert_eq!(first_thread, second_thread, "one channel, one resident");
-    assert_ne!(first_thread, other_channel, "one resident per channel");
-
-    let channel = Uuid7::parse(&first_thread).expect("a fleet id");
-    let elsewhere = Uuid7::parse(&other_channel).expect("a fleet id");
-    a_fact_captured_in_one_channel_stays_there(&fixture, &channel, &elsewhere).await;
-
-    fixture.cleanup().await;
-}
-
-/// A fact the `channel` resident captures is in its hydrated memory, and the
-/// `elsewhere` resident's memory stays empty.
-async fn a_fact_captured_in_one_channel_stays_there(
-    fixture: &Fixture,
-    channel: &Uuid7,
-    elsewhere: &Uuid7,
-) {
-    let memories = Memories::new(fixture.database(), Entropy::new());
-    let fact = MemoryDelta {
-        key: Cow::Borrowed("deploy-owner"),
-        content: Cow::Borrowed("The platform team owns deploys."),
-        category: Cow::Borrowed("core"),
-        visibility: afd_wire::memory::Visibility::Fleet,
-    };
-    memories
-        .capture(channel, &[fact], Timestamp::constant(1_700_000_000, 0))
-        .await
-        .expect("the resident captures a fact");
-
-    let recalled = memories
-        .hydrate(channel)
-        .await
-        .expect("the channel's memory reads");
+    assert_eq!(fixture.admissions().await, 0);
     assert!(
-        recalled
-            .memory
-            .iter()
-            .any(|entry| entry.key == "deploy-owner"),
-        "the next thread in the channel recalls it"
-    );
-    assert!(
-        memories
-            .hydrate(elsewhere)
+        owed(&fixture, &notice_key(&fixture.team, "EvUnconfigured"))
             .await
-            .expect("the other channel's memory reads")
-            .memory
-            .is_empty(),
-        "another channel's resident does not"
+            .is_empty()
     );
-}
-
-/// A lost wake cannot roll back the resident or its accepted mention.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_resident_installs_and_admits_without_dragonfly() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let body = mention_at(&fixture.team, "EvRes20", CHANNEL, THREAD_TS);
-
-    assert_eq!(
-        deliver(&fixture.router(), &body).await.status(),
-        StatusCode::OK
+    assert_eq!(stored(&fixture).await, before);
+    let channel = CHANNEL.parse().expect("channel");
+    assert!(
+        fixture
+            .ingress()
+            .notice_owner(fixture.workspace(), PROVIDER.id(), &fixture.team, &channel)
+            .await
+            .expect("owner lookup")
+            .is_none()
     );
-    let fleets = residents(&fixture).await;
-    assert_eq!(fleets.len(), 1);
-    assert_eq!(bindings(&fixture, CHANNEL).await, 1);
-    let event = admitted(&fixture, "EvRes20").await;
-    assert_native_setup(&fixture, &event.fleet).await;
-    assert_eq!(fleets, [resident_name(&fixture)]);
-
-    assert_eq!(
-        deliver(&fixture.router(), &body).await.status(),
-        StatusCode::OK
-    );
-    assert_eq!(admitted(&fixture, "EvRes20").await, event);
-    assert_eq!(residents(&fixture).await, fleets);
-    assert_eq!(bindings(&fixture, CHANNEL).await, 1);
     fixture.cleanup().await;
 }
 
-/// The install lost the name, and the read that follows finds nothing under
-/// it: the winner was deleted between the two. No fleet can answer, so the
-/// mention is refused as an outage and Slack's retry starts over.
-///
-/// Scripted rather than raced: the ingress answers the name read with
-/// nothing, while the name really is taken in the live fleets store.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_name_gone_after_the_race_refuses_for_a_retry() {
+async fn concurrent_notices_choose_one_existing_owner_without_changing_fleets() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let first = fixture
+        .fleet(
+            &document("responder", CHANNEL, Some("read")),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let second = fixture
+        .fleet(
+            &document("triage", CHANNEL, Some("read")),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    assert!(
+        first.as_str() < second.as_str(),
+        "fixture order is explicit"
+    );
+    let before = stored(&fixture).await;
+    let one = mention(
+        &fixture.team,
+        "EvConcurrent01",
+        PERSON,
+        &format!("<@{BOT_USER}> help"),
+    );
+    let two = mention_in(
+        &fixture.team,
+        "EvConcurrent02",
+        PERSON,
+        &format!("<@{BOT_USER}> help"),
+        "1700000000.000300",
+    );
+    let router = fixture.router();
+    let (one, two) = tokio::join!(deliver(&router, &one), deliver(&router, &two));
+    assert_eq!(
+        (one.status(), two.status()),
+        (StatusCode::OK, StatusCode::OK)
+    );
+    concurrent_outcome(&fixture, first.as_str(), before).await;
+    fixture.cleanup().await;
+}
+
+async fn concurrent_outcome(fixture: &Fixture, first: &str, before: Value) {
+    for event in ["EvConcurrent01", "EvConcurrent02"] {
+        let notices = owed(fixture, &notice_key(&fixture.team, event)).await;
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].owner, "responder");
+    }
+    assert_eq!(bound(fixture).await.0, first);
+    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(stored(fixture).await, before);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn prior_kind_binding_remains_owner_when_subscribers_change() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     fixture
-        .fleet(&resident_document(&fixture), FleetStatus::Active.as_str())
+        .fleet(
+            &document("responder", CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
         .await;
-    let ingress =
-        std::sync::Arc::new(harness::Scripted::new().installed_in(fixture.workspace().clone()));
-
-    let body = mention_at(&fixture.team, "EvRes21", CHANNEL, THREAD_TS);
-    let status = deliver(&fixture.scripted_router(&ingress), &body)
+    let carrier = fixture
+        .fleet(
+            &document("notice-carrier", "C0987654321", None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    bind(&fixture, &carrier).await;
+    let mut connection = fixture
+        .database()
+        .acquire()
         .await
-        .status();
+        .expect("legacy binding fixture");
+    sqlx::query("UPDATE connector.channels SET binding_type=$1 WHERE fleet_id=$2::uuid")
+        .bind("resident")
+        .bind(carrier.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("historical kind");
+    drop(connection);
+    fixture
+        .fleet(
+            &document("triage", CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let before = stored(&fixture).await;
+    let body = mention(
+        &fixture.team,
+        "EvStable01",
+        PERSON,
+        &format!("<@{BOT_USER}> help"),
+    );
+    assert_eq!(
+        deliver(&fixture.router(), &body).await.status(),
+        StatusCode::OK
+    );
+    let notices = owed(&fixture, &notice_key(&fixture.team, "EvStable01")).await;
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].owner, "notice-carrier");
+    assert_eq!(bound(&fixture).await.0, carrier.as_str());
+    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(stored(&fixture).await, before);
+    fixture.cleanup().await;
+}
 
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-    assert!(ingress.deliveries().is_empty(), "nothing was admitted");
-
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn deleting_a_carrier_allows_the_next_notice_to_bind_a_current_subscriber() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let carrier = fixture
+        .fleet(
+            &document("notice-carrier", "C0987654321", None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    bind(&fixture, &carrier).await;
+    let mut connection = fixture
+        .database()
+        .acquire()
+        .await
+        .expect("deletion fixture");
+    sqlx::query("DELETE FROM fleet.fleets WHERE id=$1::uuid")
+        .bind(carrier.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("carrier deleted");
+    drop(connection);
+    let first = fixture
+        .fleet(
+            &document("responder", CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    fixture
+        .fleet(
+            &document("triage", CHANNEL, None),
+            FleetStatus::Active.as_str(),
+        )
+        .await;
+    let body = mention(
+        &fixture.team,
+        "EvRebind01",
+        PERSON,
+        &format!("<@{BOT_USER}> help"),
+    );
+    assert_eq!(
+        deliver(&fixture.router(), &body).await.status(),
+        StatusCode::OK
+    );
+    assert_eq!(bound(&fixture).await.0, first.as_str());
+    let notices = owed(&fixture, &notice_key(&fixture.team, "EvRebind01")).await;
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].owner, "responder");
+    assert_eq!(fixture.admissions().await, 0);
     fixture.cleanup().await;
 }

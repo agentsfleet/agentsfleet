@@ -279,6 +279,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
     let (lease_id, lease) = stage.lease_next(now).await;
 
     let request = ReportRequest {
+        task: None,
         lease_id: Cow::Borrowed(&lease_id),
         event_id: Cow::Borrowed(&lease.event_id),
         fencing_token: lease.fence.as_u64(),

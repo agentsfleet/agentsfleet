@@ -5,13 +5,14 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use crate::metrics::declared::{billing, database, fleet, http, library, scheduler};
+use crate::metrics::declared::{billing, database, fleet, http, library, scheduler, task};
 use crate::metrics::label::billing as billing_labels;
 use crate::metrics::label::database as database_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
 use crate::metrics::label::scheduler as scheduler_labels;
+use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
 /// Each labelled family and the number of series its closed sets can produce.
@@ -23,6 +24,18 @@ use crate::metrics::registry::{Policy, Registry};
 fn label_products() -> Vec<(&'static str, usize)> {
     let mut products = pool_schedule_products();
     products.extend([
+        (
+            task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
+            task_labels::DecisionRecoveryOutcome::ALL.len(),
+        ),
+        (
+            task::TASK_OPERATIONS_TOTAL.wire_name(),
+            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+        ),
+        (
+            task::TASK_OPERATION_SECONDS.wire_name(),
+            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+        ),
         (
             billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
             billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
@@ -183,6 +196,8 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         }};
     }
     vec![
+        set!(crate::metrics::label::task::TaskOperation),
+        set!(crate::metrics::label::task::TaskOutcome),
         set!(crate::metrics::label::database::PoolRole),
         set!(crate::metrics::label::database::PoolState),
         set!(crate::metrics::label::database::AcquireOutcome),

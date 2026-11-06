@@ -42,6 +42,11 @@ use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 
 use self::report_seed::held;
 
+#[path = "integration_activity_publish/history_bounds.rs"]
+mod history_bounds;
+#[path = "integration_activity_publish/task_history.rs"]
+mod task_history;
+
 /// How long the backdated lease still has to run, so the stages read as live.
 const LEASE_LEFT: std::time::Duration = std::time::Duration::from_secs(60);
 use crate::rows::{LAPSE, Row};

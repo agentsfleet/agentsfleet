@@ -654,3 +654,21 @@ Historical decisions below record prior directions; the current sections above s
 A recoverable chat failure is a compact, politely announced inline status with a 14px enclosed warning icon and expandable diagnostics.
 Keep the submitted request and partial response; reconnecting a browser stream does not authorize replaying an uncertain tool write.
 Use recorded action verbs in collapsed tool groups, retain failures explicitly and keep complete command evidence behind the disclosure.
+
+## Proposed Durable Task work panel
+
+M236 adds a Work panel beside fleet conversation; [Durable Tasks](architecture/durable_tasks.md#work-panel-and-notifications) owns its behavior.
+Rows show title, current state, next dependency and confirmed result links.
+Details expand to local versus published files, checks, attempts, helpers and evidence.
+
+Users keep addressing the fleet without typing task identifiers.
+A selected item supplies a validated association hint; unclear references ask which work.
+Show queued versus consumed steering and distinguish browser reconnection from a new run.
+
+Show native decision activity with purpose: `Checking your request (Jev)` or `Checking goal progress (Jev)`.
+Completion shows the selected action, uncertainty or failure; raw model reasoning stays outside the progress surface.
+The CLI and browser use the same bounded states and preserve identity across reconnects.
+
+Show preparation, scanning, upload, verification and restoration separately.
+Display acknowledged bytes against known missing bytes, with reused bytes separate and retries deduplicated.
+Coalesce attached transfer updates to at most once per second; confirm saved work only after manifest commit.

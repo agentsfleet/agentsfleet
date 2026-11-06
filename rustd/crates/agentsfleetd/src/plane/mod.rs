@@ -64,6 +64,7 @@ pub struct ServingPlane {
     authenticator: Authenticator,
     runners: Runners,
     leases: Plane,
+    tasks: afd_fleet::task::Tasks,
     /// What a signup event from the identity provider is verified against.
     identity_webhook_secret: Option<SecretBytes>,
     platform_admin_workspace: Option<Uuid7>,
@@ -72,6 +73,12 @@ pub struct ServingPlane {
 }
 
 impl ServingPlane {
+    /// Shares the request-path task owner with supervised maintenance.
+    #[must_use]
+    pub(crate) fn task_owner(&self) -> afd_fleet::task::Tasks {
+        self.tasks.clone()
+    }
+
     /// Keeps a daemon integration lane's connector calls on its local vendor.
     #[cfg(feature = "test-util")]
     #[must_use]
@@ -129,6 +136,7 @@ impl ServingPlane {
             signup_writeback,
             broker,
             platform_admin_workspace,
+            checkpoint_storage,
             live,
             analytics,
             login,
@@ -138,6 +146,8 @@ impl ServingPlane {
             authoring_transport,
         } = parts;
         let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
+        let github_client = authoring_transport.guarded_client();
+        let task_master = Arc::clone(&kek);
         let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
         // One biller for every money path: fleet leases and setup chat reserve
         // against the same holds and settle into the same ledger (billing §11).
@@ -152,12 +162,14 @@ impl ServingPlane {
             &providers,
             &admissions,
             authoring_transport,
+            platform_admin_workspace.as_ref(),
         );
         let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
         let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
         let tenant = stores::tenant(&database, &kek, &providers, &activity_streams);
         let activity = stores::activity(&database, &queue, &kek, &admissions);
+        let task_admissions = admissions.clone();
         let outbound = surfaces::outbound(
             &database,
             &queue,
@@ -168,6 +180,23 @@ impl ServingPlane {
                 vendor_client,
                 slack_api_base,
             },
+        );
+        let mut leases = lease_plane(
+            database.clone(),
+            queue.clone(),
+            kek,
+            providers,
+            doorbell,
+            broker,
+            biller,
+        );
+        let tasks = task_plane(
+            &mut leases,
+            task_admissions,
+            platform_admin_workspace.clone(),
+            checkpoint_storage,
+            task_master,
+            github_client,
         );
         Self {
             authoring,
@@ -180,7 +209,8 @@ impl ServingPlane {
             signup_writeback,
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
-            leases: lease_plane(database, queue, kek, providers, doorbell, broker, biller),
+            leases,
+            tasks,
             identity_webhook_secret,
             platform_admin_workspace,
             live,
@@ -213,6 +243,7 @@ fn lease_plane(
 ) -> Plane {
     let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
     Plane {
+        task_reports: None,
         leases: Leases::new(database.clone(), queue.clone(), Entropy::new())
             .with_doorbell(doorbell),
         gates: Gates::new(database.clone(), queue, Entropy::new()),
@@ -260,3 +291,37 @@ pub type Shared = Arc<ServingPlane>;
 
 #[cfg(test)]
 mod tests;
+
+/// One native task owner attaches reporting to the existing lease plane.
+fn task_plane(
+    leases: &mut Plane,
+    admissions: Admissions,
+    admin_workspace: Option<Uuid7>,
+    storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
+    master: Arc<afd_crypto::secret::Kek>,
+    client: reqwest::Client,
+) -> afd_fleet::task::Tasks {
+    let storage = storage_config
+        .zip(admin_workspace.clone())
+        .map(|(config, admin)| {
+            afd_fleet::task::storage::R2CheckpointStore::new(
+                config,
+                admin,
+                leases.vault.clone(),
+                Arc::clone(&master),
+                client.clone(),
+            )
+        });
+    let tasks = afd_fleet::task::Tasks::new(
+        leases.leases.clone(),
+        admissions,
+        afd_fleet::task::TaskDependencies {
+            admin_workspace,
+            storage,
+            github: Some(afd_fleet::task::Github::new(leases.clone(), client, master)),
+            ..afd_fleet::task::TaskDependencies::from(&*leases)
+        },
+    );
+    leases.task_reports = Some(Arc::new(tasks.clone()));
+    tasks
+}

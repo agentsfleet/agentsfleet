@@ -30,6 +30,8 @@ pub struct FleetResponse<D = Value, P = Value, O = Value, S = Value> {
     pub setup_etag: String,
     /// Exact decimal immutable setup revision.
     pub setup_revision: String,
+    /// Native immutable revision identity used for explicit task goal adoption.
+    pub setup_revision_id: String,
     /// Pinned policy interpretation.
     pub policy_semantics: String,
     /// Complete validated native setup, with no private transcript.

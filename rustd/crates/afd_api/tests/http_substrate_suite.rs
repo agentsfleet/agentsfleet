@@ -2,6 +2,8 @@
 
 mod harness;
 
+mod build_stamp;
+
 #[path = "admission_ceiling.rs"]
 mod admission_ceiling;
 #[path = "header_limit.rs"]
@@ -30,6 +32,9 @@ mod openapi_problem;
 #[cfg(feature = "openapi")]
 #[path = "openapi_stream_frames.rs"]
 mod openapi_stream_frames;
+#[cfg(feature = "openapi")]
+#[path = "openapi_task_shapes.rs"]
+mod openapi_task_shapes;
 
 #[path = "openapi_balance.rs"]
 mod openapi_balance;

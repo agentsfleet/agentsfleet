@@ -57,6 +57,14 @@ pub struct LeasePayload<'a> {
     /// The instant after which the event becomes reclaimable.
     #[serde(with = "crate::instant")]
     pub lease_expires_at: jiff::Timestamp,
+    /// Immutable native runtime ceiling, including a bound task's shorter slice.
+    /// Absent on older daemons; task work must not guess this deadline.
+    #[serde(
+        default,
+        with = "crate::instant::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub execution_deadline: Option<jiff::Timestamp>,
     /// How secrets reached this run.
     pub secret_delivery: SecretDelivery,
     /// The event to run.
@@ -79,6 +87,16 @@ pub struct LeasePayload<'a> {
     /// True when the runner can reuse its latest held sandbox for a new event. Reassigned
     /// events and expired or outdated sandboxes require a fresh sandbox.
     pub resume_hold: bool,
+    /// Reviewed runner decision selection frozen at issue; no provider key.
+    /// Absent on older leases or hosts without an enabled reviewed selection.
+    #[serde(default)]
+    pub decision: Option<Box<crate::decision::DecisionAssignment>>,
+    /// Native task ownership and saved recovery cursors, frozen at issuance.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<crate::task::TaskContext<'a>>,
+    /// Owner-authored task policy requires intent before any investigation or checkout.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub durable_tasks: bool,
     /// The fleet's memory window, as `GET /v1/runners/me/memory/{fleet_id}`
     /// returns it. A daemon that reads a report's `memory` sends it on every
     /// lease, an empty window included. It is absent when the read failed; the

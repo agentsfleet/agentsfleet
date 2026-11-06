@@ -103,14 +103,14 @@ pub fn unpriced_tokens(provider: &str, model: &str, tokens: u64) {
     }
 }
 
-/// Works the billing relay settled.
-pub fn sweeper_resettled(work: WorkType, works: u64) {
-    if works == 0 {
+/// Work/provider/model/posture groups the billing sweeper settled.
+pub fn sweeper_resettled(work: WorkType, groups: u64) {
+    if groups == 0 {
         return;
     }
     if let Some(producers) = installed() {
         producers.billing.resettled.add(
-            works,
+            groups,
             &[KeyValue::new(semconv::LABEL_WORK_TYPE, work.as_str())],
         );
     }

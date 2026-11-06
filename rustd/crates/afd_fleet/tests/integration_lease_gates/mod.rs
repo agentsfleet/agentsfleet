@@ -39,6 +39,8 @@
 mod bindings;
 mod cases;
 mod chat;
+mod decision;
+mod decision_expiry;
 mod faults;
 mod history;
 mod seed;

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ThreadPrimitive } from "@assistant-ui/react";
+import { ThreadPrimitive, useAuiState } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
 import { Button, Section } from "@agentsfleet/design-system";
 
@@ -9,13 +9,14 @@ import { Button, Section } from "@agentsfleet/design-system";
 export function ChatThread({children, footer, label, testId, autoScroll = true}: {
   children: ReactNode; footer: ReactNode; label: string; testId?: string; autoScroll?: boolean;
 }) {
+  const composing = useAuiState(state => state.composer.text.length > 0);
   return <ThreadPrimitive.Root asChild data-testid={testId}>
     <Section aria-label={label} className="relative flex min-h-0 flex-1 flex-col overflow-clip bg-background">
-    <ThreadPrimitive.Viewport turnAnchor="top" autoScroll={autoScroll} scrollToBottomOnInitialize={autoScroll} scrollToBottomOnThreadSwitch={autoScroll} role="presentation"
+    <ThreadPrimitive.Viewport turnAnchor="top" autoScroll={autoScroll && !composing} scrollToBottomOnInitialize={autoScroll} scrollToBottomOnThreadSwitch={autoScroll} role="presentation"
       className="flex min-h-0 flex-1 flex-col overflow-y-auto px-xl sm:px-chat-inset">
       {children}
       <ThreadPrimitive.ViewportFooter data-testid="fleet-chat-footer"
-        className="sticky bottom-0 mx-auto flex max-h-full w-full max-w-chat flex-col bg-background pb-xl pt-lg">
+        className="sticky bottom-0 mx-auto flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] w-full max-w-chat flex-col bg-background pb-xl pt-lg">
         {autoScroll ? <ThreadPrimitive.ScrollToBottom asChild>
           <Button variant="secondary" size="icon" aria-label="Jump to latest"
             className="absolute bottom-full left-1/2 z-20 mb-sm -translate-x-1/2 rounded-full disabled:pointer-events-none disabled:invisible">

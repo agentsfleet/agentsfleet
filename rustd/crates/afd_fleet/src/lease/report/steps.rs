@@ -28,6 +28,12 @@ const EVENT_ALREADY_SETTLED: &str = "report_already_settled";
 /// The scoped event a post-commit step is logged under when it does not land.
 const EVENT_STEP_FAILED: &str = "report_finalize_step_failed";
 
+/// Accepted completion payload carried across the commit boundary.
+pub(super) struct Completion<'a> {
+    pub closed: Option<Box<Closed>>,
+    pub answer: &'a str,
+}
+
 impl Plane {
     /// Announce a report that committed, and clear what it leaves behind.
     ///
@@ -38,10 +44,11 @@ impl Plane {
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
         lease: &Reported,
-        closed: Option<Box<Closed>>,
+        completion: Completion<'_>,
         charged: Nanos,
         now: Timestamp,
     ) -> Option<Timestamp> {
+        let Completion { closed, answer } = completion;
         let lease_id = request.lease_id.as_ref();
         // Hoisted for the `log` bridge's duplicated field expressions.
         let fleet = lease.fleet_id.as_str();
@@ -70,10 +77,7 @@ impl Plane {
         // by the tail and leaves no completion instant to measure from.
         let mut completed_at = None;
         if let Some(closed) = closed
-            && self
-                .leases
-                .publish_completion(&closed, Some(request.response_text.as_ref()))
-                .await
+            && self.leases.publish_completion(&closed, Some(answer)).await
         {
             let event = EVENT_COMPLETION_PUBLISHED;
             tracing::debug!(fleet_id = fleet, lease_id, event);
