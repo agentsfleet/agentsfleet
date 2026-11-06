@@ -4,6 +4,7 @@ use super::{body, request};
 use crate::{Result, model::ModelCallInput};
 use afd_credential::provider::RegisteredModel;
 use afd_wire::authoring::{ModelCall, ModelMessage, ModelRequest};
+use rig_core::message::Message;
 use serde_json::json;
 
 const QUESTION: &str = "A customer reports an intermittent error. What evidence should we collect first? Explain in at most thirty words without changing the setup.";
@@ -62,23 +63,28 @@ fn fifty_turns() -> ModelCallInput {
 fn fifty_short_turns_keep_every_message_within_the_existing_input_allowance() -> Result<()> {
     let call = request(fifty_turns())?;
     let prepared = body(&call, &model("workspace/model-next")?, Vec::new(), true)?;
+    assert!(prepared.body.system_instructions().is_none());
+    assert_eq!(prepared.body.chat_history.len(), 100);
     assert_eq!(
         prepared.body.chat_history.len(),
-        call.request.messages.len() + 1
+        call.request.messages.len()
     );
     assert_eq!(prepared.output_limit, call.request.max_output_tokens);
     for (actual, expected) in prepared
         .body
         .chat_history
         .iter()
-        .skip(1)
         .zip(&call.request.messages)
     {
-        let text = match expected {
-            ModelMessage::User { text }
-            | ModelMessage::Assistant { text, .. }
-            | ModelMessage::Tool { text, .. } => text,
+        let (text, role_matches) = match expected {
+            ModelMessage::User { text } | ModelMessage::Tool { text, .. } => {
+                (text, matches!(actual.as_ref(), Message::User { .. }))
+            }
+            ModelMessage::Assistant { text, .. } => {
+                (text, matches!(actual.as_ref(), Message::Assistant(_)))
+            }
         };
+        assert!(role_matches);
         assert!(
             serde_json::to_string(actual)
                 .map_err(crate::error::raise::stored)?
@@ -113,9 +119,11 @@ fn fifty_longer_replies_use_the_selected_model_window_beyond_thirty_two_k() -> R
         let prepared = body(&call, &model(identifier)?, Vec::new(), true)?;
         assert!(prepared.input_tokens > 32_768);
         assert_eq!(prepared.output_limit, OUTPUT_LIMIT);
+        assert!(prepared.body.system_instructions().is_none());
+        assert_eq!(prepared.body.chat_history.len(), 100);
         assert_eq!(
             prepared.body.chat_history.len(),
-            call.request.messages.len() + 1
+            call.request.messages.len()
         );
     }
     Ok(())
