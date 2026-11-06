@@ -15,6 +15,7 @@ use afd_wire::task::{CheckpointMode, DecisionTaskVersion, TaskReport, TaskState}
 use serde_json::Value;
 use std::sync::Arc;
 
+mod maintenance;
 mod support;
 use support::{Observation, checkpoint_row, counts, decision, observe};
 

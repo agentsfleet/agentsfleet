@@ -1,5 +1,7 @@
 //! Native reservations must become durable receipts even when no request can be sent.
 
+mod loop_boundary;
+
 use super::{FENCING, FencedVerbs, Host, LEASE_ID};
 use crate::client::Verb;
 use crate::test_support::{Answer, drain, json, plane};

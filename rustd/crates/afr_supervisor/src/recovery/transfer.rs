@@ -240,3 +240,7 @@ fn material(object: &mut CheckpointObject) -> Result<(SecretBytes, [u8; afd_cryp
         .map_err(|source| error::boundary("checkpoint nonce length is invalid", source))?;
     Ok((key, nonce))
 }
+
+#[cfg(test)]
+#[path = "transfer_http/mod.rs"]
+mod http_tests;

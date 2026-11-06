@@ -91,6 +91,13 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+# Verified local HTTPS object storage boundary for recovery transfer tests.
+afd_identity.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # `FakeResolver`: the egress suites resolve through the one fake the guarded
@@ -106,7 +113,7 @@ afr_tools = { workspace = true, features = ["test-util"] }
 afr_agent = { workspace = true, features = ["test-util"] }
 # The daemon side of `HttpRunnerApi`'s tests: a real listener, so a status code
 # and a header are proven on the socket rather than assumed by a mock.
-axum.workspace = true
+axum = { workspace = true, features = ["json"] }
 afd_core = { workspace = true, features = ["test-util"] }
 # The subscriber a lease's spans are exported through in the telemetry suite.
 tracing-subscriber.workspace = true

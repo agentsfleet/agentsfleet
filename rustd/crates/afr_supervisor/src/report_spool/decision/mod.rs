@@ -286,3 +286,6 @@ impl Drop for Pending {
         }
     }
 }
+
+#[cfg(test)]
+mod delivery_tests;

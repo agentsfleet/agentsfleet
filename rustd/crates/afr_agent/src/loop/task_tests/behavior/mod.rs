@@ -1,5 +1,4 @@
 //! Native goal receipts determine whether root work continues or can be reported.
-
 #![expect(
     clippy::expect_used,
     reason = "test fixture: poisoned state must fail the test"
@@ -12,10 +11,14 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 
 mod evidence;
+mod finish_boundary;
 mod intake;
 mod intake_fixture;
 mod publication;
 mod publication_fixture;
+mod publication_guards;
+mod publication_uncertain;
+mod queued_boundary;
 mod recovery;
 mod recovery_fixture;
 mod replies;

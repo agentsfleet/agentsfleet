@@ -28,6 +28,7 @@ pub(super) async fn refuse_malformed_requests(fixture: &Fixture) {
         problem(&body, "UZ-REQ-001");
     }
     refuse_malformed_reads(fixture, &checkpoint, &page).await;
+    refuse_stale_input_read(fixture).await;
 }
 
 async fn refuse_malformed_reads(fixture: &Fixture, checkpoint: &str, page: &str) {
@@ -65,4 +66,39 @@ async fn refuse_malformed_reads(fixture: &Fixture, checkpoint: &str, page: &str)
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         problem(&json_body(response).await, "UZ-REQ-001");
     }
+}
+
+async fn refuse_stale_input_read(fixture: &Fixture) {
+    let response = send(
+        &fixture.router,
+        Method::GET,
+        &format!(
+            "{}?fencing_token={}",
+            path(fixture, "inputs"),
+            fixture.lease.fence + 1
+        ),
+        Some(&fixture.runner.token),
+        "",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = json_body(response).await;
+    problem(&body, "UZ-RUN-005");
+    assert_eq!(body.get("current_state"), Some(&json!("superseded")));
+    let recovered = success(
+        fixture,
+        Method::GET,
+        &format!(
+            "{}?fencing_token={}",
+            path(fixture, "inputs"),
+            fixture.lease.fence
+        ),
+        "",
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        recovered.get("source_admission_id"),
+        Some(&json!(fixture.lease.source))
+    );
 }

@@ -70,6 +70,12 @@ fn workflow(server: &Server, head: &str) {
 }
 
 fn script(server: &Server) {
+    preparation(server);
+    server.push(json!({"fixture_request":{"method":"POST","path":"/graphql","publication":true},
+        "response":{"data":{"createCommitOnBranch":{"commit":{"oid":"3".repeat(40),"tree":{"oid":"2".repeat(40)},"parents":{"nodes":[{"oid":"0".repeat(40)}]}}}}}}));
+}
+
+pub(super) fn preparation(server: &Server) {
     push(
         server,
         "GET",
@@ -103,8 +109,6 @@ fn script(server: &Server) {
         &json!({"tree":[],"truncated":false}),
     );
     objects(server);
-    server.push(json!({"fixture_request":{"method":"POST","path":"/graphql","publication":true},
-        "response":{"data":{"createCommitOnBranch":{"commit":{"oid":"3".repeat(40),"tree":{"oid":"2".repeat(40)},"parents":{"nodes":[{"oid":"0".repeat(40)}]}}}}}}));
 }
 
 fn objects(server: &Server) {

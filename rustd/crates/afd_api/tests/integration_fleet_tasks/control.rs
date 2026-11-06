@@ -1,6 +1,7 @@
 //! Public conditional controls fence concurrent writes without resetting work.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
+mod adoption;
 mod resume;
 
 use std::sync::{
