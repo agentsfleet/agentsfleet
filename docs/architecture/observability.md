@@ -487,7 +487,7 @@ What each step a chat crosses emits, on `fde585971` plus M238. A row's gap is a 
 | Steer admitted (`afd_api_tenant` steer handler, `afd_admission`) | admission refusals | `agentsfleet_admissions_total{outcome}` | request span only |
 | Doorbell ring (`afd_dragonfly/src/doorbell`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
 | Held heartbeat (`afd_api_runner` heartbeat, `wake.rs`) | `runner_wake_refused` | `agentsfleet_runner_wake_answers_total{reason}` | request span only |
-| Lease issued (`afd_fleet/src/lease/deliver`) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | `agentsfleet_lease_polls_total` and its per-poll ratios; `delivery_stage{event_to_lease}` | request span only |
+| Lease issued (`afd_fleet/src/lease/deliver`) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | `agentsfleet_lease_polls_total` and candidates per poll; `delivery_stage{event_to_lease}` | request span only |
 | Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease`, same condition |
 | Report settled (`afd_fleet/src/lease/report`) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.delivery` with segment attributes |
 | First chunk (`afd_fleet/src/lease/activity`) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, zombie_to_first_chunk}` | none |

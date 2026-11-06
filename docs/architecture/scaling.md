@@ -171,7 +171,8 @@ It checks fleet and event index bounds, deadline bounds for event approvals, and
 The claim locks the slot and exact head, stamps their fence, and commits before returning it.
 An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.
 
-Watch candidate, database-round-trip and Dragonfly-command counters divided by `agentsfleet_lease_polls_total`.
+Watch the candidate counter divided by `agentsfleet_lease_polls_total`.
+Statement cost comes from `pg_stat_statements` in `make bench-lease`, which counts what every crate sends.
 Use query latency and query plans alongside these ratios: one slow discovery statement still counts as one statement.
 
 #### Which recurring Postgres reads are index-served
@@ -279,8 +280,8 @@ says why each correction is there.
 
 | Path | What it costs | The number that decides |
 |------|---------------|-------------------------|
-| Stream comparison: idle lease poll | 1.00 Dragonfly command, 0 Postgres statements and 0 commits per poll (75 382 polls after a 200-fleet drain, readiness index empty, nothing force-cleared), measured before M225; the readiness doorbell adds a second peek only to a poll it rang, so an idle poll stays at 1.00 (`agentsfleet_lease_poll_dragonfly_commands_total ÷ agentsfleet_lease_polls_total`) | Idle cost scales with runners, not fleets. The lease clears a drained fleet's readiness mark, so once work runs out the index is empty and an idle poll never reaches Postgres. |
-| Stream comparison: contended lease | 1 928 leases/s; 2.4 Postgres round trips per issued lease; 27.8% of polls find nothing; p95 7.8 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | A lease costs about two round trips under contention, down from 11.3 at `e2d250172`. |
+| Stream comparison: idle lease poll | 1.00 Dragonfly command, 0 Postgres statements and 0 commits per poll (75 382 polls after a 200-fleet drain, readiness index empty, nothing force-cleared), measured before M225; the readiness doorbell adds a second peek only to a poll it rang, so an idle poll stays at 1.00 (read from a poll counter M241_001 removed) | Idle cost scales with runners, not fleets. The lease clears a drained fleet's readiness mark, so once work runs out the index is empty and an idle poll never reaches Postgres. |
+| Stream comparison: contended lease | 1 928 leases/s; 2.4 Postgres round trips per issued lease by the poll's own tally, which M241_001 found undercounts; 27.8% of polls find nothing; p95 7.8 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | A lease costs about two round trips under contention, down from 11.3 at `e2d250172`. |
 | Stream comparison: lease through report (drain) | 50.0 Postgres statements and 26.8 commits per lease issued, the polls that missed and the report included; 14.1 Dragonfly commands per lease; 172 leases/s; lease p95 56.5 ms, report p95 21.5 ms; all 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-lease`), measured before M225; an interim M225_001 build (a readiness directory, since replaced by the doorbell) measured lease p95 48.1 ms, report p95 16.9 ms and 176.9 leases/s, and the doorbell build is not yet re-measured | What one event costs the scheduler and the ledger end to end through `Plane::lease` and `Plane::report`, counted by Postgres rather than by the lane. |
 | Stream comparison: steer ingress | 3.04 Dragonfly commands per steer, 1.94 Postgres transactions; 1 639/s at p95 7.4 ms (8 submitters, 50 fleets), measured before M225; a mark now also rings its partition's doorbell channel, so the expected figure is 4.04 until it is re-measured | Ingress writes the admission ledger, about two Postgres transactions per steer. The readiness index fills to the population and holds until a runner drains it. |
 | Historical serial delivery, healthy | 49.6 jobs/s per worker with one 250 ms destination in sixteen | Ten times the five-per-second estimate the refactor argument was made from — but see the next row. |

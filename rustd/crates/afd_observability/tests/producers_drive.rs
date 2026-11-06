@@ -83,7 +83,7 @@ fn test_every_fleet_producer_runs_its_body() {
 
     producers::fleet::signup_bootstrapped();
     producers::fleet::signup_replayed();
-    producers::fleet::lease_polled(11, 2, 3);
+    producers::fleet::lease_polled(11);
     for wake in [ReadyWake::Ring, ReadyWake::Gap] {
         producers::fleet::ready_wake_failed(wake);
     }

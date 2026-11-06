@@ -84,9 +84,9 @@ jiff.workspace = true
 afd_vault.workspace = true
 # The concurrency the lanes exist to measure.
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
-# The daemon's own lease instrument. Invariant 5: round trips per lease are
-# READ from `producers::fleet::lease_polled`, never recounted by wrapping the
-# queries -- a wrapper would measure the wrapper.
+# The daemon's own lease instrument: candidates per poll are READ from
+# `producers::fleet::lease_polled`. Statements come from `pg_stat_statements`,
+# which counts what every crate sends (M241_001 §3).
 afd_observability.workspace = true
 # The manual reader the counters are collected through. Nothing exports
 # anywhere; the provider exists so an in-process reader can be asked for a sum.

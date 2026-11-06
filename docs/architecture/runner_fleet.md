@@ -725,8 +725,8 @@ Logs, spans and runner families: [observability.md](./observability.md) §"Signa
 The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_leases`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`docs/metrics.census.tsv`](../metrics.census.tsv).
 
 The poll counters describe global discovery cost without entity labels.
-Divide candidate, Postgres and Dragonfly command counters by `lease_polls_total` to compare cost per poll.
-An idle poll adds one Postgres probe and no Dragonfly commands.
+Divide the candidate counter by `lease_polls_total` for fan-out per poll.
+Statement cost comes from `pg_stat_statements` in `make bench-lease`, because a poll's statements run in several crates.
 
 The fleet census publishes unsettled admission count and oldest age.
 Use the maximum across replicas, since each census reads the deployment-wide ledger.

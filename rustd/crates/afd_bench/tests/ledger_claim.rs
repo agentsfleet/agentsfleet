@@ -109,7 +109,7 @@ fn verify(report: &Report) {
     assert_eq!(measurements["drain_leases"], 200.0);
     assert_eq!(measurements["drain_failures"], 0.0);
     assert!(measurements["drain_leases_per_second"] > 0.0);
-    assert!(measurements["roundtrips_per_lease"] > 0.0);
+    assert!(measurements["candidates_per_poll"] > 0.0);
     assert!(measurements["drain_statements_per_lease"] > 0.0);
     assert!(measurements["idle_statements_per_poll"] > 0.0);
     assert!(report.abort.is_none());

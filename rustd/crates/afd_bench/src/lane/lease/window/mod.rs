@@ -21,6 +21,7 @@ use crate::instrument::{LeaseInstrument, PollCounters};
 use crate::lane::joined;
 use crate::lane::outcomes::Outcomes;
 use crate::report::{DatastoreCost, DatastoreCosts, Report, count, per_second, ratio};
+use crate::statements;
 
 /// Measurement key: polls issued per second, lease or miss.
 const POLLS_PER_SECOND: &str = "polls_per_second";
@@ -34,8 +35,8 @@ const FAILURES: &str = "failures";
 /// Measurement key: the fraction of everything tried that the path refused.
 const ERROR_RATE: &str = "error_rate";
 
-/// Measurement key: Postgres round trips the pass made per issued lease.
-const ROUNDTRIPS_PER_LEASE: &str = "roundtrips_per_lease";
+/// Measurement key: fleets each poll examined, read off the daemon's counter.
+const CANDIDATES_PER_POLL: &str = "candidates_per_poll";
 
 /// Measurement key: the fraction of polls that produced no work.
 const WASTED_CLAIM_RATE: &str = "wasted_claim_rate";
@@ -50,6 +51,9 @@ pub(super) struct Window {
     length: Duration,
     exhausted: bool,
     counters: PollCounters,
+    /// Statements Postgres executed in the window, from `pg_stat_statements`:
+    /// every crate's, which a tally kept by the poll never was.
+    statements: u64,
     dragonfly_calls: u64,
 }
 
@@ -75,6 +79,8 @@ impl Pollers<'_> {
         window: Duration,
         stop_after: Option<u64>,
     ) -> Result<Window> {
+        statements::install(&self.stores.database).await?;
+        let statements_before = statements::read(&self.stores.database).await?;
         let before = self.instrument.read()?;
         let dragonfly_before = dragonfly_calls(&self.stores.queue).await?;
         let started = Instant::now();
@@ -94,6 +100,10 @@ impl Pollers<'_> {
             length: drive::window_length(started, ended, last_lease, exhausted),
             exhausted,
             counters: self.instrument.read()?.since(before),
+            statements: statements::read(&self.stores.database)
+                .await?
+                .since(statements_before)
+                .statements,
             dragonfly_calls: dragonfly_calls(&self.stores.queue)
                 .await?
                 .saturating_sub(dragonfly_before),
@@ -145,8 +155,8 @@ impl Window {
         report.measurement(EXHAUSTED, if self.exhausted { 1.0 } else { 0.0 });
         report.measurement(WASTED_CLAIM_RATE, self.outcomes.wasted_fraction());
         report.measurement(
-            ROUNDTRIPS_PER_LEASE,
-            ratio(self.counters.roundtrips, self.outcomes.successes),
+            CANDIDATES_PER_POLL,
+            ratio(self.counters.candidates, self.counters.polls),
         );
         // No `time_ms`: this lane times the poll end to end, which is already
         // the p95, and splitting that between the two datastores would need a
@@ -157,9 +167,12 @@ impl Window {
                 time_ms: None,
             },
             postgres: DatastoreCost {
-                operations: self.counters.roundtrips,
+                operations: self.statements,
                 time_ms: None,
             },
         };
     }
 }
+
+#[cfg(test)]
+mod tests;

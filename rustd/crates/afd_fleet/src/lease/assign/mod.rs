@@ -18,7 +18,6 @@ pub const MAX_CANDIDATES_PER_POLL: usize = 64;
 #[derive(Debug, Default)]
 struct PollCost {
     candidates_scanned: u64,
-    database_roundtrips: u64,
 }
 
 impl Leases {
@@ -38,7 +37,7 @@ impl Leases {
     ) -> (Result<Option<Acquired>>, PollCost) {
         let mut cost = PollCost::default();
         let selected = self.ledger_counted(runner, held, &mut cost).await;
-        producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips, 0);
+        producers::fleet::lease_polled(cost.candidates_scanned);
         (selected, cost)
     }
 }

@@ -1,14 +1,14 @@
 //! Reading the daemon's own lease counters back, in the bench process.
 //!
-//! # Why not just count the queries
+//! # What it reads, and what it leaves to Postgres
 //!
-//! Wrapping `sqlx` and tallying statements would measure the wrapper: it would
-//! count what the bench issued, not what the lease path issued, and it would
-//! keep counting correctly after somebody changed the lease path underneath
-//! it. `afd_fleet`'s `select` already tallies its own round trips and publishes
-//! them through `producers::fleet::lease_polled`, so the honest number is the
-//! one the daemon would report about itself. This module installs a provider
-//! that exports nowhere and asks its reader for the sums.
+//! `afd_fleet`'s `select` publishes how many fleets each poll examined through
+//! `producers::fleet::lease_polled`, so fan-out per poll is the number the
+//! daemon reports about itself. Statements are NOT read here: a poll's
+//! statements run in several crates, and a hand-kept tally missed most of them
+//! (`M241_001` §3). `crate::statements` reads them from `pg_stat_statements`.
+//! This module installs a provider that exports nowhere and asks its reader
+//! for the sums.
 //!
 //! # Why a capturing exporter rather than a manual reader
 //!
@@ -53,12 +53,6 @@ const POLLS: &str = "agentsfleet_lease_polls_total";
 /// Total fleets those polls examined.
 const CANDIDATES: &str = "agentsfleet_lease_poll_candidates_scanned_total";
 
-/// Total Postgres round trips those polls issued.
-const ROUNDTRIPS: &str = "agentsfleet_lease_poll_db_roundtrips_total";
-
-/// Total Dragonfly commands those polls issued.
-const DRAGONFLY_COMMANDS: &str = "agentsfleet_lease_poll_dragonfly_commands_total";
-
 /// What a poisoned capture lock reports, rather than panicking a bench run.
 const POISONED: &str = "the captured counters lock was poisoned";
 
@@ -72,10 +66,6 @@ pub struct PollCounters {
     pub polls: u64,
     /// Fleets those polls examined.
     pub candidates: u64,
-    /// Postgres round trips those polls issued.
-    pub roundtrips: u64,
-    /// Dragonfly commands those polls issued.
-    pub dragonfly_commands: u64,
 }
 
 impl PollCounters {
@@ -85,10 +75,6 @@ impl PollCounters {
         Self {
             polls: self.polls.saturating_sub(earlier.polls),
             candidates: self.candidates.saturating_sub(earlier.candidates),
-            roundtrips: self.roundtrips.saturating_sub(earlier.roundtrips),
-            dragonfly_commands: self
-                .dragonfly_commands
-                .saturating_sub(earlier.dragonfly_commands),
         }
     }
 }
@@ -145,8 +131,6 @@ impl CapturingExporter {
                 match metric.name() {
                     POLLS => captured.polls = total,
                     CANDIDATES => captured.candidates = total,
-                    ROUNDTRIPS => captured.roundtrips = total,
-                    DRAGONFLY_COMMANDS => captured.dragonfly_commands = total,
                     _ => {}
                 }
             }

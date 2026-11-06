@@ -101,13 +101,13 @@ fn test_an_unparseable_result_is_the_one_thing_the_comparison_refuses() {
 #[test]
 fn test_a_measurement_only_one_side_carries_is_named_rather_than_dropped() {
     let mut current = report_of(500.0, 40.0);
-    current.measurement("roundtrips_per_lease", 3.0);
+    current.measurement("candidates_per_poll", 3.0);
     let mut baseline = report_of(500.0, 40.0);
     baseline.measurement("wasted_claim_rate", 0.1);
 
     let comparison = Comparison::of(&current, &baseline);
 
-    assert_eq!(comparison.added, vec!["roundtrips_per_lease".to_owned()]);
+    assert_eq!(comparison.added, vec!["candidates_per_poll".to_owned()]);
     assert_eq!(comparison.missing, vec!["wasted_claim_rate".to_owned()]);
     assert_eq!(comparison.deltas.len(), 2);
 }
@@ -153,7 +153,7 @@ fn test_a_baseline_of_zero_reports_no_percentage_instead_of_infinity() {
 #[test]
 fn test_the_rendering_names_what_only_one_side_carries_and_a_zero_baseline() {
     let mut current = report_of(500.0, 40.0);
-    current.measurement("roundtrips_per_lease", 3.0);
+    current.measurement("candidates_per_poll", 3.0);
     current.measurement("wasted_claim_rate", 0.25);
     let mut baseline = report_of(500.0, 40.0);
     baseline.measurement("idle_polls", 12.0);
@@ -162,7 +162,7 @@ fn test_the_rendering_names_what_only_one_side_carries_and_a_zero_baseline() {
     let rendered = Comparison::of(&current, &baseline).render();
 
     assert!(
-        rendered.contains("+ roundtrips_per_lease"),
+        rendered.contains("+ candidates_per_poll"),
         "an added measurement is named:\n{rendered}"
     );
     assert!(

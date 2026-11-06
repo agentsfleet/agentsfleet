@@ -1,4 +1,4 @@
-//! What a lease poll examined, and what it spent reaching Postgres.
+//! What a lease poll examined.
 //!
 //! A suite proving the READY-FIRST ordering has to assert on something a poll
 //! did NOT do, and "no query was issued" leaves no row, no lease and no error
@@ -16,15 +16,12 @@ use crate::error::Result;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
 
-/// One poll's cost, in the numbers whose ratios an operator reads.
+/// One poll's examined candidates. Statement cost is measured from
+/// `pg_stat_statements` in the bench, which counts what every crate sends.
 #[derive(Debug, Clone, Copy)]
 pub struct PollMeasurement {
     /// Fleets the ledger scan offered this poll.
     pub candidates_scanned: u64,
-    /// Database round trips; an empty poll executes one discovery statement.
-    pub database_roundtrips: u64,
-    /// Dragonfly commands used for queue selection: always zero.
-    pub dragonfly_commands: u64,
 }
 
 impl Leases {
@@ -42,8 +39,6 @@ impl Leases {
         let (selected, cost) = self.select_recording(runner_id, held).await;
         let measured = PollMeasurement {
             candidates_scanned: cost.candidates_scanned,
-            database_roundtrips: cost.database_roundtrips,
-            dragonfly_commands: 0,
         };
         (selected, measured)
     }

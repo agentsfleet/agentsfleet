@@ -52,7 +52,6 @@ impl Leases {
         let hint = self.doorbell().take();
         let held: Vec<&str> = held.iter().map(Uuid7::as_str).collect();
         let mut connection = self.pool().acquire().await?;
-        cost.database_roundtrips += 1;
         let candidates: Vec<String> = sqlx::query_scalar(queue::SELECT_CANDIDATES)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(runner.as_str())
@@ -68,7 +67,7 @@ impl Leases {
         for fleet in candidates {
             let fleet = Uuid7::parse(&fleet).map_err(row_malformed(LEDGER, "fleet_id"))?;
             if let Some(acquired) = self
-                .ledger_claim(&mut connection, &fleet, runner, cost)
+                .ledger_claim(&mut connection, &fleet, runner)
                 .await?
             {
                 producers::fleet::run_started(started(acquired.kind));
@@ -85,11 +84,8 @@ impl Leases {
         connection: &mut sqlx::PgConnection,
         fleet: &Uuid7,
         runner: &Uuid7,
-        cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        cost.database_roundtrips += 1;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
-        cost.database_roundtrips += 1;
         let row: Option<Admission> = sqlx::query_as(queue::CLAIM_HEAD)
             .bind(fleet.as_str())
             .bind(runner.as_str())
@@ -102,13 +98,11 @@ impl Leases {
             .await
             .map_err(query(CONTEXT))?;
         let Some(row) = row else {
-            cost.database_roundtrips += 1;
             transaction.rollback().await.map_err(query(CONTEXT))?;
             return Ok(None);
         };
         let displaced_hold = row.held && row.holder.as_deref() != Some(runner.as_str());
         let acquired = row.acquired(fleet, runner)?;
-        cost.database_roundtrips += 1;
         transaction.commit().await.map_err(query(CONTEXT))?;
         if displaced_hold {
             producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);

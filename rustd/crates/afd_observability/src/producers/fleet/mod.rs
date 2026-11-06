@@ -60,8 +60,6 @@ pub struct Handles {
     signup_failed: Counter<u64>,
     lease_polls: Counter<u64>,
     lease_candidates: Counter<u64>,
-    lease_roundtrips: Counter<u64>,
-    lease_dragonfly_commands: Counter<u64>,
     history_bytes: Histogram<f64>,
     history_cuts: Counter<u64>,
     history_read_failures: Counter<u64>,
@@ -103,9 +101,6 @@ impl Handles {
             lease_polls: instruments.counter_u64(&declared::LEASE_POLLS_TOTAL)?,
             lease_candidates: instruments
                 .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
-            lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
-            lease_dragonfly_commands: instruments
-                .counter_u64(&declared::LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL)?,
             history_bytes: instruments.histogram_f64(&declared::LEASE_HISTORY_BYTES)?,
             history_cuts: instruments.counter_u64(&declared::LEASE_HISTORY_CUTS_TOTAL)?,
             history_read_failures: instruments
@@ -190,28 +185,19 @@ pub fn signup_failed(reason: SignupFailure) {
     }
 }
 
-/// Records one finished lease poll and what it cost.
+/// Records one finished lease poll and the fleets it examined.
 ///
-/// All four counters move together, on every exit path, because the ratio is
-/// the number worth reading: candidates per poll says how much work a poll
-/// examined, round-trips per poll says how much of that reached Postgres, and
-/// commands per poll says what it asked of Dragonfly. A poll that recorded
-/// only some of them would skew the rest.
-pub fn lease_polled(candidates_scanned: u64, database_roundtrips: u64, dragonfly_commands: u64) {
+/// Both counters move together, on every exit path, because candidates per
+/// poll is the number worth reading. Statement cost is not counted here: a
+/// poll's statements run in several crates, so the bench reads them from
+/// `pg_stat_statements` instead (`M241_001`).
+pub fn lease_polled(candidates_scanned: u64) {
     if let Some(producers) = installed() {
         producers.fleet.lease_polls.add(1, &[]);
         producers
             .fleet
             .lease_candidates
             .add(candidates_scanned, &[]);
-        producers
-            .fleet
-            .lease_roundtrips
-            .add(database_roundtrips, &[]);
-        producers
-            .fleet
-            .lease_dragonfly_commands
-            .add(dragonfly_commands, &[]);
     }
 }
 

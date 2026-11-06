@@ -98,7 +98,7 @@ all of it ─► docs/architecture/push_scheduler.md §Baselines and §Milestone
 | `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `tests/producers_drive.rs` | EDIT | §3: two families, their instruments and the producer call go |
 | `docs/metrics.census.tsv` | EDIT | §3: two rows go |
 | `rustd/crates/afd_bench/src/instrument/mod.rs`, `instrument/tests.rs`, `tests/lease_instrument.rs`, `tests/ledger_claim.rs`, `src/report/compare/tests.rs`, `Cargo.toml` | EDIT | §3: `PollCounters` keeps polls and candidates; tests and the manifest comment follow |
-| `rustd/crates/afd_bench/src/lane/lease/window.rs` | EDIT | §3: `roundtrips_per_lease` goes; `datastores.postgres.operations` comes from the window's `pg_stat_statements` calls |
+| `rustd/crates/afd_bench/src/lane/lease/window.rs` → `window/mod.rs`, `window/tests.rs` | MOVE, EDIT, CREATE | §3: `roundtrips_per_lease` gives way to `candidates_per_poll`; `datastores.postgres.operations` comes from the window's `pg_stat_statements` calls |
 | `rustd/crates/afd_bench/src/statements/mod.rs`, `statements/paths.rs`, `statements/tests.rs` | EDIT, CREATE | §4: per-query calls and the path table |
 | `rustd/crates/afd_bench/src/lane/lease/drain/runner.rs`, `drain/mod.rs`, `drain/tests.rs` | EDIT | §4: renewals and activity per simulated turn; flat path keys |
 | `rustd/crates/afd_bench/src/knobs/mod.rs`, `src/profile/mod.rs` | EDIT | §4, §5: `BENCH_TURN_MS` and `BENCH_RATE`, with rig caps |
@@ -161,10 +161,10 @@ The page states the target as the design (SPEC-FRAME). **Implementation default:
 
 `PollCost` keeps `candidates_scanned`, and `lease_polled` takes that count alone. `agentsfleet_lease_poll_db_roundtrips_total` and `agentsfleet_lease_poll_dragonfly_commands_total` go from the declarations, the producer, the census, `PollCounters`, `window.rs` and the tests that name them. `window.rs` fills `datastores.postgres.operations` from the window's `pg_stat_statements` calls instead. The architecture lines naming the counters change in the same commit. **Implementation default:** delete rather than repair, because M240's hand-threaded tally still recorded 19 of 36 statements: the provider, credential and estimate crates send statements the poll never sees.
 
-- **Dimension 3.1** — no producer is left for a census row → Test `every_census_family_has_a_producer` (unit, `afd_observability/src/producers/tests.rs`): passes with both rows gone, and fails if a row is left after its producer goes.
-- **Dimension 3.2** — an idle poll still records its candidates → Test `test_an_idle_poll_examines_no_candidates` (integration, renamed from `test_an_idle_poll_costs_one_postgres_probe_and_no_dragonfly_commands`): one idle poll records `candidates_scanned` 0 and `PollCost` has no round-trip field.
-- **Dimension 3.3** — a lease window reports no counter round trips → Test `window_measurements_carry_no_counter_roundtrips` (unit): `Report.measurements` has no `roundtrips_per_lease` key, which today it does.
-- **Dimension 3.4** — the window's Postgres operations come from statements → Test `window_operations_come_from_statements` (unit): a window with 120 statement calls reports `datastores.postgres.operations` 120 whatever the poll counters say.
+- **Dimension 3.1** — DONE — no producer is left for a census row → Test `every_census_family_has_a_producer` (unit, `afd_observability/src/producers/tests.rs`): passes with both rows gone, and fails if a row is left after its producer goes.
+- **Dimension 3.2** — DONE — an idle poll still records its candidates → Test `test_an_idle_poll_examines_no_candidates` (integration, renamed from `test_an_idle_poll_costs_one_postgres_probe_and_no_dragonfly_commands`): one idle poll records `candidates_scanned` 0 and `PollCost` has no round-trip field.
+- **Dimension 3.3** — DONE — a lease window reports no counter round trips → Test `window_measurements_carry_no_counter_roundtrips` (unit): `Report.measurements` has no `roundtrips_per_lease` key, which today it does.
+- **Dimension 3.4** — DONE — the window's Postgres operations come from statements → Test `window_operations_come_from_statements` (unit): a window with 120 statement calls reports `datastores.postgres.operations` 120 whatever the poll counters say.
 
 ### §4 — Statements per chat, grouped by path
 

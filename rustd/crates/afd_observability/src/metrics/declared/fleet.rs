@@ -18,20 +18,12 @@ pub const SIGNUP_REPLAYED_TOTAL: Declared<CounterKind> =
 pub const SIGNUP_FAILED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_signup_failed_total");
 
-/// The denominator for the three below.
+/// The denominator for the candidates count below.
 pub const LEASE_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_polls_total");
 
 /// Rate ÷ polls = fan-out per poll.
 pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_candidates_scanned_total");
-
-/// Rate ÷ polls = database cost per poll; an idle poll adds one.
-pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
-
-/// Rate ÷ polls = Dragonfly cost per poll; an idle poll adds zero.
-pub const LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_lease_poll_dragonfly_commands_total");
 
 /// Bytes of earlier turns each chat lease carries.
 pub const LEASE_HISTORY_BYTES: Declared<HistogramKind> =
