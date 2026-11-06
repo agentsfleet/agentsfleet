@@ -138,3 +138,65 @@ async fn staging_admits_on_an_installing_fleet() {
     drop(connection);
     lane.cleanup().await;
 }
+
+/// The SQLSTATE a lock wait past `lock_timeout` raises.
+const LOCK_NOT_AVAILABLE: &str = "55P03";
+
+/// Whether `55P03` sits anywhere in the error's cause chain.
+fn timed_out_on_a_lock(error: &afd_admission::Error) -> bool {
+    let mut cause: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(current) = cause {
+        if let Some(sql) = current.downcast_ref::<sqlx::Error>()
+            && sql
+                .as_database_error()
+                .and_then(sqlx::error::DatabaseError::code)
+                .as_deref()
+                == Some(LOCK_NOT_AVAILABLE)
+        {
+            return true;
+        }
+        cause = current.source();
+    }
+    false
+}
+
+/// A send behind a fleet row held past `LOCK_TIMEOUT` fails alone, retryable,
+/// and records nothing (`M242_001` Dimension 6.2).
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_send_behind_a_held_fleet_row_times_out() {
+    let lane = Lane::seed().await;
+    let (_server, admissions) = over_fake(&lane, &[]).await;
+    let mut connection = lane.database.acquire().await.expect("holder");
+    let mut holder = connection.begin().await.expect("open the holder");
+    sqlx::query("SELECT 1 FROM fleet.fleets WHERE id = $1::uuid FOR UPDATE")
+        .bind(&lane.fleet)
+        .execute(&mut *holder)
+        .await
+        .expect("the holder takes the fleet row");
+    let key = mint_id();
+    let refused = admissions
+        .admit(steer(&lane, &key, ReplyTo::None))
+        .await
+        .expect_err("the send gives up after the lock bound");
+    assert!(refused.is_datastore_unavailable(), "{refused}");
+    assert!(
+        !refused.is_over_capacity(),
+        "a timeout is not capacity: {refused}"
+    );
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+    );
+    assert!(timed_out_on_a_lock(&refused), "{refused}");
+    holder.rollback().await.expect("release");
+    drop(connection);
+    let rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
+            .bind(&lane.fleet)
+            .fetch_one(&mut *lane.database.acquire().await.expect("observer"))
+            .await
+            .expect("rows");
+    assert_eq!(rows, 0, "a timed-out send records nothing");
+    lane.cleanup().await;
+}

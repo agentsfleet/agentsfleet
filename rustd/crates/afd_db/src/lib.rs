@@ -37,6 +37,7 @@
 pub mod config;
 pub mod constraint;
 pub mod error;
+pub mod login;
 pub mod migrate;
 pub mod migration;
 pub mod pool;

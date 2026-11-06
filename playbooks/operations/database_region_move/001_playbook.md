@@ -48,6 +48,14 @@ For the environment being moved:
 
        pscale role create <db> <branch> <name> --inherited-roles api_runtime
 
+   Then give the API login the bounds every request runs under, from a session on `5432`:
+
+       ALTER ROLE <name> SET lock_timeout = '2000ms';
+       ALTER ROLE <name> SET statement_timeout = '5000ms';
+
+   The values are `afd_db::login`'s `LOCK_TIMEOUT` and `STATEMENT_TIMEOUT`.
+   Postgres applies a role's settings only to the role that logs in, so the API login carries them, not `api_runtime`.
+
    Verify the target login's role memberships before copying.
    `schema/1010_roles_and_privileges.sql` defines the role hierarchy; each table's slot owns its grants.
    Do not add `pg_read_all_data` or `pg_write_all_data` to bypass a missing grant.

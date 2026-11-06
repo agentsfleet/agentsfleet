@@ -69,12 +69,18 @@
 # Under `KEEP_TEST_STATE=1` the prerequisite is the plain infra check.
 # The API pool's login, created after the migration that creates `api_runtime`:
 # the provider's `--inherited-roles api_runtime`, spelled in plain Postgres.
-# Idempotent; roles are cluster-wide and outlive the schema reset.
+# Idempotent; roles are cluster-wide and outlive the schema reset. The two
+# bounds equal `afd_db::login`'s constants, which
+# `the_api_login_runs_under_the_intake_bounds` reads back (M242_001 §6).
 define _api_login
 docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -c \
   "DO \$$\$$ BEGIN CREATE ROLE $(TEST_DATABASE_API_LOGIN) LOGIN PASSWORD '$(TEST_DATABASE_API_LOGIN)' IN ROLE api_runtime; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END \$$\$$" \
   >/dev/null || { echo "✗ [infra] API login failed"; exit 1; }; \
-echo "✓ [infra] API login $(TEST_DATABASE_API_LOGIN) holds api_runtime"
+docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q \
+  -c "ALTER ROLE $(TEST_DATABASE_API_LOGIN) SET lock_timeout = '2000ms'" \
+  -c "ALTER ROLE $(TEST_DATABASE_API_LOGIN) SET statement_timeout = '5000ms'" \
+  >/dev/null || { echo "✗ [infra] API login bounds failed"; exit 1; }; \
+echo "✓ [infra] API login $(TEST_DATABASE_API_LOGIN) holds api_runtime, under afd_db::login's bounds"
 endef
 
 _migrate-test-db: $(TEST_STATE_DEP)

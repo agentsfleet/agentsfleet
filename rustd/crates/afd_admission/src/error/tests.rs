@@ -36,7 +36,7 @@ use super::one_of_each_kind;
 /// asked the type which kinds are outages and then asserted the answer would
 /// agree with any answer. This is the list a person maintains, so a variant
 /// that changes sides has to be moved by hand.
-const UNREACHABLE: &[&str] = &["datastore"];
+const UNREACHABLE: &[&str] = &["datastore", "timed out"];
 
 /// The labels the sample gives capacity, which a caller retries like an
 /// outage and an operator reads as a different incident.

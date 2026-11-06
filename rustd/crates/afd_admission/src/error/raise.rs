@@ -20,6 +20,12 @@ afd_core::error_lifts!(Error, ErrorKind:
 /// `53100` disk full, `53200` out of memory, `53300` too many connections.
 const SQLSTATE_INSUFFICIENT_RESOURCES: &str = "53";
 
+/// A lock waited past the login's `lock_timeout`.
+const SQLSTATE_LOCK_NOT_AVAILABLE: &str = "55P03";
+
+/// A statement ran past the login's `statement_timeout`.
+const SQLSTATE_QUERY_CANCELED: &str = "57014";
+
 /// Reports a statement that failed, naming what it was doing.
 ///
 /// The one `map_err` this crate keeps, and it earns its place by ADDING the
@@ -31,6 +37,8 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| {
         if is_exhausted(&source) {
             ErrorKind::Exhausted { context, source }.into()
+        } else if is_timed_out(&source) {
+            ErrorKind::TimedOut { context, source }.into()
         } else {
             ErrorKind::Query { context, source }.into()
         }
@@ -43,6 +51,14 @@ fn is_exhausted(source: &sqlx::Error) -> bool {
         .as_database_error()
         .and_then(sqlx::error::DatabaseError::code)
         .is_some_and(|code| code.starts_with(SQLSTATE_INSUFFICIENT_RESOURCES))
+}
+
+/// Whether Postgres gave up waiting under the login's bounds.
+fn is_timed_out(source: &sqlx::Error) -> bool {
+    source
+        .as_database_error()
+        .and_then(sqlx::error::DatabaseError::code)
+        .is_some_and(|code| code == SQLSTATE_LOCK_NOT_AVAILABLE || code == SQLSTATE_QUERY_CANCELED)
 }
 
 /// A Postgres refusal for want of a resource, as the driver would hand it
@@ -70,6 +86,48 @@ impl sqlx::error::DatabaseError for DiskFull {
 
     fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
         Some("53100".into())
+    }
+
+    fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+        self
+    }
+
+    fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
+        self
+    }
+
+    fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+        self
+    }
+
+    fn kind(&self) -> sqlx::error::ErrorKind {
+        sqlx::error::ErrorKind::Other
+    }
+}
+
+/// A lock wait past the login's `lock_timeout`, as the driver would hand it over.
+#[cfg(feature = "test-util")]
+#[derive(Debug)]
+struct LockWaitExpired;
+
+#[cfg(feature = "test-util")]
+impl std::fmt::Display for LockWaitExpired {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("canceling statement due to lock timeout")
+    }
+}
+
+#[cfg(feature = "test-util")]
+impl std::error::Error for LockWaitExpired {}
+
+#[cfg(feature = "test-util")]
+impl sqlx::error::DatabaseError for LockWaitExpired {
+    fn message(&self) -> &'static str {
+        "canceling statement due to lock timeout"
+    }
+
+    fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
+        Some(SQLSTATE_LOCK_NOT_AVAILABLE.into())
     }
 
     fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
@@ -137,6 +195,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             query("admitting an event")(sqlx::Error::Database(Box::new(DiskFull))),
         ),
         ("policy", ErrorKind::Policy.into()),
+        (
+            "timed out",
+            query("admitting an event")(sqlx::Error::Database(Box::new(LockWaitExpired))),
+        ),
         ("fleet absent", ErrorKind::FleetAbsent.into()),
         (
             "not runnable",

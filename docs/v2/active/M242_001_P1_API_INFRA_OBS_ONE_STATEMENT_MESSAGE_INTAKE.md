@@ -207,8 +207,8 @@ On Indy's laptop, `make bench-steer PROFILE=rig` runs three times on the base re
 
 **Implementation default:** the login role rather than pool startup options, which Indy chose (Discovery). Pool startup options were also considered; unverified: whether the production PgBouncers pass them through.
 
-- **Dimension 6.1** — the API pool carries both bounds → Test `the_api_login_runs_under_the_intake_bounds` (integration): `SHOW lock_timeout` and `SHOW statement_timeout` over the API pool equal `LOCK_TIMEOUT` and `STATEMENT_TIMEOUT`.
-- **Dimension 6.2** — a held fleet row fails one send, not every caller → Test `a_send_behind_a_held_fleet_row_times_out` (integration): a transaction holds a fleet row `FOR UPDATE` past `LOCK_TIMEOUT`; a send answers 503 `UZ-INTERNAL-001` with SQLSTATE `55P03` logged, and records nothing.
+- **Dimension 6.1** — DONE — the API pool carries both bounds → Test `the_api_login_runs_under_the_intake_bounds` (integration): `SHOW lock_timeout` and `SHOW statement_timeout` over the API pool equal `LOCK_TIMEOUT` and `STATEMENT_TIMEOUT`.
+- **Dimension 6.2** — DONE — a held fleet row fails one send, not every caller → Test `a_send_behind_a_held_fleet_row_times_out` (integration): a transaction holds a fleet row `FOR UPDATE` past `LOCK_TIMEOUT`; a send answers 503 `UZ-INTERNAL-001` with SQLSTATE `55P03` logged, and records nothing.
 
 ## Interfaces
 

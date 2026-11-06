@@ -81,6 +81,16 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
+    /// Postgres gave up waiting: a lock held past `lock_timeout` (`55P03`) or
+    /// a statement past `statement_timeout` (`57014`), the login's bounds
+    /// (`afd_db::login`). Retryable: nothing was committed.
+    #[error("statement timed out during {context}")]
+    TimedOut {
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+
     /// A row identifier could not be minted.
     #[error("a row identifier could not be minted")]
     Entropy {
@@ -107,7 +117,8 @@ impl Error {
             ),
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
-            | ErrorKind::Exhausted { .. } => (
+            | ErrorKind::Exhausted { .. }
+            | ErrorKind::TimedOut { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
@@ -144,7 +155,8 @@ impl Error {
         match self.kind() {
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
-            | ErrorKind::Exhausted { .. } => true,
+            | ErrorKind::Exhausted { .. }
+            | ErrorKind::TimedOut { .. } => true,
             _reachable => false,
         }
     }
