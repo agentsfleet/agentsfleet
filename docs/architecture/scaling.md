@@ -264,10 +264,12 @@ measured on one developer machine against a freshly reset compose Postgres and
 Dragonfly — `make bench-<lane> PROFILE=rig` — and the committed result sits beside
 it in `bench/baselines/`. Absolute rates move with hardware; the shapes below
 do not. A baseline that moves takes its row here with it in the same commit.
-The steer, delivery and cardinality rows were re-measured at `774f99cbd`; the
-lease rows come from the result file stamped `c82badcb5`, and the live-tail rows
-from `e2d250172`, the revision the tail lane was built on. Latency columns moved with
-host load between runs on this shared machine; the counts beside them did not.
+
+The steer, delivery and cardinality rows were re-measured at `774f99cbd`.
+The lease rows quote `lease.rig.json` as committed at `c82badcb5`, and the M241 baselines below replace that file.
+The live-tail rows come from `e2d250172`, the revision the tail lane was built on.
+
+Latency columns moved with host load between runs on this shared machine; the counts beside them did not.
 
 The saturation row comes from paired runs on Oct 21, 2026. The two sets differ
 only in the claim code.
@@ -302,6 +304,26 @@ deployed; behaviour under real customer traffic, because there is none yet; and
 any threshold, because the lanes print a delta against their baseline and never
 fail a build on it. The rig measures one process against local datastores,
 which is a floor and not a capacity plan.
+
+### Push scheduler baselines
+
+M241_001 replaced `lease.rig.json` and added `lease-burst.rig.json` on Nov 06, 2026.
+Each lane ran three times on a reset rig, and the committed file is the median run.
+[Push scheduler](push_scheduler.md#baselines) lists the statements per chat by path.
+
+| Lane | Median run | Lowest | Highest |
+| --- | --- | --- | --- |
+| Drain, leases per second (200 fleets, 8 runners, a 10 s chat per lease) | 82.51 | 80.43 | 84.08 |
+| Drain, Postgres statements per chat | 115.025 | 114.875 | 115.025 |
+| Drain, commits per chat | 77.185 | 76.97 | 77.185 |
+| Drain, Dragonfly calls per chat | 43.09 | 43.05 | 43.09 |
+| Burst, pickup p95 (50 fleets, 10 messages a second each, 60 s) | 54.2 s | 53.4 s | 54.5 s |
+
+The drain now sends a whole chat per lease: two renewals and forty activity posts.
+The older rows above sent only the lease and its report.
+
+PR #803 also added six durable-task reads per lease.
+So statements per lease rose from 50.0 to 115.0, and leases per second fell from 172 to 82.5.
 
 ### Admissions ledger measurements
 

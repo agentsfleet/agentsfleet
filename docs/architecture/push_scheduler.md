@@ -163,25 +163,35 @@ A partitioned scheduler is not planned. It is built only if measured saturation 
 
 ## Baselines
 
-Measured on Indy's laptop with `make bench-lease PROFILE=rig`. Each figure is the median of three interleaved runs, with the lowest and highest beside it. The api-dev machines re-measure at deployment.
+Measured on Indy's laptop on Nov 06, 2026, with `make bench-lease PROFILE=rig`, each run on a reset rig. Each lane ran three times, and the run with the median headline value is committed in `bench/baselines/`. The lowest and highest values sit beside it.
 
-A simulated chat is one lease with a 10 s turn: two renewals and forty activity posts.
+The api-dev machines re-measure at deployment.
 
-| Path | Statements per chat |
-|---|---|
-| activity | 40.0 |
-| gates | 11.0 |
-| report | 10.0 |
-| host | 9.0 |
-| issue | 8.0 |
-| meter | 8.0 |
-| pricing | 7.0 |
-| shared | 7.0 |
-| claim | 4.9 |
-| total | 105.0 |
+A simulated chat is one lease with a 10 s turn: two renewals and forty activity posts. The drain leases 200 fleets to 8 runners over a pool of 20.
 
-These are a first single run. The committed median and its spread replace them before M241 closes.
+The headline is drain leases per second: 82.51, between 80.43 and 84.08. The median run is committed as `lease.rig.json`.
 
-A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets while runners hold each lease for a 2 s turn. Today each message is a run of its own, so most wait. A short first run (5 fleets, 10 s) left 480 of 500 messages unleased at the close, with pickup p95 at 8.56 s.
+| Path | Statements per chat (median run) | Lowest | Highest |
+|---|---|---|---|
+| activity | 40.0 | 40.0 | 40.0 |
+| gates | 11.0 | 11.0 | 11.0 |
+| shared | 11.0 | 11.0 | 11.0 |
+| host | 9.0 | 9.0 | 9.0 |
+| issue | 8.0 | 8.0 | 8.0 |
+| meter | 8.0 | 8.0 | 8.0 |
+| report | 8.0 | 8.0 | 8.0 |
+| pricing | 7.0 | 7.0 | 7.0 |
+| claim | 6.945 | 6.8 | 6.945 |
+| task | 6.0 | 6.0 | 6.0 |
+| other | 0.08 | 0.075 | 0.08 |
+| total | 115.025 | 114.875 | 115.025 |
+
+The `task` path holds the durable-task reads PR #803 added to issue, renewal and report. A chat also costs 77.2 commits and 43.1 Dragonfly calls. Lease p95 is 44.1 ms and report p95 is 21.5 ms.
+
+A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets for 60 s. Runners hold each lease for a 2 s turn. Today each message is a run of its own, so most wait.
+
+The headline is pickup p95: 54.2 s, between 53.4 s and 54.5 s. The median run is committed as `lease-burst.rig.json`.
+
+In it, 29,953 messages were accepted, none were refused, and 29,729 were still unleased at the close. Pickup p50 is 28.5 s and append p95 is 35.7 ms.
 
 Tail and wake p99 and the broker-kill drill are measured in M244, on Dragonfly and then on NATS, against the same code.

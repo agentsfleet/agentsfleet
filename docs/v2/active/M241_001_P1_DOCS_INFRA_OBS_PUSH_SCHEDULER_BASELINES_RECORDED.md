@@ -191,7 +191,7 @@ Tail and wake p99 move to M244, where Dragonfly is measured on the code as it st
 
 `bench-lease` and `bench-lease BENCH_SHAPE=burst` each run three times on Indy's laptop, interleaved, after a reset rig. A laptop drain has ranged from 38 to 167 leases/s between runs, so one run proves nothing. The run with the median headline value (drain leases per second; `burst_pickup_p95_ms`) is copied to `bench/baselines/`, as the baselines README requires a real run. The other two headline values are recorded beside it in `push_scheduler.md` §Baselines. The broker-kill drill and milestone 4's pass bar move to M244 with §6.
 
-- **Dimension 7.1** — baselines are median real runs → Test `baselines_are_median_runs` (manual): §Baselines lists three headline values per lane, and the committed file's value is the middle one.
+- **Dimension 7.1** — DONE — baselines are median real runs → Test `baselines_are_median_runs` (manual): §Baselines lists three headline values per lane, and the committed file's value is the middle one.
 
 ## Interfaces
 
