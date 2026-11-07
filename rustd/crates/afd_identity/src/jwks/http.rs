@@ -59,9 +59,8 @@ pub struct HttpKeySet {
 }
 
 impl std::fmt::Debug for HttpKeySet {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("HttpKeySet")
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpKeySet")
             .field("url", &self.url)
             .finish_non_exhaustive()
     }

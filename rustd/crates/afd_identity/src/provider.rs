@@ -107,9 +107,8 @@ pub struct ProviderClaims {
 }
 
 impl std::fmt::Debug for ProviderClaims {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ProviderClaims")
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderClaims")
             .field("users", &self.users)
             .finish_non_exhaustive()
     }

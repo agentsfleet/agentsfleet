@@ -10,7 +10,7 @@ pub enum Transport {
     #[default]
     Direct,
     /// Use the proxy the operator explicitly entrusted with identity traffic.
-    TrustedProxy(reqwest::Proxy),
+    TrustedProxy(Box<reqwest::Proxy>),
 }
 
 impl Transport {
@@ -19,16 +19,16 @@ impl Transport {
         let builder = crate::direct(timeout);
         match self {
             Self::Direct => builder,
-            Self::TrustedProxy(proxy) => builder.proxy(proxy.clone()),
+            Self::TrustedProxy(proxy) => builder.proxy((**proxy).clone()),
         }
     }
 }
 
 impl fmt::Debug for Transport {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // A proxy URL can contain credentials. Configuration diagnostics name
         // the chosen route without exposing its URL or authentication.
-        formatter.write_str(match self {
+        f.write_str(match self {
             Self::Direct => "Direct",
             Self::TrustedProxy(_) => "TrustedProxy([REDACTED])",
         })

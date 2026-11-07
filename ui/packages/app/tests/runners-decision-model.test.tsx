@@ -152,7 +152,7 @@ it("retains an explicit None choice when a pending default lookup completes", as
   const user = userEvent.setup();
   render(<Harness defaults={unassigned()} />);
   await user.click(screen.getByRole("combobox", {name: "Decision model"}));
-  await user.click(screen.getByRole("option", {name: "None", exact: true}));
+  await user.click(screen.getByRole("option", {name: /^None$/}));
   await act(async () => response.resolve({ok: true, data: {models: [JEV_MODEL]}}));
   expect(screen.getByRole("combobox", {name: "Decision model"}).textContent).toBe("None");
   await user.click(screen.getByRole("button", {name: "Save assignment"}));
@@ -167,7 +167,7 @@ it("preserves None through a catalogue retry instead of silently assigning Jev",
   render(<Harness defaults={unassigned()} />);
   expect(await screen.findByText(/Could not load models/)).toBeTruthy();
   await user.click(screen.getByRole("combobox", {name: "Decision model"}));
-  await user.click(screen.getByRole("option", {name: "None", exact: true}));
+  await user.click(screen.getByRole("option", {name: /^None$/}));
   await user.click(screen.getByRole("button", {name: "Save assignment"}));
   const {decision_model_id: _omitted, ...withoutDecision} = stored;
   expect(saved).toHaveBeenCalledExactlyOnceWith({policy: withoutDecision, error: null});

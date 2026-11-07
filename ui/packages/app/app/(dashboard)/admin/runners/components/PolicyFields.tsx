@@ -132,7 +132,7 @@ export function policyFromForm(values: PolicyFormValues): {
 export function formFromPolicy(policy: AssignedPolicy): PolicyFormValues {
   return {
     durable_tasks_enabled: policy.durable_tasks_enabled,
-    decision_model_id: policy.decision_model_id,
+    decision_model_id: policy.decision_model_id ?? undefined,
     sandbox_tier: policy.sandbox_tier,
     network_policy: policy.network_policy,
     registry_allowlist: policy.registry_allowlist.join(", "),

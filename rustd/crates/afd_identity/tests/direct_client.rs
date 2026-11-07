@@ -102,12 +102,16 @@ fn a_direct_client_ignores_an_environment_proxy() {
 /// An explicit proxy reaches an otherwise unresolvable host; a failed proxy
 /// cannot fall back to a reachable origin.
 async fn explicitly_routed(proxy_url: &str) {
-    let live = Transport::TrustedProxy(reqwest::Proxy::all(proxy_url).expect("a loopback proxy"));
+    let live = Transport::TrustedProxy(Box::new(
+        reqwest::Proxy::all(proxy_url).expect("a loopback proxy"),
+    ));
     let source = HttpKeySet::new("http://identity.invalid/keys", TIMEOUT, &live)
         .expect("an explicitly routed client");
     assert_eq!(source.fetch().await.expect("the proxy answers"), b"ok");
 
-    let dead = Transport::TrustedProxy(reqwest::Proxy::all(DEAD_PROXY).expect("a valid proxy URL"));
+    let dead = Transport::TrustedProxy(Box::new(
+        reqwest::Proxy::all(DEAD_PROXY).expect("a valid proxy URL"),
+    ));
     let source = HttpKeySet::new(proxy_url, TIMEOUT, &dead).expect("a client");
     assert_eq!(
         source.fetch().await,

@@ -139,8 +139,8 @@ it("allows explicit enrollment without a decision model when catalogue access is
   expect(await screen.findByText(/Could not load models/)).toBeTruthy();
   await user.type(screen.getByLabelText(/host name/i), "build-host");
   await user.click(screen.getByRole("combobox", {name: "Decision model"}));
-  await user.click(screen.getByRole("option", {name: "None", exact: true}));
-  await user.click(screen.getByRole("button", {name: "Create", exact: true}));
+  await user.click(screen.getByRole("option", {name: /^None$/}));
+  await user.click(screen.getByRole("button", {name: /^Create$/}));
   await waitFor(() => expect(createRunnerActionMock).toHaveBeenCalledExactlyOnceWith({host_id: "build-host", labels: [],
     assigned_policy: {durable_tasks_enabled: true, sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []}}));
 });

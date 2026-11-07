@@ -100,7 +100,7 @@ pub(super) fn identity_transport<E: EnvSource + ?Sized>(
         })
         .and_then(|url| reqwest::Proxy::all(url).ok());
     if let Some(proxy) = proxy {
-        return Some(afd_identity::Transport::TrustedProxy(proxy));
+        return Some(afd_identity::Transport::TrustedProxy(Box::new(proxy)));
     }
     faults.push(Fault::Invalid {
         knob: IDENTITY_HTTP_PROXY_URL_KNOB,

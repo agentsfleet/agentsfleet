@@ -55,9 +55,8 @@ pub struct ProviderMetadata {
 }
 
 impl std::fmt::Debug for ProviderMetadata {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ProviderMetadata")
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderMetadata")
             .field("users", &self.users)
             .finish_non_exhaustive()
     }
