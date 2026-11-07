@@ -14,7 +14,7 @@ import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
 import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
-import { FLEET_DETAIL, WORKSPACE, FLEET_ID, FLEET, DRAFT, MODEL, MESSAGE } from "@/tests/helpers/draft-fixtures";
+import { FLEET_DETAIL, WORKSPACE, FLEET_ID, FLEET, DRAFT, MODEL, MESSAGE, REVIEW } from "@/tests/helpers/draft-fixtures";
 
 const router = {bfcacheId: "visual-fixture", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
 const exchanges = [
@@ -48,7 +48,7 @@ export function ChatAlignmentFixture() {
 const setupClient = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
 export function SetupAlignmentFixture() {
   const model = {...MODEL, label: "MiniMax M3.1 Flash"};
-  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, fleet: {...FLEET, name: "ci-repairer"}, model: model.ref, models: [model],
+  const view = {...EMPTY_DRAFT_VIEW, draft: {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}}, fleet: {...FLEET, name: "ci-repairer"}, model: model.ref, models: [model],
     messages: exchanges.flatMap(([question, answer], index) => [
       {...MESSAGE, sequence: String(index * 2 + 1), text: question ?? ""},
       {...MESSAGE, sequence: String(index * 2 + 2), role: "assistant" as const, text: answer ?? ""},

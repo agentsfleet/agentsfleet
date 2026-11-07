@@ -22,13 +22,13 @@ import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bri
 import { ChatAvailability, ChatModelAvailability } from "./ChatAvailability";
 import { FleetSetup } from "./FleetSetup";
 import { DraftChatHeading } from "./DraftChatHeading";
-import { UnfinishedSetups } from "./UnfinishedSetups";
 
 type Props = {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode; canPublishPlatform?: boolean; canManagePlatformModels?: boolean};
 type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "ready"; readonly client: DraftClient; readonly reload: () => Promise<void>};
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
 const LOADING_SETUP_CHAT = "Loading setup chat";
+const UnfinishedSetups = nextDynamic(() => import("./UnfinishedSetups").then(module => module.UnfinishedSetups), {ssr: false});
 const DraftConversation = nextDynamic(() => import("./DraftConversation").then((module) => module.DraftConversation), {
   ssr: false,
   loading: () => <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label="Loading conversation" />,
