@@ -14,8 +14,8 @@ fn missing_registration(call: &Call, archive: &mut Archive) -> Answer {
     let mut page: CheckpointObjectsPage = serde_json::from_slice(&bytes).unwrap();
     for object in &mut page.items {
         object.status = CheckpointObjectStatus::Missing;
-        object.nonce = Some(base64::prelude::BASE64_STANDARD.encode([4; afd_crypto::NONCE_LEN]));
-        object.data_key = Some(base64::prelude::BASE64_STANDARD.encode([7; afd_crypto::KEY_LEN]));
+        object.nonce = Some(base64::prelude::BASE64_STANDARD.encode([4; af_crypto::NONCE_LEN]));
+        object.data_key = Some(base64::prelude::BASE64_STANDARD.encode([7; af_crypto::KEY_LEN]));
         archive.objects.insert(
             object.object_id.clone(),
             serde_json::to_value(&object).unwrap(),
@@ -194,7 +194,7 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
     assert_eq!(upload.objects.len(), 1);
     assert_eq!(
         upload.objects.first().unwrap().ciphertext_length,
-        15 + afd_crypto::TAG_LEN as u64
+        15 + af_crypto::TAG_LEN as u64
     );
     assert_eq!(upload.objects.first().unwrap().ciphertext_sha256.len(), 64);
     let verified: CheckpointAuthorizationInput = body(
@@ -250,7 +250,7 @@ fn history_reply(
             } else {
                 archive.plan.repository.clone()
             },
-            plaintext: afd_wire::task::CheckpointPlaintext {
+            plaintext: af_wire::task::CheckpointPlaintext {
                 sha256: "a".repeat(64),
                 size: 1,
                 kind: "history".to_owned(),

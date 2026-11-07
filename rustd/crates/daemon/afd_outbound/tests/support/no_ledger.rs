@@ -15,7 +15,7 @@ use afd_db::config::{DbRole, PoolConfig};
 
 /// A pool that resolves and never answers.
 pub(crate) fn no_ledger() -> Db {
-    let environment = afd_core::env::MapEnv::from_pairs([(
+    let environment = af_core::env::MapEnv::from_pairs([(
         DbRole::Api.url_knob(),
         "postgres://nowhere/agentsfleet",
     )]);

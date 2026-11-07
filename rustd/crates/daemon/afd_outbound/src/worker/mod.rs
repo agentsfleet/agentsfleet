@@ -62,7 +62,7 @@
 use std::ops::ControlFlow;
 use std::time::Duration;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use afd_dragonfly::{OutboundDelivery, OutboundQueue, OutboundReader};
 use tokio_util::sync::CancellationToken;

@@ -8,13 +8,13 @@
 //! misses, are one fact. Spelling it twice is two places for a bound to drift
 //! from its own message.
 //!
-//! The bound itself is `afd_validate::Limit` against the keyset lists'
+//! The bound itself is `af_validate::Limit` against the keyset lists'
 //! [`CEILING`]; what this module adds is the library family's code and
 //! sentence.
 
-use afd_core::error_code;
-use afd_core::paging::{CEILING, Ceiling, QUERY_LIMIT};
-use afd_validate::Limit;
+use af_core::error_code;
+use af_core::paging::{CEILING, Ceiling, QUERY_LIMIT};
+use af_validate::Limit;
 
 use crate::handler::tenant::DETAIL_CATALOGUE_LIMIT;
 use crate::handler::{Refusal, parameter};

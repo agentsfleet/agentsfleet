@@ -10,7 +10,7 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Reported, Terminal, TerminalReport, Verdict};
 use jiff::Timestamp;
@@ -99,7 +99,7 @@ pub(crate) async fn assert_nothing_landed(held: &Held, why: &str) {
         held.fixtures
             .text(Row::Event(&held.fleet, &held.event_id), "status")
             .await,
-        Some(afd_core::event::status::RECEIVED.to_owned()),
+        Some(af_core::event::status::RECEIVED.to_owned()),
         "{why}: the event was never ended"
     );
     assert_eq!(

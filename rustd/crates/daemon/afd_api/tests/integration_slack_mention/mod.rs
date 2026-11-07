@@ -16,11 +16,11 @@
 
 use crate::harness;
 
+use af_core::money::NANOS_PER_USD;
+use af_webhook::Scheme;
 use afd_connector::Provider;
 use afd_connector::slack::Thread;
-use afd_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_webhook::Scheme;
 use http::{HeaderName, Method, StatusCode};
 use serde_json::Value;
 

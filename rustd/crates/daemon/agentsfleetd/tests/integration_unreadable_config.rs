@@ -31,11 +31,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::event::EventType;
 use afd_db::test_util::{
     FIXTURE_SETUP_MODEL_REF, FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
 use afd_state::sql::FLEET_STATUS_ACTIVE;
-use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
 
 use crate::e2e::{Scenario, scenario};

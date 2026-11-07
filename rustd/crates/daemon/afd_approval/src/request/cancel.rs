@@ -1,8 +1,8 @@
 //! Setup cancellation closes pending grant cards under the caller's fleet lock.
 
 use crate::{Result, error, grant::IntegrationGrants, grant_sql};
+use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
-use afd_core::id::Uuid7;
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "cancel setup approvals";

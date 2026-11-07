@@ -29,9 +29,9 @@
 //! its row and one that wrote it twice are both unrepresentable when the value
 //! is the only thing that decides.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::FleetConfig;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_fleet_runtime::FleetConfig;
 use jiff::Timestamp;
 
 use crate::gate::pause::Trigger;

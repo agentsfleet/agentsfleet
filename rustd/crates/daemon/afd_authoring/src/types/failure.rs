@@ -1,7 +1,7 @@
 //! Recovery actions are derived by the daemon from a bounded durable reason.
 
-use afd_core::error_code::{self, ErrorCode};
-use afd_wire::authoring::FailureReason;
+use af_core::error_code::{self, ErrorCode};
+use af_wire::authoring::FailureReason;
 use serde::{Deserialize, Serialize};
 
 /// Content-free observation of why a physical model request did not complete.
@@ -31,12 +31,12 @@ impl FailureCause {
     }
 }
 
-impl From<afd_inference::stream::FailureCause> for FailureCause {
-    fn from(cause: afd_inference::stream::FailureCause) -> Self {
+impl From<af_inference::stream::FailureCause> for FailureCause {
+    fn from(cause: af_inference::stream::FailureCause) -> Self {
         match cause {
-            afd_inference::stream::FailureCause::Deadline => Self::Deadline,
-            afd_inference::stream::FailureCause::Cancelled => Self::Cancelled,
-            afd_inference::stream::FailureCause::Provider => Self::ProviderInterrupted,
+            af_inference::stream::FailureCause::Deadline => Self::Deadline,
+            af_inference::stream::FailureCause::Cancelled => Self::Cancelled,
+            af_inference::stream::FailureCause::Provider => Self::ProviderInterrupted,
         }
     }
 }
@@ -102,7 +102,7 @@ impl From<FailureReason> for Failure {
 #[cfg(test)]
 mod tests {
     use super::FailureCause;
-    use afd_inference::stream::FailureCause as StreamCause;
+    use af_inference::stream::FailureCause as StreamCause;
 
     #[test]
     fn stream_failures_keep_their_exact_durable_and_public_spelling() {

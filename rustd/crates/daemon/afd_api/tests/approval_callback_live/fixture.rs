@@ -11,10 +11,10 @@
 //! the same row Slack's callback does. Both need a gate the callback test has
 //! not already answered.
 
+use af_core::id::Uuid7;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{

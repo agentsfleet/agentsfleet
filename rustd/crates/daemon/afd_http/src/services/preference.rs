@@ -14,7 +14,7 @@
 //! is a read like any other, and `Ok(None)` is the caller's cue to refuse
 //! rather than to invent a user row.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_tenant::Result as TenantResult;
 use afd_tenant::preference::{Pref, PrefKey, Preferences, Signals};
 use jiff::Timestamp;

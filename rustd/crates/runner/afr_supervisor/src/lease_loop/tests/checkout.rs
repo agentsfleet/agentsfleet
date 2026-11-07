@@ -8,10 +8,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::credentials::MintCredentialResponse;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_core::test_util::trace::Capture;
+use af_wire::credentials::MintCredentialResponse;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::{RepositoryAccess, RepositoryBinding};
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST};
 use afr_tools::sandbox::CREDENTIAL_GITHUB;
 

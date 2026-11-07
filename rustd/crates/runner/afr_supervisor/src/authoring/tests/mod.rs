@@ -17,7 +17,7 @@ use crate::{
     client::{Call, Verb},
     test_support::{Answer, Behaviour, FakeAgent, FakeEngine, Rig, bounded, json},
 };
-use afd_wire::authoring::Lease;
+use af_wire::authoring::Lease;
 use serde_json::{Value, json};
 
 const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";

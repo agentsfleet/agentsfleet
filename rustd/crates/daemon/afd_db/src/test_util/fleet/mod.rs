@@ -37,7 +37,7 @@ const CONTEXT: &str = "seed a fleet";
 
 /// The native setup [`FleetSeed::native_setup`] selects, as stored.
 ///
-/// It is what `afd_fleet_runtime`'s `FixtureSetup::default()` writes, which
+/// It is what `af_fleet_runtime`'s `FixtureSetup::default()` writes, which
 /// that crate's suite pins against these four, since this crate cannot parse a
 /// definition.
 pub const FIXTURE_SETUP_DEFINITION: &str = "{\"schema_version\":1,\"description\":\"Runtime fixture.\",\"instructions_md\":\"Run the fixture.\",\"config\":{\"name\":\"fixture\",\"x-agentsfleet\":{\"triggers\":[],\"tools\":[],\"budget\":{\"daily_nanos\":\"1000000000\"}}}}";

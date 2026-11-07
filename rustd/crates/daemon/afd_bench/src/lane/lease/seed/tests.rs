@@ -6,7 +6,7 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use afd_core::env::{EnvSource as _, ProcessEnv};
+use af_core::env::{EnvSource as _, ProcessEnv};
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_dragonfly::{DragonflyConfig, DragonflyRole};
@@ -114,7 +114,7 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     let leases = afd_fleet::lease::Leases::new(
         database.clone(),
         queue.clone(),
-        afd_crypto::entropy::Entropy::new(),
+        af_crypto::entropy::Entropy::new(),
     );
     let acquired = leases
         .select(&runner, &[])

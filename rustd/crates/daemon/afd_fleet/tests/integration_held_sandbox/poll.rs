@@ -4,7 +4,7 @@
 use super::{hold, id, live};
 use crate::seed::{Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
-use afd_core::timing::SANDBOX_HOLD_IDLE;
+use af_core::timing::SANDBOX_HOLD_IDLE;
 use afd_db::test_util::mint_id;
 use afd_dragonfly::Doorbell;
 

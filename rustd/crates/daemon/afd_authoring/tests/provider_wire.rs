@@ -1,6 +1,6 @@
 //! Provider wire fixtures, consumed through the real SDK by units and service tests.
 
-use afd_wire::inference::InferenceApi;
+use af_wire::inference::InferenceApi;
 use bytes::Bytes;
 use futures_util::stream;
 use serde_json::{Value, json};

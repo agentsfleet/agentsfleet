@@ -5,7 +5,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility};
+use af_wire::memory::{MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility};
 
 use super::admit;
 

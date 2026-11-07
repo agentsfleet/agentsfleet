@@ -10,8 +10,8 @@ pub mod invitation;
 
 mod member;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use jiff::Timestamp;
 

@@ -8,7 +8,7 @@
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use bytes::Bytes;
 use tokio::time::Instant;
 
@@ -23,7 +23,7 @@ use crate::test_support::{
     reported,
 };
 use crate::turns::FleetTurns;
-use afd_core::timing::RENEWAL_TICK;
+use af_core::timing::RENEWAL_TICK;
 
 /// The metered fields a renewal and a report carry, by their wire names.
 const TOKENS: &str = "tokens";

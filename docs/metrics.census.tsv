@@ -5,7 +5,7 @@
 # both directions. This file is the SINGLE source of truth for the export —
 # docs/architecture/observability.md points here and repeats none of it.
 # Transcribed from the retired daemon's registry declarations and now graded
-# against `rustd/crates/protocol/afd_observability/src/metrics/declared/mod.rs`;
+# against `rustd/crates/protocol/af_observability/src/metrics/declared/mod.rs`;
 # histogram bounds are in the family's declared unit (the old ms bounds are
 # already converted to seconds here, because the Rust side records f64 seconds
 # and deletes the scale concept).
@@ -19,7 +19,7 @@
 #   policy       fixed:<n> | runner:<n> | shared:cost. A `fixed` ceiling is
 #                the PRODUCT of the family's closed label sets and must be at
 #                least that: `every_declared_ceiling_admits_its_label_product`
-#                (afd_observability) fails on a row that understates, because a
+#                (af_observability) fails on a row that understates, because a
 #                ceiling below the real count makes the SDK fold live series
 #                into `otel.metric.overflow` — the backstop that must never fire.
 #   labels       comma-joined label keys, or -   (cost families additionally

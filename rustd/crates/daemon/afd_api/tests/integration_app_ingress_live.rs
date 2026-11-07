@@ -26,8 +26,8 @@ mod fixture;
 use self::fixture::{APP_SECRET, Fixture, Mapped, OTHER_REPOSITORY, REPOSITORY, WRONG_SECRET};
 use self::harness::webhook as signed;
 use self::harness::{json_body, send_with_headers};
-use afd_core::error_code;
-use afd_webhook::Scheme;
+use af_core::error_code;
+use af_webhook::Scheme;
 use http::{Method, StatusCode};
 use serde_json::Value;
 

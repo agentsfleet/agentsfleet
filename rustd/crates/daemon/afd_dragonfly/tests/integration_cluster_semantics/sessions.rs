@@ -174,7 +174,7 @@ pub(super) async fn an_expired_code_is_gone_rather_than_redeemable(harness: &Dra
 
     let mut cmd = redis::cmd(CMD_PEXPIRE);
     cmd.arg(&key)
-        .arg(afd_core::clock::saturating_millis(IMMINENT));
+        .arg(af_core::clock::saturating_millis(IMMINENT));
     let rescheduled: i64 = harness
         .redis
         .command(CMD_PEXPIRE, &key, &cmd)

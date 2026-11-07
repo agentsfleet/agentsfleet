@@ -64,7 +64,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 
 1. `docs/architecture/observability.md` — §Traces (leases are separate root spans joined by attribute; the daemon has no span budget, only `SPAN_QUEUE`), §"`agentsfleet-runner` — a collector of its own", and §"Signal routing" (the fail-closed rules for runner logs, which this spec leaves out).
 2. `rustd/crates/daemon/agentsfleetd/src/logs.rs` — the subscriber layout; the OpenTelemetry span bridge sits in a `reload` slot that refuses downcasts, which is why §1 moves the span layer out of it.
-3. `rustd/crates/runner/afr_supervisor/src/lease_loop/segments.rs` and `rustd/crates/protocol/afd_observability/src/metrics/label/fleet.rs` — the existing stage names: the runner's `Segments` and the daemon's seven `DeliveryStage` members. They are reused, not duplicated.
+3. `rustd/crates/runner/afr_supervisor/src/lease_loop/segments.rs` and `rustd/crates/protocol/af_observability/src/metrics/label/fleet.rs` — the existing stage names: the runner's `Segments` and the daemon's seven `DeliveryStage` members. They are reused, not duplicated.
 4. `rustd/crates/runner/afr_sandbox/src/bubblewrap_engine/mod.rs` — sandboxes run under `sandbox_ids` when the runner is root, which the collector's admission rule depends on.
 5. `deploy/baremetal/agentsfleet-runner.service` and `deploy/fly/otelcol-dev/config.yml` — the runner unit the collector sits beside, and the collector configuration to copy, minus its public binds and logs pipeline.
 
@@ -77,10 +77,10 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 | `docs/architecture/scaling.md` | EDIT | §0: dev cluster size; dev database region once verified |
 | `rustd/crates/daemon/agentsfleetd/src/logs.rs` | EDIT | §1: install the `tracing_opentelemetry` span layer permanently, over a global-provider tracer, outside the reload slot |
 | `rustd/crates/daemon/agentsfleetd/src/telemetry/mod.rs` | EDIT | §1: `attach` installs the global tracer provider |
-| `rustd/crates/protocol/afd_observability/Cargo.toml` | EDIT | §1: add `tracing-opentelemetry` (workspace 0.34.0) |
-| `rustd/crates/protocol/afd_observability/src/stage_clock.rs` | CREATE | §1: per-request stage clock over closed per-verb stage enums; writes `agentsfleet.<verb>.<stage>_ms` to the current span |
-| `rustd/crates/protocol/afd_observability/src/lib.rs` | EDIT | §1: export the stage clock |
-| `rustd/crates/protocol/afd_observability/src/semconv/mod.rs` | EDIT | §1: the attribute keys, spelled once |
+| `rustd/crates/protocol/af_observability/Cargo.toml` | EDIT | §1: add `tracing-opentelemetry` (workspace 0.34.0) |
+| `rustd/crates/protocol/af_observability/src/stage_clock.rs` | CREATE | §1: per-request stage clock over closed per-verb stage enums; writes `agentsfleet.<verb>.<stage>_ms` to the current span |
+| `rustd/crates/protocol/af_observability/src/lib.rs` | EDIT | §1: export the stage clock |
+| `rustd/crates/protocol/af_observability/src/semconv/mod.rs` | EDIT | §1: the attribute keys, spelled once |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs` | EDIT | §1: steer stages and event identity |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/lease/mod.rs` | EDIT | §1: lease stages and the issued event's identity |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/memory.rs` | EDIT | §1: hydrate and capture stages and fleet identity |
@@ -126,7 +126,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
   - **ARCH:** attribute keys consult `observability.md` before they are spelled.
   - **TSC:** TypeScript conventions in the route and hook.
 - `.orly/docs/LOGGING_STANDARD.md` — stage timing is a span attribute, not a new log line.
-- `.orly/dispatch/write_rust.md` and `docs/RUST_ERROR_STANDARD.md` — the stage clock adds no fallible public signature; any that appears uses `afd_core::error_shell!`.
+- `.orly/dispatch/write_rust.md` and `docs/RUST_ERROR_STANDARD.md` — the stage clock adds no fallible public signature; any that appears uses `af_core::error_shell!`.
 - `.orly/dispatch/write_ts_adhere_bun.md` — route and hook edits.
 - `.orly/dispatch/write_shell.md` — `service.sh`, `deploy.sh` and playbook edits.
 - `.orly/dispatch/name_architecture.md` — every attribute key is checked against `docs/architecture/observability.md` before it is spelled.
@@ -145,7 +145,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** `fleet.delivery` (`rustd/crates/protocol/afd_observability/src/delivery/mod.rs`) — correlation identity on a span, never on a metric. It builds its span with the OpenTelemetry SDK directly; §1 instead reaches the exporter through the `tracing` layer.
+- **Reference:** `fleet.delivery` (`rustd/crates/protocol/af_observability/src/delivery/mod.rs`) — correlation identity on a span, never on a metric. It builds its span with the OpenTelemetry SDK directly; §1 instead reaches the exporter through the `tracing` layer.
 - **Reference:** the runner's `Timeline`/`Segments` and the daemon's `DeliveryStage` — existing stage names, reused.
 - **Reference:** W3C `Server-Timing` (https://www.w3.org/TR/server-timing/) — the browser reads `PerformanceResourceTiming.serverTiming` on a same-origin response.
 - **Reference:** nftables `meta skuid` matching (https://wiki.nftables.org/wiki-nftables/index.php/Matching_packet_metainformation) — admitting a local socket by its owner's user ID, which survives service restarts.
@@ -318,7 +318,7 @@ No metric family is added or changed, and no PostHog event changes, so no analyt
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R0 | Remaining dev sizing and throttle checks (§0.2–§0.3), transferred from M233_001 R0 | `manual_dev_sizes_match_live` and `manual_dev_machines_unthrottled_at_rest` | both pass | P0 | |
-| R1 | Daemon verbs write their reached stages and identity through the real subscriber (§1) | `cargo test -p afd_observability stage_clock` | exit 0 | P0 | |
+| R1 | Daemon verbs write their reached stages and identity through the real subscriber (§1) | `cargo test -p af_observability stage_clock` | exit 0 | P0 | |
 | R2 | Only root-owned host processes can deliver to the collector (§2) | `bash deploy/baremetal/service_test.sh` | exit 0 | P0 | |
 | R3 | Runner spans reach Tempo from the dev host, across a restart (§2) | `manual: TraceQL { span.agentsfleet.event.id = "<probe id>" } in Grafana Tempo` | ≥1 `runner.lease` span | P0 | |
 | R4 | Edge cost reaches the browser on one clock (§3) | `cd ui/packages/app && bun run test steer-route-timing` | exit 0 | P0 | |
@@ -384,7 +384,7 @@ No dead code is removed by the delivery-row change. Shipped authoring cleanup re
   - **One trace per event via W3C `traceparent`:** changes the runner protocol against `observability.md` §Traces.
   - **Extending the `fleet.delivery` span with database timestamps:** one clock, but no runner or edge breakdown.
   - **nftables `socket cgroupv2`:** systemd recreates the runner's cgroup on restart, so the rule goes stale.
-  - **Unix-socket receiver:** the runner's exporter accepts only `http(s)` URLs with a host, so it would need an `afd_otlp` transport change.
+  - **Unix-socket receiver:** the runner's exporter accepts only `http(s)` URLs with a host, so it would need an `af_otlp` transport change.
   - **Receiver credential:** breaks Invariant 3.
   - **Moving dev off `allow_all`:** changes what fleets can reach.
   - **A trace-context column on `fleet.admissions`:** a schema change for a join attributes already provide.

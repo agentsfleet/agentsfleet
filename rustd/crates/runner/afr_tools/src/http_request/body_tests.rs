@@ -1,5 +1,5 @@
-use afr_egress::RESPONSE_MAX_BYTES;
-use afr_egress::testing::inbound;
+use af_egress::RESPONSE_MAX_BYTES;
+use af_egress::testing::inbound;
 
 #[test]
 fn should_omit_a_truncated_body_without_hiding_its_incomplete_status() {

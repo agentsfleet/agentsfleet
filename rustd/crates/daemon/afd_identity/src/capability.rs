@@ -17,11 +17,11 @@ use moka::ops::compute::Op;
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_core::clock::{Clock, after};
 use afd_auth::capability::CapabilitySource;
 use afd_auth::error::Unavailable;
 use afd_auth::principal::Subject;
 use afd_auth::scope::{ScopeSet, parse_claim};
-use afd_core::clock::{Clock, after};
 use jiff::Timestamp;
 
 /// How long a fetched claim is served without asking again.

@@ -1,6 +1,6 @@
 //! Only a complete, current yes/no assessment affects proposals; usage survives refusals.
 
-use afd_wire::{
+use af_wire::{
     authoring::{Proposal, ProposalCall, ProposalRejection},
     decision::{DecisionAnswer, DecisionOutcome, DecisionProfile, DecisionResult, DecisionUsage},
 };

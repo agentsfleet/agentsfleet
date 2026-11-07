@@ -5,7 +5,7 @@
 //! the ways to produce one. A reader asking "what can go wrong here" and a
 //! reader asking "where does this get raised" are looking for different things.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 
 use super::{COLUMN_FLEET, COLUMN_STATUS, Error, ErrorKind, Result};
@@ -15,13 +15,13 @@ use super::{COLUMN_FLEET, COLUMN_STATUS, Error, ErrorKind, Result};
 // `sqlx::Error` is deliberately absent: a statement failure carries WHICH
 // statement, which is context only the call site knows, so it goes through
 // [`query`] instead of a blanket lift.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_vault::Error => Vault,
     afd_admission::Error => Admission,
-    afd_fleet_runtime::Error => ConfigUnreadable,
-    afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Identifier,
+    af_fleet_runtime::Error => ConfigUnreadable,
+    af_crypto::error::Error => Entropy,
+    af_core::error::Error => Identifier,
     afd_outbound::error::Error => Obligation,
 );
 
@@ -91,9 +91,9 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     let vault = afd_vault::SecretName::parse("").expect_err("an empty secret name is refused");
     let config =
-        afd_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");
-    let identifier = afd_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
-    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+        af_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");
+    let identifier = af_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
+    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
     let entropy = entropy
         .uuid_randomness()
@@ -102,7 +102,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         afd_outbound::error::one_of_each_kind()
             .into_iter()
             .partition(|(_label, error)| {
-                error.code() == afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+                error.code() == af_core::error_code::INTERNAL_DB_UNAVAILABLE
             });
     let ledger_outage = ledger_outages
         .pop()
@@ -132,7 +132,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .1;
     let answered = answered
         .into_iter()
-        .find(|(_label, error)| error.code() == afd_core::error_code::INTERNAL_OPERATION_FAILED)
+        .find(|(_label, error)| error.code() == af_core::error_code::INTERNAL_OPERATION_FAILED)
         .expect("afd_admission declares a kind that is opaque rather than an outage")
         .1;
 

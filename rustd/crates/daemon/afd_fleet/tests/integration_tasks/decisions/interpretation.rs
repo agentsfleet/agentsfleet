@@ -1,14 +1,14 @@
 //! Accounted message decisions authorize one immutable native interpretation.
 
-use afd_core::{error_code, etag::sha256_hex};
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::{
+use af_core::{error_code, etag::sha256_hex};
+use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome},
     task::{
         DecisionAssessment, DecisionReceipt, TaskBindingItem, TaskBindingsInput, TaskInputAction,
         TaskProposedItem, TaskRequestedTarget,
     },
 };
+use afd_fleet::task::TaskLifecycle as _;
 
 use super::super::fixture::{Case, exercise};
 use super::{

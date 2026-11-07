@@ -9,13 +9,13 @@
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
-use afd_core::test_util::error_surface::{Expect, grade};
+use af_core::test_util::error_surface::{Expect, grade};
 use std::error::Error as _;
 
 use afd_dragonfly::error::one_of_each_kind;
 
 /// Everything every error surface owes, graded once by
-/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
 /// rendering, no kind repeating its cause, and these measured counts. The
 /// sample count is pinned exactly, so a kind added without a sample fails.
 #[test]
@@ -46,7 +46,7 @@ fn a_cluster_without_connections_is_unavailable_and_keeps_the_driver_cause() {
     assert!(!failure.is_command());
     assert_eq!(
         failure.code(),
-        afd_core::error_code::STARTUP_DRAGONFLY_CONNECT
+        af_core::error_code::STARTUP_DRAGONFLY_CONNECT
     );
     let source = failure
         .source()

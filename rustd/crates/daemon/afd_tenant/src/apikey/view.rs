@@ -1,7 +1,7 @@
 //! Metadata-only API key pages and their cursor boundaries.
 use super::{ApiKeySort, row_unreadable};
 use crate::Result;
-use afd_core::paging::{Boundary, BoundaryKind, Cursor, SortOrder as _};
+use af_core::paging::{Boundary, BoundaryKind, Cursor, SortOrder as _};
 use jiff::Timestamp;
 use sqlx::FromRow as _;
 use sqlx::postgres::PgRow;

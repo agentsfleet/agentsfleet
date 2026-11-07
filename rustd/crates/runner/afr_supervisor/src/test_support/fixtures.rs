@@ -2,7 +2,7 @@
 
 use std::sync::LazyLock;
 
-use afd_wire::lease::LeasePayload;
+use af_wire::lease::LeasePayload;
 
 use crate::test_util::LEASE_JSON;
 

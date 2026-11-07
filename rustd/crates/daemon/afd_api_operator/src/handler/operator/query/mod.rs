@@ -1,18 +1,18 @@
 //! What the operator plane's runner and lease lists read off a query string.
 //!
 //! Every `?limit` here is the keyset lists' [`CEILING`], read through
-//! `afd_validate::Limit`; each list keeps its own sentence. The two filters
+//! `af_validate::Limit`; each list keeps its own sentence. The two filters
 //! with a bound — `?fleet` on leases and the `?event_type` set on runner
 //! events — are garde structs proved before anything reads them.
 
 use std::collections::HashMap;
 
+use af_core::id::Uuid7;
+use af_core::paging::{CEILING, Cursor};
+use af_core::spelling::from_spelling;
+use af_validate::Limit;
 use afd_api_wire::admin::RunnerEventType;
-use afd_core::id::Uuid7;
-use afd_core::paging::{CEILING, Cursor};
-use afd_core::spelling::from_spelling;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
-use afd_validate::Limit;
 use garde::Validate as _;
 use jiff::Timestamp;
 
@@ -184,7 +184,7 @@ fn parse_event_types(
 }
 
 fn optional_instant(raw: Option<&String>) -> Result<Option<Timestamp>, &'static str> {
-    raw.map(|value| afd_wire::instant::parse(value).map_err(|_invalid| DETAIL_BAD_EVENTS))
+    raw.map(|value| af_wire::instant::parse(value).map_err(|_invalid| DETAIL_BAD_EVENTS))
         .transpose()
 }
 

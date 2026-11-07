@@ -2,8 +2,8 @@
 
 use std::ops::Range;
 
-use afd_core::id::Uuid7;
-use afd_wire::task::{TaskContext, TaskLimits, TaskState};
+use af_core::id::Uuid7;
+use af_wire::task::{TaskContext, TaskLimits, TaskState};
 
 /// Bounded recovery of reservations for calls whose credentials were never issued.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -96,7 +96,7 @@ pub struct PreparedTask {
     pub(super) source_span: Range<i32>,
     pub(super) title: String,
     pub(super) objective: String,
-    pub(super) questions: Vec<afd_wire::decision::NamedQuestion>,
+    pub(super) questions: Vec<af_wire::decision::NamedQuestion>,
     pub(super) goal_digest: String,
     pub(super) target_json: String,
     pub(super) limits: TaskLimits,
@@ -109,7 +109,7 @@ pub struct PreparedPlan {
     pub(super) accepted_revision_id: Uuid7,
     pub(super) digest: String,
     pub(super) items: Vec<super::PreparedItem>,
-    pub(super) authorization: Option<afd_wire::task::TaskBindingsInput>,
+    pub(super) authorization: Option<af_wire::task::TaskBindingsInput>,
 }
 
 /// One atomic plan's native item identities in their original order.
@@ -135,7 +135,7 @@ pub struct TaskBinding {
     /// Current generation, without granting execution of another task.
     pub task_generation: Option<u64>,
     /// Native route, without inventing a task for conversational input.
-    pub action: afd_wire::task::TaskInputAction,
+    pub action: af_wire::task::TaskInputAction,
     /// Current execution may apply the accepted item at its next safe boundary.
     pub applies_here: bool,
     /// Per-task accepted input order, absent for a new goal or conversation.
@@ -146,10 +146,10 @@ pub struct TaskBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskSnapshot {
     /// The current native wait's saved exact-head observations.
-    pub dependency: Option<afd_wire::task::TaskDependency>,
+    pub dependency: Option<af_wire::task::TaskDependency>,
     pub(super) dependency_digest: Option<String>,
     /// Latest native publication attempt, including an unconfirmed outcome.
-    pub publication: Option<afd_wire::task::TaskEffect>,
+    pub publication: Option<af_wire::task::TaskEffect>,
     pub(super) publication_digest: Option<String>,
     /// Native state and cumulative usage.
     pub context: TaskContext<'static>,
@@ -165,7 +165,7 @@ impl TaskSnapshot {
     /// Strong resource tag shared by reads and conditional controls.
     #[must_use]
     pub fn etag(&self) -> String {
-        afd_core::etag::compute(&[
+        af_core::etag::compute(&[
             Some(self.context.task_id.as_bytes()),
             Some(&self.resource_version.to_be_bytes()),
             self.dependency_digest.as_deref().map(str::as_bytes),

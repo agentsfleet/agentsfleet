@@ -9,8 +9,8 @@
 
 use std::sync::Arc;
 
+use af_core::error_code;
 use afd_api_wire::health::{Liveness, Readiness};
-use afd_core::error_code;
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};
@@ -110,7 +110,7 @@ pub(super) async fn healthz() -> Response {
         service: SERVICE.into(),
         version: VERSION.into(),
         commit: COMMIT.into(),
-        build_id: afd_core::build::SOURCE_ID.map(Into::into),
+        build_id: af_core::build::SOURCE_ID.map(Into::into),
     })
     .into_response()
 }

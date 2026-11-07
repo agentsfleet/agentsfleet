@@ -1,7 +1,7 @@
 //! Typed task verbs cross the real runner HTTP transport with fenced identities.
 use crate::client::ControlPlane;
-use afd_core::id::Uuid7;
-use afd_wire::task::*;
+use af_core::id::Uuid7;
+use af_wire::task::*;
 use axum::{
     body::Bytes,
     http::{HeaderMap, Method, StatusCode, Uri},

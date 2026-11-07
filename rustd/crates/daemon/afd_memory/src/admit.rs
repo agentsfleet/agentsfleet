@@ -3,7 +3,7 @@
 //! Decided here, before any store is reached, so every store enforces the same
 //! bounds and the same publish grant without restating either.
 
-use afd_wire::memory::{MAX_PUSH_BYTES, MemoryDelta};
+use af_wire::memory::{MAX_PUSH_BYTES, MemoryDelta};
 use garde::Validate as _;
 
 /// The deltas a push may store, and the tallies for those it may not.

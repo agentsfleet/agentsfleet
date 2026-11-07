@@ -2,8 +2,8 @@
 
 use std::borrow::Cow;
 
-use afd_crypto::secret::SecretString;
-use afd_wire::task::{
+use af_crypto::secret::SecretString;
+use af_wire::task::{
     DecisionCallState, DecisionDispatch, DecisionReservationInput, DecisionReservationResult,
 };
 use sqlx::PgConnection;
@@ -97,7 +97,7 @@ async fn issue_on(connection: &mut PgConnection, call: &Call) -> Result<()> {
         .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
         .bind(&call.profile_snapshot.0.profile.model_id)
         .bind(&call.profile_snapshot.0.revision_id)
-        .bind(afd_wire::task::TaskState::Running.as_str())
+        .bind(af_wire::task::TaskState::Running.as_str())
         .bind(crate::lease::sql::RUNNER_STATUS_ACTIVE)
         .fetch_optional(connection)
         .await
@@ -119,6 +119,6 @@ fn encode(call: Call, payload: Payload, key: &SecretString) -> Result<ReservedDe
         }),
     };
     let body =
-        Zeroizing::new(serde_json::to_string(&packet).map_err(afd_core::json::Unreadable::from)?);
+        Zeroizing::new(serde_json::to_string(&packet).map_err(af_core::json::Unreadable::from)?);
     Ok(ReservedDecision { body, issued: true })
 }

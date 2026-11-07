@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use super::super::{EVENT_COMPLETED, EVENT_FAILED};
 use crate::client::{Call, Verb};
@@ -45,7 +45,7 @@ const REPORT_TAKES: Duration = Duration::from_millis(30);
 /// How far the five segments may fall short of the wall.
 const SLACK_MS: u64 = 5;
 
-fn millis(line: &afd_core::test_util::trace::CapturedEvent, field: &str) -> Option<u64> {
+fn millis(line: &af_core::test_util::trace::CapturedEvent, field: &str) -> Option<u64> {
     line.field(field).map(|value| value.parse().unwrap())
 }
 
@@ -233,7 +233,7 @@ async fn test_no_memory_read_on_a_window_lease() {
         FakeAgent::new(Behaviour::Answer),
     );
     let mut windowed = lease(LEASE_ID, FLEET_ID);
-    windowed.memory = Some(afd_wire::memory::MemoryHydrateResponse {
+    windowed.memory = Some(af_wire::memory::MemoryHydrateResponse {
         memory: Vec::new(),
         shared: Vec::new(),
         publish: false,

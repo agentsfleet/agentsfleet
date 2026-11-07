@@ -21,9 +21,9 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
+use af_core::error_code;
+use af_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 use afd_http::handler::Refusal;
-use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -46,7 +46,7 @@ const STATE_RECONNECT_REQUIRED: &str = "reconnect_required";
 /// Mints one short-lived credential for the child behind this runner.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::RUNNER_CREDENTIALS_MINT,
+    path = af_wire::paths::RUNNER_CREDENTIALS_MINT,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_mint_credential",
     summary = "Create a tool credential",

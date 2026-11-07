@@ -4,7 +4,7 @@
 //! installation holds decides which evidence reads are asked for. The
 //! binding's own reach does not bend to it.
 
-use afd_fleet_runtime::config::Access;
+use af_fleet_runtime::config::Access;
 use serde_json::json;
 
 use super::{ScopedRequest, binding, installed, scoped};

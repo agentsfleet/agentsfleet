@@ -95,13 +95,13 @@ fn unusable_platform_rows_emit_their_diagnostic() {
 /// key's bytes.
 #[tokio::test]
 async fn an_unreadable_platform_credential_reason_carries_no_code_prefix() {
-    let capture = afd_core::test_util::trace::Capture::install();
-    let kek = afd_crypto::secret::Kek::from_hex(&"0".repeat(64)).expect("a 32-byte key");
+    let capture = af_core::test_util::trace::Capture::install();
+    let kek = af_crypto::secret::Kek::from_hex(&"0".repeat(64)).expect("a 32-byte key");
     let vault = crate::vault::Vault::new(
         afd_db::test_util::unreachable_db(),
         std::sync::Arc::new(kek),
     );
-    let workspace = afd_core::id::Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011")
+    let workspace = af_core::id::Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011")
         .expect("a fixture identifier");
 
     assert!(

@@ -12,7 +12,7 @@ use crate::{
     error::raise::query,
     types::{DraftState, Review},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 

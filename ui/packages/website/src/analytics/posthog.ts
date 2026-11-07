@@ -16,7 +16,7 @@ type Posthog = typeof import("posthog-js").default;
 
 // Signup *completion* belongs server-side to agentsfleetd
 // (`Telemetry::SignupBootstrapped`,
-// rustd/crates/protocol/afd_observability/src/product/telemetry/mod.rs) — the funnel is
+// rustd/crates/protocol/af_observability/src/product/telemetry/mod.rs) — the funnel is
 // redirect-based, so this origin can
 // never observe it. No completion or lead-capture events exist here by
 // design; see docs/architecture/product_analytics.md.

@@ -12,9 +12,9 @@
 
 use std::time::{Duration, Instant};
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_observability::InviteEmailOutcome;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_observability::InviteEmailOutcome;
 use afd_vault::{SecretName, Vault};
 use lettre::message::Mailbox;
 
@@ -206,7 +206,7 @@ impl<'a> Attempt<'a> {
     }
 
     fn duration_ms(&self) -> u64 {
-        afd_core::clock::saturating_millis(self.began.elapsed())
+        af_core::clock::saturating_millis(self.began.elapsed())
     }
 
     fn completed(&self, reply: u16) -> InviteEmailOutcome {

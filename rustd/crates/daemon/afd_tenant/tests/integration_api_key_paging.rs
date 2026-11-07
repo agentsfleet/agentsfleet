@@ -3,7 +3,7 @@
 //!
 //! The paging VOCABULARY — how a `?sort=`/`?cursor=`/`?limit=` query becomes a
 //! [`Page`], and which comparator each sort order implies — is decided in
-//! `afd_core::paging` and proven there without a datastore. What no unit test
+//! `af_core::paging` and proven there without a datastore. What no unit test
 //! can prove is that the statement those choices assemble actually orders rows
 //! that way in Postgres, because the ordering is the DATABASE's behaviour and
 //! not this crate's.
@@ -25,8 +25,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
-use afd_core::paging::Cursor;
+use af_core::error_code;
+use af_core::paging::Cursor;
 use afd_tenant::apikey::{ApiKeySort, Description, KeyName, KeyRow, MintRequest};
 use jiff::{SignedDuration, Timestamp};
 
@@ -227,7 +227,7 @@ async fn an_account_with_no_keys_lists_an_empty_page() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_mint_for_an_account_with_no_row_is_a_statement_failure() {
     let lane = ApiKeyLane::create().await;
-    let absent = afd_core::id::Uuid7::encode(NOW, [7; afd_core::id::ENTROPY_LEN])
+    let absent = af_core::id::Uuid7::encode(NOW, [7; af_core::id::ENTROPY_LEN])
         .expect("a well-formed identifier");
     let request = MintRequest {
         tenant: &absent,

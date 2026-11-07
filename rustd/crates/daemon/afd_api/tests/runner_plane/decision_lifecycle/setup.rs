@@ -1,13 +1,13 @@
 //! Existing native seeds create only this scenario's owned identities and setup.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_fleet_runtime::test_util::FixtureSetup;
 use afd_db::{
     Db,
     test_util::{
         FleetSeed, ModelSeed, SetupRevision, TenantSeed, WalletSeed, WorkspaceSeed, mint_uuid7,
     },
 };
-use afd_fleet_runtime::test_util::FixtureSetup;
 use serde_json::json;
 
 pub(super) const BALANCE: i64 = 1_000_000_000;

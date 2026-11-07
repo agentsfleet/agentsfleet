@@ -22,10 +22,10 @@
 //! what NARROWS the request, so its absence must never be the permissive
 //! branch.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::Definition;
-use afd_fleet_runtime::config::RepositoryBinding;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
+use af_fleet_runtime::config::RepositoryBinding;
 
 use crate::error::{Result, query};
 use crate::lease::sql;
@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn an_unparsed_scope_config_reason_carries_no_code_prefix() {
-        let log = afd_core::test_util::trace::Capture::install();
+        let log = af_core::test_util::trace::Capture::install();
 
         assert!(binding_of("not a document").is_none());
 

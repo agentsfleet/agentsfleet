@@ -2,8 +2,8 @@
 
 use super::super::{fixture::now, mint};
 use super::fixture::{Case, NO_ADMISSIONS};
+use af_core::id::Uuid7;
 use afd_authoring::types::{DraftState, SaveFleet, Start};
-use afd_core::id::Uuid7;
 
 /// `request` under a new instance name: the draft renamed through a patch on
 /// its current tag, and the review digest re-read for the renamed source.

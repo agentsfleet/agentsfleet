@@ -4,9 +4,9 @@
 //! refusal matrix holds no vault and reaches no relay. The production mailer
 //! answers it directly.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_observability::InviteEmailOutcome;
 use afd_mail::{InviteMailer, InviteSend};
-use afd_observability::InviteEmailOutcome;
 
 /// Sends one invite email and reports what became of it, never failing.
 pub trait InviteMail: Send + Sync + std::fmt::Debug + 'static {

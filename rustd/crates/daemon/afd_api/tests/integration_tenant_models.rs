@@ -30,10 +30,10 @@
 
 use crate::harness;
 
+use af_core::id::Uuid7;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{ApiKeySeed, ModelSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
@@ -243,7 +243,7 @@ async fn a_tenant_with_no_workspace_is_refused_a_registration_naming_it() {
     let body = json_body(refused).await;
     assert_eq!(
         body["error_code"].as_str(),
-        Some(afd_core::error_code::TENANT_NO_PRIMARY_WORKSPACE.as_str()),
+        Some(af_core::error_code::TENANT_NO_PRIMARY_WORKSPACE.as_str()),
         "{status}: {body}"
     );
     fixture.cleanup().await;

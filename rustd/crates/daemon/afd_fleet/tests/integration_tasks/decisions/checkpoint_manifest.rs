@@ -1,12 +1,12 @@
 //! Native manifest validation rejects incomplete or escaping state before publication.
 
-use afd_core::{error_code, etag::sha256_hex};
-use afd_crypto::checkpoint_digest;
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::{
+use af_core::{error_code, etag::sha256_hex};
+use af_crypto::checkpoint_digest;
+use af_wire::task::{
     CheckpointCommitInput, CheckpointEntry, CheckpointFile, CheckpointMode, CheckpointPage,
     CheckpointPageInput,
 };
+use afd_fleet::task::TaskLifecycle as _;
 
 use super::{
     super::fixture::{Case, exercise, id},
@@ -52,8 +52,8 @@ async fn manifest(case: &Case) {
 struct Manifest<'a> {
     tasks: &'a afd_fleet::task::Tasks,
     case: &'a Case,
-    task: &'a afd_wire::task::DecisionTaskVersion,
-    plan: &'a afd_wire::task::CheckpointPlan,
+    task: &'a af_wire::task::DecisionTaskVersion,
+    plan: &'a af_wire::task::CheckpointPlan,
 }
 impl Manifest<'_> {
     fn page_input(&self, contents: CheckpointPage) -> CheckpointPageInput {

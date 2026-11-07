@@ -8,15 +8,15 @@ use crate::{
         TaskScope, Tasks, continuation::Continuation, github::status::Snapshot, guard, transaction,
     },
 };
-use afd_core::clock;
-use afd_wire::task::TaskState;
+use af_core::clock;
+use af_wire::task::TaskState;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{Connection as _, PgConnection, types::Json};
 use std::time::Duration;
 
 pub(super) struct Probe {
     pub owner: Wait,
-    pub claim: afd_core::id::Uuid7,
+    pub claim: af_core::id::Uuid7,
     pub result: Result<Snapshot>,
 }
 
@@ -203,7 +203,7 @@ async fn consume(
         Ok(admitted) => admitted,
         Err(fault)
             if fault.is_over_capacity()
-                || fault.code() == afd_core::error_code::AUTHORING_POLICY =>
+                || fault.code() == af_core::error_code::AUTHORING_POLICY =>
         {
             savepoint
                 .rollback()

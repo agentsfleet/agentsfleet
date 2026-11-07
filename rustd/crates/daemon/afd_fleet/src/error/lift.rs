@@ -13,11 +13,11 @@
 //! with the code and sentence their own plane decided.
 //!
 //! Two foreign types are wrapped in more than one place, and the asymmetry is
-//! deliberate: `afd_core::error::Error` lifts into `Mint` here, while
+//! deliberate: `af_core::error::Error` lifts into `Mint` here, while
 //! `RowMalformed` keeps `#[source]` and its own builder, because a column that
 //! will not parse needs the table and column names a bare conversion cannot
 //! supply — and two lifts for one type is two `From` impls for one pair.
-//! `afd_fleet_runtime::Error` lifts whole into `ConfigUnreadable`: a fleet whose
+//! `af_fleet_runtime::Error` lifts whole into `ConfigUnreadable`: a fleet whose
 //! stored config will not parse must not run under a config this daemon
 //! guessed at, and the parser's own error says which rule the document broke.
 //!
@@ -27,7 +27,7 @@
 
 use super::{Error, ErrorKind};
 
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     object_store::Error => TaskStorage,
     aws_sigv4::http_request::SigningError => TaskStorageSigning,
     aws_sigv4::sign::v4::signing_params::BuildError => TaskStorageSigningParameters,
@@ -35,10 +35,10 @@ afd_core::error_lifts!(Error, ErrorKind:
     reqwest::Error => TaskRemote,
     garde::Report => DecisionRequest,
     tokio::time::error::Elapsed => TaskReadTimeout,
-    afd_core::json::Unreadable => TaskDocument,
+    af_core::json::Unreadable => TaskDocument,
     afd_admission::Error => Admission,
     afd_authoring::Error => Authoring,
-    afd_context::Error => Context,
+    af_context::Error => Context,
     afd_db::Error => Datastore,
     afd_runner::Error => Runner,
     afd_dragonfly::Error => Queue,
@@ -48,8 +48,8 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_memory::Error => Memory,
     afd_events::Error => Events,
     afd_outbound::Error => Outbound,
-    afd_core::error::Error => Mint,
-    afd_fleet_runtime::Error => ConfigUnreadable,
-    afd_crypto::error::Error => Entropy,
-    afr_secrets::Error => Scrub,
+    af_core::error::Error => Mint,
+    af_fleet_runtime::Error => ConfigUnreadable,
+    af_crypto::error::Error => Entropy,
+    af_secrets::Error => Scrub,
 );

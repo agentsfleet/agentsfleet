@@ -22,8 +22,8 @@
 //! an [`Error`](crate::Error), and the posture is applied once, where a reader
 //! can see both halves at once.
 
-use afd_core::id::Uuid7;
-use afd_wire::report::RenewRequest;
+use af_core::id::Uuid7;
+use af_wire::report::RenewRequest;
 use jiff::Timestamp;
 use sqlx::{Connection as _, FromRow as _};
 
@@ -134,7 +134,7 @@ impl Leases {
     pub async fn extend(
         &self,
         lease: Metering<'_>,
-        lease_key: &afd_core::id::Uuid7,
+        lease_key: &af_core::id::Uuid7,
         pricing: &Pricing,
         now: Timestamp,
     ) -> Result<Renewed> {
@@ -286,7 +286,7 @@ impl Plane {
             return Err(crate::error::lease_not_found());
         };
         let lease_key =
-            afd_core::id::Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
+            af_core::id::Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
         let admission = if lease.status == sql::LEASE_STATUS_ACTIVE {
             self.gate_renewal(&lease, &lease_key, lease_id, now).await
         } else {

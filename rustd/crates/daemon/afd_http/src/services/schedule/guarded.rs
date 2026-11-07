@@ -3,7 +3,7 @@
 //! The guard is proved on the write's own transaction (`afd_cron`'s
 //! `store::guarded`), and only a write that landed is reconciled.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::{Change, NewSchedule, Reconciled, Refused, Result as CronResult};
 use afd_db::Precondition;
 use jiff::Timestamp;

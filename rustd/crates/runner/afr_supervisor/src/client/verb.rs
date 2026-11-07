@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 /// The HTTP method a verb is sent with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -12,7 +12,7 @@
               index; the manifest's restriction set is for the daemon"
 )]
 
-use afd_fleet_runtime::config::{Access, Reach, RepositoryBinding};
+use af_fleet_runtime::config::{Access, Reach, RepositoryBinding};
 use jiff::Timestamp;
 use serde_json::json;
 

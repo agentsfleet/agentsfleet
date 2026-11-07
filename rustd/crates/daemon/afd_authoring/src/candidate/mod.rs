@@ -11,8 +11,8 @@ use crate::{
     error::raise::{query, stored},
     types::Candidate,
 };
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::definition::{Definition, POLICY_SEMANTICS, canonical_digest};
+use af_core::id::Uuid7;
+use af_fleet_runtime::definition::{Definition, POLICY_SEMANTICS, canonical_digest};
 use sqlx::PgConnection;
 
 pub(crate) use source::{Captured, resolve};

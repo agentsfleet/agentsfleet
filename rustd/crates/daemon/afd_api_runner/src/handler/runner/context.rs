@@ -4,8 +4,8 @@ use crate::{
     auth::RunnerIdentity,
     services::{Leasing as _, Services},
 };
+use af_wire::context::{ContextLoaded, ContextPath, ContextPut, ContextQuery};
 use afd_http::handler::{Refusal, read_strict_body};
-use afd_wire::context::{ContextLoaded, ContextPath, ContextPut, ContextQuery};
 use axum::{
     Json,
     body::Bytes,
@@ -20,7 +20,7 @@ const SUPERSEDED: &str = "superseded";
 
 /// Load a private checkpoint under the current assignment token.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = afd_wire::paths::LEASE_CONTEXT, tag = afd_http::openapi::tag::RUNNERS,
+    get, path = af_wire::paths::LEASE_CONTEXT, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_load_context_checkpoint", summary = "Load private run working notes",
     description = "Requires the current assignment. Notes belong only to this run branch and are separate from fleet memory.",
     params(ContextPath, ContextQuery),
@@ -62,7 +62,7 @@ pub(crate) async fn load<D: Services>(
 
 /// Replace private notes conditionally; identical retries have one durable effect.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    put, path = afd_wire::paths::LEASE_CONTEXT, tag = afd_http::openapi::tag::RUNNERS,
+    put, path = af_wire::paths::LEASE_CONTEXT, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_put_context_checkpoint", summary = "Replace private run working notes",
     description = "Publishes a complete validated checkpoint under the current assignment and expected generation. Identical retries acknowledge one write; changed assignments or generations return 409 with superseded.",
     params(ContextPath), request_body = ContextPut,
@@ -87,7 +87,7 @@ pub(crate) async fn put<D: Services>(
     let request = garde::Unvalidated::new(request)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let checkpoint: afd_context::Checkpoint = serde_json::from_value(request.checkpoint.clone())
+    let checkpoint: af_context::Checkpoint = serde_json::from_value(request.checkpoint.clone())
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     checkpoint
         .validate_document()
@@ -108,5 +108,5 @@ pub(crate) async fn put<D: Services>(
 }
 
 fn conflict(error: &afd_fleet::Error) -> Option<&'static str> {
-    (error.code() == afd_core::error_code::RUN_STALE_FENCING_TOKEN).then_some(SUPERSEDED)
+    (error.code() == af_core::error_code::RUN_STALE_FENCING_TOKEN).then_some(SUPERSEDED)
 }

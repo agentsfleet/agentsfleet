@@ -98,7 +98,7 @@ async fn test_a_disk_that_cannot_be_mounted_leaves_nothing_behind() {
 #[tokio::test]
 async fn test_a_leftover_that_cannot_be_removed_is_logged() {
     let dir = tempfile::tempdir().unwrap();
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     // A file where the mount point goes is no directory to remove, whoever
     // runs the test.
     fs::write(dir.path().join(WORKSPACE_DIR), "").unwrap();

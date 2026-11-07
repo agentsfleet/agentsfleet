@@ -82,8 +82,8 @@ pub(crate) async fn read<D: Services>(
 
 async fn activity_history<D: Services>(
     services: &D,
-    workspace: &afd_core::id::Uuid7,
-    fleet: &afd_core::id::Uuid7,
+    workspace: &af_core::id::Uuid7,
+    fleet: &af_core::id::Uuid7,
 ) -> Result<Vec<afd_events::EventDetailRow>, Refusal> {
     services
         .events()
@@ -101,7 +101,7 @@ async fn activity_history<D: Services>(
 async fn current<D: Services>(
     services: &D,
     identity: afd_authoring::Access<'_>,
-    fleet: &afd_core::id::Uuid7,
+    fleet: &af_core::id::Uuid7,
 ) -> Result<(afd_authoring::SavedFleet, Vec<afd_cron::Schedule>), Refusal> {
     let saved = services
         .creations()
@@ -142,7 +142,7 @@ fn activity_page(receipts: Vec<afd_events::EventDetailRow>) -> CursorPage<SetupA
 
 fn conversation(
     value: afd_authoring::Conversation,
-) -> Conversation<afd_fleet_runtime::Definition, afd_authoring::types::Review> {
+) -> Conversation<af_fleet_runtime::Definition, afd_authoring::types::Review> {
     Conversation {
         draft: draft::render::draft(value.draft),
         messages: value

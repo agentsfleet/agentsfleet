@@ -5,8 +5,8 @@
     reason = "a test asserts by panicking; the restriction set is for the library"
 )]
 
-use afd_core::error_code::{self, Coded as _};
-use afd_core::test_util::trace::Capture;
+use af_core::error_code::{self, Coded as _};
+use af_core::test_util::trace::Capture;
 
 use super::{
     Created, DELETE_POLL, NOT_REMOVED, PlatformDefault, REMOVAL_PANICKED, Unremoved, remove,
@@ -85,7 +85,7 @@ fn a_leftover_platform_default_reason_carries_no_code_prefix() {
     );
     for (kind, failure) in crate::error::one_of_each_kind() {
         let logged = failure.logged();
-        afd_core::test_util::trace::assert_uncoded(&logged.reason, kind);
+        af_core::test_util::trace::assert_uncoded(&logged.reason, kind);
         assert_eq!(
             unremoved(Ok(Err(failure))),
             Some(Unremoved::Failed(logged)),

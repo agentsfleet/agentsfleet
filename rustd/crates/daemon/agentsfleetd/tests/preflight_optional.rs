@@ -6,8 +6,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
-use afd_core::error_code;
+use af_core::env::MapEnv;
+use af_core::error_code;
 use agentsfleetd::BootFailure;
 use agentsfleetd::preflight::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, Fault, PLATFORM_ADMIN_WORKSPACE_KNOB,

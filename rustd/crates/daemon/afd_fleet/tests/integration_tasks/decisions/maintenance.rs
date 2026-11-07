@@ -2,13 +2,13 @@
 
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_db::test_util::mint_id;
-use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _};
-use afd_wire::task::{
+use af_core::error_code;
+use af_wire::task::{
     DecisionAssessment, DecisionNotSentCause, DecisionReceipt, DecisionReservationInput,
     DecisionUnavailableCause,
 };
+use afd_db::test_util::mint_id;
+use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _};
 use serde_json::Value;
 use sqlx::Connection as _;
 use tokio::time::timeout;
@@ -327,7 +327,7 @@ async fn index_bound(fixture: &Decisions<'_>) {
         .execute(&mut *tx)
         .await
         .expect("inspect index path");
-    for after in [None, Some(afd_core::clock::now())] {
+    for after in [None, Some(af_core::clock::now())] {
         let plan: sqlx::types::Json<Value> = sqlx::query_scalar(STATEMENT)
             .bind(100_i64)
             .bind(after.map(jiff_sqlx::Timestamp::from))

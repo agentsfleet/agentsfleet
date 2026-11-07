@@ -7,16 +7,16 @@
 
 use crate::harness;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{ApiKeySeed, TenantSeed, TestDatabase, mint_id};
 use afd_runner::Runners;
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use http::{Method, StatusCode};
 use jiff::Timestamp;
 use std::borrow::Cow;
@@ -104,7 +104,7 @@ fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("rotate.fixture.test"),
         assigned_policy: AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::DevNone,
             network_policy: NetworkPolicy::AllowAll,

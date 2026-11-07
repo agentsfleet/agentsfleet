@@ -5,8 +5,8 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
+use af_core::error_code;
 use afd_authoring::{Observation, View};
-use afd_core::error_code;
 
 /// Moves the draft's one message to `status`, as a lease or a cutoff does.
 const MESSAGE_STATUS: &str = "UPDATE authoring.messages SET status=$2 WHERE draft_id=$1::uuid";
@@ -15,7 +15,7 @@ const MESSAGE_STATUS: &str = "UPDATE authoring.messages SET status=$2 WHERE draf
 const CLOSE: &str = "UPDATE authoring.drafts SET status='closed', closed_at=now(), \
      expires_at=now()+interval '1 day' WHERE id=$1::uuid";
 
-async fn view(f: &Fixture, draft: &afd_core::id::Uuid7) -> View {
+async fn view(f: &Fixture, draft: &af_core::id::Uuid7) -> View {
     match f
         .drafts
         .observe(f.access(), draft, 0)

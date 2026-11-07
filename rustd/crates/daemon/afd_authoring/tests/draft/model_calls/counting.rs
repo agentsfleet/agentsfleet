@@ -3,8 +3,8 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture},
     compaction, fixture,
 };
+use af_core::error_code;
 use afd_authoring::{ModelCalls, ProviderRequest, ProviderResponse, Transport, types::Source};
-use afd_core::error_code;
 use serde_json::{Value, json};
 use std::error::Error as _;
 use std::sync::{
@@ -234,7 +234,7 @@ async fn mutate(f: &Fixture, attempt: &Attempt, change: Change) {
 }
 
 async fn rotate(f: &Fixture) {
-    let kek = afd_crypto::secret::Kek::from_hex(
+    let kek = af_crypto::secret::Kek::from_hex(
         "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
     )
     .expect("fixture encryption key");
@@ -246,7 +246,7 @@ async fn rotate(f: &Fixture) {
     afd_vault::Vault::new(
         f.db.clone(),
         Arc::new(kek),
-        afd_crypto::entropy::Entropy::new(),
+        af_crypto::entropy::Entropy::new(),
     )
     .replace(
         &f.workspace,

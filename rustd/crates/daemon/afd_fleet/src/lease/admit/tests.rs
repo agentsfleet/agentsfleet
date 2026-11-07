@@ -7,7 +7,7 @@
 )]
 
 use super::{Declined, Refusal, Transient, payer_gate, unowned_workspace};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 /// A workspace identifier. Its VALUE is immaterial here — `unowned_workspace`
 /// reads it only to name the workspace in the line it logs.
@@ -28,7 +28,7 @@ fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
     assert_eq!(
         decided,
         Declined::Refuse(Refusal::labelled(
-            afd_core::event::label::TENANT_RESOLVE_FAILED
+            af_core::event::label::TENANT_RESOLVE_FAILED
         )),
         "an unowned workspace must end the event, not leave it leasable"
     );
@@ -44,7 +44,7 @@ fn a_workspace_that_resolves_to_no_tenant_is_refused_terminally() {
 /// one would make these refusals invisible among every other ended event.
 #[test]
 fn the_refusal_carries_the_stored_failure_label() {
-    let expected = Refusal::labelled(afd_core::event::label::TENANT_RESOLVE_FAILED);
+    let expected = Refusal::labelled(af_core::event::label::TENANT_RESOLVE_FAILED);
 
     assert_eq!(unowned_workspace(&workspace()), Declined::Refuse(expected));
     assert!(!expected.label.is_empty(), "{:?}", expected.label);
@@ -70,7 +70,7 @@ fn an_unowned_payer_is_declined_as_a_refusal() {
     assert_eq!(
         judged,
         Err(Declined::Refuse(Refusal::labelled(
-            afd_core::event::label::TENANT_RESOLVE_FAILED
+            af_core::event::label::TENANT_RESOLVE_FAILED
         )))
     );
 }
@@ -94,9 +94,9 @@ fn an_unread_payer_retries_under_the_payer_gate() {
 #[cfg(feature = "test-util")]
 async fn decided_on_a_dead_ledger(
     posture: afd_billing::rates::Posture,
-) -> (super::Admission, afd_core::test_util::trace::Capture) {
-    use afd_core::test_util::trace::Capture;
-    use afd_fleet_runtime::FleetConfig;
+) -> (super::Admission, af_core::test_util::trace::Capture) {
+    use af_core::test_util::trace::Capture;
+    use af_fleet_runtime::FleetConfig;
 
     use super::{Request, money_gates};
     use crate::lease::test_dead;
@@ -136,7 +136,7 @@ async fn decided_on_a_dead_ledger(
 #[cfg(feature = "test-util")]
 fn assert_read_gates_fail_open_and_admit(
     decided: &super::Admission,
-    log: &afd_core::test_util::trace::Capture,
+    log: &af_core::test_util::trace::Capture,
 ) {
     assert!(
         matches!(decided, super::Admission::Admit(_)),
@@ -146,7 +146,7 @@ fn assert_read_gates_fail_open_and_admit(
         let line = log.only(event).fields;
         assert_eq!(
             line.get("error_code").map(String::as_str),
-            Some(afd_core::error_code::INTERNAL_DB_QUERY.as_str()),
+            Some(af_core::error_code::INTERNAL_DB_QUERY.as_str()),
             "{event} names the registry code"
         );
         let reason = line.get("reason").map_or("", String::as_str);

@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use afd_wire::tool_detail::{DETAIL_POST_MAX_BYTES, ToolCallRecordsRequest, ToolCallRecordsStored};
+use af_wire::tool_detail::{DETAIL_POST_MAX_BYTES, ToolCallRecordsRequest, ToolCallRecordsStored};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -36,7 +36,7 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
 /// Keeps each finished call's full arguments and output.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::LEASE_TOOL_CALLS,
+    path = af_wire::paths::LEASE_TOOL_CALLS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_record_tool_calls",
     summary = "Save full tool call output",
@@ -76,7 +76,7 @@ pub(crate) async fn handle<D: Services>(
         return refusal.into_response();
     }
     if body.len() > DETAIL_POST_MAX_BYTES {
-        return reject(afd_core::error_code::PAYLOAD_TOO_LARGE, DETAIL_TOO_LARGE);
+        return reject(af_core::error_code::PAYLOAD_TOO_LARGE, DETAIL_TOO_LARGE);
     }
     // Borrowed out of `body`: every record's output goes straight into a column.
     let Ok(request) = afd_http::handler::read_body::<ToolCallRecordsRequest<'_>>(&body) else {
@@ -94,7 +94,7 @@ pub(crate) async fn handle<D: Services>(
 
 #[cfg(test)]
 mod tests {
-    use afd_wire::tool_detail::DETAIL_POST_MAX_BYTES;
+    use af_wire::tool_detail::DETAIL_POST_MAX_BYTES;
 
     use super::DETAIL_TOO_LARGE;
 

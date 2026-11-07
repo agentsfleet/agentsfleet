@@ -61,13 +61,13 @@ pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<
             .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
             .bind(runner)
             .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
+            .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
             .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
             .bind(Vec::<String>::new())
             .bind(None::<&str>)
-            .bind(afd_wire::task::CAPABILITY)
-            .bind(afd_wire::task::TaskState::Ready.as_str())
-            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(af_wire::task::CAPABILITY)
+            .bind(af_wire::task::TaskState::Ready.as_str())
+            .bind(af_wire::task::TaskState::Running.as_str())
             .bind(afd_fleet::task::DECISION_POLICY_PATH)
             .fetch_all(&mut *connection)
             .await?;
@@ -124,13 +124,13 @@ pub(super) async fn postgres_at_population(
             // How long a silent holder binds, and the status a holder must be in to
             // bind at all: the lease path's own binds for the hold condition. The
             // instant they compare against is the statement's own clock.
-            .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
+            .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
             .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
             .bind(Vec::<String>::new())
             .bind(None::<&str>)
-            .bind(afd_wire::task::CAPABILITY)
-            .bind(afd_wire::task::TaskState::Ready.as_str())
-            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(af_wire::task::CAPABILITY)
+            .bind(af_wire::task::TaskState::Ready.as_str())
+            .bind(af_wire::task::TaskState::Running.as_str())
             .bind(afd_fleet::task::DECISION_POLICY_PATH)
             .fetch_all(&mut *connection)
             .await?;

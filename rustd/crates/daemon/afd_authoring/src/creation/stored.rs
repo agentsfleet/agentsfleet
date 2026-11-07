@@ -7,8 +7,8 @@ use crate::{
     review,
     types::{Candidate, InitialStart},
 };
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::Definition;
+use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 

@@ -1,7 +1,7 @@
 //! Validate replacements against the current persisted protocol settings.
 
-use afd_core::catalogue::{Metadata, Price};
-use afd_wire::{decision::DecisionConfiguration, inference::ModelInference};
+use af_core::catalogue::{Metadata, Price};
+use af_wire::{decision::DecisionConfiguration, inference::ModelInference};
 use sqlx::types::Json;
 
 use crate::{ModelUpdate, Result};
@@ -51,10 +51,10 @@ pub(crate) fn validate(
     }
     if let Some(inference) = inference {
         let context = u32::try_from(metadata.context_cap_tokens).unwrap_or_default();
-        afd_inference::Configured::new(inference, context)?;
+        af_inference::Configured::new(inference, context)?;
     }
     if let Some(configuration) = decision {
-        afd_inference::validate_decision(configuration).map_err(crate::error::decision_settings)?;
+        af_inference::validate_decision(configuration).map_err(crate::error::decision_settings)?;
     }
     Ok(())
 }

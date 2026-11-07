@@ -7,8 +7,8 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_mail::test_util::{FakeRelay, Session};
 use afd_tenant::team::{EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT};

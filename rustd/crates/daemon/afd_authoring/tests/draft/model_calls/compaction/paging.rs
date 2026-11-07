@@ -60,7 +60,7 @@ async fn an_older_runner_cannot_pay_for_a_summary_it_cannot_resume() {
         .await
         .expect_err("the runner must opt in before a summary can be funded");
 
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_TOKEN);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_TOKEN);
     assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
     assert!(provider.0.lock().expect("record requests").is_empty());
     assert_eq!(financial_state(&f).await, before);
@@ -105,7 +105,7 @@ async fn a_summary_receipt_cannot_be_replayed_without_the_original_runner_capabi
         .call(&f.runner, &attempt.lease, downgraded)
         .await
         .expect_err("a changed capability is not the original request");
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_REPLAY);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_REPLAY);
     assert_eq!(financial_state(&f).await, before);
     let replayed = calls
         .call(&f.runner, &attempt.lease, request)

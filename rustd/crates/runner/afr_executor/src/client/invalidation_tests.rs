@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use afd_core::error_code;
+use af_core::error_code;
 use futures_util::FutureExt as _;
 use serde_json::Value;
 use tokio::io::AsyncBufReadExt as _;

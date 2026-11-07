@@ -4,9 +4,9 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
+use af_core::error_code;
+use af_wire::inference::{InferenceApi, ModelInference};
 use afd_authoring::types::{ModelPurpose, ModelsQuery};
-use afd_core::error_code;
-use afd_wire::inference::{InferenceApi, ModelInference};
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]

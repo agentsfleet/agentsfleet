@@ -9,10 +9,10 @@ use afr_agent::Meter;
 use std::fs;
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_wire::report::FailureClass;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_wire::report::FailureClass;
 use bytes::Bytes;
 
 use super::{Delivery, ReportSpool};

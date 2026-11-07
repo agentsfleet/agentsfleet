@@ -11,7 +11,7 @@
 
 use std::time::Duration;
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::test_util::TestDatabase;

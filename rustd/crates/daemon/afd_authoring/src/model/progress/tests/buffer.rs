@@ -6,7 +6,7 @@
 )]
 
 use super::super::{CAPACITY, DELTA_BYTES, Delta, Preview, TextKind};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use tokio::sync::mpsc;
 
 #[test]

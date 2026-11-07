@@ -9,7 +9,7 @@
 
 use std::sync::atomic::Ordering;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_executor::Unavailable;
 use afr_tools::catalog::GIT;
 use tokio_util::sync::CancellationToken;
@@ -135,7 +135,7 @@ async fn a_repository_that_will_not_check_out_leaves_the_run_without_it() {
     assert_eq!(failed.field("repository"), Some(REPOSITORY));
     assert_eq!(
         failed.field("error_code"),
-        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
     assert!(
         failed

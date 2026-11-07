@@ -94,7 +94,7 @@ environment before activating a model.
 An existing connection is preserved when an API update omits `inference`.
 Saving metadata alone does not supply credentials or select a default.
 
-Implementation references: `rustd/crates/protocol/afd_wire/src/inference.rs`,
+Implementation references: `rustd/crates/protocol/af_wire/src/inference.rs`,
 `rustd/crates/daemon/afd_api_wire/src/admin_catalogue.rs`, and
 `ui/packages/app/app/(dashboard)/admin/models/components/EditModelDialog.tsx`.
 

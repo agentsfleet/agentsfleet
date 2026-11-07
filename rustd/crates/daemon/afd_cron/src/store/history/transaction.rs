@@ -1,6 +1,6 @@
 //! Parent scope precedes child writes and receipt foreign-key checks.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_events::activity::Announcement;
 use sqlx::{Postgres, Transaction};
 

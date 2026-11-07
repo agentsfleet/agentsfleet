@@ -56,7 +56,7 @@ async fn insert(lane: &EventsLane, event_id: &str, resumes: Option<&str>) -> boo
         .bind("continuation")
         .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(resumes)
-        .bind(afd_core::event::status::RECEIVED)
+        .bind(af_core::event::status::RECEIVED)
         .fetch_one(&mut *connection)
         .await
         .expect("the narrative insert must run")
@@ -219,7 +219,7 @@ async fn the_row_id_is_minted_by_postgres_and_stable_across_arms() {
     let first = inserted_id(&lane, &event).await;
     let again = inserted_id(&lane, &event).await;
 
-    let minted = afd_core::id::Uuid7::parse(&first);
+    let minted = af_core::id::Uuid7::parse(&first);
     assert!(
         minted.is_ok(),
         "the database minted a version-7 id: {first}"
@@ -241,7 +241,7 @@ async fn inserted_id(lane: &EventsLane, event_id: &str) -> String {
         .bind("continuation")
         .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(None::<&str>)
-        .bind(afd_core::event::status::RECEIVED)
+        .bind(af_core::event::status::RECEIVED)
         .fetch_one(&mut *connection)
         .await
         .expect("the narrative insert must run")

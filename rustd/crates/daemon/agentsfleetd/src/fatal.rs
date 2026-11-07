@@ -33,14 +33,16 @@ use std::error::Error;
 
 use crate::tty::{BOLD, CYAN, DIM, RED, Rendering};
 
-/// The crate-name fragments that make a stack frame ours.
+/// The crate-name prefixes that make a stack frame ours.
 ///
-/// The Ruby took one string (`by='nilavu'`); this workspace ships a binary and
-/// eight libraries, and every one of them shares the `afd_` prefix by
-/// convention — so two fragments cover the tree and nothing else.
-const OURS: [&str; 2] = ["agentsfleetd", "afd_"];
+/// The Ruby took one string (`by='nilavu'`). The daemon links its own crates
+/// (`afd_`) and the shared ones (`af_`), so a frame is ours when one of its
+/// words starts with either, or is the binary's name.
+const OURS: [&str; 3] = ["agentsfleetd", "afd_", "af_"];
 /// Where a frame's path turns into a crate name.
 const CRATES_SEGMENT: &str = "/crates/";
+/// The layer folders a crate sits in under `crates/` (`rustd/Cargo.toml`).
+const LAYERS: [&str; 5] = ["foundation", "protocol", "harness", "runner", "daemon"];
 
 /// The bomb, kept verbatim from the Ruby because it earned its place.
 const BOMB: &str = r"       ,--.!,
@@ -119,15 +121,26 @@ fn ours_only(backtrace: &str) -> Vec<String> {
     backtrace
         .lines()
         .map(str::trim)
-        .filter(|line| OURS.iter().any(|ours| line.contains(ours)))
+        .filter(|line| is_ours(line))
         .map(crate_relative)
         .collect()
 }
 
-/// The part of a frame a reader navigates by: from the crate directory on.
+/// Whether a word of `line` names one of our crates. Words, not substrings:
+/// `leaf_node` is not `af_`.
+fn is_ours(line: &str) -> bool {
+    line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .any(|word| OURS.iter().any(|ours| word.starts_with(ours)))
+}
+
+/// The part of a frame a reader navigates by: from the crate directory on,
+/// past its layer folder.
 fn crate_relative(line: &str) -> String {
     match line.rsplit_once(CRATES_SEGMENT) {
-        Some((_, within)) => within.to_owned(),
+        Some((_, within)) => match within.split_once('/') {
+            Some((layer, krate)) if LAYERS.contains(&layer) => krate.to_owned(),
+            _ => within.to_owned(),
+        },
         None => line.rsplit('/').next().unwrap_or(line).to_owned(),
     }
 }

@@ -53,7 +53,7 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     let Admission::Refuse(refusal) = decided else {
         panic!("a tenant in debt must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, afd_core::event::label::BALANCE_EXHAUSTED);
+    assert_eq!(refusal.label, af_core::event::label::BALANCE_EXHAUSTED);
 
     fixtures.seed_wallet(&tenant, DEBT_NANOS).await;
     let decided = money_gates(

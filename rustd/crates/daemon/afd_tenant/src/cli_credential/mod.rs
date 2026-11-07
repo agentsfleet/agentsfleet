@@ -45,9 +45,9 @@
 mod machine;
 mod record;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_auth::credential::CredentialKind;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::constraint::violates_unique;
 use jiff::Timestamp;

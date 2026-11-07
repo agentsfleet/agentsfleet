@@ -3,12 +3,12 @@
 use super::cursor::{Cursor, Position, Scope};
 use super::input::Input;
 use crate::handler::Refusal;
+use af_core::error_code;
 use afd_api_wire::billing as wire;
 use afd_billing::report::{
     self as store, BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, dimension,
 };
 use afd_billing::sql::work;
-use afd_core::error_code;
 use std::borrow::Cow;
 
 const DETAIL_STORED: &str = "The billing report could not be completed";

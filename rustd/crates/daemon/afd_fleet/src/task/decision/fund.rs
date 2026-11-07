@@ -2,13 +2,13 @@
 
 use std::time::Duration;
 
+use af_crypto::secret::SecretString;
+use af_wire::task::DecisionReservationInput;
 use afd_billing::{
     Accounts, Nanos, Posture,
     biller::{Account, Ask, Funds, WorkKey},
     rates::Estimate,
 };
-use afd_crypto::secret::SecretString;
-use afd_wire::task::DecisionReservationInput;
 use sqlx::PgConnection;
 
 use super::{
@@ -119,7 +119,7 @@ async fn proposed_on(connection: &mut PgConnection, lease: TaskLease<'_>) -> Res
         posture,
         &current.provider,
         &current.model,
-        afd_core::clock::now(),
+        af_core::clock::now(),
     )
     .await?;
     let Estimate::Priced(headroom) = estimate else {
@@ -143,8 +143,8 @@ fn refused(lease: TaskLease<'_>, reason: &'static str) -> crate::Error {
 
 async fn key(
     tasks: &Tasks,
-    admin: &afd_core::id::Uuid7,
-    api: afd_wire::decision::DecisionApi,
+    admin: &af_core::id::Uuid7,
+    api: af_wire::decision::DecisionApi,
 ) -> Result<SecretString> {
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let result = async {

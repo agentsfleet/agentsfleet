@@ -8,9 +8,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::error_code;
 use afd_billing::biller::RecordingBiller;
 use afd_billing::ledger::{resettle, unsettled};
-use afd_core::error_code;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};

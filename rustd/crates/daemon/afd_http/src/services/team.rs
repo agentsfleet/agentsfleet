@@ -4,7 +4,7 @@
 //! prove the refusal matrix in front of these handlers with no datastore. The
 //! production store answers it directly.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_tenant::team::{
     Accepted, EmailAttempt, EmailStatus, Invitation, Invitee, Member, NewInvite, Removal, Team,
     Waiting,

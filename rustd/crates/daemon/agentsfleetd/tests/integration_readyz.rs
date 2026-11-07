@@ -36,8 +36,8 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
+use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use afd_api::router::Dependencies as _;
-use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::Dragonfly;

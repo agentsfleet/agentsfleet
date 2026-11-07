@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::credentials::MintCredentialResponse;
-use afd_wire::lease::LeasePayload;
+use af_core::test_util::trace::Capture;
+use af_wire::credentials::MintCredentialResponse;
+use af_wire::lease::LeasePayload;
 use afr_telemetry::labels::SandboxBuild;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 

@@ -2,7 +2,7 @@
 //!
 //! [`super::endpoint`] hands over a [`Host`] the URL parser already resolved,
 //! so an IP literal arrives as an address and a name arrives as a name. The
-//! ranges themselves are [`afd_core::net::is_blocked`]'s, the predicate the
+//! ranges themselves are [`af_core::net::is_blocked`]'s, the predicate the
 //! runner applies to every address a name resolves to before it dials, so the
 //! control-plane verdict and the data-plane enforcement cannot disagree.
 //!
@@ -19,8 +19,8 @@ use url::Host;
 /// answers `false`.
 pub(super) fn is_blocked(host: &Host<&str>) -> bool {
     match host {
-        Host::Ipv4(address) => afd_core::net::is_blocked(IpAddr::V4(*address)),
-        Host::Ipv6(address) => afd_core::net::is_blocked(IpAddr::V6(*address)),
+        Host::Ipv4(address) => af_core::net::is_blocked(IpAddr::V4(*address)),
+        Host::Ipv6(address) => af_core::net::is_blocked(IpAddr::V6(*address)),
         Host::Domain(_name) => false,
     }
 }
@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn test_parsed_literals_reach_the_shared_ranges() {
-        // The ranges are `afd_core::net`'s suite; this pins that both literal
+        // The ranges are `af_core::net`'s suite; this pins that both literal
         // forms the URL parser produces are handed to it, brackets stripped.
         for blocked in ["169.254.169.254", "[::1]", "[::ffff:10.0.0.1]"] {
             assert!(blocks(blocked), "{blocked} must be blocked");

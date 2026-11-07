@@ -4,7 +4,7 @@ use super::{
     super::{json_body, mint, send_with_headers},
     fixture::Case,
 };
-use afd_core::error_code;
+use af_core::error_code;
 use http::{Method, StatusCode, header};
 
 #[tokio::test]

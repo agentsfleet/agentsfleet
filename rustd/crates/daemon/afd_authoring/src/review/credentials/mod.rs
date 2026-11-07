@@ -85,7 +85,7 @@ async fn grant(
             draft
                 .linked_fleet_id
                 .as_ref()
-                .map(afd_core::id::Uuid7::as_str),
+                .map(af_core::id::Uuid7::as_str),
         )
         .bind(service)
         .fetch_optional(connection)

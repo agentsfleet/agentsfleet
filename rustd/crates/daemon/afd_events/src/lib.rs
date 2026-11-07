@@ -26,7 +26,7 @@
 //!
 //! # The column vocabulary is lower still
 //!
-//! `status` and `failure_reason` spellings live in [`afd_wire::event`], not
+//! `status` and `failure_reason` spellings live in [`af_wire::event`], not
 //! here, because they cross the wire — an events listing renders both. This
 //! crate reads them from there like everybody else, which is what stops a row
 //! one plane writes from being one another cannot recognise.

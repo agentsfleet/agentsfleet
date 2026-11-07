@@ -45,18 +45,18 @@ mod vendor;
 
 use std::sync::Arc;
 
+use af_core::env::{EnvSource, ProcessEnv};
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::entropy::Entropy;
+use af_crypto::envelope::Sealer;
+use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::app::PlatformApp;
 use afd_connector::connect::{Connectors, Started, Starting};
 use afd_connector::exchange::Exchange;
 use afd_connector::grant::Grants;
 use afd_connector::provider::Provider;
 use afd_connector::{Finishing, Landed};
-use afd_core::env::{EnvSource, ProcessEnv};
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::envelope::Sealer;
-use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
@@ -130,7 +130,7 @@ impl Round {
         reason = "the fake vendor listens on loopback; a test client needs neither a deadline nor a proxy rule"
     )]
     async fn over(lane: TestDatabase, vendor: &FakeAtlassian) -> Self {
-        afd_core::test_util::trace::install_subscriber();
+        af_core::test_util::trace::install_subscriber();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
         let admin = mint_id();
@@ -247,7 +247,7 @@ async fn insert_secret(
     database: &Db,
     workspace: &str,
     name: &str,
-    sealed: &afd_crypto::envelope::Envelope,
+    sealed: &af_crypto::envelope::Envelope,
 ) {
     let mut connection = database.acquire().await.expect("a pooled connection");
     sqlx::query(

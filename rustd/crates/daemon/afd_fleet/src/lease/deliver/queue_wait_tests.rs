@@ -22,14 +22,14 @@ fn acquired(kind: Kind, redelivered: bool) -> Acquired {
 
 /// The lease's write, [`WAITED`] after the admission.
 fn issued() -> Timestamp {
-    afd_core::clock::after(AT, WAITED)
+    af_core::clock::after(AT, WAITED)
 }
 
 #[test]
 fn test_a_new_read_logs_its_wait() {
     assert_eq!(
         of(&acquired(Kind::Fresh, false), issued()),
-        Some(afd_core::clock::saturating_millis(WAITED))
+        Some(af_core::clock::saturating_millis(WAITED))
     );
 }
 
@@ -50,7 +50,7 @@ fn test_a_redelivered_entry_logs_no_wait() {
 /// wait, so it reads as none rather than less than none.
 #[test]
 fn test_clock_skew_never_logs_a_negative_wait() {
-    let before_admission = afd_core::clock::before(AT, Duration::from_millis(10));
+    let before_admission = af_core::clock::before(AT, Duration::from_millis(10));
 
     assert_eq!(of(&acquired(Kind::Fresh, false), before_admission), Some(0));
 }

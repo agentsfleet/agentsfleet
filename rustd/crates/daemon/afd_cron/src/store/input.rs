@@ -1,7 +1,7 @@
 //! Schedule intent and fire-target values shared by the store operations.
 
 use crate::model::{DesiredStatus, Source};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 /// What a schedule is created from.
 ///

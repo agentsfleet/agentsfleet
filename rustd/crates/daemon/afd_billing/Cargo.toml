@@ -18,23 +18,23 @@ workspace = true
 # The clock a window opens against, and the registry codes.
 # The charges cursor is base64url on the wire.
 base64.workspace = true
-afd_core.workspace = true
+af_core.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # The random half of a ledger row's UUIDv7.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # A fleet's declared budget and dollar ceilings, as its config spells them.
-afd_fleet_runtime.workspace = true
+af_fleet_runtime.workspace = true
 # The usage line a runner reports, which the rater prices.
-afd_wire.workspace = true
+af_wire.workspace = true
 # The billing families: every reservation and settlement is counted where the
 # biller is called, the one place both products and the sweeper pass through.
-afd_observability.workspace = true
+af_observability.workspace = true
 # `Biller` is held as `Arc<dyn Biller>`, and its methods are async.
 async-trait.workspace = true
 # Only the conformance suite races two reservations on one task.
 futures-util = { workspace = true, optional = true }
-# A month window is a CALENDAR question — `afd_core::clock` is the instant type
+# A month window is a CALENDAR question — `af_core::clock` is the instant type
 # and the clock source, and carries no calendar. Same division the events
 # crate's `since=` draws.
 jiff.workspace = true
@@ -50,7 +50,7 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util", "dep:futures-util"]
+test-util = ["af_core/test-util", "afd_db/test-util", "dep:futures-util"]
 
 [dev-dependencies]
 serde_json.workspace = true

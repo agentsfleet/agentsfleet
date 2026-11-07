@@ -8,7 +8,7 @@
 //! for, WHAT secret its signature is checked against, and — after the wall says
 //! yes — putting the result on the stream exactly once.
 //!
-//! It verifies nothing. `afd_webhook` owns every byte of that, and this crate
+//! It verifies nothing. `af_webhook` owns every byte of that, and this crate
 //! does not depend on it beyond naming a [`Scheme`] a binding resolves to. The
 //! split matters because the wall is provable with no datastore at all, and
 //! folding a Postgres read into it would take that property away.
@@ -21,7 +21,7 @@
 //!
 //! That crate owns the same table's reads and the steer's append, and it is the
 //! obvious home until you count what would come with this: `afd_vault` drags
-//! AES-GCM, and `afd_fleet_runtime` drags a whole document reader. Both would
+//! AES-GCM, and `af_fleet_runtime` drags a whole document reader. Both would
 //! then sit behind every history page the dashboard asks for. It is the same
 //! argument `afd_vault` makes for not living inside `afd_fleet`, applied one
 //! table over.
@@ -39,7 +39,7 @@
 //!   Ingress::signing_secret vault → the shared secret, or None
 //!      │                    None ⇒ Refusal::Unconfigured ⇒ UZ-WH-020
 //!      ▼
-//!   Scheme::verify_at       `afd_webhook`, constant-time  (NOT this crate)
+//!   Scheme::verify_at       `af_webhook`, constant-time  (NOT this crate)
 //!      │
 //!      ▼
 //!   Ingress::deliver        claim + XADD, atomically, at most once
@@ -64,9 +64,9 @@ pub mod slack;
 pub mod error;
 pub mod sql;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_vault::Vault;
 

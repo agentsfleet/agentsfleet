@@ -38,7 +38,7 @@ use self::harness::json_body;
 use crate::webhook_qstash_route::{
     BODY, CURRENT_KEY, FireClaims, HEADER_SCHEDULE, HEADER_SIGNATURE, fire, mint,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::DesiredStatus;
 use afd_fleet_lifecycle::FleetStatus;
 use http::StatusCode;

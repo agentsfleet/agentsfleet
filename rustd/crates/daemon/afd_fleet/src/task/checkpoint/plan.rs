@@ -15,8 +15,8 @@ use crate::{
         transaction,
     },
 };
-use afd_core::clock;
-use afd_wire::task::{CheckpointMode, CheckpointPlan, CheckpointPlanInput};
+use af_core::clock;
+use af_wire::task::{CheckpointMode, CheckpointPlan, CheckpointPlanInput};
 use sqlx::{PgConnection, types::Json};
 
 #[derive(sqlx::FromRow)]
@@ -125,7 +125,7 @@ pub(in crate::task) async fn create(
 }
 
 fn request_digest(input: &CheckpointPlanInput) -> Result<String> {
-    Ok(afd_core::etag::sha256_hex(
+    Ok(af_core::etag::sha256_hex(
         &serde_json::to_vec(&(
             &input.task,
             &input.operation_id,
@@ -139,7 +139,7 @@ fn request_digest(input: &CheckpointPlanInput) -> Result<String> {
             input.logical_bytes,
             input.entry_count,
         ))
-        .map_err(afd_core::json::Unreadable::from)?,
+        .map_err(af_core::json::Unreadable::from)?,
     ))
 }
 
@@ -151,7 +151,7 @@ async fn allocate(
     owned: &execution::Owned,
     digest: &str,
     repository_target: (String, Option<String>),
-) -> Result<afd_core::id::Uuid7> {
+) -> Result<af_core::id::Uuid7> {
     let (repository, commit) = repository_target;
     let mut pages = (0..input.page_count)
         .map(|_page| {
@@ -249,7 +249,7 @@ async fn target(
         return Ok((format!("api:{fleet}"), None));
     }
     let target: BoundPr =
-        serde_json::from_value(target).map_err(afd_core::json::Unreadable::from)?;
+        serde_json::from_value(target).map_err(af_core::json::Unreadable::from)?;
     if commit != Some(target.head.as_str()) {
         return Err(TaskRefusal::InvalidTarget.into());
     }

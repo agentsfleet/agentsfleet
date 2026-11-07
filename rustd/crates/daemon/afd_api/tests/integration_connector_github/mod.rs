@@ -34,8 +34,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use af_core::error_code;
 use afd_connector::Provider;
-use afd_core::error_code;
 use http::StatusCode;
 use serde_json::Value;
 
@@ -97,7 +97,7 @@ static MINTED_INSTALLATIONS: AtomicU64 = AtomicU64::new(0);
 fn fresh_installation() -> String {
     #[expect(
         clippy::disallowed_methods,
-        reason = "a pre-epoch host reads as zero here; afd_core::clock::now would read it as negative and put a minus sign in the id"
+        reason = "a pre-epoch host reads as zero here; af_core::clock::now would read it as negative and put a minus sign in the id"
     )]
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

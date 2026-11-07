@@ -131,7 +131,7 @@ pub(crate) enum ErrorKind {
     /// the census names the row it rejected, and stringifying here would drop
     /// that from the chain a reader walks.
     #[error("the lease instrument would not install")]
-    InstrumentUnavailable { source: afd_observability::Error },
+    InstrumentUnavailable { source: af_observability::Error },
 
     #[error("the lease counters would not be collected")]
     InstrumentUnflushable {
@@ -211,7 +211,7 @@ pub(crate) enum ErrorKind {
     PlatformDefaultHeld { provider: &'static str },
 
     #[error("the drain's platform credential would not seal")]
-    CredentialUnsealable { source: afd_crypto::error::Error },
+    CredentialUnsealable { source: af_crypto::error::Error },
 
     #[error("the vault would not store the drain's platform credential")]
     CredentialUnstorable { source: afd_vault::Error },
@@ -222,7 +222,7 @@ pub(crate) enum ErrorKind {
     /// A fixture identifier the id type refused. The seed spells every one
     /// schema-legal by construction, so this is a seed defect, not an input.
     #[error("a bench fixture identifier is not a canonical UUIDv7")]
-    IdentifierRefused { source: afd_core::error::Error },
+    IdentifierRefused { source: af_core::error::Error },
 
     /// The ceiling is sized for the widest rung and every rung joins its
     /// streams before the next opens, so a refusal means a stream outlived its

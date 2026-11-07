@@ -8,7 +8,7 @@ use crate::{
     model, sql,
     types::{Draft, DraftState, PinColumns, Publication, SourcePin},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 

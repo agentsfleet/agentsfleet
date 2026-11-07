@@ -11,8 +11,8 @@
 
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_tenant::error::InviteConflict;
 use afd_tenant::sql::invite::{INSERT_INVITE, MARK_ACCEPTED, REVOKE_INVITE};

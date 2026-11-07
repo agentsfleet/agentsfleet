@@ -1,7 +1,7 @@
 //! External service returns verified reused objects and authenticates complete manifests.
 use super::{Config, TASK, wire};
 use crate::run::expect;
-use afd_wire::task::{
+use af_wire::task::{
     CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointCommitInput, CheckpointMode,
     CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput, CheckpointObjectsPage,
     CheckpointPage, CheckpointPageInput, CheckpointPin, CheckpointPlaintext, CheckpointPlan,
@@ -155,7 +155,7 @@ impl Archive {
             "page accepted task version",
         )?;
         expect(
-            input.digest == afd_core::etag::sha256_hex(&serde_json::to_vec(&input.contents)?),
+            input.digest == af_core::etag::sha256_hex(&serde_json::to_vec(&input.contents)?),
             "page digest matches content",
         )?;
         self.pages.insert(id.to_owned(), input.contents.clone());

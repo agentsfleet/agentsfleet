@@ -1,8 +1,8 @@
 //! What a credential lookup says when the pool gives it no connection.
 
+use af_core::test_util::trace::Capture;
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory as _, Digest};
-use afd_core::test_util::trace::Capture;
 
 use super::Credentials;
 use crate::error::Unavailable;
@@ -24,7 +24,7 @@ async fn an_unavailable_credential_lookup_reason_carries_no_code_prefix() {
     assert_eq!(logged.field("error_code"), Some("UZ-INTERNAL-001"));
     assert_eq!(
         logged.field("cause_error_code"),
-        Some(afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
+        Some(af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
         "the refused acquire's own code rides `cause_error_code`"
     );
 }

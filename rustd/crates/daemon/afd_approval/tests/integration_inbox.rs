@@ -167,7 +167,7 @@ async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
         .page(&theirs.workspace, Filter::default(), None, 1)
         .await
         .expect("the queue read must not fault");
-    let gate = afd_core::id::Uuid7::parse(&their_gate.first().expect("one seeded gate").gate_id)
+    let gate = af_core::id::Uuid7::parse(&their_gate.first().expect("one seeded gate").gate_id)
         .expect("a gate id parses");
 
     let found = mine

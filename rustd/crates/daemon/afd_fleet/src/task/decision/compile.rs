@@ -1,9 +1,9 @@
 //! Translate accepted owner text once; native aliases never rewrite its criteria.
 
-use afd_fleet_runtime::config::decision::{
+use af_fleet_runtime::config::decision::{
     ASSOCIATION_CRITERIA, DecisionPolicy, NOUL_CRITERIA, Question,
 };
-use afd_wire::decision::{ChoiceOption, DecisionQuestion, NamedQuestion, NoulCriteria};
+use af_wire::decision::{ChoiceOption, DecisionQuestion, NamedQuestion, NoulCriteria};
 
 use super::prepare::Candidate;
 use crate::{Result, task::TaskRefusal};

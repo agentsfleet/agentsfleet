@@ -25,9 +25,9 @@
 mod rows;
 
 use crate::error::{Result, Unavailable};
+use af_core::error_code::{self, Coded as _, Logged};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest};
-use afd_core::error_code::{self, Coded as _, Logged};
 use afd_db::Db;
 use sqlx::FromRow;
 use sqlx::postgres::PgRow;

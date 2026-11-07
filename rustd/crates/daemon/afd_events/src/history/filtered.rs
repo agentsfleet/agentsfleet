@@ -2,7 +2,7 @@
 
 use super::{Cursor, EventDetailRow, History, THREAD_MAX_LIMIT};
 use crate::{Result, error};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 
 impl History {

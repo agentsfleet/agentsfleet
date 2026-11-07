@@ -14,7 +14,7 @@ pub mod lock;
 
 use std::collections::BTreeSet;
 
-use afd_core::error_code;
+use af_core::error_code;
 use sqlx::Postgres;
 use sqlx::migrate::MigrateError;
 use sqlx::pool::PoolConnection;

@@ -5,7 +5,7 @@
 //! The caller supplies `fresh`, which answers a new payer funded with exactly
 //! [`BALANCE`], so each check starts from a clean account.
 
-use afd_wire::usage::UsageLine;
+use af_wire::usage::UsageLine;
 use jiff::Timestamp;
 
 use super::{Account, Ask, Attribution, Biller, Funds, Receipt, Settlement, WorkKey};

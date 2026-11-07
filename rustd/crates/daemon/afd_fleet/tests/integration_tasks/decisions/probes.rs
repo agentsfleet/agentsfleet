@@ -1,7 +1,7 @@
 //! Complete native resource and financial observations shared by scenarios.
 
+use af_wire::task::DecisionTaskVersion;
 use afd_fleet::task::{TaskLifecycle as _, TaskSnapshot};
-use afd_wire::task::DecisionTaskVersion;
 
 use super::{super::fixture::id, fixture::Decisions};
 

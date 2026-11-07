@@ -9,8 +9,8 @@
 use super::*;
 
 use crate::e2e::EVENT_TYPE;
+use af_wire::runner::AssignedPolicy;
 use afd_runner::{RunnerEdit, Runners};
-use afd_wire::runner::AssignedPolicy;
 use std::borrow::Cow;
 
 /// The label enrolment gave the scenario's runner (`e2e_seed::enrolment`).
@@ -37,9 +37,9 @@ async fn edit_labels(run: &Scenario, labels: &[&str]) {
     };
     let stored = Runners::new(
         run.booted.database.clone(),
-        afd_crypto::entropy::Entropy::new(),
+        af_crypto::entropy::Entropy::new(),
     )
-    .edit(&run.runner_id, edit, afd_core::clock::now())
+    .edit(&run.runner_id, edit, af_core::clock::now())
     .await
     .expect("an operator may edit a live runner's labels");
     assert_eq!(stored.labels.as_deref(), Some(labels.as_slice()));

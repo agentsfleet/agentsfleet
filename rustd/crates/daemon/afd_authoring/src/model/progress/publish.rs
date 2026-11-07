@@ -3,7 +3,7 @@
 use super::trace::Trace;
 use super::{CAPACITY, Delta, Piece, Preview, TextKind, draft_channel};
 use crate::{Drafts, error::raise::query, lease::guard};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_dragonfly::FleetStreams;
 use sqlx::Connection as _;
 use std::time::Duration;
@@ -68,7 +68,7 @@ impl Worker {
                 }
                 Err(_) => {
                     self.trace
-                        .failed(afd_core::error_code::INTERNAL_OPERATION_FAILED, "deadline");
+                        .failed(af_core::error_code::INTERNAL_OPERATION_FAILED, "deadline");
                     return;
                 }
             }

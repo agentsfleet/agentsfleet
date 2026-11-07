@@ -1,11 +1,11 @@
 //! The runner presents a lease capability, never a provider key or destination.
 
 use crate::{auth::RunnerIdentity, services::Services};
-use afd_authoring::ModelCallInput;
-use afd_core::id::Uuid7;
-use afd_http::handler::{Refusal, authoring_refusal};
+use af_core::id::Uuid7;
 #[cfg(feature = "openapi")]
-use afd_wire::authoring::{ModelCall, ModelResult};
+use af_wire::authoring::{ModelCall, ModelResult};
+use afd_authoring::ModelCallInput;
+use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{
     Json,
     body::Bytes,
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 /// Invokes the fixed provider only after a scoped durable dispatch reservation.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = afd_wire::paths::AUTHORING_MODEL_CALLS,
+    post, path = af_wire::paths::AUTHORING_MODEL_CALLS,
     tag = afd_http::openapi::tag::RUNNERS, operation_id = "runner_call_authoring_model",
     summary = "Call the model for private setup", request_body = ModelCall,
     params(afd_http::openapi::path::Lease),
@@ -38,7 +38,7 @@ pub(crate) async fn handle<D: Services>(
 ) -> Result<Response, Refusal> {
     let lease =
         Uuid7::parse(&lease).map_err(|_invalid| Refusal::malformed("lease_id must be a UUIDv7"))?;
-    let request: ModelCallInput = afd_core::json::object_from_slice(&body)
+    let request: ModelCallInput = af_core::json::object_from_slice(&body)
         .map_err(|_invalid| Refusal::malformed("Invalid authoring model-call body"))?;
     let result = services
         .authoring_models()

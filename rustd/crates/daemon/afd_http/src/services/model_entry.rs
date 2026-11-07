@@ -28,7 +28,7 @@
 //! authenticated tenant and the requested limit, so only the handler can make
 //! that comparison — the store is handed the boundary it already trusts.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
 use afd_credential::provider::{Added, Boundary, Providers, RegistryPage, Removed, Retargeted};
 use jiff::Timestamp;

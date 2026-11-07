@@ -1,7 +1,7 @@
 //! Child summaries stay private; root progress carries no generated notes.
 
-use afd_context::{Compaction, Progress};
-use afd_wire::{
+use af_context::{Compaction, Progress};
+use af_wire::{
     activity::ActivityFrame,
     context::{ContextProgress, ContextState},
 };
@@ -68,7 +68,7 @@ mod tests {
 
     fn task() -> Compaction {
         Compaction {
-            identity: afd_context::Identity {
+            identity: af_context::Identity {
                 scope: "private-branch".into(),
                 model: "model".into(),
                 pinned: "pinned".into(),

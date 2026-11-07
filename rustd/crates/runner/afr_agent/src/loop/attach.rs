@@ -3,7 +3,7 @@
 //! The tool crate and the provider crate each name the four kinds the wires
 //! take; the loop is where the two meet, so it is where one becomes the other.
 
-use afr_providers::{ImageInput, ImageKind};
+use af_providers::{ImageInput, ImageKind};
 use afr_tools::sandbox::{ImageAttachment, ImageKind as Attached};
 
 /// `attached` as the provider seam carries it.

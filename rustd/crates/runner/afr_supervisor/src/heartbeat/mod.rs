@@ -5,10 +5,10 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_core::limits::WorkerCount;
-use afd_core::timing::HEARTBEAT_INTERVAL;
-use afd_wire::runner::{
+use af_core::id::Uuid7;
+use af_core::limits::WorkerCount;
+use af_core::timing::HEARTBEAT_INTERVAL;
+use af_wire::runner::{
     HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets, NetworkPolicy, SandboxTier,
 };
 use afr_sandbox::HostProbe;
@@ -314,7 +314,7 @@ impl<'a> Heartbeat<'a> {
 /// Logs a fleet the daemon named for release that is no fleet id, under the
 /// code the runner gives any identifier it cannot read. No hold is released:
 /// nothing names one.
-fn unreadable_release(named: &str, failure: afd_core::error::Error) {
+fn unreadable_release(named: &str, failure: af_core::error::Error) {
     let reason = failure.told();
     let error_code = crate::Error::from(failure).code().as_str();
     let fleet_id = named;

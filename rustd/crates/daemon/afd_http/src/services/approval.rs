@@ -10,10 +10,10 @@
 //! The handler maps the path's `approve` / `deny` segment onto the two an
 //! operator can write, so there is no third spelling for a caller to invent.
 
+use af_core::id::Uuid7;
 use afd_approval::{
     Cursor, Decision, Filter, GateRow, Inbox, Resolution, Result as ApprovalResult,
 };
-use afd_core::id::Uuid7;
 
 /// Everything the approval routes act through.
 pub trait WorkspaceApprovals: Send + Sync + std::fmt::Debug + 'static {

@@ -29,9 +29,9 @@ pub mod parse;
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_vault::{SecretBody, SecretName, Vault};
 use jiff::Timestamp;

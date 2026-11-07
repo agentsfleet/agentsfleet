@@ -9,9 +9,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afr_egress::REQUEST_TIMEOUT;
-use afr_egress::redirect::{Chain, Stop};
-use afr_egress::{Draft, Error, Inbound, Refusal, Transport};
+use af_egress::REQUEST_TIMEOUT;
+use af_egress::redirect::{Chain, Stop};
+use af_egress::{Draft, Error, Inbound, Refusal, Transport};
 
 use crate::catalog::Entry;
 use crate::error::Result;
@@ -81,7 +81,7 @@ pub(crate) async fn send_get(
 
 fn read_expired(entry: &Entry, lease_id: &str) -> ToolOutput {
     let tool = entry.name();
-    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = READ_DEADLINE_EXCEEDED;
     tracing::warn!(
         event = "http_read_deadline_exceeded",

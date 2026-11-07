@@ -23,8 +23,8 @@
 //! Splitting the halves across two modules would put one HTTP call's data in
 //! two places whose only relationship is that they are always read together.
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use jiff::Timestamp;
 

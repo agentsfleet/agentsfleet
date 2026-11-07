@@ -1,7 +1,7 @@
 //! What an agent engine refuses, and what it reports.
 //!
 //! One error type with `pub type Result<T, E = Error>` beside it, under the
-//! `afd_core::error_shell!` hull every `rustd` crate carries: the boxed kind
+//! `af_core::error_shell!` hull every `rustd` crate carries: the boxed kind
 //! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
 //! the `[CODE]` rendering and the self-skipping `source()` are generated.
 //!
@@ -13,11 +13,11 @@
 //! log line says which failure it was. Minting a `UZ-RUN-*` code would publish
 //! it in `public/openapi.json` for a condition no client can observe.
 
-use afd_core::error_code::{self, Coded, ErrorCode};
+use af_core::error_code::{self, Coded, ErrorCode};
 
 mod raise;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An agent-engine failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -50,13 +50,13 @@ pub(crate) enum ErrorKind {
     #[error("task cryptographic operation failed")]
     TaskCrypto {
         #[from]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
     /// The existing context owner could not prepare complete evidence.
     #[error("task evidence context is unavailable")]
     TaskContext {
         #[from]
-        source: afd_context::Error,
+        source: af_context::Error,
     },
     /// A mid-run memory checkpoint was not written.
     #[error("a mid-run memory checkpoint was not written")]
@@ -84,7 +84,7 @@ pub(crate) enum ErrorKind {
     Provider {
         /// The provider's failure.
         #[from]
-        source: afr_providers::Error,
+        source: af_providers::Error,
     },
 
     /// The secret scrub could not be built over the run's secret values.
@@ -92,7 +92,7 @@ pub(crate) enum ErrorKind {
     Scrub {
         /// The scrub's refusal.
         #[from]
-        source: afr_secrets::Error,
+        source: af_secrets::Error,
     },
 
     /// The catalog refused the lease's tools.

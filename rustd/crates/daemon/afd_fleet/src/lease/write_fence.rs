@@ -9,7 +9,7 @@
 
 use std::pin::Pin;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::Precondition;
 use sqlx::PgConnection;
 

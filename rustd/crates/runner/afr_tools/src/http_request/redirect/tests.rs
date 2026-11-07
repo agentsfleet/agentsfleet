@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use afr_egress::fixture::{GITHUB, GRAFANA};
-use afr_egress::testing::{RecordingTransport, inbound, redirected};
-use afr_egress::{Outbound, Transport};
+use af_egress::fixture::{GITHUB, GRAFANA};
+use af_egress::testing::{RecordingTransport, inbound, redirected};
+use af_egress::{Outbound, Transport};
 use serde_json::json;
 
 use super::HttpRequest;
@@ -184,14 +184,14 @@ struct Never;
 
 #[async_trait::async_trait]
 impl Transport for Never {
-    async fn send(&self, _request: Outbound) -> afr_egress::Result<afr_egress::Inbound> {
+    async fn send(&self, _request: Outbound) -> af_egress::Result<af_egress::Inbound> {
         std::future::pending().await
     }
 }
 
 #[tokio::test(start_paused = true)]
 async fn should_bound_the_whole_http_read_deadline() {
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let run = Run::new(true);
     let tool = Typed::boxed(HttpRequest::new(Arc::new(Never)));
     let lease = run.lease();
@@ -205,7 +205,7 @@ async fn should_bound_the_whole_http_read_deadline() {
     assert_eq!(failed.field("lease_id"), Some(lease.lease_id));
     assert_eq!(
         failed.field("error_code"),
-        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
 }
 
@@ -213,7 +213,7 @@ async fn should_bound_the_whole_http_read_deadline() {
 async fn should_follow_mixed_case_get_and_mask_success_and_error_echoes() {
     const TARGET: &str = "https://demo-grafana.internal/download?sig=a*b~c&job=9";
     for (method, status) in [("get", 200), ("Get", 403), ("GET", 500)] {
-        let capture = afd_core::test_util::trace::Capture::install();
+        let capture = af_core::test_util::trace::Capture::install();
         let run = Run::new(true);
         let (transport, sent) = RecordingTransport::answering(move |request| {
             if request.host() == GITHUB {
@@ -299,7 +299,7 @@ struct SlowHops;
 
 #[async_trait::async_trait]
 impl Transport for SlowHops {
-    async fn send(&self, outbound: Outbound) -> afr_egress::Result<afr_egress::Inbound> {
+    async fn send(&self, outbound: Outbound) -> af_egress::Result<af_egress::Inbound> {
         tokio::time::sleep(std::time::Duration::from_secs(20)).await;
         Ok(redirected(
             302,
@@ -317,5 +317,5 @@ async fn should_share_one_deadline_across_redirect_hops() {
     let output = call(tool.as_ref(), &run.lease(), json!({"url": INITIAL})).await;
     assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
     assert!(output.text.contains("deadline exceeded"));
-    assert_eq!(began.elapsed(), afr_egress::REQUEST_TIMEOUT);
+    assert_eq!(began.elapsed(), af_egress::REQUEST_TIMEOUT);
 }

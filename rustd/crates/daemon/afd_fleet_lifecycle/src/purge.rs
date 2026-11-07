@@ -34,7 +34,7 @@
 //! window: it carries no foreign key, so a late retry finds its resource gone
 //! rather than creating it again (slot 1980).
 //!
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_state::sql::LEASE_STATUS_ACTIVE;
 
 use crate::error::{self, ErrorKind, Result};
@@ -104,7 +104,7 @@ async fn guard(
         .await
         .map_err(error::query(CONTEXT_PROBE))?
         .ok_or(ErrorKind::NotFound)?;
-    let current = afd_core::etag::versioned(fleet, locked.resource_version);
+    let current = af_core::etag::versioned(fleet, locked.resource_version);
     if expected != current {
         return Err(error::source_stale(current));
     }

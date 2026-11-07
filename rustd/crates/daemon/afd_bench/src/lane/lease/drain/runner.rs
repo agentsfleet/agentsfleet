@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use afd_core::clock;
-use afd_core::id::Uuid7;
+use af_core::clock;
+use af_core::id::Uuid7;
+use af_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
+use af_wire::lease::{LeasePayload, LeaseResponse};
+use af_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_fleet::lease::Plane;
-use afd_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
-use afd_wire::lease::{LeasePayload, LeaseResponse};
-use afd_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
 
 use super::burst::Pickups;
 use super::turn::Turn;
@@ -123,7 +123,7 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
     shared.abort.record(true);
     let response: LeaseResponse<'_> =
         serde_json::from_str(&answer).map_err(|source| ErrorKind::LeaseUnreadable { source })?;
-    let Some(afd_wire::lease::TaggedLease::Fleet(lease)) = response.lease else {
+    let Some(af_wire::lease::TaggedLease::Fleet(lease)) = response.lease else {
         return Ok(());
     };
     tally.leased += 1;
@@ -151,7 +151,7 @@ async fn run_turn(
 ) -> Result<()> {
     for _renewal in 0..turn.renewals {
         let request = RenewRequest {
-            requests: afd_wire::usage::RequestLines::default(),
+            requests: af_wire::usage::RequestLines::default(),
         };
         plane
             .renew(runner, &lease.lease_id, request, clock::now())
@@ -204,7 +204,7 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed(RESPONSE),
         tokens: 0,
-        requests: afd_wire::usage::RequestLines::default(),
+        requests: af_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: 0,

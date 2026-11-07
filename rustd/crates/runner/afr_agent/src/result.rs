@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::report::FailureClass;
+use af_wire::report::FailureClass;
 
 /// A clean finish. Empty by construction: the run's numbers live on the result
 /// itself, shared by both verdicts.

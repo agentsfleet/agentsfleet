@@ -22,8 +22,8 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_core::id::Uuid7;
 use afd_dragonfly::hub::Received;
 use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
 use afd_dragonfly::{Subscription, SubscriptionHub};
@@ -222,7 +222,7 @@ async fn a_parked_event_moves_no_budget() {
     .expect("status is text");
     assert_eq!(
         status,
-        afd_core::event::status::RECEIVED,
+        af_core::event::status::RECEIVED,
         "the parked row is still open — a retry, not a settled charge"
     );
 }

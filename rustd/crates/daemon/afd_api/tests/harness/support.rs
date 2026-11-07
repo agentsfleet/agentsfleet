@@ -4,11 +4,11 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::mock::MockDirectory;
-use afd_core::env::{EnvSource as _, ProcessEnv};
-use afd_core::id::Uuid7;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use axum::Router;
@@ -237,8 +237,8 @@ pub(crate) async fn assert_reached_the_verb(response: Response, case: &str) {
         (status, code.as_str(), detail.as_str()),
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
-            afd_core::error::DETAIL_DATABASE_UNAVAILABLE,
+            af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
+            af_core::error::DETAIL_DATABASE_UNAVAILABLE,
         ),
         "{case}: only the verb answers with the datastore's refusal"
     );

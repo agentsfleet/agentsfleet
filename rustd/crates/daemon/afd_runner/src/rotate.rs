@@ -1,7 +1,7 @@
 //! Atomic runner credential rotation.
 
+use af_core::id::Uuid7;
 use afd_api_wire::admin::AdminState;
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::admin::state_wire;

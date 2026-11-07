@@ -19,9 +19,9 @@
 //! that question is settled.
 
 use crate::gate::store::{Gates, key};
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::config::AnomalyRule;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_fleet_runtime::config::AnomalyRule;
 
 /// A repetition crossed its threshold.
 const EVENT_AUTO_KILL: &str = "gate_anomaly_auto_kill";

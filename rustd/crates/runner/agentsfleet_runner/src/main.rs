@@ -20,8 +20,8 @@ mod host;
 
 use std::process::ExitCode;
 
-use afd_core::env::{EnvSource, ProcessEnv};
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::env::{EnvSource, ProcessEnv};
+use af_core::error_code::{Coded as _, Logged};
 use afr_supervisor::StorageHome;
 use afr_telemetry::{Endpoint, SpanLayer, Telemetry};
 use tokio_util::sync::CancellationToken;
@@ -231,7 +231,7 @@ async fn serve(
     let stopping = tokio::spawn({
         let shutdown = shutdown.clone();
         async move {
-            afd_core::signal::shutdown().await;
+            af_core::signal::shutdown().await;
             shutdown.cancel();
         }
     });
@@ -262,7 +262,7 @@ async fn serve(
 /// through `main`, so the toolbox is still unmounted on the way out.
 async fn forced(shutdown: &CancellationToken) {
     shutdown.cancelled().await;
-    afd_core::signal::shutdown().await;
+    af_core::signal::shutdown().await;
 }
 
 /// Installs [`subscriber`] for the process, writing records to stderr.
@@ -293,7 +293,7 @@ where
 /// The level the environment names, with the model library's own lines held
 /// to its warnings, so no level puts a model's raw reply in the journal.
 fn log_filter(env: &impl EnvSource) -> Targets {
-    afr_providers::log_filter(afd_core::env::log_level(env, DEFAULT_LEVEL))
+    af_providers::log_filter(af_core::env::log_level(env, DEFAULT_LEVEL))
 }
 
 #[cfg(test)]

@@ -11,8 +11,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
-use afd_core::test_util::trace::Capture;
+use af_core::env::MapEnv;
+use af_core::test_util::trace::Capture;
 use afd_db::{Db, DbRole, PoolConfig};
 use afd_events::{fleet_counters, fleet_counters_best_effort};
 
@@ -90,7 +90,7 @@ async fn a_statement_the_database_refuses_reports_the_query() {
     let error = fleet_counters(&database, "not-a-fleet-id")
         .await
         .expect_err("the cast refuses the id");
-    assert_eq!(error.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert!(!error.is_pool_unavailable(), "{error:?}");
     assert_eq!(
         fleet_counters_best_effort(&database, "not-a-fleet-id").await,

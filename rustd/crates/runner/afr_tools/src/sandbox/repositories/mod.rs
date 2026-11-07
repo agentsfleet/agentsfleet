@@ -4,8 +4,8 @@
 //! where they are, and the `git` tool runs in the one it finds: all three ask
 //! this module, so they cannot disagree about a lease.
 
-use afd_validate::rules::{charset, not_relative};
-use afd_wire::policy::ExecutionPolicy;
+use af_validate::rules::{charset, not_relative};
+use af_wire::policy::ExecutionPolicy;
 use garde::Validate as _;
 
 use crate::catalog;

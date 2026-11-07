@@ -10,7 +10,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_tenant::session::Fingerprint;
 use afd_tenant::session::input::{Code, Opening};
 

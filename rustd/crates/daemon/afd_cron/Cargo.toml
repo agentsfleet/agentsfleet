@@ -18,7 +18,7 @@ categories.workspace = true
 # which needs the same seam in the crates whose errors this one wraps — most of
 # these kinds cannot be provoked on demand, and a pool does not exhaust itself
 # politely.
-test-util = ["afd_admission/test-util", "afd_core/test-util", "afd_db/test-util"]
+test-util = ["afd_admission/test-util", "af_core/test-util", "afd_db/test-util"]
 
 [dependencies]
 # Where a verified fire is accepted before anything is queued. Its unique
@@ -27,15 +27,15 @@ afd_admission.workspace = true
 afd_events.workspace = true
 afd_dragonfly.workspace = true
 # Identifiers, the instant a row is stamped with, and the registry codes.
-afd_core.workspace = true
-afd_observability.workspace = true
+af_core.workspace = true
+af_observability.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # Where a new schedule's identifier comes from — see `store::Schedules::mint`.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # The event type and stream field names a fire is appended under.
 afd_api_wire.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 # A refusal sentence names the bound it enforces, derived from the constant.
 const_format.workspace = true
 # Resolving a zone name against the system timezone database, so a schedule
@@ -45,7 +45,7 @@ jiff.workspace = true
 # and a one-off's fire instant binds through it.
 jiff-sqlx.workspace = true
 # The constant-time comparison a body claim is checked with — the same
-# primitive `afd_crypto::mac` compares a tag through (RULE CTM).
+# primitive `af_crypto::mac` compares a tag through (RULE CTM).
 subtle.workspace = true
 # Parsing the deployment url a callback destination is built from, so a query
 # or fragment is found by a parser rather than by a substring search.
@@ -72,7 +72,7 @@ tracing.workspace = true
 # A schedule's fields are bounded on `validate::Fields` before the parser and
 # the timezone lookup read them; the report maps back to `Invalid` through a
 # path table.
-afd_validate.workspace = true
+af_validate.workspace = true
 garde.workspace = true
 # The cron grammar. Zero dependencies, std-only. This crate PARSES; `validate`
 # adds only the three refusals recorded in the spec's Prior-Art table for
@@ -100,7 +100,7 @@ sha2.workspace = true
 tokio = { workspace = true, features = ["net", "test-util"] }
 # The `tracing` capture `integration_fire.rs` reads the fire's log line back
 # through.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

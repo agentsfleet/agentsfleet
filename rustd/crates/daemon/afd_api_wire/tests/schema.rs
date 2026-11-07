@@ -24,10 +24,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::{policy, runner};
 use afd_api_wire::ingress::{AppIngressAnswer, IdentityAnswer};
 use afd_api_wire::preference::PreferencesResponse;
 use afd_api_wire::secret::{StoreSecretRequest, StoredSecretResponse};
-use afd_wire::{policy, runner};
 use utoipa::{PartialSchema, ToSchema};
 
 /// The schema `T` emits, as JSON a test can read field by field.

@@ -7,8 +7,8 @@ use crate::{
         store::Leases,
     },
 };
-use afd_core::id::Uuid7;
-use afd_observability::{metrics::label::fleet::RunStart, producers};
+use af_core::id::Uuid7;
+use af_observability::{metrics::label::fleet::RunStart, producers};
 
 mod ledger;
 

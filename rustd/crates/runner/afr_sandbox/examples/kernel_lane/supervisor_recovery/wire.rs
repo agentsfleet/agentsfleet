@@ -1,6 +1,6 @@
 //! Schema-valid external native decisions and task descriptions for kernel callers.
 use super::{Config, TASK};
-use afd_wire::{
+use af_wire::{
     decision::{
         ChoiceOption, DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionPurpose,
         DecisionQuestion, DecisionRequest, DecisionResult, DecisionUsage, NamedQuestion,
@@ -16,7 +16,7 @@ use garde::Validate as _;
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 pub(super) fn deadline() -> jiff::Timestamp {
-    afd_core::clock::after(afd_core::clock::now(), std::time::Duration::from_mins(5))
+    af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(5))
 }
 pub(super) fn assignment() -> Result<DecisionAssignment, Failed> {
     let threshold = json!({"probability_bps":9000,"confidence_bps":9000});

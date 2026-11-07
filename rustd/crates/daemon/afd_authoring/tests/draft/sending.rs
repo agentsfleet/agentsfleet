@@ -6,12 +6,12 @@ use super::{
     mint,
     window::{message_id, send},
 };
-use afd_authoring::types::{DraftState, MessageQuery};
-use afd_core::{
+use af_core::{
     error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY, AUTHORING_STATE},
     id::Uuid7,
     paging::Cursor,
 };
+use afd_authoring::types::{DraftState, MessageQuery};
 use sqlx::{Postgres, Transaction};
 use std::time::Duration;
 

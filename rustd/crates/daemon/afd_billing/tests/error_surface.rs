@@ -90,7 +90,7 @@ fn every_code_is_one_the_registry_declares() {
     let mut seen = BTreeSet::new();
     for (label, error) in one_of_each_kind() {
         assert!(
-            afd_core::error_code::REGISTRY.contains(&error.code()),
+            af_core::error_code::REGISTRY.contains(&error.code()),
             "{label} reports {} which is not in the registry",
             error.code().as_str()
         );

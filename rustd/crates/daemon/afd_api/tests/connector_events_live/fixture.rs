@@ -14,8 +14,8 @@
 //! `UZ-WH-020` deliberately — which is exactly why a test has to be able to
 //! build the first one.
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};

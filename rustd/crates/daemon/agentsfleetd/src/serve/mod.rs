@@ -35,11 +35,11 @@ pub use test_util::boot_with_connector_boundary;
 
 use std::net::SocketAddr;
 
+use af_core::env::EnvSource;
+use af_observability::{Analytics, Telemetry};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Services as _};
-use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
-use afd_observability::{Analytics, Telemetry};
 
 pub use self::accept::Acceptor;
 #[cfg(feature = "test-util")]

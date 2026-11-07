@@ -10,8 +10,8 @@ use super::{
     github_server::Server,
     publication_refusal,
 };
+use af_wire::task::{CheckpointMode, DecisionTaskVersion, TaskReport, TaskState};
 use afd_fleet::task::{TaskLifecycle as _, Tasks};
-use afd_wire::task::{CheckpointMode, DecisionTaskVersion, TaskReport, TaskState};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -139,7 +139,7 @@ async fn settle(
     let report = report_settlement::request(case, Some(semantic));
     let mut plane = case.held.fixtures.plane();
     plane.task_reports = Some(Arc::new(tasks.clone()));
-    let now = afd_core::clock::after(case.held.now, crate::report_seed::SLICE);
+    let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     plane
         .report(&case.held.runner, &report, now)
         .await

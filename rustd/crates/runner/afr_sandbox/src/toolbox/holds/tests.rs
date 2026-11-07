@@ -9,7 +9,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use crate::error::ToolboxRefusal;
 use crate::toolbox::testing::{Signer, facts, manifest_bytes, open};

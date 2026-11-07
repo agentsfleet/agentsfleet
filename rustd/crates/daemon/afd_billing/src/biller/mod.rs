@@ -13,7 +13,7 @@
 //! money from it. `settle` is idempotent on each line's `(work, seq)`, so a
 //! retried or repeated relay pass never charges twice.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::price::RatedLine;

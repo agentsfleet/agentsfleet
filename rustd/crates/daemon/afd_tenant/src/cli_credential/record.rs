@@ -1,8 +1,8 @@
 //! The records the credential verbs take and answer: who a subject is, what a
 //! mint needs, and what a mint or a revoke hands back.
 
+use af_core::id::Uuid7;
 use afd_auth::minted::Minted;
-use afd_core::id::Uuid7;
 
 use super::MachineName;
 

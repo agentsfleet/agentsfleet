@@ -9,7 +9,7 @@
 
 use std::time::Instant;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use super::Plane;
@@ -93,7 +93,7 @@ mod tests {
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
 
-    use afd_core::test_util::trace::Capture;
+    use af_core::test_util::trace::Capture;
 
     use crate::lease::affinity::EVENT_CLAIM_RELEASE_FAILED;
     use crate::lease::test_dead;

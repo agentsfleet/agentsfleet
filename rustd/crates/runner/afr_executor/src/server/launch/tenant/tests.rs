@@ -11,7 +11,7 @@ use std::os::fd::OwnedFd;
 use std::path::Path;
 use std::sync::Arc;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use rustix::io::FdFlags;
 use tokio::sync::mpsc;
 use tracing::Level;

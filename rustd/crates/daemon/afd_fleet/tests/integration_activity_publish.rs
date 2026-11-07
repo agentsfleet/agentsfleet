@@ -33,12 +33,12 @@
 use crate::report_seed;
 use std::borrow::Cow;
 
-use afd_core::error_code;
-use afd_core::event::label;
+use af_core::error_code;
+use af_core::event::label;
+use af_observability::test_util::Capture;
+use af_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_fleet::lease::Ended;
 use afd_fleet::lease::admit::Refusal;
-use afd_observability::test_util::Capture;
-use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 
 use self::report_seed::held;
 
@@ -228,7 +228,7 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
         Ended::Now(closed) => closed,
         Ended::Already => unreachable!("a held run's row is still open"),
     };
-    assert_eq!(closed.row.status, afd_core::event::status::GATE_BLOCKED);
+    assert_eq!(closed.row.status, af_core::event::status::GATE_BLOCKED);
 
     // Returns, rather than erroring or hanging: the queue is asked once and its
     // refusal is accounted in the log, not on the verb.
@@ -309,7 +309,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
 fn chunk() -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed(CHUNK_TEXT),
-        text_kind: afd_wire::activity::StreamTextKind::Answer,
+        text_kind: af_wire::activity::StreamTextKind::Answer,
         first_chunk_after_ms: Some(42),
         stream_start: true,
         stream_contiguous: true,

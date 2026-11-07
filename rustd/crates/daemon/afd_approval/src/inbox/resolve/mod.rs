@@ -184,7 +184,7 @@ impl Inbox {
     /// watcher would otherwise never see the continued run open.
     async fn continue_from(&self, resolved: &Resolved, event_id: &str) -> Result<Option<String>> {
         let actor = format!("{CONTINUATION_ACTOR_PREFIX}{event_id}");
-        let kind = afd_wire::event::EventType::Continuation.as_str();
+        let kind = af_wire::event::EventType::Continuation.as_str();
         let admitted = self
             .admissions
             .admit(afd_admission::Admission {
@@ -196,7 +196,7 @@ impl Inbox {
                 fleet: &resolved.fleet_id,
                 workspace: &resolved.workspace_id,
                 actor: actor.as_str(),
-                event_type: afd_wire::event::EventType::Continuation,
+                event_type: af_wire::event::EventType::Continuation,
                 request_json: CONTINUATION_BODY,
                 // The run a gate parked answers where it would have: a thread
                 // that asked before the gate still gets the answer after it.
@@ -248,10 +248,10 @@ impl Inbox {
             .bind(stored_id)
             .bind(&resolved.workspace_id)
             .bind(actor)
-            .bind(afd_wire::event::EventType::Continuation.as_str())
+            .bind(af_wire::event::EventType::Continuation.as_str())
             .bind(sqlx::types::Json(serde_json::json!({})))
             .bind(event_id)
-            .bind(afd_core::event::status::RECEIVED)
+            .bind(af_core::event::status::RECEIVED)
             .fetch_one(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_CONTINUE))?;

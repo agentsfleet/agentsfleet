@@ -97,7 +97,7 @@ async fn assert_detail_plan(f: &Fixture) {
     let request = fixture::request(PAGE);
     let report = f.billing.report(&f.tenant, &request).await.unwrap();
     let activity = report.activities.first().expect("a seeded report activity");
-    let work = WorkKey::FleetLease(afd_core::id::Uuid7::parse(&activity.work_id).unwrap());
+    let work = WorkKey::FleetLease(af_core::id::Uuid7::parse(&activity.work_id).unwrap());
     let (plan,): (Value,) = report::charges_query(explain, &f.tenant, &work, &request, None)
         .fetch_one(&mut *f.api.acquire().await.unwrap())
         .await

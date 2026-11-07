@@ -83,7 +83,7 @@ async fn a_native_publication_refusal_is_not_redispatched_or_reinterpreted() {
     assert_eq!(failure.refusal_status(), Some(409));
     assert_eq!(
         failure.refusal_code(),
-        Some(afd_core::error_code::RUN_LEASE_LOST)
+        Some(af_core::error_code::RUN_LEASE_LOST)
     );
     server.finish();
 }

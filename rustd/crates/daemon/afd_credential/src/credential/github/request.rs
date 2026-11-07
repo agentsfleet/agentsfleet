@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use afd_fleet_runtime::config::{Access, RepositoryBinding, RepositoryPublication};
+use af_fleet_runtime::config::{Access, RepositoryBinding, RepositoryPublication};
 use serde::{Deserialize, Serialize};
 
 use super::{GithubPermission, Permission};

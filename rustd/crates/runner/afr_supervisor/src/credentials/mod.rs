@@ -2,15 +2,15 @@
 //!
 //! The supervisor mints; a sandbox never asks the daemon for anything. A token
 //! minted here lives in the lease's egress vault and reaches a request only in
-//! its `Authorization` header (`afr_egress`). [`LeaseMint`] is the seam the
+//! its `Authorization` header (`af_egress`). [`LeaseMint`] is the seam the
 //! vault mints through: one held lease, over the control plane.
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
-use afr_egress::{Mint, Minted};
-use afr_secrets::Secret;
+use af_core::id::Uuid7;
+use af_egress::{Mint, Minted};
+use af_secrets::Secret;
+use af_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 
 use crate::client::ControlPlane;
 use crate::error::{Error, Result};
@@ -34,10 +34,10 @@ impl<'a> LeaseMint<'a> {
 
 #[async_trait::async_trait]
 impl Mint for LeaseMint<'_> {
-    async fn mint(&self, integration: &str) -> afr_egress::Result<Minted> {
+    async fn mint(&self, integration: &str) -> af_egress::Result<Minted> {
         mint(self.plane, self.lease_id, integration, None)
             .await
-            .map_err(|refused| afr_egress::Error::mint_refused(refused.code(), detail(&refused)))
+            .map_err(|refused| af_egress::Error::mint_refused(refused.code(), detail(&refused)))
     }
 }
 

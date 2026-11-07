@@ -20,7 +20,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use afd_core::env::{EnvSource, ProcessEnv};
+use af_core::env::{EnvSource, ProcessEnv};
 use redis::cluster::ClusterClientBuilder;
 use redis::cluster_async::ClusterConnection;
 use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};

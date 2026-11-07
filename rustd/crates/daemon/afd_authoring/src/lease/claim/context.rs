@@ -1,7 +1,7 @@
 //! Transfer the current request; historical working context stays with the daemon.
 
+use af_wire::authoring::{ContextMessage, ContextRole};
 use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::{ContextMessage, ContextRole};
 use sqlx::PgConnection;
 
 use super::{selection::Selected, sql};

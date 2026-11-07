@@ -21,15 +21,15 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
     let mut configured = lease();
     configured
         .messages
-        .push(afd_wire::authoring::ContextMessage {
-            role: afd_wire::authoring::ContextRole::Assistant,
+        .push(af_wire::authoring::ContextMessage {
+            role: af_wire::authoring::ContextRole::Assistant,
             text: "Earlier private answer".into(),
         });
     configured.candidate = Some(json!({"instructions_md":"Investigate saved setup"}));
     configured
         .messages
-        .push(afd_wire::authoring::ContextMessage {
-            role: afd_wire::authoring::ContextRole::User,
+        .push(af_wire::authoring::ContextMessage {
+            role: af_wire::authoring::ContextRole::User,
             text: "Add guidance about accepting factual corrections".into(),
         });
     let (calls, report) = run(&mut rig, configured).await;

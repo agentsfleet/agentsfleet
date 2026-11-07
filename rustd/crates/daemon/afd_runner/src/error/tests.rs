@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::Error;
 
@@ -47,7 +47,7 @@ fn data_only_runner_failures_have_distinct_remedies() {
 
 #[test]
 fn stored_and_query_failures_retain_their_causes() -> Result<(), &'static str> {
-    let malformed_id = afd_core::id::Uuid7::parse("not-a-runner")
+    let malformed_id = af_core::id::Uuid7::parse("not-a-runner")
         .err()
         .ok_or("the malformed runner fixture unexpectedly parsed")?;
     let malformed = super::row_malformed("runner.runners", "id")(malformed_id);

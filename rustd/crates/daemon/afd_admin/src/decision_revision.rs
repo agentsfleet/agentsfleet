@@ -1,8 +1,8 @@
 //! Immutable reviewed definitions and the catalogue's current selection.
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_wire::decision::{DecisionConfiguration, DecisionModelSettings};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::decision::{DecisionConfiguration, DecisionModelSettings};
 use jiff::Timestamp;
 use sqlx::{PgConnection, types::Json};
 

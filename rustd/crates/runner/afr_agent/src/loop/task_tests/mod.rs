@@ -5,7 +5,7 @@ use crate::{
     engine::{AgentEngine as _, AgentRun, Meter},
     fixture::{Canned, Script, call, ended, lease, say, unbounded},
 };
-use afd_wire::task::*;
+use af_wire::task::*;
 use afr_tools::{LeaseVerbs, ScheduleCall, verbs::Unanswered};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -75,8 +75,8 @@ impl LeaseVerbs for Native {
 
 fn inputs() -> TaskInputsResponse<'static> {
     TaskInputsResponse {
-        execution_deadline: Some(afd_core::clock::after(
-            afd_core::clock::now(),
+        execution_deadline: Some(af_core::clock::after(
+            af_core::clock::now(),
             std::time::Duration::from_mins(10),
         )),
         source_admission_id: SOURCE.to_owned(),
@@ -109,8 +109,8 @@ fn task() -> TaskContext<'static> {
         confirmed_effect_watermark: 0,
         checkpoint_id: None,
         checkpoint_generation: None,
-        expires_at: afd_core::clock::after(
-            afd_core::clock::now(),
+        expires_at: af_core::clock::after(
+            af_core::clock::now(),
             std::time::Duration::from_hours(1),
         ),
         limits: TaskLimits::default(),
@@ -150,7 +150,7 @@ fn pending_inputs() -> TaskInputsResponse<'static> {
 
 async fn run(
     engine: &super::Loop,
-    lease: &afd_wire::lease::LeasePayload<'_>,
+    lease: &af_wire::lease::LeasePayload<'_>,
     native: &dyn LeaseVerbs,
     prepared: &PreparedTask,
 ) -> crate::Result<crate::RunOutput> {
@@ -163,7 +163,7 @@ async fn run(
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
             ),
-            mint: &afr_egress::testing::CountingMint::never(),
+            mint: &af_egress::testing::CountingMint::never(),
             verbs: native,
             checkpoint: &crate::testing::Discard,
             context_checkpoints: &crate::testing::ContextMemory::default(),
@@ -228,8 +228,8 @@ async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_pa
         answered: AtomicBool::new(false),
     };
     let prepared = PreparedTask {
-        execution_deadline: Some(afd_core::clock::after(
-            afd_core::clock::now(),
+        execution_deadline: Some(af_core::clock::after(
+            af_core::clock::now(),
             std::time::Duration::from_mins(10),
         )),
         inputs: input,
@@ -272,8 +272,8 @@ async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() 
     let prepared = PreparedTask {
         inputs: input,
         allow_actions: true,
-        execution_deadline: Some(afd_core::clock::after(
-            afd_core::clock::now(),
+        execution_deadline: Some(af_core::clock::after(
+            af_core::clock::now(),
             std::time::Duration::from_mins(10),
         )),
     };
@@ -297,7 +297,7 @@ async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() 
 #[tokio::test]
 async fn missing_or_spent_native_deadline_blocks_actions_but_retains_recovery() -> crate::Result<()>
 {
-    for deadline in [None, Some(afd_core::clock::now())] {
+    for deadline in [None, Some(af_core::clock::now())] {
         let script = Script::new([]);
         let engine = super::tests::engine(Vec::new(), &script);
         let mut lease = lease(&[], unbounded());

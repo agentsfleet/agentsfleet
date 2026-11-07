@@ -25,7 +25,7 @@
 
 use std::sync::OnceLock;
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::{Layer, Registry, reload};
@@ -33,7 +33,7 @@ use tracing_subscriber::{Layer, Registry, reload};
 use crate::telemetry::Exports;
 use crate::tty::Rendering;
 
-pub use afd_core::env::LOG_LEVEL_VAR;
+pub use af_core::env::LOG_LEVEL_VAR;
 
 /// Where a record goes when nobody chose.
 ///
@@ -77,7 +77,7 @@ impl Signals {
         let spans = tracing_opentelemetry::layer().with_tracer(
             opentelemetry::trace::TracerProvider::tracer(
                 exports.tracer(),
-                afd_observability::semconv::SCOPE_NAME,
+                af_observability::semconv::SCOPE_NAME,
             ),
         );
         // An `Option` layer is a no-op when empty; this daemon always builds
@@ -116,14 +116,14 @@ pub fn signals() -> Option<&'static Signals> {
 /// ordinary in a test binary, a bug at boot, and in neither case a reason to
 /// refuse to serve. The slot it leaves behind is [`signals`].
 pub fn install(env: &dyn EnvSource) -> bool {
-    let level = afd_core::env::log_level(env, DEFAULT_LEVEL);
+    let level = af_core::env::log_level(env, DEFAULT_LEVEL);
     let (slot, handle) = reload::Layer::new(Attached::None);
     // The slot is layered FIRST, so what it holds is a layer over the bare
     // registry: a reloadable layer's type names the subscriber beneath it, and
     // adding it last would name the whole stack instead.
     let subscriber = Registry::default()
         .with(slot)
-        .with(afd_inference::log_filter(level))
+        .with(af_inference::log_filter(level))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
@@ -149,7 +149,7 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::{Attached, Signals};
-    use afd_otlp::Encoding;
+    use af_otlp::Encoding;
 
     use crate::preflight::{OTEL_ENDPOINT_KNOB, OtlpConfig};
     use crate::telemetry::Exports;

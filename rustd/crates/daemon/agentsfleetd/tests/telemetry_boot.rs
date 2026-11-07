@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
+use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use agentsfleetd::{BootFailure, Supervisor};
 use axum::Json;
 use axum::extract::{Path, State};
@@ -169,7 +169,7 @@ async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_f
     assert!(matches!(failure, BootFailure::Queue(_)));
     assert_eq!(
         failure.code(),
-        afd_core::error_code::STARTUP_DRAGONFLY_CONNECT
+        af_core::error_code::STARTUP_DRAGONFLY_CONNECT
     );
     assert_eq!(failed.inventory(), Vec::<&str>::new());
     // The flush has finished when boot returns; do not await another export.

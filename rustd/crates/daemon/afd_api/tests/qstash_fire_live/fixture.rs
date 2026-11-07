@@ -4,8 +4,8 @@
 //! nothing resolves, and the accepted fire is the one path that writes. This
 //! fixture arranges the queue too — see [`harness::Fleet::with_live_fire`].
 
+use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
 use afd_cron::{DesiredStatus, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;

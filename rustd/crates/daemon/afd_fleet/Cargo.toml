@@ -18,12 +18,12 @@ categories.workspace = true
 # them, so a test needs no datastore to reach a decision.
 test-util = [
   "afd_auth/test-util",
-  "afd_core/test-util",
-  "afd_crypto/test-util",
+  "af_core/test-util",
+  "af_crypto/test-util",
   "afd_db/test-util",
   # The capturing metric reader the lease suite reads the runs-started
   # counter back through.
-  "afd_observability/test-util",
+  "af_observability/test-util",
   # The queue refusal a stubbed device-flow surface answers with.
   "afd_dragonfly/test-util",
   # The labelled billing refusal the fail-open posture suite absorbs. Taken
@@ -42,7 +42,7 @@ test-util = [
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
 # Shared boundary validation for private checkpoint storage configuration.
-afd_validate.workspace = true
+af_validate.workspace = true
 afd_vault.workspace = true
 # Native publication owns guarded HTTP, bounded workflow parsing and Git blobs.
 reqwest.workspace = true
@@ -56,7 +56,7 @@ bytes.workspace = true
 # A lease's two post-issue reads, the thread's turns and the memory window,
 # run overlapped (`future::join`).
 futures-util.workspace = true
-afd_context = { workspace = true, features = ["postgres"] }
+af_context = { workspace = true, features = ["postgres"] }
 # The shared poll admits private setup through its production-domain owner.
 afd_authoring.workspace = true
 # The thread a chat lease reads its turns from is a trait object, so a read
@@ -67,7 +67,7 @@ const_format.workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about leases or memory, and the counts below exist only
 # where the work happens.
-afd_observability.workspace = true
+af_observability.workspace = true
 # Identifiers, the clock, the error-code registry, and the bounded primitives.
 afd_billing.workspace = true
 # The only writer of `connector.integration_grants`. A delivery that finds no grant
@@ -77,7 +77,7 @@ afd_billing.workspace = true
 afd_approval.workspace = true
 afd_credential.workspace = true
 afd_gate.workspace = true
-afd_core.workspace = true
+af_core.workspace = true
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
 scopeguard.workspace = true
@@ -93,7 +93,7 @@ afd_outbound.workspace = true
 # The one masker the product carries: an interim message is scrubbed of the
 # fleet's secret values with the same `Scrub` the runner applies, so the two
 # can never disagree on what a masked value reads as.
-afr_secrets.workspace = true
+af_secrets.workspace = true
 # The admission producer identity and stored reply destination.
 afd_admission.workspace = true
 # The connector a reply destination names, parsed from the admission row
@@ -112,18 +112,18 @@ afd_state.workspace = true
 # the credential names the secrets map is built from, and the network and
 # repository policy the `ExecutionPolicy` carries. Resolved fresh per lease —
 # a PATCH takes effect on the next one, never on a cached copy.
-afd_fleet_runtime.workspace = true
+af_fleet_runtime.workspace = true
 # The UTC month a spend ceiling opens at. Confined to `money::window`; see the
 # workspace manifest for why a calendar is a dependency and the rolling day is
 # not.
 # The entropy a runner token is minted from. Drawn through the workspace's one
 # entropy surface, never through a second call to the operating system.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 hex.workspace = true
 # The wire shapes this plane answers with. Frozen by M175; consumed, never
 # authored here.
 afd_api_wire.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 # Fleet memory. The lease plane fences the runner's two memory verbs and then
 # reaches memory only through the store trait this crate holds.
 afd_memory.workspace = true
@@ -134,7 +134,7 @@ jiff-sqlx.workspace = true
 thiserror.workspace = true
 # The `Deserialize` bound the stored-column decoders take, and the value
 # deserializer that turns a stored enum spelling back into its wire variant —
-# through `afd_wire`'s own serde renames, so a column and the wire cannot drift.
+# through `af_wire`'s own serde renames, so a column and the wire cannot drift.
 serde.workspace = true
 # JSON columns: `labels`, `registry_allowlist`, `capability_report` and the
 # `metadata` a runner event carries are all `jsonb`, built and read as values.
@@ -160,8 +160,8 @@ afd_identity.workspace = true
 # Price-change scenarios and their shared fixtures use the native catalogue owner.
 afd_admin = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the suites read their log lines back through
-# (`afd_core::test_util::trace`). A dev-dependency feature only.
-afd_core = { workspace = true, features = ["test-util"] }
+# (`af_core::test_util::trace`). A dev-dependency feature only.
+af_core = { workspace = true, features = ["test-util"] }
 # The thread row fixture the lease history's caps are proven against.
 afd_events = { workspace = true, features = ["test-util"] }
 # The credential plane moved out; its client and the zeroizing wrapper are
@@ -187,15 +187,15 @@ afd_auth = { workspace = true, features = ["test-util"] }
 # The direct `GatePolicy` constructor the gate evaluator's cases are built
 # from. A dev-dependency on a crate this one already depends on, for the
 # `test-util` seam only the tests reach.
-afd_fleet_runtime = { workspace = true, features = ["test-util"] }
+af_fleet_runtime = { workspace = true, features = ["test-util"] }
 # `Redis::unreachable`, for the drop paths. The lane's Redis is shared by every
 # test binary running in parallel, so an injection that takes the SERVER away
 # fails unrelated suites; a lazy handle one test owns fails only its own
 # commands. Same shape as the `afd_db` line above, for the same reason.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
-# `afr_secrets::error::one_of_each_kind`, the matcher refusal a scrub raises
+# `af_secrets::error::one_of_each_kind`, the matcher refusal a scrub raises
 # only past gigabytes of secret values, for the lift suite's scrub case.
-afr_secrets = { workspace = true, features = ["test-util"] }
+af_secrets = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

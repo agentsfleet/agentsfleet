@@ -28,11 +28,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::limits::HELD_BEATS_MAX;
-use afd_core::timing::{HEARTBEAT_INTERVAL, WAKE_HOLD_MAX};
+use af_core::limits::HELD_BEATS_MAX;
+use af_core::timing::{HEARTBEAT_INTERVAL, WAKE_HOLD_MAX};
+use af_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets};
 use afd_runner::heartbeat::holds::prove;
 use afd_runner::{Beat, NO_REPORT};
-use afd_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -50,7 +50,7 @@ const EVENT: &str = "runner_heartbeat_failed";
 /// Records a beat and answers what the host must apply.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::RUNNER_HEARTBEATS,
+    path = af_wire::paths::RUNNER_HEARTBEATS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_heartbeat",
     summary = "Send a heartbeat and receive settings",
@@ -172,9 +172,9 @@ fn payload(beat: &Beat) -> afd_runner::Result<HeartbeatResponse<'_>> {
 mod tests {
     use std::time::Duration;
 
-    use afd_core::timing::{HEARTBEAT_INTERVAL, RUNNER_OFFLINE_AFTER};
+    use af_core::timing::{HEARTBEAT_INTERVAL, RUNNER_OFFLINE_AFTER};
+    use af_wire::runner::HOLDS_MAX;
     use afd_runner::heartbeat::holds::fleets;
-    use afd_wire::runner::HOLDS_MAX;
 
     use super::{WIRE_INTERVAL_MS, read};
 

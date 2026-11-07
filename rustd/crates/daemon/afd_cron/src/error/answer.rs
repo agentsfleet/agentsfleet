@@ -1,7 +1,7 @@
 //! The public code and sentence are selected together.
 
 use super::{Error, ErrorKind, detail};
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 impl Error {
     /// The code and the sentence, decided together — see the module note.
@@ -21,7 +21,7 @@ impl Error {
             ),
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
-            // constants in `afd_core::error` exist to prevent.
+            // constants in `af_core::error` exist to prevent.
             ErrorKind::Admission { source } => (source.code(), source.detail()),
             ErrorKind::Query { .. } | ErrorKind::RowUnreadable { .. } => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)

@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
+use af_wire::task::{DecisionAssessment, DecisionReservationInput};
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _};
-use afd_wire::task::{DecisionAssessment, DecisionReservationInput};
 use sqlx::Connection as _;
 use tokio::time::timeout;
 
@@ -246,7 +246,7 @@ fn failed_diagnostics(capture: &Capture) {
     assert_eq!(event.level, tracing::Level::WARN);
     assert_eq!(
         event.field("error_code"),
-        Some(afd_core::error_code::INTERNAL_DB_QUERY.as_str())
+        Some(af_core::error_code::INTERNAL_DB_QUERY.as_str())
     );
     assert_eq!(
         (

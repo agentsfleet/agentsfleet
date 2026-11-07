@@ -7,10 +7,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use std::borrow::Cow;
 
-use afd_wire::memory::{MemoryDelta, MemoryHydrateResponse};
+use af_wire::memory::{MemoryDelta, MemoryHydrateResponse};
 
 use afr_agent::Checkpoint as _;
 use afr_memory::Recall as _;
@@ -250,7 +250,7 @@ fn owned_memory() -> CapturedMemory {
         key: key.to_owned().into(),
         content: content.to_owned().into(),
         category: "core".to_owned().into(),
-        visibility: afd_wire::memory::Visibility::Fleet,
+        visibility: af_wire::memory::Visibility::Fleet,
     };
     CapturedMemory::from(vec![
         entry("deploy-key", "the staging host is 10.0.0.7"),

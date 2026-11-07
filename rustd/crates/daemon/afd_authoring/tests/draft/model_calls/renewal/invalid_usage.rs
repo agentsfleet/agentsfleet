@@ -2,8 +2,8 @@
 
 use super::super::fixture::{self, Provider};
 use super::{Attempt, Fixture, request, snapshot};
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use std::sync::Arc;
 
 #[tokio::test]

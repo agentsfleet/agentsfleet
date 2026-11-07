@@ -13,8 +13,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_auth::principal::Principal;
-use afd_core::id::Uuid7;
 use afd_sse::Frame;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;

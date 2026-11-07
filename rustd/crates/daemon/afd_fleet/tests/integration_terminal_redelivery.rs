@@ -5,18 +5,14 @@
 use crate::report_seed::{Held, held, held_in};
 use crate::rows::{LAPSE, Row};
 use crate::support::Fixtures;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_completed_event_redelivery_does_not_execute() {
     let run = held().await;
     run.fixtures
-        .end_event(
-            &run.fleet,
-            &run.event_id,
-            afd_core::event::status::PROCESSED,
-        )
+        .end_event(&run.fleet, &run.event_id, af_core::event::status::PROCESSED)
         .await;
     run.fixtures
         .age(
@@ -68,11 +64,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
 async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     let run = held_in(Fixtures::create_isolated_with_queue().await).await;
     run.fixtures
-        .end_event(
-            &run.fleet,
-            &run.event_id,
-            afd_core::event::status::PROCESSED,
-        )
+        .end_event(&run.fleet, &run.event_id, af_core::event::status::PROCESSED)
         .await;
     let owner = run.fixtures.open(afd_db::config::DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");

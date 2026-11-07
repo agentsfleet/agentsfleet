@@ -5,7 +5,7 @@ use super::{
     guard, transaction,
 };
 use crate::{Result, lease::Leases};
-use afd_wire::task::{
+use af_wire::task::{
     TaskBindingsInput, TaskBindingsResponse, TaskInputAction, TaskItemBinding, TaskRequestedTarget,
 };
 
@@ -14,8 +14,8 @@ pub(super) async fn accept(
     lease: TaskLease<'_>,
     input: &garde::Valid<TaskBindingsInput>,
 ) -> Result<TaskBindingsResponse<'static>> {
-    let digest = afd_core::etag::sha256_hex(
-        &serde_json::to_vec(&input.interpretation()).map_err(afd_core::json::Unreadable::from)?,
+    let digest = af_core::etag::sha256_hex(
+        &serde_json::to_vec(&input.interpretation()).map_err(af_core::json::Unreadable::from)?,
     );
     if digest != input.plan_digest {
         return Err(TaskRefusal::ReplayConflict.into());
@@ -54,8 +54,8 @@ pub(super) async fn accept(
                 TaskRequestedTarget::ApiOnly => {
                     if config.repository_binding().is_some_and(|binding| {
                         binding.publication()
-                            == afd_fleet_runtime::config::RepositoryPublication::ExistingPr
-                            && binding.access() == afd_fleet_runtime::config::Access::Write
+                            == af_fleet_runtime::config::RepositoryPublication::ExistingPr
+                            && binding.access() == af_fleet_runtime::config::Access::Write
                     }) {
                         return Err(TaskRefusal::InvalidTarget.into());
                     }
@@ -79,12 +79,12 @@ pub(super) async fn accept(
                             .prepare(lease, &config, repository, *number, &objective)
                             .await?,
                     )
-                    .map_err(afd_core::json::Unreadable::from)?
+                    .map_err(af_core::json::Unreadable::from)?
                 }
             };
-            let goal_digest = afd_core::etag::sha256_hex(
+            let goal_digest = af_core::etag::sha256_hex(
                 &serde_json::to_vec(&(&objective, &questions))
-                    .map_err(afd_core::json::Unreadable::from)?,
+                    .map_err(af_core::json::Unreadable::from)?,
             );
             plan.items.push(PreparedItem::New {
                 task: PreparedTask {
@@ -94,7 +94,7 @@ pub(super) async fn accept(
                     questions: questions.clone(),
                     goal_digest,
                     target_json: target.to_string(),
-                    limits: afd_wire::task::TaskLimits::default(),
+                    limits: af_wire::task::TaskLimits::default(),
                 },
                 interpretation: proposed.interpretation.clone(),
             });
@@ -118,7 +118,7 @@ async fn source(
     tasks: &Tasks,
     lease: TaskLease<'_>,
     plan: &PreparedPlan,
-) -> Result<(afd_fleet_runtime::FleetConfig, String)> {
+) -> Result<(af_fleet_runtime::FleetConfig, String)> {
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::lease(&mut tx, lease).await?;

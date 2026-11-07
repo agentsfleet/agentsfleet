@@ -8,8 +8,8 @@ use crate::{
     report_spool::authoring::{PRIVATE_TTL, files},
     test_support::{self, Answer, Calls},
 };
-use afd_core::{id::Uuid7, test_util::trace::Capture};
-use afd_wire::authoring::{Outcome, Report, Reported};
+use af_core::{id::Uuid7, test_util::trace::Capture};
+use af_wire::authoring::{Outcome, Report, Reported};
 use std::{
     os::unix::fs::PermissionsExt as _,
     path::Path,

@@ -5,7 +5,7 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 use super::{fraction, number, required, variable};
 

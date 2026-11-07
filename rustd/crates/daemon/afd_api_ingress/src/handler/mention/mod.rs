@@ -23,11 +23,11 @@
 //! is an `app_mention`" is a type rather than three field lookups that have to
 //! agree (RULE PSR).
 
+use af_core::id::Uuid7;
 use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
 use afd_connector::grant::BotIdentity;
 use afd_connector::slack::Thread;
-use afd_core::id::Uuid7;
 use afd_ingress::slack::{ChannelId, Route, route};
 use serde::Deserialize;
 
@@ -137,7 +137,7 @@ impl Asked {
 /// The refusal for a body this daemon could not serialise.
 fn unserialisable() -> Refusal {
     Refusal::coded(
-        afd_core::error_code::INTERNAL_OPERATION_FAILED,
+        af_core::error_code::INTERNAL_OPERATION_FAILED,
         DETAIL_UNSERIALISABLE,
     )
 }

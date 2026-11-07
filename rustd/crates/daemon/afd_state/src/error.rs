@@ -1,6 +1,6 @@
 //! What this crate answers with — which is another crate's error, on purpose.
 //!
-//! Every other crate under `rustd/` owns an [`Error`](afd_core::error::Error)
+//! Every other crate under `rustd/` owns an [`Error`](af_core::error::Error)
 //! of its own. This one does not, and the reason is worth stating rather than
 //! leaving a reader to infer from a missing file:
 //! [`Credentials`](crate::Credentials) exists to implement `afd_auth`'s

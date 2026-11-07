@@ -4,7 +4,7 @@
 //! real entry and an absent one alike. The entry and its history stay in place.
 
 use super::{Case, Fixture, Method, StatusCode, header, json_body, mint, send};
-use afd_core::error_code::{self, AUTHORING_NOT_FOUND};
+use af_core::error_code::{self, AUTHORING_NOT_FOUND};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

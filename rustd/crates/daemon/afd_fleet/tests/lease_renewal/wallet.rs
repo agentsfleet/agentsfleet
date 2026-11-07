@@ -15,15 +15,15 @@ use super::{
 use crate::rows::Row;
 use afd_authoring::{Claimed, Drafts};
 
+use af_core::{clock, id::Uuid7};
+use af_wire::authoring::{Accounting, Knowledge, Outcome, Report, Reported};
 use afd_billing::Posture;
 use afd_billing::biller::{Biller as _, Receipt, WorkKey};
 use afd_billing::ledger::LedgerBiller;
-use afd_core::{clock, id::Uuid7};
 use afd_db::test_util::mint_id;
 use afd_fleet::lease::Renewed;
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::usage::Pricing;
-use afd_wire::authoring::{Accounting, Knowledge, Outcome, Report, Reported};
 use sqlx::Connection as _;
 use std::time::Duration;
 
@@ -126,7 +126,7 @@ async fn renew_and_settle(running: &Running, biller: &LedgerBiller) -> (Renewed,
         running.lease.as_str(),
     )
     .await;
-    let requests = [afd_wire::usage::RequestUsage {
+    let requests = [af_wire::usage::RequestUsage {
         seq: 0,
         at: clock::now(),
         input_tokens: u32::try_from(INPUT_TOKENS).expect("the fixture count fits a line"),
@@ -228,7 +228,7 @@ fn accounting(lease: &Claimed) -> Report {
             report_id: mint_id(),
             outcome: Outcome::Completed,
             failure_reason: None,
-            usage: afd_wire::authoring::Meter {
+            usage: af_wire::authoring::Meter {
                 knowledge: Knowledge::Known,
                 calls: 0,
                 input_tokens: Some(0),

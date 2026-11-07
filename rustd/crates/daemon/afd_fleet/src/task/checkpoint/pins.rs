@@ -6,8 +6,8 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, execution, transaction},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_wire::task::{CheckpointPin, CheckpointPinInput, CheckpointTransferPurpose};
+use af_core::{clock, id::Uuid7};
+use af_wire::task::{CheckpointPin, CheckpointPinInput, CheckpointTransferPurpose};
 use sqlx::PgConnection;
 
 pub(super) async fn insert(

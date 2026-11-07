@@ -3,9 +3,9 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_wire::lease::LeasePayload;
-use afd_wire::memory::{
+use af_core::id::Uuid7;
+use af_wire::lease::LeasePayload;
+use af_wire::memory::{
     MemoryDelta, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse, SharedMemory,
 };
 use afr_agent::Checkpoint;
@@ -66,7 +66,7 @@ fn push_request<'a>(
 ///
 /// The entries are the fleet's memory in clear. Every string the run owns is
 /// overwritten before its allocation is freed, in the derive-less shape
-/// `afd_crypto`'s `zero_on_drop!` uses; a `'static` borrow is no run's data.
+/// `af_crypto`'s `zero_on_drop!` uses; a `'static` borrow is no run's data.
 #[derive(Default)]
 pub(crate) struct CapturedMemory(Vec<MemoryDelta<'static>>);
 

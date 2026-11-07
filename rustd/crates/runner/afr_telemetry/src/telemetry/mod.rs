@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use afd_observability::semconv::RUNNER_SCOPE_NAME;
-use afd_otlp::{Builder, Exports, OTEL_ENDPOINT_KNOB, Service};
+use af_observability::semconv::RUNNER_SCOPE_NAME;
+use af_otlp::{Builder, Exports, OTEL_ENDPOINT_KNOB, Service};
 use opentelemetry::trace::TracerProvider as _;
 use tracing::Metadata;
 use tracing_subscriber::filter::filter_fn;
@@ -107,7 +107,7 @@ impl Telemetry {
     ///
     /// Filtered to the runner's own span target, so a library's span never
     /// leaves the host, and to spans alone, so no log record rides a span as
-    /// an event: the constructors in `afr_agent`, `afr_providers` and `afr_supervisor` are
+    /// an event: the constructors in `afr_agent`, `af_providers` and `afr_supervisor` are
     /// the only things that decide what a runner span carries, and none takes
     /// a prompt, a reply or a tool's output. The tool span names its tool by
     /// the catalog's closed set, never the model's own spelling.
@@ -195,7 +195,7 @@ impl Telemetry {
         if finished.recv_timeout(budget).is_err() {
             let budget_ms = budget.as_millis();
             let event = EVENT_CLOSE_TIMED_OUT;
-            let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
                 budget_ms,
                 event,

@@ -18,7 +18,7 @@ workspace = true
 [dependencies]
 # The object-only gate every message from the other end of the socket decodes
 # through: both ends treat the other as untrusted.
-afd_core.workspace = true
+af_core.workspace = true
 # The executor seam is `dyn`: the agent loop holds whichever engine's executor
 # the lease got, so the trait needs object-safe async methods.
 async-trait.workspace = true
@@ -44,7 +44,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 # The log capture a test reads a process's end back through.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt", "rt-multi-thread", "sync", "time", "macros", "test-util"] }
 

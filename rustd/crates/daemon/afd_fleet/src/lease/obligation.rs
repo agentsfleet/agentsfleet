@@ -18,8 +18,8 @@
 //! the same lesson in its own note. The owner is the crate that DELIVERS; this
 //! one commits the obligation and then gets out of the way.
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_dragonfly::OutboundJob;
 use afd_outbound::obligation::{self, Delivery};
 use jiff::Timestamp;

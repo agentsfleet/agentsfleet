@@ -1,19 +1,19 @@
 //! The runner plane's HTTP seam: what the lease family of verbs acts through.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::activity::ActivityFrame;
+use af_wire::credentials::MintCredentialRequest;
+use af_wire::memory::{
+    MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
+};
+use af_wire::message_verb::MessageRequest;
+use af_wire::report::{RenewRequest, ReportRequest};
+use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 use afd_credential::credential::Minted;
 use afd_fleet::lease::report::Reconciled;
 use afd_fleet::lease::{Standing, Waited};
 use afd_memory::Captured;
 use afd_outbound::Interim;
-use afd_wire::activity::ActivityFrame;
-use afd_wire::credentials::MintCredentialRequest;
-use afd_wire::memory::{
-    MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
-};
-use afd_wire::message_verb::MessageRequest;
-use afd_wire::report::{RenewRequest, ReportRequest};
-use afd_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 use jiff::Timestamp;
 
 /// Answering one runner's poll.
@@ -40,7 +40,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         drafts: &afd_authoring::Drafts,
         runner_id: &Uuid7,
         held: &[Uuid7],
-        accepted: afd_wire::lease::AcceptedKinds,
+        accepted: af_wire::lease::AcceptedKinds,
         degraded: bool,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
@@ -99,7 +99,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         lease: &Uuid7,
         branch: &Uuid7,
         fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<afd_context::Checkpoint>>> + Send;
+    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send;
 
     /// Publish private notes against the expected generation and assignment.
     ///
@@ -112,7 +112,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         branch: &Uuid7,
         fence: u64,
         expected: u64,
-        checkpoint: afd_context::Checkpoint,
+        checkpoint: af_context::Checkpoint,
     ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
 
     /// The memory window that seeds one run.

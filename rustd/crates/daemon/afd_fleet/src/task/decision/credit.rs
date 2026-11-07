@@ -1,7 +1,7 @@
 //! Funds checks retain unmeasured physical calls without charging logged usage twice.
 
+use af_core::id::Uuid7;
 use afd_billing::Nanos;
-use afd_core::id::Uuid7;
 use sqlx::PgConnection;
 
 use crate::{Result, error::query};

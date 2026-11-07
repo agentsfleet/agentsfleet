@@ -1,7 +1,7 @@
 //! One reservation transaction stores native identity, request and task credit.
 
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     decision::DecisionPurpose,
     task::{DecisionCallState, DecisionReservationInput},
 };
@@ -56,13 +56,13 @@ impl Intent<'_> {
     async fn sequence(&self, connection: &mut PgConnection) -> Result<i64> {
         let sequence = sqlx::query_scalar(sql::SEQUENCE)
             .bind(self.lease.lease_id.as_str())
-            .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+            .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
             .fetch_one(connection)
             .await
             .map_err(query("allocate the native decision usage sequence"))?;
         u32::try_from(sequence)
             .ok()
-            .filter(|seq| *seq >= afd_wire::usage::DECISION_SEQ_BASE)
+            .filter(|seq| *seq >= af_wire::usage::DECISION_SEQ_BASE)
             .ok_or_else(sequence_corrupt)?;
         Ok(sequence)
     }

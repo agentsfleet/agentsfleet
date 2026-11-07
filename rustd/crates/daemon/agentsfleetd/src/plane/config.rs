@@ -11,14 +11,14 @@
 
 use std::sync::Arc;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::{Kek, SecretBytes};
+use af_observability::Analytics;
 use afd_connector::Dashboard;
-use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
-use afd_observability::Analytics;
 use afd_sse::Live;
 
 use crate::identity::{Capabilities, Sessions, SignupWriteback};
@@ -107,7 +107,7 @@ pub struct ScheduleConfig {
     /// The client the management calls go out on.
     pub client: reqwest::Client,
     /// This deployment's bearer for the external scheduler.
-    pub token: afd_crypto::secret::SecretString,
+    pub token: af_crypto::secret::SecretString,
     /// Where a fire is expected to arrive — see [`qstash::destination_url`].
     pub destination: String,
     /// Which scheduler deployment the management calls go to.

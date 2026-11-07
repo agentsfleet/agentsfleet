@@ -8,7 +8,7 @@ use crate::{Result, task::TaskRefusal};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub(in crate::task) use afd_wire::task::TaskCheck as Check;
+pub(in crate::task) use af_wire::task::TaskCheck as Check;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(in crate::task) struct Snapshot {
@@ -27,8 +27,8 @@ impl Snapshot {
     }
 
     pub(in crate::task) fn digest(&self) -> Result<String> {
-        Ok(afd_core::etag::sha256_hex(
-            &serde_json::to_vec(self).map_err(afd_core::json::Unreadable::from)?,
+        Ok(af_core::etag::sha256_hex(
+            &serde_json::to_vec(self).map_err(af_core::json::Unreadable::from)?,
         ))
     }
     pub(in crate::task) fn green(&self, target: &BoundPr) -> bool {

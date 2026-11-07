@@ -27,11 +27,11 @@
 use crate::report_seed;
 use std::borrow::Cow;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::memory::{MemoryDelta, MemoryPushRequest, MemoryRecallRequest};
 use afd_memory::Memories;
-use afd_wire::memory::{MemoryDelta, MemoryPushRequest, MemoryRecallRequest};
 
 use self::report_seed::held;
 
@@ -324,7 +324,7 @@ fn push<'a>(lease_id: &'a str, fencing_token: u64, content: &'a str) -> MemoryPu
             key: Cow::Borrowed(KEY),
             content: Cow::Borrowed(content),
             category: Cow::Borrowed(CATEGORY),
-            visibility: afd_wire::memory::Visibility::Fleet,
+            visibility: af_wire::memory::Visibility::Fleet,
         }],
     }
 }

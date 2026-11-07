@@ -5,8 +5,8 @@ use super::super::{
     checkpoint_server::{HOST, Server},
     fixture::Decisions,
 };
-use afd_core::clock;
-use afd_crypto::secret::Kek;
+use af_core::clock;
+use af_crypto::secret::Kek;
 use afd_fleet::task::{
     Tasks,
     storage::{CheckpointStorageConfig, R2CheckpointStore},

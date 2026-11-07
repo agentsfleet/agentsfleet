@@ -1,5 +1,5 @@
-use afr_egress::fixture::{PUSHOVER_TOKEN, PUSHOVER_USER};
-use afr_egress::testing::Sent;
+use af_egress::fixture::{PUSHOVER_TOKEN, PUSHOVER_USER};
+use af_egress::testing::Sent;
 use serde_json::{Value, json};
 
 use super::{MESSAGES_URL, Pushover};

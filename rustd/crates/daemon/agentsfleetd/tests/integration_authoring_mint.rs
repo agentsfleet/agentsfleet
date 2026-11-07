@@ -11,7 +11,7 @@
 
 use crate::e2e::{Scenario, scenario};
 use crate::wire::{field, json, post};
-use afd_core::error_code::{GRANT_NOT_FOUND, INVALID_REQUEST, RUN_LEASE_NOT_FOUND};
+use af_core::error_code::{GRANT_NOT_FOUND, INVALID_REQUEST, RUN_LEASE_NOT_FOUND};
 use afd_db::test_util::{EventKind, FleetEventSeed, mint_id};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};

@@ -7,7 +7,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use afd_core::error_code;
+use af_core::error_code;
 use lettre::address::Envelope;
 use lettre::message::Mailbox;
 use lettre::message::header::Subject;

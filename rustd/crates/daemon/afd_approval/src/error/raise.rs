@@ -11,9 +11,9 @@ use super::{Error, ErrorKind};
 // `sqlx::Error` is deliberately absent: a statement failure carries WHICH
 // statement, which is context only the call site knows, so it goes through
 // [`query`] instead of a blanket lift.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_crypto::error::Error => Entropy,
+    af_crypto::error::Error => Entropy,
     afd_admission::Error => Admission,
 );
 
@@ -53,7 +53,7 @@ pub(crate) fn row_malformed(column: &'static str) -> impl Fn(sqlx::Error) -> Err
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
     let entropy =
-        afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
+        af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     let admission = afd_admission::error::one_of_each_kind()
         .into_iter()
         .find(|(label, _error)| *label == "datastore")

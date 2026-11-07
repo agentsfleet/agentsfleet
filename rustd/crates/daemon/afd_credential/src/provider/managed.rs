@@ -30,9 +30,9 @@ use crate::provider::selection::OwnModel;
 use crate::provider::vetted::vet;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretString;
 use afd_billing::Posture;
-use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretString;
 
 /// The credential field a self-managed resolution cannot proceed without.
 pub(super) const FIELD_PROVIDER: &str = "provider";
@@ -139,8 +139,8 @@ mod tests {
     )]
     use super::SelfManaged;
     use crate::provider::selection::OwnModel;
+    use af_core::id::Uuid7;
     use afd_billing::Posture;
-    use afd_core::id::Uuid7;
 
     fn workspace() -> Uuid7 {
         Uuid7::parse("0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b").expect("a canonical v7 identifier")

@@ -24,11 +24,11 @@ pub(super) use capture::Capture;
 pub(super) use restore::Restore;
 
 use crate::client::ControlPlane;
-use afd_core::id::Uuid7;
-use afd_wire::task::{CheckpointPlan, DecisionTaskVersion};
+use af_core::id::Uuid7;
+use af_wire::task::{CheckpointPlan, DecisionTaskVersion};
 
 /// Four maximum-size ciphertexts, or one native page of smaller objects.
-const UPLOAD_BATCH_BYTES: u64 = 4 * (files::CHUNK + afd_crypto::TAG_LEN as u64);
+const UPLOAD_BATCH_BYTES: u64 = 4 * (files::CHUNK + af_crypto::TAG_LEN as u64);
 
 /// One native pin owner. It never extends the original capture/restore deadline.
 #[derive(Debug)]
@@ -47,15 +47,15 @@ pub(super) struct Session<'a> {
 
 /// Native temporary keys are wiped on every early return as well as successful use.
 #[derive(Debug)]
-pub(super) struct Object(afd_wire::task::CheckpointObject);
+pub(super) struct Object(af_wire::task::CheckpointObject);
 
-impl From<afd_wire::task::CheckpointObject> for Object {
-    fn from(object: afd_wire::task::CheckpointObject) -> Self {
+impl From<af_wire::task::CheckpointObject> for Object {
+    fn from(object: af_wire::task::CheckpointObject) -> Self {
         Self(object)
     }
 }
 impl std::ops::Deref for Object {
-    type Target = afd_wire::task::CheckpointObject;
+    type Target = af_wire::task::CheckpointObject;
     fn deref(&self) -> &Self::Target {
         &self.0
     }

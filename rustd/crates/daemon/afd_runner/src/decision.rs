@@ -1,6 +1,6 @@
 //! Selection stays under the caller's runner mutation and catalogue row lock.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 use crate::{

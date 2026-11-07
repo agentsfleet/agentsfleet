@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use afd_core::timing::DAY;
+use af_core::timing::DAY;
 use afd_db::statement::{LIKE_ANY, like_escape};
 use jiff::Timestamp;
 

@@ -1,7 +1,7 @@
 //! Late accounting is authorized by retained original ownership, not a live task.
 
-use afd_core::id::Uuid7;
-use afd_wire::task::{
+use af_core::id::Uuid7;
+use af_wire::task::{
     DecisionReceipt, DecisionReceiptInput, DecisionReceiptResult, DecisionRecordDisposition,
 };
 use sqlx::PgConnection;
@@ -47,8 +47,8 @@ async fn run(
 }
 
 pub(super) fn receipt_digest(receipt: &DecisionReceipt) -> Result<String> {
-    Ok(afd_core::etag::sha256_hex(
-        &serde_json::to_vec(receipt).map_err(afd_core::json::Unreadable::from)?,
+    Ok(af_core::etag::sha256_hex(
+        &serde_json::to_vec(receipt).map_err(af_core::json::Unreadable::from)?,
     ))
 }
 
@@ -63,7 +63,7 @@ async fn after_commit(
     let result = response(&written, disposition)?;
     tracing::info!(event = "dt_decision_recorded", decision_call_id = result.call_id.as_str(),
         assessment_id = written.call.assessment_id.as_str(), state = result.state.as_str(),
-        call_age_ms = afd_core::clock::now().duration_since(written.call.created_at).as_millis(),
+        call_age_ms = af_core::clock::now().duration_since(written.call.created_at).as_millis(),
         purpose = written.call.purpose.as_str(), replayed = result.replayed,
         disposition = ?result.disposition, charged_nanos = result.charged_nanos.as_deref(),
         reserved_nanos = result.reserved_nanos.as_str());

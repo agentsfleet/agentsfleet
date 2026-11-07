@@ -1,6 +1,6 @@
 //! Provider resolution through its real selection, default and vault rows.
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use std::sync::Arc;
 
 use afd_billing::Posture;
@@ -189,6 +189,6 @@ async fn declared_credentials_batch_static_and_mintable_rows_without_leaking_han
         .declared(&fixture.workspace, &["invalid"], &connectors)
         .await
         .expect_err("a static credential must be a JSON object");
-    assert_eq!(invalid.code(), afd_core::error_code::VAULT_DATA_INVALID);
+    assert_eq!(invalid.code(), af_core::error_code::VAULT_DATA_INVALID);
     fixture.cleanup().await;
 }

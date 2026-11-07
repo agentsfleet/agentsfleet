@@ -9,7 +9,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use afr_executor::{Client, Executor};
 
 use crate::bubblewrap::{self, Layout, NetworkLayout};

@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_core::test_util::trace::Capture;
-use afd_wire::report::ReportResponse;
+use af_core::error_code;
+use af_core::test_util::trace::Capture;
+use af_wire::report::ReportResponse;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 

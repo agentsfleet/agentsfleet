@@ -12,9 +12,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::report::{RenewRequest, ReportRequest};
+use af_wire::usage::{DAEMON_SEQ_BASE, LINES_MAX, RequestLines, RequestUsage};
 use afd_fleet::lease::report::RunTokens;
-use afd_wire::report::{RenewRequest, ReportRequest};
-use afd_wire::usage::{DAEMON_SEQ_BASE, LINES_MAX, RequestLines, RequestUsage};
 
 use crate::integration_held_sandbox::report::processed;
 use crate::report_seed::{DEEP_POOL, Held, held};

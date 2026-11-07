@@ -13,7 +13,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use afd_db::config::{DbRole, PoolConfig};
 
 const URL: &str = "postgres://agentsfleet:secret@localhost:5432/agentsfleetdb?sslmode=disable";

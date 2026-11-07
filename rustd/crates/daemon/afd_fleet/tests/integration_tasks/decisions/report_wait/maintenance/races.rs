@@ -1,7 +1,7 @@
 //! A completed HTTP read cannot revive work after its native authority changes.
 use super::{Observation, Waiting, baseline, counts, exercise, id, observe, wait_state};
+use af_wire::task::TaskState;
 use afd_fleet::task::{TaskControl, TaskLifecycle as _};
-use afd_wire::task::TaskState;
 use std::time::Duration;
 
 #[derive(Clone, Copy)]

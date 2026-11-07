@@ -1,9 +1,9 @@
 //! Usage is authoritative before any untrusted text or proposal is interpreted.
 
-use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::{
+use af_wire::authoring::{
     ENVELOPE_BYTES_MAX, ModelResult, ModelUsage, ProposalCall, ProposalRejection,
 };
+use afd_credential::provider::RegisteredModel;
 use garde::Validate as _;
 use rig_core::{
     completion::{CompletionResponse, FinishReason},
@@ -34,7 +34,7 @@ pub(in crate::model) struct Decoded {
     pub(in crate::model) continuation: Option<serde_json::Value>,
     pub(in crate::model) usage: ModelUsage,
     pub(in crate::model) output: i64,
-    pub(in crate::model) summary: Option<afd_context::Summary>,
+    pub(in crate::model) summary: Option<af_context::Summary>,
 }
 
 impl Decoded {
@@ -167,14 +167,14 @@ fn content(
 fn unique_calls(
     request: &garde::Valid<ModelCallInput>,
     calls: &[ProposalCall<
-        afd_fleet_runtime::Definition,
-        afd_fleet_runtime::definition::ConfigOp,
-        afd_fleet_runtime::definition::InstructionEdit,
+        af_fleet_runtime::Definition,
+        af_fleet_runtime::definition::ConfigOp,
+        af_fleet_runtime::definition::InstructionEdit,
     >],
 ) -> Result<()> {
     let mut used = std::collections::HashSet::new();
     for message in &request.request.messages {
-        if let afd_wire::authoring::ModelMessage::Assistant { proposal_calls, .. } = message {
+        if let af_wire::authoring::ModelMessage::Assistant { proposal_calls, .. } = message {
             used.extend(proposal_calls.iter().map(ProposalCall::id));
         }
     }
@@ -194,7 +194,7 @@ fn latest_said(request: &garde::Valid<ModelCallInput>) -> Option<&str> {
         .iter()
         .rev()
         .find_map(|message| match message {
-            afd_wire::authoring::ModelMessage::User { text } => Some(text.as_str()),
+            af_wire::authoring::ModelMessage::User { text } => Some(text.as_str()),
             _ => None,
         })
 }
@@ -205,9 +205,9 @@ fn proposal(
     said: Option<&str>,
 ) -> Result<
     ProposalCall<
-        afd_fleet_runtime::Definition,
-        afd_fleet_runtime::definition::ConfigOp,
-        afd_fleet_runtime::definition::InstructionEdit,
+        af_fleet_runtime::Definition,
+        af_fleet_runtime::definition::ConfigOp,
+        af_fleet_runtime::definition::InstructionEdit,
     >,
 > {
     if item.function.name.as_str() != TOOL {
@@ -260,7 +260,7 @@ pub(in crate::model) fn decode_summary(
         }
     }
     let summary = usable
-        .then(|| afd_context::Summary::decode(&text).ok())
+        .then(|| af_context::Summary::decode(&text).ok())
         .flatten();
     let result = summary.as_ref().map(|_| ModelResult {
         dispatch_id: request.dispatch_id.clone(),

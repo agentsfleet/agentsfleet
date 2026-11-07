@@ -1,8 +1,8 @@
 //! Move validated domain projections into wire payloads without copying setup JSON.
 
+use af_fleet_runtime::Definition;
 use afd_api_wire::authoring as wire;
 use afd_authoring::{Cancellation, types};
-use afd_fleet_runtime::Definition;
 
 pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Review> {
     wire::Draft {
@@ -109,9 +109,9 @@ pub(super) fn cancellation(value: Cancellation) -> wire::Cancellation {
     reason = "fixed test fixtures fail loudly when their contract changes"
 )]
 mod tests {
-    use afd_core::id::Uuid7;
+    use af_core::id::Uuid7;
 
-    use afd_wire::authoring::FailureReason;
+    use af_wire::authoring::FailureReason;
 
     use super::{card, message, types};
 

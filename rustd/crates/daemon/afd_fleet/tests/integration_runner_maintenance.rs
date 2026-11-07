@@ -4,12 +4,12 @@
 
 use crate::requests;
 use crate::support;
+use af_core::id::Uuid7;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_api_wire::admin::RunnerAdminAction;
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialDirectory as _, Digest};
-use afd_core::id::Uuid7;
 use afd_state::Credentials;
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::enrolment;
 use self::support::Fixtures;
@@ -55,7 +55,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
             ACTOR,
-            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
+            af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
         )
         .await
         .expect("the runner is revoked");
@@ -105,7 +105,7 @@ async fn test_runner_rotation_takeover() {
         .rotate_token(
             &enrolled.runner_id,
             ACTOR,
-            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
+            af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
         )
         .await
         .expect("a live runner credential rotates");

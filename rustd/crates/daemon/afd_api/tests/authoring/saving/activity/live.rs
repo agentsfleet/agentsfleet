@@ -1,7 +1,7 @@
 //! Already-open tails learn about committed changes without reconnecting.
 
 use super::{fixture::*, streams::Reader};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use http::{Method, StatusCode};
 use serde_json::json;
 

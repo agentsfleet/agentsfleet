@@ -33,7 +33,7 @@ async fn test_message_tool_posts_or_names_gap() {
 
     let (output, _asked) = posted(
         Err(Unanswered::Refused(Some(
-            afd_core::error_code::MESSAGE_NO_CHANNEL,
+            af_core::error_code::MESSAGE_NO_CHANNEL,
         ))),
         "anyone there?",
     )
@@ -55,7 +55,7 @@ async fn an_undelivered_line_is_a_failed_call() {
 async fn a_spent_budget_is_its_own_error() {
     let (output, _asked) = posted(
         Err(Unanswered::Refused(Some(
-            afd_core::error_code::MESSAGE_LIMIT_REACHED,
+            af_core::error_code::MESSAGE_LIMIT_REACHED,
         ))),
         "one more",
     )

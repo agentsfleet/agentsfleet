@@ -10,15 +10,15 @@
 
 use std::borrow::Cow;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_crypto::entropy::Entropy;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_crypto::entropy::Entropy;
+use af_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
+use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_db::test_util::unreachable_db;
 use afd_fleet::lease::Plane;
 use afd_memory::Memories;
-use afd_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
-use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
 use crate::report_seed::{Held, SLICE_MS, held};
@@ -65,7 +65,7 @@ pub(crate) fn report<'a>(
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
         tokens: 0,
-        requests: afd_wire::usage::RequestLines::default(),
+        requests: af_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: SLICE_MS.unsigned_abs(),
@@ -182,7 +182,7 @@ async fn test_superseded_report_writes_no_memory() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_oversize_report_memory_is_cut_and_counted() {
     let held = held().await;
-    let metrics = afd_observability::test_util::Capture::install();
+    let metrics = af_observability::test_util::Capture::install();
     let truncated_before = metrics.sum(TRUNCATED, &[]);
     let content = "m".repeat(MAX_CONTENT_LEN);
     // Twenty full entries, 16 KiB each: fifteen fit the 256 KiB cap.

@@ -1,8 +1,8 @@
 //! Model generations detect key rotation without relying on timestamp granularity.
 
 use super::fixture::{Fixture, now};
+use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_credential::provider::registered_model;
-use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
 

@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use sqlx::Connection as _;
 
 use super::lane_url;

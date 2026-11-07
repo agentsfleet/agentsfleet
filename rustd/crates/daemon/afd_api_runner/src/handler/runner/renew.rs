@@ -29,8 +29,8 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_wire::report::{RenewRequest, RenewResponse};
+use af_core::error_code;
+use af_wire::report::{RenewRequest, RenewResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -54,7 +54,7 @@ const EVENT_BODY_RETIRED: &str = "renew_body_retired";
 #[cfg(feature = "openapi")]
 const DESCRIPTION: &str = const_format::concatcp!(
     "Extends the current work assignment. The optional body includes up to ",
-    afd_wire::usage::LINES_MAX,
+    af_wire::usage::LINES_MAX,
     " provider usage records. `recorded_through` confirms the highest saved record; ",
     "resend later records. Invalid bodies save no records but still renew, logging ",
     "`renew_body_parse_failed`. Retired totals (`input_tokens`, ",
@@ -65,7 +65,7 @@ const DESCRIPTION: &str = const_format::concatcp!(
 /// Extends one live lease's deadline.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::LEASE_RENEW,
+    path = af_wire::paths::LEASE_RENEW,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_renew_lease",
     summary = "Extend a live lease",

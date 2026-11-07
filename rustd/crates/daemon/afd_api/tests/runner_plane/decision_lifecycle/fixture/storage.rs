@@ -5,7 +5,7 @@ pub(super) async fn build(
     database: &Db,
     owner: &Owner,
 ) -> afd_fleet::task::storage::R2CheckpointStore {
-    let storage_key = std::sync::Arc::new(afd_crypto::secret::Kek::from_bytes([0x27; 32]));
+    let storage_key = std::sync::Arc::new(af_crypto::secret::Kek::from_bytes([0x27; 32]));
     let storage_secret = RawValue::from_string(
         json!({
             "access_key_id":"http-fixture-access", "secret_access_key":"http-fixture-secret"

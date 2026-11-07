@@ -30,7 +30,7 @@ async fn concurrent_drafts_share_one_host_slot_and_one_draft_never_overlaps() {
 async fn runtime_occupancy_blocks_authoring_until_original_runtime_expiry() {
     let f = funded(1).await;
     let draft = queue(&f, "Wait for shared capacity").await;
-    let fleet = fixture::runtime(&f, afd_core::clock::after(now(), Duration::from_mins(1))).await;
+    let fleet = fixture::runtime(&f, af_core::clock::after(now(), Duration::from_mins(1))).await;
     assert!(claim(&f, &draft).await.is_none());
     assert_eq!(fixture::attempts(&f).await, 0);
     sqlx::query("UPDATE runner.leases SET lease_expires_at=now() WHERE fleet_id=$1::uuid")

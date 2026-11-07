@@ -182,7 +182,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         .end_event(
             &held.fleet,
             &held.event_id,
-            afd_core::event::status::PROCESSED,
+            af_core::event::status::PROCESSED,
         )
         .await;
 
@@ -281,7 +281,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
         held.fixtures
             .text(Row::Event(&held.fleet, &held.event_id), "status")
             .await,
-        Some(afd_core::event::status::PROCESSED.to_owned()),
+        Some(af_core::event::status::PROCESSED.to_owned()),
         "the run's RESULT is durable beside the charge for it — the pairing this dimension \
          exists for"
     );

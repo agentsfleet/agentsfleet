@@ -25,9 +25,9 @@
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
-use afd_core::clock::saturating_millis;
-use afd_core::spelling::to_spelling;
-use afd_wire::report::RunSegments;
+use af_core::clock::saturating_millis;
+use af_core::spelling::to_spelling;
+use af_wire::report::RunSegments;
 use tokio::time::Instant;
 
 use super::{EVENT_COMPLETED, EVENT_FAILED, LeaseRun};

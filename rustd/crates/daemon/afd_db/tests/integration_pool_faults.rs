@@ -21,7 +21,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::migration::Migration;
 use afd_db::test_util::TestDatabase;
@@ -37,7 +37,7 @@ pub(crate) mod lane;
 
 use self::fault_net::FaultProxy;
 use self::lane::{ACQUIRE_BUDGET, CONNECT_BUDGET, config_through, lane_database, lane_target};
-use afd_core::test_util::trace::install_subscriber;
+use af_core::test_util::trace::install_subscriber;
 
 /// One migration that would apply cleanly, so the only thing that can go wrong
 /// is the transaction the migrator opens to apply it in.
@@ -211,7 +211,7 @@ async fn test_warming_a_pool_whose_datastore_went_away_reports_the_shortfall() {
         (DbRole::Api.url_knob(), url.as_str()),
         (
             "DATABASE_ACQUIRE_TIMEOUT_MS",
-            &afd_core::clock::saturating_millis(ACQUIRE_BUDGET).to_string(),
+            &af_core::clock::saturating_millis(ACQUIRE_BUDGET).to_string(),
         ),
         ("DATABASE_POOL_SIZE_API", "1"),
         ("DATABASE_MIN_POOL_SIZE_API", "1"),

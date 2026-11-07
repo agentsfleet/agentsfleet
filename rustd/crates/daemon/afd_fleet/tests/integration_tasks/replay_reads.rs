@@ -1,6 +1,6 @@
 //! Receipt readers coexist, but still wait for authority writers and recheck fences.
 use super::fixture::{Case, exercise};
-use afd_core::error_code;
+use af_core::error_code;
 use afd_fleet::task::TaskLifecycle as _;
 use sqlx::Connection as _;
 use std::time::Duration;

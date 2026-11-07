@@ -2,11 +2,11 @@
 
 use std::ops::Range;
 
-use afd_core::{error_code, id::Uuid7};
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::{
+use af_core::{error_code, id::Uuid7};
+use af_wire::task::{
     DecisionAssessment, DecisionCallState, DecisionRecordDisposition, DecisionReservationInput,
 };
+use afd_fleet::task::TaskLifecycle as _;
 use serde_json::{Value, json};
 
 use super::{
@@ -60,7 +60,7 @@ async fn refused_ranges(fixture: &Decisions<'_>, source: &Uuid7) {
     }
 }
 
-fn assert_item(request: &afd_wire::decision::DecisionRequest, source: &Uuid7) {
+fn assert_item(request: &af_wire::decision::DecisionRequest, source: &Uuid7) {
     assert_eq!(request.state.get("message"), Some(&json!(MESSAGE)));
     assert_eq!(
         request.state.get("assessed_message"),
@@ -90,7 +90,7 @@ fn assert_item(request: &afd_wire::decision::DecisionRequest, source: &Uuid7) {
 async fn settled_replay(
     fixture: &Decisions<'_>,
     input: &garde::Valid<DecisionReservationInput>,
-    request: &afd_wire::decision::DecisionRequest,
+    request: &af_wire::decision::DecisionRequest,
 ) {
     let recorded = fixture.record(&request.call_id, known(request)).await;
     assert_eq!(

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use afr_egress::testing::{RecordingTransport, Sent, inbound};
+use af_egress::testing::{RecordingTransport, Sent, inbound};
 use serde_json::{Value, json};
 
 use super::{DEFAULT_MAX_CHARS, WebFetch};

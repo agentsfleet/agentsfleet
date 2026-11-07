@@ -25,8 +25,8 @@
 
 use std::sync::Arc;
 
+use af_core::error_code;
 use afd_api_wire::preference::{OnboardingResponse, PreferencesResponse};
-use afd_core::error_code;
 use afd_tenant::preference::{MAX_PREF_VALUE_BYTES, Pref, PrefKey, bag_is_true};
 use axum::Json;
 use axum::body::Bytes;

@@ -4,8 +4,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_core::clock::{Clock, after};
 use afd_auth::verifier::VerifyError;
-use afd_core::clock::{Clock, after};
 use jiff::Timestamp;
 
 use crate::error::Result;

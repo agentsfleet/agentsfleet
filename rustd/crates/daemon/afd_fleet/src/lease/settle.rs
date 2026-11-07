@@ -17,7 +17,7 @@
 //! anywhere to put one. Reading a charge without having established the claim
 //! is not a mistake to avoid; it does not compile.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::{FromRow as _, PgConnection};
 

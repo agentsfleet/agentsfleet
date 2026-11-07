@@ -45,7 +45,7 @@ struct Clock {
 impl Clock {
     async fn read(connection: &mut PgConnection) -> Self {
         sqlx::query_as(READ_CLOCK)
-            .bind(afd_core::timing::DAY)
+            .bind(af_core::timing::DAY)
             .fetch_one(connection)
             .await
             .expect("the clock reads")

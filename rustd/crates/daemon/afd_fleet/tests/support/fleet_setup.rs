@@ -7,7 +7,7 @@
 )]
 
 use crate::support::Fixtures;
-use afd_fleet_runtime::{
+use af_fleet_runtime::{
     Definition,
     definition::{POLICY_SEMANTICS, canonical_digest},
 };

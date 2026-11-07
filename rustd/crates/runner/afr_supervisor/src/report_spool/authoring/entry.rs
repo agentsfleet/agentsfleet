@@ -2,7 +2,7 @@
 
 use super::{PRIVATE_TTL, State, cipher, files};
 use crate::{Result, error};
-use afd_wire::authoring::{Accounting, Report};
+use af_wire::authoring::{Accounting, Report};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -20,9 +20,9 @@ pub(super) struct Metadata {
     pub(super) lease_id: String,
     pub(super) attempt_id: String,
     pub(super) report_id: String,
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub(super) first_written_at: Timestamp,
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub(super) expires_at: Timestamp,
 }
 
@@ -49,7 +49,7 @@ fn valid(
     directory: &Path,
     state: &mut State,
     now: Timestamp,
-) -> Result<(Metadata, afd_crypto::secret::Kek)> {
+) -> Result<(Metadata, af_crypto::secret::Kek)> {
     let (metadata, key) = cipher::metadata(directory)?;
     let accounting = settlement(directory)?;
     let lease = directory.file_name().and_then(|name| name.to_str());
@@ -57,7 +57,7 @@ fn valid(
         || accounting.lease_id != metadata.lease_id
         || accounting.attempt_id != metadata.attempt_id
         || accounting.accounting.report_id != metadata.report_id
-        || metadata.expires_at != afd_core::clock::after(metadata.first_written_at, PRIVATE_TTL)
+        || metadata.expires_at != af_core::clock::after(metadata.first_written_at, PRIVATE_TTL)
         || now < metadata.first_written_at
         || now >= metadata.expires_at
     {

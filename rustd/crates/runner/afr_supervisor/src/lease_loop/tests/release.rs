@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxRelease;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 use tokio::sync::mpsc;
@@ -100,7 +100,7 @@ async fn test_unsettled_kill_still_reports() {
     assert_eq!(unsettled.field("lease_id"), Some(LEASE_ID));
     assert_eq!(
         unsettled.field("error_code"),
-        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
         "{:?}",
         unsettled.fields
     );

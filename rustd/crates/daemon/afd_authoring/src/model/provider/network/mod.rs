@@ -24,8 +24,8 @@ impl Network {
     /// Reports a client/TLS initialization failure.
     pub fn new() -> Result<Self, reqwest::Error> {
         let client = afd_identity::direct(super::super::budget::PROVIDER_TIMEOUT)
-            .connect_timeout(afd_inference::stream::CONNECT_TIMEOUT)
-            .read_timeout(afd_inference::stream::READ_TIMEOUT)
+            .connect_timeout(af_inference::stream::CONNECT_TIMEOUT)
+            .read_timeout(af_inference::stream::READ_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
             .dns_resolver(Arc::new(Guarded))

@@ -7,9 +7,9 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::error_code;
-use afd_core::id::ENTROPY_LEN as ID_ENTROPY_LEN;
-use afd_crypto::entropy::Entropy;
+use af_core::error_code;
+use af_core::id::ENTROPY_LEN as ID_ENTROPY_LEN;
+use af_crypto::entropy::Entropy;
 use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::directory::After;
 use afd_tenant::workspace::name::Chosen;
@@ -170,7 +170,7 @@ async fn should_draw_again_when_a_generated_name_collides() {
     let tenant = id(&fixture.john.tenant);
     let taken = [1_u8; NAME_ENTROPY_LEN];
     let fresh = [2_u8; NAME_ENTROPY_LEN];
-    let now = afd_core::clock::now();
+    let now = af_core::clock::now();
     let mut id_byte = 10_u8;
     let mut queue = |name: &[u8]| {
         id_byte += 1;
@@ -230,7 +230,7 @@ async fn should_report_a_chosen_name_insert_that_fails_off_the_name_index() {
     let (entropy, draws) = Entropy::new_mocked();
     let workspaces = Workspaces::new(fixture.database.clone(), entropy);
     let tenant = id(&fixture.john.tenant);
-    let now = afd_core::clock::now();
+    let now = af_core::clock::now();
     let chosen = |name: &str| {
         Chosen::parse(name)
             .expect("a plain name")

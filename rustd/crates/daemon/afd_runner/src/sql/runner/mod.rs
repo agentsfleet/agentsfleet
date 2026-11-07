@@ -5,7 +5,7 @@
 //! never resolve another runner's row. Each is a `.sql` file beside this
 //! module, schema-qualified, and stamps its lifecycle columns with `now()`.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::statement::Bound;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;

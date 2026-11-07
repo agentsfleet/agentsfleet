@@ -2,8 +2,8 @@
 
 use super::Creations;
 use crate::Result;
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::{Definition, config::Trigger};
+use af_core::id::Uuid7;
+use af_fleet_runtime::{Definition, config::Trigger};
 use jiff::Timestamp;
 use sqlx::PgConnection;
 

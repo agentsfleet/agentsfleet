@@ -1,6 +1,6 @@
 //! Only immutable source identities survive as pins; inline setup is already a candidate.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
 use super::Source;

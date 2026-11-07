@@ -18,7 +18,7 @@
 //! report has parsed. One that is not a trace, or that breaks a bound, is
 //! dropped and logged, and the report settles without it.
 
-use afd_wire::tool_trace::{RawToolTrace, fenced_call_id};
+use af_wire::tool_trace::{RawToolTrace, fenced_call_id};
 
 /// A report's trace was not stored; the run settles without it.
 const EVENT_TRACE_DROPPED: &str = "report_tool_trace_dropped";

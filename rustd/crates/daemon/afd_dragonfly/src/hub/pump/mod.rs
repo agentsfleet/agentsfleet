@@ -31,7 +31,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use backon::{ExponentialBuilder, Retryable as _};
 use redis::PushInfo;
 use redis::cluster_async::ClusterConnection;
@@ -122,7 +122,7 @@ async fn run(
             };
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
+        let error_code = af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
         let cause = loss.as_str();
         tracing::warn!(cause, error_code, event = "hub_connection_dropped");
         // A cluster that accepted the dial but could not hold it would accept
@@ -132,7 +132,7 @@ async fn run(
         Connection { connection, pushes } = redial(&config, schedule).await;
         redialled = true;
         inner.record_connection();
-        afd_observability::producers::http::hub_reconnected();
+        af_observability::producers::http::hub_reconnected();
         tracing::info!(event = "hub_reconnected");
     }
 }
@@ -186,7 +186,7 @@ async fn redial(config: &DragonflyConfig, schedule: ExponentialBuilder) -> Conne
             .retry(schedule)
             .notify(|failure: &Error, _delay| {
                 // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
+                let error_code = af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
                 attempt = attempt.saturating_add(1);
                 let count = attempt;
                 let Logged {
@@ -258,7 +258,7 @@ async fn resubscribe(
     for (index, channel) in channels.iter().enumerate() {
         if let Err(failure) = connection.ssubscribe(channel).await {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
+            let error_code = af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
             let channels = channels.len().saturating_sub(index);
             tracing::warn!(
                 channels,

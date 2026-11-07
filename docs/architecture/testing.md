@@ -26,15 +26,15 @@ everything reachable through the public surface belongs in `tests/`.
 
 `make test-unit-all` is the repository's unit claim. It runs
 `test-unit-rustd` and then `test-coverage-all`, which runs each TypeScript
-package's own coverage gate. `test-unit-rustd` is three targets, one per crate
-family by name prefix, `test-unit-rustd-runner` (`afr_*`, `agentsfleet_runner`),
+package's own coverage gate. `test-unit-rustd` is three targets, one per group
+of layer folders, `test-unit-rustd-runner` (`runner/` and `harness/`),
 `test-unit-rustd-daemon` (`agentsfleetd`) and `test-unit-rustd-daemon-libs`
-(`afd_*`), in that order: together the whole workspace, with `afd_bench`'s tests
-kept in `daemon-libs`. Continuous Integration (CI) runs each
+(every other crate), in that order: together the whole workspace, with
+`afd_bench`'s tests kept in `daemon-libs`. Continuous Integration (CI) runs each
 on its own runner, with `lint-rustd` beside them, in
 `.github/workflows/test-unit-rustd.yml`; its last job carries the required check
 name `test-unit-rustd` and is green only when every other job was. A package-scoped runner —
-`cargo test -p afd_wire`, `bun run test` inside a package — proves that package
+`cargo test -p af_wire`, `bun run test` inside a package — proves that package
 and nothing more; it never satisfies the repository claim.
 
 `make test-integration-rustd` is the only lane that needs live datastores.
@@ -150,18 +150,18 @@ functions grouped by the day their file was introduced (`git log --diff-filter=A
 08-27 onward the practice inverts — 14%, 0%, 31%, 9% across 411. The split is
 the same per crate: every 100% crate (`afd_auth`, `afd_db`, `afd_identity`,
 `afd_dragonfly`, `afd_state`) predates the 27th, while `afd_api` sits at 20% and
-`afd_cron` and `afd_webhook` at 0%.
+`afd_cron` and `af_webhook` at 0%.
 
 **What this rule is NOT is a licence to rename.** The prefixed crates are
 internally consistent and their names are not wrong, only older. Touching one
-test in `afd_crypto` does not oblige renaming its neighbours, and a crate
+test in `af_crypto` does not oblige renaming its neighbours, and a crate
 converts, if ever, in one deliberate commit of its own.
 
 **A new test in an existing file follows that FILE.** A mixed file is worse than
 either convention held whole, so the rule binds new files and new crates; adding
 `the_thing_it_proves` beside four `test_`-prefixed neighbours makes the odd one
 out of the new test, not of the old ones. M180 added
-`test_the_tag_type_offers_no_short_circuiting_comparison` to `afd_crypto` for
+`test_the_tag_type_offers_no_short_circuiting_comparison` to `af_crypto` for
 exactly this reason, and it is not an exception to the rule but the rule's
 second clause.
 
@@ -214,11 +214,11 @@ Keep the shared guard until both the reader and writer have an isolated replacem
 
 ## The wire
 
-`afd_wire` defines the `/v1/runners` protocol. `agentsfleetd` serves it and
+`af_wire` defines the `/v1/runners` protocol. `agentsfleetd` serves it and
 publishes the shapes through `public/openapi.json` (`openapi_contract.rs`,
 `openapi_coverage.rs` and their siblings in `afd_api/tests/` grade that
 document against the routes). `agentsfleet-runner` is a client of the same
-crate: it speaks `afd_wire`'s types and nothing else, so a shape the two sides
+crate: it speaks `af_wire`'s types and nothing else, so a shape the two sides
 disagree on fails to compile ([Runner execution](./runner_execution.md#why-rust)).
 
 ## Coverage

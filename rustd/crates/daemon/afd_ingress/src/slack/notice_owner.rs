@@ -2,7 +2,7 @@
 use super::ChannelId;
 use crate::error::{self, COLUMN_FLEET, Result, row_unreadable, stored_fleet, stored_status};
 use crate::{Ingress, sql};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 use jiff::Timestamp;
 

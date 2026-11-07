@@ -5,7 +5,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use crate::support::{Lane, NOW};
 
@@ -19,7 +19,7 @@ const SEEDED_VERSION: i64 = 1;
 async fn a_stale_tag_purges_nothing_and_answers_the_current_tag() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;
-    let stale = afd_core::etag::versioned(&fleet, SEEDED_VERSION);
+    let stale = af_core::etag::versioned(&fleet, SEEDED_VERSION);
     let current = lane.kill(&fleet).await;
 
     let refused = lane

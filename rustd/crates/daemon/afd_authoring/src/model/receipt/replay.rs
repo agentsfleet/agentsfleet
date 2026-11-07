@@ -118,7 +118,7 @@ impl Receipt {
 #[cfg(test)]
 mod tests {
     use super::{Decision, Receipt};
-    use afd_core::error_code;
+    use af_core::error_code;
     use jiff::Timestamp;
 
     #[test]

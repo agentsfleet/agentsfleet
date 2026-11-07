@@ -22,7 +22,7 @@
 
 use super::*;
 use crate::requests;
-use afd_core::error_code::ErrorCode;
+use af_core::error_code::ErrorCode;
 
 /// A stored document declaring a write reach over [`super::STATED_BINDING`]'s
 /// repository, which is what puts a binding on the lease's mint scope.

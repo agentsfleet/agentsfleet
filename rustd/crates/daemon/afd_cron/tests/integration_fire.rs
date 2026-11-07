@@ -27,7 +27,7 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afd_cron::{DesiredStatus, Fire, FireTarget};
 
 use self::support::CronLane;

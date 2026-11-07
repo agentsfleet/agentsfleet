@@ -8,13 +8,13 @@
 
 use std::time::Instant;
 
-use afd_core::clock::SystemClock;
-use afd_wire::policy::ContextBudget;
-use afr_egress::Egress;
+use af_core::clock::SystemClock;
+use af_egress::Egress;
+use af_providers::Provider;
+use af_secrets::Scrub;
+use af_wire::policy::ContextBudget;
 use afr_executor::ExecutorSource;
 use afr_memory::Hydrated;
-use afr_providers::Provider;
-use afr_secrets::Scrub;
 use afr_telemetry::labels::Provider as ProviderLabel;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Lease, Selection};
@@ -26,10 +26,10 @@ use crate::nested::Registry;
 
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {
-    pub(crate) payload: &'run afd_wire::lease::LeasePayload<'run>,
+    pub(crate) payload: &'run af_wire::lease::LeasePayload<'run>,
     pub(crate) recovered_task: Option<&'run crate::TaskRecovery>,
     pub(crate) prepared_task: Option<&'run crate::PreparedTask>,
-    pub(crate) decision: Option<&'run afd_wire::decision::DecisionAssignment>,
+    pub(crate) decision: Option<&'run af_wire::decision::DecisionAssignment>,
     pub(crate) fencing_token: u64,
     pub(crate) lease_id: &'run str,
     /// The fleet the lease runs, which keys the provider's prompt cache.
@@ -45,7 +45,7 @@ pub(crate) struct Shared<'run> {
     pub(crate) context_checkpoints: &'run dyn crate::ContextCheckpoints,
     pub(crate) model_context_tokens: u32,
     pub(crate) output_tokens: u32,
-    pub(crate) inference: Option<&'run afd_wire::inference::ModelInference>,
+    pub(crate) inference: Option<&'run af_wire::inference::ModelInference>,
     pub(crate) context: &'run ContextBudget<'run>,
     /// Every tool the lease was offered; a child's selection narrows it.
     pub(crate) selection: &'run Selection<'run>,

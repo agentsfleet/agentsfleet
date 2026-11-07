@@ -2,7 +2,7 @@
 
 use super::{CONTEXT_READ, Schedules};
 use crate::{Result, Schedule, error, sql};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 impl Schedules {
     /// This fleet's schedules, oldest first.

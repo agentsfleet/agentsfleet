@@ -6,8 +6,8 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_wire::memory::{
+use af_core::id::Uuid7;
+use af_wire::memory::{
     HYDRATE_SHARED_BYTES, HYDRATE_WINDOW_BYTES, MemoryHydrateResponse, MemoryRecallResponse,
     SharedMemory,
 };

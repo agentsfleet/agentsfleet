@@ -20,31 +20,31 @@ workspace = true
 test-util = []
 
 [dependencies]
-afd_context = { workspace = true }
+af_context = { workspace = true }
 # Proves a lease's sandbox size within the wire's declared bounds before the
 # engine builds it.
 garde.workspace = true
 # The runner's own families: sandbox start, dropped frames, failed pushes.
 afr_telemetry.workspace = true
 # The span vocabulary every runner span is written in, beside the daemon's.
-afd_observability.workspace = true
+af_observability.workspace = true
 # Identifiers, the lease clock, worker-count clamps, the environment seam and
 # the registry codes a failure is logged under.
-afd_core.workspace = true
+af_core.workspace = true
 # Per-report content keys, authenticated metadata and encrypted private spool bytes.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # No-follow, nonblocking opens keep private spool reads on regular files.
 libc.workspace = true
 cap-std.workspace = true
 rustix.workspace = true
 # The one wire: every verb's request and reply, spelled once.
-afd_wire.workspace = true
+af_wire.workspace = true
 # The instants a lease, a renewal and a held sandbox carry; the runner reads
 # them off the injected clock and waits on the span left until each.
 jiff.workspace = true
 afr_agent.workspace = true
 # Physical decisions reuse the existing guarded provider protocols.
-afr_providers.workspace = true
+af_providers.workspace = true
 afr_executor.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.
 afr_memory.workspace = true
@@ -52,10 +52,10 @@ afr_sandbox.workspace = true
 # Which bound repositories a lease checks out, read from its tool policy.
 afr_tools.workspace = true
 # The runner token and every minted credential are held as one `Secret`.
-afr_secrets.workspace = true
+af_secrets.workspace = true
 # The mint seam a lease's egress guard mints through, which the supervisor
 # implements over its control plane.
-afr_egress.workspace = true
+af_egress.workspace = true
 # `RunnerApi` is `dyn`: production holds the HTTP client, tests a fake.
 async-trait.workspace = true
 # Bounded exponential retry for the calls that may be retried, with a predicate
@@ -102,7 +102,7 @@ hyper-util.workspace = true
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # `FakeResolver`: the egress suites resolve through the one fake the guarded
 # client's suites use.
-afr_egress = { workspace = true, features = ["test-util"] }
+af_egress = { workspace = true, features = ["test-util"] }
 # Stub handlers, so the lease suites admit through a real catalog: a
 # sandbox-side tool starts a sandbox, a supervisor-side one does not.
 afr_tools = { workspace = true, features = ["test-util"] }
@@ -114,7 +114,7 @@ afr_agent = { workspace = true, features = ["test-util"] }
 # The daemon side of `HttpRunnerApi`'s tests: a real listener, so a status code
 # and a header are proven on the socket rather than assumed by a mock.
 axum = { workspace = true, features = ["json"] }
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 # The subscriber a lease's spans are exported through in the telemetry suite.
 tracing-subscriber.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }

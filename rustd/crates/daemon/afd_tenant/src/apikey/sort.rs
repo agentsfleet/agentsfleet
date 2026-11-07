@@ -9,7 +9,7 @@
 //! together; keeping it out of the HTTP layer means no handler is in a position
 //! to assemble one.
 
-use afd_core::paging::{BoundaryKind, Comparator, SortOrder};
+use af_core::paging::{BoundaryKind, Comparator, SortOrder};
 
 /// How a tenant's api-keys are ordered.
 ///

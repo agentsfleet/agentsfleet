@@ -2,7 +2,7 @@
 //! fleet, sampled on a cadence, refusing new work once it reaches the budget.
 //! No per-fleet cap exists (`M242_001` §1).
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
 
 use crate::Admissions;

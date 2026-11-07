@@ -1,6 +1,6 @@
 //! Presigned object transfers authenticate transport and enforce exact descriptors.
 use super::Transfers;
-use afd_wire::task::{
+use af_wire::task::{
     CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext, CheckpointTransfer,
 };
 use axum::http::{Method, StatusCode};
@@ -19,7 +19,7 @@ fn authority(url: &str) -> CheckpointTransfer {
         ]
         .into_iter()
         .collect(),
-        expires_at: afd_core::clock::after(afd_core::clock::now(), Duration::from_secs(30)),
+        expires_at: af_core::clock::after(af_core::clock::now(), Duration::from_secs(30)),
     }
 }
 fn object(url: &str) -> CheckpointObject {
@@ -34,7 +34,7 @@ fn object(url: &str) -> CheckpointObject {
         status: CheckpointObjectStatus::Reused,
         nonce: None,
         data_key: None,
-        ciphertext_sha256: Some(afd_core::etag::sha256_hex(CONTENT)),
+        ciphertext_sha256: Some(af_core::etag::sha256_hex(CONTENT)),
         ciphertext_length: Some(CONTENT.len() as u64),
         transfer: Some(authority(url)),
     }
@@ -99,7 +99,7 @@ async fn upload_failure_and_redirect_require_native_reconciliation_without_retry
             .ok_or("unsafe upload accepted")?;
         assert_eq!(
             failure.code(),
-            afd_core::error_code::INTERNAL_OPERATION_FAILED
+            af_core::error_code::INTERNAL_OPERATION_FAILED
         );
         assert_request(
             &server.seen.recv().await.ok_or("missing PUT")?,
@@ -130,7 +130,7 @@ async fn downloads_reject_status_length_digest_and_stream_bounds() -> Result<()>
             .ok_or("unsafe download accepted")?;
         assert_eq!(
             failure.code(),
-            afd_core::error_code::INTERNAL_OPERATION_FAILED
+            af_core::error_code::INTERNAL_OPERATION_FAILED
         );
         assert_request(
             &server.seen.recv().await.ok_or("missing GET")?,
@@ -165,11 +165,11 @@ async fn absent_or_expired_authority_is_rejected_before_transport() -> Result<()
             .ok_or("invalid authority accepted")?;
         assert_eq!(
             failure.code(),
-            afd_core::error_code::INTERNAL_OPERATION_FAILED
+            af_core::error_code::INTERNAL_OPERATION_FAILED
         );
     }
     let mut expired = authority("https://checkpoint.invalid/object");
-    expired.expires_at = afd_core::clock::now();
+    expired.expires_at = af_core::clock::now();
     refused(transfers.upload(&expired, CONTENT.to_vec()).await)?;
     Ok(())
 }
@@ -178,7 +178,7 @@ fn refused<T>(result: crate::Result<T>) -> Result<()> {
     let failure = result.err().ok_or("invalid authority accepted")?;
     assert_eq!(
         failure.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     Ok(())
 }

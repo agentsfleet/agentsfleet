@@ -10,15 +10,15 @@
 
 use std::{panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::usage::{DAEMON_SEQ_BASE, DECISION_SEQ_BASE, UsageLine};
 use afd_billing::biller::{Account, Attribution, Biller, Settlement, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines};
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::{BillingSwept, GRACE, sweep};
 use afd_fleet::lease::{Renewed, sql::meter::Metering};
-use afd_wire::usage::{DAEMON_SEQ_BASE, DECISION_SEQ_BASE, UsageLine};
 use futures_util::FutureExt as _;
 
 use crate::report_seed::{DEEP_POOL, Held, held_in};
@@ -44,7 +44,7 @@ async fn the_relay_settles_orphaned_lines() {
     let biller = LedgerBiller::new(
         database.clone(),
         Entropy::new(),
-        Arc::new(afd_core::clock::SystemClock),
+        Arc::new(af_core::clock::SystemClock),
     );
     orphan(&held).await;
 
@@ -103,7 +103,7 @@ async fn expiry_after_decision(held: &Held) {
     let biller = LedgerBiller::new(
         database.clone(),
         Entropy::new(),
-        Arc::new(afd_core::clock::SystemClock),
+        Arc::new(af_core::clock::SystemClock),
     );
     // Seed one known decision charge through the real ledger. Physical-call
     // reservation is a separate component; this tests its reserved namespace.
@@ -229,7 +229,7 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
     let biller = LedgerBiller::new(
         database.clone(),
         Entropy::new(),
-        Arc::new(afd_core::clock::SystemClock),
+        Arc::new(af_core::clock::SystemClock),
     );
     let tail_ms = abandon(&held).await;
 

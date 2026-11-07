@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::task::{TaskContext, TaskState};
+use af_wire::task::{TaskContext, TaskState};
 use serde::{Deserialize, Serialize};
 
 /// A bounded page of unfinished work belonging to one fleet.
@@ -37,10 +37,10 @@ pub struct TaskSummary<'a> {
     #[serde(borrow)]
     pub accepted_revision_id: Cow<'a, str>,
     /// Native creation instant.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// Existing cumulative deadline.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub expires_at: jiff::Timestamp,
 }
 
@@ -49,9 +49,9 @@ pub struct TaskSummary<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskResponse<'a> {
     /// Current native dependency and saved check results; no remote refresh is implied.
-    pub dependency: Option<afd_wire::task::TaskDependency>,
+    pub dependency: Option<af_wire::task::TaskDependency>,
     /// Latest publication receipt; only a confirmed receipt establishes a published head.
-    pub publication: Option<afd_wire::task::TaskEffect>,
+    pub publication: Option<af_wire::task::TaskEffect>,
     /// Strong version shared with the response header and conditional writes.
     #[serde(borrow)]
     pub etag: Cow<'a, str>,

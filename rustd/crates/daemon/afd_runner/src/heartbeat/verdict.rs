@@ -1,9 +1,9 @@
 //! What a beat changed about a runner's verdict: the write, and the line an
 //! operator reads when it moved.
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_wire::runner::CapabilityReport;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_wire::runner::CapabilityReport;
 use sqlx::PgConnection;
 
 use super::best_effort;

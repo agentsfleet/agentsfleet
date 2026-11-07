@@ -4,8 +4,8 @@
 
 use super::super::{fixture::now, mint, refusal::Refusal};
 use super::fixture::{Case, check};
+use af_core::{error_code, id::Uuid7, test_util::trace::Capture};
 use afd_authoring::{SavedFleet, types::Start};
-use afd_core::{error_code, id::Uuid7, test_util::trace::Capture};
 use sqlx::Connection as _;
 
 /// Holds the fixture tenant's wallet the way activation locks it.

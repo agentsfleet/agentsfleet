@@ -1,6 +1,6 @@
 //! Structured lifecycle-event proofs for supervised tasks.
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use tracing::Level;
 
 use super::*;

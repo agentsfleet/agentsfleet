@@ -91,7 +91,7 @@ impl JwkKeySet {
     /// document over a key we were never going to use would be an outage
     /// authored by strictness.
     pub fn parse(raw: &[u8]) -> Result<Self, VerifyError> {
-        let doc: Document<'_> = afd_core::json::object_from_slice(raw)
+        let doc: Document<'_> = af_core::json::object_from_slice(raw)
             .map_err(|_invalid| VerifyError::KeySetUnavailable)?;
         let mut keys = Vec::with_capacity(doc.keys.len());
         let mut rejected = 0_usize;

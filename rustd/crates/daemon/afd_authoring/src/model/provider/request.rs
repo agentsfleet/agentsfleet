@@ -7,11 +7,11 @@ use crate::{
     Result,
     error::{ErrorKind, raise::stored},
 };
-use afd_credential::provider::RegisteredModel;
-use afd_wire::{
+use af_wire::{
     authoring::{ModelMessage, ProposalCall},
     inference::InferenceApi,
 };
+use afd_credential::provider::RegisteredModel;
 use rig_core::completion::{CompletionRequest, ToolAnnotations, ToolDefinition};
 use rig_core::message::{
     AssistantContent, CallId, Message, ToolCall, ToolFunction, ToolName, UserContent,
@@ -56,9 +56,9 @@ pub(in crate::model) fn body(
 
 fn message_to_sdk(
     message: &ModelMessage<
-        afd_fleet_runtime::Definition,
-        afd_fleet_runtime::definition::ConfigOp,
-        afd_fleet_runtime::definition::InstructionEdit,
+        af_fleet_runtime::Definition,
+        af_fleet_runtime::definition::ConfigOp,
+        af_fleet_runtime::definition::InstructionEdit,
     >,
     tool: &ToolName,
 ) -> Result<Message> {

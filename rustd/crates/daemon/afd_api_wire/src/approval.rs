@@ -47,7 +47,7 @@ pub mod status {
 /// opens a row at [`GateStatus::Pending`] and reads the durable answer back,
 /// and the operator plane filters its inbox by it. Two copies would let a row
 /// one plane wrote be a state the other cannot name. A reader parses a stored
-/// spelling through serde (`afd_core::spelling::from_spelling`), so the
+/// spelling through serde (`af_core::spelling::from_spelling`), so the
 /// `rename_all` below is the only reading vocabulary and [`GateStatus::as_str`]
 /// the only writing one, pinned against each other by this module's tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,13 +108,13 @@ pub struct ApprovalSummary<'a> {
     /// The resolver's note, empty while pending.
     pub detail: Cow<'a, str>,
     /// When it was raised.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// When it stops waiting.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub expires_at: jiff::Timestamp,
     /// When it was resolved, or `null` while pending.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub resolved_at: Option<jiff::Timestamp>,
     /// Who resolved it, empty while pending.
     pub resolved_by: Cow<'a, str>,
@@ -180,7 +180,7 @@ pub struct ResolvedResponse<'a> {
     /// Where it now stands.
     pub outcome: Cow<'a, str>,
     /// When it was decided.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub resolved_at: jiff::Timestamp,
     /// Who decided it — not necessarily this caller.
     pub resolved_by: Cow<'a, str>,

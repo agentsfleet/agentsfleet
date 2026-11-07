@@ -1,7 +1,7 @@
 //! A release migration runs while the previous daemon may still accept work.
 
 use super::{Fixture, TestDatabase, mint};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::{Migrator, config::DbRole, migration::MIGRATIONS};
 
 const DEADLINE_SLOT: i64 = 2130;

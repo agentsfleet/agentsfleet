@@ -9,7 +9,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_crypto::secret::SecretBytes;
+use af_crypto::secret::SecretBytes;
 use jiff::Timestamp;
 
 use super::{Rejected, Verified, sign, verify};

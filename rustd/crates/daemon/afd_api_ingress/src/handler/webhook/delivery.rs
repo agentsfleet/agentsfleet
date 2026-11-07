@@ -2,7 +2,7 @@
 use super::{DETAIL_EVENT_HEADER, actor, verify::Verified};
 use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WebhookIngress as _};
-use afd_core::error_code;
+use af_core::error_code;
 use afd_ingress::{Delivery, Surface};
 use axum::Json;
 use axum::response::{IntoResponse as _, Response};

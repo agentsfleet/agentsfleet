@@ -1,7 +1,7 @@
 //! The metadata-only wire rejects text, caller digests and unbounded outcomes.
 
 use super::{accounting, report};
-use afd_wire::authoring::Report;
+use af_wire::authoring::Report;
 use serde_json::json;
 
 #[test]

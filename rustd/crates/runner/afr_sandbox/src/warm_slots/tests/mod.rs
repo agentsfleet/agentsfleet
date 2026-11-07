@@ -57,7 +57,7 @@ async fn test_warm_slot_single_use() {
 #[tokio::test]
 async fn test_a_request_with_other_limits_starts_cold() {
     let inner = Arc::new(Counting::default());
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
 
@@ -104,7 +104,7 @@ async fn test_a_slot_that_keeps_failing_is_retried_until_shutdown() {
         refusals: AtomicU64::new(u64::MAX),
         ..Counting::default()
     });
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     tokio::time::sleep(Duration::from_secs(5)).await;
 
@@ -154,7 +154,7 @@ async fn test_a_slot_that_died_is_never_handed_to_a_lease() {
         dead: true,
         ..Counting::default()
     });
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
 
@@ -237,7 +237,7 @@ async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
         panics: true,
         ..Counting::default()
     });
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
 
@@ -257,7 +257,7 @@ async fn test_a_keeper_that_dies_is_reported_at_shutdown() {
 #[tokio::test]
 async fn test_warm_slot_serves_only_its_own_network() {
     let inner = Arc::new(Counting::default());
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
     settle().await;
     let allowlist = Allowlist::new(Vec::new()).unwrap();

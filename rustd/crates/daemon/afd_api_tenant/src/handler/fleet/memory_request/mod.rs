@@ -26,10 +26,10 @@
 use afd_http::handler::encoding::{decode_bytes, decode_form};
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_core::id::Uuid7;
+use af_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_wire::memory::MAX_KEY_LEN;
 use afd_memory::page::View;
-use afd_wire::memory::MAX_KEY_LEN;
 use garde::Validate as _;
 
 use crate::handler::Refusal;
@@ -288,7 +288,7 @@ pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
 /// A memory key as its path segment names it, percent-decoded.
 ///
 /// The bound is on the DECODED bytes, which is what a stored key is measured
-/// in — the same bound `afd_wire::memory::MemoryDelta` declares on the key a
+/// in — the same bound `af_wire::memory::MemoryDelta` declares on the key a
 /// runner writes. `decodePathSegment` reaches the same answer by writing into a
 /// `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
 /// the bound is the rule.

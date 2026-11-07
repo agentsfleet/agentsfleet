@@ -24,12 +24,12 @@
 
 use std::sync::Arc;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_fleet_runtime::config::FleetConfig;
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::{Accounts, Posture};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::admit::{Admission, Request, money_gates};
-use afd_fleet_runtime::config::FleetConfig;
 
 use crate::seed::unique_ids;
 use crate::support::Fixtures;
@@ -102,7 +102,7 @@ pub(crate) fn biller(fixtures: &Fixtures) -> LedgerBiller {
     LedgerBiller::new(
         fixtures.database.clone(),
         Entropy::new(),
-        Arc::new(afd_core::clock::SystemClock),
+        Arc::new(af_core::clock::SystemClock),
     )
 }
 
@@ -140,7 +140,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
     let Admission::Refuse(refusal) = decided else {
         panic!("an unowned workspace must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, afd_core::event::label::TENANT_RESOLVE_FAILED);
+    assert_eq!(refusal.label, af_core::event::label::TENANT_RESOLVE_FAILED);
 
     fixtures.cleanup().await;
 }
@@ -177,7 +177,7 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
     let Admission::Refuse(refusal) = decided else {
         panic!("a fleet past its ceiling must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, afd_core::event::label::BUDGET_BREACH);
+    assert_eq!(refusal.label, af_core::event::label::BUDGET_BREACH);
 
     fixtures.cleanup().await;
 }

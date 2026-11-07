@@ -5,9 +5,9 @@
 use super::super::refusal::Refusal;
 use super::fixture::{attempts, fund, funded, queue};
 use super::{Fixture, mint};
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
+use af_wire::lease::AcceptedKinds;
 use afd_runner::Runners;
-use afd_wire::lease::AcceptedKinds;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]

@@ -24,8 +24,8 @@
 mod read;
 mod write;
 
-use afd_fleet_runtime::config::{Reach, RepositoryBinding};
-use afd_wire::policy::{HttpOriginPolicy, HttpRequestRule};
+use af_fleet_runtime::config::{Reach, RepositoryBinding};
+use af_wire::policy::{HttpOriginPolicy, HttpRequestRule};
 
 /// The only host these rules govern.
 pub const API_HOST: &str = "api.github.com";
@@ -63,7 +63,7 @@ pub fn build<'a>(
         .collect();
 
     if let Reach::Write { base } = binding.reach()
-        && binding.publication() == afd_fleet_runtime::config::RepositoryPublication::EventDraft
+        && binding.publication() == af_fleet_runtime::config::RepositoryPublication::EventDraft
     {
         requests.extend(write::rules(binding, base, repair_branch)?);
     }

@@ -10,7 +10,7 @@ use crate::{
     Result,
     task::{TaskLease, TaskRefusal},
 };
-use afd_fleet_runtime::{
+use af_fleet_runtime::{
     FleetConfig,
     config::{Access, RepositoryPublication},
 };

@@ -9,10 +9,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_auth::principal::{Person, PersonCredential, Principal, Runner, Subject};
 use afd_auth::scope::{Scope, ScopeSet, parse_claim};
 use afd_auth::{Denied, require_scope};
-use afd_core::id::Uuid7;
 
 /// A syntactically valid identifier — the gate never reads it.
 const ID: &str = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";

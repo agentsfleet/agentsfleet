@@ -16,15 +16,15 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::error_code::ErrorCode;
-use afd_core::test_util::trace::{Capture, CapturedEvent};
+use af_core::error_code::ErrorCode;
+use af_core::test_util::trace::{Capture, CapturedEvent};
 use afd_credential::credential::{Ask, Broker, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::{Connector, Registry};
 use zeroize::Zeroizing;
 
 use super::*;
 use crate::requests;
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 
 /// The token every counted exchange hands back.
 const COUNTED_TOKEN: &str = "ghs_counted";
@@ -42,7 +42,7 @@ impl Exchanger for Counting {
         self.0.fetch_add(1, Ordering::SeqCst);
         Box::pin(std::future::ready(Outcome::Ok(Minted {
             token: Zeroizing::new(COUNTED_TOKEN.to_owned()),
-            expires_at: afd_core::clock::after(afd_core::clock::now(), LEASE_WINDOW),
+            expires_at: af_core::clock::after(af_core::clock::now(), LEASE_WINDOW),
             rotated_refresh_token: None,
         })))
     }

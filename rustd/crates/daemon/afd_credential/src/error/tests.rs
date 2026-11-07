@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::Error;
 
@@ -49,7 +49,7 @@ fn a_query_failure_keeps_its_cause_and_internal_mapping() {
 
 #[test]
 fn a_malformed_row_keeps_table_column_and_cause() -> Result<(), &'static str> {
-    let source = afd_core::id::Uuid7::parse("not-an-id")
+    let source = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("malformed fixture unexpectedly parsed")?;
     let failure = super::row_malformed("provider_selections", "tenant_id")(source);
@@ -64,11 +64,11 @@ fn a_malformed_row_keeps_table_column_and_cause() -> Result<(), &'static str> {
 /// A KEK hex string that will not decode, for the two crypto-sourced kinds.
 ///
 /// Short AND non-hex, so it fails whichever check `decode_hex_into` reaches
-/// first — the fixture is about producing a real `afd_crypto` error, not about
+/// first — the fixture is about producing a real `af_crypto` error, not about
 /// which of its arms produced it. Returned as a `Result` rather than unwrapped
 /// because `expect_used` is denied workspace-wide, tests included.
-fn crypto_failure() -> Result<afd_crypto::error::Error, &'static str> {
-    afd_crypto::secret::Kek::from_hex("zz")
+fn crypto_failure() -> Result<af_crypto::error::Error, &'static str> {
+    af_crypto::secret::Kek::from_hex("zz")
         .err()
         .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")
 }

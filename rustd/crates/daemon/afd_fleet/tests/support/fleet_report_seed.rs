@@ -13,18 +13,18 @@
 
 use std::sync::Arc;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_billing::biller::{Biller as _, WorkKey};
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::nanos::MS_PER_SEC;
 use afd_billing::{Accounts, Posture, RUN_NANOS_PER_SEC};
-use afd_core::id::Uuid7;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::usage::Pricing;
@@ -227,7 +227,7 @@ impl Held {
     /// slice the last settle or renewal charged for.
     pub(crate) async fn metered_from(&self, from: Timestamp) -> i64 {
         let to = self.fixtures.metered_since(&self.fleet).await;
-        afd_core::clock::saturating_millis_signed(afd_core::clock::elapsed(from, to))
+        af_core::clock::saturating_millis_signed(af_core::clock::elapsed(from, to))
     }
 }
 
@@ -267,7 +267,7 @@ impl Fixtures {
         leases: &Leases,
         lease_id: &str,
         runner: &Uuid7,
-        requests: &[afd_wire::usage::RequestUsage],
+        requests: &[af_wire::usage::RequestUsage],
         succeeded: bool,
         at: Timestamp,
     ) -> Settled {
@@ -312,7 +312,7 @@ impl Fixtures {
             biller: Arc::new(LedgerBiller::new(
                 self.database.clone(),
                 Entropy::new(),
-                Arc::new(afd_core::clock::SystemClock),
+                Arc::new(af_core::clock::SystemClock),
             )),
             memories: Memories::new(self.database.clone(), Entropy::new()),
             providers: Providers::new(self.database.clone(), Arc::clone(&kek), Entropy::new()),

@@ -30,7 +30,7 @@
 use crate::harness;
 
 use self::harness::{Fleet, SCHEDULE_DESTINATION, json_body, refusal_code, send_with_headers};
-use afd_core::error_code;
+use af_core::error_code;
 use base64::Engine as _;
 use http::{HeaderName, Method, StatusCode};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
@@ -110,7 +110,7 @@ impl FireClaims {
 /// Seconds since the epoch — `verify_at` reads a system clock, with no seam.
 #[expect(
     clippy::disallowed_methods,
-    reason = "unsigned seconds that panic before the epoch; afd_core::clock::now reads a pre-epoch host as negative instead"
+    reason = "unsigned seconds that panic before the epoch; af_core::clock::now reads a pre-epoch host as negative instead"
 )]
 fn now() -> u64 {
     std::time::SystemTime::now()
@@ -188,7 +188,7 @@ async fn a_body_past_the_cap_is_refused_before_the_token_is_read() {
 /// without that check a captured token would authorise any substituted payload.
 #[tokio::test]
 async fn a_fire_that_does_not_prove_itself_is_refused() {
-    let captured = afd_core::test_util::trace::Capture::install();
+    let captured = af_core::test_util::trace::Capture::install();
     let good = mint(&FireClaims::good(BODY), CURRENT_KEY);
     let forged = mint(&FireClaims::good(BODY), FOREIGN_KEY);
     let substituted = r#"{"schedule_id":"01J0000000000000000000000B"}"#;

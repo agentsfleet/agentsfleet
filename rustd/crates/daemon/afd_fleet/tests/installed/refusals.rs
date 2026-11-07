@@ -2,7 +2,7 @@
 
 use super::{definition, id};
 use crate::{seed::seeded, support::Fixtures};
-use afd_fleet_runtime::definition::POLICY_SEMANTICS;
+use af_fleet_runtime::definition::POLICY_SEMANTICS;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -21,7 +21,7 @@ async fn missing_native_revision_is_permanent_even_if_old_projection_exists() {
         .await
         .expect_err("no native authority");
     assert!(failure.is_config_permanent());
-    assert_eq!(failure.code(), afd_core::error_code::AUTHORING_POLICY);
+    assert_eq!(failure.code(), af_core::error_code::AUTHORING_POLICY);
 }
 
 #[tokio::test]

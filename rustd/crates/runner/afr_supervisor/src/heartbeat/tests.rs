@@ -8,11 +8,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, SystemClock};
-use afd_core::error_code::INTERNAL_OPERATION_FAILED;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_wire::runner::{HeartbeatStatus, NetworkPolicy};
+use af_core::clock::{FixedClock, SystemClock};
+use af_core::error_code::INTERNAL_OPERATION_FAILED;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::{HeartbeatStatus, NetworkPolicy};
 use afr_sandbox::{Engine as _, HostProbe, Kvm, Limits, SandboxRequest};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;

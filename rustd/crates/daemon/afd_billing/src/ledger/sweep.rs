@@ -7,13 +7,13 @@
 //! biller in another process sees the same calls an in-process one does and
 //! `(work, seq)` keeps a retried or repeated pass from charging twice.
 
-use afd_core::error_code::ErrorCode;
-use afd_core::id::Uuid7;
-use afd_wire::usage::UsageLine;
+use af_core::error_code::ErrorCode;
+use af_core::id::Uuid7;
+use af_wire::usage::UsageLine;
 use jiff::Timestamp;
 use sqlx::PgExecutor;
 
-use afd_observability::producers::billing as metrics;
+use af_observability::producers::billing as metrics;
 
 use crate::biller::{Account, Attribution, Biller, Settlement, WorkKey, observed};
 use crate::error::{query, row_malformed};

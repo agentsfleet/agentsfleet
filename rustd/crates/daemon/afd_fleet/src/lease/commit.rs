@@ -5,8 +5,8 @@
 //! their fences, so a reclaim cannot interleave with the remaining writes.
 //! Dropping the transaction on any error rolls every write back.
 
+use af_core::id::Uuid7;
 use afd_billing::biller::Settlement;
-use afd_core::id::Uuid7;
 use afd_events::Closed;
 use jiff::Timestamp;
 use sqlx::{Acquire as _, PgConnection};
@@ -41,7 +41,7 @@ pub struct TerminalReport<'a> {
     /// The lease's identifier as the work its usage lines name.
     pub lease_key: &'a Uuid7,
     /// One line per provider request no renewal acknowledged.
-    pub requests: &'a [afd_wire::usage::RequestUsage],
+    pub requests: &'a [af_wire::usage::RequestUsage],
     /// What the final slice is priced against.
     pub pricing: &'a Pricing,
     /// The run's ending, as the event row will carry it.

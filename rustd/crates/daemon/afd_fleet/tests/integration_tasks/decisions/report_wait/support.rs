@@ -6,11 +6,11 @@ use super::super::{
     interpretation::choose,
     reply::known_result,
 };
-use afd_fleet::task::TaskSnapshot;
-use afd_wire::{
+use af_wire::{
     decision::DecisionOutcome,
     task::{DecisionReceipt, DecisionTaskVersion, TaskDisposition, TaskReport, TaskState},
 };
+use afd_fleet::task::TaskSnapshot;
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy)]

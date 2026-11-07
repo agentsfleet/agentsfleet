@@ -12,7 +12,7 @@ mod tests;
 
 #[derive(Debug, garde::Validate)]
 struct Input<'a> {
-    #[garde(length(bytes, max = MAX_NAMESPACE_BYTES), custom(afd_validate::charset(is_namespace_char)))]
+    #[garde(length(bytes, max = MAX_NAMESPACE_BYTES), custom(af_validate::charset(is_namespace_char)))]
     value: &'a str,
 }
 

@@ -2,7 +2,7 @@
 use crate::definition_repair::{NEW_COMMIT, Repo, github_auth, post, reconcile, write};
 use crate::fake_model::{Asked, http, repair_branch, say};
 use crate::repair_remote::draft_url;
-use afr_providers::Chunk;
+use af_providers::Chunk;
 use serde_json::{Value, json};
 
 pub(crate) const BLOCKED: &str = "Validation blocked: required remote state could not be verified.";

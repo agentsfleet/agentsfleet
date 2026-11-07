@@ -12,8 +12,8 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_crypto::entropy::Entropy;
 use afd_cron::{ACTOR_PREFIX, Source};
-use afd_crypto::entropy::Entropy;
 use agentsfleetd::preflight::{QSTASH_TOKEN_KNOB, QSTASH_URL_KNOB};
 use agentsfleetd::supervisor::Supervisor;
 use reqwest::Method;
@@ -169,7 +169,7 @@ impl Leased {
 
     /// Writes `row` for `fleet` straight into the table.
     pub(crate) async fn seed_row(&self, fleet: &str, row: Seeded<'_>) -> String {
-        let now = afd_core::clock::now();
+        let now = af_core::clock::now();
         let id = Entropy::new().uuid7(now).expect("an identifier");
         let mut connection = self.connection().await;
         sqlx::query(
@@ -194,7 +194,7 @@ impl Leased {
     /// A second fleet in this scenario's workspace, for cross-fleet cases;
     /// [`Self::finish_with`] retires it.
     pub(crate) async fn other_fleet(&self) -> String {
-        let now = afd_core::clock::now();
+        let now = af_core::clock::now();
         let fleet = Entropy::new().uuid7(now).expect("an identifier");
         seed_fleet(
             &self.run.booted,
@@ -246,7 +246,7 @@ impl Leased {
 
     /// Hands `schedule`'s row to another syncer for a minute, or back.
     pub(crate) async fn hold_sync(&self, schedule: &str, held: bool) {
-        let now = afd_core::clock::now();
+        let now = af_core::clock::now();
         let token = held.then(|| Entropy::new().uuid7(now).expect("a token"));
         let mut connection = self.connection().await;
         sqlx::query(
@@ -255,7 +255,7 @@ impl Leased {
              WHERE id = $1::uuid",
         )
         .bind(schedule)
-        .bind(token.as_ref().map(afd_core::id::Uuid7::as_str))
+        .bind(token.as_ref().map(af_core::id::Uuid7::as_str))
         .bind(held)
         .bind(SYNC_HOLD)
         .execute(&mut *connection)

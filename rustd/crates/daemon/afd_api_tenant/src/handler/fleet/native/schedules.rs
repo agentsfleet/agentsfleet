@@ -4,7 +4,7 @@ use crate::{
     handler::Refusal,
     services::{FleetSchedules as _, Services},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::{Schedule, Source, SyncStatus};
 use std::time::Duration;
 
@@ -52,7 +52,7 @@ pub(super) async fn after_activation<D: Services>(
             tracing::warn!(event=EVENT_SYNC_PENDING,error_code=%cause.code());
         }
         Err(_elapsed) => {
-            tracing::warn!(event=EVENT_SYNC_PENDING,error_code=%afd_core::error_code::SCHEDULE_SYNCING);
+            tracing::warn!(event=EVENT_SYNC_PENDING,error_code=%af_core::error_code::SCHEDULE_SYNCING);
         }
     }
     services

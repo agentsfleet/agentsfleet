@@ -16,8 +16,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use af_wire::runner::{AssignedPolicy, RegisterRequest, RegisterResponse};
 use afd_runner::Enrolled;
-use afd_wire::runner::{AssignedPolicy, RegisterRequest, RegisterResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -45,7 +45,7 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
 /// Enrols a host, answering its identity and its one-time credential.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::RUNNERS,
+    path = af_wire::paths::RUNNERS,
     tag = afd_http::openapi::tag::FLEET,
     operation_id = "register_runner",
     summary = "Register a runner",
@@ -117,7 +117,7 @@ fn reject(detail: &'static str) -> Response {
     let request_id = RequestId::mint();
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
-    let code = afd_core::error_code::INVALID_REQUEST;
+    let code = af_core::error_code::INVALID_REQUEST;
     let code_field = code.as_str();
     let request_id_field = request_id.as_str();
     tracing::debug!(

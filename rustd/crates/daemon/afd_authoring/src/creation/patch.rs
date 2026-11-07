@@ -11,8 +11,8 @@ use crate::{
     },
     types::DraftState,
 };
-use afd_core::id::Uuid7;
-use afd_observability::AuthoringStep;
+use af_core::id::Uuid7;
+use af_observability::AuthoringStep;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
@@ -35,7 +35,7 @@ impl Creations {
             return Err(invalid("A name or status is required"));
         }
         if let Some(name) = name {
-            afd_fleet_runtime::FleetName::parse(name)?;
+            af_fleet_runtime::FleetName::parse(name)?;
         }
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;

@@ -7,8 +7,8 @@
 
 use super::{ATTEMPT, Fixture, LEASE, report};
 use crate::report_spool::authoring::files;
-use afd_core::id::Uuid7;
-use afd_wire::authoring::Report;
+use af_core::id::Uuid7;
+use af_wire::authoring::Report;
 
 #[tokio::test]
 async fn changed_authenticated_metadata_is_removed_without_opening_an_answer() {
@@ -100,7 +100,7 @@ async fn an_oversized_report_is_refused_before_any_private_or_accounting_write()
     let Report::Terminal { answer, .. } = &mut request else {
         unreachable!()
     };
-    *answer = Some("x".repeat(afd_wire::authoring::ENVELOPE_BYTES_MAX + 1));
+    *answer = Some("x".repeat(af_wire::authoring::ENVELOPE_BYTES_MAX + 1));
     assert!(
         fixture
             .spool

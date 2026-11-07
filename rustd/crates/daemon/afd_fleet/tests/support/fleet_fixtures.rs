@@ -15,7 +15,7 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
@@ -79,7 +79,7 @@ impl Fixtures {
             database,
             queue: None,
             lane,
-            enrolled: afd_core::clock::now(),
+            enrolled: af_core::clock::now(),
         }
     }
 
@@ -104,7 +104,7 @@ impl Fixtures {
     /// [`Fixtures::enrolled_at`] moved forward by `by`: a later instant a test
     /// hands the code under test, such as a report sent after the run.
     pub(crate) fn after(&self, by: std::time::Duration) -> Timestamp {
-        afd_core::clock::after(self.enrolled, by)
+        af_core::clock::after(self.enrolled, by)
     }
 
     /// The same as [`Fixtures::create_isolated`], plus the lane's Dragonfly.

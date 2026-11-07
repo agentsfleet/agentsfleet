@@ -1,7 +1,7 @@
 //! One poll selects between independently authorized placement domains.
 
-use afd_core::id::Uuid7;
-use afd_wire::lease::{AcceptedKinds, LeaseKind, LeaseResponse, TaggedLease};
+use af_core::id::Uuid7;
+use af_wire::lease::{AcceptedKinds, LeaseKind, LeaseResponse, TaggedLease};
 use jiff::Timestamp;
 
 use super::{Plane, answer::no_work, pull::Polled};

@@ -4,7 +4,7 @@ use super::{EditRequest, input, sql};
 use crate::store::history::{Fact, Receipt};
 use crate::store::{SYNC_LEASE, fire_at};
 use crate::{Result, Schedule, Schedules, SyncStatus, error};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 const CONTEXT: &str = "conditionally edit a schedule";
 

@@ -5,7 +5,7 @@
     reason = "a test asserts by panicking; the restriction set is for the daemon"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::{Notice, Subscriber, notice_key, notice_text};
 

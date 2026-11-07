@@ -20,9 +20,10 @@
 //! workspace serving both would let a fixture pass while the daemon read the
 //! wrong one.
 
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::test_util::FixtureSetup;
 use afd_api_wire::grant::status as grant_status;
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
@@ -30,7 +31,6 @@ use afd_db::test_util::{
     WorkspaceSeed, mint_id,
 };
 use afd_dragonfly::Dragonfly;
-use afd_fleet_runtime::test_util::FixtureSetup;
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 use jiff::Timestamp;

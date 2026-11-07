@@ -5,11 +5,11 @@ use super::super::{
     checkpoint::{input, storage, valid},
     fixture::Decisions,
 };
-use afd_core::error_code;
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::{
+use af_core::error_code;
+use af_wire::task::{
     CheckpointMode, CheckpointObjectStatus, CheckpointObjectsInput, CheckpointPlaintext,
 };
+use afd_fleet::task::TaskLifecycle as _;
 
 pub(super) async fn run(case: &Case) {
     let fixture = Decisions::create(case).await;
@@ -53,7 +53,7 @@ pub(super) async fn run(case: &Case) {
 async fn replay(
     tasks: &afd_fleet::task::Tasks,
     case: &Case,
-    plan: &afd_wire::task::CheckpointPlan,
+    plan: &af_wire::task::CheckpointPlan,
     register: &CheckpointObjectsInput,
 ) {
     let first = tasks
@@ -89,7 +89,7 @@ async fn replay(
 async fn refuse_batches(
     tasks: &afd_fleet::task::Tasks,
     case: &Case,
-    plan: &afd_wire::task::CheckpointPlan,
+    plan: &af_wire::task::CheckpointPlan,
     register: CheckpointObjectsInput,
 ) {
     let mut duplicate = register.clone();
@@ -118,7 +118,7 @@ async fn refuse_batches(
     assert_eq!(failure.code(), error_code::TASK_LIMIT_EXHAUSTED);
 }
 
-async fn accounting(case: &Case, plan: &afd_wire::task::CheckpointPlan) {
+async fn accounting(case: &Case, plan: &af_wire::task::CheckpointPlan) {
     let stored: (i64, i64) = sqlx::query_as("SELECT uploaded_bytes, (SELECT count(*) FROM fleet.task_objects WHERE owner_checkpoint_id = c.id) FROM fleet.task_checkpoints c WHERE id = $1::uuid")
         .bind(&plan.checkpoint_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer")).await.expect("stored accounting");
     assert_eq!(

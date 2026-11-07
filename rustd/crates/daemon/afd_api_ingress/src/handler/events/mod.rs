@@ -23,7 +23,7 @@
 //!
 //! So a connector that delivers events is one arm in
 //! [`afd_connector::Provider::event_ingress`] plus its
-//! [`afd_webhook::Scheme`] entry. This file does not change, and neither does
+//! [`af_webhook::Scheme`] entry. This file does not change, and neither does
 //! the route: `/v1/connectors/slack/events` is what Slack posts to today, and
 //! the template that serves it serves the next one too.
 //!
@@ -52,11 +52,11 @@
 
 use std::sync::Arc;
 
+use af_core::error_code;
+use af_core::json::non_empty_str;
+use af_webhook::Scheme;
 use afd_connector::Provider;
 use afd_connector::registry::{EventIngress, EventProducer, Handshake};
-use afd_core::error_code;
-use afd_core::json::non_empty_str;
-use afd_webhook::Scheme;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -94,7 +94,7 @@ const REASON_HANDSHAKE_EMPTY: &str = "handshake_missing_echo_value";
 /// What a proved delivery earns, before any of it is rendered.
 ///
 /// A verdict rather than a `Response`, for the reason
-/// [`afd_webhook::Verdict`] is one: the decision is a pure function of the
+/// [`af_webhook::Verdict`] is one: the decision is a pure function of the
 /// registry entry and the envelope, and a function that returned a rendered
 /// response could only be tested by parsing HTTP back out of itself. Every
 /// branch below is reachable in a unit test with no router, no datastore and no

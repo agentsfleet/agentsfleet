@@ -1,14 +1,14 @@
 //! Bound first, parse second; malformed filters never become an unfiltered report.
 
+use af_core::id::{TEXT_LEN, Uuid7};
+use af_core::paging::{CEILING, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_validate::{Limit, Sentences, nul_free};
 use afd_api_wire::admin::MODEL_ID_MAX_BYTES;
 use afd_billing::report::{
     BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY,
     Boundary, Filter, Request, Window,
 };
 use afd_billing::sql::work;
-use afd_core::id::{TEXT_LEN, Uuid7};
-use afd_core::paging::{CEILING, QUERY_LIMIT, QUERY_STARTING_AFTER};
-use afd_validate::{Limit, Sentences, nul_free};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
@@ -156,7 +156,7 @@ fn window(period: &str, through: Option<&str>, now: Timestamp) -> Result<Window,
             Timestamp::from_millisecond(now.as_millisecond())
                 .map_err(|_range| Refusal::malformed(DETAIL_QUERY))
         },
-        |text| afd_wire::instant::parse(text).map_err(|_instant| Refusal::malformed(DETAIL_QUERY)),
+        |text| af_wire::instant::parse(text).map_err(|_instant| Refusal::malformed(DETAIL_QUERY)),
     )?;
     if through > now {
         return Err(Refusal::malformed(DETAIL_QUERY));
@@ -208,7 +208,7 @@ fn activity_boundary(
                 _ => return Err(Refusal::malformed(DETAIL_CURSOR)),
             };
             Ok(Some(Boundary {
-                recorded_at: afd_wire::instant::parse(at)
+                recorded_at: af_wire::instant::parse(at)
                     .map_err(|_instant| Refusal::malformed(DETAIL_CURSOR))?,
                 work_id: identifier(id)?,
                 work_type: kind,

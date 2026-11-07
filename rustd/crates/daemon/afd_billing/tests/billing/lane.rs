@@ -14,9 +14,9 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_billing::tenant::Billing;
 use afd_billing::{Accounts, Posture};
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{

@@ -3,8 +3,8 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
-use afr_egress::fixture::REPOSITORY;
+use af_core::test_util::trace::Capture;
+use af_egress::fixture::REPOSITORY;
 use afr_executor::Spawn;
 use serde_json::{Value, json};
 

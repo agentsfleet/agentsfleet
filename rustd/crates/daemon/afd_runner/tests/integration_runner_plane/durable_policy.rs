@@ -1,9 +1,9 @@
 //! Saved durable-task preference reaches every assignment read without changing support.
 
 use super::{Fixture, enrolment};
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
+use af_wire::runner::AssignedPolicy;
 use afd_runner::{KeysetCursor, NO_REPORT, RunnerEdit};
-use afd_wire::runner::AssignedPolicy;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

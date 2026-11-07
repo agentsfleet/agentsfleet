@@ -153,7 +153,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
 
     assert!(matches!(first, Ended::Now(_)));
     // The settled admission refuses a second terminal mutation.
-    assert_eq!(second.code(), afd_core::error_code::RUN_STALE_FENCING_TOKEN);
+    assert_eq!(second.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
     let (label, detail) = failure_of(&fixtures, fleet.as_str(), event).await;
     assert_eq!(label, FIRST_LABEL, "the first refusal must stand");
     assert_eq!(detail.as_deref(), Some(DETAIL));

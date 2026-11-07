@@ -1,8 +1,8 @@
 //! Logical expiry blocks reads before physical cleanup and replay stays tombstoned.
 
 use super::{Attempt, Fixture, mint, now};
+use af_core::error_code::{AUTHORING_GONE, AUTHORING_NOT_FOUND};
 use afd_authoring::types::{MessageQuery, Source};
-use afd_core::error_code::{AUTHORING_GONE, AUTHORING_NOT_FOUND};
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]

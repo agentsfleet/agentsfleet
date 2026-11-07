@@ -13,10 +13,10 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use crate::ResultOutcome;
-use afd_core::test_util::trace::Capture;
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_egress::testing::{CountingMint, RecordingTransport};
-use afr_providers::Chunk;
+use af_core::test_util::trace::Capture;
+use af_egress::testing::{CountingMint, RecordingTransport};
+use af_providers::Chunk;
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::Catalog;
 use afr_tools::catalog::{
     DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, LIST_AGENTS, MEMORY_RECALL, MEMORY_STORE, SPAWN,
@@ -308,7 +308,7 @@ async fn test_child_run_carries_no_history() {
     .with_child(READS, [vec![say(SUMMARY)]]);
     let engine = engine(tools(), &script);
     let mut lease = lease(&offered(), unbounded());
-    lease.history = vec![afd_wire::lease::Turn {
+    lease.history = vec![af_wire::lease::Turn {
         message: "which tests failed?".into(),
         answer: "two".into(),
     }];
@@ -318,11 +318,11 @@ async fn test_child_run_carries_no_history() {
     let child_first = script
         .sent()
         .into_iter()
-        .find(|sent| sent.messages.first() == Some(&afr_providers::Message::User(READS.to_owned())))
+        .find(|sent| sent.messages.first() == Some(&af_providers::Message::User(READS.to_owned())))
         .unwrap();
     assert_eq!(
         child_first.messages,
-        [afr_providers::Message::User(READS.to_owned())],
+        [af_providers::Message::User(READS.to_owned())],
         "the child's first request holds its task alone"
     );
 }

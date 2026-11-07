@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use serde_json::Value;
 use sqlx::{Acquire as _, PgConnection};

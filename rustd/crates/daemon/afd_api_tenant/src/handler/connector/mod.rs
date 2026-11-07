@@ -31,8 +31,8 @@ use std::sync::Arc;
 
 // Aliased: this module has a `callback` of its own — the two HANDLERS — and the
 // crate's is where the URLs those handlers travel through are composed.
-use afd_core::error_code;
-use afd_crypto::secret::SecretBytes;
+use af_core::error_code;
+use af_crypto::secret::SecretBytes;
 
 use super::Refusal;
 pub(crate) use super::provider_of;

@@ -1,9 +1,9 @@
 //! Each review owns its account and seals credentials with the router's vault.
 
 use super::super::{fixture::Fixture, json_body, mint, send};
+use af_core::{clock, id::Uuid7};
 use afd_api::Services as _;
 use afd_auth::Scope;
-use afd_core::{clock, id::Uuid7};
 use afd_vault::{SecretBody, SecretName};
 use http::{Method, StatusCode, header};
 use serde_json::Value;

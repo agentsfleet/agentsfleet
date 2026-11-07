@@ -1,13 +1,13 @@
 use super::Doorbell;
-use afd_core::id::Uuid7;
-use afd_observability::test_util::Capture;
+use af_core::id::Uuid7;
+use af_observability::test_util::Capture;
 
-fn fleet(index: usize) -> afd_core::error::Result<Uuid7> {
+fn fleet(index: usize) -> af_core::error::Result<Uuid7> {
     Uuid7::parse(&format!("0195b4ba-8d3a-7000-8abc-{index:012x}"))
 }
 
 #[test]
-fn duplicate_hints_are_shared_and_consumed_once() -> afd_core::error::Result<()> {
+fn duplicate_hints_are_shared_and_consumed_once() -> af_core::error::Result<()> {
     let bell = Doorbell::new();
     let reader = bell.clone();
     let fleet = fleet(1)?;
@@ -19,7 +19,7 @@ fn duplicate_hints_are_shared_and_consumed_once() -> afd_core::error::Result<()>
 }
 
 #[test]
-fn a_burst_discards_old_hints_without_growing_the_buffer() -> afd_core::error::Result<()> {
+fn a_burst_discards_old_hints_without_growing_the_buffer() -> af_core::error::Result<()> {
     let bell = Doorbell::new();
     for index in 0..100 {
         bell.ring(fleet(index)?);
@@ -32,7 +32,7 @@ fn a_burst_discards_old_hints_without_growing_the_buffer() -> afd_core::error::R
 }
 
 #[test]
-fn concurrent_duplicate_notifications_cannot_duplicate_a_claim_hint() -> afd_core::error::Result<()>
+fn concurrent_duplicate_notifications_cannot_duplicate_a_claim_hint() -> af_core::error::Result<()>
 {
     let bell = Doorbell::new();
     let fleet = fleet(1)?;
@@ -69,7 +69,7 @@ async fn shutdown_releases_every_doorbell_listener_and_its_buffer() {
 }
 
 #[tokio::test]
-async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> afd_core::error::Result<()>
+async fn gaps_and_lag_are_counted_without_losing_the_next_valid_hint() -> af_core::error::Result<()>
 {
     let metrics = Capture::install();
     let family = "agentsfleet_fleet_ready_wake_failures_total";
@@ -115,7 +115,7 @@ const LONG: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// A held wait ends on the next ring, and gives its place back when it does.
 #[tokio::test]
-async fn a_ring_answers_a_held_wait() -> afd_core::error::Result<()> {
+async fn a_ring_answers_a_held_wait() -> af_core::error::Result<()> {
     let bell = Doorbell::new();
     let fleet = fleet(1)?;
     let (waited, ()) = tokio::join!(bell.wait_for_ring(LONG, 2), async {
@@ -138,7 +138,7 @@ async fn a_silent_wait_answers_at_its_deadline() {
 
 /// A wait past the cap is refused at once while the held one keeps waiting.
 #[tokio::test]
-async fn a_wait_past_the_cap_is_refused_at_once() -> afd_core::error::Result<()> {
+async fn a_wait_past_the_cap_is_refused_at_once() -> af_core::error::Result<()> {
     let bell = Doorbell::new();
     let fleet = fleet(1)?;
     let (held, refused) = tokio::join!(bell.wait_for_ring(LONG, 1), async {
@@ -157,7 +157,7 @@ async fn a_wait_past_the_cap_is_refused_at_once() -> afd_core::error::Result<()>
 /// A second admission for a fleet whose hint is still buffered is fresh work
 /// too: the generation moves before the hint dedup, so the wait hears it.
 #[tokio::test]
-async fn a_ring_for_a_buffered_fleet_still_wakes_a_wait() -> afd_core::error::Result<()> {
+async fn a_ring_for_a_buffered_fleet_still_wakes_a_wait() -> af_core::error::Result<()> {
     let bell = Doorbell::new();
     let fleet = fleet(1)?;
     bell.ring(fleet.clone());
@@ -197,7 +197,7 @@ async fn a_closed_doorbell_ends_and_refuses_held_waits() {
 /// and thirty-six refused, one ring answers every held one, and every place
 /// is given back.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn the_cap_holds_under_contention() -> afd_core::error::Result<()> {
+async fn the_cap_holds_under_contention() -> af_core::error::Result<()> {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     const WAITS: usize = 100;

@@ -10,7 +10,7 @@
 //! event listings, which wrap the same pair in base64url.
 //! HTTP-BREAK (`.orly/standards/domains/http-surface.md`) settles which form this endpoint
 //! keeps: a dashboard holds a cursor across a deploy, so the published form
-//! cannot change under it. So this reads [`afd_core::paging::Cursor`], the type
+//! cannot change under it. So this reads [`af_core::paging::Cursor`], the type
 //! that spells the clear form.
 //!
 //! # The status vocabulary is every state a row can be in
@@ -27,11 +27,11 @@
 
 use std::borrow::Cow;
 
+use af_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
+use af_core::spelling::from_spelling;
+use af_validate::Limit;
 use afd_api_wire::approval::GateStatus;
-use afd_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
-use afd_core::spelling::from_spelling;
 use afd_http::handler::parse_id;
-use afd_validate::Limit;
 use const_format::concatcp;
 use garde::Validate as _;
 

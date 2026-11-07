@@ -77,7 +77,7 @@ fn verdict_names_the_first_refusal_in_order() {
     let mut policy = open();
     policy.setup_current = false;
     let refused = decide(&policy, RUNNABLE_CLOSED).unwrap_err();
-    assert_eq!(refused.code(), afd_core::error_code::AUTHORING_POLICY);
+    assert_eq!(refused.code(), af_core::error_code::AUTHORING_POLICY);
 
     let ceiling = decide(&open(), RUNNABLE_CLOSED).unwrap_err();
     assert!(ceiling.is_over_capacity());
@@ -105,12 +105,12 @@ fn an_unknown_status_or_a_missing_row_is_unreadable() {
     let mut unknown = open();
     unknown.status = Some("archived".to_owned());
     let refused = decide(&unknown, RUNNABLE_OPEN).unwrap_err();
-    assert_eq!(refused.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_QUERY);
 
     let refused = decide(&open(), RUNNABLE_OPEN).unwrap_err();
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_DB_QUERY,
+        af_core::error_code::INTERNAL_DB_QUERY,
         "open gates that wrote no row are a broken answer, never an accept"
     );
 }

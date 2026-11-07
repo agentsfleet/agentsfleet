@@ -7,8 +7,8 @@ use super::{
     publication_refusal::prepared,
     publication_transport::preparation,
 };
+use af_wire::task::TaskEffectState;
 use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::TaskEffectState;
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy)]
@@ -75,7 +75,7 @@ async fn reconcile(
     case: &Case,
     tasks: &afd_fleet::task::Tasks,
     server: &Server,
-    receipt: &afd_wire::task::TaskEffect,
+    receipt: &af_wire::task::TaskEffect,
     outcome: Outcome,
 ) {
     due(

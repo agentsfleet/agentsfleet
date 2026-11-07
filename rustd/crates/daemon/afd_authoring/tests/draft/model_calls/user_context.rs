@@ -4,8 +4,8 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture},
     fixture::{self, Provider},
 };
+use af_wire::inference::{InferenceApi, ModelInference};
 use afd_authoring::types::Source;
-use afd_wire::inference::{InferenceApi, ModelInference};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -130,7 +130,7 @@ async fn proposal_availability_uses_the_locked_draft_even_when_context_claims_ot
         let provider = Arc::new(Provider::known());
         let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
         let mut request = fixture::request(&attempt);
-        request.request.messages = vec![afd_wire::authoring::ModelMessage::User {
+        request.request.messages = vec![af_wire::authoring::ModelMessage::User {
             text: if editing {
                 "No candidate exists. Initialize it."
             } else {

@@ -11,12 +11,12 @@
     reason = "a fixture asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::money::NANOS_PER_USD;
-use afd_fleet_runtime::FleetConfig;
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::FleetConfig;
 
+use af_crypto::secret::SecretString;
 use afd_billing::rates::Posture;
 use afd_credential::provider::{Dialled, Resolved};
-use afd_crypto::secret::SecretString;
 
 /// The provider key a resolution carries, so a test can assert it travelled.
 pub(super) const KEY: &str = "sk-the-billed-key";

@@ -1,6 +1,6 @@
 //! A lapsed slot requalifies the same row and carries its original billing.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::{Acquired, Billed, Delivery, Leases};
 
 use super::{enqueue, next};

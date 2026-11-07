@@ -1,18 +1,18 @@
 //! The production vault seals fixture credentials; no platform default is shared.
 
 use super::{mint, seed};
+use af_core::{clock, id::Uuid7};
+use af_crypto::entropy::Entropy;
+use af_observability::{Analytics, Recorded, Telemetry};
 use afd_authoring::{
     Access, Drafts,
     types::{CreateDraft, Source},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_crypto::entropy::Entropy;
 use afd_db::{
     Db,
     config::DbRole,
     test_util::{OwnedRows, TestDatabase},
 };
-use afd_observability::{Analytics, Recorded, Telemetry};
 use serde_json::Value;
 use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
@@ -286,7 +286,7 @@ impl Fixture {
     /// settles another test's lines.
     pub(crate) async fn relay(&self, attempt: &str) {
         let work = afd_billing::biller::WorkKey::AuthoringAttempt(
-            afd_core::id::Uuid7::parse(attempt).expect("an attempt id"),
+            af_core::id::Uuid7::parse(attempt).expect("an attempt id"),
         );
         let unsettled = afd_billing::ledger::unsettled_work(&mut *self.connection().await, &work)
             .await

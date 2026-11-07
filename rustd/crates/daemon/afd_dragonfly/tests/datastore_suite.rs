@@ -13,7 +13,7 @@
 //!   minted from the process id and a counter, exactly so parallel tests never
 //!   collide. That is the failure `afd_fleet` hit and this crate cannot.
 //! - The two subscriber installers do not fight. `support/subscriber.rs` calls
-//!   `set_global_default` once for the process; `afd_core::test_util::trace`
+//!   `set_global_default` once for the process; `af_core::test_util::trace`
 //!   calls `set_default`, which is THREAD-local and returns a guard. One being
 //!   global and the other scoped is why they coexist in a single binary.
 //! - The capture's one-at-a-time lock is held only by suites that install one,

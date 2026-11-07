@@ -41,11 +41,11 @@ async fn terminal_settlement_propagates_a_database_outage() {
 /// code.
 #[tokio::test]
 async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
-    use afd_core::test_util::trace::Capture;
+    use af_core::test_util::trace::Capture;
 
     let log = Capture::install();
     let fault = crate::Error::from(
-        afd_fleet_runtime::FleetConfig::stored("not a document")
+        af_fleet_runtime::FleetConfig::stored("not a document")
             .expect_err("a document that is not JSON does not parse"),
     );
 

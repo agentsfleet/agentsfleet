@@ -205,7 +205,7 @@ fn completed(task_id: u64, name: &'static str, started: Instant, report: &mut Sh
 }
 
 fn panicked(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
-    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let duration_ms = started.elapsed().as_millis();
     tracing::error!(
         error_code,
@@ -220,7 +220,7 @@ fn panicked(task_id: u64, name: &'static str, started: Instant, report: &mut Shu
 }
 
 fn timed_out(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
-    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let timeout_ms = JOIN_TIMEOUT.as_millis();
     let duration_ms = started.elapsed().as_millis();
     tracing::error!(

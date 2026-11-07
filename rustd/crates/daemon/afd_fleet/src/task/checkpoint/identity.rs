@@ -5,10 +5,10 @@ use crate::{
     error::query,
     task::{Tasks, guard, storage::R2CheckpointStore},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_crypto::{aad::Aad, envelope::Sealer, mac::HmacSha256Tag, secret::SecretBytes};
+use af_core::{clock, id::Uuid7};
+use af_crypto::{aad::Aad, envelope::Sealer, mac::HmacSha256Tag, secret::SecretBytes};
+use af_wire::task::CheckpointPlaintext;
 use afd_vault::StoredEnvelope;
-use afd_wire::task::CheckpointPlaintext;
 use sqlx::PgConnection;
 
 pub(super) struct Identity {
@@ -83,7 +83,7 @@ pub(super) async fn load(
         .fetch_one(&mut *connection)
         .await
         .map_err(query("allocate repository identity version"))?;
-    let mut material = zeroize::Zeroizing::new([0_u8; afd_crypto::KEY_LEN]);
+    let mut material = zeroize::Zeroizing::new([0_u8; af_crypto::KEY_LEN]);
     tasks.leases.entropy().fill(material.as_mut_slice())?;
     let envelope = Sealer::new().seal(
         &storage.master,
@@ -92,7 +92,7 @@ pub(super) async fn load(
             &id,
             repository,
             key_version,
-            afd_crypto::KEK_VERSION,
+            af_crypto::KEK_VERSION,
         ),
         material.as_slice(),
     )?;

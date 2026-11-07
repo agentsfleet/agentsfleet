@@ -2,7 +2,7 @@
 //!
 //! One listener answers every host. A test CA signs a leaf naming them all,
 //! and the runner's egress client, routed to this address, trusts that CA
-//! (`afr_egress::Network::routed`), so a request leaves through the same guard
+//! (`af_egress::Network::routed`), so a request leaves through the same guard
 //! and the same TLS it would in production. A route is a host, a method and a
 //! path, answered by its replies in order with the last repeating, so a second
 //! run reads what a first one wrote. Every request is recorded with its headers
@@ -102,13 +102,13 @@ impl Upstream {
     }
 
     /// The runner's egress client, every host this fake answers routed here.
-    pub(crate) fn network(&self) -> afr_egress::Network {
+    pub(crate) fn network(&self) -> af_egress::Network {
         let routes: Vec<(&str, SocketAddr)> = self
             .hosts
             .iter()
             .map(|host| (*host, self.address))
             .collect();
-        afr_egress::Network::routed(&routes, self.root.clone()).expect("the routed client builds")
+        af_egress::Network::routed(&routes, self.root.clone()).expect("the routed client builds")
     }
 
     /// Every request seen since the last read.

@@ -1,8 +1,8 @@
 //! Summary status uses the same creator/lease guard as private answer previews.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::context::{ContextProgress, ContextState};
 use afd_dragonfly::FleetStreams;
-use afd_wire::context::{ContextProgress, ContextState};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -23,7 +23,7 @@ pub struct ContextNotice {
     #[garde(skip)]
     pub draft_id: Uuid7,
     /// The currently running user message.
-    #[garde(length(min = 1, max = 19), custom(afd_validate::ascii_digits))]
+    #[garde(length(min = 1, max = 19), custom(af_validate::ascii_digits))]
     pub sequence: String,
     /// The physical summary dispatch, independent of a subsequent ordinary call.
     #[garde(skip)]
@@ -72,7 +72,7 @@ impl<'a> ContextPublisher<'a> {
                 trace.completed();
             }
             Ok(Err(error)) => trace.failed(error.code(), "context_publication_refused"),
-            Err(_) => trace.failed(afd_core::error_code::INTERNAL_OPERATION_FAILED, "deadline"),
+            Err(_) => trace.failed(af_core::error_code::INTERNAL_OPERATION_FAILED, "deadline"),
         }
     }
 

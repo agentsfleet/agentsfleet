@@ -21,8 +21,8 @@
 //! [`Grants`] rather than a slice of names for the same reason one layer out —
 //! see that type for why the empty case has to be spelled deliberately.
 
-use afd_fleet_runtime::FleetConfig;
-use afd_wire::policy::{ExecutionPolicy, Mintable};
+use af_fleet_runtime::FleetConfig;
+use af_wire::policy::{ExecutionPolicy, Mintable};
 
 use crate::policy::context::{self, Overlay};
 use crate::policy::egress;

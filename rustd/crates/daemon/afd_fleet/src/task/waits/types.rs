@@ -1,7 +1,7 @@
 //! Only an already-verified ingress adapter supplies completion identity.
 
 use super::super::TaskScope;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 /// App events belong to an installation workspace; fleet hook events remain fleet-scoped.
 #[derive(Debug, Clone)]

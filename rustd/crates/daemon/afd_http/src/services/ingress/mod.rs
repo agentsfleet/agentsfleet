@@ -13,8 +13,8 @@
 //! would notice. [`Binding`] is resolved once and every later step takes it, so
 //! the pairing is made in one place and cannot be re-made wrongly.
 
-use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretBytes;
 use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, NoticeOwner, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Ingress, Result as IngressResult, Surface};
 use jiff::Timestamp;

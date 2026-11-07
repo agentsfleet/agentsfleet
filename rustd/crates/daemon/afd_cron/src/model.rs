@@ -15,8 +15,8 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use afd_api_wire::schedule::View;
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
 /// The most schedules one fleet may hold.
@@ -282,7 +282,7 @@ impl Schedule {
                 recipe.recipe_revision, recipe.setup_revision, recipe.override_revision
             )
         });
-        afd_core::etag::compute(&[
+        af_core::etag::compute(&[
             Some(self.schedule_id.as_str().as_bytes()),
             Some(&self.resource_version.to_be_bytes()),
             versions.as_deref().map(str::as_bytes),

@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use tokio::time::Instant;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use tokio_util::sync::CancellationToken;
 
 use super::{EVENT_FAILED, Sweep, Swept, run};

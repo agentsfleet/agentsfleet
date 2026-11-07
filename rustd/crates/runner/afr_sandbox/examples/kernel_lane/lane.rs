@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use afd_core::env::{EnvSource as _, ProcessEnv};
+use af_core::env::{EnvSource as _, ProcessEnv};
 use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
     BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostPaths, Manifest,

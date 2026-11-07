@@ -11,7 +11,7 @@
 # the lease, and those identities belong on spans.
 #
 # Label sets: provider = canonical public names from the shared registry
-# (`afd_observability/src/semconv/provider.rs`) plus `_other`; tool = the
+# (`af_observability/src/semconv/provider.rs`) plus `_other`; tool = the
 # published tool catalog plus `_other` (40); signal and reason on the loss
 # family are the daemon's own closed sets (3 x 6); every outcome and reason is
 # a closed enum in `afr_telemetry::labels`. Model-call families additionally

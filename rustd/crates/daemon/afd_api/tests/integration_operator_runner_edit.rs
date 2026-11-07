@@ -214,7 +214,7 @@ async fn assert_revoked_runner_refuses_the_whole_save(
         "a refused save wrote half of itself"
     );
 
-    let past_cap: Vec<String> = (0..=afd_wire::runner::LABELS_MAX)
+    let past_cap: Vec<String> = (0..=af_wire::runner::LABELS_MAX)
         .map(|index| format!("l{index}"))
         .collect();
     let invalid = json!({ "labels": past_cap }).to_string();

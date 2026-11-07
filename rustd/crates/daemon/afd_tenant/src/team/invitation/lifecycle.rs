@@ -10,7 +10,7 @@
 //! invitations before it checks membership, so an accept already in flight
 //! finishes first and the check sees the person it let in.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
 

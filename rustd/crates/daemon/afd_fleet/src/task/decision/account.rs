@@ -1,13 +1,13 @@
 //! Usage and pricing are independent of semantic answer acceptance.
 
-use afd_billing::{
-    Nanos, Posture,
-    biller::{Account, Attribution, Settlement, WorkKey},
-};
-use afd_wire::{
+use af_wire::{
     decision::DecisionUsage,
     task::DecisionReceipt,
     usage::{DECISION_SEQ_BASE, UsageLine},
+};
+use afd_billing::{
+    Nanos, Posture,
+    biller::{Account, Attribution, Settlement, WorkKey},
 };
 
 use super::row::Call;

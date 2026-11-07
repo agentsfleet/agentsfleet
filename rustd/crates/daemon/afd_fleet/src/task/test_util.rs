@@ -3,8 +3,8 @@
 
 use std::ops::Range;
 
-use afd_core::id::Uuid7;
-use afd_wire::{decision::NamedQuestion, task::TaskLimits};
+use af_core::id::Uuid7;
+use af_wire::{decision::NamedQuestion, task::TaskLimits};
 
 use super::{PreparedPlan, PreparedTask};
 

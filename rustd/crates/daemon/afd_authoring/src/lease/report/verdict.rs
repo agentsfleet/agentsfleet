@@ -1,6 +1,6 @@
 //! Unknown obligations take precedence over any ordinary retryable outcome.
 
-use afd_wire::authoring::{FailureReason, Outcome};
+use af_wire::authoring::{FailureReason, Outcome};
 
 use super::prepare::Prepared;
 use crate::{
@@ -61,7 +61,7 @@ pub(super) fn derive(
 
 fn validate_known(
     attempt: &guard::Attempt,
-    input: &afd_wire::authoring::Accounting,
+    input: &af_wire::authoring::Accounting,
     verified: &meter::Verified,
     cancelled: bool,
     now: jiff::Timestamp,
@@ -122,7 +122,7 @@ pub(crate) fn reason(value: FailureReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{outcome, reason};
-    use afd_wire::authoring::{FailureReason, Outcome};
+    use af_wire::authoring::{FailureReason, Outcome};
 
     /// Attempts and messages store these words, and readers parse them back
     /// through serde: every arm must spell its wire form.

@@ -15,7 +15,7 @@
 
 use std::error::Error as _;
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use afd_db::config::{DbRole, PoolConfig};
 
 const BASE: &str = "postgres://agentsfleet:secret@localhost:5432/agentsfleetdb";

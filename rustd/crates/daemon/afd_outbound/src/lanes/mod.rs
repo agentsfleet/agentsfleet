@@ -218,7 +218,7 @@ impl<S: Deliver + 'static> Inner<S> {
         }
         if verdict == Verdict::Retryable {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
+            let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
             let provider = job.provider.as_str();
             let fleet_id = job.fleet_id.as_str();
             // A shutdown cut the retries short, so this is not an exhausted

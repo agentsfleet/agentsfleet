@@ -1,9 +1,9 @@
 //! Replica choices advance only with a committed placement under the host lock.
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
+use af_wire::lease::{AcceptedKinds, LeaseKind};
 use afd_runner::capacity::choice::Ticket;
 use afd_runner::{Runners, capacity};
-use afd_wire::lease::{AcceptedKinds, LeaseKind};
 use sqlx::Connection as _;
 
 use super::Fixture;
@@ -62,7 +62,7 @@ async fn place_authoring(fixture: &Fixture, ticket: Ticket) {
         .expect("host exists");
     assert!(ticket.permits(census, LeaseKind::Authoring));
     fixture
-        .authoring(&mut tx, afd_core::clock::after(census.now(), LIVE_FOR))
+        .authoring(&mut tx, af_core::clock::after(census.now(), LIVE_FOR))
         .await;
     assert!(
         capacity::choice::record(&mut tx, &fixture.runner, census, LeaseKind::Authoring)

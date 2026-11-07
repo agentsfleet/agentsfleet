@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, after};
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_core::timing::SANDBOX_HOLD_IDLE;
+use af_core::clock::{FixedClock, after};
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 use jiff::Timestamp;
 

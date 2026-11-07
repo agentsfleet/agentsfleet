@@ -3,7 +3,7 @@
 //! Store-agnostic values. How a store turns a view into a statement is the
 //! store's business — see the Postgres store's `page` module.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::error::detail::{LIST_FAILED, SEARCH_FAILED};
 

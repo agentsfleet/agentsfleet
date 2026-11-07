@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility};
+use af_wire::memory::{MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility};
 use afr_memory::{Forgotten, Recalled};
 use schemars::JsonSchema;
 use serde::Deserialize;

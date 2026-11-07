@@ -1,7 +1,7 @@
 //! Explicit reviewed question adoption fences old assessments without resetting work.
 
-use afd_core::id::Uuid7;
-use afd_wire::task::TaskState;
+use af_core::id::Uuid7;
+use af_wire::task::TaskState;
 use sqlx::PgConnection;
 
 use super::{
@@ -158,7 +158,7 @@ async fn questions(
     scope: &TaskScope,
     previous: &str,
     revision: &Uuid7,
-) -> Result<Vec<afd_wire::decision::NamedQuestion>> {
+) -> Result<Vec<af_wire::decision::NamedQuestion>> {
     let reviewed: bool = sqlx::query_scalar(include_str!("sql/adoption_revision.sql"))
         .bind(scope.fleet_id.as_str())
         .bind(scope.workspace_id.as_str())
@@ -208,13 +208,13 @@ async fn replay(
 }
 
 fn digest(tag: &str, adoption: &TaskAdoption) -> Result<String> {
-    Ok(afd_core::etag::sha256_hex(
+    Ok(af_core::etag::sha256_hex(
         &serde_json::to_vec(&(
             tag,
             adoption.goal_revision_id.as_str(),
             adoption.expected_generation,
         ))
-        .map_err(afd_core::json::Unreadable::from)?,
+        .map_err(af_core::json::Unreadable::from)?,
     ))
 }
 
@@ -274,13 +274,13 @@ async fn update_goal(
     task: &Uuid7,
     adoption: &TaskAdoption,
     current: &TaskSnapshot,
-    questions: &[afd_wire::decision::NamedQuestion],
+    questions: &[af_wire::decision::NamedQuestion],
     eligible: bool,
 ) -> Result<()> {
     super::waits::cancel(connection, task.as_str()).await?;
-    let goal_digest = afd_core::etag::sha256_hex(
+    let goal_digest = af_core::etag::sha256_hex(
         &serde_json::to_vec(&(&current.context.objective, &questions))
-            .map_err(afd_core::json::Unreadable::from)?,
+            .map_err(af_core::json::Unreadable::from)?,
     );
     sqlx::query(include_str!("sql/adopt_goal.sql"))
         .bind(task.as_str())

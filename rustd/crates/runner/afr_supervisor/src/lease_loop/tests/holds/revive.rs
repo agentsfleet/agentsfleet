@@ -11,9 +11,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
-use afd_observability::semconv::{ATTR_SANDBOX_REUSED, SPAN_RUNNER_LEASE};
-use afd_wire::lease::LeasePayload;
+use af_core::test_util::trace::Capture;
+use af_observability::semconv::{ATTR_SANDBOX_REUSED, SPAN_RUNNER_LEASE};
+use af_wire::lease::LeasePayload;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
@@ -209,7 +209,7 @@ fn next_lease_cut_while_its_memory_loads(call: &Call) -> Option<Answer> {
     match call.verb {
         Verb::Hydrate => match daemon(|_call| None)(call) {
             Answer::Reply(bytes) => Some(Answer::Late(
-                afd_core::timing::RENEWAL_TICK.saturating_mul(2),
+                af_core::timing::RENEWAL_TICK.saturating_mul(2),
                 bytes,
             )),
             other => Some(other),
@@ -249,7 +249,7 @@ async fn test_a_cut_before_the_build_releases_the_hold() {
 #[tokio::test(start_paused = true)]
 async fn test_cut_during_thaw_settles_the_hold() {
     let engine = FakeEngine {
-        thaw_takes: afd_core::timing::RENEWAL_TICK.saturating_mul(2),
+        thaw_takes: af_core::timing::RENEWAL_TICK.saturating_mul(2),
         ..FakeEngine::default()
     };
     let (mut rig, counted) = holding(next_lease_cut, engine, Behaviour::Answer);

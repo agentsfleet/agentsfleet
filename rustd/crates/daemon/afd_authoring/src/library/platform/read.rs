@@ -7,7 +7,7 @@ use crate::{
     library::{CONTEXT, Entry, EntryRow, read, sql},
     types::PlatformLibrary,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 impl Setup {

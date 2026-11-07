@@ -3,8 +3,8 @@
 //! (spec Dimension 7.2).
 
 use super::Case;
+use af_core::test_util::trace::Capture;
 use afd_authoring::types::{LibraryCard, LibraryQuery, Page};
-use afd_core::test_util::trace::Capture;
 use std::collections::BTreeSet;
 
 /// The tables a per-card follow-up read would name.

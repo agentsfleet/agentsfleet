@@ -2,7 +2,7 @@
 
 use super::Harness;
 use crate::{Result, decision::unavailable};
-use afd_wire::task::{TaskEffectState, TaskEffectsQuery, TaskInputsQuery};
+use af_wire::task::{TaskEffectState, TaskEffectsQuery, TaskInputsQuery};
 
 impl Harness<'_, '_> {
     pub(super) async fn reconcile_task_effects(&mut self) -> Result<()> {
@@ -70,7 +70,7 @@ impl Harness<'_, '_> {
                     // cannot become a fresh operation after replacement.
                     _ => return Err(unavailable()),
                 }
-                self.messages.push(afr_providers::Message::User(
+                self.messages.push(af_providers::Message::User(
                     self.shared
                         .scrub
                         .clean(

@@ -2,8 +2,8 @@
 
 use std::borrow::Cow;
 
-use afd_wire::decision::DecisionModelSettings;
-use afd_wire::inference::ModelInference;
+use af_wire::decision::DecisionModelSettings;
+use af_wire::inference::ModelInference;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ pub struct PlatformKeyPut<'a> {
     #[serde(borrow)]
     #[garde(
         length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     )]
     pub provider: Cow<'a, str>,
     /// Workspace holding that vault row.
@@ -32,7 +32,7 @@ pub struct PlatformKeyPut<'a> {
     #[serde(borrow)]
     #[garde(
         length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     )]
     pub model: Cow<'a, str>,
     /// Custom endpoint for the compatible-provider mode.
@@ -62,7 +62,7 @@ pub struct PlatformKeyItem<'a> {
     /// Whether this row is the platform default.
     pub active: bool,
     /// Last mutation instant.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
 }
 
@@ -131,7 +131,7 @@ pub const CONTEXT_CAP_MIN: i32 = 1;
 pub const PROVIDER_MAX_BYTES: usize = 64;
 
 /// The longest provider-native model identity the catalogue stores.
-pub const MODEL_ID_MAX_BYTES: usize = afd_wire::inference::MODEL_ID_MAX_BYTES;
+pub const MODEL_ID_MAX_BYTES: usize = af_wire::inference::MODEL_ID_MAX_BYTES;
 
 /// Decision settings and their protocol-specific complete price schedule.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -160,11 +160,11 @@ pub struct AdminDecisionModel<'a> {
 pub struct AdminModelCreate<'a> {
     /// Provider identity.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = PROVIDER_MAX_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, min = 1, max = PROVIDER_MAX_BYTES), custom(af_validate::rules::nul_free))]
     pub provider: Cow<'a, str>,
     /// Provider-native model identity.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, min = 1, max = MODEL_ID_MAX_BYTES), custom(af_validate::rules::nul_free))]
     pub model_id: Cow<'a, str>,
     /// Label and context evidence.
     #[serde(borrow)]

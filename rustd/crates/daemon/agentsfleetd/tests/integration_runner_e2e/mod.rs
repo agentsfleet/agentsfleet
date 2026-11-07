@@ -174,7 +174,7 @@ async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &
         run,
         &format!("/v1/runners/me/leases/{lease_id}/renew"),
         &json!({"requests": [{
-            "seq": 0, "at": afd_core::clock::now().to_string(),
+            "seq": 0, "at": af_core::clock::now().to_string(),
             "input_tokens": 10, "cached_input_tokens": 2, "cache_write_tokens": 0,
             "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0, "output_tokens": 3,
         }]}),

@@ -6,8 +6,8 @@
 //! Call ids are published fenced, `{fence}:{call_id}`; why is
 //! `lease/tool_trace/mod.rs`'s to say, because the stored trace uses the same ids.
 
-use afd_wire::activity::ActivityFrame;
-use afd_wire::tool_trace::{ToolCallStatus, fenced_call_id};
+use af_wire::activity::ActivityFrame;
+use af_wire::tool_trace::{ToolCallStatus, fenced_call_id};
 use serde::Serialize;
 use serde_json::value::RawValue;
 
@@ -23,20 +23,20 @@ use super::Target;
 pub(super) enum Published<'a> {
     TaskDecisionStarted {
         event_id: &'a str,
-        progress: &'a afd_wire::activity::TaskActivity,
+        progress: &'a af_wire::activity::TaskActivity,
     },
     TaskDecisionCompleted {
         event_id: &'a str,
-        progress: &'a afd_wire::activity::TaskActivity,
+        progress: &'a af_wire::activity::TaskActivity,
     },
     TaskTransferProgress {
         event_id: &'a str,
-        progress: &'a afd_wire::activity::TaskActivity,
+        progress: &'a af_wire::activity::TaskActivity,
     },
     ContextProgress {
         event_id: &'a str,
         #[serde(flatten)]
-        progress: afd_wire::context::ContextProgress,
+        progress: af_wire::context::ContextProgress,
     },
     ToolCallStarted {
         event_id: &'a str,
@@ -56,7 +56,7 @@ pub(super) enum Published<'a> {
     Chunk {
         event_id: &'a str,
         text: &'a str,
-        text_kind: afd_wire::activity::StreamTextKind,
+        text_kind: af_wire::activity::StreamTextKind,
         /// A subscriber trusts raw model text only from this first frame.
         stream_start: bool,
         /// A dropped runner chunk makes later bytes unsafe to classify.

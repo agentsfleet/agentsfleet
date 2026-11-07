@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::FleetTurns;
 use crate::test_support::{FLEET_ID, LEASE_ID};

@@ -52,9 +52,9 @@
 //! locked, so the most-walked refusals — a name nobody stored, a credential
 //! that is not a provider key — never open an envelope at all.
 
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::secret::SecretBytes;
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::secret::SecretBytes;
 use afd_vault::StoredEnvelope;
 use jiff::Timestamp;
 use sqlx::{Acquire as _, Transaction};
@@ -215,7 +215,7 @@ fn open_envelope(
     stored: StoredEnvelope,
     workspace: &Uuid7,
     name: &str,
-    kek: &afd_crypto::secret::Kek,
+    kek: &af_crypto::secret::Kek,
 ) -> Result<SecretBytes> {
     stored
         .into_envelope()

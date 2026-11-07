@@ -18,7 +18,7 @@ pub(in super::super) async fn set(case: &Case, enabled: bool) {
                 assigned_policy: Some(&policy),
                 labels: None,
             },
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
         .expect("native durable policy edit");
@@ -62,7 +62,7 @@ pub(super) async fn issue(case: &Case, acquired: &Acquired) -> Option<Issued> {
                 provider: crate::seed::PROVIDER,
                 model: crate::seed::MODEL,
             },
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
         .expect("final issue verdict")
@@ -85,9 +85,9 @@ pub(super) async fn claimable(case: &Case) -> bool {
         .bind("active")
         .bind("active")
         .bind("expired")
-        .bind(afd_wire::task::CAPABILITY)
-        .bind(afd_wire::task::TaskState::Ready.as_str())
-        .bind(afd_wire::task::TaskState::Running.as_str())
+        .bind(af_wire::task::CAPABILITY)
+        .bind(af_wire::task::TaskState::Ready.as_str())
+        .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .fetch_optional(&mut *tx)
         .await

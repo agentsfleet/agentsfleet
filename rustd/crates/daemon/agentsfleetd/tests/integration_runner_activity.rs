@@ -164,7 +164,7 @@ async fn test_activity_publish() {
     );
     assert_eq!(
         code_of(malformed).await,
-        afd_core::error_code::INVALID_REQUEST.as_str(),
+        af_core::error_code::INVALID_REQUEST.as_str(),
         "and it carries the registry code a runner classifies on"
     );
     assert_eq!(

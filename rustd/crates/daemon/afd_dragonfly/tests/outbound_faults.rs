@@ -2,7 +2,7 @@
 #![expect(clippy::expect_used, reason = "test fixture failures must fail loudly")]
 
 use crate::fake_redis::{FakeRedis, Reply};
-use afd_core::{error_code, test_util::trace::Capture};
+use af_core::{error_code, test_util::trace::Capture};
 use afd_dragonfly::{
     Dedicated, OutboundReader,
     config::{DragonflyConfig, DragonflyRole},

@@ -20,8 +20,8 @@
 //! users row every authoring guard already reads; a missing person drops the
 //! step rather than refusing the write.
 
-use afd_core::id::Uuid7;
-use afd_observability::{Analytics, AuthoringStep, Telemetry};
+use af_core::id::Uuid7;
+use af_observability::{Analytics, AuthoringStep, Telemetry};
 use sqlx::PgConnection;
 
 use crate::{Access, Drafts, Result, error::raise::query, lease::guard::Attempt};

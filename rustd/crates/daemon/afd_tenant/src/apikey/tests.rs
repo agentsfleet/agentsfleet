@@ -3,7 +3,7 @@
     clippy::panic,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
-use afd_core::paging::{Boundary as _, Cursor, SortOrder as _};
+use af_core::paging::{Boundary as _, Cursor, SortOrder as _};
 
 use super::{ApiKeySort, KeyRow};
 

@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::error_code::INTERNAL_OPERATION_FAILED;
-use afd_core::test_util::trace::Capture;
+use af_core::error_code::INTERNAL_OPERATION_FAILED;
+use af_core::test_util::trace::Capture;
 
 use super::answer::{EVENT_ANSWER_ENCODE_FAILED, json};
 

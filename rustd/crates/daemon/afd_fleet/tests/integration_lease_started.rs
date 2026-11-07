@@ -25,9 +25,9 @@
 
 use crate::seed;
 use crate::support;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_observability::test_util::Capture;
 use afd_fleet::lease::{Billed, Kind};
-use afd_observability::test_util::Capture;
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
 use self::support::Fixtures;

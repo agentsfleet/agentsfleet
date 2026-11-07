@@ -1,13 +1,13 @@
 //! Paid association keeps existing-task input on its original execution.
-use afd_core::{error_code, etag::sha256_hex, id::Uuid7};
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::{
+use af_core::{error_code, etag::sha256_hex, id::Uuid7};
+use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome},
     task::{
         DecisionAssessment, DecisionReceipt, TaskBindingItem, TaskBindingsInput, TaskInputAction,
         TaskProposedItem,
     },
 };
+use afd_fleet::task::TaskLifecycle as _;
 use serde_json::json;
 
 use super::{
@@ -111,7 +111,7 @@ pub(super) async fn proposed(
 ) -> TaskBindingsInput {
     let reservation = fixture.reservation(
         DecisionAssessment::Message,
-        Some(afd_wire::task::DecisionTaskVersion {
+        Some(af_wire::task::DecisionTaskVersion {
             task_id: task.to_owned(),
             generation: 1,
         }),

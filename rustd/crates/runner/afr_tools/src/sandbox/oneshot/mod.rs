@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use afd_core::clock::saturating_millis;
+use af_core::clock::saturating_millis;
 use afr_executor::timing::{CALL_DEADLINE, DRAIN_GRACE, KILL_GRACE};
 use afr_executor::{Ending, Executor, Process, Spawn};
 use tokio::time::Instant;
@@ -27,17 +27,16 @@ const ENDING_GRACE: Duration = KILL_GRACE
     .saturating_add(DRAIN_GRACE)
     .saturating_add(REPLY_SLACK);
 const _: () = assert!(
-    TIMEOUT_DEFAULT.saturating_add(ENDING_GRACE).as_nanos()
-        < afd_core::timing::LEASE_TTL.as_nanos()
+    TIMEOUT_DEFAULT.saturating_add(ENDING_GRACE).as_nanos() < af_core::timing::LEASE_TTL.as_nanos()
 );
 const _: () = assert!(
     CALL_DEADLINE
         .saturating_add(TIMEOUT_MAX)
         .saturating_add(ENDING_GRACE)
         .as_nanos()
-        < afd_core::timing::MAX_RUNTIME.as_nanos()
+        < af_core::timing::MAX_RUNTIME.as_nanos()
 );
-const _: () = assert!(ENDING_GRACE.as_nanos() <= afd_core::timing::ENGINE_STOP_GRACE.as_nanos());
+const _: () = assert!(ENDING_GRACE.as_nanos() <= af_core::timing::ENGINE_STOP_GRACE.as_nanos());
 /// Missing endings differ from confirmed process timeouts.
 const EVENT_ENDING_DEADLINE: &str = "process_ending_deadline_exceeded";
 /// The event a command killed at its timeout logs under.

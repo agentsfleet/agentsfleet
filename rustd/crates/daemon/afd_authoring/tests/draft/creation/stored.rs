@@ -3,8 +3,8 @@
 
 use super::super::mint;
 use super::fixture::Case;
+use af_core::{error_code, id::Uuid7};
 use afd_authoring::types::Start;
-use afd_core::{error_code, id::Uuid7};
 
 /// Appends a copy of the fleet's head revision with `$3` as its frozen review
 /// and `$4` as its source candidate, and moves the head to it.

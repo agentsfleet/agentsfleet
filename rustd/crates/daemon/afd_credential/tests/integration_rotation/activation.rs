@@ -16,8 +16,8 @@
 
 use std::sync::Arc;
 
+use af_crypto::entropy::Entropy;
 use afd_credential::provider::{Activation, OPENAI_COMPATIBLE, Providers, Rejection};
-use afd_crypto::entropy::Entropy;
 
 use super::{Fixture, NOW};
 

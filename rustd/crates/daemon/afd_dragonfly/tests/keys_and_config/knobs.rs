@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use afd_dragonfly::config::{CA_CERT_FILE_KNOB, DragonflyConfig, DragonflyRole};
 
 const URL: &str = "rediss://:secret@localhost:6379";

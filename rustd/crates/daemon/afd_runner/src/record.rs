@@ -2,7 +2,7 @@
 //!
 //! # Why this hands back COLUMNS and not a wire payload
 //!
-//! `afd_wire`'s payloads borrow (`Cow<'a, str>` behind `#[serde(borrow)]`),
+//! `af_wire`'s payloads borrow (`Cow<'a, str>` behind `#[serde(borrow)]`),
 //! which is what keeps the lease path from allocating per field. A store that
 //! returned one would have to own every byte it borrows — either by leaking, or
 //! by growing an owned mirror of each wire type, which is sixty lines of near
@@ -13,7 +13,7 @@
 //! `core_api`'s `models/` and `into.rs`, and it is the half of that codebase
 //! worth taking.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::error::{Result, query, row_malformed, runner_vanished};

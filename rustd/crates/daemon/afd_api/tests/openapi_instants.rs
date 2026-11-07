@@ -3,7 +3,7 @@
 //!
 //! Two halves, because either can drift alone. A field annotated with the
 //! wrong `value_type` publishes an integer while the handler still writes a
-//! string; a field that loses its `with = "afd_wire::instant"` writes jiff's
+//! string; a field that loses its `with = "af_wire::instant"` writes jiff's
 //! default while the document still says `date-time`. The document half reads
 //! the generated document in memory, as the contract suite does; the wire half
 //! serializes a published response type.

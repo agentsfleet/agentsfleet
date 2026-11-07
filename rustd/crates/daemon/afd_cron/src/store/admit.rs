@@ -5,7 +5,7 @@
 //! Every check runs on the create's own transaction, after the fleet's row is
 //! taken, so no concurrent create can slip between a count and the insert.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 use super::{CONTEXT_WRITE, NewSchedule, Refused};

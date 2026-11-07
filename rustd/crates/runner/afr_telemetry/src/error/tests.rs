@@ -7,9 +7,9 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
-use afd_observability::metrics::registry::Registry;
-use afd_otlp::{Builder, OTEL_ENDPOINT_KNOB, OtlpConfig, Refused, Service};
+use af_core::error_code;
+use af_observability::metrics::registry::Registry;
+use af_otlp::{Builder, OTEL_ENDPOINT_KNOB, OtlpConfig, Refused, Service};
 
 use super::Error;
 
@@ -24,7 +24,7 @@ const NO_HTTP_CLIENT: &str = "no http client";
 /// transport's own code, and its cause kept.
 #[test]
 fn a_transport_failure_keeps_its_code_and_names_no_knob() {
-    let transport = afd_otlp::Error::from(opentelemetry_otlp::ExporterBuildError::InternalFailure(
+    let transport = af_otlp::Error::from(opentelemetry_otlp::ExporterBuildError::InternalFailure(
         NO_HTTP_CLIENT.to_owned(),
     ));
 
@@ -60,7 +60,7 @@ fn a_ceiling_refused_at_install_is_a_census_refusal() {
 /// A knob the transport refused is still a knob once lifted.
 #[test]
 fn a_knob_the_transport_refused_stays_a_knob() {
-    let refused = afd_otlp::Error::from(Refused {
+    let refused = af_otlp::Error::from(Refused {
         knob: OTEL_ENDPOINT_KNOB,
         why: "a sentence",
     });

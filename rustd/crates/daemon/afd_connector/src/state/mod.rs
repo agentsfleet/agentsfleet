@@ -49,8 +49,8 @@ mod tests;
 
 use std::time::Duration;
 
-use afd_crypto::mac::HmacSha256Tag;
-use afd_crypto::secret::SecretBytes;
+use af_crypto::mac::HmacSha256Tag;
+use af_crypto::secret::SecretBytes;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64URL;
 use jiff::Timestamp;
@@ -178,7 +178,7 @@ pub fn sign(
     nonce: &str,
     now: Timestamp,
 ) -> String {
-    let expiry = afd_core::clock::after(now, Duration::from_secs(u64::from(STATE_TTL_SECONDS)));
+    let expiry = af_core::clock::after(now, Duration::from_secs(u64::from(STATE_TTL_SECONDS)));
     let tag = subject_tag(binding, secret, subject).to_hex();
     let payload = format!(
         "{workspace}{FIELD_SEP}{tag}{FIELD_SEP}{nonce}{FIELD_SEP}{}",

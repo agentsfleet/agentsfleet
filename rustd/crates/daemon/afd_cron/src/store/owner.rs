@@ -5,7 +5,7 @@
 //! route proves the caller holds the workspace in its path; the fleet in that
 //! same path is the caller's claim, and this is where the claim is checked.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::{CONTEXT_READ, Schedules};
 use crate::error::{self, Result};

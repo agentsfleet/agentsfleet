@@ -4,13 +4,13 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_fleet_runtime::Definition;
+use af_wire::runner::NetworkPolicy;
 use afd_db::test_util::{FleetSeed, GrantSeed};
-use afd_fleet_runtime::Definition;
 use afd_runner::Runners;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
-use afd_wire::runner::NetworkPolicy;
 use agentsfleetd::serve::Booted;
 use jiff::Timestamp;
 

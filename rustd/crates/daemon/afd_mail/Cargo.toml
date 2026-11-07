@@ -21,12 +21,12 @@ test-util = ["tokio/rt", "tokio/net", "tokio/io-util"]
 
 [dependencies]
 # The registry codes a failure is reported under, and the admin workspace id.
-afd_core.workspace = true
+af_core.workspace = true
 # The relay password stays inside `SecretString` until the transport is built.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # `InviteEmailOutcome`: what a send comes to is the value the invite route
 # records and reports, one type rather than a copy mapped field for field.
-afd_observability.workspace = true
+af_observability.workspace = true
 # Where the `smtp-relay` bag is read from: the admin workspace's vault.
 afd_vault.workspace = true
 askama.workspace = true
@@ -41,7 +41,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 # `test_util::trace::Capture`, which the log-privacy tests read events through.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 # `test_util::unreachable_db`, the vault the mailer suite reads the relay
 # through when that read must fail: every acquire refuses, no datastore needed.
 afd_db = { workspace = true, features = ["test-util"] }

@@ -16,9 +16,9 @@
 //! own push made: withholding the answer would lose it too and let the lease
 //! lapse into a re-run.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_wire::report::ReportRequest;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use crate::lease::memory::Holder;
@@ -61,7 +61,7 @@ impl Plane {
         }
         // A lease no longer live: a repeated report, whose first post already
         // wrote this memory, or one the settle will refuse in a moment.
-        if failure.code() == afd_core::error_code::RUN_LEASE_NOT_FOUND {
+        if failure.code() == af_core::error_code::RUN_LEASE_NOT_FOUND {
             let fleet_id = lease.fleet_id.as_str();
             let lease_id = request.lease_id.as_ref();
             let event = EVENT_CAPTURE_SKIPPED;

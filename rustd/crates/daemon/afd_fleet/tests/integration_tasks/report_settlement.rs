@@ -1,11 +1,11 @@
 //! Semantic refusal preserves financial settlement through the ordinary report path.
 
 use super::fixture::{Case, exercise, id};
-use afd_fleet::task::{TaskLifecycle as _, TaskReportOwner as _};
-use afd_wire::{
+use af_wire::{
     report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry},
     task::{DecisionTaskVersion, TaskDisposition, TaskReport, TaskState},
 };
+use afd_fleet::task::{TaskLifecycle as _, TaskReportOwner as _};
 use std::{borrow::Cow, sync::Arc};
 
 pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_> {
@@ -19,7 +19,7 @@ pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed("The runner claims the requested work is complete."),
         tokens: 0,
-        requests: afd_wire::usage::RequestLines::default(),
+        requests: af_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: 1000,
@@ -65,7 +65,7 @@ async fn task(case: &Case, disposition: TaskDisposition) -> TaskReport {
 async fn settle(case: &Case, request: &ReportRequest<'_>, task_id: &str, reason: &str) {
     let mut plane = case.held.fixtures.plane();
     plane.task_reports = Some(Arc::new(case.tasks.clone()));
-    let now = afd_core::clock::after(case.held.now, crate::report_seed::SLICE);
+    let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     plane
         .report(&case.held.runner, request, now)
         .await

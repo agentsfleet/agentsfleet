@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 use afd_credential::credential::Exchanger;
 
 use super::{BootFailure, Booted, open, open_analytics, preflight};

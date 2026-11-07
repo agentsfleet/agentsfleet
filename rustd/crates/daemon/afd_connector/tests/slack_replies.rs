@@ -18,9 +18,9 @@
 
 use std::time::{Duration, Instant};
 
+use af_crypto::secret::SecretString;
 use afd_connector::slack::{self, READ_DEADLINE, Thread, Unavailable};
 use afd_connector::test_util::{FakeSlack, Reply};
-use afd_crypto::secret::SecretString;
 use tokio::net::TcpListener;
 
 /// The bot token the grant holds.

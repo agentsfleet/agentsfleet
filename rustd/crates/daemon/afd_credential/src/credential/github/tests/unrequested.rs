@@ -1,7 +1,7 @@
 //! What a token may carry that nobody asked for: GitHub's own `metadata` read,
 //! and nothing else at any level.
 
-use afd_fleet_runtime::config::Access;
+use af_fleet_runtime::config::Access;
 use serde_json::json;
 
 use super::{Overreach, binding, granted, repositories, scoped};

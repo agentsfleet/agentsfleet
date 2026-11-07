@@ -1,8 +1,8 @@
 //! Pending inputs are complete native messages; this route never consumes them.
 
+use af_wire::task::TaskInputsQuery;
 use afd_fleet::task::TaskLease;
 use afd_http::handler::{Refusal, parse_id};
-use afd_wire::task::TaskInputsQuery;
 use axum::{
     Json,
     extract::{Path, Query, State, rejection::QueryRejection},
@@ -16,11 +16,11 @@ const MALFORMED: &str = "Task input query exceeds its supported shape or bounds"
 const EVENT: &str = "runner_task_inputs_failed";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = afd_wire::paths::LEASE_TASK_INPUTS, tag = afd_http::openapi::tag::RUNNERS,
+    get, path = af_wire::paths::LEASE_TASK_INPUTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_read_task_inputs", summary = "Read pending human task input",
     description = "Returns up to four complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live lease and fence.",
     params(("lease_id" = String, Path, description = "Current lease UUIDv7."), TaskInputsQuery),
-    responses((status = 200, body = afd_wire::task::TaskInputsResponse, description = "Complete pending input and native work"),
+    responses((status = 200, body = af_wire::task::TaskInputsResponse, description = "Complete pending input and native work"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED), (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND), (status = 409, description = afd_http::openapi::CONFLICT),
@@ -54,7 +54,7 @@ pub(crate) async fn read<D: Services>(
 fn conflict(error: &afd_fleet::Error) -> Option<&'static str> {
     matches!(
         error.code(),
-        afd_core::error_code::RUN_STALE_FENCING_TOKEN | afd_core::error_code::TASK_STALE_STATE
+        af_core::error_code::RUN_STALE_FENCING_TOKEN | af_core::error_code::TASK_STALE_STATE
     )
     .then_some("superseded")
 }

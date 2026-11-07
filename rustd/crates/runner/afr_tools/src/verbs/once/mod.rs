@@ -16,8 +16,8 @@
 
 use std::time::Duration;
 
-use afd_core::clock;
-use afd_core::timing::DAY;
+use af_core::clock;
+use af_core::timing::DAY;
 use jiff::tz::TimeZone;
 use jiff::{RoundMode, Timestamp, TimestampRound, Unit};
 use schemars::JsonSchema;

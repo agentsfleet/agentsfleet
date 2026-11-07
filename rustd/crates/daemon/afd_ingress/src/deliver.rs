@@ -35,8 +35,8 @@
 //! records, which keeps a per-fleet delivery and an App fan-out to the same
 //! fleet from deduplicating against each other.
 
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admitted, Key, Producer, Reply};
-use afd_wire::event::EventType;
 
 use crate::Ingress;
 use crate::binding::Binding;

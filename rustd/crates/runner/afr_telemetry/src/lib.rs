@@ -19,7 +19,7 @@
 //! # Recording is a free function
 //!
 //! The runner's families are process facts measured deep in three crates
-//! (`afr_providers`, `afr_agent`, `afr_supervisor`), plus the span budget and
+//! (`af_providers`, `afr_agent`, `afr_supervisor`), plus the span budget and
 //! the export's own losses here. Threading
 //! an instrument handle into every constructor between `main` and a retry loop
 //! would put a telemetry parameter on types whose job is something else, so a

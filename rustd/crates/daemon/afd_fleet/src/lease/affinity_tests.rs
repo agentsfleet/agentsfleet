@@ -4,7 +4,7 @@
     clippy::expect_used,
     reason = "a test asserts by panicking; the restriction set is for the daemon"
 )]
-use afd_core::id::ENTROPY_LEN;
+use af_core::id::ENTROPY_LEN;
 
 use super::*;
 
@@ -70,7 +70,7 @@ fn test_a_later_fence_outranks_an_earlier_one() {
 async fn an_unreleased_claim_reason_carries_no_code_prefix() {
     use crate::lease::test_dead;
 
-    let log = afd_core::test_util::trace::Capture::install();
+    let log = af_core::test_util::trace::Capture::install();
     test_dead::leases()
         .let_go(&test_dead::id(1), Fence::from_i64(3))
         .await;

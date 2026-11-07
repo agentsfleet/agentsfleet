@@ -2,7 +2,7 @@
 use crate::catalogue::{ModelRow, PriceProtocol, prices_for};
 use crate::error::{Result, query};
 use crate::{Model, Models, sql};
-use afd_core::paging::{MAX_LIMIT, struct_cursor};
+use af_core::paging::{MAX_LIMIT, struct_cursor};
 use serde::{Deserialize, Serialize};
 use sqlx::Connection as _;
 const CONTEXT_LIST: &str = "list admin models";

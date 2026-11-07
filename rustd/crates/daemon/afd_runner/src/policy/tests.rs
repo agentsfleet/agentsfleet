@@ -5,13 +5,13 @@
 )]
 
 use super::*;
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 
 /// Columns that spell a whole assignment decode to it.
 #[test]
 fn test_decode_resolves_a_fully_assigned_row() {
     let columns = AssignmentColumns {
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: "landlock_full".to_owned(),
         network_policy: "allow_all".to_owned(),
@@ -40,7 +40,7 @@ fn test_decode_resolves_a_fully_assigned_row() {
 #[test]
 fn test_decode_refuses_every_unreadable_column() {
     let sound = AssignmentColumns {
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: "landlock_full".to_owned(),
         network_policy: "allow_all".to_owned(),
@@ -78,7 +78,7 @@ fn test_decode_refuses_every_unreadable_column() {
         let refused = columns
             .decode()
             .expect_err("an unreadable column must fail the read");
-        assert_eq!(refused.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+        assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_QUERY);
         assert!(
             refused.to_string().contains(column),
             "the refusal names `{column}`: {refused}"
@@ -90,7 +90,7 @@ fn test_decode_refuses_every_unreadable_column() {
 #[test]
 fn test_decode_clamps_a_row_edited_out_of_band() {
     let out_of_range = |workers: i32| AssignmentColumns {
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),
@@ -104,15 +104,15 @@ fn test_decode_clamps_a_row_edited_out_of_band() {
     let floor = below.decode().expect("a clamped row still decodes");
     let ceiling = above.decode().expect("a clamped row still decodes");
 
-    assert_eq!(floor.worker_count, afd_core::limits::MIN_WORKERS);
-    assert_eq!(ceiling.worker_count, afd_core::limits::MAX_WORKERS);
+    assert_eq!(floor.worker_count, af_core::limits::MIN_WORKERS);
+    assert_eq!(ceiling.worker_count, af_core::limits::MAX_WORKERS);
 }
 
 /// A garbled bind list empties rather than voiding the assignment.
 #[test]
 fn test_extra_binds_degrade_to_the_baseline() {
     let columns = AssignmentColumns {
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),
@@ -159,7 +159,7 @@ fn test_stored_verdict_detects_only_real_movement() {
 fn test_sandbox_config_round_trips_through_its_column() {
     let bind = ExtraBind {
         path: std::borrow::Cow::Borrowed("/srv/models"),
-        mode: afd_wire::runner::BindMode::ReadOnly,
+        mode: af_wire::runner::BindMode::ReadOnly,
         note: std::borrow::Cow::Borrowed("model cache"),
     };
     let rendered = SandboxConfig {
@@ -167,7 +167,7 @@ fn test_sandbox_config_round_trips_through_its_column() {
     }
     .render();
     let columns = AssignmentColumns {
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),
@@ -185,7 +185,7 @@ fn test_sandbox_config_round_trips_through_its_column() {
 #[test]
 fn test_a_configuration_without_binds_is_the_baseline() {
     let columns = AssignmentColumns {
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: "dev_none".to_owned(),
         network_policy: "allow_all".to_owned(),

@@ -24,8 +24,8 @@
 //! arm through the real router — this grades the daemon rather than a source
 //! file.
 
+use af_core::id::Uuid7;
 use afd_api::services::{TenantModelEntries, TenantProviders};
-use afd_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
 use afd_credential::provider::{
     Activation, Added, Boundary, PlatformDefault, Providers, RegistryPage, Removed, Retargeted,

@@ -160,7 +160,7 @@ async fn test_an_executor_that_never_answers_refuses_the_lease_and_cleans_up() {
     let refused = refused.unwrap_err();
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert!(
         !base.path().join("l3").exists(),

@@ -17,7 +17,7 @@
 //! implementation has to remember. Here a machine record has no tenant field to
 //! populate and a person record has no `degraded` field to invert.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::credential::{CredentialKind, Presented};
 use crate::error::Unavailable;
@@ -75,7 +75,7 @@ impl Digest {
         // The workspace's one plain SHA-256: lower-case hex, which is what
         // every credential column stores and what Postgres's own
         // `encode(sha256(..), 'hex')` renders for the same bytes.
-        Self(afd_core::etag::sha256_hex(raw.as_bytes()).into())
+        Self(af_core::etag::sha256_hex(raw.as_bytes()).into())
     }
 
     /// The digest as the lower-case hex a credential column stores.

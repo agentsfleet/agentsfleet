@@ -14,16 +14,16 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-# M-TEST-UTIL, the same single flag afd_crypto carries. Here it unlocks the
+# M-TEST-UTIL, the same single flag af_crypto carries. Here it unlocks the
 # map-backed environment source, which is how the role/knob resolution gets
 # tested without mutating process state — `std::env::set_var` is `unsafe` in
 # edition 2024 precisely because a parallel test suite makes it a data race.
-test-util = ["afd_core/test-util", "dep:jiff", "dep:jiff-sqlx"]
+test-util = ["af_core/test-util", "dep:jiff", "dep:jiff-sqlx"]
 
 [dependencies]
 # The wire codes a datastore failure answers.
-afd_core.workspace = true
-afd_observability.workspace = true
+af_core.workspace = true
+af_observability.workspace = true
 sqlx.workspace = true
 # The seed fixtures stamp `TIMESTAMPTZ(3)` columns with `jiff::Timestamp`.
 # Optional — only `test-util` writes a row.

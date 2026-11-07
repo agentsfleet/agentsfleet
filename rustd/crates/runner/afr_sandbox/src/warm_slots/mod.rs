@@ -11,8 +11,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use afd_core::clock::saturating_millis;
-use afd_core::error_code::{self, Coded as _, ErrorCode, Logged};
+use af_core::clock::saturating_millis;
+use af_core::error_code::{self, Coded as _, ErrorCode, Logged};
 use backon::{ExponentialBuilder, Retryable as _, Sleeper};
 
 use tokio::sync::{mpsc, oneshot};

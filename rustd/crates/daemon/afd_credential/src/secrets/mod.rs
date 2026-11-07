@@ -29,8 +29,8 @@
 
 pub mod connector;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 use serde_json::{Map, Value};
 
 use crate::error::{Result, credential_missing, vault_data_invalid};

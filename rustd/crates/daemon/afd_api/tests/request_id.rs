@@ -12,8 +12,8 @@
 
 use std::collections::HashSet;
 
+use af_crypto::entropy::Entropy;
 use afd_api::{RequestId, UNKNOWN_REQUEST_ID};
-use afd_crypto::entropy::Entropy;
 
 /// Characters after the `req_` prefix.
 const HEX_LEN: usize = 12;

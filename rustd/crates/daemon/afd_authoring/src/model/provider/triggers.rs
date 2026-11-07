@@ -1,6 +1,6 @@
 //! Trigger shapes come from the native runtime vocabulary rather than a prompt template.
 
-use afd_fleet_runtime::config::{
+use af_fleet_runtime::config::{
     KIND_CRON, KIND_MENTION, KIND_WEBHOOK, VERIFIED_WEBHOOK_SOURCES, WebhookFamily,
 };
 use serde_json::{Value, json};

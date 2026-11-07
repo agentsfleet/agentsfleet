@@ -2,7 +2,7 @@
 
 use super::{R2CheckpointStore, bounded};
 use crate::{Result, task::TaskRefusal};
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use futures_util::StreamExt as _;
@@ -49,7 +49,7 @@ impl StorageSession<'_> {
             self.store
                 .verified
                 .get_or_try_init(|| async {
-                    let id = afd_crypto::entropy::Entropy::new().uuid7(clock::now())?;
+                    let id = af_crypto::entropy::Entropy::new().uuid7(clock::now())?;
                     let path = Path::from(format!("capability-probes/{}", id.as_str()));
                     let initial = Bytes::from_static(b"create-only-one");
                     let first = self
@@ -169,7 +169,7 @@ impl StorageSession<'_> {
             .await?;
             if bytes
                 .as_ref()
-                .is_some_and(|bytes| afd_core::etag::sha256_hex(bytes) != digest)
+                .is_some_and(|bytes| af_core::etag::sha256_hex(bytes) != digest)
             {
                 return Err(TaskRefusal::CheckpointIncompatible.into());
             }
@@ -199,7 +199,7 @@ impl StorageSession<'_> {
 }
 
 async fn read_bounded(backend: &AmazonS3, path: &Path, length: u64) -> Result<Option<Vec<u8>>> {
-    if length > afd_wire::task::CHECKPOINT_OBJECT_BYTES + afd_crypto::TAG_LEN as u64 {
+    if length > af_wire::task::CHECKPOINT_OBJECT_BYTES + af_crypto::TAG_LEN as u64 {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
     let response = match backend.get(path).await {

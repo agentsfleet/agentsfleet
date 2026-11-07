@@ -7,13 +7,13 @@
 //! holding the page.
 
 /// The detail for a database that cannot be reached.
-pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
+pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// The detail for a database that answered with an error.
-pub use afd_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
+pub use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// The detail for an operation that failed for any other reason.
-pub use afd_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
+pub use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
 /// A person may retry after the current schedule sync releases its fence.
 pub const SYNC_HELD: &str = "This schedule is being synchronised. Try again in a moment.";
 

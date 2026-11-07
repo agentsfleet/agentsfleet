@@ -20,7 +20,7 @@ mod wake;
 
 use std::sync::Arc;
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_dragonfly::{Dragonfly, FleetStreams};
 
@@ -111,7 +111,7 @@ impl Admissions {
     /// Every crate whose lane drives a producer needs an `Admissions`, and the
     /// only argument any of them has an opinion about is the pool and the
     /// queue their own harness already opened. Handing the third one out here
-    /// keeps `afd_crypto` out of eight `[dev-dependencies]` blocks and means a
+    /// keeps `af_crypto` out of eight `[dev-dependencies]` blocks and means a
     /// suite that wants a CONTROLLED entropy source has to say so, by calling
     /// [`Admissions::new`] with one, rather than getting it by accident.
     #[cfg(feature = "test-util")]

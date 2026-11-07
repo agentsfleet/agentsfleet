@@ -5,12 +5,12 @@ use crate::{
     Result,
     task::{TaskRefusal, guard, storage::R2CheckpointStore},
 };
-use afd_crypto::{
+use af_crypto::{
     checkpoint::{CheckpointScope, WrappedCheckpointKey},
     secret::SecretBytes,
 };
+use af_wire::task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
 use afd_vault::StoredEnvelope;
-use afd_wire::task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 
 #[derive(Debug, sqlx::FromRow)]
@@ -55,7 +55,7 @@ impl Object {
         }
         let workspace = guard::id(&plan.workspace_id, "workspace_id")?;
         let id = guard::id(&self.id, "object_id")?;
-        let nonce: [u8; afd_crypto::NONCE_LEN] = self
+        let nonce: [u8; af_crypto::NONCE_LEN] = self
             .nonce
             .as_slice()
             .try_into()

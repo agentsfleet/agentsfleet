@@ -10,8 +10,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use af_core::error_code::{self, ErrorCode};
 use afd_connector::Provider;
-use afd_core::error_code::{self, ErrorCode};
 use afd_credential::secrets::connector::{
     Connector as _, Connectors as _, Exchange, Registry, Supply,
 };

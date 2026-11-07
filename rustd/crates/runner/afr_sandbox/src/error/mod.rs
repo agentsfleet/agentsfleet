@@ -1,7 +1,7 @@
 //! What building or destroying a sandbox refuses, and what it reports.
 //!
 //! One error type with `pub type Result<T, E = Error>` beside it, under the
-//! `afd_core::error_shell!` hull every `rustd` crate carries: the boxed kind
+//! `af_core::error_shell!` hull every `rustd` crate carries: the boxed kind
 //! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
 //! the `[CODE]` rendering and the self-skipping `source()` are generated.
 //!
@@ -18,7 +18,7 @@ use std::process::ExitStatus;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 mod egress;
 mod raise;
@@ -35,7 +35,7 @@ pub(crate) use self::raise::{
 pub(crate) use self::raise::{netlink, not_ready};
 pub use self::toolbox::ToolboxRefusal;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );

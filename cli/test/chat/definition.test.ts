@@ -88,7 +88,7 @@ test("a first message travels with the Definition in one atomic creation", async
 });
 
 test("the file bound is the daemon's Definition envelope bound", () => {
-  // pin test: literal is the contract — afd_fleet_runtime's MAX_DEFINITION_BYTES, 6 × (32,768 + 32,768) + 65,536.
+  // pin test: literal is the contract — af_fleet_runtime's MAX_DEFINITION_BYTES, 6 × (32,768 + 32,768) + 65,536.
   expect(MAX_DEFINITION_BYTES).toBe(458_752);
 });
 

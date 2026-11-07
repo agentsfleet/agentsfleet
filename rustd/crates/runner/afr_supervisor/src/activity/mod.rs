@@ -30,9 +30,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_wire::activity::{ActivityFrame, ActivityRequest};
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_wire::activity::{ActivityFrame, ActivityRequest};
 use afr_agent::EventSink;
 use afr_telemetry::labels::FrameDrop;
 use afr_telemetry::record;

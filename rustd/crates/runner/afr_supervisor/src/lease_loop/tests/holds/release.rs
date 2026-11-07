@@ -9,12 +9,12 @@
 
 use std::borrow::Cow;
 
-use afd_wire::credentials::MintCredentialResponse;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_wire::credentials::MintCredentialResponse;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::{RepositoryAccess, RepositoryBinding};
 use afr_tools::catalog::GIT;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxHold;
 
 use super::super::EVENT_COMPLETED;

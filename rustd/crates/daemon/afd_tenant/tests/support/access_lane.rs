@@ -8,10 +8,10 @@
 //! and holds nothing of John's. The rows themselves are
 //! `afd_tenant::test_util`'s, which `afd_api`'s suites seed too.
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_auth::principal::{Person, PersonCredential, Principal, Subject};
 use afd_auth::scope::ScopeSet;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};

@@ -5,9 +5,9 @@ use super::{
     github_authority,
     github_server::Server,
 };
+use af_wire::task::{DecisionTaskVersion, TaskEffectInput, TaskEffectState, TaskFileChange};
 use afd_db::test_util::mint_id;
 use afd_fleet::task::{TaskLifecycle as _, TaskRefusal, Tasks};
-use afd_wire::task::{DecisionTaskVersion, TaskEffectInput, TaskEffectState, TaskFileChange};
 use serde_json::json;
 use sqlx::types::Json;
 
@@ -99,7 +99,7 @@ async fn stale_inputs(tasks: &Tasks, case: &Case, input: &TaskEffectInput) {
 }
 
 pub(super) async fn prepared(case: &Case, task: DecisionTaskVersion) -> TaskEffectInput {
-    let workflows = json!([{"id":42,"path":".github/workflows/test.yml","digest":afd_core::etag::sha256_hex(github_authority::WORKFLOW.as_bytes())}]);
+    let workflows = json!([{"id":42,"path":".github/workflows/test.yml","digest":af_core::etag::sha256_hex(github_authority::WORKFLOW.as_bytes())}]);
     let mut connection = case
         .held
         .fixtures

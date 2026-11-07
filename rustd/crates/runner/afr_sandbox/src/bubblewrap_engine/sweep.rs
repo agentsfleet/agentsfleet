@@ -11,7 +11,7 @@
 use std::fs;
 use std::path::Path;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 
 use super::BubblewrapEngine;
 use crate::cgroup::LeaseCgroup;

@@ -50,7 +50,7 @@ fn a_tool_without_a_handler_refuses_the_selection() {
     assert_eq!(failure.unhosted_tool(), Some("browser"));
     assert_eq!(
         failure.code(),
-        afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
+        af_core::error_code::AGENTSFLEET_INVALID_CONFIG
     );
     assert!(failure.to_string().contains("browser"));
 }

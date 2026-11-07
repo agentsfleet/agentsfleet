@@ -7,8 +7,8 @@ mod session;
 
 use crate::client::{Call, ControlPlane, Verb};
 use crate::test_support::{Answer, Calls, json, plane};
-use afd_core::{clock, id::Uuid7};
-use afd_wire::task::{
+use af_core::{clock, id::Uuid7};
+use af_wire::task::{
     CHECKPOINT_FORMAT, CheckpointAuthorizationInput, CheckpointAuthorizations,
     CheckpointCommitInput, CheckpointEntry, CheckpointMode, CheckpointObject,
     CheckpointObjectStatus, CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPage,
@@ -93,8 +93,8 @@ fn page(entries: Vec<CheckpointEntry>) -> CheckpointPage {
 }
 
 fn root(id: &str, page: &CheckpointPage) -> String {
-    let digest = afd_core::etag::sha256_hex(&serde_json::to_vec(page).unwrap());
-    afd_crypto::checkpoint_digest::manifest_root([(id, digest.as_str())])
+    let digest = af_core::etag::sha256_hex(&serde_json::to_vec(page).unwrap());
+    af_crypto::checkpoint_digest::manifest_root([(id, digest.as_str())])
 }
 
 fn body<T: DeserializeOwned>(call: &Call) -> T {
@@ -123,7 +123,7 @@ impl Archive {
         let page = page(entries);
         let mut archive = Self::empty();
         archive.plan.manifest_root = Some(root(PAGE, &page));
-        archive.plan.history_digest = Some(afd_crypto::checkpoint_digest::history_root(
+        archive.plan.history_digest = Some(af_crypto::checkpoint_digest::history_root(
             std::iter::empty::<(&str, &str, u64)>(),
         ));
         archive.pages.insert(PAGE.to_owned(), page);
@@ -191,7 +191,7 @@ impl Archive {
         assert_eq!(input.pin_id, ID);
         assert_eq!(
             input.digest,
-            afd_core::etag::sha256_hex(&serde_json::to_vec(&input.contents).unwrap())
+            af_core::etag::sha256_hex(&serde_json::to_vec(&input.contents).unwrap())
         );
         self.pages.insert(PAGE.to_owned(), input.contents.clone());
         json(&input.contents)

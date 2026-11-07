@@ -6,8 +6,8 @@ use super::{
     queue::{admit_against, over_fake},
 };
 use crate::fake_redis::Reply;
+use af_core::{error_code, test_util::trace::assert_uncoded};
 use afd_admission::Reply as ReplyTo;
-use afd_core::{error_code, test_util::trace::assert_uncoded};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

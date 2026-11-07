@@ -18,7 +18,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_dragonfly::SessionStore;
 use afd_tenant::session::SessionStatus;
 use afd_tenant::session::input::{Code, Opening};

@@ -87,7 +87,7 @@ mod tests {
         assert_eq!(refusal.phase(), "http_client");
         assert_eq!(
             refusal.code(),
-            afd_core::error_code::INTERNAL_OPERATION_FAILED
+            af_core::error_code::INTERNAL_OPERATION_FAILED
         );
         assert!(
             std::error::Error::source(&refusal).is_some(),

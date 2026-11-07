@@ -1,8 +1,8 @@
 //! Run working notes use a separate port from reusable semantic memory.
 use crate::client::{ControlPlane, retrying};
-use afd_context::{Checkpoint, Error, Result};
-use afd_core::id::Uuid7;
-use afd_wire::context::ContextPut;
+use af_context::{Checkpoint, Error, Result};
+use af_core::id::Uuid7;
+use af_wire::context::ContextPut;
 
 #[derive(Debug)]
 pub(crate) struct LeaseContext<'a> {

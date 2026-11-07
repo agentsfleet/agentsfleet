@@ -11,8 +11,8 @@ use super::{
     continuation::Continuation,
     github::{BoundPr, status::Snapshot},
 };
-use afd_core::id::Uuid7;
-use afd_wire::{report::ReportRequest, task::TaskReport};
+use af_core::id::Uuid7;
+use af_wire::{report::ReportRequest, task::TaskReport};
 
 /// Native report preparation; HTTP cannot construct a semantic permit.
 pub trait TaskReportOwner: std::fmt::Debug + Send + Sync {
@@ -48,13 +48,13 @@ impl TaskReportOwner for Tasks {
             return Box::pin(async { Ok(None) });
         }
         Box::pin(super::observe::measure(
-            afd_observability::metrics::label::task::TaskOperation::ReportPrepare,
+            af_observability::metrics::label::task::TaskOperation::ReportPrepare,
             prepare::prepare(self, lease, input),
             |prepared| {
                 if prepared.is_some() {
-                    afd_observability::metrics::label::task::TaskOutcome::Accepted
+                    af_observability::metrics::label::task::TaskOutcome::Accepted
                 } else {
-                    afd_observability::metrics::label::task::TaskOutcome::Unavailable
+                    af_observability::metrics::label::task::TaskOutcome::Unavailable
                 }
             },
         ))
@@ -85,7 +85,7 @@ impl PreparedReport {
             return;
         };
         if let Ok(snapshot) = super::read::read(&self.tasks, &self.scope, &id).await {
-            if snapshot.context.state == afd_wire::task::TaskState::Ready
+            if snapshot.context.state == af_wire::task::TaskState::Ready
                 && Some(snapshot.context.generation)
                     == self.snapshot.context.generation.checked_add(1)
                 && let Some(wake) = &self.wake

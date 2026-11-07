@@ -1,7 +1,7 @@
 //! Private projections contain only creator-visible setup and conversation state.
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::Definition;
+use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -86,10 +86,10 @@ pub struct DraftCard {
     /// Related fleet, when available.
     pub linked_fleet_id: Option<Uuid7>,
     /// Last mutation time.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: Timestamp,
     /// Private retention deadline.
-    #[serde(with = "afd_wire::instant::option")]
+    #[serde(with = "af_wire::instant::option")]
     pub expires_at: Option<Timestamp>,
     /// The current candidate's revision, before the chat proposes one.
     pub candidate_revision: Option<i64>,
@@ -143,11 +143,11 @@ pub struct Draft {
     pub publication: Option<super::Publication>,
     /// Time activation closed the draft.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::instant::option")]
+    #[serde(with = "af_wire::instant::option")]
     pub closed_at: Option<Timestamp>,
     /// Private retention deadline.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::instant::option")]
+    #[serde(with = "af_wire::instant::option")]
     pub expires_at: Option<Timestamp>,
 }
 
@@ -197,16 +197,16 @@ pub struct Message {
     pub candidate_id: Option<Uuid7>,
     /// Daemon-authoritative provider knowledge and cumulative runtime charge.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<afd_wire::authoring::Usage>,
+    pub usage: Option<af_wire::authoring::Usage>,
     /// Bounded persistent recovery action on `failed`/`timed_out` messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<super::Failure>,
     /// Request acceptance time.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: Timestamp,
     /// Terminal time, absent while queued/running.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::instant::option")]
+    #[serde(with = "af_wire::instant::option")]
     pub finished_at: Option<Timestamp>,
 }
 

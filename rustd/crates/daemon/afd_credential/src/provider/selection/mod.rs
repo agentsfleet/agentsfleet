@@ -6,7 +6,7 @@
 //! strategy a tenant resolves through is a value that exists before the key
 //! does.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::error::{Result, provider_malformed, query, row_malformed};
 use crate::provider::cap;

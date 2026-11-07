@@ -5,10 +5,10 @@ use super::{Error, ErrorKind};
 // `sqlx::Error` is absent on purpose: a statement failure carries WHICH
 // statement, context only the call site knows, so it goes through [`query`]
 // or [`unavailable`] instead of a blanket lift.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_crypto::error::Error => Identifier,
-    afd_core::error::Error => Writer,
+    af_crypto::error::Error => Identifier,
+    af_core::error::Error => Writer,
 );
 
 /// Reports a runner-plane statement that failed, naming what it was doing.

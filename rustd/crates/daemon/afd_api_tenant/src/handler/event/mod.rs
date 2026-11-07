@@ -25,7 +25,7 @@
 //! No such event, an event of another fleet, and an event of another workspace
 //! answer identically. The statement carries both scopes as predicates, so this
 //! handler receives one empty result for all three and could not tell them
-//! apart if it wanted to — see `afd_core::error_code::EVENT_NOT_FOUND`.
+//! apart if it wanted to — see `af_core::error_code::EVENT_NOT_FOUND`.
 
 mod query;
 pub(crate) mod tool_call;
@@ -33,10 +33,10 @@ pub(crate) mod tool_call;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_wire::event::{EventDetail, EventsResponse};
 use afd_events::{Cursor, EventDetailRow, EventRow, next_cursor};
-use afd_wire::event::{EventDetail, EventsResponse};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
@@ -265,7 +265,7 @@ fn page_response(page: &[EventRow], limit: i64) -> EventsResponse<'_> {
 ///
 /// The bodies sit between `status` and `tokens` because that is the order the
 /// daemon this ports already emits, and the tool trace joins them there. See
-/// `afd_wire::event::EventDetail` on why the two wire types are not one type
+/// `af_wire::event::EventDetail` on why the two wire types are not one type
 /// plus its body fields.
 pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
     let row = &event.row;

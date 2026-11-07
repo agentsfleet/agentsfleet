@@ -22,7 +22,7 @@
 //! "is it there" and "is it small enough to keep for five minutes", which are
 //! the only two a relay is entitled to ask.
 
-use afd_validate::{PathTable, ascii_digits, charset};
+use af_validate::{PathTable, ascii_digits, charset};
 use garde::{Unvalidated, Valid, Validate};
 
 use crate::Result;

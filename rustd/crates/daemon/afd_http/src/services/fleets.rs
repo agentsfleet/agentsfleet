@@ -10,8 +10,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::{After, FleetPage, FleetStatus, Result as FleetResult};
 
 /// Everything the workspace fleets routes act through.

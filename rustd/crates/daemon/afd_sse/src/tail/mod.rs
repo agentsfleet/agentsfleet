@@ -12,7 +12,7 @@
 //! stream, the client sees the connection close, and it reconnects — which is
 //! what an `EventSource` does by itself.
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::Subscription;
 use afd_dragonfly::hub::Received;
 use futures_util::Stream;

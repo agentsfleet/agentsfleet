@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use afd_observability::metrics::label::database::{AcquireOutcome, PoolRole};
+use af_observability::metrics::label::database::{AcquireOutcome, PoolRole};
 
 use super::Db;
 use crate::config::DbRole;
@@ -84,7 +84,7 @@ impl Acquisition {
 impl Drop for Acquisition {
     fn drop(&mut self) {
         self.waiting.fetch_sub(1, Ordering::Relaxed);
-        afd_observability::producers::database::acquired(
+        af_observability::producers::database::acquired(
             self.role,
             self.outcome,
             self.started.elapsed(),

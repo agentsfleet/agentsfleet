@@ -4,7 +4,7 @@
 //! a cap on what a fleet may spend, read from our own usage log, so it holds
 //! whichever biller moves the money.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgExecutor;
 
 use crate::error::query;
@@ -43,7 +43,7 @@ pub async fn fleet_spend<'e>(
     let spent: Spent = sqlx::query_as(SELECT_FLEET_SPEND)
         .bind(workspace_id.as_str())
         .bind(fleet_id.as_str())
-        .bind(afd_core::timing::DAY)
+        .bind(af_core::timing::DAY)
         .fetch_one(executor)
         .await
         .map_err(query(CONTEXT_SPEND))?;

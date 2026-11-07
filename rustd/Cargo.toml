@@ -22,7 +22,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/daemon/afd_admin", "crates/daemon/afd_admission", "crates/daemon/afd_api", "crates/daemon/afd_api_ingress", "crates/daemon/afd_api_operator", "crates/daemon/afd_api_runner", "crates/daemon/afd_api_tenant", "crates/daemon/afd_api_wire", "crates/daemon/afd_approval", "crates/daemon/afd_auth", "crates/daemon/afd_authoring", "crates/daemon/afd_bench", "crates/daemon/afd_billing", "crates/daemon/afd_connector", "crates/protocol/afd_context", "crates/foundation/afd_core", "crates/daemon/afd_credential", "crates/daemon/afd_cron", "crates/foundation/afd_crypto", "crates/daemon/afd_db", "crates/daemon/afd_dragonfly", "crates/daemon/afd_events", "crates/daemon/afd_fleet", "crates/daemon/afd_fleet_lifecycle", "crates/daemon/afd_fleet_ops", "crates/protocol/afd_fleet_runtime", "crates/daemon/afd_gate", "crates/daemon/afd_http", "crates/daemon/afd_identity", "crates/protocol/afd_inference", "crates/daemon/afd_ingress", "crates/daemon/afd_mail", "crates/daemon/afd_memory", "crates/protocol/afd_observability", "crates/protocol/afd_otlp", "crates/daemon/afd_outbound", "crates/daemon/afd_runner", "crates/daemon/afd_sse", "crates/daemon/afd_state", "crates/daemon/afd_tenant", "crates/foundation/afd_validate", "crates/daemon/afd_vault", "crates/protocol/afd_webhook", "crates/protocol/afd_wire", "crates/runner/afr_agent", "crates/harness/afr_egress", "crates/runner/afr_executor", "crates/runner/afr_memory", "crates/harness/afr_providers", "crates/runner/afr_sandbox", "crates/harness/afr_secrets", "crates/runner/afr_supervisor", "crates/runner/afr_telemetry", "crates/runner/afr_tools", "crates/runner/agentsfleet_runner", "crates/daemon/agentsfleetd"]
+members = ["crates/daemon/afd_admin", "crates/daemon/afd_admission", "crates/daemon/afd_api", "crates/daemon/afd_api_ingress", "crates/daemon/afd_api_operator", "crates/daemon/afd_api_runner", "crates/daemon/afd_api_tenant", "crates/daemon/afd_api_wire", "crates/daemon/afd_approval", "crates/daemon/afd_auth", "crates/daemon/afd_authoring", "crates/daemon/afd_bench", "crates/daemon/afd_billing", "crates/daemon/afd_connector", "crates/protocol/af_context", "crates/foundation/af_core", "crates/daemon/afd_credential", "crates/daemon/afd_cron", "crates/foundation/af_crypto", "crates/daemon/afd_db", "crates/daemon/afd_dragonfly", "crates/daemon/afd_events", "crates/daemon/afd_fleet", "crates/daemon/afd_fleet_lifecycle", "crates/daemon/afd_fleet_ops", "crates/protocol/af_fleet_runtime", "crates/daemon/afd_gate", "crates/daemon/afd_http", "crates/daemon/afd_identity", "crates/protocol/af_inference", "crates/daemon/afd_ingress", "crates/daemon/afd_mail", "crates/daemon/afd_memory", "crates/protocol/af_observability", "crates/protocol/af_otlp", "crates/daemon/afd_outbound", "crates/daemon/afd_runner", "crates/daemon/afd_sse", "crates/daemon/afd_state", "crates/daemon/afd_tenant", "crates/foundation/af_validate", "crates/daemon/afd_vault", "crates/protocol/af_webhook", "crates/protocol/af_wire", "crates/runner/afr_agent", "crates/harness/af_egress", "crates/runner/afr_executor", "crates/runner/afr_memory", "crates/harness/af_providers", "crates/runner/afr_sandbox", "crates/harness/af_secrets", "crates/runner/afr_supervisor", "crates/runner/afr_telemetry", "crates/runner/afr_tools", "crates/runner/agentsfleet_runner", "crates/daemon/agentsfleetd"]
 
 [workspace.package]
 version = "0.73.0"
@@ -79,13 +79,13 @@ afd_billing = { path = "crates/daemon/afd_billing" }
 # state machine and the vendor conversation are decided with no router in
 # sight, and `afd_api` is already the workspace's largest crate.
 afd_connector = { path = "crates/daemon/afd_connector" }
-afd_core = { path = "crates/foundation/afd_core" }
-afd_context = { path = "crates/protocol/afd_context" }
+af_core = { path = "crates/foundation/af_core" }
+af_context = { path = "crates/protocol/af_context" }
 # What a run may USE: the declared secret, the vault that opens it, the provider
 # it dials, the token a broker mints. Split from afd_fleet once the one misfiled
 # file (an `impl Plane` living under credential/) stopped tying it to the lease.
 afd_credential = { path = "crates/daemon/afd_credential" }
-afd_crypto = { path = "crates/foundation/afd_crypto" }
+af_crypto = { path = "crates/foundation/af_crypto" }
 afd_db = { path = "crates/daemon/afd_db" }
 # `fleet.events` and its live tail. A crate of its own because the table
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
@@ -98,7 +98,7 @@ afd_fleet = { path = "crates/daemon/afd_fleet" }
 # calls back at none, which is what let it out.
 afd_gate = { path = "crates/daemon/afd_gate" }
 afd_http = { path = "crates/daemon/afd_http" }
-afd_inference = { path = "crates/protocol/afd_inference" }
+af_inference = { path = "crates/protocol/af_inference" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
 # that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and
@@ -110,7 +110,7 @@ afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 # is the host's own plane and WRITES it — a lease-history join reaching for
 # `fleet.fleets` and `fleet.events` would put both on the heartbeat path.
 afd_fleet_ops = { path = "crates/daemon/afd_fleet_ops" }
-afd_fleet_runtime = { path = "crates/protocol/afd_fleet_runtime" }
+af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
 afd_identity = { path = "crates/daemon/afd_identity" }
 # What a signed delivery is resolved against. Not folded into `afd_events`,
 # which owns the same table's reads: this needs the vault and the config
@@ -128,10 +128,10 @@ afd_mail = { path = "crates/daemon/afd_mail" }
 # route families reach memory through the trait, and a store for another vendor
 # is a new implementation rather than an edit to the runner plane.
 afd_memory = { path = "crates/daemon/afd_memory" }
-afd_observability = { path = "crates/protocol/afd_observability" }
+af_observability = { path = "crates/protocol/af_observability" }
 # The OTLP transport both binaries build their pipelines through: the knobs,
-# the exporters inside `afd_observability`'s counting wrappers, the globals.
-afd_otlp = { path = "crates/protocol/afd_otlp" }
+# the exporters inside `af_observability`'s counting wrappers, the globals.
+af_otlp = { path = "crates/protocol/af_otlp" }
 afd_outbound = { path = "crates/daemon/afd_outbound" }
 afd_dragonfly = { path = "crates/daemon/afd_dragonfly" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
@@ -148,9 +148,9 @@ afd_tenant = { path = "crates/daemon/afd_tenant" }
 # The bounds every crate declares on untrusted input and cannot get from garde
 # alone: the custom rules (finite, NUL-free, digits, a charset), a `?limit`
 # proved against its route's ceiling, and the table from a reported path to a
-# route's fixed sentence. A leaf beside `afd_core` rather than a module in it
+# route's fixed sentence. A leaf beside `af_core` rather than a module in it
 # (M-SMALLER-CRATES): it depends on garde and nothing of ours.
-afd_validate = { path = "crates/foundation/afd_validate" }
+af_validate = { path = "crates/foundation/af_validate" }
 # The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
 # `vault` module is the RUNNER plane's reader — it opens a declared credential
 # for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,
@@ -162,23 +162,23 @@ afd_vault = { path = "crates/daemon/afd_vault" }
 # which answers a different question — who a CALLER is and what they may do.
 # A signed delivery has no principal, and the wall must be provable with no
 # datastore, no runtime and no router.
-afd_webhook = { path = "crates/protocol/afd_webhook" }
-afd_wire = { path = "crates/protocol/afd_wire" }
+af_webhook = { path = "crates/protocol/af_webhook" }
+af_wire = { path = "crates/protocol/af_wire" }
 # The daemon's own API types: every admin, tenant, operator and ingress shape
-# no runner speaks. Split from `afd_wire` so an edit here rebuilds no runner
+# no runner speaks. Split from `af_wire` so an edit here rebuilds no runner
 # crate.
 afd_api_wire = { path = "crates/daemon/afd_api_wire" }
 # The Rust runner: the supervisor outside every sandbox, the sandbox engines,
 # the executor that runs inside each one, and the agent-engine seam. They depend
-# on `afd_wire`, `afd_core` and `afd_observability` and on nothing else from the
+# on `af_wire`, `af_core` and `af_observability` and on nothing else from the
 # daemon (`docs/architecture/runner_execution.md` §Crates).
 afr_agent = { path = "crates/runner/afr_agent" }
-afr_egress = { path = "crates/harness/afr_egress" }
+af_egress = { path = "crates/harness/af_egress" }
 afr_executor = { path = "crates/runner/afr_executor" }
 afr_memory = { path = "crates/runner/afr_memory" }
-afr_providers = { path = "crates/harness/afr_providers" }
+af_providers = { path = "crates/harness/af_providers" }
 afr_sandbox = { path = "crates/runner/afr_sandbox" }
-afr_secrets = { path = "crates/harness/afr_secrets" }
+af_secrets = { path = "crates/harness/af_secrets" }
 afr_supervisor = { path = "crates/runner/afr_supervisor" }
 # The runner's telemetry: the credential-free endpoint, the span budget and
 # the runner's own metric families. Every runner crate that measures records
@@ -209,7 +209,7 @@ schemars = { version = "1.2.3", default-features = false, features = ["derive", 
 # `serde_json::Value` per tool call. A feature on a dependency
 # already resolved in the lock, not a new crate.
 # The OpenAPI document generator, and the reason it is `optional` at every
-# member that names it. `afd_wire` carries serde and serde_json deliberately
+# member that names it. `af_wire` carries serde and serde_json deliberately
 # and nothing else; a schema compiler is a BUILD-time tool, so it is reachable
 # only under the non-default `openapi` feature and the shipped daemon resolves
 # a graph without it. The pattern is the one `json-patch`, `compact_str`,
@@ -271,15 +271,15 @@ getrandom = { version = "0.4.3", default-features = false }
 
 # Version-7 identifier construction. ALREADY in the lock at this version via
 # moka, so this is a feature flag on a compiled crate rather than a new
-# dependency — and it is not on `afd_core`'s FORBIDDEN list, which polices
+# dependency — and it is not on `af_core`'s FORBIDDEN list, which polices
 # runtimes, datastores and transports.
 #
 # Only `Builder::from_unix_timestamp_millis` is used: it takes the 48-bit
 # millisecond field and ten caller-supplied entropy bytes and sets the version
-# and variant nibbles. The entropy is still drawn by `afd_crypto`, so the "one
+# and variant nibbles. The entropy is still drawn by `af_crypto`, so the "one
 # system call" claim holds — nothing here asks uuid for randomness.
 #
-# The PARSE side stays hand-written in `afd_core::id`, and that is not
+# The PARSE side stays hand-written in `af_core::id`, and that is not
 # duplication: `Uuid::parse_str` is case-INSENSITIVE and normalises, while this
 # product rejects uppercase outright so one entity cannot have two spellings.
 # A crate that cannot express the invariant is not a shortcut to it.
@@ -673,7 +673,7 @@ dashmap = { version = "6.2.1", default-features = false }
 # own `serde` types, so no GitHub SDK sits between this crate and its caller.
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 
-# OpenTelemetry, for the push-only export `afd_otlp` builds. The SDK alone:
+# OpenTelemetry, for the push-only export `af_otlp` builds. The SDK alone:
 # it re-exports the API types the
 # exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
 # an endpoint — a transport built here for nobody would be a dependency with no
@@ -747,7 +747,7 @@ opentelemetry_sdk = { version = "0.33.1", default-features = false, features = [
     # trait live behind it, and both were reaching this workspace only because
     # `opentelemetry-otlp`'s own `logs` feature happened to turn it on — so
     # `cargo` unified it into the binary's graph and NOT into a crate built on
-    # its own. `cargo test -p afd_observability` is where that showed up.
+    # its own. `cargo test -p af_observability` is where that showed up.
     "logs",
 ] }
 
@@ -838,7 +838,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 
 # The keys a derive skipped, with their dotted path: the strict reader a
 # person-written request goes through when it embeds a lenient runner-bound
-# type (`afd_core::json::strict_object_from_slice`).
+# type (`af_core::json::strict_object_from_slice`).
 serde_ignored = { version = "0.1.14", default-features = false }
 # The runner's kernel surface, Linux only, each the crate Codex's own sandbox
 # uses (`codex-rs/linux-sandbox/Cargo.toml`): safe system calls for process

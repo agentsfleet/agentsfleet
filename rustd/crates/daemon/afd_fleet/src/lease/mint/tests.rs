@@ -9,7 +9,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use jiff::Timestamp;
 use zeroize::Zeroizing;
 
@@ -170,7 +170,7 @@ async fn an_unrotated_refresh_token_reason_carries_no_code_prefix() {
     use crate::lease::scope::MintScope;
     use crate::lease::test_dead;
 
-    let log = afd_core::test_util::trace::Capture::install();
+    let log = af_core::test_util::trace::Capture::install();
     let scope = MintScope {
         workspace_id: test_dead::id(2),
         fleet_id: test_dead::id(1),
@@ -178,7 +178,7 @@ async fn an_unrotated_refresh_token_reason_carries_no_code_prefix() {
         binding: None,
     };
     let handle = serde_json::Value::Object(serde_json::Map::from_iter([(
-        afd_core::credential::FIELD_REFRESH_TOKEN.to_owned(),
+        af_core::credential::FIELD_REFRESH_TOKEN.to_owned(),
         serde_json::Value::from("rt_posted"),
     )]));
     let rotated = Minted {

@@ -3,11 +3,11 @@
 use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
+use af_core::{clock, error_code, id::Uuid7};
+use af_wire::runner::{AssignedPolicy, BindMode, ExtraBind};
 use afd_admin::DeleteModel;
-use afd_core::{clock, error_code, id::Uuid7};
 use afd_db::test_util::mint_id;
 use afd_runner::{KeysetCursor, NO_REPORT, RunnerEdit};
-use afd_wire::runner::{AssignedPolicy, BindMode, ExtraBind};
 
 use super::{Fixture, enrolment};
 

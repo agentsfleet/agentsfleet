@@ -1,7 +1,7 @@
 //! Exact retries return the accepted version after later edits.
 
 use super::{Attempt, CandidateVersion, Fixture, Source, edit};
-use afd_core::error_code::{AUTHORING_REPLAY, AUTHORING_STALE};
+use af_core::error_code::{AUTHORING_REPLAY, AUTHORING_STALE};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

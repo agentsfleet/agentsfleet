@@ -9,10 +9,10 @@
 use super::{
     API_HOST, CREDENTIAL_GITHUB, DETAIL_NO_REPAIR_BRANCH, DETAIL_NOT_EXACTLY_ONE_REPOSITORY, build,
 };
-use afd_core::money::NANOS_PER_USD;
-use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::RepositoryBinding;
-use afd_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule};
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::FleetConfig;
+use af_fleet_runtime::config::RepositoryBinding;
+use af_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule};
 
 const BRANCH: &str = "agentsfleet-repair/run-123";
 
@@ -63,7 +63,7 @@ fn rules(binding: &RepositoryBinding, branch: Option<&str>) -> Vec<HttpRequestRu
             json_fields: rule
                 .json_fields
                 .iter()
-                .map(|field| afd_wire::policy::HttpJsonFieldRule {
+                .map(|field| af_wire::policy::HttpJsonFieldRule {
                     name: field.name.to_string().into(),
                     string_value: field.string_value.as_ref().map(|v| v.to_string().into()),
                     boolean_value: field.boolean_value,
@@ -191,7 +191,7 @@ fn object_endpoints_are_open_because_an_unreferenced_object_changes_nothing() {
 
 #[test]
 fn a_rule_that_names_a_field_lists_every_field_a_run_may_send() {
-    // The runner's matcher (`afr_egress::origin`) admits no top-level key a
+    // The runner's matcher (`af_egress::origin`) admits no top-level key a
     // closed rule — one carrying `permitted_fields` — leaves out, so these
     // lists, beside each rule's locked fields, are what a run can send. A commit
     // carries no `author` or `committer`: the ref publishes whoever the commit

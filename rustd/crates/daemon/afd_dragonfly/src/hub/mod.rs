@@ -144,7 +144,7 @@ impl Subscription {
             Ok(Delivery::Gap) => Ok(Received::Gap),
             Err(broadcast::error::RecvError::Lagged(missed)) => {
                 // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+                let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
                 tracing::warn!(
                     channel = self.channel,
                     missed,

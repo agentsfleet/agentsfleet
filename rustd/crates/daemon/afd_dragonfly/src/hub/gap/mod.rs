@@ -207,7 +207,7 @@ impl Burst {
     pub(super) fn flush(&mut self) {
         for (cause, channels) in self.take() {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
+            let error_code = af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
             let cause = cause.as_str();
             tracing::warn!(channels, cause, error_code, event = "hub_channel_gap");
         }

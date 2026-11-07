@@ -1,7 +1,7 @@
 //! The Postgres store's writes: a push's upsert with its sweep and cap, and
 //! the operator's forget.
 
-use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
+use af_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta, PINNED_CATEGORY};
 use jiff::Timestamp;
 
 use super::{Failure, PgStore};
@@ -52,7 +52,7 @@ impl PgStore {
             let swept = sqlx::query(sql::DELETE_AGED_IN_CATEGORY)
                 .bind(owner.fleet.as_str())
                 .bind(DAILY_CATEGORY)
-                .bind(jiff_sqlx::ToSqlx::to_sqlx(afd_core::clock::before(
+                .bind(jiff_sqlx::ToSqlx::to_sqlx(af_core::clock::before(
                     now,
                     DAILY_RETENTION,
                 )))

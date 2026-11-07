@@ -15,8 +15,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::event::status;
-use afd_core::id::Uuid7;
+use af_core::event::status;
+use af_core::id::Uuid7;
 use afd_events::{Cursor, History, Steer};
 use afd_fleet::lease::Delivery;
 

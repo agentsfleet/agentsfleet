@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use afd_wire::tool_trace::{
+use af_wire::tool_trace::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, TRACE_MAX_BYTES, TRACE_MAX_CALLS,
     ToolCallStatus, ToolTrace, ToolTraceCall, edge_fits,
 };

@@ -4,10 +4,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use afd_wire::lease::LeasePayload;
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use af_egress::Resolve;
+use af_wire::lease::LeasePayload;
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_agent::AgentEngine;
-use afr_egress::Resolve;
 use afr_executor::Unavailable;
 use afr_sandbox::Limits;
 use tokio::sync::{Notify, mpsc};
@@ -217,7 +217,7 @@ pub(crate) fn daemon(
 ) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
     let healthy = Healthy {
         assigned: AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowAll,

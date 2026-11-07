@@ -35,11 +35,11 @@
 
 use crate::harness;
 
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{ApiKeySeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};
@@ -65,7 +65,7 @@ const TENANT_NAME: &str = "Current user live";
 /// See [`EMAIL`].
 const DISPLAY_NAME: &str = "Ada Fixture";
 
-/// The class an `agt_t` credential resolves to, as `afd_wire` spells it.
+/// The class an `agt_t` credential resolves to, as `af_wire` spells it.
 const TENANT_API_KEY: &str = "tenant_api_key";
 
 #[tokio::test]

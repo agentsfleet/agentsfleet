@@ -6,8 +6,8 @@ mod entry;
 pub(super) mod files;
 
 use crate::{Result, error, storage_home::StorageHome};
-use afd_core::{clock::Clock, id::Uuid7, timing::DAY};
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, Report};
+use af_core::{clock::Clock, id::Uuid7, timing::DAY};
+use af_wire::authoring::{ENVELOPE_BYTES_MAX, Report};
 use jiff::Timestamp;
 use std::{
     collections::HashMap,
@@ -130,7 +130,7 @@ impl Spool {
                 attempt_id: attempt.to_string(),
                 report_id: settlement.accounting.report_id,
                 first_written_at: now,
-                expires_at: afd_core::clock::after(now, PRIVATE_TTL),
+                expires_at: af_core::clock::after(now, PRIVATE_TTL),
             };
             let answer =
                 zeroize::Zeroizing::new(serde_json::to_string(&answer).map_err(error::encode)?);

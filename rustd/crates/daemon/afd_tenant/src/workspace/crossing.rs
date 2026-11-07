@@ -11,8 +11,8 @@
 //! legitimate, and exactly what somebody reviewing an incident needs to find.
 //! The method is what tells that reviewer a look from an act.
 
+use af_core::id::Uuid7;
 use afd_auth::principal::Principal;
-use afd_core::id::Uuid7;
 
 use super::access::{Access, Grant};
 
@@ -51,10 +51,10 @@ pub fn audit(principal: &Principal, access: &Access, workspace: &Uuid7, method: 
     reason = "test module: an unmet precondition should fail the test loudly"
 )]
 mod tests {
+    use af_core::id::Uuid7;
+    use af_core::test_util::trace::Capture;
     use afd_auth::principal::{Person, PersonCredential, Principal, Subject};
     use afd_auth::scope::{Scope, ScopeSet};
-    use afd_core::id::Uuid7;
-    use afd_core::test_util::trace::Capture;
     use tracing::Level;
 
     use super::{EVENT_CROSSING, audit};

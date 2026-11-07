@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_executor::{Ending, Spawn};
 
 use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
@@ -87,7 +87,7 @@ async fn test_a_disk_without_a_loop_device_is_logged_buffered_under_its_lease() 
 #[tokio::test]
 #[expect(
     clippy::disallowed_methods,
-    reason = "asks only whether a variable is present, as raw OS bytes; afd_core::env reads String values and would call a non-Unicode one unset"
+    reason = "asks only whether a variable is present, as raw OS bytes; af_core::env reads String values and would call a non-Unicode one unset"
 )]
 async fn test_bubblewrap_starts_with_an_empty_environment() {
     assert!(

@@ -2,8 +2,8 @@
 //! commit together; the billing relay moves the money from those lines
 //! (billing §11).
 
-use afd_core::clock;
-use afd_wire::authoring::{Knowledge, Outcome, Report, Reported};
+use af_core::clock;
+use af_wire::authoring::{Knowledge, Outcome, Report, Reported};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgConnection;
@@ -81,7 +81,7 @@ pub(super) async fn commit(
 }
 
 async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
-    use afd_wire::authoring::FailureReason;
+    use af_wire::authoring::FailureReason;
     sqlx::query(sql::RESOLVED_REASON)
         .bind(s.attempt.draft_id.as_str())
         .bind(s.attempt.message_sequence)
@@ -181,7 +181,7 @@ async fn write_message(
                 .draft
                 .head_candidate_id
                 .as_ref()
-                .map(afd_core::id::Uuid7::as_str),
+                .map(af_core::id::Uuid7::as_str),
         )
         .bind(s.verdict.reason.map(verdict::reason))
         .bind(RUNNING)

@@ -48,7 +48,7 @@ export const EVENT_STATUS = {
 } as const;
 
 // A status the thread read and the admitted frame carry but no row stores: a
-// message accepted and waiting for a runner (afd_core::event::status::QUEUED).
+// message accepted and waiting for a runner (af_core::event::status::QUEUED).
 // Kept apart from EVENT_STATUS, whose members are the stored vocabulary and
 // the set a "latest run" is chosen from; a waiting message is not a run yet.
 export const THREAD_STATUS = {
@@ -148,7 +148,7 @@ export function senderInitialsFor(label: string): string {
 }
 
 // ── Runner failure vocabulary ─────────────────────────────────────────────
-// The runner's FailureClass tags (rustd/crates/protocol/afd_wire/src/report/mod.rs) in
+// The runner's FailureClass tags (rustd/crates/protocol/af_wire/src/report/mod.rs) in
 // plain English. A tag this list has not caught up to renders its own name
 // rather than throwing or hiding the failure.
 

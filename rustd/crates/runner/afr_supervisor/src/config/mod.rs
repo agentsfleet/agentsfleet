@@ -6,9 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use afd_core::env::EnvSource;
-use afd_wire::paths::RUNNER_TOKEN_PREFIX;
-use afr_secrets::Secret;
+use af_core::env::EnvSource;
+use af_secrets::Secret;
+use af_wire::paths::RUNNER_TOKEN_PREFIX;
 use url::Url;
 
 use crate::error::{self, Result};

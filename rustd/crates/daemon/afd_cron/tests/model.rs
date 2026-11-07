@@ -262,10 +262,10 @@ fn the_per_fleet_ceiling_stays_small_enough_to_read_unpaged() {
 const _: () = assert!(FLEET_SCHEDULES_MAX < MAX_SCHEDULES_PER_FLEET);
 
 /// The cap the problem table tells a client is the cap the store enforces;
-/// `afd_core` cannot see this crate's constant, so the sentence is pinned here.
+/// `af_core` cannot see this crate's constant, so the sentence is pinned here.
 #[test]
 fn the_cap_a_client_is_told_is_the_cap_enforced() {
-    let hint = afd_core::problem::Problem::of(afd_core::error_code::SCHEDULE_CAP_REACHED).hint();
+    let hint = af_core::problem::Problem::of(af_core::error_code::SCHEDULE_CAP_REACHED).hint();
     assert!(hint.contains(&FLEET_SCHEDULES_MAX.to_string()), "{hint}");
 }
 
@@ -283,7 +283,7 @@ fn a_paused_flag_names_paused_or_active_and_never_deleting() {
 #[test]
 fn a_fire_names_its_schedule_under_the_cron_prefix() {
     let schedule =
-        afd_core::id::Uuid7::parse("0199a0b0-0000-7000-8000-0000000000aa").expect("a canonical id");
+        af_core::id::Uuid7::parse("0199a0b0-0000-7000-8000-0000000000aa").expect("a canonical id");
     assert_eq!(
         afd_cron::schedule_actor(&schedule),
         "cron:0199a0b0-0000-7000-8000-0000000000aa"

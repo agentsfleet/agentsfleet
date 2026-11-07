@@ -5,7 +5,7 @@
 //! the cap is refused with the head unchanged.
 
 use super::{attempt::Running, json_body, send};
-use afd_fleet_runtime::definition::MAX_INSTRUCTIONS_CHARS;
+use af_fleet_runtime::definition::MAX_INSTRUCTIONS_CHARS;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 

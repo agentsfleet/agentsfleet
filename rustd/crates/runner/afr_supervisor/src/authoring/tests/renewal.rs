@@ -10,8 +10,8 @@ use crate::{
     error,
     test_support::{Answer, clock, plane},
 };
-use afd_core::id::Uuid7;
-use afd_wire::authoring::Lease;
+use af_core::id::Uuid7;
+use af_wire::authoring::Lease;
 use serde_json::Value;
 use std::{
     sync::{Arc, Mutex},

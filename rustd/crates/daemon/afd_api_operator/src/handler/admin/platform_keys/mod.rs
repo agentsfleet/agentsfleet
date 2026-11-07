@@ -3,14 +3,14 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_validate::Sentences;
 use afd_admin::{PlatformKey, PlatformKeyInput, SetPlatformKey};
 use afd_api_wire::admin::{
     KEY_PROVIDER_MAX_BYTES, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
     PlatformKeySetResponse, PlatformKeysResponse,
 };
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_validate::Sentences;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -209,7 +209,7 @@ const FIELD_PROVIDER: &str = "provider";
 struct ProviderSegment {
     #[garde(
         length(bytes, min = 1, max = KEY_PROVIDER_MAX_BYTES),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     )]
     provider: String,
 }

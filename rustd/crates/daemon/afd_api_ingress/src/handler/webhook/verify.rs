@@ -10,18 +10,18 @@
 //!    are one answer: distinguishing them confirms a fleet id to a guesser.
 //!    The binding already carries the recipe selected by the stored trigger.
 //! 2. **Open the secret.** Absent, unparseable, or empty ⇒ `UZ-WH-020`.
-//! 3. **Verify.** `afd_webhook` decides, in constant time.
+//! 3. **Verify.** `af_webhook` decides, in constant time.
 //! 4. **Only now** is the body handed back to be parsed.
 //!
 //! Nothing before step 4 reads the body as anything but bytes to hash.
 
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_webhook::vendor::svix;
+use af_webhook::{Family, Proof, Refusal as WallRefusal, Scheme, Verdict};
 use afd_ingress::Binding;
-use afd_webhook::vendor::svix;
-use afd_webhook::{Family, Proof, Refusal as WallRefusal, Scheme, Verdict};
 use axum::body::Bytes;
 use http::HeaderMap;
 
@@ -174,7 +174,7 @@ pub(super) fn header<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> 
 ///
 /// The code and the sentence both come from [`WallRefusal`] rather than from
 /// this call site, which is what keeps the two ingress families answering one
-/// delivery the same way. `afd_webhook::verdict` owns the mapping and the
+/// delivery the same way. `af_webhook::verdict` owns the mapping and the
 /// `scheme_matrix` suite pins it.
 pub(super) fn wall(refusal: WallRefusal) -> Refusal {
     Refusal::coded(refusal.code(), refusal.detail())

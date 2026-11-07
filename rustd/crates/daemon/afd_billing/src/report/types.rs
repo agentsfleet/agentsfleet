@@ -1,6 +1,6 @@
 //! Transport-independent inputs and rows for settled usage reporting.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 /// A bounded reporting window, in stored millisecond precision.

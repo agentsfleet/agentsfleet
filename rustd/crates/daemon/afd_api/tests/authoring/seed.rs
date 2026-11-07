@@ -1,10 +1,10 @@
 //! Real credential directory, encrypted provider key and tenant registry entry.
 
 use super::{fixture::Fixture, mint};
+use af_core::clock;
+use af_core::money::NANOS_PER_USD;
 use afd_api::Services as _;
 use afd_auth::Scope;
-use afd_core::clock;
-use afd_core::money::NANOS_PER_USD;
 use afd_db::test_util::{ApiKeySeed, ModelSeed};
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};

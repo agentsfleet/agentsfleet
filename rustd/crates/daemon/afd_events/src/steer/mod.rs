@@ -61,10 +61,10 @@
 //! A frame the queue refuses is logged by the publisher and costs nothing
 //! else: the message is durable, and a reload reads it from the ledger.
 
+use af_core::error_code;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer, Repeated, Reply};
 use afd_api_wire::tail::TailFrame;
-use afd_core::error_code;
-use afd_wire::event::EventType;
 
 use crate::error::{Result, operation_conflict};
 

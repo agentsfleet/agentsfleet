@@ -24,7 +24,7 @@
 
 use std::time::Duration;
 
-use afd_core::env::{EnvSource as _, ProcessEnv};
+use af_core::env::{EnvSource as _, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
@@ -189,7 +189,7 @@ impl OutboundHarness {
 
     /// Opens the shared handle, installing the subscriber on the way.
     async fn connect() -> Dragonfly {
-        afd_core::test_util::trace::install_subscriber();
+        af_core::test_util::trace::install_subscriber();
         Dragonfly::connect(&Self::config())
             .await
             .expect("the lane's Dragonfly must be reachable")

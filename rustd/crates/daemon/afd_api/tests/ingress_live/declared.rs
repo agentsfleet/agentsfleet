@@ -16,11 +16,7 @@ async fn a_family_never_borrows_another_familys_proof() {
     let body = r#"{"type":"user.created"}"#;
     let timestamp = harness::frozen_unix_seconds().to_string();
     let svix = signed::svix_signature(signed::SVIX_DELIVERY, harness::frozen_unix_seconds(), body);
-    let hex = signed::signature(
-        afd_webhook::Scheme::BodyHex,
-        SIGNING_SECRET,
-        body.as_bytes(),
-    );
+    let hex = signed::signature(af_webhook::Scheme::BodyHex, SIGNING_SECRET, body.as_bytes());
     let svix_headers = signed::svix_headers(signed::SVIX_DELIVERY, &timestamp, &svix);
     let hex_headers = vec![(signed::name("x-acme-signature"), hex.as_str())];
     for (source, headers) in [("acme", &svix_headers), ("clerk", &hex_headers)] {

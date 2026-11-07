@@ -13,15 +13,15 @@
 //! a separate crate and cannot see it. One fixture-side declaration shared by
 //! every suite is the closest reachable thing to a single owner.
 
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_crypto::mac::HmacSha256Tag;
+use af_crypto::secret::SecretBytes;
+use af_webhook::Scheme;
+use af_webhook::vendor::svix;
 use afd_api_ingress::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
-use afd_crypto::mac::HmacSha256Tag;
-use afd_crypto::secret::SecretBytes;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_ingress::Binding;
-use afd_webhook::Scheme;
-use afd_webhook::vendor::svix;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use http::HeaderName;
@@ -83,7 +83,7 @@ pub(crate) const TRIGGER_SVIX: &str =
 
 /// A stored document carrying `triggers` and nothing else varying.
 ///
-/// The surrounding keys are the ones [`afd_fleet_runtime::FleetConfig::stored`]
+/// The surrounding keys are the ones [`af_fleet_runtime::FleetConfig::stored`]
 /// requires. Built here rather than loaded from a file so a reader sees the
 /// whole input beside the assertion — the shape
 /// `afd_ingress::binding::tests` already uses for the same reason.
@@ -140,7 +140,7 @@ pub(crate) fn id(text: &str) -> Uuid7 {
 ///
 /// Built through the scheme rather than beside it — see the module note. This
 /// used to recompute the tag here, which was right only for the schemes whose
-/// signed bytes ARE the body; `afd_webhook::test_util` composes whatever the
+/// signed bytes ARE the body; `af_webhook::test_util` composes whatever the
 /// scheme actually binds, so a timestamped scheme signs correctly too.
 pub(crate) fn signature(scheme: Scheme, secret: &[u8], body: &[u8]) -> String {
     signature_at(scheme, secret, None, body)
@@ -153,7 +153,7 @@ pub(crate) fn signature_at(
     timestamp: Option<&str>,
     body: &[u8],
 ) -> String {
-    afd_webhook::test_util::signature(scheme, secret, timestamp, body)
+    af_webhook::test_util::signature(scheme, secret, timestamp, body)
         .expect("a timestamped scheme was given the timestamp it binds")
 }
 

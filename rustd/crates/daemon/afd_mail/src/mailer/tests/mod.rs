@@ -5,9 +5,9 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::{Capture, CapturedEvent};
-use afd_observability::InviteEmailOutcome;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::{Capture, CapturedEvent};
+use af_observability::InviteEmailOutcome;
 use lettre::address::Envelope;
 use lettre::message::Mailbox;
 

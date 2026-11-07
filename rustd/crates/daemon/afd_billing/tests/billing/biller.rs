@@ -7,6 +7,9 @@
 
 use std::sync::Arc;
 
+use af_core::clock::SystemClock;
+use af_crypto::entropy::Entropy;
+use af_wire::usage::UsageLine;
 use afd_billing::biller::conformance::{self, BALANCE};
 use afd_billing::biller::{
     Account, Ask, Attribution, Biller, Funds, OutagePolicy, RecordingBiller, Settlement,
@@ -16,10 +19,7 @@ use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
 use afd_billing::limits::fleet_spend;
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
-use afd_core::clock::SystemClock;
-use afd_crypto::entropy::Entropy;
 use afd_db::test_util::{mint_id, mint_uuid7, unreachable_db};
-use afd_wire::usage::UsageLine;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 

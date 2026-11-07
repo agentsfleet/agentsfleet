@@ -25,7 +25,7 @@
 //! — a real `api.github.com` call from a test — would prove nothing and would
 //! send a freshly minted user token off the machine.
 
-use afd_core::json::non_empty_str;
+use af_core::json::non_empty_str;
 use garde::Validate;
 use jiff::Timestamp;
 use serde_json::{Map, Value};
@@ -107,7 +107,7 @@ impl Found {
 struct InstallationId<'a>(
     #[garde(
         length(bytes, min = 1, max = MAX_INSTALLATION_ID_LEN),
-        custom(afd_validate::ascii_digits),
+        custom(af_validate::ascii_digits),
         custom(unpadded)
     )]
     &'a str,

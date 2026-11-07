@@ -100,7 +100,7 @@ mod refusals {
     /// caching it took.
     #[test]
     fn test_toolbox_buffered_fallback_is_logged() {
-        let capture = afd_core::test_util::trace::Capture::install();
+        let capture = af_core::test_util::trace::Capture::install();
         let toolbox = Toolbox::at(
             std::path::PathBuf::from("/mounts/digest"),
             "digest".to_owned(),

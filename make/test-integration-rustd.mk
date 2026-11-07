@@ -217,7 +217,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 #
 # FILE granularity is all `--ignore-filename-regex` has, so this is exactly the
 # three whole-file modules. The `#[cfg(feature = "test-util")]` helpers that sit
-# INSIDE otherwise-production files -- afd_crypto's entropy seams, afd_db's
+# INSIDE otherwise-production files -- af_crypto's entropy seams, afd_db's
 # migration and pool helpers, and a dozen more -- are still counted, because a
 # filename filter cannot see a block. The exclusion is therefore partial by
 # construction, and that is recorded here rather than discovered later by

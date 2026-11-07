@@ -10,13 +10,13 @@
 //! callers to the identical rule and told them so in the identical sentence,
 //! so it is declared once in [`crate::handler::paging`] and read from here.
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::paging::QUERY_STARTING_AFTER;
-use afd_core::paging::struct_cursor;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::paging::QUERY_STARTING_AFTER;
+use af_core::paging::struct_cursor;
+use af_validate::Sentences;
 use afd_credential::provider::Boundary;
 use afd_http::handler::parse_id;
-use afd_validate::Sentences;
 
 use crate::handler::tenant::models::DETAIL_CURSOR_MALFORMED;
 use crate::handler::{Refusal, parameter};

@@ -81,4 +81,4 @@ pub fn connector_handler_for<D: Services>(verb: ConnectorRoute) -> Option<Method
 
 /// Unused re-export so the crate's lint set sees every declared dependency.
 #[cfg(test)]
-use {afd_crypto as _, afd_vault as _};
+use {af_crypto as _, afd_vault as _};

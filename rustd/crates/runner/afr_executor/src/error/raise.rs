@@ -5,7 +5,7 @@ use super::{Error, ErrorKind, wire_end};
 
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
     serde_json::Error => Malformed,
     tokio::task::JoinError => Task,

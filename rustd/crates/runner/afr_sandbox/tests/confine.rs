@@ -44,7 +44,7 @@ const CONNECT_TRIES: usize = 500;
 
 #[expect(
     clippy::disallowed_methods,
-    reason = "the scratch directory is a path the parent set as raw OS bytes; afd_core::env reads String values and would lose a non-Unicode path"
+    reason = "the scratch directory is a path the parent set as raw OS bytes; af_core::env reads String values and would lose a non-Unicode path"
 )]
 #[expect(
     clippy::print_stdout,
@@ -108,7 +108,7 @@ fn parent() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     #[expect(
         clippy::disallowed_methods,
-        reason = "LLVM_PROFILE_FILE is a path read as raw OS bytes; afd_core::env reads String values and would lose a non-Unicode path"
+        reason = "LLVM_PROFILE_FILE is a path read as raw OS bytes; af_core::env reads String values and would lose a non-Unicode path"
     )]
     let profile = std::env::var_os(PROFILE).map(PathBuf::from);
     fs::create_dir(scratch.path().join(ROOT)).map_err(|error| error.to_string())?;

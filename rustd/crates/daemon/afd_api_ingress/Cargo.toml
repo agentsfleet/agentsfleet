@@ -28,14 +28,14 @@ afd_gate.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
 afd_connector.workspace = true
-afd_core.workspace = true
+af_core.workspace = true
 afd_cron.workspace = true
-afd_crypto.workspace = true
+af_crypto.workspace = true
 afd_http.workspace = true
 afd_ingress.workspace = true
-afd_observability.workspace = true
+af_observability.workspace = true
 afd_vault.workspace = true
-afd_webhook.workspace = true
+af_webhook.workspace = true
 afd_api_wire.workspace = true
 # The document generator, reachable only under `openapi`. Optional at every
 # member that names it, so the default resolve is unchanged.

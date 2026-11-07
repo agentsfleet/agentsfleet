@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
-use afd_core::error_code::{INTERNAL_OPERATION_FAILED, INVALID_REQUEST};
-use afd_core::test_util::trace::Capture;
+use af_core::error_code::{INTERNAL_OPERATION_FAILED, INVALID_REQUEST};
+use af_core::test_util::trace::Capture;
 
 use super::{one_post_fields, settle_verbs, the_runs_memory, window_lease, without_spool};
 use crate::client::{Call, Verb};

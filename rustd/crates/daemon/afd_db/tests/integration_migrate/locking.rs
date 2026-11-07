@@ -177,7 +177,7 @@ async fn test_a_held_lock_is_polled_exactly_its_attempts() {
     assert!(taken, "the test must actually hold the lock");
 
     let interval = Duration::from_millis(50);
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let started = std::time::Instant::now();
     let refused = afd_db::migrate::MigrationLock::acquire(
         waiter.acquire().await.unwrap(),

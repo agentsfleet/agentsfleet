@@ -7,13 +7,13 @@
 
 use std::process::ExitCode;
 
+use af_core::env::ProcessEnv;
 use afd_bench::RunPrefix;
 use afd_bench::allocations::Counting;
 use afd_bench::cli;
 use afd_bench::error::Result;
 use afd_bench::lane::{sweep, tail};
 use afd_bench::report::Lane;
-use afd_core::env::ProcessEnv;
 
 #[global_allocator]
 static COUNTING: Counting = Counting;

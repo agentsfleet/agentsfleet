@@ -1,7 +1,7 @@
 //! Runtime effects retain the shared ordering and the run's real usage meter.
 use super::super::shared::Shared;
-use afd_context::{Checkpoint, CheckpointStore, Compaction, PortFuture, Summarizer, Summary};
-use afr_providers::{Message, Request};
+use af_context::{Checkpoint, CheckpointStore, Compaction, PortFuture, Summarizer, Summary};
+use af_providers::{Message, Request};
 use tracing::Instrument as _;
 
 mod progress;
@@ -12,11 +12,11 @@ pub(super) async fn compact(
     store: &mut Store<'_>,
     task: Compaction,
     visible: bool,
-) -> afd_context::Result<Checkpoint> {
+) -> af_context::Result<Checkpoint> {
     let mut trace =
-        afd_context::Trace::start(shared.lease_id.into(), afd_context::Host::Runtime, &task);
+        af_context::Trace::start(shared.lease_id.into(), af_context::Host::Runtime, &task);
     let mut progress = progress::Notifications::new(shared.events, &task, visible);
-    let result = afd_context::execute(
+    let result = af_context::execute(
         task,
         &mut Model { shared, stop },
         store,
@@ -43,7 +43,7 @@ impl Summarizer for Model<'_, '_> {
             let messages = [Message::User(task.input()?)];
             let request = Request {
                 model: self.shared.model,
-                instructions: afd_context::SUMMARY_INSTRUCTIONS,
+                instructions: af_context::SUMMARY_INSTRUCTIONS,
                 messages: &messages,
                 tools: &[],
                 hosted: &[],
@@ -54,8 +54,8 @@ impl Summarizer for Model<'_, '_> {
             let mut live = crate::events::Live::silent(self.shared.scrub, self.shared.started);
             let turn = tokio::select! {
                 biased;
-                () = self.stop.cancelled() => return Err(afd_context::Error::cancelled()),
-                turn = crate::turn::take(self.shared.provider.stream(request), &mut live, self.shared.meter) => turn.map_err(afd_context::Error::boundary)?,
+                () = self.stop.cancelled() => return Err(af_context::Error::cancelled()),
+                turn = crate::turn::take(self.shared.provider.stream(request), &mut live, self.shared.meter) => turn.map_err(af_context::Error::boundary)?,
             };
             if turn.cut
                 || !turn.finished
@@ -63,7 +63,7 @@ impl Summarizer for Model<'_, '_> {
                 || turn.usage.prompt() == 0
                 || turn.usage.output == 0
             {
-                return Err(afd_context::Error::summary());
+                return Err(af_context::Error::summary());
             }
             Summary::decode(&self.shared.scrub.clean(turn.text))
         })

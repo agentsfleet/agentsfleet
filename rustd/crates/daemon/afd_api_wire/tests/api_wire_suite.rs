@@ -1,6 +1,6 @@
 //! Every `afd_api_wire` test file, in one test binary.
 //!
-//! One binary for the reason `afd_wire`'s `wire_suite.rs` gives: cargo runs
+//! One binary for the reason `af_wire`'s `wire_suite.rs` gives: cargo runs
 //! test binaries serially, and these suites share no datastore.
 
 #[path = "admin_shapes.rs"]

@@ -246,7 +246,7 @@ pub struct WorkflowRunDigest<'a> {
     #[serde(borrow)]
     pub workflow_name: Cow<'a, str>,
     /// When this daemon accepted the delivery.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub received_at: jiff::Timestamp,
 }
 
@@ -288,7 +288,7 @@ pub struct PullRequestDigest<'a> {
     #[serde(borrow)]
     pub head_sha: Cow<'a, str>,
     /// When this daemon accepted the delivery.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub received_at: jiff::Timestamp,
 }
 

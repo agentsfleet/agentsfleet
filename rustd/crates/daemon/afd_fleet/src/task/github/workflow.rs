@@ -5,7 +5,7 @@ use super::{
     http::{Session, path},
 };
 use crate::{Result, task::TaskRefusal};
-use afd_fleet_runtime::config::ValidationWorkflow;
+use af_fleet_runtime::config::ValidationWorkflow;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde::Deserialize;
 use serde_json::Value;
@@ -119,7 +119,7 @@ pub(super) async fn verify(
         let bytes = BASE64_STANDARD
             .decode(blob.content.replace('\n', ""))
             .map_err(|_invalid| TaskRefusal::InvalidTarget)?;
-        if bytes.len() > 1024 * 1024 || afd_core::etag::sha256_hex(&bytes) != accepted.digest {
+        if bytes.len() > 1024 * 1024 || af_core::etag::sha256_hex(&bytes) != accepted.digest {
             return Err(TaskRefusal::InvalidTarget.into());
         }
         let text = std::str::from_utf8(&bytes).map_err(|_invalid| TaskRefusal::InvalidTarget)?;

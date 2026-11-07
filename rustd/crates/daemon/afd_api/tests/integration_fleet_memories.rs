@@ -143,7 +143,7 @@ pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: Db,
     tenant: String,
-    pub(crate) workspace: afd_core::id::Uuid7,
+    pub(crate) workspace: af_core::id::Uuid7,
     pub(crate) fleet: String,
     key: String,
     pub(crate) token: String,
@@ -157,7 +157,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: afd_core::id::Uuid7::parse(&mint_id())
+            workspace: af_core::id::Uuid7::parse(&mint_id())
                 .expect("a minted workspace is canonical"),
             fleet: mint_id(),
             key: mint_id(),

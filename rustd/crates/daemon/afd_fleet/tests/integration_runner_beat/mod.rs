@@ -24,13 +24,13 @@ use crate::requests;
 use crate::support;
 use std::borrow::Cow;
 
-use afd_core::timing::RUNNER_OFFLINE_AFTER;
-use afd_crypto::entropy::Entropy;
-use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
-use afd_runner::{NO_REPORT, Runners, Verdict};
-use afd_wire::runner::{
+use af_core::timing::RUNNER_OFFLINE_AFTER;
+use af_crypto::entropy::Entropy;
+use af_wire::runner::{
     CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
+use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
+use afd_runner::{NO_REPORT, Runners, Verdict};
 
 use self::requests::{ONE_BEAT, capable, enrolment};
 use self::support::Fixtures;
@@ -68,7 +68,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
     let beat = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,
-        holds: afd_wire::runner::HeldFleets::default(),
+        holds: af_wire::runner::HeldFleets::default(),
         closing: false,
         wake: false,
     };
@@ -195,7 +195,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let beat = HeartbeatRequest {
         capability_report: Some(flooded),
         selftest: None,
-        holds: afd_wire::runner::HeldFleets::default(),
+        holds: af_wire::runner::HeldFleets::default(),
         closing: false,
         wake: false,
     };
@@ -257,7 +257,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
             sandbox_tier: Cow::Borrowed("dev_none"),
             network_policy: Cow::Borrowed("allow_all"),
         }),
-        holds: afd_wire::runner::HeldFleets::default(),
+        holds: af_wire::runner::HeldFleets::default(),
         closing: false,
         wake: false,
     };

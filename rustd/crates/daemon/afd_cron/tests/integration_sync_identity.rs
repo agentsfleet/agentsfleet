@@ -25,7 +25,7 @@ mod support;
 #[path = "support/live_qstash.rs"]
 mod live_qstash;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::{
     Change, DesiredStatus, HEADER_SCHEDULE_ID, Reconciled, Schedule, ScheduleService as Reconciler,
     schedule_of, upstream_id,

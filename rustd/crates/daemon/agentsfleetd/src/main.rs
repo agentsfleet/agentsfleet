@@ -10,13 +10,13 @@
 //! match, two runtime constructions and the signal handler, and none of it
 //! could be reached by a suite because a binary crate's internals cannot be
 //! linked. Argument parsing, dispatch and the shutdown signal now live in
-//! [`agentsfleetd::cli`] and [`afd_core::signal`], where they can.
+//! [`agentsfleetd::cli`] and [`af_core::signal`], where they can.
 
 #![deny(clippy::self_named_module_files)]
 
 use std::process::ExitCode;
 
-use afd_core::env::ProcessEnv;
+use af_core::env::ProcessEnv;
 use agentsfleetd::cli::{Cli, run};
 use clap::Parser as _;
 
@@ -60,6 +60,6 @@ fn main() -> ExitCode {
         &cli,
         &ProcessEnv,
         tokio::runtime::Runtime::new,
-        afd_core::signal::shutdown(),
+        af_core::signal::shutdown(),
     ))
 }

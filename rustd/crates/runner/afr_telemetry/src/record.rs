@@ -6,7 +6,7 @@
 //! The producers live in three crates and none of them should know whether
 //! telemetry is on. They call [`turn`], [`retry`] and the rest; each reaches
 //! the [`Recorder`] `run` installed, or nothing. That is the daemon's shape
-//! (`afd_observability::producers`) with one change: the slot holds a trait
+//! (`af_observability::producers`) with one change: the slot holds a trait
 //! object rather than a struct of handles, so a test can route one future's
 //! measurements to a recorder of its own (`testing::scoped`) without a
 //! process-wide install racing every other test in the binary — the way
@@ -20,7 +20,7 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use afd_observability::metrics::label::http::{DiscardReason, Signal};
+use af_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
@@ -55,7 +55,7 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
         first_text: Option<Duration>,
     );
     /// Provider-reported usage from one request, including known partial usage.
-    fn model_tokens(&self, model: &str, provider: Provider, usage: afd_wire::usage::ObservedTokens);
+    fn model_tokens(&self, model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens);
     /// A turn's send is about to be retried.
     fn retry(&self, provider: Provider, reason: RetryReason);
     /// A sandbox start ended, after `elapsed`.
@@ -134,7 +134,7 @@ pub fn model_call(
 }
 
 /// Records provider usage once after response recovery; unknown values stay absent.
-pub fn model_tokens(model: &str, provider: Provider, usage: afd_wire::usage::ObservedTokens) {
+pub fn model_tokens(model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens) {
     with(|recorder| recorder.model_tokens(model, provider, usage));
 }
 
@@ -196,7 +196,7 @@ pub fn spans_suppressed(spans: u64) {
 /// Records telemetry the export lost before the collector took it.
 ///
 /// Reached through [`route_export_losses`]: the counting wrappers that see a
-/// failed export are `afd_observability`'s, shared with the daemon.
+/// failed export are `af_observability`'s, shared with the daemon.
 pub fn export_discarded(signal: Signal, reason: DiscardReason, count: u64) {
     with(|recorder| recorder.export_discarded(signal, reason, count));
 }
@@ -207,14 +207,14 @@ pub fn export_discarded(signal: Signal, reason: DiscardReason, count: u64) {
 /// Answers whether it took; every caller routes to the same function, so a
 /// second call changes nothing.
 pub fn route_export_losses() -> bool {
-    afd_observability::producers::http::route_export_discarded(export_discarded)
+    af_observability::producers::http::route_export_discarded(export_discarded)
 }
 
 #[cfg(all(test, feature = "test-util"))]
 mod tests {
     use std::time::Duration;
 
-    use afd_observability::metrics::label::http::{DiscardReason, Signal};
+    use af_observability::metrics::label::http::{DiscardReason, Signal};
 
     use crate::labels::{
         FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool,
@@ -277,7 +277,7 @@ mod tests {
         let (tally, received) = Tally::new();
 
         scoped(tally, async {
-            afd_observability::producers::http::export_discarded(
+            af_observability::producers::http::export_discarded(
                 Signal::Metrics,
                 DiscardReason::ExportUncertain,
                 3,

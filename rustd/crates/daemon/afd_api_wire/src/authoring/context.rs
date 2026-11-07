@@ -46,6 +46,6 @@ pub struct SetupActivity {
     /// Safe receipt payload encoded as JSON text.
     pub request_json: String,
     /// When the receipt was written.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }

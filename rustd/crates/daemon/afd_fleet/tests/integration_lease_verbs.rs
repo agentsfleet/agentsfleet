@@ -13,13 +13,13 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
+use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
+use af_wire::tool_detail::ToolCallRecordsRequest;
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_db::Precondition as _;
 use afd_fleet::lease::write_fence::WriteFence;
-use afd_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
-use afd_wire::tool_detail::ToolCallRecordsRequest;
 
 use crate::integration_report_owes_destination::stage::stage;
 use crate::report_seed::held;
@@ -115,7 +115,7 @@ async fn test_messages_count_against_the_live_holder() {
         .await
         .err()
         .map(|error| error.code());
-    assert_eq!(refused, Some(afd_core::error_code::MESSAGE_NO_CHANNEL));
+    assert_eq!(refused, Some(af_core::error_code::MESSAGE_NO_CHANNEL));
     silent.fixtures.cleanup().await;
     stage.fixtures.cleanup().await;
 }
@@ -150,7 +150,7 @@ async fn test_a_run_is_refused_past_its_message_cap() {
 
     assert_eq!(
         over.err().map(|error| error.code()),
-        Some(afd_core::error_code::MESSAGE_LIMIT_REACHED)
+        Some(af_core::error_code::MESSAGE_LIMIT_REACHED)
     );
     stage.fixtures.cleanup().await;
 }

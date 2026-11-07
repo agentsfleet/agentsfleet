@@ -3,8 +3,8 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_wire::memory::{MemoryDelta, Visibility};
+use af_core::id::Uuid7;
+use af_wire::memory::{MemoryDelta, Visibility};
 
 /// Whose memory a call reads or writes: the fleet, and the workspace it is in.
 ///

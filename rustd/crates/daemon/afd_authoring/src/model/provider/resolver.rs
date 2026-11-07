@@ -12,7 +12,7 @@ impl Resolve for Guarded {
             if addresses.is_empty()
                 || addresses
                     .iter()
-                    .any(|address| afd_core::net::is_blocked(address.ip()))
+                    .any(|address| af_core::net::is_blocked(address.ip()))
             {
                 return Err(std::io::Error::other("authoring destination refused").into());
             }

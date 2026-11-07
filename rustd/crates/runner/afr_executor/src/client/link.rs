@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use afd_core::error_code;
+use af_core::error_code;
 use futures_util::StreamExt as _;
 use jsonrpsee_types::{ErrorObject, Id};
 use serde::Deserialize;
@@ -158,20 +158,19 @@ impl Link {
     /// process whose caller left before it started, which the executor must
     /// end.
     fn receive(&mut self, frame: &[u8]) -> Option<ProcessId> {
-        let routed =
-            afd_core::json::object_from_slice::<Incoming<'_>>(frame).and_then(|incoming| {
-                match (incoming.method, incoming.id) {
-                    (Some(method), _) => self.notified(&method, incoming.params).map(|()| None),
-                    (None, Some(id)) => {
-                        let outcome = match incoming.error {
-                            Some(refusal) => Err(error::refused(refusal.code(), refusal.message())),
-                            None => Ok(incoming.result.unwrap_or(RawValue::NULL).to_owned()),
-                        };
-                        Ok(self.answered(&id, outcome))
-                    }
-                    (None, None) => Err(serde_json::Error::missing_field(FIELD_METHOD_OR_ID)),
+        let routed = af_core::json::object_from_slice::<Incoming<'_>>(frame).and_then(|incoming| {
+            match (incoming.method, incoming.id) {
+                (Some(method), _) => self.notified(&method, incoming.params).map(|()| None),
+                (None, Some(id)) => {
+                    let outcome = match incoming.error {
+                        Some(refusal) => Err(error::refused(refusal.code(), refusal.message())),
+                        None => Ok(incoming.result.unwrap_or(RawValue::NULL).to_owned()),
+                    };
+                    Ok(self.answered(&id, outcome))
                 }
-            });
+                (None, None) => Err(serde_json::Error::missing_field(FIELD_METHOD_OR_ID)),
+            }
+        });
         routed.unwrap_or_else(|failure| {
             unreadable(&failure);
             None

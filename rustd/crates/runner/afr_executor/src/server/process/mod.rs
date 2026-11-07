@@ -258,7 +258,7 @@ impl Group {
 fn report(process: u64, ending: Ending) {
     if ending == Ending::Interrupted {
         let event = EVENT_PROCESS_FAILED;
-        let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
         tracing::warn!(
             event,
             error_code,

@@ -10,7 +10,7 @@ pub use crate::admin_catalogue::{
     MODEL_ID_MAX_BYTES, PROVIDER_MAX_BYTES, PlatformKeyDeactivateResponse, PlatformKeyItem,
     PlatformKeyPut, PlatformKeySetResponse, PlatformKeysResponse,
 };
-use afd_wire::runner::{AssignedPolicy, label_list};
+use af_wire::runner::{AssignedPolicy, label_list};
 use garde::Validate;
 
 /// Administrator-selected runner state. Only `Active` permits runner API requests.
@@ -108,7 +108,7 @@ pub struct RunnerAdminPatchResponse<'a> {
     pub labels: Option<Vec<Cow<'a, str>>>,
     /// When the self-test was requested. The runner receives it on its next heartbeat and
     /// reports later; this timestamp does not indicate success.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub selftest_requested_at: Option<jiff::Timestamp>,
 }
 
@@ -156,7 +156,7 @@ pub struct RunnerEventItem<'a> {
     /// What happened.
     pub event_type: RunnerEventType,
     /// When.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub occurred_at: jiff::Timestamp,
     /// Event-specific detail. Free-form by design.
     pub metadata: serde_json::Value,

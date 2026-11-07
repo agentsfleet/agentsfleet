@@ -25,7 +25,7 @@
 //! promoting the second. A verifier that knew one would refuse every delivery
 //! between the vendor's rotation and this daemon's redeploy.
 
-use afd_crypto::secret::SecretString;
+use af_crypto::secret::SecretString;
 use garde::Unvalidated;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
@@ -170,7 +170,7 @@ pub fn verify_at(
 /// rather than decoded first: both sides are a fixed-length digest of the same
 /// alphabet, so a decode would add a failure mode without adding a check.
 ///
-/// Compared through [`subtle`], the same primitive `afd_crypto::mac` compares a
+/// Compared through [`subtle`], the same primitive `af_crypto::mac` compares a
 /// tag with (RULE CTM). `ct_eq` short-circuits on LENGTH and not on content,
 /// which is the property that matters: the length of a base64 digest is public,
 /// and what must not leak is how many characters of it matched.

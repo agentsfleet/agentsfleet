@@ -10,7 +10,7 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| Where is provider streaming implemented? | `afd_inference::stream::StreamTurn`, used by setup and fleet execution |
+| Where is provider streaming implemented? | `af_inference::stream::StreamTurn`, used by setup and fleet execution |
 | Who parses provider events? | Rig, through its native HTTP adapter and provider codecs |
 | Where is browser connection recovery implemented? | `ChatConnection`, used by both chat adapters |
 | Where are reply ordering and rendering shared? | `ReplyStream`, `ReplyStreamDecoder`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame` |
@@ -27,8 +27,8 @@ The [web architecture](web_app.md) owns routing and user flows.
 flowchart TD
     A[Private setup: ModelCalls] --> B[Authorized dispatch intent]
     B --> C[Authoring provider adapter]
-    D[Fleet execution: afr_agent] --> E[afr_providers::Turns]
-    C --> F[afd_inference::StreamTurn]
+    D[Fleet execution: afr_agent] --> E[af_providers::Turns]
+    C --> F[af_inference::StreamTurn]
     E --> F
     F --> G[Rig normalized events and final response]
     G --> H[HttpTransport]
@@ -36,7 +36,7 @@ flowchart TD
     I --> J[Guarded physical HTTP sender]
 ```
 
-[`StreamTurn`](../../rustd/crates/protocol/afd_inference/src/stream.rs) owns one Rig stream.
+[`StreamTurn`](../../rustd/crates/protocol/af_inference/src/stream.rs) owns one Rig stream.
 It handles cancellation, inactivity, finalization and partial usage.
 Neither caller owns another provider event parser.
 
@@ -67,7 +67,7 @@ Runtime may reopen an eligible failure before visible output or reported usage.
 Known usage disables that reopening.
 The guard uses Rig's `Usage::is_reported`, including reasoning counts and cost metadata.
 
-On failure, `afr_providers` emits known usage before its error and omits `Chunk::End`.
+On failure, `af_providers` emits known usage before its error and omits `Chunk::End`.
 `afr_agent` records that usage without running an incomplete result.
 
 Authoring records a dispatch deadline of at most 300 seconds before the external call.
@@ -315,23 +315,23 @@ It does not claim that every unchanged operation has a new tracing span.
 | Crate | Inspected ownership and library reuse | Result |
 |---|---|---|
 | `afr_agent` | Lease and tool boundaries; typed provider chunks and usage ledger | Known partial usage survives failure; completion remains refused |
-| `afr_egress` | `vault` and guarded HTTP; reqwest, injected `Mint` and shared `Scrub` | Credential mint records contain identity and expiry, never token values |
+| `af_egress` | `vault` and guarded HTTP; reqwest, injected `Mint` and shared `Scrub` | Credential mint records contain identity and expiry, never token values |
 | `afr_executor` | `server/process` lifecycle and `edges` buffers; Tokio, `Bytes`, `Buf`, `VecDeque` and UTF-8 helpers | Existing process records use process identity; no new byte-buffer parser |
 | `afr_memory` | Borrowed memory adapter and cause-preserving refusals | Backend owns I/O; no added accessor logging |
-| `afr_providers` | `Turns`, guarded transport and native Rig request construction | Shared reader; retry warnings now include a registry code |
+| `af_providers` | `Turns`, guarded transport and native Rig request construction | Shared reader; retry warnings now include a registry code |
 | `afr_sandbox` | Descriptor admission, mount ownership and release errors; rustix and digest-io | Existing admission start/end pair and typed failures retained |
-| `afr_secrets` | `Secret`, `Scrub` and `Carry`; zeroize and Aho-Corasick | Retained secret copies and unprocessed stream tails now erase their owned strings |
+| `af_secrets` | `Secret`, `Scrub` and `Carry`; zeroize and Aho-Corasick | Retained secret copies and unprocessed stream tails now erase their owned strings |
 | `afr_supervisor` | Central daemon client and bounded HTTP waits; reqwest and backon | Existing paired debug events retained; verb fields hoisted once |
 | `afr_telemetry` | OTLP installation, filtering, sampling and bounded shutdown | Shutdown timeout now names its registry code |
 | `afr_tools` | `Handler` and `Typed<H>`; serde and schemars | Shared argument parsing and cached schema; execution logs remain with the agent boundary |
 | `agentsfleet_runner` | Boot, shutdown and failure rendering | Existing terminal errors carry registry codes |
-| `afd_inference` | Shared provider stream, transport, failure recovery and log filtering | Paired content-free lifecycle and timing records |
+| `af_inference` | Shared provider stream, transport, failure recovery and log filtering | Paired content-free lifecycle and timing records |
 | `afd_authoring` | Dispatch, receipt, private publisher and lease guards | Paired private preview traces; no connection held during provider or bus waits |
-| `afd_crypto` | Secret ownership and hex decoding | Existing zeroize and hex implementations; no secret accessor logging |
+| `af_crypto` | Secret ownership and hex decoding | Existing zeroize and hex implementations; no secret accessor logging |
 | `afd_sse` | Subscription tail and gap handling | Existing bounded hub subscription and coded close record retained |
 | `afd_dragonfly` | Stream publication and outbound acknowledgement | Actual acknowledgement error code is preserved; no payload logging |
 
-The error hull remains `afd_core::error_shell!` with typed causes.
+The error hull remains `af_core::error_shell!` with typed causes.
 The [Rust error standard](../RUST_ERROR_STANDARD.md) owns the crate exceptions and registry mapping.
 
 ## Historical verification evidence
@@ -363,7 +363,7 @@ Whole local acceptance, owner review and current Continuous Integration (CI) res
 | `make acceptance-cli` | Deterministic lane: 209 passed. Live lane: 171 passed, three failed. Two turns reached provider refusals; the missing-model setup assertion passed its focused rerun after matching setup's `pending` state |
 | Local provider prerequisite | The configured free model was absent from the live catalogue. The replacement free model is available, but a minimal live request returned HTTP 429 with `free-models-per-day`; complete acceptance requires restored account quota |
 | Guarded smoke checks | Built version and invalid-command refusal passed; a real browser rendered sign-in and redirected a synthetic private workspace URL back to sign-in without workspace controls. Authenticated exploratory flows remain blocked by the smoke browser's absent session |
-| `cargo mutants -p afd_inference --all-features` | 98 mutations: 26 caught, 72 did not compile, no survivors or timeouts |
+| `cargo mutants -p af_inference --all-features` | 98 mutations: 26 caught, 72 did not compile, no survivors or timeouts |
 | Rust coverage: canonical run plus the focused hub-closure regression, graded by `scripts/rustd_coverage.py` | Overall 99.6116%; changed lines 100%; all 51 measured changed source files reach 99% |
 | Authoring mutation closure | 18 mutations: ten caught, eight did not compile, no survivors or timeouts |
 | Private-stream mutation closure | 26 mutations: eight caught, seventeen did not compile, one equivalent survivor, no timeouts |

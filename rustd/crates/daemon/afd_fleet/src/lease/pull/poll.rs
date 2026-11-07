@@ -1,6 +1,6 @@
 //! Preserve the typed placement decision until shared polling chooses an answer.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_runner::capacity::choice::Ticket;
 use jiff::Timestamp;
 

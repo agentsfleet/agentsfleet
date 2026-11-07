@@ -1,11 +1,11 @@
 //! Own-lease renew uses the shared daemon authoring boundary.
 
 use crate::{auth::RunnerIdentity, services::Services};
-use afd_core::id::Uuid7;
-use afd_http::handler::{Refusal, authoring_refusal};
-use afd_wire::authoring::Renew;
+use af_core::id::Uuid7;
+use af_wire::authoring::Renew;
 #[cfg(feature = "openapi")]
-use afd_wire::authoring::Renewed;
+use af_wire::authoring::Renewed;
+use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{
     Json,
     body::Bytes,
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 /// Renew an authoring lease under the authenticated runner identity.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = afd_wire::paths::AUTHORING_RENEW,
+    post, path = af_wire::paths::AUTHORING_RENEW,
     tag = afd_http::openapi::tag::RUNNERS, operation_id = "runner_authoring_renew",
     summary = "Renew a private setup assignment", request_body = Renew,
     params(afd_http::openapi::path::Lease),
@@ -36,7 +36,7 @@ pub(crate) async fn handle<D: Services>(
 ) -> Result<Response, Refusal> {
     let lease =
         Uuid7::parse(&lease).map_err(|_invalid| Refusal::malformed("lease_id must be a UUIDv7"))?;
-    let request: Renew = afd_core::json::object_from_slice(&body)
+    let request: Renew = af_core::json::object_from_slice(&body)
         .map_err(|_invalid| Refusal::malformed("Invalid authoring renew body"))?;
     let result = services
         .authoring()

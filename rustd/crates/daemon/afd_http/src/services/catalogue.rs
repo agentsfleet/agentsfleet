@@ -4,8 +4,8 @@
 
 use std::borrow::Cow;
 
+use af_core::catalogue::{Metadata, Price};
 use afd_api_wire::catalogue::{CatalogueMetadata, CataloguePrice};
-use afd_core::catalogue::{Metadata, Price};
 use afd_tenant::models::{Boundary, LibraryPage};
 
 /// The model catalogue's one read — a bounded page in normalized order.

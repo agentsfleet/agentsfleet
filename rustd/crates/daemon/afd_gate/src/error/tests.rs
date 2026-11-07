@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::{Error, query, rejected};
 
@@ -47,12 +47,12 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
         .find(|(kind, _error)| *kind == "unreachable")
         .map(|(_kind, error)| error)
         .ok_or("queue test utility exposes no unreachable error")?;
-    let identifier = afd_core::id::Uuid7::parse("not-an-id")
+    let identifier = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("the malformed fixture unexpectedly parsed")?;
-    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
-    let mut bytes = [0_u8; afd_core::id::ENTROPY_LEN];
+    let mut bytes = [0_u8; af_core::id::ENTROPY_LEN];
     let entropy = entropy
         .fill(&mut bytes)
         .err()
@@ -61,8 +61,8 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     // The third column is whether the gate is a NEW causal link. Every variant
     // here wraps a failure that happened in another crate, and every one adds
     // the fact that crate cannot carry: WHICH plane was using it. `afd_db`,
-    // `afd_dragonfly`, `afd_credential`, `afd_billing`, `afd_crypto` and
-    // `afd_core` are each shared by many planes, so "entropy pool exhausted"
+    // `afd_dragonfly`, `afd_credential`, `afd_billing`, `af_crypto` and
+    // `af_core` are each shared by many planes, so "entropy pool exhausted"
     // alone leaves an operator without the one thing they need to act on.
     //
     // `Entropy` and `Identifier` used to be `#[error(transparent)]` and so

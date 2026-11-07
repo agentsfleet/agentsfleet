@@ -8,8 +8,8 @@ use crate::{
     error::{ErrorKind, raise::query},
     types::Candidate,
 };
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::definition::POLICY_SEMANTICS;
+use af_core::id::Uuid7;
+use af_fleet_runtime::definition::POLICY_SEMANTICS;
 use sqlx::PgConnection;
 
 pub(super) async fn capture(

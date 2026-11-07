@@ -29,8 +29,8 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, refusal_code, send_with_headers};
-use afd_core::error_code;
-use afd_webhook::{MAX_DRIFT_SECONDS, Scheme};
+use af_core::error_code;
+use af_webhook::{MAX_DRIFT_SECONDS, Scheme};
 use http::{Method, StatusCode};
 
 /// An approver pressing approve, as Slack posts it.

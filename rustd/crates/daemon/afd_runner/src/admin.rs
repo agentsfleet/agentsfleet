@@ -1,7 +1,7 @@
 //! Operator-driven administrative state changes for runners.
 
+use af_core::id::Uuid7;
 use afd_api_wire::admin::{AdminState, RunnerAdminAction};
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::error::{
@@ -169,7 +169,7 @@ fn transition_result(row: &Transitioned, target: AdminState) -> Result<AdminStat
 
 /// A stored status as the variant it spells, or the malformed-status refusal.
 pub(crate) fn stored_state(raw: &str) -> Result<AdminState> {
-    afd_core::spelling::from_spelling(raw).ok_or_else(admin_state_malformed)
+    af_core::spelling::from_spelling(raw).ok_or_else(admin_state_malformed)
 }
 
 /// The target state for a mutation action; self-test is not a transition.
@@ -249,7 +249,7 @@ mod tests {
             AdminState::Revoked,
         ] {
             assert_eq!(
-                afd_core::spelling::from_spelling(state_wire(state)),
+                af_core::spelling::from_spelling(state_wire(state)),
                 Some(state)
             );
         }

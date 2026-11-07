@@ -1,7 +1,7 @@
 //! Transaction start order must not move new work ahead of an unfinished run.
 
+use af_core::id::Uuid7;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
-use afd_core::id::Uuid7;
 use afd_fleet::lease::{Acquired, Leases};
 use sqlx::Connection as _;
 
@@ -93,7 +93,7 @@ fn input<'a>(fleet: &'a str, workspace: &'a str) -> Admission<'a> {
         fleet,
         workspace,
         actor: crate::seed::ACTOR,
-        event_type: afd_wire::event::EventType::Chat,
+        event_type: af_wire::event::EventType::Chat,
         request_json: crate::seed::REQUEST_JSON,
         reply: Reply::None,
     }

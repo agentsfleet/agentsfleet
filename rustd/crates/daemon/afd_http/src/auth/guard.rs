@@ -138,7 +138,7 @@ fn authentication_refusal<D>(refusal: afd_auth::Error, gate: &Gate<D>) -> Respon
 /// refusal cannot end up shaped differently, the drift a hand-written refusal
 /// at each call site invites.
 fn refuse<D>(
-    code: afd_core::error_code::ErrorCode,
+    code: af_core::error_code::ErrorCode,
     detail: impl Into<String>,
     gate: &Gate<D>,
     event: &'static str,

@@ -63,7 +63,7 @@ impl<'a> Session<'a> {
     ) -> Result<T> {
         let bytes = self.bytes(method, path, body).await?;
         serde_json::from_slice(&bytes)
-            .map_err(afd_core::json::Unreadable::from)
+            .map_err(af_core::json::Unreadable::from)
             .map_err(Into::into)
     }
 
@@ -91,9 +91,9 @@ impl<'a> Session<'a> {
         if let Some(body) = body {
             request = request
                 .header("content-type", "application/json")
-                .body(serde_json::to_vec(body).map_err(afd_core::json::Unreadable::from)?);
+                .body(serde_json::to_vec(body).map_err(af_core::json::Unreadable::from)?);
         }
-        let remaining = afd_core::clock::elapsed(afd_core::clock::now(), self.deadline)
+        let remaining = af_core::clock::elapsed(af_core::clock::now(), self.deadline)
             .min(std::time::Duration::from_secs(10));
         if remaining.is_zero() {
             return Err(TaskRefusal::StaleState.into());
@@ -109,7 +109,7 @@ impl<'a> Session<'a> {
                         .is_some_and(|value| value == "0")
             {
                 let headers = response.headers();
-                let now = afd_core::clock::now();
+                let now = af_core::clock::now();
                 let retry = headers
                     .get("retry-after")
                     .and_then(|value| value.to_str().ok())
@@ -131,7 +131,7 @@ impl<'a> Session<'a> {
                     .max()
                     .filter(|until| *until > now)
                     .unwrap_or_else(|| {
-                        afd_core::clock::after(now, std::time::Duration::from_secs(300))
+                        af_core::clock::after(now, std::time::Duration::from_secs(300))
                     });
                 return Err(ErrorKind::TaskRemoteCooldown {
                     status: status.as_u16(),

@@ -2,16 +2,16 @@
 
 use std::{panic::AssertUnwindSafe, time::Duration};
 
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
-use afd_core::{etag::sha256_hex, id::Uuid7};
-use afd_crypto::entropy::Entropy;
-use afd_db::test_util::TestDatabase;
-use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLease, TaskScope, Tasks};
-use afd_wire::{
+use af_core::{etag::sha256_hex, id::Uuid7};
+use af_crypto::entropy::Entropy;
+use af_wire::{
     decision::{DecisionQuestion, NamedQuestion, NoulCriteria},
     event::EventType,
     task::TaskLimits,
 };
+use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use afd_db::test_util::TestDatabase;
+use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLease, TaskScope, Tasks};
 use futures_util::FutureExt as _;
 use serde_json::json;
 
@@ -219,7 +219,7 @@ pub(super) fn questions() -> Vec<NamedQuestion> {
 }
 
 pub(super) async fn exercise(scenario: impl AsyncFnOnce(&Case)) {
-    afd_core::test_util::trace::install_subscriber();
+    af_core::test_util::trace::install_subscriber();
     let lane = tokio::time::timeout(Duration::from_secs(10), TestDatabase::create())
         .await
         .expect("owned database creation is bounded");
@@ -241,7 +241,7 @@ pub(super) async fn exercise(scenario: impl AsyncFnOnce(&Case)) {
 
 /// Only this durable-task suite opts its native runner into the guarded protocol.
 pub(super) async fn task_capability(held: &Held, enabled: bool) {
-    use afd_wire::runner::{HeartbeatRequest, HeldFleets};
+    use af_wire::runner::{HeartbeatRequest, HeldFleets};
     use std::borrow::Cow;
 
     for runner in [&held.runner, &held.spare] {

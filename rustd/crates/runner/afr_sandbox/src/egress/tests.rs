@@ -6,7 +6,7 @@
 use std::fs;
 use std::os::fd::AsFd as _;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use netlink_packet_netfilter::NetfilterProtoFamily;
 
 use super::kernel::{Host, Kernel as _};

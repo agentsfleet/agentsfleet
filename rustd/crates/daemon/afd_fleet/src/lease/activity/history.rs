@@ -1,6 +1,6 @@
 //! Live task observations use the same daemon-owned order as their saved row.
 
-use afd_wire::activity::{ActivityFrame, TaskActivityHistory};
+use af_wire::activity::{ActivityFrame, TaskActivityHistory};
 
 pub(super) fn canonical<'a>(
     frames: &[ActivityFrame<'a>],

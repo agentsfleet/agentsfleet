@@ -10,7 +10,7 @@ use crate::{
     lease::guard::Attempt,
     replay,
 };
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
+use af_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
 use jiff::Timestamp;
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse},

@@ -8,8 +8,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use af_core::id::Uuid7;
+use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use afd_fleet::lease::{Billed, Kind, Leases};
 use jiff::Timestamp;
 

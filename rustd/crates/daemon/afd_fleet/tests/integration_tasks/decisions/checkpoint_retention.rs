@@ -1,7 +1,7 @@
 //! Expired capture cleanup transfers custody before releasing storage quota.
 
+use af_wire::task::{CheckpointMode, CheckpointObjectsInput, CheckpointPlaintext};
 use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _};
-use afd_wire::task::{CheckpointMode, CheckpointObjectsInput, CheckpointPlaintext};
 
 use super::{
     super::fixture::{Case, exercise, id},
@@ -59,7 +59,7 @@ async fn retention(case: &Case) {
     server.finish().await;
 }
 
-async fn expire(case: &Case, task: &str, plan: &afd_wire::task::CheckpointPlan, object: &str) {
+async fn expire(case: &Case, task: &str, plan: &af_wire::task::CheckpointPlan, object: &str) {
     // Deterministically age this isolated test's actual capture, without sleeping
     // or forging a successful upload or terminal task result.
     let mut connection = case
@@ -110,10 +110,10 @@ async fn assert_erased(case: &Case, object: &str) {
 async fn capture(
     tasks: &afd_fleet::task::Tasks,
     case: &Case,
-    task: &afd_wire::task::DecisionTaskVersion,
+    task: &af_wire::task::DecisionTaskVersion,
 ) -> (
-    afd_wire::task::CheckpointPlan,
-    afd_wire::task::CheckpointObjectsPage,
+    af_wire::task::CheckpointPlan,
+    af_wire::task::CheckpointObjectsPage,
 ) {
     let mut request = input(
         task,

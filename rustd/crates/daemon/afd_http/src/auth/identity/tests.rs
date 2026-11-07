@@ -3,8 +3,8 @@
     reason = "test fixtures and extractor assertions should fail loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_auth::principal::{Principal, Runner};
-use afd_core::id::Uuid7;
 use axum::extract::FromRequestParts as _;
 
 use super::RunnerIdentity;

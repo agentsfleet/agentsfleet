@@ -45,7 +45,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
     let mut result = EffectMaintenance::default();
     let mut reads = stream::iter(rows.into_iter().map(|row| async move {
         let id = row.effect.id.clone();
-        let outcome = if row.recovery.expires_at <= afd_core::clock::now() {
+        let outcome = if row.recovery.expires_at <= af_core::clock::now() {
             expire(tasks, &row.effect).await.map(|()| Outcome::Expired)
         } else {
             async {

@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_wire::activity::StreamTextKind;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::ExecutionPolicy;
-use afr_providers::{Call, Chunk, Connect, End, Provider, Request, Usage};
+use af_providers::{Call, Chunk, Connect, End, Provider, Request, Usage};
+use af_wire::activity::StreamTextKind;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::ExecutionPolicy;
 use afr_tools::catalog::FILE_READ;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
@@ -43,17 +43,17 @@ impl Scripted {
 }
 
 impl Connect for Scripted {
-    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> afr_providers::Result<()> {
+    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> afr_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
 
 impl Provider for Scripted {
-    fn stream<'a>(&'a self, _request: Request<'a>) -> BoxStream<'a, afr_providers::Result<Chunk>> {
+    fn stream<'a>(&'a self, _request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
         let index = self.0.fetch_add(1, Ordering::SeqCst);
         futures_util::stream::iter(Self::turn(index).into_iter().map(Ok)).boxed()
     }

@@ -1,7 +1,7 @@
 //! Open only the credential whose current metadata still equals the admitted snapshot.
 
-use afd_core::id::Uuid7;
-use afd_crypto::{aad::Aad, secret::SecretString};
+use af_core::id::Uuid7;
+use af_crypto::{aad::Aad, secret::SecretString};
 use afd_vault::StoredEnvelope;
 use serde::Deserialize;
 use sqlx::PgConnection;

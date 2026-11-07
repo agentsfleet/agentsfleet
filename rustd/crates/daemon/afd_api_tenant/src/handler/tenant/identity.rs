@@ -119,9 +119,9 @@ const fn class_of(credential: &PersonCredential) -> &'static str {
 )]
 mod tests {
     use super::{class_of, credential_class, scopes_of};
+    use af_core::id::Uuid7;
     use afd_auth::principal::{Person, PersonCredential, Subject};
     use afd_auth::scope::{Scope, ScopeSet};
-    use afd_core::id::Uuid7;
 
     /// A fixture identifier, well formed and otherwise meaningless.
     const TENANT: &str = "0193c5e0-0000-7000-8000-000000001234";
@@ -178,7 +178,7 @@ mod tests {
     /// Inline rather than in the router suite because the harness store sits
     /// over a pool with no Postgres, so no test out there can reach a 200 to
     /// read the field off. These are also the words a client branches on, which
-    /// is why they are asserted against `afd_wire`'s constants rather than
+    /// is why they are asserted against `af_wire`'s constants rather than
     /// re-spelled here where the two could drift apart (RULE UFS).
     #[test]
     fn every_credential_class_renders_its_own_wire_word() {
@@ -207,7 +207,7 @@ mod tests {
     fn a_workspace_scoped_session_still_renders_as_a_session() {
         let ceiling = PersonCredential::SessionToken {
             workspace_scope: Some(
-                afd_core::id::Uuid7::parse("0193c5e0-0000-7000-8000-000000001234")
+                af_core::id::Uuid7::parse("0193c5e0-0000-7000-8000-000000001234")
                     .expect("the fixture identifier is well formed"),
             ),
         };

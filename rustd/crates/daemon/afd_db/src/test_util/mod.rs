@@ -49,7 +49,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use afd_core::env::{EnvSource, MapEnv, ProcessEnv};
+use af_core::env::{EnvSource, MapEnv, ProcessEnv};
 use sqlx::AssertSqlSafe;
 
 use crate::config::{DbRole, PoolConfig};
@@ -282,7 +282,7 @@ impl TestDatabase {
 /// fixtures that had no lane of their own to put it in.
 ///
 /// The version nibble is `7` and the variant nibble is `8`, so the result
-/// passes both the schema's `ck_*_id_uuidv7` checks and `afd_core::id::Uuid7`.
+/// passes both the schema's `ck_*_id_uuidv7` checks and `af_core::id::Uuid7`.
 #[must_use]
 pub fn mint_id() -> String {
     format!(
@@ -297,8 +297,8 @@ pub fn mint_id() -> String {
 /// # Panics
 /// Never in practice: [`mint_id`] spells a canonical `UUIDv7` by construction.
 #[must_use]
-pub fn mint_uuid7() -> afd_core::id::Uuid7 {
-    afd_core::id::Uuid7::parse(&mint_id())
+pub fn mint_uuid7() -> af_core::id::Uuid7 {
+    af_core::id::Uuid7::parse(&mint_id())
         .unwrap_or_else(|failure| panic!("mint_id spells a canonical UUIDv7: {failure}"))
 }
 
@@ -321,8 +321,8 @@ fn knob(name: &str) -> String {
 /// Installs a subscriber so event macros actually run.
 ///
 /// Re-exported for the live suites that already reach it through this seed
-/// home; the one implementation is `afd_core`'s.
-pub use afd_core::test_util::trace::install_subscriber;
+/// home; the one implementation is `af_core`'s.
+pub use af_core::test_util::trace::install_subscriber;
 
 #[cfg(test)]
 mod tests;

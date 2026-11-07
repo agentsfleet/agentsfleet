@@ -9,7 +9,7 @@ use std::borrow::BorrowMut;
 use std::io;
 use std::os::fd::BorrowedFd;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use netlink_sys::Socket;
 
 use super::kernel::Kernel;

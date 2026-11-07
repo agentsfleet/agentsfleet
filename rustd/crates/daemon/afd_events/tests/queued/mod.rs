@@ -19,8 +19,8 @@ mod read;
 mod retry;
 mod snapshot;
 
-use afd_core::event::status;
-use afd_core::id::Uuid7;
+use af_core::event::status;
+use af_core::id::Uuid7;
 use afd_events::{Cursor, History, QUEUED_READ_TEXTS, Steer};
 
 use crate::integration_list_plans::{explain_generic, private_database};

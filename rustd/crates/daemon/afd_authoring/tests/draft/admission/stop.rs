@@ -2,11 +2,11 @@
 //! and the report a runner retained across the Stop settles exactly once.
 
 use super::{Fixture, claim, mint, now, queue};
+use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 use afd_authoring::{
     Claimed,
     types::{Draft, MessageQuery, MessageState, SendMessage},
 };
-use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 
 /// What one millisecond of reported runtime debits at the fixture rate.
 const RUNTIME_DEBIT_NANOS: i64 = 100;
@@ -146,7 +146,7 @@ async fn assert_current_turn(f: &Fixture, draft: &Draft) {
 async fn settle_once(f: &Fixture, first: &Claimed) {
     let report = finished(first);
     let before = balance(f).await;
-    let lease = afd_core::id::Uuid7::parse(&first.lease_id).expect("lease id");
+    let lease = af_core::id::Uuid7::parse(&first.lease_id).expect("lease id");
     for replayed in [false, true] {
         let ack = f
             .drafts
@@ -185,7 +185,7 @@ async fn claim_racing_stop_keeps_at_most_one_accounting_obligation() {
     let second = states(&f, &draft).await;
     assert!(second.contains(&("1:user".into(), "cancelled".into(), Some("Second".into()))));
     if let Some(lease) = claimed {
-        let id = afd_core::id::Uuid7::parse(&lease.lease_id).expect("lease id");
+        let id = af_core::id::Uuid7::parse(&lease.lease_id).expect("lease id");
         let ack = f
             .drafts
             .report(&f.runner, &id, finished(&lease))

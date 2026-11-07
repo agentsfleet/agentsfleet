@@ -32,8 +32,8 @@
 //! the arbiter, and the caller retries. The suffix makes a retry rare, not
 //! unnecessary.
 
-use afd_crypto::entropy::Entropy;
-use afd_validate::rules::charset;
+use af_crypto::entropy::Entropy;
+use af_validate::rules::charset;
 
 use crate::{Result, error};
 

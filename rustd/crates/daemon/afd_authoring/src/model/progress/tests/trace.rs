@@ -3,7 +3,7 @@
 #![expect(clippy::expect_used, reason = "the fixed UUIDv7 fixture must parse")]
 
 use super::super::trace::Trace;
-use afd_core::{error_code, id::Uuid7, test_util::trace::Capture};
+use af_core::{error_code, id::Uuid7, test_util::trace::Capture};
 
 fn dispatch() -> Uuid7 {
     Uuid7::parse("01990000-0000-7000-8000-000000000001").expect("fixture UUIDv7")

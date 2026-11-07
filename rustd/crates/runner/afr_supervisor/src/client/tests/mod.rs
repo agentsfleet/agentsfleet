@@ -67,7 +67,7 @@ async fn daemon() -> (String, mpsc::UnboundedReceiver<Seen>) {
 }
 
 fn api(base: &str, token: &str) -> crate::Result<HttpRunnerApi> {
-    let env = afd_core::env::MapEnv::from_pairs([(ENV_API_URL, base), (ENV_RUNNER_TOKEN, token)]);
+    let env = af_core::env::MapEnv::from_pairs([(ENV_API_URL, base), (ENV_RUNNER_TOKEN, token)]);
     HttpRunnerApi::new(&Config::from_env(&env)?)
 }
 

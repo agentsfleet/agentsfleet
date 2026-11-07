@@ -4,8 +4,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use af_core::error_code;
 use afd_api_wire::team::{MemberSummary, WorkspaceMember};
-use afd_core::error_code;
 use afd_events::steer_actor;
 use afd_http::handler::{IdPath, IdSegment};
 use afd_tenant::team::Member;

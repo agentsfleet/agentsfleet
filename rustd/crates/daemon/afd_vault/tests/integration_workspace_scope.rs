@@ -11,7 +11,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_vault::Deleted;
 
 use crate::support::{Lane, MINTED_AT, body, named};
@@ -51,7 +51,7 @@ async fn the_vault_never_reads_another_workspaces_key() {
         assert_eq!(
             opened
                 .get(SHARED_NAME)
-                .map(afd_crypto::secret::SecretBytes::expose),
+                .map(af_crypto::secret::SecretBytes::expose),
             Some(expected.as_bytes())
         );
         assert!(

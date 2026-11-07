@@ -86,7 +86,7 @@ async fn a_checked_save_refusal_keeps_the_answer_and_draft_editable() {
     assert_eq!(answer["text"], "Prepared.");
     assert_eq!(
         answer["save_error_code"],
-        afd_core::error_code::AGENTSFLEET_NAME_EXISTS.as_str()
+        af_core::error_code::AGENTSFLEET_NAME_EXISTS.as_str()
     );
     let edited = super::super::send_with_headers(
         &case.router,

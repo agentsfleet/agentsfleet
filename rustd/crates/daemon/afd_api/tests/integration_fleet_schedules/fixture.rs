@@ -1,9 +1,9 @@
 //! One tenant, one owned workspace, one fleet and one API key per test, seeded
 //! straight into the migrated schema and torn down by deleting the tenant.
 
+use af_core::id::Uuid7;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
-use afd_core::id::Uuid7;
 use afd_cron::MAX_SCHEDULES_PER_FLEET;
 use afd_db::Db;
 use afd_db::config::DbRole;

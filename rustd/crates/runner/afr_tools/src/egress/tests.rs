@@ -1,5 +1,5 @@
-use afr_egress::Refusal;
-use afr_egress::error::one_of_each_kind;
+use af_egress::Refusal;
+use af_egress::error::one_of_each_kind;
 
 use super::{answered, refused};
 use crate::catalog::HTTP_REQUEST;

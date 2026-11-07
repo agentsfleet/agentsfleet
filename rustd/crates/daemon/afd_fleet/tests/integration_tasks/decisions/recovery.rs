@@ -1,6 +1,6 @@
 //! Erasure removes private answers while preserving original payer accounting.
 
-use afd_wire::task::{DecisionAssessment, DecisionCallState, DecisionRecordDisposition};
+use af_wire::task::{DecisionAssessment, DecisionCallState, DecisionRecordDisposition};
 use serde_json::Value;
 
 use super::{
@@ -66,8 +66,8 @@ async fn erased(case: &Case) {
 async fn late_accounting(
     fixture: &Decisions<'_>,
     call: &str,
-    request: &afd_wire::decision::DecisionRequest,
-    input: &garde::Valid<afd_wire::task::DecisionReservationInput>,
+    request: &af_wire::decision::DecisionRequest,
+    input: &garde::Valid<af_wire::task::DecisionReservationInput>,
 ) {
     let receipt = known(request);
     let result = fixture.record(call, receipt.clone()).await;

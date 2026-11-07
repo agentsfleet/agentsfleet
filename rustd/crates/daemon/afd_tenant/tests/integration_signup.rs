@@ -17,7 +17,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::signup::{NewAccount, STARTER_CREDIT_NANOS, Signups, personal_tenant_name};
@@ -153,7 +153,7 @@ async fn a_signup_whose_statement_fails_opens_nothing() {
         .await
         .expect_err("the tenant insert is refused");
 
-    assert_eq!(failed.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(failed.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert!(
         std::error::Error::source(&failed).is_some(),
         "the statement's own failure is returned, not a fresh one"

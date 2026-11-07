@@ -2,14 +2,14 @@
 
 use super::FencedVerbs;
 use crate::{Result, error};
-use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretString;
-use afd_wire::task::{
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretString;
+use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
+use af_wire::task::{
     DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt, DecisionRecorded,
     DecisionReservationInput, DecisionReservationResult, DecisionRetryDelay,
     DecisionUnavailableCause,
 };
-use afr_providers::decision::{DecisionClient, DecisionEvaluator as _};
 use afr_tools::verbs::DecisionEvaluation;
 
 impl FencedVerbs<'_> {
@@ -46,8 +46,8 @@ impl FencedVerbs<'_> {
             else {
                 return Ok(evaluated);
             };
-            if expires_at <= afd_core::clock::now()
-                || delay >= crate::deadline::left(afd_core::clock::now(), expires_at)
+            if expires_at <= af_core::clock::now()
+                || delay >= crate::deadline::left(af_core::clock::now(), expires_at)
             {
                 return Ok(evaluated);
             }
@@ -56,19 +56,19 @@ impl FencedVerbs<'_> {
                 () = self.stop.cancelled() => return Ok(evaluated),
                 () = tokio::time::sleep(delay) => {},
             }
-            if expires_at <= afd_core::clock::now() {
+            if expires_at <= af_core::clock::now() {
                 return Ok(evaluated);
             }
             input.retry_of = Some(evaluated.call_id);
-            input.operation_id = afd_crypto::entropy::Entropy::new()
-                .uuid7(afd_core::clock::now())?
+            input.operation_id = af_crypto::entropy::Entropy::new()
+                .uuid7(af_core::clock::now())?
                 .to_string();
         }
         Err(error::config("decision retry bound exceeded"))
     }
 
-    async fn task_activity(&self, frame: afd_wire::activity::ActivityFrame<'static>) {
-        let request = afd_wire::activity::ActivityRequest {
+    async fn task_activity(&self, frame: af_wire::activity::ActivityFrame<'static>) {
+        let request = af_wire::activity::ActivityRequest {
             frames: vec![frame],
         };
         // Progress cannot lengthen the decision's physical/logical deadline.
@@ -100,7 +100,7 @@ impl FencedVerbs<'_> {
             .begin_decision(self.lease_id, &call, self.fencing_token)
             .await?;
         let request = dispatch.request.clone();
-        let mut progress = afd_wire::activity::TaskActivity {
+        let mut progress = af_wire::activity::TaskActivity {
             activity_id: call_id.clone(),
             task_id: request
                 .state
@@ -113,18 +113,18 @@ impl FencedVerbs<'_> {
                 .get("source_admission_id")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned),
-            operation: if request.purpose == afd_wire::decision::DecisionPurpose::Goal {
-                afd_wire::activity::TaskActivityOperation::Goal
+            operation: if request.purpose == af_wire::decision::DecisionPurpose::Goal {
+                af_wire::activity::TaskActivityOperation::Goal
             } else {
-                afd_wire::activity::TaskActivityOperation::Intent
+                af_wire::activity::TaskActivityOperation::Intent
             },
-            phase: afd_wire::activity::TaskActivityPhase::Starting,
+            phase: af_wire::activity::TaskActivityPhase::Starting,
             provider: Some(
                 match dispatch.assignment.profile.api {
-                    afd_wire::decision::DecisionApi::Typesafe => "typesafe",
-                    afd_wire::decision::DecisionApi::Openai => "openai",
-                    afd_wire::decision::DecisionApi::Perplexity => "perplexity",
-                    afd_wire::decision::DecisionApi::Cloudflare => "cloudflare",
+                    af_wire::decision::DecisionApi::Typesafe => "typesafe",
+                    af_wire::decision::DecisionApi::Openai => "openai",
+                    af_wire::decision::DecisionApi::Perplexity => "perplexity",
+                    af_wire::decision::DecisionApi::Cloudflare => "cloudflare",
                 }
                 .to_owned(),
             ),
@@ -134,7 +134,7 @@ impl FencedVerbs<'_> {
             bytes: None,
             sequence: None,
         };
-        self.task_activity(afd_wire::activity::ActivityFrame::TaskDecisionStarted(
+        self.task_activity(af_wire::activity::ActivityFrame::TaskDecisionStarted(
             progress.clone(),
         ))
         .await;
@@ -158,11 +158,11 @@ impl FencedVerbs<'_> {
         // No answer reaches the root unless the daemon acknowledges it.
         let result = result?;
         progress.phase = if result.state == DecisionCallState::Known {
-            afd_wire::activity::TaskActivityPhase::Recorded
+            af_wire::activity::TaskActivityPhase::Recorded
         } else {
-            afd_wire::activity::TaskActivityPhase::Unavailable
+            af_wire::activity::TaskActivityPhase::Unavailable
         };
-        self.task_activity(afd_wire::activity::ActivityFrame::TaskDecisionCompleted(
+        self.task_activity(af_wire::activity::ActivityFrame::TaskDecisionCompleted(
             progress,
         ))
         .await;
@@ -191,7 +191,7 @@ async fn physical(
     stop: &tokio_util::sync::CancellationToken,
 ) -> DecisionReceipt {
     let credential = SecretString::new(dispatch.api_key.into_owned());
-    let now = afd_core::clock::now();
+    let now = af_core::clock::now();
     if stop.is_cancelled() || dispatch.expires_at <= now {
         return DecisionReceipt::NotSent {
             cause: DecisionNotSentCause::Preflight,
@@ -212,7 +212,7 @@ async fn physical(
             cause: DecisionNotSentCause::Build,
         };
     };
-    let now = afd_core::clock::now();
+    let now = af_core::clock::now();
     if stop.is_cancelled() || dispatch.expires_at <= now {
         return DecisionReceipt::NotSent {
             cause: DecisionNotSentCause::Preflight,
@@ -237,7 +237,7 @@ async fn physical(
     }
 }
 
-fn unavailable(failure: &afr_providers::Error) -> DecisionUnavailableCause {
+fn unavailable(failure: &af_providers::Error) -> DecisionUnavailableCause {
     match failure.decision_status() {
         Some(status) => {
             let retry_delay = match failure.decision_retry_after() {

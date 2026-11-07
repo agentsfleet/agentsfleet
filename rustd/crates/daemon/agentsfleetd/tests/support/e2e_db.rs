@@ -25,7 +25,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use sqlx::AssertSqlSafe;
 
 use crate::e2e::{DRAGONFLY_CA_LANE_KNOB, DRAGONFLY_LANE_KNOB, GOOD_KEK, lane};

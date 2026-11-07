@@ -6,8 +6,8 @@
 
 use std::sync::atomic::Ordering;
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::lease::{SANDBOX_MEMORY_BYTES_MAX, SANDBOX_MEMORY_BYTES_MIN, SandboxLimits};
+use af_core::test_util::trace::Capture;
+use af_wire::lease::{SANDBOX_MEMORY_BYTES_MAX, SANDBOX_MEMORY_BYTES_MIN, SandboxLimits};
 use afr_sandbox::Limits;
 use tokio::sync::mpsc;
 
@@ -128,7 +128,7 @@ fn the_size_at_its_bound_is_built_and_one_past_is_refused() {
     let refused = super::sized(Some(past), host).unwrap_err();
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
 }
 

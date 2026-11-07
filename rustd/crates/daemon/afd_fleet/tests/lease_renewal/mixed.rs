@@ -11,11 +11,11 @@ use super::{
     expiry::snapshot, fixture::Running, holders::assert_host_full, replica::expire,
     replicas::contended, seat::Seat,
 };
+use af_crypto::entropy::Entropy;
+use af_wire::lease::{AcceptedKinds, LeaseKind};
 use afd_authoring::{Claimed, Drafts, types::Draft};
-use afd_crypto::entropy::Entropy;
 use afd_db::{Db, config::DbRole};
 use afd_fleet::lease::Renewed;
-use afd_wire::lease::{AcceptedKinds, LeaseKind};
 use std::time::Duration;
 
 /// Every ordering finishes inside this, or the test fails rather than hangs.

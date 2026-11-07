@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use afd_wire::runner::{HeartbeatRequest, SelftestCheck, SelftestReport};
+use af_wire::runner::{HeartbeatRequest, SelftestCheck, SelftestReport};
 
 use super::requests::capable;
 
@@ -17,7 +17,7 @@ pub(crate) fn view_heartbeat() -> HeartbeatRequest<'static> {
             sandbox_tier: Cow::Borrowed("dev_none"),
             network_policy: Cow::Borrowed("allow_all"),
         }),
-        holds: afd_wire::runner::HeldFleets::default(),
+        holds: af_wire::runner::HeldFleets::default(),
         closing: false,
         wake: false,
     }

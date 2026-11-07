@@ -20,9 +20,9 @@
 //!   that holds the key. This module is on that half deliberately, so the
 //!   read-and-delete half's inability to decrypt stays a property of its type.
 
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::secret::SecretBytes;
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::secret::SecretBytes;
 
 use crate::error::{Result, query};
 use crate::secret::SecretName;
@@ -47,7 +47,7 @@ impl Vault {
     /// Reports a datastore that would not answer, a row whose envelope columns
     /// are not the widths this build reads, and an envelope that would not
     /// open. The last is deliberately one error however it failed — see
-    /// `afd_crypto::error` on why the two AEAD layers are indistinguishable.
+    /// `af_crypto::error` on why the two AEAD layers are indistinguishable.
     pub async fn load(&self, workspace: &Uuid7, name: &SecretName) -> Result<Option<SecretBytes>> {
         let mut connection = self.directory.database.acquire().await?;
         let row = sqlx::query_as::<_, crate::StoredEnvelope>(sql::SELECT_SECRET_ENVELOPE)

@@ -1,6 +1,6 @@
 //! One bounded reservation operation; retry policy never lives in transport.
 
-use afd_wire::task::DecisionReservationInput;
+use af_wire::task::DecisionReservationInput;
 
 use super::{
     ReservedDecision,

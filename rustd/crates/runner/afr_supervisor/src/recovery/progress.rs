@@ -1,6 +1,6 @@
 //! One operation owns deduplicated ciphertext accounting and update cadence.
 
-use afd_wire::activity::{TaskActivityPhase, TaskTransferBytes};
+use af_wire::activity::{TaskActivityPhase, TaskTransferBytes};
 use std::{
     collections::BTreeMap,
     time::{Duration, Instant},

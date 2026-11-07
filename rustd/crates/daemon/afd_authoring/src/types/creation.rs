@@ -1,7 +1,7 @@
 //! Save has one retained fleet identity and an explicit initial-run choice.
 
 use super::{MAX_MESSAGE_BYTES, MAX_MODEL_REF_BYTES};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
 /// Save provenance is display metadata and never an authorization input.
@@ -43,7 +43,7 @@ pub enum SaveSource {
         /// Selected opaque entry identifier.
         #[garde(
             length(bytes, min = 1, max = 128),
-            custom(afd_validate::rules::nul_free)
+            custom(af_validate::rules::nul_free)
         )]
         library_id: String,
         /// Selected immutable revision.
@@ -61,7 +61,7 @@ pub enum Start {
     /// One message, bound to the daemon-derived creation identity.
     RunNow {
         /// Ordinary shared runtime input.
-        #[garde(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(afd_validate::rules::nul_free))]
+        #[garde(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(af_validate::rules::nul_free))]
         message: String,
     },
 }

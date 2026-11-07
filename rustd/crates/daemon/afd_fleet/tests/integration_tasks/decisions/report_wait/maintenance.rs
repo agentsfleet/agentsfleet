@@ -7,8 +7,8 @@ use super::{
     capture, settle,
     support::{Observation, counts, decision, observe},
 };
+use af_wire::task::{DecisionTaskVersion, TaskState};
 use afd_fleet::task::{TaskLifecycle as _, Tasks};
-use afd_wire::task::{DecisionTaskVersion, TaskState};
 use serde_json::{Value, json};
 
 mod guards;

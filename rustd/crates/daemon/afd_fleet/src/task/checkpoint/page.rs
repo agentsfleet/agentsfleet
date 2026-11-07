@@ -9,8 +9,8 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, execution, guard as task_guard, transaction},
 };
-use afd_core::id::Uuid7;
-use afd_wire::task::{
+use af_core::id::Uuid7;
+use af_wire::task::{
     CheckpointEntry, CheckpointMode, CheckpointPage, CheckpointPageInput, CheckpointReadQuery,
     CheckpointTransferPurpose,
 };
@@ -33,8 +33,8 @@ pub(in crate::task) async fn write(
     page: &Uuid7,
     input: &garde::Valid<CheckpointPageInput>,
 ) -> Result<CheckpointPage> {
-    let body = serde_json::to_vec(&input.contents).map_err(afd_core::json::Unreadable::from)?;
-    if afd_core::etag::sha256_hex(&body) != input.digest {
+    let body = serde_json::to_vec(&input.contents).map_err(af_core::json::Unreadable::from)?;
+    if af_core::etag::sha256_hex(&body) != input.digest {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
@@ -92,10 +92,10 @@ pub(in crate::task) async fn read(
     let (_owned, plan, _pin) = read_authority(&mut tx, lease, checkpoint, &input.pin_id).await?;
     let page = selected(&mut tx, &plan, page.as_str()).await?;
     let body = page.body.ok_or(TaskRefusal::CheckpointIncompatible)?;
-    if page.digest.as_deref() != Some(afd_core::etag::sha256_hex(&body).as_str()) {
+    if page.digest.as_deref() != Some(af_core::etag::sha256_hex(&body).as_str()) {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
-    let contents = serde_json::from_slice(&body).map_err(afd_core::json::Unreadable::from)?;
+    let contents = serde_json::from_slice(&body).map_err(af_core::json::Unreadable::from)?;
     tx.commit()
         .await
         .map_err(query("finish bounded immutable manifest page read"))?;

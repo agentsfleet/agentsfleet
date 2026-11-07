@@ -1,8 +1,8 @@
 //! Exhausted work stays readable and cannot gain another lease by resuming.
 
-use afd_core::{error_code, id::Uuid7};
+use af_core::{error_code, id::Uuid7};
+use af_wire::task::{TaskLimits, TaskState};
 use afd_fleet::task::{TaskControl, TaskLifecycle as _, TaskSnapshot};
-use afd_wire::task::{TaskLimits, TaskState};
 
 use super::fixture::{Case, exercise};
 

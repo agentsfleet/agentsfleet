@@ -1,8 +1,8 @@
 //! Real setup, catalogue, vault, billing and candidate persistence around two provider boundaries.
 
+use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_admin::test_util::DecisionModelFixture;
 use afd_authoring::{ModelCalls, types::Source};
-use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -47,7 +47,7 @@ impl Case {
         assert!(
             model
                 .models
-                .update(&model.model.id, details.clone(), afd_core::clock::now())
+                .update(&model.model.id, details.clone(), af_core::clock::now())
                 .await
                 .expect("freeze fixture endpoint")
         );
@@ -129,7 +129,7 @@ async fn credential(f: &Fixture) {
             &f.workspace,
             &SecretName::parse("typesafe").expect("fixed secret bag"),
             &SecretBody::parse(&raw).expect("secret shape"),
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
         .expect("seal platform fixture credential");

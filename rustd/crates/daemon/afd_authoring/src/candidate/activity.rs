@@ -9,8 +9,8 @@ use crate::{
     lease::{ActivityInput, Event, guard},
     replay,
 };
-use afd_core::id::Uuid7;
-use afd_wire::authoring::{ActivityAccepted, ENVELOPE_BYTES_MAX};
+use af_core::id::Uuid7;
+use af_wire::authoring::{ActivityAccepted, ENVELOPE_BYTES_MAX};
 use sqlx::Connection as _;
 
 use super::{proposal, receipt, sql};

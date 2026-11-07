@@ -2,12 +2,12 @@
 
 use super::{mint, seed};
 use crate::harness::Fleet;
+use af_core::id::Uuid7;
 use afd_auth::{
     credential::Presented,
     directory::Digest,
     scope::{Scope, ScopeSet},
 };
-use afd_core::id::Uuid7;
 use afd_db::{
     Db,
     config::DbRole,
@@ -74,7 +74,7 @@ impl Fixture {
             self.owner.as_str(),
             ScopeSet::from_scopes(scopes),
         )
-        .at(afd_core::clock::now())
+        .at(af_core::clock::now())
         .with_owned_workspace(self.workspace.clone())
     }
 
@@ -122,7 +122,7 @@ impl Fixture {
         json!({"source":{"kind":"definition","definition":{
             "schema_version":1, "description":"Explain failures.",
             "instructions_md":"Investigate.\r\n", "config":{"name":"checkout-watch","x-agentsfleet":{
-                "triggers":[],"tools":[],"budget":{"daily_nanos":afd_core::money::NANOS_PER_USD.to_string()}
+                "triggers":[],"tools":[],"budget":{"daily_nanos":af_core::money::NANOS_PER_USD.to_string()}
             }}
         }}, "authoring_model_ref":self.model, "operation_id":operation, "message":"Investigate checkout"})
     }

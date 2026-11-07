@@ -4,8 +4,8 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
+use af_core::error_code::AUTHORING_CURSOR;
 use afd_authoring::types::{DraftState, ListQuery};
-use afd_core::error_code::AUTHORING_CURSOR;
 
 fn query(cursor: Option<String>) -> ListQuery {
     ListQuery {
@@ -225,7 +225,7 @@ async fn a_search_matches_the_creators_titles_and_turns_and_nothing_else() {
     for literal in ["100%", "_"] {
         assert_eq!(
             found(literal).await,
-            Vec::<afd_core::id::Uuid7>::new(),
+            Vec::<af_core::id::Uuid7>::new(),
             "a LIKE metacharacter is matched as itself: {literal}"
         );
     }
@@ -273,7 +273,7 @@ async fn assert_search_bounds(f: &Fixture) {
                 .await
                 .expect_err("an unbounded search is refused")
                 .code(),
-            afd_core::error_code::INVALID_REQUEST,
+            af_core::error_code::INVALID_REQUEST,
             "refused: {:?}",
             refused.chars().take(8).collect::<String>()
         );

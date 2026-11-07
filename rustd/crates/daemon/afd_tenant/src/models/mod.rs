@@ -16,8 +16,8 @@
 
 pub mod cursor;
 
+use af_core::catalogue::{Metadata, Price};
 use afd_admin::catalogue::{MetadataColumns, prices_for};
-use afd_core::catalogue::{Metadata, Price};
 use afd_db::Db;
 use jiff::Timestamp;
 use sqlx::FromRow as _;

@@ -2,10 +2,10 @@
 
 use super::super::{fixture::now, mint};
 use super::fixture::{Case, NO_ADMISSIONS, check};
+use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, IntegrationGrants, Origin, Resolution, Wanted};
 use afd_authoring::types::{SaveSource, Start};
-use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::json;
 use std::sync::Arc;
@@ -59,7 +59,7 @@ async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
     request
 }
 
-async fn cards(c: &Case, fleet: &afd_core::id::Uuid7) -> Vec<(String, String)> {
+async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(String, String)> {
     sqlx::query_as(
         "SELECT action_id,status FROM fleet.approval_gates WHERE fleet_id=$1::uuid ORDER BY id",
     )

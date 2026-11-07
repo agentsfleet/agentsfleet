@@ -37,7 +37,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 ## The three signal paths
 
-The control plane's telemetry surfaces live in `afd_observability`.
+The control plane's telemetry surfaces live in `af_observability`.
 
 | Path | What | Consumer |
 |---|---|---|
@@ -57,7 +57,7 @@ metric families only; it does not rename `fleet_id`, log event names,
 **One registry row is the whole family.** A census row declares the wire
 name, kind, number type, unit, temporality, label keys, histogram bounds and
 series ceiling once. Producer code names the family through a `Declared<Kind>`
-constant in `rustd/crates/protocol/afd_observability/src/metrics/declared/*.rs` and
+constant in `rustd/crates/protocol/af_observability/src/metrics/declared/*.rs` and
 claims an OpenTelemetry instrument from `Instruments`
 (`metrics/instrument/mod.rs`). A claim whose kind or number type disagrees with the
 census is refused at boot, and every claim is recorded, so
@@ -141,7 +141,7 @@ members and only five of them are ours: `startup_posture`, `runner_crash`, `tran
 platform delivered correctly.
 
 The daemon classifies them at the point of record: `fault_of` in
-`afd_observability/src/producers/fleet/runner/mod.rs` maps the class to a two-member `Fault` set, and the
+`af_observability/src/producers/fleet/runner/mod.rs` maps the class to a two-member `Fault` set, and the
 executions counter carries it as `fault` on the failing half only. A success has no `fault` label at
 all, which is what makes `{fault!="workload"}` read as "everything the platform was accountable for"
 — an absent label satisfies a not-equal matcher.
@@ -212,7 +212,7 @@ rather than a dashboard edit.
 Development and production resolve to the same Grafana stack, the same
 namespace, the same Prometheus datasource and the same ingest credential — the
 vault items differ in name only. No series carries a `deployment.environment`
-attribute either: `rustd/crates/protocol/afd_otlp/src/resource.rs` builds the resource
+attribute either: `rustd/crates/protocol/af_otlp/src/resource.rs` builds the resource
 both binaries send from service name, namespace, version and an optional
 instance identifier, and stops there.
 
@@ -249,13 +249,13 @@ makes it much smaller than the three missing families above.
 
 ## `agentsfleet-runner` — a collector of its own
 
-**Built: the runner exports spans and metric families when configured.** The dedicated dev collector was installed on Nov 04, 2026; production installation is not claimed. `afr_telemetry` uses the shared `afd_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
+**Built: the runner exports spans and metric families when configured.** The dedicated dev collector was installed on Nov 04, 2026; production installation is not claimed. `afr_telemetry` uses the shared `af_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
 
 Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
 Fleet-runtime leases run inside `runner.lease` spans. Private authoring takes a separate path without that span (`afr_supervisor/src/worker_pool/mod.rs`).
 
-A followed tool GET emits `http_redirect_started` and exactly one `http_redirect_completed` or `http_redirect_failed` in the parent tool-call context (`afr_egress/src/redirect/mod.rs`). The terminal record carries hop count, upstream status, whether headers were stripped, a fixed safe reason and elapsed milliseconds.
+A followed tool GET emits `http_redirect_started` and exactly one `http_redirect_completed` or `http_redirect_failed` in the parent tool-call context (`af_egress/src/redirect/mod.rs`). The terminal record carries hop count, upstream status, whether headers were stripped, a fixed safe reason and elapsed milliseconds.
 
 Cancellation and the aggregate deadline end with failure. No destination path, query, signature or response body enters these records; existing `tool_refused` records remain in place.
 
@@ -296,7 +296,7 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   for the second, so admitting a span never waits on another worker. A shed
   span counts in `agentsfleet_runner_spans_suppressed_total`. The batch
   processor's queue (2048 spans) and send interval (five seconds) are pinned in
-  `afd_otlp` rather than read from `OTEL_BSP_*`, so 128 a second fills at most
+  `af_otlp` rather than read from `OTEL_BSP_*`, so 128 a second fills at most
   640 of the queue against a collector that keeps up. A collector slower than
   that fills the queue, and the SDK drops past it without counting; the failed
   exports themselves are counted (below).
@@ -311,7 +311,7 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   A provider label uses the shared, bounded public naming registry: compiled
   model-catalogue providers, SDK providers and OpenTelemetry names, with aliases
   deduplicated. Other configured names use `_other`
-  (`afd_observability/src/semconv/provider.rs`, `afr_telemetry/src/labels/mod.rs`).
+  (`af_observability/src/semconv/provider.rs`, `afr_telemetry/src/labels/mod.rs`).
   These labels describe telemetry only; saved model settings choose the route.
 
   The `invoke_agent` span uses the same canonical `gen_ai.provider.name`. A tool
@@ -400,10 +400,10 @@ the allowlist proof.
 |---|---|---|
 | structured stderr | installed, called | `rustd/crates/daemon/agentsfleetd/src/logs.rs` installs the subscriber on stderr at boot; `AGENTSFLEET_LOG_LEVEL` sets the level |
 | server spans | emitted | `rustd/crates/daemon/afd_api/src/router/trace.rs` opens one `http.server.request` span per matched request, carrying the route template, the method and the status — never the raw path |
-| OTLP logs | installed, called when configured | `rustd/crates/protocol/afd_otlp/src/pipelines/providers.rs` builds the log exporter `agentsfleetd`'s `telemetry/mod.rs` asks for; `logs.rs` bridges every `tracing` event the stderr layer already sees into it through the reload slot, so the two streams are one emit read twice |
-| OTLP traces | installed, called when configured | the same module builds the span exporter inside `afd_observability`'s counting wrapper; `serve/exporting.rs` spawns `otlp_export`, which samples the resident set and runs the shutdown flush |
-| OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/protocol/afd_observability/src/producers/`); a family with no producer fails `every_census_family_has_a_producer` |
-| PostHog events | installed, called when configured | `rustd/crates/protocol/afd_observability/src/product/mod.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
+| OTLP logs | installed, called when configured | `rustd/crates/protocol/af_otlp/src/pipelines/providers.rs` builds the log exporter `agentsfleetd`'s `telemetry/mod.rs` asks for; `logs.rs` bridges every `tracing` event the stderr layer already sees into it through the reload slot, so the two streams are one emit read twice |
+| OTLP traces | installed, called when configured | the same module builds the span exporter inside `af_observability`'s counting wrapper; `serve/exporting.rs` spawns `otlp_export`, which samples the resident set and runs the shutdown flush |
+| OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/protocol/af_observability/src/producers/`); a family with no producer fails `every_census_family_has_a_producer` |
+| PostHog events | installed, called when configured | `rustd/crates/protocol/af_observability/src/product/mod.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
 | runner export | installed, called when configured | `run` in `rustd/crates/runner/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot, and fleet-runtime leases run inside a `runner.lease` span; authoring currently has no equivalent lease span |
 | runner collector | installed in dev; real lease spans and provider histogram verified in Grafana Nov 04, 2026 | `deploy/baremetal/otelcol-runner.{yml,nft,service}` and `install-collector.sh`; localhost receiver behind root-only admission; traces and metrics only; actual-sandbox probe pending |
 
@@ -448,8 +448,8 @@ The segments are not a partition: the sandbox wait runs beside the model's time.
 Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `lease_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
 
 **`fleet.delivery` is a custom control-plane span.** It has its own root
-(`rustd/crates/protocol/afd_observability/src/delivery/mod.rs`). `DELIVERY_SPAN_KEYS` in
-`rustd/crates/protocol/afd_observability/src/semconv/mod.rs` declares its attributes.
+(`rustd/crates/protocol/af_observability/src/delivery/mod.rs`). `DELIVERY_SPAN_KEYS` in
+`rustd/crates/protocol/af_observability/src/semconv/mod.rs` declares its attributes.
 
 The
 Generative Artificial Intelligence (GenAI) keys appear where the source fact
@@ -472,11 +472,11 @@ never becomes a span attribute.
 **Route policy.** None yet. The daemon traces every matched request: it has no
 head sampler and no per-class span budget, so nothing is suppressed and no
 family counts suppression. The only bound is the shared batch queue, `SPAN_QUEUE` (2048 spans) in
-`rustd/crates/protocol/afd_otlp/src/pipelines/mod.rs`, which drops past its cap without
+`rustd/crates/protocol/af_otlp/src/pipelines/mod.rs`, which drops past its cap without
 counting.
 
 Why it matters: an idle runner sends one heartbeat every 10 s
-(`HEARTBEAT_INTERVAL` in `rustd/crates/foundation/afd_core/src/timing.rs`), and each
+(`HEARTBEAT_INTERVAL` in `rustd/crates/foundation/af_core/src/timing.rs`), and each
 one is a matched request and therefore a span. Span volume grows with runner
 count until a route policy fills the declared `reason` set (`noisy_route`,
 `runner_rejection_budget`, `server_error_budget`, `sampled_success_budget`,
@@ -514,7 +514,7 @@ read. The browser client sends a fresh `traceparent` root per request
 (`ui/packages/app/lib/api/client.ts`); the daemon does not read it yet (§Traces).
 
 Label members live in the label registry below
-(`rustd/crates/protocol/afd_observability/src/metrics/label/library.rs`). Each family's
+(`rustd/crates/protocol/af_observability/src/metrics/label/library.rs`). Each family's
 series ceiling is its census `fixed:<n>` value, 124 in total, and
 `every_declared_ceiling_admits_its_label_product` fails when a new enum member
 makes a family's label product outgrow its ceiling.
@@ -559,7 +559,7 @@ not capture, so both were removed rather than left looking like a capability.
 ## PostHog is product analytics, not operations telemetry
 
 The client is optional: with no project key, `Analytics::silent` reports
-nothing (`rustd/crates/protocol/afd_observability/src/product/mod.rs`). With one, the
+nothing (`rustd/crates/protocol/af_observability/src/product/mod.rs`). With one, the
 pinned `posthog-rs` client runs on its defaults: a flush every 100 events or
 5 s, and a 10 000-event queue that drops new events with one warning when
 full. Failure drops analytics without failing a request. `capture` returns once
@@ -663,14 +663,14 @@ would present as a collector fault for as long as nobody checked.
 No endpoint is the ordinary case and not a fault. The daemon boots, serves,
 logs `startup_otel_disabled`, and supervises no export task. With one, boot
 (`rustd/crates/daemon/agentsfleetd/src/telemetry/mod.rs`, through the builder both
-binaries share in `rustd/crates/protocol/afd_otlp/`) builds four pipelines on the
+binaries share in `rustd/crates/protocol/af_otlp/`) builds four pipelines on the
 published `opentelemetry-otlp` exporter over HTTP, each posting under its
 signal path (`/v1/traces`, `/v1/metrics`, `/v1/logs`) appended to the one
 endpoint, on the SDK's own batch threads with a blocking client. The periodic
 metric reader collects on a plain thread with no async reactor, so an async
 client awaited there would have no driver.
 
-- **Spans** ride the SDK's batch span processor inside `afd_observability`'s
+- **Spans** ride the SDK's batch span processor inside `af_observability`'s
   counting wrapper, whose number is spans the exporter failed to send.
 - **Log records** ride the batch log processor inside a counting wrapper of
   their own, whose number is RECORDS the exporter failed to send. It is the
@@ -689,7 +689,7 @@ client awaited there would have no driver.
   Collector selection cannot split a daemon's accumulation.
 
   The common builder also retains a delta provider for runner families declared as windows.
-  Both readers collect every 5 s (`COLLECT_INTERVAL` in `rustd/crates/protocol/afd_otlp/src/pipelines/mod.rs`).
+  Both readers collect every 5 s (`COLLECT_INTERVAL` in `rustd/crates/protocol/af_otlp/src/pipelines/mod.rs`).
   Their counting wrappers record failed collection cycles.
 
   Boot claims each census family under its declared kind and series ceiling.
@@ -734,7 +734,7 @@ rather than bounded.
 
 **Model attribution carries no metric-family series cap.**
 The cost families copy the run's model name into `gen_ai.request.model`
-(`rustd/crates/protocol/afd_observability/src/producers/cost.rs`). Runtime dispatch resolves
+(`rustd/crates/protocol/af_observability/src/producers/cost.rs`). Runtime dispatch resolves
 the saved model reference through `model.platform_models` for both owner and
 platform models (`rustd/crates/daemon/afd_credential/src/provider/registered/sql/mod.rs`).
 Catalogue updates can add model identities over time.
@@ -747,7 +747,7 @@ Exact per-model cost stays a Postgres query against `billing.usage_lines`.
 A provider outside the compiled public naming registry **omits its attribute and keeps the measurement** on the `fleet.delivery` span.
 The omission increments
 `agentsfleet_otel_attribute_omitted_total{attribute,reason}`
-(`rustd/crates/protocol/afd_observability/src/delivery/mod.rs`).
+(`rustd/crates/protocol/af_observability/src/delivery/mod.rs`).
 
 The pinned
 [OpenTelemetry provider reference](https://github.com/open-telemetry/semantic-conventions-genai/blob/2e994c6d59a93bb4fc1752c5378eedb9b8e14d6b/docs/registry/attributes/gen-ai.md#gen-ai-provider-name)
@@ -764,7 +764,7 @@ The `budget_exhausted` and
 
 All three OTLP signals share one resource (`service.name`,
 `service.namespace=agentsfleet`, `service.version`, `service.instance.id` only
-when a trusted id exists; `rustd/crates/protocol/afd_otlp/src/resource.rs`). No schema
+when a trusted id exists; `rustd/crates/protocol/af_otlp/src/resource.rs`). No schema
 URL is set.
 
 The cost families emit in the service layer, strictly after the money

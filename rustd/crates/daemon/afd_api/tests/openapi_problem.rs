@@ -19,8 +19,8 @@
 
 use std::collections::BTreeSet;
 
+use af_core::error_code;
 use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
-use afd_core::error_code;
 use afd_http::envelope::Resolution;
 use afd_http::openapi::problem::ProblemBody;
 use axum::body::to_bytes;
@@ -271,7 +271,7 @@ fn schema_fields(document: &serde_json::Value) -> (BTreeSet<String>, BTreeSet<St
 /// The keys a plain refusal puts on the wire, across every registered code.
 async fn registered_keys() -> BTreeSet<String> {
     let mut sent = BTreeSet::new();
-    for problem in afd_core::problem::entries() {
+    for problem in af_core::problem::entries() {
         sent.extend(wire_keys(ProblemResponse::new(problem.code(), "d", "r")).await);
     }
     sent

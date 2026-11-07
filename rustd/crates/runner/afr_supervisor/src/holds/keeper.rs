@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::{self, Clock};
-use afd_core::id::Uuid7;
-use afd_core::timing::SANDBOX_HOLD_IDLE;
+use af_core::clock::{self, Clock};
+use af_core::id::Uuid7;
+use af_core::timing::SANDBOX_HOLD_IDLE;
 use afr_sandbox::Sandbox;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;

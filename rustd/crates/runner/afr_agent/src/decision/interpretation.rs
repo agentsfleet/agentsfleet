@@ -2,11 +2,11 @@
 
 use super::{routing::Multiplicity, unavailable};
 use crate::{Meter, Result};
-use afd_wire::{
+use af_providers::{Chunk, Message, Provider, Request};
+use af_wire::{
     lease::LeasePayload,
     task::{TaskInputCandidate, TaskProposedItem},
 };
-use afr_providers::{Chunk, Message, Provider, Request};
 use futures_util::StreamExt as _;
 use tokio_util::sync::CancellationToken;
 
@@ -22,7 +22,7 @@ pub(super) async fn propose(
     tasks: &[TaskInputCandidate],
     count: Multiplicity,
 ) -> Result<Vec<TaskProposedItem>> {
-    let scrub = afr_secrets::Scrub::new(&lease.policy)?;
+    let scrub = af_secrets::Scrub::new(&lease.policy)?;
     // Byte spans must refer to exactly the source the model sees. Redaction
     // cannot silently remap offsets into a different original message.
     if scrub.text(message).as_ref() != message {
@@ -76,7 +76,7 @@ pub(crate) async fn collect(
         match chunk? {
             Chunk::Usage(usage) => meter.add(usage),
             Chunk::Text {
-                kind: afd_wire::activity::StreamTextKind::Answer,
+                kind: af_wire::activity::StreamTextKind::Answer,
                 text: part,
             } => {
                 if text.len().saturating_add(part.len()) > MAX_BYTES {

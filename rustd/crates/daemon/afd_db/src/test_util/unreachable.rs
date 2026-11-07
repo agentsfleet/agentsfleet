@@ -5,7 +5,7 @@
 //! same way: the transport class, in milliseconds, with no socket opened until
 //! the first acquire asks for one.
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 use crate::config::{ACQUIRE_TIMEOUT_KNOB, DbRole, PoolConfig};
 use crate::pool::Db;

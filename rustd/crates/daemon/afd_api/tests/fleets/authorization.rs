@@ -128,7 +128,7 @@ async fn a_scoped_person_reaches_every_verb_on_their_own_workspace() {
             (status, code.as_str()),
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
+                af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
             ),
             "{method} {path}: only the verb answers with the datastore's refusal"
         );

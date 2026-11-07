@@ -48,7 +48,7 @@ pub(crate) async fn change<D: Services>(
     let request = input::patch(&body)?;
     let expected = expected(&headers)?.ok_or_else(|| {
         Refusal::coded(
-            afd_core::error_code::AUTHORING_PRECONDITION,
+            af_core::error_code::AUTHORING_PRECONDITION,
             "Send the current fleet If-Match tag",
         )
     })?;

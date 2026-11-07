@@ -1,12 +1,12 @@
 //! Hand-written `Debug` for the daemon-only wire types that carry a secret.
 //!
-//! The same rule as `afd_wire::redact`, whose helpers render the value: the
+//! The same rule as `af_wire::redact`, whose helpers render the value: the
 //! secret is redacted on `Debug` only and still serializes to the wire, or
 //! deserializes from it unchanged. `tests/redaction.rs` proves both halves.
 
 use std::fmt::{self, Debug, Formatter};
 
-use afd_wire::redact::{RUNNER_TOKEN_FIELD, redacted};
+use af_wire::redact::{RUNNER_TOKEN_FIELD, redacted};
 
 use crate::admin::RunnerTokenRotatedResponse;
 use crate::secret::{ReplaceSecretRequest, StoreSecretRequest};

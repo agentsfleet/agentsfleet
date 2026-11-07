@@ -1,5 +1,5 @@
 //! Private run working state, separate from reusable semantic memory.
-use afd_context::{Checkpoint, Result};
+use af_context::{Checkpoint, Result};
 
 /// Durable effects supplied by the supervisor under the live run fence.
 #[async_trait::async_trait]

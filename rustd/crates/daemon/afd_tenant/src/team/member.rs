@@ -1,6 +1,6 @@
 //! Listing an account's members, and removing one without leaving it ownerless.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use super::{Member, Removal, Team};

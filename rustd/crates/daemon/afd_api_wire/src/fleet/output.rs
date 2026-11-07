@@ -35,7 +35,7 @@ pub struct FleetResponse<D = Value, P = Value, O = Value, S = Value> {
     /// Pinned policy interpretation.
     pub policy_semantics: String,
     /// Complete validated native setup, with no private transcript.
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_fleet_runtime::definition::DefinitionSchema))]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_fleet_runtime::definition::DefinitionSchema))]
     pub definition: D,
     /// Live prerequisites and authorized recovery actions.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
@@ -49,15 +49,15 @@ pub struct FleetResponse<D = Value, P = Value, O = Value, S = Value> {
     /// Manual webhook addresses from the declared setup.
     pub webhook_urls: Vec<WebhookUrl<'static>>,
     /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// Last update timestamp, such as `2026-10-24T05:00:00.000Z`.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
     /// Exact lifetime event count.
     pub events_processed: String,
     /// Exact lifetime spend in nanos.
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     pub budget_used_nanos: String,
     /// Current unanswered approval gates.
     pub pending_approvals: i64,

@@ -3,8 +3,8 @@ use super::{
     super::fixture::{exercise, id},
     fixture::Decisions,
 };
+use af_wire::task::TaskState;
 use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::TaskState;
 use serde_json::Value;
 pub(super) mod support;
 
@@ -67,7 +67,7 @@ async fn changed_setup_blocks_reclaimed_task_without_issuing_another_lease() {
         let config = serde_json::json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
             "budget":{"daily_nanos":"900000000"},"decision_policy":super::fixture::policy()}});
         case.held.fixtures.native_config(&case.held.fleet, &config.to_string()).await;
-        let body = case.held.fixtures.plane().lease_claimed(acquired, &case.held.runner, afd_core::clock::now()).await.expect("changed authority is a native refusal");
+        let body = case.held.fixtures.plane().lease_claimed(acquired, &case.held.runner, af_core::clock::now()).await.expect("changed authority is a native refusal");
         let response: Value = serde_json::from_str(&body).expect("native no-work response");
         assert!(response.get("lease").expect("lease field").is_null());
         support::assert_blocked(case, &task.task_id).await;
@@ -79,12 +79,12 @@ pub(super) async fn reclaimed(
     case: &super::super::fixture::Case,
     acquired: afd_fleet::lease::Acquired,
 ) -> Value {
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let body = case
         .held
         .fixtures
         .plane()
-        .lease_claimed(acquired, &case.held.runner, afd_core::clock::now())
+        .lease_claimed(acquired, &case.held.runner, af_core::clock::now())
         .await
         .expect("ordinary reclaim and full issuance");
     let response: Value = serde_json::from_str(&body).expect("native lease response");

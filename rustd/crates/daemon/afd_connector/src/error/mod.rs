@@ -30,7 +30,7 @@
 //! carried as one, and `referenced_by` lets the route render it as the 409 it
 //! is.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 pub mod detail;
 mod raise;
@@ -50,7 +50,7 @@ pub(crate) use self::raise::{
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A connector failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -91,13 +91,13 @@ pub(crate) enum ErrorKind {
     #[error("a connect nonce could not be minted")]
     Entropy {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     #[error("a minted connector install identifier is not a canonical one")]
     IdentifierShape {
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     /// The vendor could not be reached at all.

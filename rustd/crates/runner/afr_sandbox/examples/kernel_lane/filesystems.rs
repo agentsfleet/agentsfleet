@@ -8,7 +8,7 @@ use std::ffi::{CStr, CString};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_sandbox::{Caching, HostTools, ProbePaths, WorkspaceDisk, probe};
 use libtest_mimic::Failed;
 use rustix::mount::{MountFlags, UnmountFlags};

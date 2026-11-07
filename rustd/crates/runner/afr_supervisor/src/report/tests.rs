@@ -1,16 +1,16 @@
 use std::time::Duration;
 
-use afd_wire::report::{FailureClass, Outcome};
+use af_wire::report::{FailureClass, Outcome};
 use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 
+use af_providers::Usage;
 use afr_agent::Meter;
-use afr_providers::Usage;
 
 use super::{Ending, narrow, report};
 use crate::test_support::{FENCING, FLEET_ID, LEASE_ID, answer, lease};
 
 /// Each request line's fresh input, cached input and output.
-fn requests(report: &afd_wire::report::ReportRequest<'_>) -> Vec<(u32, u32, u32)> {
+fn requests(report: &af_wire::report::ReportRequest<'_>) -> Vec<(u32, u32, u32)> {
     report
         .requests
         .0

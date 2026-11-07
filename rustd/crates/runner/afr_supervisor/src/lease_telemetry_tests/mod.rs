@@ -8,8 +8,8 @@
 
 use std::sync::{Arc, PoisonError};
 
-use afd_core::env::MapEnv;
-use afd_observability::semconv::{ATTR_EVENT_ID, ATTR_LEASE_ID, SPAN_RUNNER_LEASE};
+use af_core::env::MapEnv;
+use af_observability::semconv::{ATTR_EVENT_ID, ATTR_LEASE_ID, SPAN_RUNNER_LEASE};
 use afr_agent::{AgentEngine, Loop};
 use afr_sandbox::Limits;
 use afr_telemetry::labels::SandboxStart;

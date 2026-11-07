@@ -31,7 +31,7 @@
 //! problems — a bound is a runner sending too much, a disagreement is a runner
 //! claiming health its own checks contradict.
 
-use afd_wire::runner::SelftestReport;
+use af_wire::runner::SelftestReport;
 use garde::Validate as _;
 
 use crate::error::{Result, rejected};
@@ -46,16 +46,16 @@ use crate::error::{Result, rejected};
 ///
 /// Sized to the probe's vocabulary plus room for a per-operator-bind check
 /// each, not to a guess.
-pub const MAX_SELFTEST_CHECKS: usize = afd_wire::runner::SELFTEST_CHECKS_MAX;
+pub const MAX_SELFTEST_CHECKS: usize = af_wire::runner::SELFTEST_CHECKS_MAX;
 
 /// Longest a check's name may be.
-pub const MAX_CHECK_NAME_LEN: usize = afd_wire::runner::CHECK_NAME_MAX_BYTES;
+pub const MAX_CHECK_NAME_LEN: usize = af_wire::runner::CHECK_NAME_MAX_BYTES;
 
 /// Longest a check's prose cause may be.
-pub const MAX_CHECK_DETAIL_LEN: usize = afd_wire::runner::CHECK_DETAIL_MAX_BYTES;
+pub const MAX_CHECK_DETAIL_LEN: usize = af_wire::runner::CHECK_DETAIL_MAX_BYTES;
 
 /// Longest the policy strings travelling with a verdict may be.
-pub const MAX_SELFTEST_POLICY_LEN: usize = afd_wire::runner::SELFTEST_POLICY_MAX_BYTES;
+pub const MAX_SELFTEST_POLICY_LEN: usize = af_wire::runner::SELFTEST_POLICY_MAX_BYTES;
 
 /// Why a verdict past a cap, or carrying an empty name, detail or policy
 /// string, was refused.
@@ -107,7 +107,7 @@ mod tests {
     )]
     use std::borrow::Cow;
 
-    use afd_wire::runner::SelftestCheck;
+    use af_wire::runner::SelftestCheck;
 
     use super::*;
 

@@ -7,8 +7,8 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
-use afr_providers::Message;
+use af_core::test_util::trace::Capture;
+use af_providers::Message;
 use afr_tools::catalog::{
     DELEGATE, HTTP_REQUEST, MEMORY_RECALL, SEND_INPUT, SPAWN, UPDATE_PLAN, WAIT_AGENT, WEB_SEARCH,
 };

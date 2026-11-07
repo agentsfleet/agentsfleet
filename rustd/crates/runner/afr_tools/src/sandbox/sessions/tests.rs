@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_executor::{Ending, Executor, ProcessId, Spawn};
 
 use super::{

@@ -33,15 +33,15 @@ afd_credential.workspace = true
 afd_connector.workspace = true
 afd_cron.workspace = true
 afd_ingress.workspace = true
-afd_core.workspace = true
-afd_context.workspace = true
-afd_crypto.workspace = true
+af_core.workspace = true
+af_context.workspace = true
+af_crypto.workspace = true
 afd_events.workspace = true
 afd_db.workspace = true
 afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_ops.workspace = true
-afd_fleet_runtime.workspace = true
+af_fleet_runtime.workspace = true
 afd_identity.workspace = true
 # The invite email the invite routes send through, behind `services::InviteMail`.
 afd_mail.workspace = true
@@ -49,13 +49,13 @@ afd_mail.workspace = true
 afd_memory.workspace = true
 # The interim message poster, behind `Services::interjector`.
 afd_outbound.workspace = true
-afd_observability.workspace = true
+af_observability.workspace = true
 afd_runner.workspace = true
 afd_sse.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_api_wire.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 axum = { workspace = true, features = ["json", "matched-path", "query"] }
 http.workspace = true
 garde.workspace = true
@@ -87,12 +87,12 @@ afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the unknown-field log line is asserted through.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 afd_connector = { workspace = true, features = ["test-util"] }
 afd_cron = { workspace = true, features = ["test-util"] }
 afd_ingress = { workspace = true, features = ["test-util"] }
 # The mocked entropy a request id is minted from in its own suite.
-afd_crypto = { workspace = true, features = ["test-util"] }
+af_crypto = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower = { workspace = true, features = ["util"] }
 

@@ -26,10 +26,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::paging::Cursor;
+use af_core::paging::Cursor;
+use af_wire::memory::{MemoriesResponse, MemoryEntry};
 use afd_memory::Record;
 use afd_memory::page::After;
-use afd_wire::memory::{MemoriesResponse, MemoryEntry};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
@@ -119,11 +119,11 @@ pub(crate) async fn list<D: Services>(
     .into_response())
 }
 
-fn log_zero_hit(zero_hit: bool, fleet: &afd_core::id::Uuid7) {
+fn log_zero_hit(zero_hit: bool, fleet: &af_core::id::Uuid7) {
     if zero_hit {
         // A search path can be perfectly healthy and useless: this is the one
         // family that says a fleet's memory is not being reached.
-        afd_observability::producers::memory::search_found_nothing();
+        af_observability::producers::memory::search_found_nothing();
         let fleet_field = fleet.as_str();
         tracing::debug!(
             fleet_id = fleet_field,

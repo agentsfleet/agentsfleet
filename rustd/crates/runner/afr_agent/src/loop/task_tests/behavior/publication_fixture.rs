@@ -127,7 +127,7 @@ pub(super) async fn publish(
             recovered_task: None,
             memory: afr_memory::Seed::default(),
             executor,
-            mint: &afr_egress::testing::CountingMint::never(),
+            mint: &af_egress::testing::CountingMint::never(),
             verbs: native,
             checkpoint: &crate::testing::Discard,
             context_checkpoints: &crate::testing::ContextMemory::default(),

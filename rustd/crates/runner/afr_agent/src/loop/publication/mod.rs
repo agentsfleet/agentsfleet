@@ -3,9 +3,9 @@
 mod process;
 
 use super::Harness;
-use afd_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
+use af_providers::ToolSpec;
+use af_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
 use afr_executor::Spawn;
-use afr_providers::ToolSpec;
 use afr_tools::{Schema, ToolErrorCode, ToolOutput};
 use serde::Deserialize;
 use std::{sync::LazyLock, time::Duration};
@@ -139,7 +139,7 @@ impl Harness<'_, '_> {
             .shared
             .lease
             .verbs
-            .task_effects(afd_wire::task::TaskEffectsQuery {
+            .task_effects(af_wire::task::TaskEffectsQuery {
                 fencing_token: self.shared.fencing_token,
                 task_id: task.task_id.to_string(),
                 ordinal_after: self.reconciled_effect_ordinal,
@@ -177,7 +177,7 @@ impl Harness<'_, '_> {
             .await?;
         let effect = self.submit_candidate(task, head, before).await?;
         let confirmed =
-            effect.state == afd_wire::task::TaskEffectState::Confirmed && effect.commit.is_some();
+            effect.state == af_wire::task::TaskEffectState::Confirmed && effect.commit.is_some();
         let output = serde_json::json!({ "publication": effect,
             "validation": { "argv": input.validation, "exit_code": 0, "output": String::from_utf8_lossy(&output) } }).to_string();
         Ok(if confirmed {
@@ -189,10 +189,10 @@ impl Harness<'_, '_> {
 
     async fn submit_candidate(
         &self,
-        task: &afd_wire::task::TaskContext<'_>,
+        task: &af_wire::task::TaskContext<'_>,
         head: &str,
         before: Candidate,
-    ) -> Result<afd_wire::task::TaskEffect, ToolOutput> {
+    ) -> Result<af_wire::task::TaskEffect, ToolOutput> {
         let request = TaskEffectInput {
             operation_id: crate::decision::identity().map_err(|source| {
                 failed(
@@ -202,7 +202,7 @@ impl Harness<'_, '_> {
                 )
             })?,
             fencing_token: self.shared.fencing_token,
-            task: afd_wire::task::DecisionTaskVersion {
+            task: af_wire::task::DecisionTaskVersion {
                 task_id: task.task_id.to_string(),
                 generation: task.generation,
             },

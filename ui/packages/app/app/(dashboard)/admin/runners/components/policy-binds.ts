@@ -2,16 +2,16 @@ import { BIND_MODE, type BindMode, type ExtraBind } from "@/lib/api/runners-type
 
 // The extra-bind half of the assignment form: bounds, grammar, and the
 // form-row <-> wire conversion. Mirrors the bind rules in
-// rustd/crates/protocol/afd_wire/src/runner/rules.rs so the dialog refuses an entry
+// rustd/crates/protocol/af_wire/src/runner/rules.rs so the dialog refuses an entry
 // in-form rather than as a 400, and split from PolicyFields so neither file
 // carries both the four scalar fields and the bind list.
 //
 // The rules here are a MIRROR, never the enforcement. The garde rules on
 // `ExtraBind` and `AssignedPolicy::extra_binds`
-// (rustd/crates/protocol/afd_wire/src/runner/mod.rs) are the daemon's boundary; this exists
+// (rustd/crates/protocol/af_wire/src/runner/mod.rs) are the daemon's boundary; this exists
 // so an operator hears the reason next to the row they typed.
 
-/** `EXTRA_BINDS_MAX` in rustd/crates/protocol/afd_wire/src/runner/rules.rs. */
+/** `EXTRA_BINDS_MAX` in rustd/crates/protocol/af_wire/src/runner/rules.rs. */
 export const MAX_EXTRA_BINDS = 16;
 /** `BIND_PATH_MAX_BYTES` (rules.rs) — PATH_MAX on Linux. */
 export const MAX_BIND_PATH_LEN = 4096;

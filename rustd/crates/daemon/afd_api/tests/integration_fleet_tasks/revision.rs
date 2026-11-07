@@ -1,7 +1,7 @@
 //! A real lifecycle transition invalidates the previous strong resource tag.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::task::{TaskControl, TaskLifecycle as _, TaskScope};
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
@@ -18,11 +18,11 @@ pub(super) async fn advance(fixture: &Tasks<'_>) {
         .expect("native instructions") = json!(
         "Use the revised instructions for new work; existing tasks retain their accepted goals."
     );
-    let definition = afd_fleet_runtime::definition::Definition::parse(
+    let definition = af_fleet_runtime::definition::Definition::parse(
         &serde_json::to_string(&value).expect("revised fixture document"),
     )
     .expect("revised definition remains valid");
-    let digest = afd_fleet_runtime::definition::canonical_digest(&definition)
+    let digest = af_fleet_runtime::definition::canonical_digest(&definition)
         .expect("native revised content identity");
     let mut connection = fixture
         .base

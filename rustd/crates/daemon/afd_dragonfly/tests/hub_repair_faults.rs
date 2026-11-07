@@ -21,7 +21,7 @@ use crate::fake_redis::{FakeRedis, Reply, push_frame};
 use crate::hub_gap_faults::{
     BUDGET, FIRST, RETRY, deliver, fake_and_hub, fake_and_hub_on, gap_on, subscribes_seen,
 };
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 /// A slot map at the fake's own address that owns every slot but `channel`'s,
 /// so the driver can route through it and the hub finds the channel unowned.

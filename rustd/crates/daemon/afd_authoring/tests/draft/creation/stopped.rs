@@ -4,14 +4,14 @@ use super::{
     super::{attempt::Attempt, fixture::now, mint},
     fixture::Case,
 };
+use af_core::error_code;
+use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 use afd_authoring::{
     SavedFleet,
     types::{
         DraftPatch, DraftState, MessageQuery, SaveFleet, SaveSource, SendMessage, Source, Start,
     },
 };
-use afd_core::error_code;
-use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 use serde_json::json;
 
 async fn stopped(c: &Case) -> (Attempt, SaveFleet) {
@@ -128,7 +128,7 @@ fn late_report() -> Report {
 async fn finish_setup(
     c: &Case,
     saved: SavedFleet,
-    operation: &afd_core::id::Uuid7,
+    operation: &af_core::id::Uuid7,
     request: SaveFleet,
     activate: bool,
 ) -> DraftState {

@@ -9,10 +9,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_api_wire::admin::RunnerAdminAction;
-use afd_core::id::Uuid7;
 use afd_fleet::lease::Billed;
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use crate::requests::enrolment;
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
@@ -43,7 +43,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .map(|error| error.code());
     assert_eq!(
         in_service,
-        Some(afd_core::error_code::RUNNER_MUST_REVOKE_FIRST),
+        Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST),
         "a runner still in service keeps its record; the revoke is the destructive step"
     );
 
@@ -53,7 +53,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
             ACTOR,
-            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
+            af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
         )
         .await
         .expect("an active runner may be revoked");
@@ -71,7 +71,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
         .map(|error| error.code());
     assert_eq!(
         gone,
-        Some(afd_core::error_code::RUNNER_NOT_FOUND),
+        Some(af_core::error_code::RUNNER_NOT_FOUND),
         "the row is the verdict: retired once, it is not found the second time"
     );
 }
@@ -93,7 +93,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let now = afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1));
+    let now = af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1));
     // Select finds the work, the narrative log opens, and issue writes the
     // row. The retirement predicate reads the row, so every step is needed,
     // as `integration_lease_issue` does them.
@@ -133,7 +133,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
             &runner,
             RunnerAdminAction::Revoke,
             ACTOR,
-            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
+            af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
         )
         .await
         .expect("an active runner may be revoked");
@@ -141,7 +141,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     let still_leased = fixtures.runners().delete_revoked(&runner).await.err();
     assert_eq!(
         still_leased.as_ref().map(afd_runner::Error::code),
-        Some(afd_core::error_code::RUNNER_MUST_REVOKE_FIRST)
+        Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST)
     );
     assert_eq!(
         still_leased.as_ref().map(afd_runner::Error::detail),

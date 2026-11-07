@@ -3,12 +3,12 @@
 //! Tail frames, outbound appends, and lease audit events cannot undo acceptance
 //! of the report. The committed outbound obligation repairs a missed append.
 
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_observability::producers;
+use af_wire::report::ReportRequest;
 use afd_billing::Nanos;
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
 use afd_events::Closed;
-use afd_observability::producers;
-use afd_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use crate::error::Result;
@@ -81,7 +81,7 @@ impl Plane {
         {
             let event = EVENT_COMPLETION_PUBLISHED;
             tracing::debug!(fleet_id = fleet, lease_id, event);
-            completed_at = Some(afd_core::clock::now());
+            completed_at = Some(af_core::clock::now());
         }
         step(
             "record_released",

@@ -121,10 +121,10 @@ deadlines ─► sweeper:expiry (daemon) and one host timer (runner)
 | `rustd/crates/daemon/afd_fleet/src/lease/renew/mod.rs`, `sql/renew.rs`, `sql/bill_expired_slice.sql`, `billing_sweep.rs` | EDIT | §7: the batch verb; the expiry statement advances the line count |
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_for_renew.sql`, `sql/meter_lease.sql`, `sql/meter.rs` | DELETE | §7: both callers of the meter replaced |
 | `rustd/crates/daemon/afd_gateway/**`, `afd_fleet/src/lease/rebuild.rs`, `afd_fleet/src/lease/sql/select_runner_live_leases.sql` (all created by M243), `afd_http/src/services/leasing/**` | EDIT | §6, §7: the session's lease cache gains pricing facts and the funds tick; `renew_batch` calls the batch verb |
-| `rustd/crates/foundation/afd_core/src/timing.rs` | EDIT | §7: `FUNDS_CHECK_TICKS`, `EXPIRY_TICK` and their asserts |
+| `rustd/crates/foundation/af_core/src/timing.rs` | EDIT | §7: `FUNDS_CHECK_TICKS`, `EXPIRY_TICK` and their asserts |
 | `rustd/crates/daemon/agentsfleetd/src/sweepers/clock.rs` | CREATE | §7: `sweeper:expiry` |
 | `rustd/crates/daemon/agentsfleetd/src/sweepers/mod.rs`, `billing.rs`, `authoring.rs`, `afd_authoring/src/maintenance/mod.rs`, `agentsfleetd/tests/supervisor.rs` | EDIT | §7: the expiry passes move to one clock; inventory follows |
-| `rustd/crates/protocol/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3: `agentsfleet_lease_cache_lookups_total` |
+| `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3: `agentsfleet_lease_cache_lookups_total` |
 | `rustd/crates/daemon/afd_fleet/tests/integration_lease_caches.rs`, `integration_renew_batch.rs`, `integration_report_statement.rs`, `afd_credential/tests/integration_platform_key_cache.rs` | CREATE | §3–§7 Dimensions |
 | `rustd/crates/daemon/afd_fleet/tests/integration_report_renewal_lock.rs` → `integration_report_renewal_lines.rs`; `integration_lease_plan/meter.rs`; fixtures under `afd_fleet/tests/**` calling `record_received`, `load_for_report` or `claim_and_settle` | MOVE, EDIT | §4, §6, §7: the race test loses the host lock; plan tests reach the new statements |
 | `rustd/crates/daemon/afd_bench/src/statements/paths.rs`, `statements/tests.rs`, `lane/lease/drain/runner.rs`, `lane/lease/seed/tests.rs` | EDIT | §8: fragments follow; the drain counts memory windows |
@@ -285,7 +285,7 @@ Funds go through `Biller::check` once per distinct payer: on a session's first t
 
 - **Wire:** none. `renew_batch` and its per-lease answers keep M243's shapes. Refusals keep `UZ-RUN-011`, `UZ-RUN-012`, `UZ-RUN-015`, M243's `UZ-RUN-022` and the max-runtime code. No route, field or error code is added.
 - **Schema:** `runner.leases.daemon_line_count INTEGER NOT NULL`; `vault.secrets.resource_version BIGINT NOT NULL`, moved by trigger on every update.
-- **Timing (`afd_core::timing`):** `FUNDS_CHECK_TICKS` = 3, asserted at least 1 and `FUNDS_CHECK_TICKS × RENEWAL_TICK < LEASE_TTL`; `EXPIRY_TICK` = 2 s, asserted below `LEASE_TTL` (TIM).
+- **Timing (`af_core::timing`):** `FUNDS_CHECK_TICKS` = 3, asserted at least 1 and `FUNDS_CHECK_TICKS × RENEWAL_TICK < LEASE_TTL`; `EXPIRY_TICK` = 2 s, asserted below `LEASE_TTL` (TIM).
 - **Internal:** `Acquired` carries the claim's fleet facts and versions. `PriceBook` carries its `catalogue_version`. `Plane::renew_batch(runner, frame)` answers one verdict per lease. `Memories::hydrate_scoped` takes the claim's scope. Cache keys build only from statement rows.
 - **Metric:** `agentsfleet_lease_cache_lookups_total{cache, outcome}`, with `cache` ∈ `definition`, `price_book`, `platform_key` and `outcome` ∈ `hit`, `miss`.
 

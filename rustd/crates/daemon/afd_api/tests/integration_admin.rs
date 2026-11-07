@@ -164,7 +164,7 @@ async fn a_model_outside_the_catalogue_is_named_as_absent(
             .await
             .get("error_code")
             .and_then(Value::as_str),
-        Some(afd_core::error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE.as_str())
+        Some(af_core::error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE.as_str())
     );
 }
 

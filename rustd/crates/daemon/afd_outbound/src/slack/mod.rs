@@ -48,10 +48,10 @@
 //! job's answer as the fleet wrote it, so an answer that names the channel
 //! shows the name and pages nobody.
 
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretString;
 use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};
-use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretString;
 use afd_dragonfly::OutboundDelivery;
 use serde::{Deserialize, Serialize};
 
@@ -276,7 +276,7 @@ impl SlackPoster {
             Err(reason) => {
                 // The code `failed` stamps on every other vendor failure, so
                 // this line joins them for the same workspace.
-                let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
+                let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
                 tracing::warn!(
                     error_code,
                     workspace_id,

@@ -1,8 +1,8 @@
 //! Real router proposals use an isolated admitted row until dispatch is enabled.
 
 use super::{fixture::Fixture, json_body, mint, send};
+use af_core::id::Uuid7;
 use afd_auth::{credential::Presented, directory::Digest};
-use afd_core::id::Uuid7;
 use afd_db::test_util::{RunnerPolicy, RunnerSeed};
 use axum::Router;
 use http::{Method, StatusCode};

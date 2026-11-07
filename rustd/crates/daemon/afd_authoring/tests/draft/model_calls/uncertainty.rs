@@ -4,8 +4,8 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture, mint},
     fixture::{self, Provider},
 };
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn competing_dispatch_and_same_intent_retry_cannot_duplicate_an_inflight_e
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn a_refusal_while_a_dispatch_is_in_flight_shows_its_usage_as_unknown() {
-    use afd_wire::authoring::{Knowledge, Meter, Renew};
+    use af_wire::authoring::{Knowledge, Meter, Renew};
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let mut stub = Provider::known();

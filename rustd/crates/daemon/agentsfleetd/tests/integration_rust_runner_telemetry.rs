@@ -25,8 +25,8 @@
 use std::collections::BTreeSet;
 use std::sync::PoisonError;
 
-use afd_core::env::MapEnv;
-use afd_observability::semconv::{ATTR_EVENT_ID, ATTR_LEASE_ID, SPAN_RUNNER_LEASE};
+use af_core::env::MapEnv;
+use af_observability::semconv::{ATTR_EVENT_ID, ATTR_LEASE_ID, SPAN_RUNNER_LEASE};
 use afr_telemetry::{Endpoint, Telemetry};
 use agentsfleetd::supervisor::Supervisor;
 use tokio_util::sync::CancellationToken;
@@ -150,7 +150,7 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = CancellationToken::new();
-    let network = afr_egress::Network::new().expect("the production network builds");
+    let network = af_egress::Network::new().expect("the production network builds");
     let serving = runner(
         &run,
         home.path(),

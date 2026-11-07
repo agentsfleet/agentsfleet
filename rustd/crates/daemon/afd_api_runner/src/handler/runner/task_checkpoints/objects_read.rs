@@ -1,9 +1,9 @@
 //! Page authorized restore objects through the existing authenticated task owner.
 
 use crate::{auth::RunnerIdentity, services::Services};
+use af_wire::task::CheckpointReadQuery;
 use afd_fleet::task::TaskLease;
 use afd_http::handler::{Refusal, parse_id};
-use afd_wire::task::CheckpointReadQuery;
 use axum::{
     Json,
     extract::{Path, Query, State, rejection::QueryRejection},
@@ -13,12 +13,12 @@ use http::{StatusCode, header};
 use std::sync::Arc;
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = afd_wire::paths::LEASE_TASK_CHECKPOINT_OBJECTS, tag = afd_http::openapi::tag::RUNNERS,
+    get, path = af_wire::paths::LEASE_TASK_CHECKPOINT_OBJECTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_checkpoint_objects_read", summary = "Page authorized restore objects",
     description = "Returns at most 100 scoped registered objects and expiring read authorizations. Every page checks the current lease and restore pin.",
     params(("lease_id" = String, Path, description = "Native lease UUIDv7."),
         ("checkpoint_id" = String, Path, description = "Native checkpoint UUIDv7."), CheckpointReadQuery),
-    responses((status = 200, body = afd_wire::task::CheckpointObjectsPage, description = "Native checkpoint result"),
+    responses((status = 200, body = af_wire::task::CheckpointObjectsPage, description = "Native checkpoint result"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT), (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),

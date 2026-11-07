@@ -2,7 +2,7 @@
 
 use super::sql;
 use crate::{Drafts, Result, error::raise::query, types::DraftState};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 const CONTEXT: &str = "expire private authoring content";

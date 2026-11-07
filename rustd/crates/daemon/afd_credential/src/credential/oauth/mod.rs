@@ -30,8 +30,8 @@
 
 use std::time::Duration;
 
-use afd_core::clock::after;
-use afd_core::credential::FIELD_REFRESH_TOKEN;
+use af_core::clock::after;
+use af_core::credential::FIELD_REFRESH_TOKEN;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -249,7 +249,7 @@ fn granted(answered: &Answered, posted: &str, now: Timestamp) -> Outcome {
         // Whole milliseconds, the precision the wire carries, so a provider's
         // fractional `expires_in` leaves the broker caching the same instant
         // the runner reads.
-        expires_at: afd_core::clock::whole_millis(after(now, lifetime)),
+        expires_at: af_core::clock::whole_millis(after(now, lifetime)),
         rotated_refresh_token: rotated(answered, posted),
     })
 }

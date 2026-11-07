@@ -9,7 +9,7 @@
 use core::time::Duration;
 use std::time::Instant;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::Fleets;
 
 use super::requester::Shared;

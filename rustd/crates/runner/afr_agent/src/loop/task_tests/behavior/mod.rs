@@ -5,7 +5,7 @@
 )]
 
 use super::*;
-use afd_wire::decision::*;
+use af_wire::decision::*;
 use afr_tools::verbs::DecisionEvaluation;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
@@ -83,7 +83,7 @@ impl LeaseVerbs for Goals {
     }
 }
 
-fn assigned_lease(tools: &[&str], context: u32) -> afd_wire::lease::LeasePayload<'static> {
+fn assigned_lease(tools: &[&str], context: u32) -> af_wire::lease::LeasePayload<'static> {
     let mut lease = lease(tools, unbounded());
     lease.durable_tasks = true;
     lease.policy.model_context_tokens = context;

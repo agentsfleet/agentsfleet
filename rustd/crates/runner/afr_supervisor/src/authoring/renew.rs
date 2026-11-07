@@ -2,8 +2,8 @@
 
 use super::meter::Observed;
 use crate::{Result, client::ControlPlane, error};
-use afd_core::{clock::Clock, id::Uuid7};
-use afd_wire::authoring::{Lease, Renew};
+use af_core::{clock::Clock, id::Uuid7};
+use af_wire::authoring::{Lease, Renew};
 use jiff::Timestamp;
 use serde_json::Value;
 use std::time::Duration;

@@ -29,7 +29,7 @@ mod stage;
 use std::sync::Arc;
 use std::time::Instant;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::Fleets;
 
 use self::probe::Pool as _;

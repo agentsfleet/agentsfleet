@@ -18,10 +18,10 @@ mod page;
 mod read;
 mod write;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::memory::Visibility;
 use afd_db::Db;
-use afd_wire::memory::Visibility;
 use sqlx::postgres::PgRow;
 use sqlx::{Acquire as _, FromRow as _, PgConnection};
 

@@ -3,17 +3,17 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_wire::tool_detail::{
+use af_wire::tool_detail::{
     DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, RawToolCallRecord, ToolCallRecordsRequest,
 };
 use serde_json::json;
 
 use super::{post_envelope_bytes, record};
 use crate::fixture::{clean, clean_json};
-use afd_wire::tool_trace::encoded_len;
+use af_wire::tool_trace::encoded_len;
 
 /// Whether the daemon would keep `record`, judged by the wire's own narrow.
-fn accepted(record: &afd_wire::tool_detail::ToolCallRecord<'_>) -> bool {
+fn accepted(record: &af_wire::tool_detail::ToolCallRecord<'_>) -> bool {
     let text = serde_json::to_string(record).unwrap();
     serde_json::from_str::<RawToolCallRecord<'_>>(&text)
         .unwrap()

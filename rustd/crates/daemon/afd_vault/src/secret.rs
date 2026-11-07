@@ -17,7 +17,7 @@
 //! `meta_*` columns describe the ciphertext beside them" a fact about the type
 //! rather than a promise about the statement.
 
-use afd_crypto::secret::{SecretBytes, SecretObject};
+use af_crypto::secret::{SecretBytes, SecretObject};
 use garde::{Unvalidated, Validate};
 use serde_json::value::RawValue;
 
@@ -122,7 +122,7 @@ impl SecretBody {
     pub fn parse(data: &RawValue) -> Result<Self> {
         // A map, requested as a map: `serde_json` answers this with `{` alone,
         // so an array, a scalar and a null are all refused here rather than by
-        // a shape check after the fact. Same guarantee `afd_core::json` gives a
+        // a shape check after the fact. Same guarantee `af_core::json` gives a
         // derived struct, and for the same reason.
         let object = SecretObject::parse(data.get().as_bytes())
             .map_err(|_not_an_object| ErrorKind::DataInvalid)?;
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn a_positional_array_is_refused_where_a_derived_struct_would_take_it() {
-        // The hole `afd_core::json` exists to close, closed here by the same
+        // The hole `af_core::json` exists to close, closed here by the same
         // move: the body is requested as a MAP, so `serde_json` accepts `{`
         // alone and a two-element array cannot fill a two-key credential.
         SecretBody::parse(&data(r#"["anthropic","sk-live"]"#))
@@ -240,7 +240,7 @@ mod tests {
         let refused = SecretBody::parse(&data(&oversized))
             .expect_err("a body past the bound is not storable");
 
-        assert_eq!(refused.code(), afd_core::error_code::VAULT_DATA_TOO_LARGE);
+        assert_eq!(refused.code(), af_core::error_code::VAULT_DATA_TOO_LARGE);
     }
 
     #[test]
@@ -249,7 +249,7 @@ mod tests {
         // and a client branching on the difference could not act on it.
         for refused in ["{}", r#""a string""#] {
             let error = SecretBody::parse(&data(refused)).expect_err("refused");
-            assert_eq!(error.code(), afd_core::error_code::VAULT_DATA_INVALID);
+            assert_eq!(error.code(), af_core::error_code::VAULT_DATA_INVALID);
         }
     }
 

@@ -11,12 +11,12 @@ use super::{Error, ErrorKind};
 // `sqlx::Error` and `serde_json::Error` are deliberately absent: both carry
 // WHICH statement or column, context only the call site knows, so they go
 // through [`query`] and [`stored_json`] instead of a blanket lift.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_dragonfly::Error => Queue,
     afd_admission::Error => Admission,
-    afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Identifier,
+    af_crypto::error::Error => Entropy,
+    af_core::error::Error => Identifier,
 );
 
 /// Reports a statement that would not run, naming what it was doing.
@@ -28,7 +28,7 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 pub(crate) fn row_malformed(
     table: &'static str,
     column: &'static str,
-) -> impl Fn(afd_core::error::Error) -> Error {
+) -> impl Fn(af_core::error::Error) -> Error {
     move |source| {
         ErrorKind::RowMalformed {
             table,
@@ -45,7 +45,7 @@ pub(crate) fn rejected(detail: &'static str) -> Error {
 }
 
 /// Preserves the parser cause while identifying this operator input field.
-pub(crate) fn decision_model_id(source: afd_core::error::Error) -> Error {
+pub(crate) fn decision_model_id(source: af_core::error::Error) -> Error {
     ErrorKind::DecisionModelId { source }.into()
 }
 
@@ -132,9 +132,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("rejected", rejected(super::DETAIL_HOST_ID_BOUNDS)),
         (
             "decision model identifier",
-            decision_model_id(
-                afd_core::id::Uuid7::parse("malformed").expect_err("invalid fixture"),
-            ),
+            decision_model_id(af_core::id::Uuid7::parse("malformed").expect_err("invalid fixture")),
         ),
         (
             "datastore",

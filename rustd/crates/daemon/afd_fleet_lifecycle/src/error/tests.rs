@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::{Error, ErrorKind, detail};
 
@@ -52,11 +52,11 @@ fn contextual_errors_preserve_context_without_leaking_it() {
 
 struct Expected {
     error: Error,
-    code: afd_core::error_code::ErrorCode,
+    code: af_core::error_code::ErrorCode,
     detail: &'static str,
 }
 
-fn expected(error: Error, code: afd_core::error_code::ErrorCode, detail: &'static str) -> Expected {
+fn expected(error: Error, code: af_core::error_code::ErrorCode, detail: &'static str) -> Expected {
     Expected {
         error,
         code,

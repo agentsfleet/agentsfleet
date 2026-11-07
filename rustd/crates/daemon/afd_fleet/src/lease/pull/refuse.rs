@@ -8,9 +8,9 @@
 //! moves the ending — and the file cap forced the cut at a seam the two
 //! already had.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::event::label;
-use afd_core::id::Uuid7;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::event::label;
+use af_core::id::Uuid7;
 
 use super::step::{Step, waited};
 use super::{Admission2, Plane};
@@ -52,7 +52,7 @@ impl Plane {
             Ok(None) => no_work(runner_id, FLEET_STOPPED).map(Step::Stop),
             // One fleet's unreadable document is that fleet's fault and not
             // this runner's, which is the whole of `refuse_unreadable_config`.
-            Err(changed) if changed.code() == afd_core::error_code::TASK_INVALID_TARGET => {
+            Err(changed) if changed.code() == af_core::error_code::TASK_INVALID_TARGET => {
                 self.leases.block_changed_task_setup(acquired).await?;
                 no_work(
                     runner_id,

@@ -7,8 +7,8 @@
 //! the limit was and when it resets. That is the whole of what a client can act
 //! on, and it is exactly what `response` writes.
 
-use afd_core::clock;
-use afd_core::error_code;
+use af_core::clock;
+use af_core::error_code;
 use axum::extract::Request;
 use axum::response::{IntoResponse, Response};
 use http::{HeaderName, HeaderValue, header};
@@ -86,7 +86,7 @@ pub(super) fn response(admission: &Admission, request: &Request) -> Response {
 /// When a shed caller should expect the instance to have room.
 ///
 /// Pure, taking the instant rather than reading the clock, which is what
-/// `afd_core::clock` asks callers to do wherever the decision can be handed a
+/// `af_core::clock` asks callers to do wherever the decision can be handed a
 /// value. Signed and saturating, so a host whose clock is set before 1970
 /// answers a past reset time rather than wrapping.
 fn reset_epoch_seconds(now: Timestamp) -> i64 {

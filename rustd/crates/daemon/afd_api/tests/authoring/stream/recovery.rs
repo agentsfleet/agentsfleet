@@ -156,7 +156,7 @@ async fn stream_ceiling_refuses_excess_viewers_and_dropped_body_releases_its_slo
     let problem = crate::harness::json_body(refused).await;
     assert_eq!(
         problem["error_code"],
-        afd_core::error_code::SSE_STREAM_CAP.as_str()
+        af_core::error_code::SSE_STREAM_CAP.as_str()
     );
     assert_eq!(live.hub.readers(&live.channel()), 1);
     drop(body);

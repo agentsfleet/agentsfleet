@@ -16,11 +16,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use af_crypto::entropy::Entropy;
+use af_wire::report::RenewRequest;
+use af_wire::usage::{RequestLines, RequestUsage};
 use afd_billing::ledger::{LedgerBiller, log_lines};
-use afd_crypto::entropy::Entropy;
 use afd_fleet::lease::billing_sweep::sweep;
-use afd_wire::report::RenewRequest;
-use afd_wire::usage::{RequestLines, RequestUsage};
 use sqlx::Connection as _;
 
 use crate::integration_billing_sweep::settlement;
@@ -46,7 +46,7 @@ fn biller(held: &Held) -> LedgerBiller {
     LedgerBiller::new(
         held.fixtures.database.clone(),
         Entropy::new(),
-        Arc::new(afd_core::clock::SystemClock),
+        Arc::new(af_core::clock::SystemClock),
     )
 }
 

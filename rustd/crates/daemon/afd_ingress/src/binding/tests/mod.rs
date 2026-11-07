@@ -12,7 +12,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 
 use super::Binding;
@@ -30,7 +30,7 @@ const WORKSPACE: &str = "01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8ea0";
 /// A stored document with the `triggers` block a test wants and nothing else
 /// varying.
 ///
-/// The surrounding keys are the ones [`afd_fleet_runtime::FleetConfig::stored`]
+/// The surrounding keys are the ones [`af_fleet_runtime::FleetConfig::stored`]
 /// requires — `name`, `tools`, `budget`. Built here rather than loaded from a
 /// fixture file so a reader sees the whole input beside the assertion.
 fn document(triggers: &str) -> String {
@@ -43,7 +43,7 @@ fn document(triggers: &str) -> String {
             "budget": {{ "daily_nanos": "{daily}" }}
           }}
         }}"#,
-        daily = afd_core::money::NANOS_PER_USD
+        daily = af_core::money::NANOS_PER_USD
     )
 }
 
@@ -176,7 +176,7 @@ fn a_custom_source_resolves_to_its_declared_recipe() {
             .expect(READABLE)
             .expect("declared source")
             .family(),
-        afd_webhook::Family::SvixV1
+        af_webhook::Family::SvixV1
     );
 }
 
@@ -185,7 +185,7 @@ fn a_declared_source_resolves_to_the_walls_own_scheme() {
     let github = r#"[{"type":"webhook","source":"github"}]"#;
 
     let binding = binding_of(github);
-    assert_eq!(binding.family(), afd_webhook::Family::BodyHexSha256);
+    assert_eq!(binding.family(), af_webhook::Family::BodyHexSha256);
     assert_eq!(binding.signature_header(), Some("x-hub-signature-256"));
 }
 

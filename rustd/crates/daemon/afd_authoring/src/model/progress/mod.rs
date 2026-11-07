@@ -6,7 +6,7 @@ mod publish;
 mod tests;
 mod trace;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use zeroize::Zeroizing;
@@ -42,7 +42,7 @@ pub struct Delta {
     #[garde(skip)]
     pub draft_id: Uuid7,
     /// Durable message position as a decimal integer.
-    #[garde(length(min = 1, max = 19), custom(afd_validate::ascii_digits))]
+    #[garde(length(min = 1, max = 19), custom(af_validate::ascii_digits))]
     pub sequence: String,
     /// Unique physical provider dispatch, including subsequent tool passes.
     #[garde(skip)]

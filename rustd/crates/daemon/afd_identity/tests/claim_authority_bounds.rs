@@ -101,7 +101,7 @@ fn test_a_readable_ceiling_is_carried_through() {
         claims
             .workspace_scope
             .as_ref()
-            .map(afd_core::id::Uuid7::as_str),
+            .map(af_core::id::Uuid7::as_str),
         Some(WORKSPACE)
     );
 }
@@ -183,7 +183,7 @@ fn test_validity_start_is_decided_by_the_injected_clock() {
 
     verify_at(
         &token,
-        afd_core::clock::after(NOW, std::time::Duration::from_secs(120)),
+        af_core::clock::after(NOW, std::time::Duration::from_secs(120)),
     )
     .expect("after the window opens");
 }
@@ -267,7 +267,7 @@ fn test_a_null_at_the_top_level_does_not_shadow_a_nested_ceiling() {
         claims
             .workspace_scope
             .as_ref()
-            .map(afd_core::id::Uuid7::as_str),
+            .map(af_core::id::Uuid7::as_str),
         Some(WORKSPACE)
     );
 }

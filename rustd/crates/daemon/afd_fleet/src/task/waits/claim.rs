@@ -10,8 +10,8 @@ use crate::{
     lease::{Leases, scope::MintScope},
     task::{TaskRefusal, Tasks, guard, transaction},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_wire::task::TaskState;
+use af_core::{clock, id::Uuid7};
+use af_wire::task::TaskState;
 use sqlx::PgConnection;
 use std::time::Duration;
 
@@ -130,7 +130,7 @@ pub(super) async fn owner(connection: &mut PgConnection, id: &str) -> Result<Opt
 pub(super) async fn authority(
     connection: &mut PgConnection,
     owner: &Wait,
-) -> Result<afd_fleet_runtime::config::RepositoryBinding> {
+) -> Result<af_fleet_runtime::config::RepositoryBinding> {
     let mut live = None;
     for revision in [Some(owner.accepted_revision_id.as_str()), None] {
         let config = Leases::stored_config_on(connection, &owner.fleet_id, revision)

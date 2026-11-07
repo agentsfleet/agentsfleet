@@ -22,7 +22,7 @@ pub mod retention;
 
 use std::time::Duration;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;

@@ -6,7 +6,7 @@
 
 #![cfg(feature = "test-util")]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_ingress::slack::KIND_NOTICE_OWNER;
 

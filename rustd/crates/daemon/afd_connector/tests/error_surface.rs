@@ -17,7 +17,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::error_surface::{Expect, grade};
+use af_core::test_util::error_surface::{Expect, grade};
 
 use afd_connector::error::{detail, one_of_each_kind};
 
@@ -25,7 +25,7 @@ use afd_connector::error::{detail, one_of_each_kind};
 const RETRYABLE: &[&str] = &["datastore", "vendor unreachable"];
 
 /// Everything every error surface owes, graded once by
-/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
 /// rendering, no kind repeating its cause, and these measured counts. The
 /// sample count is pinned exactly, so a kind added without a sample fails.
 #[test]
@@ -89,7 +89,7 @@ fn only_a_referenced_refusal_carries_a_count_and_the_vault_conflict() {
             assert_eq!(error.referenced_by(), Some(2), "{error}");
             assert_eq!(
                 error.code(),
-                afd_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
+                af_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
                 "{error}"
             );
             assert_eq!(error.detail(), detail::GRANT_STILL_REFERENCED);

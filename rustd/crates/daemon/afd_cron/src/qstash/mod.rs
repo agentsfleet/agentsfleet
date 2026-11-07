@@ -18,7 +18,7 @@
 //! Before either reaches the row, a failure that can heal is sent again a few
 //! times on a short schedule; see [`retry`].
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use url::Url;
 
 pub use self::retry::Attempts;
@@ -106,7 +106,7 @@ pub struct QStash {
     /// The client every call here goes out on.
     client: reqwest::Client,
     /// This deployment's bearer for the scheduler.
-    token: afd_crypto::secret::SecretString,
+    token: af_crypto::secret::SecretString,
     /// Where a fire should arrive back.
     destination: String,
     /// Where this deployment's management calls go.
@@ -123,7 +123,7 @@ impl QStash {
     #[must_use]
     pub const fn new(
         client: reqwest::Client,
-        token: afd_crypto::secret::SecretString,
+        token: af_crypto::secret::SecretString,
         destination: String,
         api_base: String,
     ) -> Self {
@@ -310,7 +310,7 @@ mod accessor_tests {
     fn the_scheduler_host_and_the_callback_host_are_not_the_same_value() {
         let config = QStash::new(
             reqwest::Client::new(),
-            afd_crypto::secret::SecretString::new("token-fixture".to_owned()),
+            af_crypto::secret::SecretString::new("token-fixture".to_owned()),
             "https://daemon.example.test/v1/fires".to_owned(),
             "https://qstash.example.test".to_owned(),
         );

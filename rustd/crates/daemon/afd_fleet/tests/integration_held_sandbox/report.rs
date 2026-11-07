@@ -9,8 +9,8 @@
 
 use std::borrow::Cow;
 
-use afd_core::timing::{LEASE_TTL, SANDBOX_HOLD_IDLE};
-use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
+use af_core::timing::{LEASE_TTL, SANDBOX_HOLD_IDLE};
+use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use jiff::Timestamp;
 
 use super::{id, slot};
@@ -32,7 +32,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
         tokens: 0,
-        requests: afd_wire::usage::RequestLines::default(),
+        requests: af_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: SLICE_MS.unsigned_abs(),
@@ -56,7 +56,7 @@ async fn window_around<T>(
     write: impl std::future::Future<Output = T>,
 ) -> (T, std::ops::RangeInclusive<Timestamp>) {
     let (output, clock) = fixtures.clock_around(write).await;
-    let idle = |at: &Timestamp| afd_core::clock::after(*at, SANDBOX_HOLD_IDLE);
+    let idle = |at: &Timestamp| af_core::clock::after(*at, SANDBOX_HOLD_IDLE);
     (output, idle(clock.start())..=idle(clock.end()))
 }
 
@@ -65,7 +65,7 @@ async fn window_around<T>(
 async fn released(
     fixtures: &Fixtures,
     fleet: &str,
-    runner: &afd_core::id::Uuid7,
+    runner: &af_core::id::Uuid7,
     asked: Option<Timestamp>,
 ) -> Option<Timestamp> {
     let leases = fixtures.leases();
@@ -89,8 +89,8 @@ async fn released(
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_report_carrying_held_until_records_the_hold() {
     let held = held().await;
-    let reported_at = afd_core::clock::after(held.now, SLICE);
-    let asked = afd_core::clock::after(reported_at, SANDBOX_HOLD_IDLE.saturating_mul(3));
+    let reported_at = af_core::clock::after(held.now, SLICE);
+    let asked = af_core::clock::after(reported_at, SANDBOX_HOLD_IDLE.saturating_mul(3));
     let plane = held.fixtures.plane();
     let request = processed(&held, Some(asked));
 
@@ -120,14 +120,14 @@ async fn test_the_stored_hold_is_capped_at_one_idle_window() {
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
 
-    let inside = afd_core::clock::after(fixtures.database_now().await, SANDBOX_HOLD_IDLE / 2);
+    let inside = af_core::clock::after(fixtures.database_now().await, SANDBOX_HOLD_IDLE / 2);
     assert_eq!(
         released(&fixtures, &fleet, &runner, Some(inside)).await,
         Some(inside),
         "an ask inside the window is kept as asked"
     );
     for asked in [
-        afd_core::clock::after(inside, SANDBOX_HOLD_IDLE),
+        af_core::clock::after(inside, SANDBOX_HOLD_IDLE),
         Timestamp::MAX,
     ] {
         let (stored, window) =
@@ -138,7 +138,7 @@ async fn test_the_stored_hold_is_capped_at_one_idle_window() {
             "asked {asked}, stored {stored}: past one idle window"
         );
     }
-    let behind = afd_core::clock::before(fixtures.database_now().await, SLICE);
+    let behind = af_core::clock::before(fixtures.database_now().await, SLICE);
     assert_eq!(
         released(&fixtures, &fleet, &runner, Some(behind)).await,
         None,

@@ -6,7 +6,7 @@ use crate::{
     error::{ErrorKind, raise::query},
     types::AppliedRevision,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 impl Creations {

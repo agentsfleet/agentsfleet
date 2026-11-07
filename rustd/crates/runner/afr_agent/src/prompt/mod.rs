@@ -3,15 +3,15 @@
 //! repositories are checked out, the fleet's earlier turns, and the event's
 //! message as the latest user turn.
 //!
-//! The message is `afd_wire::event::message_of`'s reading of the request, the
+//! The message is `af_wire::event::message_of`'s reading of the request, the
 //! same reading the daemon gave each earlier turn's message.
 
 use std::fmt;
 
-use afd_wire::event::message_of;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
-use afd_wire::policy::{ExecutionPolicy, HttpMethod, RepositoryAccess};
+use af_wire::event::message_of;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
+use af_wire::policy::{ExecutionPolicy, HttpMethod, RepositoryAccess};
 use afr_tools::sandbox::{Checkout, checkouts};
 
 /// The heading the installed instructions render under.

@@ -16,8 +16,8 @@ use crate::definition_responder::{
 use crate::definition_run::{assert_token_stayed_on_the_wire, posts, run_event};
 use crate::fake_model::FakeModel;
 use crate::https::{Seen, Upstream};
+use af_wire::event::EventType;
 use afd_gate::policy::repair::branch_for;
-use afd_wire::event::EventType;
 
 #[path = "continuation.rs"]
 mod continuation;

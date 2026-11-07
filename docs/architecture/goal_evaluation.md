@@ -12,7 +12,7 @@ Recheck endpoint capabilities, rates and resolved model identity before activati
 
 ## One trait inside the existing provider layer
 
-Keep decision networking in `afr_providers`, alongside existing provider connections and guarded transport.
+Keep decision networking in `af_providers`, alongside existing provider connections and guarded transport.
 The agent owns when to ask and how to apply accepted answers; it does not receive provider keys.
 
 Reuse guarded HTTP construction, final request-header validation, native vault resolution, usage reporting and the current lease budget.

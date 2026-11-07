@@ -1,11 +1,11 @@
 //! What this crate refuses, and what it reports.
 //!
 //! The hull — the boxed struct, the backtrace, `Display`, `source()` — comes
-//! from [`afd_core::error_shell!`]. What is here is the part that varies: the
+//! from [`af_core::error_shell!`]. What is here is the part that varies: the
 //! kinds this plane can fail with, the code and sentence each answers, and the
 //! raisers that bind data.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 #[cfg(test)]
 mod tests;
@@ -17,7 +17,7 @@ mod tests;
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A credential-plane failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -43,7 +43,7 @@ pub(crate) enum ErrorKind {
         table: &'static str,
         column: &'static str,
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     #[error("a stored provider selection is malformed: {field}")]
@@ -53,15 +53,13 @@ pub(crate) enum ErrorKind {
     ProviderSecretMissing,
 
     #[error("the platform-admin decision credential is absent or empty for {api:?}")]
-    DecisionCredentialMissing {
-        api: afd_wire::decision::DecisionApi,
-    },
+    DecisionCredentialMissing { api: af_wire::decision::DecisionApi },
 
     #[error("the platform-admin decision credential is malformed for {api:?}")]
     DecisionCredentialInvalid {
-        api: afd_wire::decision::DecisionApi,
+        api: af_wire::decision::DecisionApi,
         #[source]
-        source: afd_core::json::Unreadable,
+        source: af_core::json::Unreadable,
     },
 
     #[error("no active platform provider default is configured")]
@@ -76,7 +74,7 @@ pub(crate) enum ErrorKind {
     #[error("a stored credential envelope would not open")]
     Vault {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     #[error("a stored credential body is not the JSON object the tool bridge addresses")]
@@ -88,7 +86,7 @@ pub(crate) enum ErrorKind {
     #[error("a registry entry identifier could not be minted")]
     Entropy {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     #[error("the credential directory would not describe a registry page's rows")]
@@ -224,14 +222,14 @@ impl Error {
 }
 
 /// The sentences this plane serves.
-use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
+use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 const DETAIL_DATABASE_ERROR: &str = "The operation could not be completed";
 const DETAIL_PROVIDER_UNRESOLVED: &str = "The model provider could not be resolved";
 const DETAIL_VAULT_INVALID: &str = "The stored credential is not a readable shape";
 const DETAIL_CREDENTIAL_MISSING: &str =
     "The fleet declared a credential this workspace does not hold";
 
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_vault::Error => Directory,
 );
@@ -245,7 +243,7 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 pub(crate) fn row_malformed(
     table: &'static str,
     column: &'static str,
-) -> impl Fn(afd_core::error::Error) -> Error {
+) -> impl Fn(af_core::error::Error) -> Error {
     move |source| {
         ErrorKind::RowMalformed {
             table,
@@ -290,7 +288,7 @@ pub(crate) fn provider_endpoint(reason: &'static str) -> Error {
 /// A conversion that ADDS the context the call site alone knows, with the cause
 /// riding through as `#[source]` so the chain stays intact — the carve-out
 /// `RUST_ERROR_STANDARD` rule 3 names.
-pub(crate) fn vault_open(source: afd_crypto::error::Error) -> Error {
+pub(crate) fn vault_open(source: af_crypto::error::Error) -> Error {
     ErrorKind::Vault { source }.into()
 }
 
@@ -303,10 +301,10 @@ pub(crate) fn vault_data_invalid() -> Error {
 ///
 /// A `map_err` that ADDS what the call site alone knows — WHICH mint drained —
 /// with the cause riding through as `#[source]`, per `RUST_ERROR_STANDARD`
-/// rule 3. Not an `error_lifts!` entry: `afd_crypto::error::Error` already
+/// rule 3. Not an `error_lifts!` entry: `af_crypto::error::Error` already
 /// means "an envelope would not open" on this crate's vault path, and one
 /// `From` cannot mean both.
-pub(crate) fn entropy_drained(source: afd_crypto::error::Error) -> Error {
+pub(crate) fn entropy_drained(source: af_crypto::error::Error) -> Error {
     ErrorKind::Entropy { source }.into()
 }
 

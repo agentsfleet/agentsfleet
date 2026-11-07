@@ -25,7 +25,7 @@ pub(super) async fn release(connection: &mut PgConnection) {
 pub(super) async fn candidates(connection: &mut PgConnection, runner: &str) -> serde_json::Value {
     let active = sql::FLEET_STATUS_ACTIVE;
     let runner_active = sql::RUNNER_STATUS_ACTIVE;
-    let offline = afd_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
+    let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
     let task = task_parameters();
     explain(connection, &format!("gate_candidates('{active}','{runner}',64,'{offline} seconds','{runner_active}','{{}}',NULL,{task})")).await
 }
@@ -38,8 +38,8 @@ pub(super) async fn claim(
     let runner_active = sql::RUNNER_STATUS_ACTIVE;
     let active = sql::LEASE_STATUS_ACTIVE;
     let expired = sql::LEASE_STATUS_EXPIRED;
-    let ttl = afd_core::timing::LEASE_TTL.as_secs();
-    let offline = afd_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
+    let ttl = af_core::timing::LEASE_TTL.as_secs();
+    let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
     let task = task_parameters();
     explain(connection, &format!("gate_claim('{fleet}','{runner}','{ttl} seconds','{offline} seconds','{runner_active}','{active}','{expired}',{task})")).await
 }
@@ -56,9 +56,9 @@ async fn explain(connection: &mut PgConnection, invocation: &str) -> serde_json:
 
 /// Only canonical native constants enter these prepared EXECUTE literals.
 pub(super) fn task_parameters() -> String {
-    let capability = afd_wire::task::CAPABILITY;
-    let ready = afd_wire::task::TaskState::Ready.as_str();
-    let running = afd_wire::task::TaskState::Running.as_str();
+    let capability = af_wire::task::CAPABILITY;
+    let ready = af_wire::task::TaskState::Ready.as_str();
+    let running = af_wire::task::TaskState::Running.as_str();
     let path = afd_fleet::task::DECISION_POLICY_PATH.join(",");
     format!("'{capability}','{ready}','{running}','{{{path}}}'")
 }

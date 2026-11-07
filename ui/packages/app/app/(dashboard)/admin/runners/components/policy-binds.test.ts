@@ -11,7 +11,7 @@ import {
 } from "./policy-binds";
 
 // These rules MIRROR the garde bind rules in
-// rustd/crates/protocol/afd_wire/src/runner/rules.rs; the daemon stays the boundary.
+// rustd/crates/protocol/af_wire/src/runner/rules.rs; the daemon stays the boundary.
 // The tests below are the mirror's proof — each one names a rule the daemon
 // enforces, so a drift between the two shows up here rather than as a 400 the
 // operator has to decode.

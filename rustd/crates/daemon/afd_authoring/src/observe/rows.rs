@@ -9,8 +9,8 @@ use crate::{
     sql,
     types::{Failure, MessageState},
 };
-use afd_core::id::Uuid7;
-use afd_wire::authoring::{FailureReason, Usage};
+use af_core::id::Uuid7;
+use af_wire::authoring::{FailureReason, Usage};
 use serde::Serialize;
 use sqlx::PgConnection;
 

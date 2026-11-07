@@ -7,8 +7,8 @@
 //! no role there at all, which is why the grant is an enum rather than a role
 //! beside an optional platform flag.
 
-use afd_core::id::Uuid7;
-use afd_core::spelling::from_spelling;
+use af_core::id::Uuid7;
+use af_core::spelling::from_spelling;
 
 use crate::{Result, error};
 
@@ -103,7 +103,7 @@ mod tests {
         let refused = Role::parse("admin").expect_err("no such role in this build");
         assert_eq!(
             refused.code(),
-            afd_core::error_code::INTERNAL_DB_QUERY,
+            af_core::error_code::INTERNAL_DB_QUERY,
             "a row this build cannot read is a datastore fault, never a denial"
         );
         assert!(!refused.is_datastore_unavailable());

@@ -11,10 +11,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
-use afd_wire::activity::StreamTextKind;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::ExecutionPolicy;
-use afr_providers::{Call, Chunk, Connect, End, Message, Provider, Request, Usage};
+use af_providers::{Call, Chunk, Connect, End, Message, Provider, Request, Usage};
+use af_wire::activity::StreamTextKind;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::ExecutionPolicy;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 
@@ -36,11 +36,11 @@ pub(crate) struct Sent {
 #[derive(Debug)]
 struct Turn {
     chunks: Vec<Chunk>,
-    failure: Option<fn() -> afr_providers::Error>,
+    failure: Option<fn() -> af_providers::Error>,
 }
 
 impl Turn {
-    fn replay(&self) -> Vec<afr_providers::Result<Chunk>> {
+    fn replay(&self) -> Vec<af_providers::Result<Chunk>> {
         let chunks = self.chunks.iter().cloned().map(Ok);
         chunks
             .chain(self.failure.map(|failure| Err(failure())))
@@ -75,7 +75,7 @@ impl Script {
     }
 
     /// A model whose one turn streams `chunks`, then fails with `failure()`.
-    pub(crate) fn failing(chunks: Vec<Chunk>, failure: fn() -> afr_providers::Error) -> Self {
+    pub(crate) fn failing(chunks: Vec<Chunk>, failure: fn() -> af_providers::Error) -> Self {
         Self::playing(vec![Turn {
             chunks,
             failure: Some(failure),
@@ -102,7 +102,7 @@ impl Script {
         self,
         task: &str,
         chunks: Vec<Chunk>,
-        failure: fn() -> afr_providers::Error,
+        failure: fn() -> af_providers::Error,
     ) -> Self {
         self.with_child_turns(
             task,
@@ -174,11 +174,11 @@ pub(crate) struct Replay {
 }
 
 impl Connect for Replay {
-    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> afr_providers::Result<()> {
+    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> afr_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
@@ -191,17 +191,17 @@ pub(crate) struct Unreachable;
 pub(crate) const UNREACHABLE_STATUS: u16 = 404;
 
 impl Connect for Unreachable {
-    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> afr_providers::Result<()> {
+    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> afr_providers::Result<Box<dyn Provider>> {
-        Err(afr_providers::Error::refused(UNREACHABLE_STATUS))
+    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
+        Err(af_providers::Error::refused(UNREACHABLE_STATUS))
     }
 }
 
 impl Provider for Replay {
-    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, afr_providers::Result<Chunk>> {
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
         let sent = Sent {
             tools: request
                 .tools

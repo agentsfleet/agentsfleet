@@ -11,8 +11,8 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::Ordering;
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::runner::NetworkPolicy;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::NetworkPolicy;
 use afr_sandbox::Allowlist;
 use tokio::sync::mpsc;
 

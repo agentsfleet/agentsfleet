@@ -20,7 +20,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use afr_executor::{Ending, Executor, Process, ProcessId};
 use tokio::sync::Mutex as Held;
 

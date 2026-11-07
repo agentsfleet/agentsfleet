@@ -3,7 +3,7 @@
 
 use crate::harness::{self, Fleet, assert_reached_the_verb};
 use crate::tenant_billing::{BILLING_READ, SUBJECT, TENANT_KEY, TERMINAL, read};
-use afd_core::error_code;
+use af_core::error_code;
 use http::{Method, StatusCode};
 
 const REPORT: &str = "/v1/tenants/me/billing/reports/current";

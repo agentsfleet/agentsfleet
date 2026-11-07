@@ -5,7 +5,7 @@
 //! a create, `updated_at` on a claim or an edit — so the row carries a single
 //! clock and `fire_at` is never earlier than the write that set it.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgConnection;

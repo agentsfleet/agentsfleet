@@ -3,7 +3,7 @@
 /// Which reviewed decision purpose a measurement serves.
 pub const LABEL_PURPOSE: &str = "purpose";
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// Native decision protocol, independently of coding-provider vendor names.
     DecisionProvider {
         /// `TypeSafe` System One.
@@ -17,7 +17,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// The native runtime's reason for evaluating evidence.
     DecisionPurpose {
         /// Interpret the newest input.
@@ -27,7 +27,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// What became of one bounded evaluation, including a denied preflight.
     DecisionOutcome {
         /// Complete typed answers arrived.

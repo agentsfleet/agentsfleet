@@ -6,7 +6,7 @@
 //! and the sentence are decided here, together, so the tenant surface and the
 //! runner's verb answer one refusal in one spelling.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 /// The sentence a fleet that is not in the caller's workspace earns.
 pub(crate) const DETAIL_NOT_FOUND: &str = "No schedule with that identifier belongs to this fleet.";

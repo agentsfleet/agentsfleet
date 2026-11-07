@@ -5,10 +5,10 @@
     reason = "live-schema test preconditions fail loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_billing::sql::CHARGE_TYPE_AUTHORING;
 use afd_billing::tenant::cursor::Boundary;
 use afd_billing::tenant::{self, Billing, ChargeRow};
-use afd_core::id::Uuid7;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, DbRole, Migrator};
 use jiff::Timestamp;

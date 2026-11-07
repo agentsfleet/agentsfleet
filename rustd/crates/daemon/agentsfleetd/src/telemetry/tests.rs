@@ -7,10 +7,10 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::env::MapEnv;
-use afd_observability::producers::GaugeSources;
+use af_core::env::MapEnv;
+use af_observability::producers::GaugeSources;
 
-use afd_otlp::Encoding;
+use af_otlp::Encoding;
 
 use crate::inventory::OTLP_EXPORT;
 use crate::preflight::{
@@ -149,7 +149,7 @@ async fn the_json_protocol_builds_a_transport() {
 
 /// The daemon builds the same pipelines from the same knobs after the move.
 ///
-/// The builder left this crate for `afd_otlp`, and the risk of a move is a
+/// The builder left this crate for `af_otlp`, and the risk of a move is a
 /// knob that stops reaching the exporter on the way: a credential header that
 /// never arrives, a JSON request that posts protobuf, a timeout
 /// read in the wrong unit. So every knob the daemon reads is set at once, and

@@ -71,7 +71,7 @@ fn the_api_login_reaches_the_owned_database() {
 /// role keeps the lane's owner.
 #[test]
 fn only_the_api_role_connects_as_the_api_login() {
-    use afd_core::env::EnvSource;
+    use af_core::env::EnvSource;
     let handle = owned("postgres://u:p@h:5432/lane", "afd_it_1_0");
     let env = handle.env(&[]);
     for role in DbRole::ALL {

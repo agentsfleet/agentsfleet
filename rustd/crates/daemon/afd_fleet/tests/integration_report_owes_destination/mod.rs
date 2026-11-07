@@ -18,10 +18,10 @@
 
 use std::borrow::Cow;
 
+use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::lease::Committed;
-use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 
 use crate::report_commit::{
     RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID, RESUME_RESPONSE,
@@ -288,7 +288,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         failure_detail: Cow::Borrowed(""),
         response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
         tokens: 0,
-        requests: afd_wire::usage::RequestLines::default(),
+        requests: af_wire::usage::RequestLines::default(),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: 0,
             wall_ms: u64::try_from(SLICE_MS).expect("a slice is positive"),
@@ -308,7 +308,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         .report(
             &stage.runner,
             &request,
-            afd_core::clock::after(
+            af_core::clock::after(
                 now,
                 std::time::Duration::from_millis(
                     u64::try_from(SLICE_MS).expect("a fixture span is not negative"),

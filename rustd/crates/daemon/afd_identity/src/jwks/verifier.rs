@@ -14,10 +14,10 @@
 
 use std::sync::Arc;
 
+use af_core::clock::Clock;
 use afd_auth::credential::Presented;
 use afd_auth::principal::Subject;
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
-use afd_core::clock::Clock;
 
 use crate::error::Result;
 use crate::jwks::cache::{DEFAULT_TTL, KeyCache};
@@ -212,5 +212,5 @@ fn verify_claims(key: &SigningKey, segments: Segments<'_>) -> Result<Claims, Ver
     }
 
     let payload = decode_segment(segments.payload)?;
-    afd_core::json::object_from_slice(&payload).map_err(|_invalid| VerifyError::Malformed)
+    af_core::json::object_from_slice(&payload).map_err(|_invalid| VerifyError::Malformed)
 }

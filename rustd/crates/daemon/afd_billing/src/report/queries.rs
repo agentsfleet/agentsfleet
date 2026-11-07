@@ -1,6 +1,6 @@
 //! Production bindings shared with the real-query plan proofs.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::postgres::{PgArguments, PgRow};
 use sqlx::query::QueryAs;

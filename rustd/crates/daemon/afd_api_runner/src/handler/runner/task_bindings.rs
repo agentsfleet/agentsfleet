@@ -1,9 +1,9 @@
 //! Complete native message acceptance; this adapter cannot prepare a target itself.
 
 use crate::{auth::RunnerIdentity, services::Services};
+use af_wire::task::TaskBindingsInput;
 use afd_fleet::task::TaskLease;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
-use afd_wire::task::TaskBindingsInput;
 use axum::{
     Json,
     body::Bytes,
@@ -17,12 +17,12 @@ const EVENT: &str = "runner_task_binding_failed";
 const MALFORMED: &str = "Task interpretation exceeds its supported shape or bounds";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = afd_wire::paths::LEASE_TASK_BINDINGS, tag = afd_http::openapi::tag::RUNNERS,
+    post, path = af_wire::paths::LEASE_TASK_BINDINGS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_accept_task_bindings", summary = "Accept a complete native task interpretation",
     description = "Checks accounted current intent and association answers, whole-message multiplicity, pinned item digests and native source spans. Accepts every item in one transaction. Conversation never creates a task; independent new work joins the existing FIFO admission path. Existing PR targets require exact human assignment, reviewed workflows and current grants.",
     params(("lease_id" = String, Path, description = "Current lease UUIDv7.")), request_body = TaskBindingsInput,
-    responses((status = 201, body = afd_wire::task::TaskBindingsResponse, description = "Complete interpretation accepted"),
-        (status = 200, body = afd_wire::task::TaskBindingsResponse, description = "Immutable interpretation replay"),
+    responses((status = 201, body = af_wire::task::TaskBindingsResponse, description = "Complete interpretation accepted"),
+        (status = 200, body = af_wire::task::TaskBindingsResponse, description = "Immutable interpretation replay"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN), (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT), (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),

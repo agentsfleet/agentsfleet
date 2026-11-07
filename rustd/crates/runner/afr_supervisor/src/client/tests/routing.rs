@@ -1,8 +1,8 @@
 //! Every method uses the daemon's canonical resource path.
 use super::Verb;
 use crate::test_support::{Answer, FLEET_ID, LEASE_ID, drain, json, plane};
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     activity::ActivityRequest,
     credentials::MintCredentialRequest,
     memory::MemoryPushRequest,
@@ -67,7 +67,7 @@ async fn send_every_verb(plane: &super::super::ControlPlane) {
     let heartbeat = HeartbeatRequest {
         capability_report: None,
         selftest: None,
-        holds: afd_wire::runner::HeldFleets::default(),
+        holds: af_wire::runner::HeldFleets::default(),
         closing: false,
         wake: false,
     };

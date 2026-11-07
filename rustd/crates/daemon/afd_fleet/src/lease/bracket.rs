@@ -32,10 +32,10 @@
 
 use std::borrow::Cow;
 
+use af_core::error_code;
+use af_wire::event::{STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
-use afd_core::error_code;
 use afd_events::{Closed, is_steer_actor};
-use afd_wire::event::{STEER_MESSAGE_MAX_BYTES, SteerRequest};
 use jiff::Timestamp;
 
 use crate::lease::envelope::Acquired;
@@ -125,8 +125,8 @@ impl Leases {
 
 #[cfg(test)]
 mod tests {
-    use afd_core::test_util::trace::Capture;
-    use afd_wire::event::STEER_MESSAGE_MAX_BYTES;
+    use af_core::test_util::trace::Capture;
+    use af_wire::event::STEER_MESSAGE_MAX_BYTES;
 
     use super::{
         EVENT_STEER_BODY_UNREADABLE, MAX_INLINE_FINAL_REPLY_BYTES, inline_final_reply,

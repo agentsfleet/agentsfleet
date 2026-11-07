@@ -25,17 +25,17 @@
 //!
 //! A rule that locks a field also lists the fields it permits beside it, and
 //! the matcher admits no other key and no query string
-//! (`afd_wire::policy::HttpRequestRule`). Locking `draft` bounds nothing if an
+//! (`af_wire::policy::HttpRequestRule`). Locking `draft` bounds nothing if an
 //! unlocked key can turn an existing issue into the Pull Request, or point it
 //! at another repository's branch.
 
-use afd_fleet_runtime::config::RepositoryBinding;
-use afd_wire::policy::repository::{
+use af_fleet_runtime::config::RepositoryBinding;
+use af_wire::policy::repository::{
     self, COMMITS_PATH, FIELD_BASE, FIELD_BODY, FIELD_DRAFT, FIELD_FORCE, FIELD_HEAD,
     FIELD_MAINTAINER_CAN_MODIFY, FIELD_MESSAGE, FIELD_PARENTS, FIELD_REF, FIELD_SHA, FIELD_TITLE,
     FIELD_TREE, PULLS_PATH, REFS_HEADS, REFS_PATH,
 };
-use afd_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpPathMatch, HttpRequestRule};
+use af_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpPathMatch, HttpRequestRule};
 
 use super::{DETAIL_NO_REPAIR_BRANCH, DETAIL_NOT_EXACTLY_ONE_REPOSITORY};
 use crate::error::{Result, rejected};

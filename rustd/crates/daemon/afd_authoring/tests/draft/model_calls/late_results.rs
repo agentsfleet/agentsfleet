@@ -4,8 +4,8 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture},
     fixture::{self, Provider},
 };
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use std::{sync::Arc, time::Duration};
 
 /// How long a step may take before the test calls it a hang.

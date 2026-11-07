@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 use super::{DATASTORE_IMAGE_VARIABLE, OWNED_VALUE, OWNED_VARIABLE, Provenance, REVISION_VARIABLE};
 use crate::error::{Error, ErrorKind};

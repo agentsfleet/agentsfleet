@@ -5,7 +5,7 @@
 //! database itself refuses a pointer at another tenant's model. Provider set
 //! writes the entry and points at it; reset stores NULL and keeps the row.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_credential::provider::{Activation, OwnModel, Providers, Retargeted, Selection};
 
 use super::activation::{catalogue, unique_model, written};

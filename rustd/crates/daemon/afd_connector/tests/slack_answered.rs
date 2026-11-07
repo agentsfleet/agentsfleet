@@ -11,9 +11,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_crypto::secret::SecretString;
 use afd_connector::slack::{self, AnswerMarker, Thread, Unavailable};
 use afd_connector::test_util::{FakeSlack, Reply};
-use afd_crypto::secret::SecretString;
 
 /// The bot token the grant holds.
 const TOKEN: &str = "xoxb-fixture-answered";

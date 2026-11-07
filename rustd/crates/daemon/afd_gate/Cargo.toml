@@ -18,17 +18,17 @@ workspace = true
 # A gate's spend is priced before it is admitted.
 afd_billing.workspace = true
 # Identifiers, the clock a gate's deadline is measured against, registry codes.
-afd_core.workspace = true
+af_core.workspace = true
 # What the policy assembly resolves a fleet's declared credentials into.
 afd_credential.workspace = true
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # The fleet's activity counters, read once right before a gate's frame goes
 # out so the wall's tiles move on it. Acyclic: the event store knows no gate.
 afd_events.workspace = true
 # A fleet's declared policy, as its config spells it.
-afd_fleet_runtime.workspace = true
+af_fleet_runtime.workspace = true
 # The fleet status the auto-kill writes (`paused`), spelled where the fleet's
 # lifecycle declares it rather than as a literal in the statement.
 afd_fleet_lifecycle.workspace = true
@@ -36,7 +36,7 @@ afd_fleet_lifecycle.workspace = true
 afd_dragonfly.workspace = true
 # The approval status vocabulary this plane shares with the operator's.
 afd_api_wire.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 # The gate reference a parked run is resumed by is base64url on the wire.
 base64.workspace = true
 # The instant an identifier is minted at; every other instant is the database's.
@@ -51,11 +51,11 @@ tracing.workspace = true
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
 # suite reaches this crate's seam with no datastore behind it.
 test-util = [
-    "afd_core/test-util",
-    "afd_crypto/test-util",
+    "af_core/test-util",
+    "af_crypto/test-util",
     "afd_db/test-util",
     "afd_credential/test-util",
-    "afd_fleet_runtime/test-util",
+    "af_fleet_runtime/test-util",
     "afd_dragonfly/test-util",
 ]
 

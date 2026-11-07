@@ -9,16 +9,15 @@ mod renew;
 pub(crate) mod report;
 pub(crate) mod sql;
 
-use afd_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
+use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 
 pub use claim::Claimed;
 
 /// Machine proposals use the drawer's exact Definition and edit types.
-pub type ActivityInput =
-    afd_wire::authoring::ActivityRequest<Definition, ConfigOp, InstructionEdit>;
+pub type ActivityInput = af_wire::authoring::ActivityRequest<Definition, ConfigOp, InstructionEdit>;
 
-pub(crate) type Proposal = afd_wire::authoring::Proposal<Definition, ConfigOp, InstructionEdit>;
-pub(crate) type Event = afd_wire::authoring::ActivityEvent<Definition, ConfigOp, InstructionEdit>;
+pub(crate) type Proposal = af_wire::authoring::Proposal<Definition, ConfigOp, InstructionEdit>;
+pub(crate) type Event = af_wire::authoring::ActivityEvent<Definition, ConfigOp, InstructionEdit>;
 #[derive(Clone, Copy, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Status {

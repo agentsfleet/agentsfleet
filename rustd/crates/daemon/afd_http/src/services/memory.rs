@@ -17,8 +17,8 @@
 //! what it LEARNED, never what a caller asserted — so the mutations here are the
 //! operator's forget and the admin's grants.
 
+use af_core::id::Uuid7;
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
-use afd_core::id::Uuid7;
 use afd_memory::page::{After, View};
 use afd_memory::{Memories, Record, Result as MemoryResult};
 

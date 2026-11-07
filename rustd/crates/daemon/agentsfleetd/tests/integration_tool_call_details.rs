@@ -19,7 +19,7 @@
     reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
 )]
 
-use afd_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES};
+use af_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 use sqlx::AssertSqlSafe;
@@ -329,7 +329,7 @@ async fn test_tool_call_detail_absent_is_not_found() {
         assert_eq!(status, 404, "{path}: {body}");
         assert_eq!(
             body["error_code"],
-            json!(afd_core::error_code::TOOL_CALL_NOT_FOUND.as_str())
+            json!(af_core::error_code::TOOL_CALL_NOT_FOUND.as_str())
         );
     }
     supervisor.shutdown().await;

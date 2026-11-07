@@ -1,6 +1,6 @@
-use afd_core::event::status;
+use af_core::event::status;
+use af_wire::report::{FailureClass, Outcome};
 use afd_events::sql::MAX_FAILURE_DETAIL_BYTES;
-use afd_wire::report::{FailureClass, Outcome};
 
 use super::Verdict;
 
@@ -80,6 +80,6 @@ fn a_breached_budget_is_stored_as_the_gate_spells_its_refusal() {
 
     assert_eq!(
         verdict.label().as_deref(),
-        Some(afd_core::event::label::BUDGET_BREACH)
+        Some(af_core::event::label::BUDGET_BREACH)
     );
 }

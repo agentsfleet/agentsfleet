@@ -17,7 +17,7 @@
 
 use crate::seed;
 use crate::support;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::{Billed, Delivery, Kind};
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
@@ -225,7 +225,7 @@ async fn test_a_stale_claim_writes_no_lease() {
     assert!(expired.is_none(), "a lapsed claim writes no lease");
 
     let won = leases
-        .claim(&held.fleet_id, &second, afd_core::timing::LEASE_TTL)
+        .claim(&held.fleet_id, &second, af_core::timing::LEASE_TTL)
         .await
         .expect("the claim statement answers");
     assert!(

@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_db::test_util::{InstallSeed, TenantSeed, WorkspaceSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use jiff::Timestamp;

@@ -16,10 +16,10 @@ mod credential;
 mod resolution;
 mod session_token;
 
+use af_core::id::Uuid7;
 use afd_auth::credential::Presented;
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::principal::Subject;
-use afd_core::id::Uuid7;
 
 const TENANT: &str = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 const RUNNER: &str = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a6c";

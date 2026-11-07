@@ -120,7 +120,7 @@ impl OutboundReader {
         if let Some(block) = block {
             // `BLOCK` takes whole milliseconds; a park past `usize` saturates.
             let millis =
-                usize::try_from(afd_core::clock::saturating_millis(block)).unwrap_or(usize::MAX);
+                usize::try_from(af_core::clock::saturating_millis(block)).unwrap_or(usize::MAX);
             options = options.block(millis);
         }
 
@@ -179,7 +179,7 @@ impl OutboundReader {
         let error_code = acknowledged
             .as_ref()
             .err()
-            .map_or(afd_core::error_code::INTERNAL_OPERATION_FAILED, |error| {
+            .map_or(af_core::error_code::INTERNAL_OPERATION_FAILED, |error| {
                 error.code()
             })
             .as_str();

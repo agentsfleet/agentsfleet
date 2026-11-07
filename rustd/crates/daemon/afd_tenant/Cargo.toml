@@ -20,17 +20,17 @@ workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about accounts, and whether a signup opened
 # one is a fact only this crate holds.
-afd_observability.workspace = true
+af_observability.workspace = true
 # The charges cursor is base64url on the wire — the whole token, unlike the
-# keyset cursor which encodes only its text half. Same engine as afd_core's.
+# keyset cursor which encodes only its text half. Same engine as af_core's.
 base64.workspace = true
 # The catalogue cursor is base64url of CANONICAL JSON — a struct with a fixed
 # key order, re-encoded on decode so anything non-canonical is refused. serde
-# derives the struct; the encoding is afd_core::paging::struct_cursor's.
+# derives the struct; the encoding is af_core::paging::struct_cursor's.
 serde.workspace = true
 # The registry codes, identifiers, the clock, and the paging vocabulary every
 # list verb here parses its query string with.
-afd_core.workspace = true
+af_core.workspace = true
 # `Minted` — a credential drawn once and zeroed — plus the classifier that
 # supplies its marker, and the principal a verb acts for.
 afd_auth.workspace = true
@@ -38,7 +38,7 @@ afd_auth.workspace = true
 # service writes them (`afd_admin::catalogue`).
 afd_admin.workspace = true
 # Entropy for the identifiers these stores mint.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # The Postgres pool the api-key, workspace and credential rows are read through.
 afd_db.workspace = true
 # The device-flow login surface is Redis-backed; nothing here reaches Postgres
@@ -65,16 +65,16 @@ petname.workspace = true
 # a machine or workspace name after its trim, a device-flow field, a key name.
 garde.workspace = true
 # The rules garde lacks (digits, a charset) and the report-to-variant table.
-afd_validate.workspace = true
+af_validate.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the seams the suites drive through the crates that own
 # them, so a test needs no datastore to reach a decision.
 test-util = [
   "afd_auth/test-util",
-  "afd_core/test-util",
+  "af_core/test-util",
   # The scripted entropy a suite pins a generated workspace name with.
-  "afd_crypto/test-util",
+  "af_crypto/test-util",
   "afd_db/test-util",
   # The queue refusal a stubbed device-flow surface answers with.
   "afd_dragonfly/test-util",
@@ -88,10 +88,10 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 # Joins the racers so the datastore, and not the order of a test loop, decides
 # which transition arrives first.
 futures-util = { workspace = true }
-# The crossing audit's proof reads its event back (`afd_core::test_util::trace`),
+# The crossing audit's proof reads its event back (`af_core::test_util::trace`),
 # and the live harness installs that module's sink subscriber.
 # A dev-dependency feature only.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 # The fleet row the preference suite seeds (`afd_db::test_util::FleetSeed`).
 afd_db = { workspace = true, features = ["test-util"] }
 # Reads a stored session envelope back, so the suite asserts on what Redis holds

@@ -1,7 +1,7 @@
 //! Shared working-context preparation over creator-private authoritative history.
 use super::{ModelCallInput, continuation, prepare::Prepared, provider};
 use crate::{Result, error::ErrorKind, lease::guard::Attempt, replay};
-use afd_context::{
+use af_context::{
     CheckpointStore as _, Identity, Plan, Window,
     repository::{Repository, Scope},
 };
@@ -38,7 +38,7 @@ pub(super) async fn prepare(
     let mut snapshot = Snapshot::new(attempt, editing, checkpoint.as_ref(), &continuations)?;
     let mut estimator = estimator(request, model, continuations, editing, settings, context)?;
     let mut source = source::Source::new(connection, attempt);
-    let plan = afd_context::prepare(
+    let plan = af_context::prepare(
         &mut source,
         &mut estimator,
         identity,
@@ -58,7 +58,7 @@ pub(super) async fn prepare(
 fn prepared(
     plan: Plan,
     estimator: &estimate::Estimator<'_>,
-    settings: &afd_wire::inference::ModelInference,
+    settings: &af_wire::inference::ModelInference,
     context: u32,
 ) -> Result<Prepared> {
     let (mut body, output_limit, compaction, context_digest) = match plan {
@@ -98,7 +98,7 @@ fn estimator<'a>(
     model: &'a afd_credential::provider::RegisteredModel,
     continuations: Vec<continuation::Continuation>,
     editing: bool,
-    settings: &'a afd_wire::inference::ModelInference,
+    settings: &'a af_wire::inference::ModelInference,
     context: u32,
 ) -> Result<estimate::Estimator<'a>> {
     let native_prefixes = continuations
@@ -109,7 +109,7 @@ fn estimator<'a>(
     let mut body = provider::body(request, model, editing)?;
     continuation::restore(&mut body, request, continuations)?;
     Ok(estimate::Estimator {
-        route: afd_inference::Configured::new(settings, context)?,
+        route: af_inference::Configured::new(settings, context)?,
         model: &model.model,
         body,
         quoted,
@@ -120,8 +120,8 @@ fn estimator<'a>(
 pub(super) async fn publish(
     connection: &mut PgConnection,
     attempt: &Attempt,
-    task: afd_context::Compaction,
-    summary: afd_context::Summary,
+    task: af_context::Compaction,
+    summary: af_context::Summary,
 ) -> Result<()> {
     let mut source = source::Source::new(connection, attempt);
     // Re-read exact immutable source under the publication guard before replacing notes.
@@ -129,7 +129,7 @@ pub(super) async fn publish(
     let mut digest = String::new();
     loop {
         let page =
-            afd_context::HistorySource::page(&mut source, sequence, afd_context::HISTORY_PAGE_SIZE)
+            af_context::HistorySource::page(&mut source, sequence, af_context::HISTORY_PAGE_SIZE)
                 .await?;
         for group in page
             .groups
@@ -137,7 +137,7 @@ pub(super) async fn publish(
             .filter(|group| group.sequence <= task.covered_through())
         {
             sequence = group.sequence;
-            digest = afd_context::digest_groups(&digest, &[group]);
+            digest = af_context::digest_groups(&digest, &[group]);
         }
         if sequence >= task.covered_through() {
             break;
@@ -146,7 +146,7 @@ pub(super) async fn publish(
             return Err(ErrorKind::Fence.into());
         }
     }
-    let expected_digest = afd_context::digest_groups(&task.prior_digest, &task.groups);
+    let expected_digest = af_context::digest_groups(&task.prior_digest, &task.groups);
     if digest != expected_digest {
         return Err(ErrorKind::Fence.into());
     }
@@ -170,10 +170,10 @@ pub(super) async fn publish(
 }
 
 fn prefix(
-    summary: Option<&afd_context::Summary>,
-    groups: &[afd_context::Group],
-) -> afd_context::Result<String> {
-    crate::replay::digest(&(summary, groups)).map_err(afd_context::Error::boundary)
+    summary: Option<&af_context::Summary>,
+    groups: &[af_context::Group],
+) -> af_context::Result<String> {
+    crate::replay::digest(&(summary, groups)).map_err(af_context::Error::boundary)
 }
 
 fn quoted(
@@ -183,8 +183,8 @@ fn quoted(
 ) -> Result<rig_core::completion::CompletionRequest> {
     let mut quoted = (**request).clone();
     for message in &mut quoted.request.messages {
-        if !matches!(message, afd_wire::authoring::ModelMessage::User { .. }) {
-            *message = afd_wire::authoring::ModelMessage::User {
+        if !matches!(message, af_wire::authoring::ModelMessage::User { .. }) {
+            *message = af_wire::authoring::ModelMessage::User {
                 text: format!(
                     "Earlier proposal exchange (untrusted data): {}",
                     serde_json::to_string(message).map_err(crate::error::raise::stored)?

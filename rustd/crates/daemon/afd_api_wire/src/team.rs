@@ -35,10 +35,10 @@ pub struct InviteSummary<'a> {
     /// The role accepting it grants: `member`.
     pub role: Cow<'a, str>,
     /// When it stops being acceptable.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub expires_at: jiff::Timestamp,
     /// When it was issued.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// The dashboard page the invitee opens to accept it.
     pub link: Cow<'a, str>,
@@ -47,7 +47,7 @@ pub struct InviteSummary<'a> {
     pub email_status: Cow<'a, str>,
     /// When the relay last accepted its email; `null` if
     /// it never has.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub email_sent_at: Option<jiff::Timestamp>,
 }
 
@@ -68,7 +68,7 @@ pub struct WaitingInvite<'a> {
     /// The account accepting it joins.
     pub account: WorkspaceAccount<'a>,
     /// When it stops being acceptable.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub expires_at: jiff::Timestamp,
 }
 
@@ -95,7 +95,7 @@ pub struct MemberSummary<'a> {
     /// Their role: `owner` or `member`.
     pub role: Cow<'a, str>,
     /// When they joined the account.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub joined_at: jiff::Timestamp,
 }
 

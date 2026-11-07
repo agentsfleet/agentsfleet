@@ -1,12 +1,12 @@
 //! Creator privacy and membership revocation through the served draft routes.
 
 use super::{fixture::Fixture, json_body, mint, send, send_with_headers};
-use afd_auth::{
-    Scope, credential::Presented, directory::Digest, principal::Subject, scope::ScopeSet,
-};
-use afd_core::{
+use af_core::{
     error_code::{AUTHORING_CURSOR, AUTHORING_NOT_FOUND},
     id::Uuid7,
+};
+use afd_auth::{
+    Scope, credential::Presented, directory::Digest, principal::Subject, scope::ScopeSet,
 };
 use afd_db::test_util::{ApiKeySeed, TenantSeed, UserSeed};
 use axum::Router;

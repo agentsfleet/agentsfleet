@@ -1,6 +1,6 @@
 //! Platform provider-default writes; credential bytes stay in the vault.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::constraint::violates_foreign_key;
 use jiff::Timestamp;

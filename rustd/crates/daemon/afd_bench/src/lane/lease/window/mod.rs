@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::Leases;
 
 use super::drive::{self, Shared};

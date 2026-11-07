@@ -1,8 +1,8 @@
 //! A fire's complete display payload preserves the normal runner message.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
-use afd_core::id::Uuid7;
-use afd_wire::event::message_of;
+use af_core::id::Uuid7;
+use af_wire::event::message_of;
 use serde_json::json;
 
 use super::{FireTarget, body};

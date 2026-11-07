@@ -12,8 +12,8 @@
 
 use std::sync::atomic::Ordering;
 
-use afd_core::env::MapEnv;
-use afd_core::timing::MAX_RUNTIME;
+use af_core::env::MapEnv;
+use af_core::timing::MAX_RUNTIME;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 

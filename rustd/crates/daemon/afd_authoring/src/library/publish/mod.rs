@@ -13,7 +13,7 @@ use crate::{
     replay,
     types::Published,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 async fn accepted(

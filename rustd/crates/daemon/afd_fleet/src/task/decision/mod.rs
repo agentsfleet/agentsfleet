@@ -29,8 +29,8 @@ pub(in crate::task) use authorize::goal;
 
 use std::fmt;
 
-use afd_core::id::Uuid7;
-use afd_wire::task::{DecisionReceiptInput, DecisionReceiptResult, DecisionReservationInput};
+use af_core::id::Uuid7;
+use af_wire::task::{DecisionReceiptInput, DecisionReceiptResult, DecisionReservationInput};
 
 use super::{DecisionMaintenance, DecisionMaintenanceCursor, TaskLease, Tasks};
 use crate::Result;

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use afd_core::error_code;
+use af_core::error_code;
 use bytes::Bytes;
 use serde_json::value::RawValue;
 use tokio::sync::mpsc::error::TrySendError;

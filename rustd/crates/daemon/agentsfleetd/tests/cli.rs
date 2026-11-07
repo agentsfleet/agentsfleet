@@ -21,7 +21,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use agentsfleetd::cli::{Cli, Command, FAILURE, SUCCESS, on_runtime, run, status_for};
 use agentsfleetd::daemon::{Outcome, StopCause};
 use agentsfleetd::supervisor::ShutdownReport;

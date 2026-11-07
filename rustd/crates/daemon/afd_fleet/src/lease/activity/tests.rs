@@ -8,8 +8,8 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_wire::activity::{
+use af_core::id::{ENTROPY_LEN, Uuid7};
+use af_wire::activity::{
     ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress, ToolCallStarted,
 };
 use jiff::Timestamp;
@@ -18,7 +18,7 @@ use super::{Published, Target, first_visible_candidate_ms};
 
 #[test]
 fn live_task_frames_use_the_saved_counter_and_sequence() {
-    use afd_wire::activity::{
+    use af_wire::activity::{
         TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
         TaskActivityRecord,
     };
@@ -102,7 +102,7 @@ fn every_frame(call_id: &'static str) -> [ActivityFrame<'static>; 4] {
             name: Cow::Borrowed(TOOL),
             ms: 2,
             call_id,
-            status: afd_wire::tool_trace::ToolCallStatus::Succeeded,
+            status: af_wire::tool_trace::ToolCallStatus::Succeeded,
             output_head: None,
             output_tail: None,
             output_line_count: None,
@@ -110,7 +110,7 @@ fn every_frame(call_id: &'static str) -> [ActivityFrame<'static>; 4] {
         }),
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
-            text_kind: afd_wire::activity::StreamTextKind::Answer,
+            text_kind: af_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms: None,
             stream_start: false,
             stream_contiguous: false,
@@ -161,7 +161,7 @@ fn first_chunk_timing_excludes_frames_a_viewer_must_suppress() {
     let chunk = |stream_start, stream_contiguous, stream_seq| {
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
-            text_kind: afd_wire::activity::StreamTextKind::Answer,
+            text_kind: af_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms: Some(42),
             stream_start,
             stream_contiguous,
@@ -186,7 +186,7 @@ fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
     ] {
         let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: Cow::Borrowed("answer"),
-            text_kind: afd_wire::activity::StreamTextKind::Answer,
+            text_kind: af_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms,
             stream_start,
             stream_contiguous,
@@ -207,7 +207,7 @@ fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
     };
     let frame = ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed("stale"),
-        text_kind: afd_wire::activity::StreamTextKind::Answer,
+        text_kind: af_wire::activity::StreamTextKind::Answer,
         first_chunk_after_ms: Some(42),
         stream_start: true,
         stream_contiguous: true,
@@ -222,7 +222,7 @@ fn first_chunk_marker_distinguishes_the_only_safe_stream_entry() {
 
 #[test]
 fn test_published_completed_carries_outcome() {
-    use afd_wire::tool_trace::ToolCallStatus;
+    use af_wire::tool_trace::ToolCallStatus;
     let frame = ActivityFrame::ToolCallCompleted(ToolCallCompleted {
         name: Cow::Borrowed(TOOL),
         ms: 2,
@@ -262,7 +262,7 @@ fn test_published_completed_carries_outcome() {
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn a_dropped_activity_batch_reason_carries_no_code_prefix() {
-    let log = afd_core::test_util::trace::Capture::install();
+    let log = af_core::test_util::trace::Capture::install();
 
     crate::lease::test_dead::leases()
         .publish_activity(&target(), &every_frame(RUNNER_CALL))

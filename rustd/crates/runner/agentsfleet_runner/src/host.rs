@@ -11,7 +11,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use afd_core::error_code::{self, Coded, ErrorCode};
+use af_core::error_code::{self, Coded, ErrorCode};
 use afr_sandbox::{Engine, HostProbe};
 use afr_supervisor::StorageHome;
 
@@ -69,7 +69,7 @@ impl Host {
         use std::io::BufReader;
         use std::path::Path;
 
-        use afd_core::env::ProcessEnv;
+        use af_core::env::ProcessEnv;
         use afr_sandbox::{
             BubblewrapBackend, CGROUP_ROOT, HostPaths, Release, SELF_CGROUP_PATH, boot,
             delegated_root,
@@ -141,8 +141,8 @@ impl<E: Engine + 'static> From<afr_sandbox::Booted<E>> for Host {
 /// # Errors
 /// The failure, already logged, as the exit status.
 pub(crate) fn agent() -> Result<afr_agent::Loop, ExitCode> {
-    let network = afr_egress::Network::new().or_exit()?;
-    let connector = afr_providers::Connector::new().or_exit()?;
+    let network = af_egress::Network::new().or_exit()?;
+    let connector = af_providers::Connector::new().or_exit()?;
     Ok(afr_agent::Loop::new(
         afr_tools::Catalog::hosted(Arc::new(network)),
         connector,

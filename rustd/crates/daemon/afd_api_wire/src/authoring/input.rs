@@ -27,7 +27,7 @@ pub enum Source<D = Value> {
     /// Inline fleet Definition, validated by the server.
     Definition {
         /// Schema version, description, `instructions_md` and config.
-        #[cfg_attr(feature = "openapi", schema(value_type = afd_fleet_runtime::definition::DefinitionSchema))]
+        #[cfg_attr(feature = "openapi", schema(value_type = af_fleet_runtime::definition::DefinitionSchema))]
         definition: D,
     },
 }
@@ -111,6 +111,6 @@ pub struct MessageRequest {
 #[serde(deny_unknown_fields)]
 pub struct CancellationRequest {
     /// Nonnegative decimal string; a future sequence is refused.
-    #[garde(length(bytes, min = 1, max = 19), custom(afd_validate::ascii_digits))]
+    #[garde(length(bytes, min = 1, max = 19), custom(af_validate::ascii_digits))]
     pub through_sequence: String,
 }

@@ -7,9 +7,9 @@
 //! work when it did, and the next thing they would do is press Connect again.
 //! So this answers `200` with `{"status":"connected"}` instead.
 
+use af_core::id::Uuid7;
 use afd_api_wire::connector::{Connected, STATUS_CONNECTED};
 use afd_connector::callback;
-use afd_core::id::Uuid7;
 use axum::Json;
 use axum::response::{IntoResponse as _, Response};
 use http::{StatusCode, header};

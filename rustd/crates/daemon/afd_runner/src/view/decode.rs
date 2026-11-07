@@ -7,13 +7,13 @@
 
 use std::borrow::Cow;
 
-use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
-use afd_core::clock;
-use afd_core::id::Uuid7;
-use afd_core::timing::RUNNER_OFFLINE_AFTER;
-use afd_wire::runner::{
+use af_core::clock;
+use af_core::id::Uuid7;
+use af_core::timing::RUNNER_OFFLINE_AFTER;
+use af_wire::runner::{
     AssignedPolicy, CapabilityReport, ExtraBind, RunnerLiveness, SelftestCheck, SelftestReport,
 };
+use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
 use jiff::Timestamp;
 use serde_json::Value;
 
@@ -97,7 +97,7 @@ impl ItemRow {
             id: Uuid7::parse(&self.id).map_err(row_malformed(TABLE_RUNNERS, COLUMN_ID))?,
             host_id: self.host_id,
             sandbox_tier: columns.sandbox_tier.clone(),
-            status: afd_core::spelling::from_spelling(&self.status)
+            status: af_core::spelling::from_spelling(&self.status)
                 .ok_or_else(admin_state_malformed)?,
             liveness: derive_liveness(self.last_seen_at, self.live_lease, self.checked_at),
             labels: labels(&self.labels)?,

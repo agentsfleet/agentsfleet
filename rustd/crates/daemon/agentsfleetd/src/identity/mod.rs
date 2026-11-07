@@ -194,7 +194,7 @@ where
         Err(_unbuildable) => {
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
-            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
+            let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
             tracing::error!(
                 error_code = code,
                 event = "identity_writeback_unavailable",
@@ -218,12 +218,12 @@ where
     match build(identity) {
         Ok(claims) => Capabilities::Provider(Box::new(ProviderCapabilities::new(
             claims,
-            Arc::new(afd_core::clock::SystemClock),
+            Arc::new(af_core::clock::SystemClock),
         ))),
         Err(_unbuildable) => {
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
-            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
+            let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
             tracing::error!(
                 error_code = code,
                 event = "identity_client_unavailable",
@@ -249,10 +249,10 @@ where
         Ok(key_set) => Sessions::Jwks(Arc::new(JwksVerifier::new(
             key_set,
             VerifierConfig::new(identity.issuer.clone(), identity.audience.clone()),
-            Arc::new(afd_core::clock::SystemClock),
+            Arc::new(af_core::clock::SystemClock),
         ))),
         Err(_unbuildable) => {
-            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
+            let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
             tracing::error!(
                 error_code = code,
                 event = "key_set_client_unavailable",

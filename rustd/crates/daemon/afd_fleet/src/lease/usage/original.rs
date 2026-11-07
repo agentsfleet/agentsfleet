@@ -2,9 +2,9 @@
 
 use super::{Pricing, SliceColumns};
 use crate::{Result, error::query};
+use af_core::id::Uuid7;
+use af_wire::usage::RequestUsage;
 use afd_billing::biller::Settlement;
-use afd_core::id::Uuid7;
-use afd_wire::usage::RequestUsage;
 use sqlx::PgConnection;
 
 impl Pricing {

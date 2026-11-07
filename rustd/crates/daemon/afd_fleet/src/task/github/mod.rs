@@ -11,8 +11,8 @@ mod workflow;
 
 use super::TaskLease;
 use crate::{Result, lease::Plane};
-use afd_core::clock;
-use afd_wire::credentials::MintCredentialRequest;
+use af_core::clock;
+use af_wire::credentials::MintCredentialRequest;
 use std::borrow::Cow;
 
 pub(super) use publish::{ReceiptIdentity, Reconciled};
@@ -23,7 +23,7 @@ pub(super) use types::{BoundPr, Workflow};
 pub struct Github {
     plane: Plane,
     client: reqwest::Client,
-    master: std::sync::Arc<afd_crypto::secret::Kek>,
+    master: std::sync::Arc<af_crypto::secret::Kek>,
 }
 
 impl Github {
@@ -49,7 +49,7 @@ impl Github {
     pub const fn new(
         plane: Plane,
         client: reqwest::Client,
-        master: std::sync::Arc<afd_crypto::secret::Kek>,
+        master: std::sync::Arc<af_crypto::secret::Kek>,
     ) -> Self {
         Self {
             plane,
@@ -118,7 +118,7 @@ impl Github {
             .await?
             .ok_or(super::TaskRefusal::InvalidTarget)?;
         let handle: serde_json::Value =
-            serde_json::from_slice(handle.expose()).map_err(afd_core::json::Unreadable::from)?;
+            serde_json::from_slice(handle.expose()).map_err(af_core::json::Unreadable::from)?;
         let installation = afd_credential::credential::github::installation(&handle)
             .ok_or(super::TaskRefusal::InvalidTarget)?;
         if !self

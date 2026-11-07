@@ -5,7 +5,7 @@ use super::{
     fixture::{Case, SOAK, reply},
     server::Server,
 };
-use afd_wire::authoring::{ActivityEvent, ProposalCall};
+use af_wire::authoring::{ActivityEvent, ProposalCall};
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
@@ -79,7 +79,7 @@ async fn a_revoked_profile_makes_the_inflight_answer_stale_but_retains_usage() {
         response
             .expect_err("catalogue revocation also fences the pinned chat model")
             .code(),
-        afd_core::error_code::AUTHORING_MODEL
+        af_core::error_code::AUTHORING_MODEL
     );
     assert_eq!(case.journal().await, ("stale".into(), Some(112), true));
     let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")

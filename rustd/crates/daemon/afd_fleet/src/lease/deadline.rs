@@ -10,7 +10,7 @@ pub(crate) async fn read(
     let deadline: jiff_sqlx::Timestamp =
         sqlx::query_scalar(include_str!("sql/execution_deadline.sql"))
             .bind(lease_id)
-            .bind(afd_core::timing::MAX_RUNTIME)
+            .bind(af_core::timing::MAX_RUNTIME)
             .fetch_one(connection)
             .await
             .map_err(query("read immutable lease execution ceiling"))?;

@@ -16,10 +16,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use af_core::clock::{Clock, FixedClock};
 use afd_auth::capability::CapabilitySource;
 use afd_auth::principal::Subject;
 use afd_auth::scope::{Scope, ScopeSet, parse_claim};
-use afd_core::clock::{Clock, FixedClock};
 use afd_identity::ProviderCapabilities;
 use afd_identity::capability::{ClaimSource, DEFAULT_STALE_CEILING, DEFAULT_TTL};
 use afd_identity::error::ClaimUnavailable;

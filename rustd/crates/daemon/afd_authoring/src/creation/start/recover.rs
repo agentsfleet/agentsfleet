@@ -2,7 +2,7 @@
 
 use super::super::{ACTIVE, CONTEXT, Creations, read};
 use crate::{Access, Result, access, error::raise::query};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 impl Creations {

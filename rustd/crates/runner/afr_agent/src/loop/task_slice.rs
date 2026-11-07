@@ -9,7 +9,7 @@ const ASSESSMENT_RESERVE: Duration = Duration::from_mins(1);
 const HANDOFF_RESERVE: Duration = Duration::from_mins(2);
 
 fn budget(deadline: Option<jiff::Timestamp>, now: jiff::Timestamp) -> Option<Duration> {
-    afd_core::clock::elapsed(now, deadline?)
+    af_core::clock::elapsed(now, deadline?)
         .checked_sub(HANDOFF_RESERVE)
         .filter(|remaining| !remaining.is_zero())
 }
@@ -35,7 +35,7 @@ impl Harness<'_, '_> {
             .current_task
             .as_ref()
             .map_or(deadline, |current| deadline.min(current.expires_at));
-        budget(Some(deadline), afd_core::clock::now())
+        budget(Some(deadline), af_core::clock::now())
     }
 
     pub(super) fn task_yield_due(&self) -> bool {
@@ -58,20 +58,20 @@ mod tests {
         assert_eq!(budget(None, now), None);
         assert_eq!(budget(Some(now), now), None);
         assert_eq!(
-            budget(Some(afd_core::clock::after(now, HANDOFF_RESERVE)), now),
+            budget(Some(af_core::clock::after(now, HANDOFF_RESERVE)), now),
             None
         );
         assert_eq!(
             budget(
-                Some(afd_core::clock::after(now, Duration::from_mins(3))),
+                Some(af_core::clock::after(now, Duration::from_mins(3))),
                 now
             ),
             Some(ASSESSMENT_RESERVE)
         );
         // A setup taking seven minutes has already spent those minutes; no new
         // ten-minute agent clock is started after checkout and restore.
-        let deadline = afd_core::clock::after(now, Duration::from_mins(10));
-        let after_setup = afd_core::clock::after(now, Duration::from_mins(7));
+        let deadline = af_core::clock::after(now, Duration::from_mins(10));
+        let after_setup = af_core::clock::after(now, Duration::from_mins(7));
         assert_eq!(
             budget(Some(deadline), after_setup),
             Some(ASSESSMENT_RESERVE)
@@ -80,7 +80,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn stalled_reply_finishes_before_capture_reserve_is_spent() -> crate::Result<()> {
         let now = jiff::Timestamp::UNIX_EPOCH;
-        let deadline = afd_core::clock::after(now, HANDOFF_RESERVE + Duration::from_secs(1));
+        let deadline = af_core::clock::after(now, HANDOFF_RESERVE + Duration::from_secs(1));
         let started = tokio::time::Instant::now();
         let failure = within_budget(
             budget(Some(deadline), now),
@@ -92,7 +92,7 @@ mod tests {
         assert_eq!(started.elapsed(), Duration::from_secs(1));
         assert_eq!(
             failure.code(),
-            afd_core::error_code::INTERNAL_OPERATION_FAILED
+            af_core::error_code::INTERNAL_OPERATION_FAILED
         );
         assert!(std::error::Error::source(&failure).is_some());
         Ok(())
@@ -112,7 +112,7 @@ mod tests {
         assert!(!polled.get());
         assert_eq!(
             failure.code(),
-            afd_core::error_code::INTERNAL_OPERATION_FAILED
+            af_core::error_code::INTERNAL_OPERATION_FAILED
         );
         Ok(())
     }

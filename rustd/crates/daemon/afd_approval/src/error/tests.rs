@@ -1,6 +1,6 @@
 use std::error::Error as _;
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::raise::{query, row_malformed};
 

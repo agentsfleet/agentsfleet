@@ -45,6 +45,11 @@
 
 use std::sync::Arc;
 
+use af_core::env::MapEnv;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::{Kek, SecretBytes};
+use af_observability::Analytics;
 use afd_api::router::{Dependencies, ReadyInputs, build};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, SchedulePlane, Services};
 use afd_auth::credential::CredentialKind;
@@ -55,11 +60,7 @@ use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
 use afd_auth::verifier::VerifyError;
 use afd_billing::tenant::Billing;
-use afd_core::env::MapEnv;
-use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::Dragonfly;
@@ -68,7 +69,6 @@ use afd_events::{History, Steer};
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_memory::Memories;
-use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::{Ceiling, Live};
 use afd_state::Credentials;
@@ -196,7 +196,7 @@ pub(crate) fn task_dependencies(database: Db) -> afd_fleet::task::TaskDependenci
         biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
             database.clone(),
             Entropy::new(),
-            Arc::new(afd_core::clock::SystemClock),
+            Arc::new(af_core::clock::SystemClock),
         )),
         providers: afd_credential::provider::Providers::new(
             database,
@@ -212,11 +212,11 @@ pub(crate) fn raw_secret_envelope(
     workspace: &Uuid7,
     name: &str,
     plaintext: &[u8],
-) -> afd_crypto::envelope::Envelope {
-    afd_crypto::envelope::Sealer::new()
+) -> af_crypto::envelope::Envelope {
+    af_crypto::envelope::Sealer::new()
         .seal(
             &Kek::from_bytes(FIXTURE_KEK),
-            &afd_crypto::aad::Aad::new(workspace.as_str(), name),
+            &af_crypto::aad::Aad::new(workspace.as_str(), name),
             plaintext,
         )
         .expect("seal owned raw signing fixture with the router's vault key")
@@ -276,7 +276,7 @@ pub(crate) struct Fleet {
     /// Opening a personal account, over whatever pool this fixture holds.
     signups: afd_tenant::signup::Signups,
     /// What a signup event is verified against — `None` refuses every one.
-    identity_webhook_secret: Option<afd_crypto::secret::SecretBytes>,
+    identity_webhook_secret: Option<af_crypto::secret::SecretBytes>,
     /// The dashboard base a connect relays through, parsed as boot parses it.
     dashboard_base: afd_connector::Dashboard,
     preferences: Preferences,

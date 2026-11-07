@@ -1,7 +1,7 @@
 //! How much memory this process holds, for the resident-set gauge.
 //!
 //! The rest of what a process says about itself — its service identity on
-//! every signal — moved to `afd_otlp`, which both binaries build through.
+//! every signal — moved to `af_otlp`, which both binaries build through.
 
 /// How many bytes of memory this process is holding, where that is readable.
 ///

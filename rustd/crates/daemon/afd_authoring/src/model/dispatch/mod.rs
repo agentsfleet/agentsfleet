@@ -1,6 +1,6 @@
 //! Commit the physical call identity before crossing the provider boundary.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -42,14 +42,14 @@ pub(super) struct Intent {
     pub(super) authorized_at: Instant,
     pub(super) output_limit: u32,
     pub(super) candidate: Option<crate::types::Candidate>,
-    pub(super) compaction: Option<afd_context::Compaction>,
+    pub(super) compaction: Option<af_context::Compaction>,
     pub(super) context_digest: String,
 }
 
 impl Intent {
     fn new(
         attempt: guard::Attempt,
-        key: afd_crypto::secret::SecretString,
+        key: af_crypto::secret::SecretString,
         prepared: prepare::Prepared,
         dispatch_id: &str,
         now: Timestamp,

@@ -11,7 +11,7 @@
 //! models, is [`activate`](super::activate): it has a credential to lock and a
 //! catalogue gate to pass, and a reset has neither.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::error::{Result, query};
 use crate::provider::sql;

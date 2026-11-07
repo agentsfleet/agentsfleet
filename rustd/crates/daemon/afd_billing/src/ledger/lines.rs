@@ -1,6 +1,6 @@
 //! The usage log: priced lines written into `billing.usage_lines`.
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -93,7 +93,7 @@ pub async fn log_lines<'e>(
         }))
         .bind(unpriced)
         .bind(column(lines, |line| line.charged.as_i64()))
-        .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+        .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
         .fetch_one(executor)
         .await
         .map_err(query(CONTEXT_LOG))?;
@@ -107,8 +107,8 @@ fn column<T>(lines: &[RatedLine], field: impl Fn(&RatedLine) -> T) -> Vec<T> {
 
 #[cfg(test)]
 mod tests {
-    use afd_core::id::{ENTROPY_LEN, Uuid7};
-    use afd_crypto::entropy::Entropy;
+    use af_core::id::{ENTROPY_LEN, Uuid7};
+    use af_crypto::entropy::Entropy;
     use jiff::Timestamp;
 
     use super::log_lines;

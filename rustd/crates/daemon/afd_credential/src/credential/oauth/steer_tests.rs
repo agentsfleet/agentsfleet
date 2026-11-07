@@ -7,7 +7,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::credential::ZOHO_ACCOUNTS_SERVERS;
+use af_core::credential::ZOHO_ACCOUNTS_SERVERS;
 use serde_json::{Value, json};
 
 use super::{Steer, endpoint, is_zoho_accounts_server, steer};

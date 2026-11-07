@@ -9,8 +9,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::error_code;
-use afd_observability::Telemetry;
+use af_core::error_code;
+use af_observability::Telemetry;
 
 use super::{ACTOR_SYSTEM, telemetry_of};
 use crate::envelope::Refused;
@@ -131,7 +131,7 @@ fn should_omit_the_workspace_when_the_refusal_preceded_one() {
 /// A code this mapping does not recognise still reports, as an api error.
 ///
 /// The arm that keeps the layer total. Every declared code has three segments —
-/// `afd_core`'s own test proves it — so this is unreachable for a real code,
+/// `af_core`'s own test proves it — so this is unreachable for a real code,
 /// and it must not be a panic on the refusal path if it ever is not.
 #[test]
 fn should_report_an_unrecognised_family_rather_than_dropping_it() {

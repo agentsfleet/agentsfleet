@@ -11,7 +11,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use afd_core::env::{EnvSource as _, ProcessEnv};
+use af_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
@@ -41,7 +41,7 @@ impl SseLane {
     /// Connects, with a deadline short enough that a hung server fails one test
     /// rather than the whole lane's timeout.
     pub(crate) async fn connect() -> Self {
-        afd_core::test_util::trace::install_subscriber();
+        af_core::test_util::trace::install_subscriber();
         let redis = afd_dragonfly::test_util::connect_live(&Self::config())
             .await
             .expect("the lane's Dragonfly must be reachable");

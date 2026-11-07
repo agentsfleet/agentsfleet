@@ -14,19 +14,19 @@
 //! promise, and a promise nobody asserts is a comment.
 use std::borrow::Cow;
 
+use af_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
 use afd_runner::Verdict;
 use afd_runner::reconcile::{
     Guarantee, REASON_BUBBLEWRAP_MISSING, REASON_CGROUP_CONTROLLERS_MISSING,
     REASON_EGRESS_ENFORCEMENT_UNAVAILABLE, REASON_LANDLOCK_UNAVAILABLE, REASON_NETWORK_NEEDS_CAGE,
     REASON_NO_CAPABILITY_REPORT, REASON_SECCOMP_UNAVAILABLE, reconcile,
 };
-use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
 
 /// An assignment at `tier` under `network`, with nothing else set.
 fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static> {
     AssignedPolicy {
         decision_model_id: None,
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         sandbox_tier: tier,
         network_policy: network,
         registry_allowlist: Vec::new(),

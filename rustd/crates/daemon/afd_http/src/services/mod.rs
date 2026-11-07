@@ -25,7 +25,7 @@
 //!
 //! # Why the clock is here
 //!
-//! `afd_core::clock` asks callers to take an instant as a PARAMETER wherever
+//! `af_core::clock` asks callers to take an instant as a PARAMETER wherever
 //! the decision can be handed one, and reserves injection for a long-lived
 //! owner that reads repeatedly. The router is that owner: it lives for the
 //! process, and every verb under it needs the instant its writes are stamped

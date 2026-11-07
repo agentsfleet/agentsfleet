@@ -13,8 +13,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_http::services::TenantTeam;
 use afd_tenant::team::{

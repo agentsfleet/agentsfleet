@@ -31,8 +31,8 @@ test-util = [
     "afd_api/test-util",
     "afd_auth/test-util",
     "afd_connector/test-util",
-    "afd_core/test-util",
-    "afd_crypto/test-util",
+    "af_core/test-util",
+    "af_crypto/test-util",
     "afd_db/test-util",
     "afd_dragonfly/test-util",
 ]
@@ -45,7 +45,7 @@ openapi = ["afd_api/openapi"]
 [dependencies]
 garde.workspace = true
 serde_json.workspace = true
-afd_inference.workspace = true
+af_inference.workspace = true
 afd_admin.workspace = true
 # The one admission ledger every producer in this process shares.
 afd_admission.workspace = true
@@ -63,7 +63,7 @@ afd_api.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true
 # `signal::shutdown`, the stop `serve` waits on.
-afd_core = { workspace = true, features = ["signal"] }
+af_core = { workspace = true, features = ["signal"] }
 afd_events.workspace = true
 # The instant `Services::now` hands every handler.
 jiff.workspace = true
@@ -82,12 +82,12 @@ afd_authoring.workspace = true
 # The connector answer-delivery worker this process supervises — see
 # `crate::outbound`.
 afd_outbound.workspace = true
-afd_observability.workspace = true
+af_observability.workspace = true
 # The transport both binaries build through, and the two bridges that feed it
-# this daemon's existing spans and log records. The pipelines are `afd_otlp`'s;
+# this daemon's existing spans and log records. The pipelines are `af_otlp`'s;
 # which knobs this daemon reads and that it bridges its log records are
 # decided here, at the composition root.
-afd_otlp.workspace = true
+af_otlp.workspace = true
 opentelemetry.workspace = true
 opentelemetry-appender-tracing.workspace = true
 tracing-opentelemetry.workspace = true
@@ -123,9 +123,9 @@ afd_identity.workspace = true
 clap.workspace = true
 
 # Preflight resolves the master key here rather than in the crypto crate:
-# `afd_crypto` takes hex, deliberately, because it is the layer that must not
+# `af_crypto` takes hex, deliberately, because it is the layer that must not
 # know where a key came from.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # The pool and client settings boot resolves BEFORE it opens either.
 afd_db.workspace = true
 afd_dragonfly.workspace = true
@@ -153,14 +153,14 @@ tracing-subscriber.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-afd_webhook = { workspace = true, features = ["test-util"] }
+af_webhook = { workspace = true, features = ["test-util"] }
 # The overlap scenario wraps the unsandboxed engine to stall its prepare.
 async-trait.workspace = true
 # Checkpoint refusal tests inspect the shared error and repository diagnostics.
-afd_context.workspace = true
+af_context.workspace = true
 # The `tracing` capture the suites read their log lines back through
-# (`afd_core::test_util::trace`). A dev-dependency feature only.
-afd_core = { workspace = true, features = ["test-util"] }
+# (`af_core::test_util::trace`). A dev-dependency feature only.
+af_core = { workspace = true, features = ["test-util"] }
 # The fleet rows the suites seed (`afd_db::test_util::FleetSeed`).
 afd_db = { workspace = true, features = ["test-util"] }
 # Instants a seed binds, encoded the way the store binds them.
@@ -188,12 +188,12 @@ axum.workspace = true
 sqlx.workspace = true
 # The same suite builds request bodies and reads answers as JSON: it speaks to
 # the daemon over a socket, so it holds bytes rather than the wire types, and
-# `afd_wire` rides in as the SHAPE those bodies are written against.
+# `af_wire` rides in as the SHAPE those bodies are written against.
 serde_json.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 # Seeded fleets select a native definition through the setup authority's own
 # parser and digest; the setup corpus is read into one once, as fixture data.
-afd_fleet_runtime.workspace = true
+af_fleet_runtime.workspace = true
 # The Rust runner, driven end to end against this daemon: its supervisor, the
 # test-only unsandboxed engine, the scripted agent engine and the executor's
 # process request. Dev-only, and only in this direction — the runner itself
@@ -207,8 +207,8 @@ afr_supervisor = { workspace = true, features = ["test-util"] }
 # Section 6's corpus suite: the real loop over the hosted catalog, a scripted
 # model behind the provider seam, and the egress client routed to HTTPS fakes
 # that rcgen's test CA signs and hyper serves.
-afr_egress = { workspace = true, features = ["test-util"] }
-afr_providers.workspace = true
+af_egress = { workspace = true, features = ["test-util"] }
+af_providers.workspace = true
 afr_tools.workspace = true
 futures-util.workspace = true
 rcgen.workspace = true

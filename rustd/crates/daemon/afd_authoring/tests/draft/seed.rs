@@ -1,9 +1,9 @@
 //! Real identities, joined membership and encrypted provider metadata.
 
 use super::fixture::{Fixture, now};
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
-use afd_crypto::{entropy::Entropy, secret::Kek};
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_db::test_util::{ModelSeed, TenantSeed, UserSeed, WorkspaceSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;

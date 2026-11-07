@@ -8,7 +8,7 @@
 
 use core::fmt;
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 
 use crate::error::{ErrorKind, Result};
 use crate::knobs::{SHAPE_VARIABLE, variable};
@@ -98,7 +98,7 @@ impl fmt::Display for Shape {
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 mod tests {
-    use afd_core::env::MapEnv;
+    use af_core::env::MapEnv;
 
     use super::{BURST, Profile, SATURATION, SHAPE_VARIABLE, Shape};
 

@@ -5,16 +5,16 @@ mod issue;
 mod selection;
 mod sql;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::lease::LeaseKind;
 use afd_runner::capacity::choice::{self, Ticket};
-use afd_wire::lease::LeaseKind;
 use sqlx::Connection as _;
 
 use crate::{Drafts, Result, error::raise::query, funnel::Owed, types::Candidate};
 use selection::{Authorized, Hint};
 
 /// The complete private placement returned only to the authenticated runner.
-pub type Claimed = afd_wire::authoring::Lease<Candidate>;
+pub type Claimed = af_wire::authoring::Lease<Candidate>;
 
 /// Logged when a claim skips a candidate whose creator or draft another
 /// transaction holds.

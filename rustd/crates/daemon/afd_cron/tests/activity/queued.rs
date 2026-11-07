@@ -1,6 +1,6 @@
 //! Queued fires reload before leasing and promote under their original identity.
 
-use afd_core::event::status;
+use af_core::event::status;
 use afd_cron::{Change, Fire};
 use serde_json::{Value, json};
 

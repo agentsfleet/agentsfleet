@@ -7,7 +7,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
+use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
 use super::{hold, id, live, slot};
 use crate::rows::Row;

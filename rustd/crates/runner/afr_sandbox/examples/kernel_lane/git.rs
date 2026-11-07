@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 
-use afr_egress::testing::RecordingTransport;
+use af_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 use afr_supervisor::workspace_clone::{Mirrors, Request};
 use afr_tools::catalog::{GIT, SHELL};

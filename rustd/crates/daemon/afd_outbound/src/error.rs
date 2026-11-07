@@ -13,7 +13,7 @@
 //! The two categories have different types, so a raise site cannot put a
 //! delivery failure where a loop failure goes.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -22,7 +22,7 @@ use afd_core::error_code::{self, ErrorCode};
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An outbound-delivery failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -123,7 +123,7 @@ impl Error {
     }
 }
 
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_dragonfly::Error => Queue,
     afd_db::Error => Ledger,
 );

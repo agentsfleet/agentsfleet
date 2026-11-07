@@ -1,10 +1,10 @@
 //! Provisional decision credit is cumulative and shares the fleet's budget.
 
+use af_wire::{decision::DecisionPurpose, task::TaskContext};
 use afd_billing::{
     Nanos, Spend,
     budget::{self, Verdict},
 };
-use afd_wire::{decision::DecisionPurpose, task::TaskContext};
 use sqlx::PgConnection;
 
 use super::{context::AssessedContext, sql};
@@ -54,7 +54,7 @@ pub(super) async fn check_on(
     let totals: FleetSpend = sqlx::query_as(sql::BUDGET)
         .bind(&current.workspace_id)
         .bind(&current.fleet_id)
-        .bind(afd_core::timing::DAY)
+        .bind(af_core::timing::DAY)
         .fetch_one(connection)
         .await
         .map_err(query(

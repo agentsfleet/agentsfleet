@@ -22,10 +22,10 @@
 //! "write" for them to both pass through, and unlike the Lua claim this
 //! replaces, the row does not expire and does not live in the queue.
 
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_api_wire::activity::{ScheduleFire, ScheduleFireDescription};
-use afd_core::id::Uuid7;
-use afd_wire::event::EventType;
 
 use crate::error::Result;
 use crate::store::FireTarget;
@@ -139,9 +139,9 @@ impl Fire {
         // Hoisted rather than spelled inside the macro: the log bridge
         // duplicates every field expression and coverage instrumentation scores
         // the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
-        afd_observability::producers::scheduler::fired(admitted.replayed);
+        af_observability::producers::scheduler::fired(admitted.replayed);
         if !admitted.replayed {
-            afd_observability::producers::scheduler::dispatched(
+            af_observability::producers::scheduler::dispatched(
                 target.scheduled_at,
                 admitted.stored.created_at,
             );

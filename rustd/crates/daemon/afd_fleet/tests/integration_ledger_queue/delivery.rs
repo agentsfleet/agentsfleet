@@ -1,9 +1,9 @@
 //! Delivery writes roll back together and coexist with producer budget locks.
 
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_db::config::DbRole;
 use afd_fleet::lease::{Acquired, Delivery, Leases, Received};
-use afd_wire::event::EventType;
 use sqlx::Connection as _;
 
 use super::{WITHIN, enqueue, next};
@@ -68,7 +68,7 @@ async fn assert_stamp_failure_rolls_back(
     connection: &mut sqlx::PgConnection,
     leases: &Leases,
     acquired: &Acquired,
-    runner: &afd_core::id::Uuid7,
+    runner: &af_core::id::Uuid7,
 ) {
     let before = afd_events::fleet_counters(&fixtures.database, acquired.fleet_id.as_str())
         .await
@@ -90,7 +90,7 @@ async fn assert_stamp_failure_rolls_back(
         .lease_claimed(acquired.clone(), runner, fixtures.enrolled_at())
         .await
         .expect_err("a failed delivery cannot issue a lease");
-    assert_eq!(failure.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(failure.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert_eq!(
         delivery_state(fixtures, &acquired.event_id).await,
         (0, false)

@@ -13,7 +13,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use afd_observability::metrics::label::http::{DiscardReason, Signal};
+use af_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
 use crate::labels::{
@@ -30,7 +30,7 @@ pub enum Recorded {
     /// [`Recorder::memory_source`].
     MemorySource(crate::labels::MemorySource),
     /// The observed usage of one model request.
-    ModelTokens(String, Provider, afd_wire::usage::ObservedTokens),
+    ModelTokens(String, Provider, af_wire::usage::ObservedTokens),
     /// One model request and its safe catalogue identity.
     ModelCall(
         String,
@@ -100,12 +100,7 @@ impl Recorder for Tally {
         self.send(Recorded::MemorySource(source));
     }
 
-    fn model_tokens(
-        &self,
-        model: &str,
-        provider: Provider,
-        usage: afd_wire::usage::ObservedTokens,
-    ) {
+    fn model_tokens(&self, model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens) {
         self.send(Recorded::ModelTokens(model.to_owned(), provider, usage));
     }
 

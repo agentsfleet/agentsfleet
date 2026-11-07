@@ -3,23 +3,23 @@
 //! A bare row id cannot carry this walk's position — the sort keys are
 //! normalized expressions and the page is bound to the filter and limit that
 //! issued it — so the boundary is a small struct rather than one of
-//! [`afd_core::paging::Cursor`]'s two scalar forms.
+//! [`af_core::paging::Cursor`]'s two scalar forms.
 //!
 //! The ENCODING is not here. Canonical JSON, unpadded base64url, the
 //! re-encode that refuses a reordered or whitespaced token, and the generation
-//! check all live in [`afd_core::paging::struct_cursor`], which the tenant
+//! check all live in [`af_core::paging::struct_cursor`], which the tenant
 //! registry's page uses for the same reason this one does. What stays here is
 //! the payload: its fields, their order — which IS the canonical key order —
 //! and the two spellings this daemon renders and reads.
 
-use afd_core::paging::struct_cursor::{self, StructCursor};
+use af_core::paging::struct_cursor::{self, StructCursor};
 use serde::{Deserialize, Serialize};
 
-pub use afd_core::paging::struct_cursor::Foreign;
+pub use af_core::paging::struct_cursor::Foreign;
 
 /// Cursor payload version, shared across every struct cursor issued.
 ///
-/// Re-exported rather than declared: `afd_core::paging::struct_cursor` owns one
+/// Re-exported rather than declared: `af_core::paging::struct_cursor` owns one
 /// number for every struct cursor, and a second declaration here is how two
 /// payloads end up on different generations.
 pub const CURSOR_VERSION: u8 = struct_cursor::VERSION;

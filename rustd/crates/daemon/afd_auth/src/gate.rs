@@ -10,7 +10,7 @@
 //! at, and collapsing the two would make a capability into a key to everyone's
 //! data.
 
-use afd_core::error_code::ErrorCode;
+use af_core::error_code::ErrorCode;
 
 use crate::principal::Principal;
 use crate::scope::{INSUFFICIENT_SCOPE, Scope};

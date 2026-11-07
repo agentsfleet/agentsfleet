@@ -6,16 +6,16 @@
     reason = "integration fixtures fail loudly"
 )]
 
+use af_core::catalogue::{Metadata, Price};
+use af_core::{error_code, id::Uuid7};
+use af_crypto::entropy::Entropy;
+use af_wire::inference::{InferenceApi, ModelInference};
 use afd_admin::{CreateModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
-use afd_core::catalogue::{Metadata, Price};
-use afd_core::{error_code, id::Uuid7};
-use afd_crypto::entropy::Entropy;
 use afd_db::{
     Db,
     config::DbRole,
     test_util::{TestDatabase, mint_id},
 };
-use afd_wire::inference::{InferenceApi, ModelInference};
 use jiff::Timestamp;
 
 /// The instant every model here is minted at.

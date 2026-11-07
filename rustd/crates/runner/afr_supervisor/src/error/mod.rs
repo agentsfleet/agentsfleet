@@ -1,7 +1,7 @@
 //! What the supervisor refuses, and what it reports.
 //!
 //! One error type with `pub type Result<T, E = Error>` beside it, under the
-//! `afd_core::error_shell!` hull every `rustd` crate carries: the boxed kind
+//! `af_core::error_shell!` hull every `rustd` crate carries: the boxed kind
 //! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
 //! the `[CODE]` rendering and the self-skipping `source()` are generated.
 //!
@@ -21,7 +21,7 @@
 //! log line says which failure it was. A refusal carries the daemon's own code
 //! through, so the log names exactly what the daemon said.
 
-use afd_core::error_code::ErrorCode;
+use af_core::error_code::ErrorCode;
 use reqwest::StatusCode;
 
 use crate::client::Verb;
@@ -39,7 +39,7 @@ pub(crate) use self::raise::{
 /// The daemon refused the runner's token.
 pub(crate) const UNAUTHORIZED: u16 = StatusCode::UNAUTHORIZED.as_u16();
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A supervisor failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -59,7 +59,7 @@ pub(crate) enum ErrorKind {
     #[error("private report protection failed")]
     Crypto {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     /// A finished temporary file could not be moved into place.
@@ -196,7 +196,7 @@ pub(crate) enum ErrorKind {
     Identifier {
         /// The parser's reason.
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     /// A host the lease's egress allowlist names did not resolve.
@@ -218,7 +218,7 @@ pub(crate) enum ErrorKind {
     },
 
     /// A host the fleet's `network.allow` names resolved to an address in
-    /// `afd_core::net`'s blocked ranges: loopback, private, shared,
+    /// `af_core::net`'s blocked ranges: loopback, private, shared,
     /// link-local or reserved. The address stays out of the text, as it does
     /// out of every egress log.
     #[error(

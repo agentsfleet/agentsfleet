@@ -7,6 +7,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use af_core::error_code;
+use af_wire::inference::ModelInference;
 use afd_admin::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate};
 use afd_api_wire::admin::{
     AdminDecisionModel, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
@@ -14,9 +16,7 @@ use afd_api_wire::admin::{
 #[cfg(feature = "openapi")]
 use afd_api_wire::admin::{AdminModelCreate, AdminModelPatch};
 use afd_api_wire::catalogue::{CatalogueMetadata, CataloguePrice};
-use afd_core::error_code;
 use afd_http::services::{metadata_store, metadata_wire, price_store, price_wire};
-use afd_wire::inference::ModelInference;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
@@ -64,9 +64,9 @@ pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    let limit = match afd_validate::Limit::parse(
+    let limit = match af_validate::Limit::parse(
         params.get("limit").map(String::as_str),
-        afd_core::paging::CEILING,
+        af_core::paging::CEILING,
     ) {
         Ok(limit) => limit,
         Err(_invalid) => {
@@ -281,7 +281,7 @@ fn details(
         prices: prices.into_iter().map(price_store).collect(),
         inference,
         decision: decision.map(|model| DecisionModel {
-            configuration: afd_wire::decision::DecisionConfiguration {
+            configuration: af_wire::decision::DecisionConfiguration {
                 enabled: model.enabled,
                 profile: model.profile.into_owned(),
             },

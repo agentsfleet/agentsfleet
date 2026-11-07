@@ -1,7 +1,7 @@
 //! Validate expanded base plus overlay, including links through other links.
 
 use crate::{Result, task::TaskRefusal};
-use afd_wire::task::CheckpointEntry;
+use af_wire::task::CheckpointEntry;
 use std::collections::{BTreeMap, BTreeSet};
 
 const MAX_LINKS: usize = 40;

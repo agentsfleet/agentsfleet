@@ -31,10 +31,10 @@
 //!
 //! Likewise the two stored vocabularies below are `#[serde(rename)]`
 //! declarations read through
-//! [`afd_core::spelling::from_spelling`], not `match` arms — see that module
+//! [`af_core::spelling::from_spelling`], not `match` arms — see that module
 //! for why a second copy of a variant's name is the failure with no test.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
 use crate::gate::decision::Answer;
@@ -70,7 +70,7 @@ struct Stored {
 }
 
 impl TryFrom<Stored> for GateRef {
-    type Error = afd_core::error::Error;
+    type Error = af_core::error::Error;
 
     fn try_from(stored: Stored) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -144,7 +144,7 @@ mod tests {
     )]
     use super::{Evaluation, GateRef, evaluate};
     use crate::gate::decision::Answer;
-    use afd_core::id::Uuid7;
+    use af_core::id::Uuid7;
 
     const ACTION: &str = "0193e9a0-0000-7000-8000-00000000aaaa";
 

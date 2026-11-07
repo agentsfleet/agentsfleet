@@ -9,7 +9,7 @@ mod verdicts;
 
 use super::super::{attempt::Attempt, fixture::Fixture, mint};
 use super::fixture;
-use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
+use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 
 fn report() -> Report {
     Report::Terminal {

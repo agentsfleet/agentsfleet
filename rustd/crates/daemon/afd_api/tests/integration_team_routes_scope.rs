@@ -7,7 +7,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::json;
 

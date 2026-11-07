@@ -5,7 +5,7 @@ use crate::{
     error::query,
     task::{TaskRefusal, guard::LeaseRow, row},
 };
-use afd_wire::task::{TaskAcceptedInterpretation, TaskItemBinding, TaskRecoveredItem, TaskState};
+use af_wire::task::{TaskAcceptedInterpretation, TaskItemBinding, TaskRecoveredItem, TaskState};
 use sqlx::PgConnection;
 use std::collections::BTreeMap;
 

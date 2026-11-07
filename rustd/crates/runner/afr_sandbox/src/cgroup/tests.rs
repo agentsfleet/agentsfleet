@@ -212,7 +212,7 @@ fn test_a_refused_limit_names_its_control_file() {
 #[test]
 fn test_undo_removes_an_empty_cgroup_and_logs_one_it_cannot() {
     let root = tempfile::tempdir().unwrap();
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let (empty, empty_dir) = plain(root.path(), "lease-6");
     let (full, full_dir) = plain(root.path(), "lease-7");
     fs::write(full_dir.join("memory.max"), "1").unwrap();

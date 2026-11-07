@@ -49,7 +49,7 @@ async fn a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows() {
 
     assert_eq!(
         refused.code(),
-        afd_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
+        af_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
         "the refusal is the vault's conflict, not an operation failure: {refused}"
     );
     assert_eq!(

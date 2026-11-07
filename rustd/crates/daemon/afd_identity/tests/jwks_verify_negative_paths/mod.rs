@@ -16,9 +16,9 @@
 
 use std::sync::Arc;
 
+use af_core::clock::{Clock, FixedClock};
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifyError};
-use afd_core::clock::{Clock, FixedClock};
 use afd_identity::jwks::source::KeySetSource;
 use afd_identity::{JwksVerifier, StaticKeySet, VerifierConfig, jwks_url};
 use base64::Engine as _;

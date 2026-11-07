@@ -32,7 +32,7 @@ mod support;
 
 use std::time::Duration;
 
-use afd_core::clock;
+use af_core::clock;
 use afd_cron::{Change, DesiredStatus, SYNC_LEASE, SyncStatus};
 
 use self::support::CronLane;

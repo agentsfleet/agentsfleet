@@ -5,7 +5,7 @@
 
 use std::fmt;
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 use crate::error::{Error, ErrorKind};
 

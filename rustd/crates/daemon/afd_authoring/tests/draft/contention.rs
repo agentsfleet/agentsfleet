@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use afd_core::error_code::AUTHORING_GONE;
+use af_core::error_code::AUTHORING_GONE;
 use sqlx::Connection as _;
 use std::time::Duration;
 

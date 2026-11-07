@@ -1,8 +1,8 @@
 //! Private setup errors retain their current state and strong version.
 
 use super::{Refusable, Refusal};
+use af_core::error_code::ErrorCode;
 use afd_authoring::Error;
-use afd_core::error_code::ErrorCode;
 
 const EVENT: &str = "authoring_request_refused";
 

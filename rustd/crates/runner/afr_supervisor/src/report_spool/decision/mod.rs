@@ -6,8 +6,8 @@ mod tests;
 
 use super::{ReportSpool, authoring::files};
 use crate::{Result, client::ControlPlane, error};
-use afd_core::id::Uuid7;
-use afd_wire::task::{
+use af_core::id::Uuid7;
+use af_wire::task::{
     DecisionReceipt, DecisionReceiptInput, DecisionReceiptResult, DecisionUnavailableCause,
 };
 use serde::{Deserialize, Serialize};

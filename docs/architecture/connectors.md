@@ -356,7 +356,7 @@ The daemon derives the fleet and workspace from the lease and rechecks the appro
 It loads the workspace installation handle, signs with the platform key and exchanges for a short-lived token.
 
 The runner caches that token for the lease and refreshes it 30 seconds before expiry.
-It masks the token in tool responses (`rustd/crates/harness/afr_egress/src/vault/mod.rs`).
+It masks the token in tool responses (`rustd/crates/harness/af_egress/src/vault/mod.rs`).
 The App private key and webhook secret never enter the lease, runner environment, sandbox, logs or response frames.
 
 The binding determines token scope (`afd_credential/src/credential/github/request.rs`).

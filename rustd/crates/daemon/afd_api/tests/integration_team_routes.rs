@@ -12,7 +12,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 use axum::Router;
 use http::{Method, StatusCode};

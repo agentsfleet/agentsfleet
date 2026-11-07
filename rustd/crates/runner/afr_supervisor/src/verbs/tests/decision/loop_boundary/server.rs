@@ -31,7 +31,7 @@ impl Server {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let worker = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let env = afd_core::env::MapEnv::from_pairs([
+        let env = af_core::env::MapEnv::from_pairs([
             (ENV_API_URL, base.as_str()),
             (ENV_RUNNER_TOKEN, "agt_r_decision_fixture"),
         ]);
@@ -114,7 +114,7 @@ fn respond(
         json!({"effects":[],"next_cursor":null})
     } else if uri.path().ends_with("/tasks/decisions") {
         assert_eq!(method, &Method::POST);
-        let input: afd_wire::task::DecisionReservationInput = serde_json::from_value(body).unwrap();
+        let input: af_wire::task::DecisionReservationInput = serde_json::from_value(body).unwrap();
         assert_eq!(input.fencing_token, FENCING);
         assert_eq!(input.source_admission_id, CALL);
         assert!(input.retry_of.is_none());

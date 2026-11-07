@@ -8,7 +8,7 @@ use crate::{
     client::{ControlPlane, HttpRunnerApi},
     config::{Config, ENV_API_URL, ENV_RUNNER_TOKEN},
 };
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use axum::{
     body::Bytes,
     http::{HeaderMap, Method, StatusCode, Uri},
@@ -34,7 +34,7 @@ impl Server {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let worker = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let env = afd_core::env::MapEnv::from_pairs([
+        let env = af_core::env::MapEnv::from_pairs([
             (ENV_API_URL, base.as_str()),
             (ENV_RUNNER_TOKEN, "agt_r_recovery_fixture"),
         ]);

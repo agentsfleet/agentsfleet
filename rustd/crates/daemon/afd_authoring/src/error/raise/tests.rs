@@ -38,7 +38,7 @@ fn an_unreadable_stored_row_never_renders_the_private_text_it_held() {
 fn a_column_read_back_empty_is_a_stored_fault_naming_only_the_column() {
     let error = super::absent("review_context");
 
-    assert_eq!(error.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert!(!error.is_datastore_unavailable());
     let cause = error
         .source()

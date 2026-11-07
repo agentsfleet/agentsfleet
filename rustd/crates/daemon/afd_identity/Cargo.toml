@@ -17,17 +17,17 @@ categories.workspace = true
 # M-TEST-UTIL: a key-set source that answers from a fixture, so every branch of
 # the verifier — including "a key-id miss triggers exactly one refresh" — is
 # provable without a network.
-test-util = ["afd_auth/test-util", "afd_core/test-util"]
+test-util = ["afd_auth/test-util", "af_core/test-util"]
 
 [dependencies]
-# Instants are `jiff::Timestamp`, the type afd_core's clock returns.
+# Instants are `jiff::Timestamp`, the type af_core's clock returns.
 jiff.workspace = true
 afd_auth.workspace = true
-afd_core.workspace = true
+af_core.workspace = true
 # The rule that a subject spliced into a path is not `.` or `..`.
-afd_validate.workspace = true
+af_validate.workspace = true
 # The wiping owner of the provider's backend secret.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 base64.workspace = true
 moka.workspace = true
 reqwest.workspace = true
@@ -60,9 +60,9 @@ base64.workspace = true
 aws-lc-rs = { workspace = true, features = ["ring-io"] }
 # Tracing macros do not evaluate their fields without a subscriber installed,
 # so every diagnostic line here would read as unreachable without one
-# (`afd_core::test_util::trace::install_subscriber`). The note beside `tracing`
+# (`af_core::test_util::trace::install_subscriber`). The note beside `tracing`
 # in the workspace manifest carries the measurement.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

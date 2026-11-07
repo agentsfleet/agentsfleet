@@ -39,7 +39,7 @@ async fn a_duplicate_cannot_release_another_dispatch_and_completed_receipts_keep
     );
     let (pending, saved) = pending
         .finish(DecisionReceipt::NotSent {
-            cause: afd_wire::task::DecisionNotSentCause::Preflight,
+            cause: af_wire::task::DecisionNotSentCause::Preflight,
         })
         .await?;
     saved?;

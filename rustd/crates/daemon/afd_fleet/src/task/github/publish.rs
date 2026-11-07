@@ -2,7 +2,7 @@
 
 use super::{BoundPr, http::Session, tree};
 use crate::{Result, task::TaskRefusal};
-use afd_wire::task::TaskEffectInput;
+use af_wire::task::TaskEffectInput;
 use serde_json::{Value, json};
 
 const MUTATION: &str = "mutation($input:CreateCommitOnBranchInput!){createCommitOnBranch(input:$input){commit{oid tree{oid} parents(first:2){nodes{oid}}}}}";

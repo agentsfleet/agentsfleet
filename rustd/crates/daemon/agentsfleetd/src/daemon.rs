@@ -162,7 +162,7 @@ impl Daemon {
             // llvm-cov scores the copy that never runs.
             let abandoned = shutdown.abandoned.len();
             let panicked = shutdown.panicked.len();
-            let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::error!(
                 error_code = code,
                 abandoned,

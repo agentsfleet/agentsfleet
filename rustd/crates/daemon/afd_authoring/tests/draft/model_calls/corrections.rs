@@ -4,12 +4,12 @@ use super::{
     super::{attempt::Attempt, definition, fixture::Fixture, mint},
     fixture, text_edits,
 };
+use af_wire::authoring::{
+    ActivityEvent, ModelMessage, ModelUsage, ProposalCall, ProposalRejection,
+};
 use afd_authoring::{
     ModelCallResult, ProviderRequest, ProviderResponse, Transport,
     types::{Candidate, Source},
-};
-use afd_wire::authoring::{
-    ActivityEvent, ModelMessage, ModelUsage, ProposalCall, ProposalRejection,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};

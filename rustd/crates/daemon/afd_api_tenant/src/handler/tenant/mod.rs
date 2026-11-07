@@ -68,7 +68,7 @@ pub const DETAIL_TENANT_REQUIRED: &str = "Tenant context required";
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::handler::{Refusal, parameter};
 use crate::services::{Services, WorkspaceOwnership as _};

@@ -6,7 +6,7 @@ use super::super::{
 };
 use super::{prepare::Wake, source::Source};
 use crate::{Result, error::query};
-use afd_wire::task::{TaskInputAction, TaskState};
+use af_wire::task::{TaskInputAction, TaskState};
 use sqlx::PgConnection;
 
 #[derive(sqlx::FromRow)]

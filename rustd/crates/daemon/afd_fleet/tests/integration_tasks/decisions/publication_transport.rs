@@ -6,8 +6,8 @@ use super::{
     github_server::Server,
     publication_refusal::{endpoint, prepared},
 };
+use af_wire::task::TaskEffectState;
 use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::TaskEffectState;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde_json::{Value, json};
 

@@ -4,8 +4,8 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture, mint},
     fixture::{self, Provider},
 };
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use std::sync::Arc;
 
 const OVERFLOWING_OUTPUT_TOKENS: u64 = 1_000_000_000;

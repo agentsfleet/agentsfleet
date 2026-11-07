@@ -7,12 +7,12 @@
 //! say yet costs the span its runner fields and nothing else: no lease waits
 //! on telemetry, and the next lease asks again.
 
-use afd_observability::semconv::{
+use af_observability::semconv::{
     ATTR_AGENT_ID, ATTR_EVENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID,
     ATTR_SANDBOX_REUSED, RUNNER_SCOPE_NAME, SPAN_RUNNER_LEASE,
 };
-use afd_wire::lease::LeasePayload;
-use afd_wire::runner::SelfResponse;
+use af_wire::lease::LeasePayload;
+use af_wire::runner::SelfResponse;
 use tokio::sync::OnceCell;
 use tracing::Span;
 

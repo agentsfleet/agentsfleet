@@ -3,12 +3,12 @@
 mod decision;
 
 use super::{KEY_DESCRIPTION, KEY_TYPE, PROPOSAL_ARGUMENT};
-use afd_fleet_runtime::definition::{
+use af_fleet_runtime::definition::{
     DEFINITION_SCHEMA_VERSION, MAX_CONFIG_OPS, MAX_DESCRIPTION_CHARS,
     MAX_INITIAL_INSTRUCTIONS_CHARS, MAX_INSTRUCTION_EDITS, MAX_INSTRUCTIONS_CHARS,
 };
-use afd_wire::authoring::DECIMAL_BYTES_MAX;
-use afd_wire::policy::HttpEgress;
+use af_wire::authoring::DECIMAL_BYTES_MAX;
+use af_wire::policy::HttpEgress;
 use serde_json::{Value, json};
 
 const KEY_ENUM: &str = "enum";

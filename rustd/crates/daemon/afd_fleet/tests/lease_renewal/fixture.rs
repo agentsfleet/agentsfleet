@@ -5,12 +5,12 @@ use crate::{
     seed::{self, Seeded},
     support::Fixtures,
 };
+use af_core::{clock, id::Uuid7};
+use af_wire::runner::{HeartbeatRequest, HeldFleets};
 use afd_billing::Posture;
-use afd_core::{clock, id::Uuid7};
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Billed, Renewed};
-use afd_wire::runner::{HeartbeatRequest, HeldFleets};
 use jiff::Timestamp;
 
 pub(super) struct Running {
@@ -114,7 +114,7 @@ impl Running {
                 },
                 &self.lease,
                 &pricing,
-                afd_core::clock::before(self.now, std::time::Duration::from_millis(10_000)),
+                af_core::clock::before(self.now, std::time::Duration::from_millis(10_000)),
             )
             .await
             .expect("renewal is a verdict")

@@ -21,9 +21,9 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use afd_core::id::Uuid7;
-use afd_core::paging::{Cursor, Page};
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_core::paging::{Cursor, Page};
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase};
@@ -135,7 +135,7 @@ impl ApiKeyLane {
 
 /// A fresh identifier, so no two fixtures name each other's rows.
 fn mint() -> Uuid7 {
-    let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
+    let mut bytes = [0u8; af_core::id::ENTROPY_LEN];
     Entropy::new()
         .fill(&mut bytes)
         .expect("the host draws entropy");

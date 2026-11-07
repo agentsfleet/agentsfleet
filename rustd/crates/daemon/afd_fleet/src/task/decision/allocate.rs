@@ -1,7 +1,7 @@
 //! Operation replay precedes rendering and fresh cumulative budget checks.
 
-use afd_core::clock;
-use afd_wire::{
+use af_core::clock;
+use af_wire::{
     decision::DecisionPurpose,
     task::{DecisionCallState, DecisionReservationInput},
 };
@@ -181,8 +181,8 @@ fn digest(input: &DecisionReservationInput) -> Result<String> {
     let source = (input.assessment.purpose() == DecisionPurpose::Intent)
         .then_some(&input.source_admission_id);
     let bytes = serde_json::to_vec(&(source, &input.assessment, &input.task, &input.evidence))
-        .map_err(afd_core::json::Unreadable::from)?;
-    Ok(afd_core::etag::sha256_hex(&bytes))
+        .map_err(af_core::json::Unreadable::from)?;
+    Ok(af_core::etag::sha256_hex(&bytes))
 }
 
 async fn block_profile_switch(

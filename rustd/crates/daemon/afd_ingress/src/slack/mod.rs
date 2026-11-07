@@ -7,9 +7,9 @@
 //! whether a fleet's `mention` trigger names THIS channel, is [`subscribed`],
 //! a pure function a test reaches with no datastore.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_fleet_runtime::config::{Access, FleetConfig};
 use afd_fleet_lifecycle::FleetStatus;
-use afd_fleet_runtime::config::{Access, FleetConfig};
 
 use crate::error::{self, Result, stored_fleet};
 use crate::{Ingress, sql};
@@ -28,7 +28,7 @@ pub use self::notice::{NoticeOwed, notice_key, notice_text};
 pub use self::notice_owner::{KIND_NOTICE_OWNER, NoticeOwner};
 pub use self::route::{Notice, Route, route};
 /// The channel type used by mention routing and notice ownership.
-pub use afd_fleet_runtime::config::ChannelId;
+pub use af_fleet_runtime::config::ChannelId;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_MENTION_SUBSCRIBERS: &str = "resolve mention subscribers";

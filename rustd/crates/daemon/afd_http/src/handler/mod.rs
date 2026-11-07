@@ -11,7 +11,7 @@ mod refusal;
 pub mod schedule;
 pub mod setup_input;
 
-use afd_observability::metrics::label::library::ReadOutcome;
+use af_observability::metrics::label::library::ReadOutcome;
 use http::StatusCode;
 use std::borrow::Cow;
 
@@ -26,7 +26,7 @@ const EVENT_UNKNOWN_FIELD: &str = "request_field_unknown";
 /// Reads a request body into `T`, naming the offending key when a closed type
 /// refuses an unknown one.
 ///
-/// # Why this exists beside [`afd_core::json::object_from_slice`]
+/// # Why this exists beside [`af_core::json::object_from_slice`]
 ///
 /// Every wire type is closed — `deny_unknown_fields` — so a caller one release
 /// ahead, or one typo away, gets a refusal. Handlers map that to a fixed
@@ -42,7 +42,7 @@ const EVENT_UNKNOWN_FIELD: &str = "request_field_unknown";
 /// logs nothing at all, because `serde_json` renders a type refusal with the
 /// VALUE it rejected — `invalid type: string "sk-live-…", expected u32` — and
 /// these bodies carry api keys and minted tokens.
-/// [`afd_core::json::unknown_field_of`] is the filter that enforces the split,
+/// [`af_core::json::unknown_field_of`] is the filter that enforces the split,
 /// and bounds the name, which the caller chose.
 ///
 /// # Errors
@@ -52,7 +52,7 @@ pub fn read_body<'de, T>(body: &'de [u8]) -> Result<T, serde_json::Error>
 where
     T: serde::Deserialize<'de>,
 {
-    afd_core::json::object_from_slice(body).inspect_err(log_unknown_field)
+    af_core::json::object_from_slice(body).inspect_err(log_unknown_field)
 }
 
 /// [`read_body`] for a request that embeds a runner-bound shape.
@@ -61,7 +61,7 @@ where
 /// daemon never strands an older runner. An operator's assigned policy and an
 /// enrolment embed one of those shapes, and a person typing them still has a
 /// misspelled key refused, at any depth, with its path in the log
-/// ([`afd_core::json::strict_object_from_slice`]).
+/// ([`af_core::json::strict_object_from_slice`]).
 ///
 /// # Errors
 /// As [`read_body`], plus `unknown field` for the first key the type ignored.
@@ -69,14 +69,14 @@ pub fn read_strict_body<'de, T>(body: &'de [u8]) -> Result<T, serde_json::Error>
 where
     T: serde::Deserialize<'de>,
 {
-    afd_core::json::strict_object_from_slice(body).inspect_err(log_unknown_field)
+    af_core::json::strict_object_from_slice(body).inspect_err(log_unknown_field)
 }
 
 /// Logs the NAME of a refused unknown field, and nothing for any other failure.
 fn log_unknown_field(failure: &serde_json::Error) {
-    if let Some(field) = afd_core::json::unknown_field_of(failure) {
+    if let Some(field) = af_core::json::unknown_field_of(failure) {
         let event = EVENT_UNKNOWN_FIELD;
-        let error_code = afd_core::error_code::INVALID_REQUEST.as_str();
+        let error_code = af_core::error_code::INVALID_REQUEST.as_str();
         tracing::warn!(
             event,
             error_code,
@@ -89,12 +89,12 @@ fn log_unknown_field(failure: &serde_json::Error) {
 /// Refuses a request this daemon cannot read at all.
 #[must_use]
 pub fn malformed(detail: &'static str) -> Response {
-    reject(afd_core::error_code::INVALID_REQUEST, detail)
+    reject(af_core::error_code::INVALID_REQUEST, detail)
 }
 
 /// Writes a registry refusal whose detail only the call site knows.
 #[must_use]
-pub fn reject(code: afd_core::error_code::ErrorCode, detail: &'static str) -> Response {
+pub fn reject(code: af_core::error_code::ErrorCode, detail: &'static str) -> Response {
     crate::envelope::ProblemResponse::new(code, detail, crate::request_id::RequestId::mint())
         .into_response()
 }
@@ -139,7 +139,7 @@ const DETAIL_UNKNOWN_PROVIDER: &str = "Unknown connector";
 pub fn provider_of(segment: &str) -> Result<afd_connector::Provider, Refusal> {
     afd_connector::Provider::parse(segment).ok_or_else(|| {
         Refusal::coded(
-            afd_core::error_code::CONNECTOR_UNKNOWN,
+            af_core::error_code::CONNECTOR_UNKNOWN,
             DETAIL_UNKNOWN_PROVIDER,
         )
     })
@@ -165,7 +165,7 @@ pub const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 /// # Errors
 /// A malformed refusal for a segment that is not a `UUIDv7`, so the `::uuid`
 /// cast in the statements below is never the thing that fails.
-pub fn parse_fleet_id(raw: &str) -> Result<afd_core::id::Uuid7, Refusal> {
+pub fn parse_fleet_id(raw: &str) -> Result<af_core::id::Uuid7, Refusal> {
     parse_id(raw, DETAIL_FLEET_ID)
 }
 
@@ -175,8 +175,8 @@ pub fn parse_fleet_id(raw: &str) -> Result<afd_core::id::Uuid7, Refusal> {
 /// # Errors
 /// [`Refusal::malformed`] with `detail`, so the `::uuid` cast in a statement
 /// is never the thing that fails.
-pub fn parse_id(raw: &str, detail: &'static str) -> Result<afd_core::id::Uuid7, Refusal> {
-    afd_core::id::Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(detail))
+pub fn parse_id(raw: &str, detail: &'static str) -> Result<af_core::id::Uuid7, Refusal> {
+    af_core::id::Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(detail))
 }
 
 /// How a refused library read is classified for the outcome family.
@@ -210,8 +210,8 @@ mod tests {
     )]
     use super::{EVENT_UNKNOWN_FIELD, ReadOutcome, library_outcome, read_body};
     use crate::handler::refusal::Refusal;
-    use afd_core::error_code;
-    use afd_core::test_util::trace::Capture;
+    use af_core::error_code;
+    use af_core::test_util::trace::Capture;
 
     /// A status this map does not know is an internal error, never an `Ok`.
     ///

@@ -1,7 +1,7 @@
 //! Normalize answer text separately from the immutable accounting replay identity.
 
-use afd_core::{error_code, id::Uuid7};
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, Outcome, Report};
+use af_core::{error_code, id::Uuid7};
+use af_wire::authoring::{ENVELOPE_BYTES_MAX, Outcome, Report};
 use sqlx::PgConnection;
 
 use crate::{

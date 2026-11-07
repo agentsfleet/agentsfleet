@@ -9,8 +9,8 @@
 use core::time::Duration;
 use std::time::Instant;
 
+use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
-use afd_crypto::entropy::Entropy;
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_events::Steer;
 
@@ -30,7 +30,7 @@ const ACQUIRE_TIMEOUT_MS: &str = "50";
 /// A steer over datastores that refuse everything, opened without a socket.
 fn refusing_steer() -> Steer {
     let role = afd_db::config::DbRole::Api;
-    let env = afd_core::env::MapEnv::from_pairs([
+    let env = af_core::env::MapEnv::from_pairs([
         (role.url_knob(), NO_DATABASE),
         ("DATABASE_ACQUIRE_TIMEOUT_MS", ACQUIRE_TIMEOUT_MS),
     ]);

@@ -6,9 +6,9 @@ use crate::{
     auth::RunnerIdentity,
     services::{Leasing as _, Services},
 };
-use afd_http::handler::Refusal;
 #[cfg(feature = "openapi")]
-use afd_wire::lease::LeaseRequest;
+use af_wire::lease::LeaseRequest;
+use afd_http::handler::Refusal;
 use axum::{
     body::Bytes,
     extract::State,
@@ -22,7 +22,7 @@ const EVENT: &str = "runner_lease_failed";
 /// Place work under the authenticated host and explicit protocol selection.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::RUNNER_LEASES,
+    path = af_wire::paths::RUNNER_LEASES,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_lease",
     summary = "Request the next work assignment",
@@ -34,7 +34,7 @@ const EVENT: &str = "runner_lease_failed";
     ),
     request_body = LeaseRequest,
     responses(
-        (status = 200, description = "A lease to run, or a backoff to wait out", body = afd_wire::lease::LeaseResponse),
+        (status = 200, description = "A lease to run, or a backoff to wait out", body = af_wire::lease::LeaseResponse),
         (status = 400, description = "Invalid polling body or kind selection"),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

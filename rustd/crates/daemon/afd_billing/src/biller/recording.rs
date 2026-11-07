@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
@@ -114,7 +114,7 @@ impl Biller for RecordingBiller {
             *balance = balance.checked_sub(total).ok_or_else(charge_overflow)?;
             let left = *balance;
             if let Some(since) = state.exhausted_at.get_mut(index) {
-                *since = (left <= 0).then(|| since.unwrap_or_else(afd_core::clock::now));
+                *since = (left <= 0).then(|| since.unwrap_or_else(af_core::clock::now));
             }
         }
         receipt.charged = Nanos::from_i64(total);

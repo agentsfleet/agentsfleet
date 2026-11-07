@@ -8,18 +8,18 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::clock::FixedClock;
-use afd_wire::activity::{ActivityFrame, StreamTextKind};
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_egress::fixture::policy;
-use afr_egress::testing::{CountingMint, RecordingTransport};
-use afr_providers::{Chunk, Message};
+use af_core::clock::FixedClock;
+use af_egress::fixture::policy;
+use af_egress::testing::{CountingMint, RecordingTransport};
+use af_providers::{Chunk, Message};
+use af_wire::activity::{ActivityFrame, StreamTextKind};
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::{Catalog, ToolErrorCode};
 use tokio_util::sync::CancellationToken;
 
-use afd_core::test_util::trace::Capture;
-use afd_observability::semconv::{
+use af_core::test_util::trace::Capture;
+use af_observability::semconv::{
     ATTR_PROVIDER_NAME, ATTR_TOOL_CALL_ID, ATTR_TOOL_NAME, ATTR_USAGE_INPUT_TOKENS, OPERATION_CHAT,
     OPERATION_EXECUTE_TOOL, OPERATION_INVOKE_AGENT, RUNNER_SCOPE_NAME,
 };

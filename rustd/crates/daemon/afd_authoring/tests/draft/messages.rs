@@ -4,8 +4,8 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
+use af_core::error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY, INVALID_REQUEST};
 use afd_authoring::types::{MessageQuery, MessageState, SendMessage};
-use afd_core::error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY, INVALID_REQUEST};
 
 fn page(cursor: Option<String>) -> MessageQuery {
     MessageQuery {
@@ -58,7 +58,7 @@ async fn stop_cutoff_preserves_new_messages_and_exact_operation_replay() {
     f.cleanup().await;
 }
 
-async fn assert_pages(f: &Fixture, id: &afd_core::id::Uuid7) {
+async fn assert_pages(f: &Fixture, id: &af_core::id::Uuid7) {
     let first = f
         .drafts
         .messages(f.access(), id, page(None))
@@ -99,7 +99,7 @@ async fn assert_pages(f: &Fixture, id: &afd_core::id::Uuid7) {
     assert!(last.total.is_none());
 }
 
-async fn assert_replay(f: &Fixture, id: &afd_core::id::Uuid7, operation: afd_core::id::Uuid7) {
+async fn assert_replay(f: &Fixture, id: &af_core::id::Uuid7, operation: af_core::id::Uuid7) {
     let replay = f
         .drafts
         .send(
@@ -133,7 +133,7 @@ async fn assert_replay(f: &Fixture, id: &afd_core::id::Uuid7, operation: afd_cor
     assert_eq!(error.code(), AUTHORING_REPLAY);
 }
 
-async fn assert_cutoff_bounds(f: &Fixture, id: &afd_core::id::Uuid7) {
+async fn assert_cutoff_bounds(f: &Fixture, id: &af_core::id::Uuid7) {
     assert_eq!(
         f.drafts
             .cancel(f.access(), id, 3)

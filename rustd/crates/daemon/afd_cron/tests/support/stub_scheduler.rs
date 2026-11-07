@@ -22,8 +22,8 @@ use std::io::{BufRead as _, BufReader, Read as _, Write as _};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex, mpsc};
 
+use af_crypto::secret::SecretString;
 use afd_cron::qstash::QStash;
-use afd_crypto::secret::SecretString;
 use tokio::sync::mpsc as async_mpsc;
 
 /// Where a fire would come back; never dialled, since nothing here fires.

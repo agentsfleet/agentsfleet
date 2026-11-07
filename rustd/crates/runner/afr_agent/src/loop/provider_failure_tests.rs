@@ -7,9 +7,9 @@
 //! How a provider that refuses, drops, or cannot be reached ends the run.
 
 use crate::ResultOutcome;
-use afd_wire::report::FailureClass;
-use afr_egress::testing::CountingMint;
-use afr_providers::Error;
+use af_egress::testing::CountingMint;
+use af_providers::Error;
+use af_wire::report::FailureClass;
 use tokio_util::sync::CancellationToken;
 
 use super::tests::{drive, engine};
@@ -88,11 +88,11 @@ async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
 
     assert_eq!(
         failure.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert_eq!(
         frames.taken(),
-        [] as [afd_wire::activity::ActivityFrame<'_>; 0]
+        [] as [af_wire::activity::ActivityFrame<'_>; 0]
     );
 }
 
@@ -133,24 +133,24 @@ async fn a_failed_turn_is_counted_as_failed() {
 #[derive(Debug, Clone, Copy)]
 struct Silent;
 
-impl afr_providers::Connect for Silent {
-    fn admit(&self, _policy: &afd_wire::policy::ExecutionPolicy<'_>) -> afr_providers::Result<()> {
+impl af_providers::Connect for Silent {
+    fn admit(&self, _policy: &af_wire::policy::ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
 
     fn connect(
         &self,
-        _lease: &afd_wire::lease::LeasePayload<'_>,
-    ) -> afr_providers::Result<Box<dyn afr_providers::Provider>> {
+        _lease: &af_wire::lease::LeasePayload<'_>,
+    ) -> af_providers::Result<Box<dyn af_providers::Provider>> {
         Ok(Box::new(Self))
     }
 }
 
-impl afr_providers::Provider for Silent {
+impl af_providers::Provider for Silent {
     fn stream<'a>(
         &'a self,
-        _request: afr_providers::Request<'a>,
-    ) -> futures_util::stream::BoxStream<'a, afr_providers::Result<afr_providers::Chunk>> {
+        _request: af_providers::Request<'a>,
+    ) -> futures_util::stream::BoxStream<'a, af_providers::Result<af_providers::Chunk>> {
         use futures_util::StreamExt as _;
         futures_util::stream::pending().boxed()
     }
@@ -182,7 +182,7 @@ async fn a_stopped_turn_is_counted_as_stopped() {
 }
 
 /// Drives a run whose model plays `turns` with an empty-tooled lease.
-async fn outcome_of(turns: Vec<Vec<afr_providers::Chunk>>) -> crate::engine::RunOutput {
+async fn outcome_of(turns: Vec<Vec<af_providers::Chunk>>) -> crate::engine::RunOutput {
     let script = crate::fixture::Script::new(turns);
     let engine = engine(Vec::new(), &script);
     let (output, _frames) =

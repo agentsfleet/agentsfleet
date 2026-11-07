@@ -4,8 +4,8 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture},
     fixture::{self, Provider},
 };
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test]

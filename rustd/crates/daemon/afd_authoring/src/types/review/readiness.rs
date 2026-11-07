@@ -71,7 +71,7 @@ pub struct Check {
     /// Observed readiness.
     pub state: CheckState,
     /// Observation time, excluded from review content identity.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub observed_at: jiff::Timestamp,
     /// Present only when an authorized human action can help.
     #[serde(skip_serializing_if = "Option::is_none")]

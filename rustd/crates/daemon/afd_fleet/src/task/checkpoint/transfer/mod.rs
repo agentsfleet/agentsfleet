@@ -12,8 +12,8 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, execution, guard as task_guard, transaction},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_wire::task::{
+use af_core::{clock, id::Uuid7};
+use af_wire::task::{
     CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointObject,
     CheckpointObjectsPage, CheckpointReadQuery, CheckpointTransfer, CheckpointTransferPurpose,
     CheckpointUploadsInput,
@@ -278,7 +278,7 @@ async fn issue(
             None
         };
         if receipt.is_some() {
-            wire.status = afd_wire::task::CheckpointObjectStatus::Reused;
+            wire.status = af_wire::task::CheckpointObjectStatus::Reused;
         }
         let lifetime =
             clock::elapsed(clock::now(), deadline).min(Duration::from_secs(super::URL_SECONDS));
@@ -287,7 +287,7 @@ async fn issue(
         }
         let authorization = match purpose {
             CheckpointTransferPurpose::Upload
-                if matches!(wire.status, afd_wire::task::CheckpointObjectStatus::Reused) =>
+                if matches!(wire.status, af_wire::task::CheckpointObjectStatus::Reused) =>
             {
                 None
             }

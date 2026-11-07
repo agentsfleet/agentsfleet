@@ -2,7 +2,7 @@
 
 use super::{Error, ErrorKind, UNAUTHORIZED};
 use crate::client::Verb;
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 impl Error {
     /// Whether retrying the same call could succeed.

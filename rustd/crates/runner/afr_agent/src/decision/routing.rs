@@ -2,7 +2,7 @@
 
 use super::unavailable;
 use crate::Result;
-use afd_wire::{
+use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionThreshold, IntentDecisionPolicy},
     task::{DecisionCallState, DecisionRecordDisposition, TaskInputAction, TaskProposedItem},
 };

@@ -3,7 +3,7 @@
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
 use crate::{DragonflyConfig, DragonflyRole, NAMESPACE_KNOB};
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 fn config(raw: &str) -> crate::error::Result<DragonflyConfig> {
     DragonflyConfig::resolve(

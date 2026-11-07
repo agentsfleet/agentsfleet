@@ -8,15 +8,15 @@ mod binding;
 mod checkpoints;
 mod errors;
 
-use afd_core::etag::sha256_hex;
-use afd_db::test_util::mint_uuid7;
-use afd_wire::{
+use af_core::etag::sha256_hex;
+use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome},
     task::{
         DecisionReceipt, DecisionReceiptInput, TaskBindingItem, TaskBindingsInput, TaskInputAction,
         TaskProposedItem, TaskRequestedTarget,
     },
 };
+use afd_db::test_util::mint_uuid7;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 

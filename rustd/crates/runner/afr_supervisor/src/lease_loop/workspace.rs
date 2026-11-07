@@ -16,9 +16,9 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_wire::lease::SandboxLimits;
-use afd_wire::report::FailureClass;
+use af_core::error_code::{Coded as _, Logged};
+use af_wire::lease::SandboxLimits;
+use af_wire::report::FailureClass;
 use afr_executor::{ExecutorSlot, ExecutorSource as _};
 use afr_memory::Seed;
 use afr_sandbox::Limits;

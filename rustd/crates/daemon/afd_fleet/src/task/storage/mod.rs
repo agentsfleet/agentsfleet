@@ -7,9 +7,9 @@ mod transfer;
 
 pub(in crate::task) use transfer::StorageSession;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_crypto::secret::Kek;
 use afd_credential::vault::Vault;
-use afd_crypto::secret::Kek;
 use garde::Validate;
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ pub struct CheckpointStorageConfig {
     )]
     pub bucket: String,
     /// Existing platform-admin vault row holding scoped R2 access credentials.
-    #[garde(length(bytes, min = 1, max = 255), custom(afd_validate::nul_free))]
+    #[garde(length(bytes, min = 1, max = 255), custom(af_validate::nul_free))]
     pub credential_name: String,
 }
 
@@ -74,7 +74,7 @@ impl R2CheckpointStore {
         master: Arc<Kek>,
         client: reqwest::Client,
     ) -> Self {
-        let bucket_reference = afd_core::etag::sha256_hex(
+        let bucket_reference = af_core::etag::sha256_hex(
             format!(
                 "{}/{}",
                 config.endpoint.trim_end_matches('/'),

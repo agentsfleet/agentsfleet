@@ -10,7 +10,7 @@ pub(super) async fn execute(
     inputs: TaskInputsResponse<'static>,
     executor: &ScriptedExecutor,
 ) -> crate::Result<crate::RunOutput> {
-    let (transport, _) = afr_egress::testing::RecordingTransport::replying(200, "");
+    let (transport, _) = af_egress::testing::RecordingTransport::replying(200, "");
     let engine = crate::Loop::new(
         afr_tools::Catalog::hosted(Arc::new(transport)),
         script.replay(),
@@ -28,7 +28,7 @@ pub(super) async fn execute(
             recovered_task: None,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::ready(executor),
-            mint: &afr_egress::testing::CountingMint::never(),
+            mint: &af_egress::testing::CountingMint::never(),
             verbs: native,
             checkpoint: &crate::testing::Discard,
             context_checkpoints: &crate::testing::ContextMemory::default(),
@@ -39,7 +39,7 @@ pub(super) async fn execute(
         .await
 }
 
-pub(super) fn publication_call() -> afr_providers::Chunk {
+pub(super) fn publication_call() -> af_providers::Chunk {
     call(
         "publish",
         "propose_change",

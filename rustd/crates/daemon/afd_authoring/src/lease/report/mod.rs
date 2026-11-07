@@ -9,8 +9,8 @@ mod sql;
 mod usage;
 pub(crate) mod verdict;
 
-use afd_core::id::Uuid7;
-use afd_wire::authoring::{Outcome, Report, Reported};
+use af_core::id::Uuid7;
+use af_wire::authoring::{Outcome, Report, Reported};
 use sqlx::{PgConnection, Transaction};
 
 use super::{Status, guard, meter};

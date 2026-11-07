@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
+use af_wire::task::DecisionAssessment;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _};
-use afd_wire::task::DecisionAssessment;
 use sqlx::Connection as _;
 use tokio::time::{sleep, timeout};
 
@@ -116,7 +116,7 @@ async fn competing(case: &Case) {
 }
 
 async fn account_late(fixture: &Decisions<'_>, call: &str) {
-    let request: sqlx::types::Json<afd_wire::decision::DecisionRequest> = sqlx::query_scalar(
+    let request: sqlx::types::Json<af_wire::decision::DecisionRequest> = sqlx::query_scalar(
         "SELECT request FROM runner.decision_payloads WHERE decision_call_id=$1::uuid",
     )
     .bind(call)

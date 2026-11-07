@@ -25,7 +25,7 @@
 //! constant placeholder buys a dimension where every unmatched request looks
 //! like every other.
 
-use afd_observability::semconv;
+use af_observability::semconv;
 use axum::extract::{MatchedPath, Request};
 use axum::middleware::Next;
 use axum::response::Response;
@@ -63,7 +63,7 @@ pub async fn record(request: Request, next: Next) -> Response {
         .map_or(UNMATCHED, MatchedPath::as_str)
         .to_owned();
     let method = request.method().to_string();
-    let mut observed = afd_observability::producers::http::Request::begin(&template, &method);
+    let mut observed = af_observability::producers::http::Request::begin(&template, &method);
 
     let span = tracing::info_span!(
         "http.server.request",

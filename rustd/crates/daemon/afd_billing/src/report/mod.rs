@@ -21,7 +21,7 @@ pub const BILLING_ACTIVITY_RUNTIME: &str = "runtime";
 /// A private setup attempt, as the reporting API names it.
 pub const BILLING_ACTIVITY_SETUP: &str = "setup";
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::Db;
 
 use crate::biller::WorkKey;

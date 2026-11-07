@@ -10,14 +10,14 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_wire::event::STEER_MESSAGE_MAX_BYTES;
+use af_wire::event::STEER_MESSAGE_MAX_BYTES;
 use axum::body::Bytes;
 use axum::response::IntoResponse as _;
 use http::StatusCode;
 
+use af_core::id::Uuid7;
 use afd_auth::principal::{Person, PersonCredential, Subject};
 use afd_auth::scope::ScopeSet;
-use afd_core::id::Uuid7;
 
 use super::{actor_for, read_steer, refuse_steer};
 

@@ -5,7 +5,7 @@
 //! model trained on Codex's harness writes them unprompted. The answer lists
 //! every step with its status, which is what the thread shows.
 
-use afd_core::spelling::to_spelling;
+use af_core::spelling::to_spelling;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

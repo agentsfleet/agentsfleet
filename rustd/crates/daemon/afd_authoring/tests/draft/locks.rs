@@ -2,7 +2,7 @@
 //! behind a holder, and file a receipt another claim would file.
 
 use super::{fixture::Fixture, mint};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::pool::PoolConnection;
 use std::time::Duration;
 

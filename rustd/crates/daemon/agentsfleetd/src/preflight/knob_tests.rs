@@ -4,7 +4,7 @@
     reason = "a test asserts by panicking; an unmet precondition should stop it"
 )]
 use super::{QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB, optional, signing_keys};
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 /// A key this fixture configures; the value is never parsed, only carried.
 const CURRENT: &str = "sig_current_fixture";

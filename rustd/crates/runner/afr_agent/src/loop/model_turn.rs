@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 
-use afr_providers::Request;
+use af_providers::Request;
 use afr_telemetry::labels::TurnOutcome;
 use afr_telemetry::record;
 use tracing::Instrument as _;
@@ -22,7 +22,7 @@ impl Harness<'_, '_> {
         &mut self,
         number: u64,
         capped: bool,
-    ) -> Option<afr_providers::Result<Turn>> {
+    ) -> Option<af_providers::Result<Turn>> {
         let shared = self.shared;
         let lease_id = shared.lease_id;
         let depth = self.depth;
@@ -90,7 +90,7 @@ impl Harness<'_, '_> {
 }
 
 /// How a turn ended, as the turn-duration family labels it.
-const fn turn_outcome(taken: Option<&afr_providers::Result<Turn>>) -> TurnOutcome {
+const fn turn_outcome(taken: Option<&af_providers::Result<Turn>>) -> TurnOutcome {
     match taken {
         Some(Ok(_answered)) => TurnOutcome::Completed,
         Some(Err(_failed)) => TurnOutcome::Failed,

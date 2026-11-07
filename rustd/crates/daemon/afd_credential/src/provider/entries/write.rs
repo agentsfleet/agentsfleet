@@ -21,7 +21,7 @@
 //! every early return below rolls back by the language's rules. There is no
 //! flag and no path that can forget.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
 use sqlx::{Acquire as _, Transaction};

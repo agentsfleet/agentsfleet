@@ -6,7 +6,7 @@
 //! [`afd_db::Precondition`] and prove it on the write's own transaction; one
 //! that no longer holds is [`Refused::Unheld`], and nothing is written.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::Precondition;
 use jiff::Timestamp;
 

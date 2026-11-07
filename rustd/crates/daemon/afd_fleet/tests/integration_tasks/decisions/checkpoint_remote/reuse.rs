@@ -2,11 +2,11 @@
 
 use super::super::super::fixture::{Case, id};
 use super::super::checkpoint::{input, valid};
-use afd_fleet::task::{TaskLifecycle as _, Tasks};
-use afd_wire::task::{
+use af_wire::task::{
     CheckpointMode, CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput,
     CheckpointPlan, DecisionTaskVersion,
 };
+use afd_fleet::task::{TaskLifecycle as _, Tasks};
 
 pub(super) async fn verify(
     case: &Case,
@@ -56,7 +56,7 @@ pub(super) async fn verify(
         (
             0,
             i64::try_from(object.plaintext.size).expect("small object")
-                + i64::try_from(afd_crypto::TAG_LEN).expect("fixed tag")
+                + i64::try_from(af_crypto::TAG_LEN).expect("fixed tag")
         )
     );
 }

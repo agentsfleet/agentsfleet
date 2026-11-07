@@ -5,7 +5,7 @@ use crate::{
     error::query,
     task::{TaskScope, Tasks, guard, transaction},
 };
-use afd_wire::task::TaskState;
+use af_wire::task::TaskState;
 use std::time::Duration;
 
 #[derive(sqlx::FromRow)]

@@ -7,7 +7,7 @@
 
 use std::process::{Command, Output};
 
-use afd_otlp::config::{HEADER_KNOBS, OTEL_ENDPOINT_KNOB};
+use af_otlp::config::{HEADER_KNOBS, OTEL_ENDPOINT_KNOB};
 
 use crate::support::{BINARY, RUN_FAILED, Runner};
 
@@ -17,7 +17,7 @@ const UNREACHABLE_DAEMON: &str = "http://127.0.0.1:9";
 fn entry(word: &str) -> Output {
     Command::new(BINARY)
         .arg(word)
-        .env_remove(afd_core::env::LOG_LEVEL_VAR)
+        .env_remove(af_core::env::LOG_LEVEL_VAR)
         .output()
         .expect("the runner binary starts")
 }
@@ -97,7 +97,7 @@ fn sandbox(extra: &[(&str, &str)]) -> Output {
     Command::new(BINARY)
         .arg(afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND)
         .args(INHERITED.arguments())
-        .env_remove(afd_core::env::LOG_LEVEL_VAR)
+        .env_remove(af_core::env::LOG_LEVEL_VAR)
         .envs(extra.iter().copied())
         .output()
         .expect("the runner binary starts")

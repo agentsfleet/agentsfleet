@@ -34,9 +34,9 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, json_body, send_with_headers};
-use afd_core::error_code;
+use af_core::error_code;
+use af_webhook::Scheme;
 use afd_ingress::{MAX_FANOUT, Surface};
-use afd_webhook::Scheme;
 use http::{Method, StatusCode};
 use serde_json::Value;
 

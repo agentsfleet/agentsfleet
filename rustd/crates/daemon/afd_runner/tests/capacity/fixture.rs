@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use afd_db::{
     Db,
     config::DbRole,

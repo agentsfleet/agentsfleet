@@ -1,6 +1,6 @@
 //! A reviewed candidate replaces one explicitly pinned fleet setup.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
 /// Applies a current idle improvement candidate to its original fleet.

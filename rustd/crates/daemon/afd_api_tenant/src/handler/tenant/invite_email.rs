@@ -10,11 +10,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use af_core::error_code::{self, Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_observability::{InviteEmailOutcome, Telemetry};
 use afd_api_wire::team::InviteEmailResponse;
-use afd_core::error_code::{self, Coded as _, Logged};
-use afd_core::id::Uuid7;
 use afd_mail::{InviteLetter, InviteSend};
-use afd_observability::{InviteEmailOutcome, Telemetry};
 use afd_tenant::team::{EmailAttempt, EmailStatus, INVITE_VALID_DAYS, Invitation};
 use axum::Json;
 use axum::extract::State;
@@ -209,8 +209,8 @@ fn unrecorded(invite: &Uuid7, error: &afd_tenant::Error) {
     reason = "test module: an unmet precondition should fail the test loudly"
 )]
 mod tests {
-    use afd_core::id::Uuid7;
-    use afd_core::test_util::trace::Capture;
+    use af_core::id::Uuid7;
+    use af_core::test_util::trace::Capture;
     use afd_tenant::team::EmailAttempt;
 
     use super::{EVENT_UNRECORDED, send_of, unrecorded};
@@ -246,7 +246,7 @@ mod tests {
     fn an_unrecorded_invite_send_reason_carries_no_code_prefix() {
         let capture = Capture::install();
         let invite = Uuid7::parse(INVITE).expect("the fixture identifier is UUIDv7");
-        let refused = afd_crypto::secret::Kek::from_hex("not hex")
+        let refused = af_crypto::secret::Kek::from_hex("not hex")
             .expect_err("a key that is not hex is refused");
         let failure = afd_tenant::Error::from(refused);
 

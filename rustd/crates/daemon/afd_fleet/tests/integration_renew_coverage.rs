@@ -7,10 +7,10 @@
 
 use crate::integration_held_sandbox::report::processed;
 use crate::report_seed;
-use afd_core::error_code;
-use afd_core::test_util::trace::Capture;
+use af_core::error_code;
+use af_core::test_util::trace::Capture;
+use af_wire::report::{RenewRequest, ReportRequest};
 use afd_fleet::lease::Plane;
-use afd_wire::report::{RenewRequest, ReportRequest};
 use jiff::Timestamp;
 
 use crate::seed::{MODEL, PROVIDER};
@@ -236,7 +236,7 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     // A priced model, so the refusal below is the fault and not a missing rate.
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let report = ReportRequest {
-        requests: afd_wire::usage::RequestLines(vec![request(&held, 0, 12_000, 3_000, 500)]),
+        requests: af_wire::usage::RequestLines(vec![request(&held, 0, 12_000, 3_000, 500)]),
         ..processed(&held, None)
     };
 
@@ -280,8 +280,8 @@ fn request(
     input_tokens: u32,
     cached_input_tokens: u32,
     output_tokens: u32,
-) -> afd_wire::usage::RequestUsage {
-    afd_wire::usage::RequestUsage {
+) -> af_wire::usage::RequestUsage {
+    af_wire::usage::RequestUsage {
         seq,
         at: held.now,
         input_tokens,
@@ -296,14 +296,14 @@ fn request(
 /// A renewal carrying one request of `input_tokens`, numbered `seq`.
 fn reported(held: &Held, seq: u32, input_tokens: u32) -> RenewRequest {
     RenewRequest {
-        requests: afd_wire::usage::RequestLines(vec![request(held, seq, input_tokens, 0, 0)]),
+        requests: af_wire::usage::RequestLines(vec![request(held, seq, input_tokens, 0, 0)]),
     }
 }
 
 /// The run fee for the runtime between two meter stamps. Renewal stamps the
 /// database clock it read, so these are the instants it metered between.
 fn run_fee(from: Timestamp, to: Timestamp) -> afd_billing::Nanos {
-    let wall_ms = afd_core::clock::saturating_millis_signed(afd_core::clock::elapsed(from, to));
+    let wall_ms = af_core::clock::saturating_millis_signed(af_core::clock::elapsed(from, to));
     afd_billing::Nanos::from_i64(report_seed::run_fee(wall_ms))
 }
 

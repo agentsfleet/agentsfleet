@@ -9,11 +9,11 @@ mod retention;
 
 use super::{Spool, files};
 use crate::storage_home::StorageHome;
-use afd_core::{
+use af_core::{
     clock::{Clock, FixedClock},
     id::Uuid7,
 };
-use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
+use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 use std::sync::Arc;
 
 const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";

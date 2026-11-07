@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_wire::memory::{MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta};
+use af_wire::memory::{MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta};
 use aho_corasick::AhoCorasick;
 use garde::Validate as _;
 

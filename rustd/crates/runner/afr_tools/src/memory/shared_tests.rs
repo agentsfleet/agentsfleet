@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::SharedMemory;
+use af_wire::memory::SharedMemory;
 use afr_memory::{Hydrated, Seed};
 use serde_json::json;
 
@@ -35,7 +35,7 @@ async fn test_workspace_store_needs_publish() {
             publish: false,
             ..Seed::default()
         })),
-        afr_egress::testing::closed(),
+        af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
@@ -68,7 +68,7 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
             publish: true,
             ..Seed::default()
         })),
-        afr_egress::testing::closed(),
+        af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
@@ -92,7 +92,7 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
             shared: &shared,
             ..Seed::default()
         })),
-        afr_egress::testing::closed(),
+        af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
@@ -117,7 +117,7 @@ async fn test_forget_leaves_another_fleets_entry() {
             shared: &shared,
             ..Seed::default()
         })),
-        afr_egress::testing::closed(),
+        af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 
@@ -149,7 +149,7 @@ async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
             publish: true,
             ..Seed::default()
         })),
-        afr_egress::testing::closed(),
+        af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
 

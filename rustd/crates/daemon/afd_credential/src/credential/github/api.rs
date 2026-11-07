@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use afd_core::clock::{after, before};
+use af_core::clock::{after, before};
 use jiff::Timestamp;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use reqwest::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};

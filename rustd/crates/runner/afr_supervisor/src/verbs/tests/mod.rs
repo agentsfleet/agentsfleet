@@ -7,8 +7,8 @@
 
 mod decision;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afr_agent::{LeaseVerbs as _, ScheduleCall, Unanswered};
 
 use super::FencedVerbs;
@@ -29,18 +29,18 @@ async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt()
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
-    let input = afd_wire::task::DecisionReservationInput {
+    let input = af_wire::task::DecisionReservationInput {
         operation_id: call_id.to_owned(),
         fencing_token: 0,
         source_admission_id: call_id.to_owned(),
         task: None,
         retry_of: None,
-        assessment: afd_wire::task::DecisionAssessment::Message,
+        assessment: af_wire::task::DecisionAssessment::Message,
         evidence: serde_json::json!({}),
     };
     for _attempt in 0..2 {
         let result = verbs.task_decision(input.clone()).await.unwrap();
-        assert_eq!(result.state, afd_wire::task::DecisionCallState::Unknown);
+        assert_eq!(result.state, af_wire::task::DecisionCallState::Unknown);
         assert!(result.recorded.is_none());
     }
     assert_eq!(crate::test_support::drain(&mut calls).len(), 2);

@@ -7,9 +7,9 @@
 
 use crate::harness;
 
+use af_wire::runner::{LABEL_MAX_BYTES, LABELS_MAX};
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_runner::validate::DETAIL_LABELS;
-use afd_wire::runner::{LABEL_MAX_BYTES, LABELS_MAX};
 use http::{Method, StatusCode};
 use serde_json::json;
 

@@ -3,7 +3,7 @@
 
 use super::fixture::{attempts, fund, funded, queue};
 use super::{Fixture, mint, now};
-use afd_core::error_code;
+use af_core::error_code;
 use sqlx::Connection as _;
 
 /// Holds the fixture host the way admission locks it first.

@@ -23,7 +23,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;

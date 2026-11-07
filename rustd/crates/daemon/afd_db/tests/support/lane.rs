@@ -14,7 +14,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use afd_core::env::{EnvSource, MapEnv, ProcessEnv};
+use af_core::env::{EnvSource, MapEnv, ProcessEnv};
 use afd_db::config::{DbRole, PoolConfig};
 
 pub(crate) const LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -83,7 +83,7 @@ pub(crate) fn config_through(addr: SocketAddr, role: DbRole, database: &str) -> 
         (role.url_knob(), url.as_str()),
         (
             "DATABASE_ACQUIRE_TIMEOUT_MS",
-            &afd_core::clock::saturating_millis(ACQUIRE_BUDGET).to_string(),
+            &af_core::clock::saturating_millis(ACQUIRE_BUDGET).to_string(),
         ),
     ]);
     PoolConfig::resolve(&env, role)

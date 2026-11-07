@@ -13,7 +13,7 @@ use crate::{
     replay, review,
     types::{DraftState, InitialStart, SaveFleet, SaveOrigin, Start},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
 use sqlx::{PgConnection, Transaction};
@@ -41,7 +41,7 @@ impl Creations {
         now: Timestamp,
     ) -> Result<SavedFleet> {
         let request = garde::Unvalidated::new(request).validate()?;
-        afd_fleet_runtime::FleetName::parse(&request.name)?;
+        af_fleet_runtime::FleetName::parse(&request.name)?;
         let id = self.reserve(access, operation, &request, now).await?;
         self.advance(access, &id, now).await?;
         self.read(access, &id).await
@@ -159,7 +159,7 @@ impl Creations {
         )
         .await?;
         checked.require_digest(&request.review_digest)?;
-        if captured.candidate.policy_semantics != afd_fleet_runtime::definition::POLICY_SEMANTICS {
+        if captured.candidate.policy_semantics != af_fleet_runtime::definition::POLICY_SEMANTICS {
             return Err(ErrorKind::Policy.into());
         }
         Ok(checked)
@@ -225,7 +225,7 @@ pub(super) struct Head<'a> {
 pub(super) async fn insert_revision(
     connection: &mut PgConnection,
     fleet: &Uuid7,
-    definition: &afd_fleet_runtime::Definition,
+    definition: &af_fleet_runtime::Definition,
     head: Head<'_>,
 ) -> Result<afd_events::activity::Announcement> {
     sqlx::query(sql::REVISION)

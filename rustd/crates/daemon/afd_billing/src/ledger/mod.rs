@@ -7,9 +7,9 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::Clock;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::clock::Clock;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use sqlx::postgres::{PgArguments, PgRow};
 use sqlx::query::QueryAs;
@@ -64,7 +64,7 @@ impl LedgerBiller {
         Self::new(
             database,
             Entropy::new(),
-            Arc::new(afd_core::clock::SystemClock),
+            Arc::new(af_core::clock::SystemClock),
         )
     }
 }

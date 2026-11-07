@@ -11,12 +11,12 @@ use super::{Error, ErrorKind};
 // `sqlx::Error` is deliberately absent: a statement failure carries WHICH
 // statement, which is context only the call site knows, so it goes through
 // [`query`] instead of a blanket lift.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_dragonfly::Error => Queue,
     afd_vault::Error => Vault,
-    afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => IdentifierShape,
+    af_crypto::error::Error => Entropy,
+    af_core::error::Error => IdentifierShape,
     reqwest::Error => VendorUnreachable,
 );
 
@@ -96,9 +96,9 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let queue_gone = dragonfly_sample("unreachable");
     let vault = afd_vault::SecretName::parse("").expect_err("an empty vault name is refused");
     let entropy =
-        afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
+        af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     let shape =
-        afd_core::id::Uuid7::parse("not-an-identifier").expect_err("a non-identifier is refused");
+        af_core::id::Uuid7::parse("not-an-identifier").expect_err("a non-identifier is refused");
     // A URL the builder rejects, so a `reqwest::Error` exists without a request
     // ever leaving the process — this suite reaches no network.
     #[expect(

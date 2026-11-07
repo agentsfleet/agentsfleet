@@ -18,9 +18,9 @@
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_db::test_util::{DefaultSeed, ModelSeed};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::value::RawValue;
@@ -58,7 +58,7 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 ///
 /// `CredentialUnsealable` when the host will not supply entropy.
 pub(in crate::lane::lease) fn minted_kek() -> Result<Kek> {
-    let mut bytes = [0_u8; afd_crypto::KEY_LEN];
+    let mut bytes = [0_u8; af_crypto::KEY_LEN];
     Entropy::new().fill(&mut bytes)?;
     Ok(Kek::from_bytes(bytes))
 }

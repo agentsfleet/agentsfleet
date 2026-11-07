@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
+use af_core::id::Uuid7;
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
-use afd_core::id::Uuid7;
 use afd_db::Db;
 
 use crate::error::{Result, query};

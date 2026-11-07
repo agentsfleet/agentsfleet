@@ -6,8 +6,8 @@
 //! and refuses the lease as it would every time: the plan. The checkout itself
 //! runs in the lease's build, beside the turn.
 
-use afd_core::error_code::{Coded, Logged};
-use afd_core::id::Uuid7;
+use af_core::error_code::{Coded, Logged};
+use af_core::id::Uuid7;
 use afr_executor::Unavailable;
 use afr_sandbox::Sandbox;
 use afr_tools::sandbox::{CREDENTIAL_GITHUB, Checkout, checkouts};
@@ -51,8 +51,8 @@ impl LeaseRun<'_> {
             checkouts(&self.lease.policy).map_err(|refusal| Box::new(self.unready(&refusal)))?;
         if let Some(task) = prepared.and_then(|prepared| prepared.inputs.current_task.as_ref()) {
             match &task.target {
-                afd_wire::task::TaskTarget::ApiOnly => wanted.clear(),
-                afd_wire::task::TaskTarget::ExistingPr {
+                af_wire::task::TaskTarget::ApiOnly => wanted.clear(),
+                af_wire::task::TaskTarget::ExistingPr {
                     repository, branch, ..
                 } => {
                     wanted.retain(|checkout| checkout.repository == repository);

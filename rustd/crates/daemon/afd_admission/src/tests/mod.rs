@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use afd_wire::event::EventType;
+use af_wire::event::EventType;
 
 use super::admit::ReplyBinds;
 use super::budget::DEPLOYMENT_BACKLOG_BUDGET;

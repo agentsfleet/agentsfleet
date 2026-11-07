@@ -217,7 +217,7 @@ fn should_continue_from_the_budget_cut() {
 
 /// A stored trace of `calls` calls, each with both output edges at their cap.
 fn heavy_trace(calls: usize) -> String {
-    let edge = "a".repeat(afd_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES);
+    let edge = "a".repeat(af_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES);
     let calls: Vec<serde_json::Value> = (1..=calls)
         .map(|n| {
             serde_json::json!({"call_id": format!("7:{n}"), "name": "shell",

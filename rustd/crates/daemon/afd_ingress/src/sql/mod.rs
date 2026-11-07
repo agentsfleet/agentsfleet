@@ -4,7 +4,7 @@
 //! # Why the statements select the document and stop
 //!
 //! A fleet's document is its head revision's `definition->'config'`.
-//! [`afd_fleet_runtime::FleetConfig::stored`] already parses it on the claim
+//! [`af_fleet_runtime::FleetConfig::stored`] already parses it on the claim
 //! path, applies the schema bounds, and completes a trigger's signature block
 //! from the provider registry — so the statement here selects the document and
 //! stops, instead of walking the trigger array in SQL with

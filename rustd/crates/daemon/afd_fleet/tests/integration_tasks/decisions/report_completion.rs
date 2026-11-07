@@ -9,14 +9,14 @@ use super::{
     interpretation::{choose, proposed},
     reply::known_result,
 };
-use afd_fleet::task::{TaskLifecycle as _, TaskSnapshot};
-use afd_wire::{
+use af_wire::{
     decision::DecisionOutcome,
     task::{
         DecisionReceipt, DecisionTaskVersion, TaskDisposition, TaskInputAction, TaskReport,
         TaskState,
     },
 };
+use afd_fleet::task::{TaskLifecycle as _, TaskSnapshot};
 use std::sync::Arc;
 
 async fn accepted(fixture: &Decisions<'_>) -> DecisionTaskVersion {
@@ -77,7 +77,7 @@ async fn done(case: &Case) {
     let report = report_settlement::request(case, Some(semantic));
     let mut plane = case.held.fixtures.plane();
     plane.task_reports = Some(Arc::new(fixture.tasks.clone()));
-    let now = afd_core::clock::after(case.held.now, crate::report_seed::SLICE);
+    let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     plane
         .report(&case.held.runner, &report, now)
         .await

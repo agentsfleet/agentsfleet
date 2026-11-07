@@ -4,7 +4,7 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::Plane;
 
 use super::burst::Pickups;

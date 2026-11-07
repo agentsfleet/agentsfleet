@@ -15,7 +15,7 @@
 //! reason (RULE VLT). What an operator gets is which provider, and what it
 //! answered.
 
-use afd_crypto::secret::{SecretBytes, SecretString};
+use af_crypto::secret::{SecretBytes, SecretString};
 use reqwest::header::ACCEPT;
 
 use crate::error::{self, Result};
@@ -216,7 +216,7 @@ impl Exchange {
 #[cfg(test)]
 mod tests {
     use super::Exchanged;
-    use afd_crypto::secret::SecretString;
+    use af_crypto::secret::SecretString;
 
     /// The body never renders, however it is printed.
     ///

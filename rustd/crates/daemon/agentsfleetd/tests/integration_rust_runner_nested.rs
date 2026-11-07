@@ -14,7 +14,7 @@
               indexes the JSON it just read"
 )]
 
-use afr_providers::Chunk;
+use af_providers::Chunk;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 

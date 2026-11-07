@@ -12,7 +12,7 @@ use crate::{
         raise::{query, stored},
     },
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
@@ -26,7 +26,7 @@ const HASH_PREFIX: &str = "authoring:v1:sha256:";
 ///
 /// Inside it the same key and body replay the first result; at and past it the
 /// key is new and the receipt is swept.
-pub(crate) const REPLAY_WINDOW: Duration = afd_core::timing::DAY;
+pub(crate) const REPLAY_WINDOW: Duration = af_core::timing::DAY;
 
 /// The most receipts one maintenance pass deletes.
 const SWEEP_LIMIT: i64 = 64;

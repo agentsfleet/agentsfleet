@@ -1,6 +1,6 @@
 //! Persisted progress must survive reconnect without accepting stale ownership.
 
-use afd_wire::activity::{
+use af_wire::activity::{
     ActivityFrame, TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
     TaskActivityRecord, TaskTransferBytes,
 };
@@ -55,7 +55,7 @@ async fn saved(run: &Held) -> TaskActivityHistory {
 /// the preflight so the regression exercises the write's ownership defense.
 async fn write(run: &Held, progress: TaskActivity) -> Option<Json<TaskActivityHistory>> {
     let target = afd_fleet::lease::activity::Target {
-        fleet_id: afd_core::id::Uuid7::parse(&run.fleet).expect("fixture fleet"),
+        fleet_id: af_core::id::Uuid7::parse(&run.fleet).expect("fixture fleet"),
         event_id: run.event_id.clone(),
         lease_created_at: run.now,
         event_created_at: run.now,

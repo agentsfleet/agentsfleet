@@ -7,10 +7,10 @@
 
 use super::{Error, ErrorKind};
 
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_crypto::error::Error => Crypto,
-    afd_core::error::Error => Mint,
+    af_crypto::error::Error => Crypto,
+    af_core::error::Error => Mint,
 );
 
 /// Reports a statement that failed, naming what it was doing.

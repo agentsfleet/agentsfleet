@@ -1,9 +1,9 @@
 //! Any biller, counted: the one choke point every funds check and settlement
 //! passes through, whichever product path or relay pass made it.
 
-use afd_observability::metrics::label::billing::{FundsOutcome, SettleOutcome, WorkType};
-use afd_observability::metrics::label::cost::ChargeClass;
-use afd_observability::producers::{billing as metrics, cost};
+use af_observability::metrics::label::billing::{FundsOutcome, SettleOutcome, WorkType};
+use af_observability::metrics::label::cost::ChargeClass;
+use af_observability::producers::{billing as metrics, cost};
 
 use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
 use crate::Result;
@@ -96,7 +96,7 @@ mod tests {
     use super::work_type;
     use crate::biller::WorkKey;
     use crate::sql;
-    use afd_core::id::{ENTROPY_LEN, Uuid7};
+    use af_core::id::{ENTROPY_LEN, Uuid7};
 
     /// The metric labels spell the stored values byte for byte.
     ///

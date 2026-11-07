@@ -11,9 +11,10 @@
 //! admitted, and the connectors' exchange is pinned at [`FakeSlack`] so that
 //! read — carrying the fixture grant's bearer — never leaves the machine.
 
+use af_core::id::Uuid7;
+use af_fleet_runtime::test_util::FixtureSetup;
 use afd_admission::Producer;
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
@@ -21,7 +22,6 @@ use afd_db::test_util::{
     mint_id,
 };
 use afd_dragonfly::Dragonfly;
-use afd_fleet_runtime::test_util::FixtureSetup;
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
@@ -186,7 +186,7 @@ impl Fixture {
     }
 
     async fn fleet_in(&self, workspace: &Uuid7, config: &str, status: &str) -> Uuid7 {
-        let parsed = afd_fleet_runtime::FleetConfig::authored(config)
+        let parsed = af_fleet_runtime::FleetConfig::authored(config)
             .expect("the fixture configuration parses");
         let fleet = Uuid7::parse(&mint_id()).expect("a minted fleet is canonical");
         let setup = FixtureSetup::new(config);

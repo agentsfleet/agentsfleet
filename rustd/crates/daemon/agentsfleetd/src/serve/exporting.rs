@@ -7,8 +7,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_observability::producers::GaugeSources;
 use afd_api::Admission;
-use afd_observability::producers::GaugeSources;
 
 use crate::error::BootFailure;
 use crate::preflight::BootConfig;
@@ -57,7 +57,7 @@ pub(super) fn gauge_sources(
     let database = database.clone();
     GaugeSources {
         database_pools: Arc::new(move || {
-            use afd_observability::metrics::instrument::Reading;
+            use af_observability::metrics::instrument::Reading;
             database
                 .snapshot()
                 .into_iter()
@@ -73,11 +73,11 @@ pub(super) fn gauge_sources(
                     .map(move |(state, value)| Reading {
                         attributes: vec![
                             opentelemetry::KeyValue::new(
-                                afd_observability::semconv::LABEL_ROLE,
+                                af_observability::semconv::LABEL_ROLE,
                                 pool.role.tag(),
                             ),
                             opentelemetry::KeyValue::new(
-                                afd_observability::semconv::LABEL_STATE,
+                                af_observability::semconv::LABEL_STATE,
                                 state,
                             ),
                         ],
@@ -99,7 +99,7 @@ pub(super) fn gauge_sources(
 /// cannot be `None` — an invariant expressed as a panic instead of as a field.
 pub(crate) struct Prepared {
     exports: crate::telemetry::Exports,
-    instruments: afd_observability::metrics::instrument::Instruments,
+    instruments: af_observability::metrics::instrument::Instruments,
     otlp: crate::preflight::OtlpConfig,
 }
 
@@ -199,7 +199,7 @@ pub(crate) fn open_telemetry(
     // Announced here rather than beside the pipelines, because the count it
     // reports is the claimed instrument set, and nothing is claimed until the
     // producers are.
-    let installed = afd_observability::producers::install(&instruments, sources)?;
+    let installed = af_observability::producers::install(&instruments, sources)?;
     crate::telemetry::announce(&otlp, installed, &instruments);
 
     let database = database.clone();
@@ -212,7 +212,7 @@ pub(crate) fn open_telemetry(
             tokio::select! {
                 () = token.cancelled() => break,
                 _tick = sampler.tick() => {
-                    afd_observability::producers::memory::resident_observed(
+                    af_observability::producers::memory::resident_observed(
                         crate::telemetry::resident_bytes(),
                     );
                     tokio::select! {

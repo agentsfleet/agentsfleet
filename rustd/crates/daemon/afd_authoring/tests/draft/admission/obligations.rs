@@ -7,6 +7,13 @@
 //! rate; their settlements debit one shared wallet without losing either.
 
 use super::{claim, fixture, funded, mint, now, queue};
+use af_core::{id::Uuid7, money::NANOS_PER_USD};
+use af_crypto::{entropy::Entropy, secret::Kek};
+use af_wire::authoring::{
+    Accounting, Knowledge, Meter, ModelCall, ModelMessage, ModelRequest, ModelUsage, Outcome,
+    Report,
+};
+use af_wire::usage::UsageLine;
 use afd_authoring::{
     Claimed, ModelCallInput, ModelCalls, ProviderRequest, ProviderResponse, Transport,
 };
@@ -14,13 +21,6 @@ use afd_billing::Nanos;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::RatedLine;
 use afd_billing::{Posture, ledger::log_lines};
-use afd_core::{id::Uuid7, money::NANOS_PER_USD};
-use afd_crypto::{entropy::Entropy, secret::Kek};
-use afd_wire::authoring::{
-    Accounting, Knowledge, Meter, ModelCall, ModelMessage, ModelRequest, ModelUsage, Outcome,
-    Report,
-};
-use afd_wire::usage::UsageLine;
 use std::sync::Arc;
 
 /// Three times the fixture model's rates: three and six dollars per million.
@@ -240,7 +240,7 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> Mo
 /// How far a turn is backdated so its attempt reads as already started.
 const AGE: std::time::Duration = std::time::Duration::from_secs(1);
 
-async fn settle(f: &super::Fixture, lease: &Claimed) -> afd_wire::authoring::Reported {
+async fn settle(f: &super::Fixture, lease: &Claimed) -> af_wire::authoring::Reported {
     sqlx::query(
         "UPDATE authoring.attempts SET created_at=created_at-$2::interval WHERE id=$1::uuid",
     )

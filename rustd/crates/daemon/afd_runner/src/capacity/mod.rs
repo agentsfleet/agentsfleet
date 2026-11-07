@@ -4,7 +4,7 @@
 //! is a separate statement after the host lock: a statement snapshot acquired
 //! before waiting for that lock could miss the preceding claimant's commit.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::{Postgres, Transaction};
 
@@ -108,7 +108,7 @@ pub async fn lock(
 fn renewable_state(state: &str) -> bool {
     use afd_api_wire::admin::AdminState;
     matches!(
-        afd_core::spelling::from_spelling::<AdminState>(state),
+        af_core::spelling::from_spelling::<AdminState>(state),
         Some(AdminState::Active | AdminState::Cordoned | AdminState::Draining)
     )
 }

@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use afd_core::env::EnvSource;
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::env::EnvSource;
+use af_core::error_code::{Coded as _, Logged};
 
 use super::{BubblewrapConfig, BubblewrapEngine, EVENT_HOST_REFUSED};
 use crate::error::{Result, refused};

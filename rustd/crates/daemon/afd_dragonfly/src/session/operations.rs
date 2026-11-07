@@ -76,7 +76,7 @@ impl SessionStore {
             .arg(submitted_hmac_hex)
             .arg(stamp::epoch_ms(now))
             .arg(request_fingerprint_hex)
-            .arg(afd_core::clock::saturating_millis(CONSUME_REPLAY_WINDOW))
+            .arg(af_core::clock::saturating_millis(CONSUME_REPLAY_WINDOW))
             .arg(MAX_VERIFY_ATTEMPTS)
             .arg(SESSION_TTL.as_secs());
 

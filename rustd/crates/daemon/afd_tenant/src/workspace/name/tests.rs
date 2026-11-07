@@ -7,7 +7,7 @@
     clippy::expect_used,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 
 use super::{
     Chosen, FALLBACK_WORD, MAX_NAME_CODEPOINTS, SEPARATOR, SUFFIX_ALPHABET, SUFFIX_LEN, generate,

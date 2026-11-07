@@ -3,8 +3,8 @@
     reason = "fixed test fixtures fail loudly when their contract changes"
 )]
 
+use af_core::id::Uuid7;
 use afd_api_wire::schedule::RunState;
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
 use super::{describe, upcoming};

@@ -23,9 +23,9 @@
 //! [`crate::Error::is_config_permanent`] is what separates the two, so the
 //! distinction is the error's own rather than a `match` re-derived here.
 
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
 use afd_billing::biller::{Account, Ask, Funds, WorkKey};
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::error::{Result, budget_exhausted, renewal_no_credits};
@@ -220,7 +220,7 @@ fn admit_unreadable(gate: &'static str, lease: &Renewing, lease_id: &str, fault:
 
 #[cfg(test)]
 mod tests {
-    use afd_core::id::{ENTROPY_LEN, Uuid7};
+    use af_core::id::{ENTROPY_LEN, Uuid7};
     use jiff::Timestamp;
 
     use super::admit_unreadable;
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_renewal_gate_reason_carries_no_code_prefix() -> Result<(), &'static str> {
-        let log = afd_core::test_util::trace::Capture::install();
+        let log = af_core::test_util::trace::Capture::install();
         let lease = renewing()?;
         let fault = crate::error::query("balance read")(sqlx::Error::PoolTimedOut);
 

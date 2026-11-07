@@ -2,7 +2,7 @@
 
 use super::{CONTEXT_REQUEST, Requested, Wanted, report, settle};
 use crate::{Result, error, grant::IntegrationGrants, grant_sql};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 use jiff::Timestamp;
 use sqlx::Acquire as _;

@@ -6,13 +6,13 @@
 
 use std::borrow::Cow;
 
-use afd_core::test_util::trace::Capture;
-use afd_crypto::entropy::Entropy;
+use af_core::test_util::trace::Capture;
+use af_crypto::entropy::Entropy;
+use af_wire::event::EventType;
+use af_wire::memory::{MemoryDelta, Visibility};
 use afd_db::test_util::unreachable_db;
 use afd_fleet::lease::Plane;
 use afd_memory::Memories;
-use afd_wire::event::EventType;
-use afd_wire::memory::{MemoryDelta, Visibility};
 
 use super::chat::{ASKED_LATER, Chat, FIRST_ANSWER, FIRST_MESSAGE, FOLLOW_UP};
 use crate::report_seed::SLICE;

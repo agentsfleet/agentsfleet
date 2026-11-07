@@ -49,7 +49,7 @@ mod stops;
 mod tenant;
 mod window;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::Acquired;
 use sqlx::Row as _;
 

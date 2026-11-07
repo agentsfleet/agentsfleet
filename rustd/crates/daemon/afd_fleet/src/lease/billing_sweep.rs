@@ -10,12 +10,12 @@
 
 use std::time::Duration;
 
+use af_core::error_code::ErrorCode;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::Resume;
 use afd_billing::rates::Posture;
-use afd_core::error_code::ErrorCode;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use jiff::Timestamp;
 use sqlx::{Connection as _, FromRow as _};
@@ -175,8 +175,8 @@ async fn log_last_slice(
         .bind(sql::LEASE_STATUS_REPORTED)
         .bind(afd_billing::nanos::MS_PER_SEC)
         .bind(afd_billing::sql::work::FLEET_LEASE)
-        .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
-        .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+        .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
+        .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
         .fetch_optional(&mut *transaction)
         .await
         .map_err(query(CONTEXT_EXPIRED))?

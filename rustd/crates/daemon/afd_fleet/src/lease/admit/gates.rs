@@ -6,8 +6,8 @@
 //! [`super::fault`]'s, applied through the [`Gate`](super::fault::Gate)
 //! value each one names.
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 
 use afd_billing::biller::{Account, Biller};
 use jiff::Timestamp;
@@ -82,7 +82,7 @@ pub(super) async fn balance(
         "the tenant's credit pool cannot cover this run's floor cost"
     );
     Some(Declined::Refuse(Refusal::labelled(
-        afd_core::event::label::BALANCE_EXHAUSTED,
+        af_core::event::label::BALANCE_EXHAUSTED,
     )))
 }
 
@@ -114,6 +114,6 @@ pub(super) async fn fleet_budget(accounts: &Accounts, request: &Request<'_>) -> 
         "the fleet has reached a ceiling its author declared"
     );
     Some(Declined::Refuse(Refusal::labelled(
-        afd_core::event::label::BUDGET_BREACH,
+        af_core::event::label::BUDGET_BREACH,
     )))
 }

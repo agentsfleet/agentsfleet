@@ -22,10 +22,10 @@ workspace = true
 # queued. Its unique index on the gate's action is what makes a retried
 # resolve continue the run exactly once.
 afd_admission.workspace = true
-afd_core.workspace = true
+af_core.workspace = true
 # Entropy for the identifiers a grant request mints — the grant row, its gate,
 # and the action a person answers about.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # `fleet.events`. The continuation insert this crate used to carry a
@@ -42,7 +42,7 @@ afd_api_wire.workspace = true
 # The fleet status a setup request must find (`installing`), spelled where the
 # fleet's lifecycle declares it rather than again here.
 afd_fleet_lifecycle.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
 # jiff-sqlx.
 jiff.workspace = true
@@ -59,7 +59,7 @@ tracing.workspace = true
 # suite reaches this crate's seam with no datastore behind it.
 test-util = [
     "afd_admission/test-util",
-    "afd_core/test-util",
+    "af_core/test-util",
     "afd_db/test-util",
     "afd_dragonfly/test-util",
 ]
@@ -67,7 +67,7 @@ test-util = [
 [dev-dependencies]
 # The `tracing` capture, and the pool and queue that refuse every call, the
 # wake's failure-line test reads its `reason` back through.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 # The race the resolve exists to decide is worthless single-threaded: the

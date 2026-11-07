@@ -20,17 +20,17 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_core::paging::{CEILING, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_core::error_code;
+use af_core::paging::{CEILING, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_validate::Limit;
+use af_wire::event::EventsResponse;
+use af_wire::schedule_verb::{ScheduleRun, ScheduleRunRequest};
 use afd_cron::{ACTOR_PREFIX, FireTarget, schedule_actor};
 use afd_events::{Cursor, EventRow, next_cursor};
 use afd_fleet::lease::Standing;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_http::handler::schedule::not_found;
 use afd_http::handler::{Refusal, parameter, read_strict_body};
-use afd_validate::Limit;
-use afd_wire::event::EventsResponse;
-use afd_wire::schedule_verb::{ScheduleRun, ScheduleRunRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
@@ -73,7 +73,7 @@ const RUN_KEY_PREFIX: &str = "run:";
 /// Fires a schedule of the fleet's now.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::LEASE_SCHEDULE_RUNS,
+    path = af_wire::paths::LEASE_SCHEDULE_RUNS,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_run_schedule",
     summary = "Run a schedule now",
@@ -140,7 +140,7 @@ pub(crate) async fn run<D: Services>(
 /// Lists one schedule's runs, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = afd_wire::paths::LEASE_SCHEDULE_RUNS,
+    path = af_wire::paths::LEASE_SCHEDULE_RUNS,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_list_schedule_runs",
     summary = "List a schedule's runs",
@@ -171,7 +171,7 @@ pub(crate) async fn runs<D: Services>(
     let query = query.unwrap_or_default();
     let schedule = schedule_id(&schedule_id_raw)?;
     let token = fence(Some(&query))?;
-    // The parameter names and the ceiling are `afd_core::paging`'s; the cursor
+    // The parameter names and the ceiling are `af_core::paging`'s; the cursor
     // is the event store's own, because a run IS a history row and only that
     // store mints and reads its `next_cursor`. `Page::parse` decodes the core
     // cursor form, which no history page hands out.

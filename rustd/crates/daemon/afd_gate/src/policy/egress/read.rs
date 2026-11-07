@@ -6,7 +6,7 @@
 //! shares its name — a private fork, most obviously. With the slash the prefix
 //! can only descend INTO the repository it names.
 
-use afd_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule, repository};
+use af_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule, repository};
 
 /// The repository's own subtree: the slash the module note defends.
 const SUBTREE: &str = "/";
@@ -33,7 +33,7 @@ pub(super) fn rules<'a>(repository: &str) -> [HttpRequestRule<'a>; 2] {
 #[cfg(test)]
 mod tests {
     use super::rules;
-    use afd_wire::policy::{HttpMethod, HttpPathMatch};
+    use af_wire::policy::{HttpMethod, HttpPathMatch};
 
     #[test]
     fn one_repository_yields_a_read_and_a_head() {
@@ -48,7 +48,7 @@ mod tests {
             // No locked fields: a GET carries no body to lock.
             assert_eq!(
                 rule.json_fields,
-                [] as [afd_wire::policy::HttpJsonFieldRule<'_>; 0]
+                [] as [af_wire::policy::HttpJsonFieldRule<'_>; 0]
             );
         }
     }

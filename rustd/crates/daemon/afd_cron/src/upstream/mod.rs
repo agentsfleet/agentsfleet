@@ -20,7 +20,7 @@
 //! registered" the same value, and a one-off resumed after its moment would be
 //! retired while its fire was still on the way.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 /// The header a push names its schedule id in, and a fire names it back in.
 ///

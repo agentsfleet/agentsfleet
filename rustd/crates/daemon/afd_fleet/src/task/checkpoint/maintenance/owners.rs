@@ -20,7 +20,7 @@ pub(super) async fn retain(
     tasks: &Tasks,
     cursor: &mut crate::task::CheckpointMaintenanceCursor,
 ) -> Result<(u64, u64)> {
-    let cutoff = *cursor.cutoff.get_or_insert_with(afd_core::clock::now);
+    let cutoff = *cursor.cutoff.get_or_insert_with(af_core::clock::now);
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let rows: Vec<Task> = sqlx::query_as(include_str!("../sql/retention_tasks.sql"))
         .bind(cutoff.to_sqlx())

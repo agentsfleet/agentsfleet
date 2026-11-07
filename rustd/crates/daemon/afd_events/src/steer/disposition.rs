@@ -5,8 +5,8 @@
 //! such a send is `folded`. A send with nothing waiting and no live run starts
 //! a run of its own. Anything else waits its turn.
 
+pub use af_wire::event::SteerDisposition;
 use afd_admission::RunFacts;
-pub use afd_wire::event::SteerDisposition;
 
 use super::{ACTOR_MACHINE, is_steer_actor};
 

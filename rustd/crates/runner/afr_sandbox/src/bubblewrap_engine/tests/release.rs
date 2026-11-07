@@ -7,7 +7,7 @@
 use std::fs;
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use super::super::BubblewrapEngine;
 use super::super::parts::Parts;

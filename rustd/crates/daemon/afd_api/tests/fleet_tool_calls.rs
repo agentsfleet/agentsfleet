@@ -65,7 +65,7 @@ async fn a_call_id_that_is_not_one_answers_as_an_unknown_call() {
         assert_eq!(refused.status(), StatusCode::NOT_FOUND, "{malformed}");
         assert_eq!(
             code_of(refused).await,
-            afd_core::error_code::TOOL_CALL_NOT_FOUND.as_str()
+            af_core::error_code::TOOL_CALL_NOT_FOUND.as_str()
         );
     }
 }

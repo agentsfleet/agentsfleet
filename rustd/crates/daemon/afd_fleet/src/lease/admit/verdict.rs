@@ -34,10 +34,10 @@ impl Admission {
             Verdict::Pass => None,
             Verdict::Await(waiting) => Some(Self::Await(waiting)),
             Verdict::Refuse(Refused::Denied) => Some(Self::Refuse(Refusal::labelled(
-                afd_core::event::label::APPROVAL_DENIED,
+                af_core::event::label::APPROVAL_DENIED,
             ))),
             Verdict::Refuse(Refused::Expired) => Some(Self::Refuse(Refusal::labelled(
-                afd_core::event::label::APPROVAL_EXPIRED,
+                af_core::event::label::APPROVAL_EXPIRED,
             ))),
             Verdict::Killed(_) => Some(Self::Retry(Transient { at: STOPPED })),
             Verdict::Unavailable => Some(Self::Retry(Transient { at: GATE })),
@@ -100,13 +100,13 @@ mod tests {
         assert_eq!(
             Admission::of_gate(Verdict::Refuse(Refused::Denied)),
             Some(Admission::Refuse(crate::lease::admit::Refusal::labelled(
-                afd_core::event::label::APPROVAL_DENIED
+                af_core::event::label::APPROVAL_DENIED
             )))
         );
         assert_eq!(
             Admission::of_gate(Verdict::Refuse(Refused::Expired)),
             Some(Admission::Refuse(crate::lease::admit::Refusal::labelled(
-                afd_core::event::label::APPROVAL_EXPIRED
+                af_core::event::label::APPROVAL_EXPIRED
             )))
         );
     }

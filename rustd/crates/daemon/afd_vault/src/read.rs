@@ -16,7 +16,7 @@
 //! credentials must not fail over one it cannot label, and it is not healed by
 //! decrypting here: that would put an envelope open back on this path.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::classified::Classified;
 use crate::error::{Result, query};

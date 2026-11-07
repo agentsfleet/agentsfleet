@@ -1,7 +1,7 @@
 //! Late usage may settle; late text must pass current private authorization again.
 
-use afd_core::{error_code, id::Uuid7};
-use afd_wire::authoring::ModelUsage;
+use af_core::{error_code, id::Uuid7};
+use af_wire::authoring::ModelUsage;
 use sqlx::{Connection as _, PgConnection};
 
 use super::super::{

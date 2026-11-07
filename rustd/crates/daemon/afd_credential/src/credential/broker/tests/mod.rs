@@ -19,8 +19,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::config::{Access, Reach, RepositoryBinding};
+use af_core::id::Uuid7;
+use af_fleet_runtime::config::{Access, Reach, RepositoryBinding};
 use jiff::Timestamp;
 use serde_json::{Value, json};
 use zeroize::Zeroizing;

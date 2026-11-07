@@ -6,8 +6,8 @@
 mod key;
 mod sql;
 
-use afd_core::id::Uuid7;
-use afd_wire::inference::ModelInference;
+use af_core::id::Uuid7;
+use af_wire::inference::ModelInference;
 use sqlx::types::Json;
 use sqlx::{Connection as _, PgConnection};
 
@@ -144,7 +144,7 @@ pub(super) async fn read(
         return Ok(None);
     };
     let context = u32::try_from(model.context_window_tokens).unwrap_or_default();
-    let route = match afd_inference::Configured::new(inference, context) {
+    let route = match af_inference::Configured::new(inference, context) {
         Ok(route) if route.accepts_endpoint(model.base_url.as_deref()) => route,
         _ => return Ok(None),
     };

@@ -29,7 +29,7 @@
 
 /// The two flat objects a verified delivery becomes on the stream. Stream
 /// payloads rather than HTTP bodies, and wire all the same: a fleet's prose
-/// reads these field names, so `afd_wire` owns them.
+/// reads these field names, so `af_wire` owns them.
 use afd_api_wire::ingress::{PullRequestDigest, WorkflowRunDigest};
 use serde::Serialize;
 

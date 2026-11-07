@@ -6,8 +6,8 @@
 //! names a known field: an older runner sends them every time, so naming them
 //! is what tells its operator to upgrade instead of reading "malformed".
 
-use afd_validate::Sentences;
-use afd_wire::usage::{LINES_MAX, RUNNER_SEQ_MAX};
+use af_validate::Sentences;
+use af_wire::usage::{LINES_MAX, RUNNER_SEQ_MAX};
 use const_format::concatcp;
 
 /// The retired cumulative prompt-token total.
@@ -54,7 +54,7 @@ pub(super) const REPORT_LINES: Sentences = Sentences::new(
 /// The sentence for a body refused because it carries a retired cumulative
 /// total, or `None` when that is not why it would not read.
 pub(super) fn retired_total(failure: &serde_json::Error) -> Option<&'static str> {
-    let field = afd_core::json::unknown_field_of(failure)?;
+    let field = af_core::json::unknown_field_of(failure)?;
     RETIRED
         .iter()
         .find(|(name, _sentence)| *name == field)
@@ -68,8 +68,8 @@ mod tests {
         reason = "test module: an unmet precondition should fail the test loudly"
     )]
 
-    use afd_wire::report::RenewRequest;
-    use afd_wire::usage::RequestLines;
+    use af_wire::report::RenewRequest;
+    use af_wire::usage::RequestLines;
 
     use super::{DETAIL_LINES_MAX, DETAIL_SEQ_MAX, REPORT_LINES, retired_total};
 
@@ -125,12 +125,12 @@ mod tests {
     /// A refused report says which bound its lines broke.
     #[test]
     fn a_report_names_the_bound_its_lines_broke() {
-        let over = (0..=afd_wire::usage::LINES_MAX as u64).map(line).collect();
+        let over = (0..=af_wire::usage::LINES_MAX as u64).map(line).collect();
         assert_eq!(picked(over), DETAIL_LINES_MAX);
-        assert!(DETAIL_LINES_MAX.contains(&afd_wire::usage::LINES_MAX.to_string()));
+        assert!(DETAIL_LINES_MAX.contains(&af_wire::usage::LINES_MAX.to_string()));
 
-        let daemon_range = vec![line(u64::from(afd_wire::usage::DAEMON_SEQ_BASE))];
+        let daemon_range = vec![line(u64::from(af_wire::usage::DAEMON_SEQ_BASE))];
         assert_eq!(picked(daemon_range), DETAIL_SEQ_MAX);
-        assert!(DETAIL_SEQ_MAX.contains(&afd_wire::usage::RUNNER_SEQ_MAX.to_string()));
+        assert!(DETAIL_SEQ_MAX.contains(&af_wire::usage::RUNNER_SEQ_MAX.to_string()));
     }
 }

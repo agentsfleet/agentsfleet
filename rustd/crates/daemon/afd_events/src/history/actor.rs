@@ -1,7 +1,7 @@
 //! One actor's events in one fleet, newest first: the read behind a schedule's
 //! run list, where the actor is `cron:<schedule_id>`.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 
 use super::statement::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};

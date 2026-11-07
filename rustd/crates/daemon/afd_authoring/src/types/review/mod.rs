@@ -3,7 +3,7 @@
 mod readiness;
 mod requirements;
 
-use afd_fleet_runtime::Definition;
+use af_fleet_runtime::Definition;
 use serde::Serialize;
 
 pub use readiness::{Action, ActionKind, Check, CheckKind, CheckState};
@@ -40,7 +40,7 @@ pub struct Review {
     /// Versioned policy interpretation.
     pub policy_semantics: String,
     /// Observation time excluded from the digest.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub observed_at: jiff::Timestamp,
 }
 

@@ -32,13 +32,13 @@ mod cases;
 
 use std::sync::Arc;
 
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::entropy::Entropy;
+use af_crypto::envelope::Sealer;
+use af_crypto::secret::Kek;
 use afd_connector::app::PlatformApp;
 use afd_connector::provider::Provider;
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::envelope::Sealer;
-use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
@@ -78,7 +78,7 @@ impl Deployment {
     /// Opens the shared lane and seeds the tenant and workspace rows the
     /// vault's foreign key requires.
     pub(crate) async fn create() -> Self {
-        afd_core::test_util::trace::install_subscriber();
+        af_core::test_util::trace::install_subscriber();
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();

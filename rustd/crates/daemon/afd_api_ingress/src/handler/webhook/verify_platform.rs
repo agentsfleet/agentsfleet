@@ -17,10 +17,10 @@
 
 use std::sync::Arc;
 
+use af_crypto::secret::SecretBytes;
+use af_webhook::Scheme;
+use af_webhook::{Refusal as WallRefusal, Verdict};
 use afd_connector::Provider;
-use afd_crypto::secret::SecretBytes;
-use afd_webhook::Scheme;
-use afd_webhook::{Refusal as WallRefusal, Verdict};
 use axum::body::Bytes;
 use http::HeaderMap;
 
@@ -127,7 +127,7 @@ fn checked<D: Services>(
 /// over the provider's own id, alongside the registry's ingress entry, and the
 /// secret comes from the connector seam by provider. Nothing here is
 /// per-vendor, so a connector that starts delivering events is a
-/// [`afd_webhook::Scheme`] arm and a registry arm, not a second copy of this.
+/// [`af_webhook::Scheme`] arm and a registry arm, not a second copy of this.
 ///
 /// # Why the secret comes from the connector seam and not the ingress one
 ///

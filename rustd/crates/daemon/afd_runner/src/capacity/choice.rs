@@ -1,7 +1,7 @@
 //! Durable alternation: the successful lease write owns the next preference.
 
-use afd_core::id::Uuid7;
-use afd_wire::lease::{AcceptedKinds, LeaseKind};
+use af_core::id::Uuid7;
+use af_wire::lease::{AcceptedKinds, LeaseKind};
 use sqlx::{Postgres, Transaction};
 
 use super::{Capacity, sql};

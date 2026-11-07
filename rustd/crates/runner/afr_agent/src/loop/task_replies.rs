@@ -1,7 +1,7 @@
 //! Original-source reply obligations do not depend on which lease read the input.
 
 use super::Harness;
-use afd_wire::task::{DecisionTaskVersion, TaskInputAction, TaskInputMode, TaskInputReceiptInput};
+use af_wire::task::{DecisionTaskVersion, TaskInputAction, TaskInputMode, TaskInputReceiptInput};
 
 impl Harness<'_, '_> {
     pub(super) async fn answer_task_inputs(&mut self) -> crate::Result<()> {
@@ -79,7 +79,7 @@ impl Harness<'_, '_> {
         if changed {
             prepared.inputs = intake
                 .verbs
-                .task_inputs(afd_wire::task::TaskInputsQuery {
+                .task_inputs(af_wire::task::TaskInputsQuery {
                     fencing_token: self.shared.fencing_token,
                     starting_after: None,
                     after_input_sequence: Some(self.incorporated_input_sequence),
@@ -154,8 +154,8 @@ impl Harness<'_, '_> {
 }
 
 fn reply_task(
-    inputs: &afd_wire::task::TaskInputsResponse<'_>,
-    binding: &afd_wire::task::TaskItemBinding,
+    inputs: &af_wire::task::TaskInputsResponse<'_>,
+    binding: &af_wire::task::TaskItemBinding,
 ) -> crate::Result<Option<DecisionTaskVersion>> {
     binding
         .task_id

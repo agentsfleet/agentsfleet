@@ -1,6 +1,6 @@
 //! Explicit schedule inputs and public history reads shared by these scenarios.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::{Change, NewSchedule, Schedule, Source};
 use afd_events::{EventDetailRow, History};
 use serde_json::{Value, json};

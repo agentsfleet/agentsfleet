@@ -1,7 +1,7 @@
 //! Public upload authorizations must cryptographically bind every physical write restriction.
 
 use super::config::{ACCESS_KEY, SECRET_KEY};
-use afd_wire::task::CheckpointTransfer;
+use af_wire::task::CheckpointTransfer;
 use aws_credential_types::Credentials;
 use aws_sigv4::{
     http_request::{

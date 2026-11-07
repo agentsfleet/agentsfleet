@@ -30,7 +30,7 @@
 use super::seed::{seed_gate, seed_provider_resolution, seed_write_gate};
 use super::*;
 
-use afd_core::event::label;
+use af_core::event::label;
 use afd_gate::policy::repair;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

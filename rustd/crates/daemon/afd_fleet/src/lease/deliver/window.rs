@@ -7,9 +7,9 @@
 //! the runner then reads memory itself, as it did before the window rode the
 //! lease.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_wire::memory::MemoryHydrateResponse;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_wire::memory::MemoryHydrateResponse;
 
 use crate::lease::pull::Plane;
 

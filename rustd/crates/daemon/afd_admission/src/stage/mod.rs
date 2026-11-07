@@ -4,7 +4,7 @@ pub(crate) mod insert;
 mod verdict;
 
 use crate::{Admission, Admissions, Admitted, Key, Result};
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use sqlx::PgConnection;
 
 /// An immutable admission whose external budget reads completed before taking locks.

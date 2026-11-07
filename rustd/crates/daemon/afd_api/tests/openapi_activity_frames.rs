@@ -11,7 +11,7 @@
     reason = "test target: an unreadable document is a precondition failure"
 )]
 
-use afd_core::id::{ENTROPY_LEN, Uuid7};
+use af_core::id::{ENTROPY_LEN, Uuid7};
 use afd_fleet::lease::activity::{ACTIVITY_VARIANTS, RenderedFrame, Target, rendered_frames};
 use jiff::Timestamp;
 use serde_json::Value;

@@ -6,7 +6,7 @@ use std::io::{self, BufReader};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use digest_io::IoWrapper;
 use rustix::fs::FileType;
 use rustix::mount::MountFlags;

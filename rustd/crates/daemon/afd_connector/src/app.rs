@@ -26,9 +26,9 @@
 
 use std::collections::BTreeSet;
 
-use afd_core::id::Uuid7;
-use afd_core::json::non_empty_str;
-use afd_crypto::secret::SecretBytes;
+use af_core::id::Uuid7;
+use af_core::json::non_empty_str;
+use af_crypto::secret::SecretBytes;
 use afd_vault::{SecretName, Vault};
 
 use crate::error::Result;

@@ -1,6 +1,6 @@
 //! Complete native response and financial outcomes for the same HTTP decision.
 
-use afd_wire::{
+use af_wire::{
     decision::DecisionRequest,
     task::{DecisionReceipt, DecisionReceiptInput},
     usage::DECISION_SEQ_BASE,
@@ -55,7 +55,7 @@ pub(super) fn saved(
     response: &Value,
     request: &DecisionRequest,
     receipt: &DecisionReceiptInput,
-    disposition: afd_wire::task::DecisionRecordDisposition,
+    disposition: af_wire::task::DecisionRecordDisposition,
 ) {
     let result = match &receipt.receipt {
         DecisionReceipt::Provider { result } => Some(result),

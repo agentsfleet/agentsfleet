@@ -1,14 +1,14 @@
 //! Bad semantic answers pay once; missing usage keeps credit until a real receipt.
 
-use afd_core::error_code;
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::{
+use af_core::error_code;
+use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionResult},
     task::{
         DecisionCallState, DecisionNotSentCause, DecisionReceipt, DecisionReceiptInput,
         DecisionRecordDisposition, DecisionTaskVersion,
     },
 };
+use afd_fleet::task::TaskLifecycle as _;
 use serde_json::json;
 
 use super::{
@@ -156,7 +156,7 @@ async fn uncertain(
 
 async fn late_known(
     fixture: &Decisions<'_>,
-    request: &afd_wire::decision::DecisionRequest,
+    request: &af_wire::decision::DecisionRequest,
     before: (i64, i64, i64),
     balance: i64,
 ) {
@@ -201,7 +201,7 @@ async fn refuse_unsent(fixture: &Decisions<'_>, call: &str) {
 
 async fn ledger(fixture: &Decisions<'_>) {
     let lines: Vec<(String,String,String,String,i64)> = sqlx::query_as("SELECT workspace_id::text,provider,model,event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2 ORDER BY seq")
-        .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+        .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
         .fetch_all(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original ledger observer")).await.expect("all five physical charges");
     let expected = (
         fixture.case.scope.workspace_id.to_string(),

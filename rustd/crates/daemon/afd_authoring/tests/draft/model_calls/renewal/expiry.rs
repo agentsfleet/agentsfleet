@@ -2,8 +2,8 @@
 
 use super::super::fixture::{self, Provider};
 use super::{Attempt, EXPIRE_NOW, Fixture, request, snapshot};
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use std::sync::Arc;
 
 /// Leaves the attempt ten seconds live from database time: long enough to
@@ -60,7 +60,7 @@ async fn a_renewal_whose_hold_the_biller_cannot_answer_extends_nothing_and_fails
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     let offline = afd_authoring::Drafts::new(
         f.db.clone(),
-        afd_crypto::entropy::Entropy::new(),
+        af_crypto::entropy::Entropy::new(),
         Faulty::over(
             &f.db,
             Faults {

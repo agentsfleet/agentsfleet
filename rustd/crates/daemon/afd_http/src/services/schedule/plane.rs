@@ -6,7 +6,7 @@
 //! The lease-guarded writes are the exception, because the lease already
 //! binds the fleet to its workspace; they live in `guarded`.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::{
     Change, DesiredStatus, EditRequest, FireTarget, Fired, NewSchedule, Reconciled, Refused,
     Result as CronResult, Schedule,
@@ -175,7 +175,7 @@ impl FleetSchedules for SchedulePlane {
         if self.one(workspace, fleet, schedule).await?.is_none() {
             return Ok(());
         }
-        let error_code = afd_core::error_code::SCHEDULE_SYNCING.as_str();
+        let error_code = af_core::error_code::SCHEDULE_SYNCING.as_str();
         tracing::warn!(error_code, fleet_id, schedule_id, event = EVENT_RETIRE_HELD);
         Err(afd_cron::error::retire_held())
     }

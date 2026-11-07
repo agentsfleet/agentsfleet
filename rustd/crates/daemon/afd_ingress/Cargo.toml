@@ -19,10 +19,10 @@ categories.workspace = true
 # Forwarded rather than bare: `error::one_of_each_kind` samples an admission
 # failure through `afd_admission`'s own sample builder, which lives behind
 # that crate's `test-util`. Building the sample by hand instead would let this
-# crate's idea of a ledger outage drift from the ledger's. `afd_crypto`'s is
+# crate's idea of a ledger outage drift from the ledger's. `af_crypto`'s is
 # the mocked entropy source a failed draw for a binding id is sampled from, and
 # `afd_outbound`'s the ledger failures a notice's obligation can raise.
-test-util = ["afd_admission/test-util", "afd_core/test-util", "afd_crypto/test-util", "afd_outbound/test-util"]
+test-util = ["afd_admission/test-util", "af_core/test-util", "af_crypto/test-util", "afd_outbound/test-util"]
 
 [dependencies]
 # Where a verified delivery is accepted before anything is queued. The
@@ -37,15 +37,15 @@ afd_connector.workspace = true
 # `fleet.obligations`, so a notice and an answer are owed alike.
 afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
-afd_core.workspace = true
+af_core.workspace = true
 # The plaintext wrapper a signing secret comes back in. This crate computes no
-# tag of its own — the wall does, in `afd_webhook`.
-afd_crypto.workspace = true
+# tag of its own — the wall does, in `af_webhook`.
+af_crypto.workspace = true
 # The Postgres pool the fleet row is read on.
 afd_db.workspace = true
 # The typed reader for a stored revision `config`. Its `Trigger::Webhook` is where a
 # binding is read, typed, rather than picked out of jsonb in SQL — see `binding`.
-afd_fleet_runtime.workspace = true
+af_fleet_runtime.workspace = true
 # `FleetStatus`, so "will this fleet take work" is asked of a type rather than
 # of a string compare this crate would own a second copy of.
 afd_fleet_lifecycle.workspace = true
@@ -55,10 +55,10 @@ afd_vault.workspace = true
 # verifies with. A second table here would let a fleet be configured under one
 # header and checked against another, and the resulting failure reads as a wrong
 # secret rather than a wrong header. Nothing in this crate computes a tag.
-afd_webhook.workspace = true
+af_webhook.workspace = true
 # The event type and stream field names a delivery is appended under.
 afd_api_wire.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 # A stored credential is a JSON object and the shared secret is one field of
 # it; nothing here serializes.
 serde_json.workspace = true
@@ -78,7 +78,7 @@ tracing.workspace = true
 # The suites build a vault with a key of their own and a pool that answers
 # nothing, which is what puts the resolution matrix in a test with no
 # datastore in it.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 afd_db.workspace = true
 serde_json.workspace = true
 

@@ -8,7 +8,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_tenant::team::EmailStatus;
 use jiff::Timestamp;
 

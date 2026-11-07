@@ -1,7 +1,7 @@
 //! Complete page boundaries retain paths, content deduplication and private history.
 
 use super::{catalog::Catalog, files::Workspace};
-use afd_wire::task::CheckpointEntry;
+use af_wire::task::CheckpointEntry;
 use std::{collections::BTreeMap, fs, sync::Arc};
 use zeroize::Zeroizing;
 

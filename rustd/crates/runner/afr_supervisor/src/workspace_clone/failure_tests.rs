@@ -48,7 +48,7 @@ async fn a_missing_base_branch_refuses() {
 
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     let message = refused.to_string();
     assert!(
@@ -131,7 +131,7 @@ async fn an_origin_without_fetch_refspecs_refuses_and_keeps_the_mirror() {
 
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert!(
         refused.to_string().contains("could not be fetched"),
@@ -176,7 +176,7 @@ async fn a_symlink_with_a_nul_target_refuses_the_checkout() {
 
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert!(refused.to_string().contains(REPOSITORY), "{refused}");
     assert!(
@@ -332,7 +332,7 @@ async fn a_stopped_checkout_waits_for_no_other_lease() {
     .await
     .unwrap();
 
-    let reason = afd_core::error_code::Coded::logged(&stopped.unwrap_err()).reason;
+    let reason = af_core::error_code::Coded::logged(&stopped.unwrap_err()).reason;
     assert!(reason.contains(WAIT_STOPPED), "{reason}");
     assert!(!fixture.mirror().exists(), "nothing was fetched");
 }

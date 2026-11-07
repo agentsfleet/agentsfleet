@@ -5,9 +5,9 @@ use crate::{
     error::{ErrorKind, raise::query},
     lease::guard,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretString;
 use afd_credential::provider::RegisteredModel;
-use afd_crypto::secret::SecretString;
 use sha2::{Digest as _, Sha256};
 use sqlx::{Connection as _, PgConnection};
 use subtle::ConstantTimeEq as _;
@@ -86,14 +86,14 @@ impl Funding {
             return Ok(());
         };
         let route =
-            afd_inference::Configured::new(&self.prepared.inference, self.prepared.context_tokens)?;
+            af_inference::Configured::new(&self.prepared.inference, self.prepared.context_tokens)?;
         let transport =
-            afd_inference::transport::HttpTransport::new(Arc::new(super::provider::Once {
+            af_inference::transport::HttpTransport::new(Arc::new(super::provider::Once {
                 physical,
                 timeout: std::time::Duration::from_secs(10),
             }));
         let model = &attempt.model_snapshot.model;
-        let control = afd_inference::stream::TurnControl {
+        let control = af_inference::stream::TurnControl {
             correlation_id: attempt.id.to_string().into(),
             ..Default::default()
         };
@@ -180,7 +180,7 @@ async fn counting_key(
     attempt: &guard::Attempt,
     prepared: &prepare::Prepared,
 ) -> Result<Option<SecretString>> {
-    let route = afd_inference::Configured::new(&prepared.inference, prepared.context_tokens)?;
+    let route = af_inference::Configured::new(&prepared.inference, prepared.context_tokens)?;
     // `prepared.input_tokens` measured this exact body when it was prepared.
     if !route.needs_native_count(prepared.input_tokens, &prepared.body) {
         return Ok(None);

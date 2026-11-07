@@ -9,9 +9,9 @@ use crate::{
     message, model, replay, sql,
     types::{Accepted, CreateDraft, Created, EDITING, MAX_TITLE_CHARS, Source, SourcePin},
 };
-use afd_core::{error_code::AUTHORING_NOT_FOUND, id::Uuid7};
-use afd_fleet_runtime::Definition;
-use afd_observability::AuthoringStep;
+use af_core::{error_code::AUTHORING_NOT_FOUND, id::Uuid7};
+use af_fleet_runtime::Definition;
+use af_observability::AuthoringStep;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
@@ -247,7 +247,7 @@ async fn write_draft(
     reason = "fixed test fixtures fail loudly when their contract changes"
 )]
 mod tests {
-    use afd_fleet_runtime::Definition;
+    use af_fleet_runtime::Definition;
 
     use super::{DEFAULT_TITLE, MAX_TITLE_CHARS, initial_title};
 
@@ -259,7 +259,7 @@ mod tests {
             "instructions_md": "Run.",
             "config": {"name": "fixture", "x-agentsfleet": {
                 "triggers": [], "tools": [], "budget": {
-                    "daily_nanos": afd_core::money::NANOS_PER_USD.to_string()
+                    "daily_nanos": af_core::money::NANOS_PER_USD.to_string()
                 }
             }},
         });

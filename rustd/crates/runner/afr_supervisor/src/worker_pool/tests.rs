@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use afd_wire::lease::{LeaseResponse, TaggedLease};
-use afd_wire::runner::HeartbeatStatus;
+use af_wire::lease::{LeaseResponse, TaggedLease};
+use af_wire::runner::HeartbeatStatus;
 use bytes::Bytes;
 use tokio::sync::watch;
 

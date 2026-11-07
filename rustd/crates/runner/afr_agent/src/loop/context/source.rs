@@ -1,7 +1,7 @@
 //! Atomic source groups retain each assistant together with all of its tool results.
 use super::index::Entry;
-use afd_context::{Group, HistorySource, Page, PortFuture};
-use afr_providers::Message;
+use af_context::{Group, HistorySource, Page, PortFuture};
+use af_providers::Message;
 use std::ops::Range;
 
 pub(super) struct Source<'a> {
@@ -32,9 +32,9 @@ impl<'a> Source<'a> {
 
     pub(super) fn retained(
         &self,
-        summary: Option<&afd_context::Summary>,
+        summary: Option<&af_context::Summary>,
         groups: &[Group],
-    ) -> afd_context::Result<Vec<Message>> {
+    ) -> af_context::Result<Vec<Message>> {
         let mut messages = Vec::new();
         if let Some(summary) = summary {
             messages.push(Message::User(summary.context()?));
@@ -46,7 +46,7 @@ impl<'a> Source<'a> {
                 .binary_search_by_key(&group.sequence, |(source, _)| source.sequence)
                 .ok()
                 .and_then(|index| self.groups.get(index))
-                .ok_or_else(afd_context::Error::stale)?;
+                .ok_or_else(af_context::Error::stale)?;
             if !pinned && range.start > self.pinned {
                 messages.push(self.current()?);
                 pinned = true;
@@ -59,29 +59,29 @@ impl<'a> Source<'a> {
         Ok(messages)
     }
 
-    fn append(&self, target: &mut Vec<Message>, range: Range<usize>) -> afd_context::Result<()> {
+    fn append(&self, target: &mut Vec<Message>, range: Range<usize>) -> af_context::Result<()> {
         let messages = self
             .messages
             .get(range.clone())
-            .ok_or_else(afd_context::Error::stale)?;
+            .ok_or_else(af_context::Error::stale)?;
         for (offset, message) in messages.iter().enumerate() {
             let mut message = message.clone();
             if range.start + offset < self.replay_from
                 && let Message::Assistant { replay, .. } = &mut message
             {
                 // Only native state created before the prefix changed is invalidated.
-                *replay = afr_providers::Replay::default();
+                *replay = af_providers::Replay::default();
             }
             target.push(message);
         }
         Ok(())
     }
 
-    fn current(&self) -> afd_context::Result<Message> {
+    fn current(&self) -> af_context::Result<Message> {
         self.messages
             .get(self.pinned)
             .cloned()
-            .ok_or_else(afd_context::Error::stale)
+            .ok_or_else(af_context::Error::stale)
     }
 }
 

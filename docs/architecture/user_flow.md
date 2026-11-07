@@ -111,7 +111,7 @@ Practically, this means:
 
 The user describes the Fleet in a private draft. Browser and terminal chat share the draft API, N1–N10 in [`api_resources.md`](./api_resources.md). The draft is visible only to its creator.
 
-The conversation produces one typed JSON Definition (`rustd/crates/protocol/afd_fleet_runtime/src/definition/mod.rs`):
+The conversation produces one typed JSON Definition (`rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs`):
 
 - `description` is required display text saying what the Fleet does; line breaks are allowed and line endings are normalized. The Fleet's name is `config.name`. Any top-level key besides `schema_version`, `description`, `instructions_md` and `config` is refused.
 - `instructions_md` describes how the Fleet should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. The run receives it as its instructions.
@@ -303,7 +303,7 @@ and saved maximum output
 
 An absent or zero `context_cap_tokens` inherits the saved physical window. A nonzero authored cap can trigger earlier [conversation compaction](context_lifecycle.md); it leaves `ExecutionPolicy.model_context_tokens` unchanged.
 
-A valid checkpoint lets the same run continue with tools. Output remains bounded by the saved maximum and remaining physical headroom (`rustd/crates/protocol/afd_context/src/window.rs`).
+A valid checkpoint lets the same run continue with tools. Output remains bounded by the saved maximum and remaining physical headroom (`rustd/crates/protocol/af_context/src/window.rs`).
 The other `x-agentsfleet.context.*` settings retain their authored values or use the defaults in [`capabilities.md`](./capabilities.md) §4.
 
 The lease reads saved catalogue metadata instead of querying the inference provider for limits. Updating provider configuration is an explicit settings change; it does not require a deployment or a JSON routing file ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10).

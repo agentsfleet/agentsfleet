@@ -8,8 +8,8 @@
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::error_code;
-use afd_wire::memory::{
+use af_core::error_code;
+use af_wire::memory::{
     MemoryDelta, MemoryRecallResponse, PINNED_CATEGORY, SharedMemory, Visibility,
 };
 

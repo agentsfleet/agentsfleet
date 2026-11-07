@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use afd_core::clock;
-use afd_core::timing::RUNNER_OFFLINE_AFTER;
-use afd_wire::runner::RunnerLiveness;
+use af_core::clock;
+use af_core::timing::RUNNER_OFFLINE_AFTER;
+use af_wire::runner::RunnerLiveness;
 use jiff::Timestamp;
 
 use super::decode::derive_liveness;

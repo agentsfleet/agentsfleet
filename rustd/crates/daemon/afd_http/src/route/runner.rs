@@ -8,8 +8,8 @@
 //!
 //! The operator's view over runners is [`super::runner_ops`].
 
+use af_wire::paths;
 use afd_auth::Scope;
-use afd_wire::paths;
 
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 

@@ -12,7 +12,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use afd_fleet_runtime::config::{Reach, RepositoryBinding};
+use af_fleet_runtime::config::{Reach, RepositoryBinding};
 use axum::Router;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};

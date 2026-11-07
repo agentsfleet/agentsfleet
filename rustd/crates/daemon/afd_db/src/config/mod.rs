@@ -19,7 +19,7 @@ use self::sizing::{
     ACQUIRE_TIMEOUT_DEFAULT, CONNECT_TIMEOUT_DEFAULT, min_connections_default, pool_size_default,
 };
 use crate::error::{Error, ErrorKind, Result};
-use afd_core::env::{EnvSource, optional};
+use af_core::env::{EnvSource, optional};
 
 const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE";
 /// The warm floor, overridable for a host that wants a different one.

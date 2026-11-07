@@ -21,7 +21,7 @@ fn a_provider_is_a_canonical_public_vendor_or_other() {
         assert_ne!(value, OTHER, "registered SDK provider {vendor}");
         emitted.insert(value);
     }
-    for known in afd_observability::semconv::provider::WELL_KNOWN {
+    for known in af_observability::semconv::provider::WELL_KNOWN {
         assert_eq!(Provider::of(known).as_str(), *known);
         emitted.insert(*known);
     }

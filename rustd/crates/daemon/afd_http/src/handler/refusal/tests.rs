@@ -11,7 +11,7 @@ use http::StatusCode;
 struct DomainRefusal;
 
 impl Refusable for DomainRefusal {
-    fn code(&self) -> afd_core::error_code::ErrorCode {
+    fn code(&self) -> af_core::error_code::ErrorCode {
         error_code::AGENTSFLEET_PAUSED_INGRESS
     }
 

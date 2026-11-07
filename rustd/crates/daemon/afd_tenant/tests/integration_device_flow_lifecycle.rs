@@ -10,8 +10,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
-use afd_crypto::entropy::Entropy;
+use af_core::error_code;
+use af_crypto::entropy::Entropy;
 use afd_dragonfly::SessionStore;
 use afd_dragonfly::session::SessionState;
 use afd_tenant::session::SessionStatus;

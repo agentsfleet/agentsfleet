@@ -1,11 +1,11 @@
 //! Resolve current native ownership before preparing any paid request.
 
-use afd_billing::price::PriceBook;
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     decision::{DecisionAssignment, DecisionPurpose, DecisionRequest},
     task::{DecisionAssessment, DecisionReservationInput, TaskState, UNFINISHED_MAX},
 };
+use afd_billing::price::PriceBook;
 use serde::Serialize;
 use sqlx::{PgConnection, types::Json};
 
@@ -86,8 +86,8 @@ impl super::ownership::NativeContext {
         let context = self.assessed(
             input,
             &assignment.revision_id,
-            afd_core::etag::sha256_hex(
-                &serde_json::to_vec(&questions).map_err(afd_core::json::Unreadable::from)?,
+            af_core::etag::sha256_hex(
+                &serde_json::to_vec(&questions).map_err(af_core::json::Unreadable::from)?,
             ),
             &candidates,
         )?;
@@ -170,12 +170,12 @@ pub(super) async fn candidates(
 }
 
 fn questions(
-    policy: &afd_fleet_runtime::config::decision::DecisionPolicy,
+    policy: &af_fleet_runtime::config::decision::DecisionPolicy,
     input: &DecisionReservationInput,
     task: Option<&TaskSnapshot>,
     candidates: &[Candidate],
     now: jiff::Timestamp,
-) -> Result<Vec<afd_wire::decision::NamedQuestion>> {
+) -> Result<Vec<af_wire::decision::NamedQuestion>> {
     if !matches!(input.assessment, DecisionAssessment::Goal { .. }) {
         return compile::routing(
             policy,
@@ -200,7 +200,7 @@ fn supported(assignment: &DecisionAssignment, request: &DecisionRequest) -> Resu
         .questions
         .iter()
         .all(|named| assignment.profile.capabilities.supports(&named.question))
-        || !afd_wire::decision::serialized_within(
+        || !af_wire::decision::serialized_within(
             &(&request.state, &request.questions),
             assignment.profile.input_max_bytes as usize,
         )

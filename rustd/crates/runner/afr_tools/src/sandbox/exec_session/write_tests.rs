@@ -4,8 +4,8 @@
 
 use std::time::Duration;
 
-use afd_core::clock::saturating_millis;
-use afd_core::test_util::trace::Capture;
+use af_core::clock::saturating_millis;
+use af_core::test_util::trace::Capture;
 use afr_executor::Ending;
 use bytes::Bytes;
 use tokio::time::Instant;

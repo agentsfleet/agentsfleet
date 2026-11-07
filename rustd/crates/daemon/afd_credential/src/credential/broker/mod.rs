@@ -41,8 +41,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::config::{Recorded, RepositoryBinding};
+use af_core::id::Uuid7;
+use af_fleet_runtime::config::{Recorded, RepositoryBinding};
 use jiff::Timestamp;
 use moka::future::Cache;
 use serde::Serialize;
@@ -70,7 +70,7 @@ const MAX_CACHED_TOKENS: u64 = 8192;
 /// These are the stored handle's own keys, written by `afd_connector`'s grant
 /// parser; a stored blob keeps its spelling, so `expires_at_ms` stays here.
 const ROTATING_FIELDS: [&str; 3] = [
-    afd_core::credential::FIELD_REFRESH_TOKEN,
+    af_core::credential::FIELD_REFRESH_TOKEN,
     "access_token",
     "expires_at_ms",
 ];

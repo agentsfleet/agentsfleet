@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -261,7 +261,7 @@ async fn test_a_token_refused_elsewhere_ends_every_hold_without_a_last_beat() {
 /// Beats once, then shuts down with the daemon answering the last beat with
 /// `failure`, after exactly that beat and the last one: answers which holds
 /// are left.
-async fn last_beat_answered(failure: fn() -> crate::Error) -> Vec<afd_core::id::Uuid7> {
+async fn last_beat_answered(failure: fn() -> crate::Error) -> Vec<af_core::id::Uuid7> {
     let engine = FakeEngine::default();
     let holds = holding(&engine, 2).await;
     let beats = Arc::new(AtomicUsize::new(0));
@@ -327,6 +327,6 @@ async fn test_a_last_beat_refused_for_its_token_is_not_logged_as_failed() {
 }
 
 /// Every hold ended: the keeper lists no fleet.
-fn none_left(left: &[afd_core::id::Uuid7]) {
+fn none_left(left: &[af_core::id::Uuid7]) {
     assert!(left.is_empty(), "still holding {left:?}");
 }

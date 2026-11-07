@@ -22,7 +22,7 @@ use std::os::fd::{AsFd as _, OwnedFd};
 use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 
 use self::slot::{Claim, LINK_PREFIX, Slot, TABLE_PREFIX};
 use crate::error::{EgressRefusal, Result, Step, egress_refused};

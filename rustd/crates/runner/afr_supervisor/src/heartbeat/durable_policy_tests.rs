@@ -8,7 +8,7 @@ use super::{
 };
 use crate::holds::Holds;
 use crate::test_support::{drain, json, plane};
-use afd_core::clock::SystemClock;
+use af_core::clock::SystemClock;
 use std::sync::Arc;
 
 #[tokio::test]

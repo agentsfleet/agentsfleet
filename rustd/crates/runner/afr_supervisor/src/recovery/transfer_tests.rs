@@ -1,8 +1,8 @@
 //! Authenticated objects cannot cross workspace, repository or object identity.
 
 use super::transfer;
-use afd_core::id::Uuid7;
-use afd_wire::task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
+use af_core::id::Uuid7;
+use af_wire::task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
 use base64::Engine as _;
 use zeroize::Zeroizing;
 
@@ -15,13 +15,13 @@ fn object() -> CheckpointObject {
         object_id: ID.to_owned(),
         repository: "owner/repository".to_owned(),
         plaintext: CheckpointPlaintext {
-            sha256: afd_core::etag::sha256_hex(CONTENT),
+            sha256: af_core::etag::sha256_hex(CONTENT),
             size: CONTENT.len() as u64,
             kind: "history".to_owned(),
         },
         status: CheckpointObjectStatus::Missing,
-        nonce: Some(base64::prelude::BASE64_STANDARD.encode([4; afd_crypto::NONCE_LEN])),
-        data_key: Some(base64::prelude::BASE64_STANDARD.encode([7; afd_crypto::KEY_LEN])),
+        nonce: Some(base64::prelude::BASE64_STANDARD.encode([4; af_crypto::NONCE_LEN])),
+        data_key: Some(base64::prelude::BASE64_STANDARD.encode([7; af_crypto::KEY_LEN])),
         ciphertext_sha256: None,
         ciphertext_length: None,
         transfer: None,
@@ -30,7 +30,7 @@ fn object() -> CheckpointObject {
 
 fn registered(ciphertext: &[u8]) -> CheckpointObject {
     let mut object = object();
-    object.ciphertext_sha256 = Some(afd_core::etag::sha256_hex(ciphertext));
+    object.ciphertext_sha256 = Some(af_core::etag::sha256_hex(ciphertext));
     object.ciphertext_length = Some(ciphertext.len() as u64);
     object
 }

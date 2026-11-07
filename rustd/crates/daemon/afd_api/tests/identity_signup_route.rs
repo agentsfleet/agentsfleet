@@ -27,16 +27,16 @@
 
 use crate::harness;
 
-use afd_core::error_code;
-use afd_crypto::mac::HmacSha256Tag;
-use afd_crypto::secret::SecretBytes;
+use af_core::error_code;
+use af_crypto::mac::HmacSha256Tag;
+use af_crypto::secret::SecretBytes;
 use axum::Router;
 use axum::body::Body;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use http::{HeaderName, Method, Response};
 
-use afd_webhook::vendor::svix;
+use af_webhook::vendor::svix;
 
 use self::harness::{Fleet, refusal_code, send_with_headers};
 use crate::identity_signup_events::{ADA_ADDRESS, ada};

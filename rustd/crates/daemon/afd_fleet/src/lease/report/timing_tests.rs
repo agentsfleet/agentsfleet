@@ -3,8 +3,8 @@
 
 use std::time::Duration;
 
-use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_observability::test_util::Capture as Metrics;
+use af_core::id::{ENTROPY_LEN, Uuid7};
+use af_observability::test_util::Capture as Metrics;
 use jiff::Timestamp;
 
 use super::completed;

@@ -1,9 +1,9 @@
 //! Recovery listings of persisted uncertain intents never claim remote success.
 
-use afd_core::error_code;
+use af_core::error_code;
+use af_wire::task::{TaskEffectState, TaskEffectsQuery};
 use afd_db::test_util::mint_id;
 use afd_fleet::task::{TaskLifecycle as _, TaskRefusal};
-use afd_wire::task::{TaskEffectState, TaskEffectsQuery};
 
 use super::{
     super::fixture::{Case, exercise, id},
@@ -50,7 +50,7 @@ async fn recovery_page(
     task: &str,
     after: u64,
     cursor: Option<&str>,
-) -> afd_wire::task::TaskEffectsPage {
+) -> af_wire::task::TaskEffectsPage {
     fixture
         .tasks
         .effects(

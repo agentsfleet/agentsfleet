@@ -11,10 +11,10 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::id::Uuid7;
-use afd_core::paging::Cursor;
+use af_core::id::Uuid7;
+use af_core::paging::Cursor;
+use af_wire::memory::MAX_KEY_LEN;
 use afd_memory::page::View;
-use afd_wire::memory::MAX_KEY_LEN;
 
 use super::{
     LIMIT_MAX, LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key, row_id,

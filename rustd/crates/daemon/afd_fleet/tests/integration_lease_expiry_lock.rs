@@ -19,13 +19,13 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
+use af_wire::message_verb::MessageRequest;
+use af_wire::tool_detail::ToolCallRecordsRequest;
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_db::Precondition as _;
 use afd_fleet::lease::write_fence::WriteFence;
-use afd_wire::message_verb::MessageRequest;
-use afd_wire::tool_detail::ToolCallRecordsRequest;
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};
 
 use crate::integration_report_owes_destination::stage::stage;

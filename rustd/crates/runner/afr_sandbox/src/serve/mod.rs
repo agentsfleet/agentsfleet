@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use afd_core::env::{ProcessEnv, log_level};
+use af_core::env::{ProcessEnv, log_level};
 use afr_executor::Server;
 use tracing::level_filters::LevelFilter;
 

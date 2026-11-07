@@ -5,11 +5,11 @@
 //! and decides nothing, so a refusal can never be introduced by an edit in
 //! this file.
 
+use af_core::id::Uuid7;
+use af_core::paging::struct_cursor;
 use afd_api_wire::tenant_model_entry::{
     ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow, StoredModelEntry,
 };
-use afd_core::id::Uuid7;
-use afd_core::paging::struct_cursor;
 use afd_credential::provider::{PricedDefault, RegistryPage, RegistryRow};
 use afd_vault::Descriptor;
 
@@ -132,7 +132,7 @@ mod tests {
 
     fn rate() -> CatalogueRate {
         CatalogueRate {
-            metadata: afd_core::catalogue::Metadata {
+            metadata: af_core::catalogue::Metadata {
                 display_name: "GPT fixture".into(),
                 context_cap_tokens: 200_000,
                 context_source_url: "https://example.test/models".into(),

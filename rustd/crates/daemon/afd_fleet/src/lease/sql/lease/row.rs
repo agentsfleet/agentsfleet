@@ -5,8 +5,8 @@
 //! length cap; the statement and the struct that binds it stay together,
 //! because the `$n` order is written once, beside the text it orders.
 
-use afd_core::id::Uuid7;
-use afd_wire::decision::DecisionAssignment;
+use af_core::id::Uuid7;
+use af_wire::decision::DecisionAssignment;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 

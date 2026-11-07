@@ -1,5 +1,5 @@
 //! Each finished call's full record: every argument and the whole output, cut
-//! to the bounds `afd_wire::tool_detail` declares, so "show all" in the thread
+//! to the bounds `af_wire::tool_detail` declares, so "show all" in the thread
 //! has more than the trace's edges.
 //!
 //! A record must also fit one post on its own, so an output that escapes into
@@ -7,13 +7,13 @@
 
 use std::borrow::Cow;
 
-use afd_wire::tool_detail::{
+use af_wire::tool_detail::{
     DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ToolCallRecord, ToolCallRecordsRequest,
 };
-use afd_wire::tool_trace::encoded_len;
+use af_wire::tool_trace::encoded_len;
 use serde_json::{Map, Value};
 
-use afr_secrets::Clean;
+use af_secrets::Clean;
 
 /// Room a post's envelope takes around its one record, measured rather than
 /// guessed: the request the supervisor seals a lone record in, empty, at the

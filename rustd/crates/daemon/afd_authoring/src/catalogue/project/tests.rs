@@ -18,8 +18,8 @@ fn row() -> Row {
         context: 128_000,
         input: 2_000_000_000,
         output: 8_000_000_000,
-        inference: Some(sqlx::types::Json(afd_wire::inference::ModelInference {
-            api: afd_wire::inference::InferenceApi::Responses,
+        inference: Some(sqlx::types::Json(af_wire::inference::ModelInference {
+            api: af_wire::inference::InferenceApi::Responses,
             base_url: "https://api.openai.com/v1".into(),
             dialect: None,
             max_output_tokens: 8192,

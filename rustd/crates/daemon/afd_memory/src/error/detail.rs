@@ -5,13 +5,13 @@
 //! reads, so each is spelled once here and changing one is a visible change.
 
 /// The detail for a database that cannot be reached.
-pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
+pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// The detail for a database that answered with an error.
-pub use afd_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
+pub use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// The detail for an operation that failed for any other reason.
-pub use afd_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
+pub use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
 
 /// The fleet does not exist, or is not in the caller's workspace — one answer
 /// for both, so a probe learns nothing. Lower-case, unlike [`ENTRY_NOT_FOUND`].

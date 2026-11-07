@@ -27,9 +27,9 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
+use af_core::error_code;
+use af_webhook::Scheme;
 use afd_ingress::{Delivery, Fanout, Surface};
-use afd_webhook::Scheme;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
@@ -40,7 +40,7 @@ use crate::services::{Services, WebhookIngress as _};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
 use super::github::{self, Ingest, Policy};
-/// The two bodies this route answers with. Public wire, so `afd_wire` owns
+/// The two bodies this route answers with. Public wire, so `af_wire` owns
 /// the shape and this route names it.
 use afd_api_wire::ingress::{AppIngressAnswer, FannedOut, Pong};
 

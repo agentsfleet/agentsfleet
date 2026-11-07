@@ -1,7 +1,7 @@
 //! Count actual encoder input and verify the mutable tail's source identity.
 #![expect(clippy::unwrap_used, reason = "fixture failure fails the proof")]
 use super::Index;
-use afr_providers::{Message, Replay};
+use af_providers::{Message, Replay};
 
 fn answer() -> Message {
     Message::Assistant {
@@ -23,7 +23,7 @@ fn runtime_history_encoding_is_linear_across_growing_conversations() {
             index
                 .refresh_with(&messages, |group| {
                     encoded += group.len();
-                    afr_providers::context_document(group).map_err(afd_context::Error::boundary)
+                    af_providers::context_document(group).map_err(af_context::Error::boundary)
                 })
                 .unwrap();
         }

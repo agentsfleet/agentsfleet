@@ -1,7 +1,7 @@
 //! An isolated platform default exercises actual admission pricing and saved routing.
 
 use super::{Fixture, claim, fixture, mint, now};
-use afd_crypto::{entropy::Entropy, secret::Kek};
+use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
 
@@ -93,7 +93,7 @@ async fn platform_admission_reserves_output_and_runtime_before_rolling_input_fun
 #[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
-    use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
+    use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
     let f = configured().await;
     let draft = queued(&f).await;
     let lease = claim(&f, &draft)
@@ -115,7 +115,7 @@ async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
             },
         },
     };
-    let lease_id = afd_core::id::Uuid7::parse(&lease.lease_id).expect("lease identity");
+    let lease_id = af_core::id::Uuid7::parse(&lease.lease_id).expect("lease identity");
     let ack = f
         .drafts
         .report(&f.runner, &lease_id, report)
@@ -162,7 +162,7 @@ async fn unaffordable_output_prices_fail_without_creating_an_attempt() {
     let failed = fixture::failure(&f, &draft).await;
     assert_eq!(
         failed.failure.expect("bounded billing refusal").error_code,
-        afd_core::error_code::AUTHORING_BALANCE
+        af_core::error_code::AUTHORING_BALANCE
     );
     assert_eq!(fixture::attempts(&f).await, 0);
     f.cleanup().await;

@@ -104,12 +104,7 @@ async fn retired_policy_refuses_the_save_without_discarding_the_answer() {
     let before = read(&case, &item).await;
     let (path, token, report) = finish_request(&mut case, &before).await;
     report_once(&case, &path, &token, &report).await;
-    assert_refused(
-        &case,
-        &item,
-        afd_core::error_code::AUTHORING_POLICY.as_str(),
-    )
-    .await;
+    assert_refused(&case, &item, af_core::error_code::AUTHORING_POLICY.as_str()).await;
     case.cleanup().await;
 }
 

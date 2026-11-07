@@ -8,9 +8,9 @@ use crate::{
     message, review,
     types::{DraftState, MessageState, SaveOrigin, SourcePin, Start},
 };
-use afd_core::{id::Uuid7, problem::Problem};
+use af_core::{id::Uuid7, problem::Problem};
+use af_wire::authoring::{Report, Reported};
 use afd_events::activity::Announcement;
-use afd_wire::authoring::{Report, Reported};
 use sqlx::{Connection as _, PgConnection};
 
 #[derive(sqlx::FromRow)]
@@ -81,7 +81,7 @@ impl Creations {
         })?;
         let candidate = candidate::read(connection, &locked.id, id).await?;
         candidate.definition.validate_for_save()?;
-        if candidate.policy_semantics != afd_fleet_runtime::definition::POLICY_SEMANTICS {
+        if candidate.policy_semantics != af_fleet_runtime::definition::POLICY_SEMANTICS {
             return Err(ErrorKind::Policy.into());
         }
         let mut captured = Captured {
@@ -99,7 +99,7 @@ impl Creations {
                 .as_str()
                 .to_owned()
         });
-        afd_fleet_runtime::FleetName::parse(&name)?;
+        af_fleet_runtime::FleetName::parse(&name)?;
         captured.context.instance_name = Some(name.clone());
         let checked = review::build(
             &self.setup,
@@ -166,7 +166,7 @@ impl Creations {
         self.advance(
             access,
             &Uuid7::parse(&saved.fleet_id)?,
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
     }

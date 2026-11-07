@@ -14,8 +14,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::paths::RUNNER_REPORTS;
 use afd_state::sql::{LEASE_STATUS_ACTIVE, LEASE_STATUS_REPORTED};
-use afd_wire::paths::RUNNER_REPORTS;
 use agentsfleetd::supervisor::Supervisor;
 
 use crate::e2e::scenario;
@@ -184,9 +184,9 @@ async fn assert_memory_pushed(run: &crate::e2e::Scenario) {
 /// reports none yet, and the daemon rightly withholds leases from a host that
 /// cannot enforce what its assignment demands.
 pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
-    use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+    use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
     let policy = AssignedPolicy {
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: SandboxTier::LandlockFull,
         network_policy: NetworkPolicy::AllowAll,
@@ -196,7 +196,7 @@ pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
     };
     afd_runner::Runners::new(
         run.booted.database.clone(),
-        afd_crypto::entropy::Entropy::new(),
+        af_crypto::entropy::Entropy::new(),
     )
     .edit(
         &run.runner_id,
@@ -204,7 +204,7 @@ pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
             assigned_policy: Some(&policy),
             labels: None,
         },
-        afd_core::clock::now(),
+        af_core::clock::now(),
     )
     .await
     .expect("an operator may relax a runner's egress");
@@ -226,7 +226,7 @@ fn rust_runner(
 ) -> impl std::future::Future<Output = afr_supervisor::Result<()>> + use<> {
     use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
     let home = home.to_string_lossy().into_owned();
-    let env = afd_core::env::MapEnv::from_pairs([
+    let env = af_core::env::MapEnv::from_pairs([
         (ENV_API_URL, run.base.as_str()),
         (ENV_RUNNER_TOKEN, run.token.as_str()),
         (ENV_STORAGE_HOME, home.as_str()),
@@ -245,11 +245,11 @@ fn scripted() -> afr_agent::scripted::ScriptedEngine {
             spawn: afr_executor::Spawn::program("echo").arg("hi"),
         },
         Step::Say(ANSWER.to_owned()),
-        Step::Remember(afd_wire::memory::MemoryDelta {
+        Step::Remember(af_wire::memory::MemoryDelta {
             key: Cow::Borrowed(REMEMBERED_KEY),
             content: Cow::Borrowed(ANSWER),
             category: Cow::Borrowed("core"),
-            visibility: afd_wire::memory::Visibility::Fleet,
+            visibility: af_wire::memory::Visibility::Fleet,
         }),
     ])
 }

@@ -4,8 +4,8 @@
 use crate::harness;
 use crate::integration_workspace_approvals_fixture::Fixture;
 
+use af_core::error_code;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::Value;
 

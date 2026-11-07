@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 use super::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_DATABASE_ERROR, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
@@ -148,7 +148,7 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
     );
     query.has_source = true;
 
-    let malformed_id = afd_core::id::Uuid7::parse("not-an-id")
+    let malformed_id = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("the malformed fixture unexpectedly parsed")?;
     let mut malformed = expected(
@@ -179,7 +179,7 @@ fn invalid_vault_data_is_the_only_payload_free_permanent_failure() {
 // Value: checkpoint refusals retain their shared code rather than becoming bad requests.
 #[test]
 fn context_refusals_retain_their_code_and_typed_cause() -> Result<(), &'static str> {
-    let source = afd_context::Error::stale();
+    let source = af_context::Error::stale();
     let code = source.code();
     let error = Error::from(source);
     assert_eq!(error.code(), code);
@@ -189,7 +189,7 @@ fn context_refusals_retain_their_code_and_typed_cause() -> Result<(), &'static s
         error
             .source()
             .ok_or("missing context cause")?
-            .is::<afd_context::Error>()
+            .is::<af_context::Error>()
     );
     Ok(())
 }
@@ -222,7 +222,7 @@ fn a_queue_outage_tells_the_caller_the_queue_is_unavailable() {
     /// An environment with no knob set, so resolving a Dragonfly URL fails
     /// without a server — the cheapest real `afd_dragonfly::Error` there is.
     struct Unset;
-    impl afd_core::env::EnvSource for Unset {
+    impl af_core::env::EnvSource for Unset {
         fn get(&self, _key: &str) -> Option<String> {
             None
         }

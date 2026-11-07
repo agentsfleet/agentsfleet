@@ -1,8 +1,8 @@
 //! Steers preserve their identity and envelope in the serving queue.
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use af_wire::event::EventType;
 use afd_events::{ACTOR_MACHINE, Steer};
-use afd_wire::event::EventType;
 
 use crate::integration_steer_retry::{REQUEST_JSON, append_with, queued_ids};
 use crate::support::EventsLane;

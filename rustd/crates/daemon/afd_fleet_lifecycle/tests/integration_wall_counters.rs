@@ -11,9 +11,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_core::error_code;
-use afd_core::id::Uuid7;
 
 use crate::support::{Lane, NOW, mint};
 

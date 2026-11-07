@@ -17,7 +17,7 @@
 
 #![cfg(feature = "test-util")]
 
-use afd_core::test_util::error_surface::{Expect, grade, grade_sentences};
+use af_core::test_util::error_surface::{Expect, grade, grade_sentences};
 
 use afd_runner::error::one_of_each_kind;
 
@@ -27,7 +27,7 @@ const WITH_SOURCE: usize = 4;
 const DISTINCT_CODES: usize = 7;
 
 /// Everything every error surface owes, graded once by
-/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
 /// rendering, no kind repeating its cause, and the measured counts above.
 #[test]
 fn the_error_surface_holds() {

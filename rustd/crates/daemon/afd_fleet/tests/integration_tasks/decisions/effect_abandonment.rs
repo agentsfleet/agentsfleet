@@ -4,8 +4,8 @@ use super::{
     effect_readback::seed,
     fixture::Decisions,
 };
+use af_wire::task::TaskEffectState;
 use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::TaskEffectState;
 use serde_json::Value;
 
 #[tokio::test]
@@ -99,7 +99,7 @@ async fn assert_unspent(case: &Case, task: &str) {
 async fn assert_replay(
     fixture: &Decisions<'_>,
     current: afd_fleet::task::TaskLease<'_>,
-    refused: &afd_wire::task::TaskEffect,
+    refused: &af_wire::task::TaskEffect,
 ) {
     let case = fixture.case;
     let effect = &refused.effect_id;
@@ -115,7 +115,7 @@ async fn assert_replay(
     assert_eq!(state(case, effect).await, terminal);
 }
 
-async fn replacement(case: &Case) -> (afd_core::id::Uuid7, u64) {
+async fn replacement(case: &Case) -> (af_core::id::Uuid7, u64) {
     super::lease_recovery::support::expire(case).await;
     let acquired = super::lease_recovery::support::claim(case).await;
     let response = super::lease_recovery::reclaimed(case, acquired).await;

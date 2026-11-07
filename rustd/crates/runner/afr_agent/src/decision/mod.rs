@@ -8,7 +8,7 @@ mod reply;
 mod routing;
 
 use crate::{Meter, Result};
-use afd_wire::{
+use af_wire::{
     lease::LeasePayload,
     task::{
         DecisionAssessment, DecisionReservationInput, DecisionTaskVersion, TaskBindingItem,
@@ -49,15 +49,15 @@ pub(crate) fn native(reason: afr_tools::verbs::Unanswered) -> crate::Error {
 }
 
 pub(crate) fn identity() -> Result<String> {
-    Ok(afd_crypto::entropy::Entropy::new()
-        .uuid7(afd_core::clock::now())?
+    Ok(af_crypto::entropy::Entropy::new()
+        .uuid7(af_core::clock::now())?
         .to_string())
 }
 
 pub(crate) async fn prepare(
     lease: &LeasePayload<'_>,
     verbs: &dyn LeaseVerbs,
-    provider: &dyn afr_providers::Provider,
+    provider: &dyn af_providers::Provider,
     meter: &Meter,
     stop: &tokio_util::sync::CancellationToken,
 ) -> Result<PreparedTask> {
@@ -133,7 +133,7 @@ pub(crate) async fn prepare(
 pub(crate) struct Intake<'a> {
     pub(crate) lease: &'a LeasePayload<'a>,
     pub(crate) verbs: &'a dyn LeaseVerbs,
-    pub(crate) provider: &'a dyn afr_providers::Provider,
+    pub(crate) provider: &'a dyn af_providers::Provider,
     pub(crate) meter: &'a Meter,
     pub(crate) stop: &'a tokio_util::sync::CancellationToken,
 }
@@ -188,7 +188,7 @@ impl Intake<'_> {
                 .collect(),
         };
         let interpretation = serde_json::to_vec(&binding.interpretation())?;
-        binding.plan_digest = afd_core::etag::sha256_hex(&interpretation);
+        binding.plan_digest = af_core::etag::sha256_hex(&interpretation);
         for (ordinal, item) in binding.items.iter_mut().enumerate() {
             if count == routing::Multiplicity::Single {
                 routing::check(&evaluated, &item.proposed, &assignment.intent)?;

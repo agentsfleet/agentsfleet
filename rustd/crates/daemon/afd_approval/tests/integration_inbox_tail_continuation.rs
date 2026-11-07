@@ -10,10 +10,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_dragonfly::SubscriptionHub;
-use afd_wire::event::EventType;
 use serde_json::json;
 
 use crate::lane::{Lane, Window, dead_queue, dragonfly_config};
@@ -183,7 +183,7 @@ async fn a_converged_continuation_announces_nothing() {
         .bind(EventType::Continuation.as_str())
         .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(&predecessor)
-        .bind(afd_core::event::status::RECEIVED)
+        .bind(af_core::event::status::RECEIVED)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))
         .await
         .expect("the lease path's insert must not fault");

@@ -2,8 +2,8 @@
 
 use std::time::Instant;
 
-use afd_core::error_code;
-use afd_observability::{
+use af_core::error_code;
+use af_observability::{
     metrics::label::task::{TaskOperation, TaskOutcome},
     producers,
 };

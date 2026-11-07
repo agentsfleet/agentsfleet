@@ -1,8 +1,8 @@
 //! Optional platform-owned R2 location; credentials stay in the existing vault.
 
 use super::{Fault, PLATFORM_ADMIN_WORKSPACE_KNOB};
-use afd_core::env::{EnvSource, optional};
-use afd_core::id::Uuid7;
+use af_core::env::{EnvSource, optional};
+use af_core::id::Uuid7;
 use afd_fleet::task::storage::CheckpointStorageConfig;
 
 /// JSON location and existing platform vault reference; contains no secret bytes.

@@ -40,7 +40,7 @@ impl R2CheckpointStore {
             .await?
             .ok_or(TaskRefusal::StorageUnavailable)?;
         let credentials: Credentials<'_> =
-            serde_json::from_slice(secret.expose()).map_err(afd_core::json::Unreadable::from)?;
+            serde_json::from_slice(secret.expose()).map_err(af_core::json::Unreadable::from)?;
         let credentials = garde::Unvalidated::new(credentials)
             .validate()
             .map_err(|_invalid| TaskRefusal::StorageUnavailable)?;

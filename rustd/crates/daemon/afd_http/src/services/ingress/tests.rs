@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
+use af_core::env::MapEnv;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_connector::Provider;
-use afd_core::env::MapEnv;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
 use afd_db::{Db, DbRole, PoolConfig};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed};
@@ -93,7 +93,7 @@ fn binding() -> Binding {
             "x-agentsfleet": {
                 "triggers": [{"type": "webhook", "source": SOURCE}],
                 "tools": ["bash"],
-                "budget": {"daily_nanos": afd_core::money::NANOS_PER_USD.to_string()},
+                "budget": {"daily_nanos": af_core::money::NANOS_PER_USD.to_string()},
             },
         })
         .to_string(),

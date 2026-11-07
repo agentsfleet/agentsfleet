@@ -33,7 +33,7 @@ pub(crate) mod verify_platform;
 pub(crate) use self::verify::verified;
 pub(crate) use self::verify_platform::{verified_app, verified_connector_events};
 
-use afd_core::error_code;
+use af_core::error_code;
 use axum::body::Bytes;
 use http::HeaderMap;
 
@@ -109,7 +109,7 @@ pub(crate) fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
 /// The response bodies these routes answer with.
 ///
 /// Re-exported rather than defined here: they are public wire, declared in
-/// `public/openapi.json` and read by senders and the dashboard, so `afd_wire`
+/// `public/openapi.json` and read by senders and the dashboard, so `af_wire`
 /// owns the shape and this plane names it.
 pub(crate) use afd_api_wire::ingress::{Accepted, Ignored};
 

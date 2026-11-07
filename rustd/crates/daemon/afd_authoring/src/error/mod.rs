@@ -1,12 +1,12 @@
 //! One error hull; private kinds preserve their causes and safe public meaning.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 pub(crate) mod raise;
 #[cfg(test)]
 mod tests;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A private-setup refusal or a failure to reach its durable store.
     pub struct Error(ErrorKind);
 );
@@ -19,7 +19,7 @@ pub(crate) enum ErrorKind {
     #[error("the conversation working context could not be prepared")]
     Context {
         #[source]
-        source: afd_context::Error,
+        source: af_context::Error,
     },
     #[error("inherited schedule update failed")]
     Cron {
@@ -76,12 +76,12 @@ pub(crate) enum ErrorKind {
     #[error("the setup edit decision could not complete")]
     Decision {
         #[source]
-        source: afr_providers::Error,
+        source: af_providers::Error,
     },
     #[error("the configured model settings are invalid")]
     Inference {
         #[source]
-        source: afd_inference::Error,
+        source: af_inference::Error,
     },
     #[error("the model SDK could not complete the dispatch")]
     Sdk {
@@ -112,7 +112,7 @@ pub(crate) enum ErrorKind {
     Stored {
         /// serde's position and expected type; never the private text it read.
         #[source]
-        source: afd_core::json::Unreadable,
+        source: af_core::json::Unreadable,
     },
     #[error("the authoring request violates a declared bound")]
     Validation {
@@ -122,7 +122,7 @@ pub(crate) enum ErrorKind {
     #[error("the native setup is invalid")]
     Definition {
         #[from]
-        source: afd_fleet_runtime::Error,
+        source: af_fleet_runtime::Error,
     },
     #[error("the owner model could not be resolved")]
     Credential {
@@ -137,12 +137,12 @@ pub(crate) enum ErrorKind {
     #[error("an authoring identifier could not be minted")]
     Identifier {
         #[from]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
     #[error("authoring entropy is unavailable")]
     Entropy {
         #[from]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
     /// The biller answered with a fault its outage policy did not absorb.
     #[error("the setup chat's biller refused the request")]
@@ -152,18 +152,18 @@ pub(crate) enum ErrorKind {
     },
 }
 
-afd_core::error_lifts!(Error, ErrorKind:
-    afr_providers::Error => Decision,
+af_core::error_lifts!(Error, ErrorKind:
+    af_providers::Error => Decision,
     afd_cron::Error => Cron,
-    afd_context::Error => Context,
+    af_context::Error => Context,
     afd_db::Error => Datastore,
     afd_credential::Error => Credential,
-    afd_fleet_runtime::Error => Definition,
-    afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Identifier,
+    af_fleet_runtime::Error => Definition,
+    af_crypto::error::Error => Entropy,
+    af_core::error::Error => Identifier,
     garde::Report => Validation,
     reqwest::Error => Transport,
-    afd_inference::Error => Inference,
+    af_inference::Error => Inference,
     rig_core::ProviderError => Sdk,
     afd_runner::Error => Runner,
     afd_admission::Error => Admission,
@@ -224,7 +224,7 @@ impl Error {
             ErrorKind::Validation { .. } | ErrorKind::Definition { .. } => {
                 "Setup input violates the supported shape or bounds"
             }
-            _ => afd_core::problem::Problem::of(self.code()).title(),
+            _ => af_core::problem::Problem::of(self.code()).title(),
         }
     }
 

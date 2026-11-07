@@ -4,11 +4,11 @@ use crate::{
     Result,
     error::{lease_not_found, query, row_malformed, stale_fence},
 };
-use afd_context::{
+use af_context::{
     Checkpoint, CheckpointStore as _,
     repository::{Repository, Scope},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 const CONTEXT: &str = "access private run context checkpoint";

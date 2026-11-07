@@ -3,7 +3,7 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use serde_json::json;
 
 use super::EVENT_REFUSED;

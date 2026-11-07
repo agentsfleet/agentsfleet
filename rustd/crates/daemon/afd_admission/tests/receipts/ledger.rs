@@ -5,10 +5,10 @@
 //! the same statements the crate writes with would agree with them by
 //! construction.
 
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
-use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_wire::event::EventType;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 

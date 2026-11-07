@@ -35,7 +35,7 @@
 //! text that is not UTF-8. [`str::floor_char_boundary`] backs off to the last
 //! character boundary at or below the cap.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_events::Closed;
 use jiff::Timestamp;
 
@@ -105,7 +105,7 @@ impl Leases {
             .bind(tokens)
             .bind(wall_ms)
             .bind(verdict.label())
-            .bind(afd_core::event::status::RECEIVED)
+            .bind(af_core::event::status::RECEIVED)
             .bind(verdict.detail())
             .bind(afd_api_wire::approval::status::PENDING)
             .bind(tool_calls)

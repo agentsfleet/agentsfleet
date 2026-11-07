@@ -1,6 +1,6 @@
 //! Native HTTP fixture identities, with an API-only task and known goal receipt.
 use super::{CHECKPOINT, ID, PAGE};
-use afd_wire::{decision::*, task::*};
+use af_wire::{decision::*, task::*};
 use serde_json::{Value, json};
 
 pub(super) fn assignment() -> DecisionAssignment {
@@ -77,7 +77,7 @@ pub(super) fn inputs() -> Value {
     .unwrap()
 }
 pub(super) fn deadline() -> jiff::Timestamp {
-    afd_core::clock::after(afd_core::clock::now(), std::time::Duration::from_mins(10))
+    af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(10))
 }
 pub(super) fn plan(input: &CheckpointPlanInput) -> CheckpointPlan {
     let deadline = deadline();

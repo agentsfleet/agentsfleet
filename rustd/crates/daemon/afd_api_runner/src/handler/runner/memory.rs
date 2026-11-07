@@ -15,9 +15,9 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
+use af_core::error_code;
+use af_wire::memory::{MemoryCaptureResponse, MemoryPushRequest, MemoryRecallRequest};
 use afd_http::handler::{Refusal, parse_fleet_id};
-use afd_wire::memory::{MemoryCaptureResponse, MemoryPushRequest, MemoryRecallRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -50,7 +50,7 @@ const STATE_SUPERSEDED: &str = "superseded";
 /// Seeds a run with its fleet's memory window.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = afd_wire::paths::RUNNER_MEMORY_FLEET,
+    path = af_wire::paths::RUNNER_MEMORY_FLEET,
     tag = afd_http::openapi::tag::MEMORY,
     operation_id = "runner_hydrate_memory",
     summary = "Load what a fleet remembers",
@@ -62,7 +62,7 @@ const STATE_SUPERSEDED: &str = "superseded";
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::memory::MemoryHydrateResponse),
+        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryHydrateResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -91,7 +91,7 @@ pub(crate) async fn hydrate<D: Services>(
 /// Searches a fleet's memory past the window a run was seeded with.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::RUNNER_MEMORY_RECALL,
+    path = af_wire::paths::RUNNER_MEMORY_RECALL,
     tag = afd_http::openapi::tag::MEMORY,
     operation_id = "runner_recall_memory",
     summary = "Search what a fleet remembers",
@@ -105,7 +105,7 @@ pub(crate) async fn hydrate<D: Services>(
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::memory::MemoryRecallResponse),
+        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryRecallResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -146,7 +146,7 @@ pub(crate) async fn recall<D: Services>(
 /// Persists what a run learned.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::RUNNER_MEMORY_FLEET,
+    path = af_wire::paths::RUNNER_MEMORY_FLEET,
     tag = afd_http::openapi::tag::MEMORY,
     operation_id = "runner_capture_memory",
     summary = "Capture what a fleet learned",

@@ -16,8 +16,8 @@
 //! and the window would be invisible. The read costs one round trip on a path
 //! that already makes several.
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::{Definition, FleetConfig, definition::POLICY_SEMANTICS};
+use af_core::id::Uuid7;
+use af_fleet_runtime::{Definition, FleetConfig, definition::POLICY_SEMANTICS};
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::sql;
@@ -76,7 +76,7 @@ impl Installed {
         self.config
             .credentials()
             .iter()
-            .map(afd_fleet_runtime::CredentialName::as_str)
+            .map(af_fleet_runtime::CredentialName::as_str)
             .collect()
     }
 }

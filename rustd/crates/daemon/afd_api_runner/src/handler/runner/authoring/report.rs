@@ -1,11 +1,11 @@
 //! Own-lease report uses the shared daemon authoring boundary.
 
 use crate::{auth::RunnerIdentity, services::Services};
-use afd_core::id::Uuid7;
-use afd_http::handler::{Refusal, authoring_refusal};
-use afd_wire::authoring::Report;
+use af_core::id::Uuid7;
+use af_wire::authoring::Report;
 #[cfg(feature = "openapi")]
-use afd_wire::authoring::Reported;
+use af_wire::authoring::Reported;
+use afd_http::handler::{Refusal, authoring_refusal};
 use axum::{
     Json,
     body::Bytes,
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 /// Record authoring accounting and terminal state under the authenticated runner identity.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = afd_wire::paths::AUTHORING_REPORTS,
+    post, path = af_wire::paths::AUTHORING_REPORTS,
     tag = afd_http::openapi::tag::RUNNERS, operation_id = "runner_authoring_report",
     summary = "Report private setup usage and outcome", request_body = Report,
     params(afd_http::openapi::path::Lease),
@@ -36,7 +36,7 @@ pub(crate) async fn handle<D: Services>(
 ) -> Result<Response, Refusal> {
     let lease =
         Uuid7::parse(&lease).map_err(|_invalid| Refusal::malformed("lease_id must be a UUIDv7"))?;
-    let request: Report = afd_core::json::object_from_slice(&body)
+    let request: Report = af_core::json::object_from_slice(&body)
         .map_err(|_invalid| Refusal::malformed("Invalid authoring report body"))?;
     let result = services
         .creations()

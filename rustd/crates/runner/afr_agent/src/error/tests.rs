@@ -5,9 +5,9 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
-use afd_wire::inference::{InferenceApi, ModelInference};
-use afr_providers::Connect as _;
+use af_core::error_code;
+use af_providers::Connect as _;
+use af_wire::inference::{InferenceApi, ModelInference};
 use afr_tools::Catalog;
 
 use super::{Error, Unhosted};
@@ -30,7 +30,7 @@ fn should_carry_the_catalogs_code_and_tool_when_a_lease_is_refused() {
 
 #[test]
 fn should_name_no_tool_when_a_checkpoint_failed() {
-    let failure = Error::checkpoint(afr_providers::Error::refused(503));
+    let failure = Error::checkpoint(af_providers::Error::refused(503));
 
     assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(failure.unhosted(), None);
@@ -47,12 +47,12 @@ fn should_preserve_a_real_scrub_refusal_without_naming_an_unhosted_resource() {
     let pattern = memmap2::MmapMut::map_anon(length).unwrap();
     let refusal = aho_corasick::AhoCorasick::new([pattern.as_ref()]).unwrap_err();
 
-    let failure = Error::from(afr_secrets::Error::from(refusal));
+    let failure = Error::from(af_secrets::Error::from(refusal));
 
     assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(failure.unhosted(), None);
     let scrub = failure.source().unwrap();
-    assert!(scrub.is::<afr_secrets::Error>());
+    assert!(scrub.is::<af_secrets::Error>());
     assert!(scrub.source().unwrap().is::<aho_corasick::BuildError>());
 }
 
@@ -62,7 +62,7 @@ const PRIVATE_URL: &str = "https://127.0.0.1/v1";
 
 #[test]
 fn should_refuse_a_private_persisted_endpoint_without_mistaking_it_for_an_unhosted_provider() {
-    let mut policy = afr_egress::fixture::policy(true);
+    let mut policy = af_egress::fixture::policy(true);
     policy.context.context_cap_tokens = 128_000;
     policy.inference = Some(ModelInference {
         api: InferenceApi::Chat,
@@ -70,7 +70,7 @@ fn should_refuse_a_private_persisted_endpoint_without_mistaking_it_for_an_unhost
         dialect: None,
         max_output_tokens: 16_384,
     });
-    let connector = afr_providers::Connector::new().unwrap();
+    let connector = af_providers::Connector::new().unwrap();
 
     let refused = Error::from(connector.admit(&policy).unwrap_err());
 

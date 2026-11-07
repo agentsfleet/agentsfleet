@@ -1,7 +1,7 @@
 //! Native source and accepted objective remain complete within the state bound.
 
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     decision::{DecisionRequest, NamedQuestion},
     task::DecisionReservationInput,
 };
@@ -24,7 +24,7 @@ struct State<'a> {
     message: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     assessed_message: Option<&'a str>,
-    assessment: &'a afd_wire::task::DecisionAssessment,
+    assessment: &'a af_wire::task::DecisionAssessment,
     current_work: &'a [Candidate],
     #[serde(skip_serializing_if = "Option::is_none")]
     task: Option<Objective<'a>>,
@@ -48,7 +48,7 @@ pub(super) fn compile(
     questions: Vec<NamedQuestion>,
 ) -> Result<DecisionRequest> {
     let assessed_message = match &input.assessment {
-        afd_wire::task::DecisionAssessment::Item {
+        af_wire::task::DecisionAssessment::Item {
             source_start,
             source_end,
             ..
@@ -78,7 +78,7 @@ pub(super) fn compile(
     Ok(DecisionRequest {
         call_id: call.to_string(),
         purpose: input.assessment.purpose(),
-        state: serde_json::to_value(state).map_err(afd_core::json::Unreadable::from)?,
+        state: serde_json::to_value(state).map_err(af_core::json::Unreadable::from)?,
         questions,
     })
 }

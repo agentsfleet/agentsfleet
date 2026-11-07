@@ -24,11 +24,11 @@
 //! configuration resolves to empty binds, so a missing value cannot widen
 //! the sandbox or invent operator additions.
 
-use afd_wire::runner::{AssignedPolicy, CapabilityReport, ExtraBind};
+use af_wire::runner::{AssignedPolicy, CapabilityReport, ExtraBind};
 use serde::{Deserialize, Serialize};
 
-use afd_core::id::Uuid7;
-use afd_core::limits::WorkerCount;
+use af_core::id::Uuid7;
+use af_core::limits::WorkerCount;
 
 use crate::error::{Result, assignment_malformed, row_malformed, stored_json};
 use crate::reconcile::Verdict;
@@ -178,14 +178,14 @@ impl StoredVerdict {
 
 /// A fieldless wire enum, parsed from the spelling a column stores.
 ///
-/// [`afd_core::spelling::from_spelling`] does the work; this alias exists so
+/// [`af_core::spelling::from_spelling`] does the work; this alias exists so
 /// the sibling `spelling` module's round-trip tests keep one name to reach for,
 /// and so the reasoning stays discoverable from the read direction it serves.
-/// That reasoning is the shared module's: `afd_wire` declares the rename, so
+/// That reasoning is the shared module's: `af_wire` declares the rename, so
 /// parsing through it means the stored vocabulary and the wire vocabulary
 /// CANNOT drift, where a hand-written match would be a second copy of every
 /// variant's spelling with no failing test behind it.
-pub(crate) use afd_core::spelling::from_spelling as parse_wire;
+pub(crate) use af_core::spelling::from_spelling as parse_wire;
 
 /// A stored JSON column, deserialised borrowing from it.
 ///

@@ -3,8 +3,8 @@
 mod resolve;
 
 use crate::error::Result;
-use afd_core::id::Uuid7;
-use afd_wire::inference::ModelInference;
+use af_core::id::Uuid7;
+use af_wire::inference::ModelInference;
 use sqlx::PgConnection;
 
 /// Non-secret runtime selection shown by human setup review.

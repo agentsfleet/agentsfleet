@@ -4,7 +4,7 @@
 //! The catalog and the providers each own their half; this is the one place
 //! that reads both, so neither crate depends on the other.
 
-use afr_providers::{Hosted, ToolSpec};
+use af_providers::{Hosted, ToolSpec};
 use afr_tools::catalog::WEB_SEARCH;
 use afr_tools::{Entry, Selection};
 

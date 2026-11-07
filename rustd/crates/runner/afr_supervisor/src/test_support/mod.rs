@@ -11,15 +11,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
-use afd_wire::memory::MemoryDelta;
-use afd_wire::policy::ExecutionPolicy;
-use afd_wire::tool_detail::ToolCallRecord;
-use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
+use af_providers::{Connect as _, Connector, Usage};
+use af_wire::activity::{ActivityFrame, FleetResponseChunk};
+use af_wire::memory::MemoryDelta;
+use af_wire::policy::ExecutionPolicy;
+use af_wire::tool_detail::ToolCallRecord;
+use af_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_agent::{Completed, ExecutionResult, ResultOutcome};
 use afr_executor::{Executor, ProcessId, Spawn, Unavailable};
-use afr_providers::{Connect as _, Connector, Usage};
 use afr_tools::Catalog;
 use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
@@ -42,7 +42,7 @@ pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{
     DESTROY, EXECUTOR_GONE, FakeEngine, Freezer, KILL, Kill, NO_FREEZER, NO_REFILL, STILL_RUNNING,
 };
-pub(crate) use afr_egress::testing::FakeResolver;
+pub(crate) use af_egress::testing::FakeResolver;
 
 pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
 /// When every fake lease is granted until: thirty seconds after the fixed
@@ -62,8 +62,8 @@ pub(crate) const RUNNER_CRASH: &str = "runner_crash";
 
 /// The wall clock every lease test reads: fixed at zero, so a lease's deadline
 /// is measured in the paused tokio time the tests advance.
-pub(crate) fn clock() -> std::sync::Arc<dyn afd_core::clock::Clock> {
-    std::sync::Arc::new(afd_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
+pub(crate) fn clock() -> std::sync::Arc<dyn af_core::clock::Clock> {
+    std::sync::Arc::new(af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
 }
 
 /// What the fake daemon does with one call.
@@ -165,7 +165,7 @@ impl AgentEngine for FakeAgent {
         run.events
             .emit(ActivityFrame::FleetResponseChunk(FleetResponseChunk {
                 text: "hi".into(),
-                text_kind: afd_wire::activity::StreamTextKind::Answer,
+                text_kind: af_wire::activity::StreamTextKind::Answer,
                 first_chunk_after_ms: None,
                 stream_start: true,
                 stream_contiguous: false,
@@ -245,7 +245,7 @@ pub(crate) fn answer() -> RunOutput {
             key: "k".into(),
             content: "v".into(),
             category: "core".into(),
-            visibility: afd_wire::memory::Visibility::Fleet,
+            visibility: af_wire::memory::Visibility::Fleet,
         }],
         trace: None,
         records: Vec::new(),

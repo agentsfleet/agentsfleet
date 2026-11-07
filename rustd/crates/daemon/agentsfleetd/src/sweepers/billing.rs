@@ -5,9 +5,9 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use af_crypto::entropy::Entropy;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::Resume;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_fleet::lease::billing_sweep::BillingSwept;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _, Tasks};
@@ -106,7 +106,7 @@ async fn sweep_leases(
         "billing relay pass starts"
     );
     let after = resume.lock().map_or(None, |at| at.clone());
-    let now = afd_core::clock::now();
+    let now = af_core::clock::now();
     let swept =
         afd_fleet::lease::billing_sweep::sweep(database, biller, entropy, now, after.as_ref())
             .await;

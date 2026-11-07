@@ -17,8 +17,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admitted, Key, Producer, Reply, sql};
-use afd_wire::event::EventType;
 
 use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::seed::seeded_parts;

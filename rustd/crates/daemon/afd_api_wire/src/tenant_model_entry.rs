@@ -73,23 +73,23 @@ pub struct ModelEntryRow<'a> {
     pub context_cap_tokens: Option<u32>,
     /// The input rate, in nanos per million tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::nanos::option")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     pub input_nanos_per_mtok: Option<i64>,
     /// The cached-input rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::nanos::option")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     pub cached_input_nanos_per_mtok: Option<i64>,
     /// The output rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::nanos::option")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     pub output_nanos_per_mtok: Option<i64>,
     /// Whether this entry is the tenant's current selection.
     pub active: bool,
     /// When it was first stored.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
 
@@ -109,18 +109,18 @@ pub struct PlatformDefaultRow<'a> {
     pub context_cap_tokens: u32,
     /// The input rate, in nanos per million tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::nanos::option")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     pub input_nanos_per_mtok: Option<i64>,
     /// The cached-input rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::nanos::option")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     pub cached_input_nanos_per_mtok: Option<i64>,
     /// The output rate, likewise.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::nanos::option")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     pub output_nanos_per_mtok: Option<i64>,
 }
 
@@ -162,7 +162,7 @@ pub struct StoredModelEntry<'a> {
     /// The vault key name backing it.
     pub secret_ref: &'a str,
     /// When it was first stored.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
 
@@ -177,7 +177,7 @@ pub struct CreateModelEntryRequest {
     /// The model to register.
     #[garde(
         length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     )]
     pub model_id: String,
     /// The credential to back it with. Immutable once the entry exists.
@@ -200,7 +200,7 @@ pub struct UpdateModelEntryRequest {
     /// The model to point at.
     #[garde(
         length(bytes, min = 1, max = MODEL_ID_MAX_BYTES),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     )]
     pub model_id: String,
 }
@@ -228,7 +228,7 @@ mod tests {
         };
         let report = update.validate().expect_err("a NUL must be refused");
         assert!(
-            report.to_string().contains(afd_validate::rules::HAS_NUL),
+            report.to_string().contains(af_validate::rules::HAS_NUL),
             "{report}"
         );
         UpdateModelEntryRequest {
@@ -243,7 +243,7 @@ mod tests {
                 .validate()
                 .expect_err("refused")
                 .to_string()
-                .contains(afd_validate::rules::HAS_NUL)
+                .contains(af_validate::rules::HAS_NUL)
         );
     }
 
@@ -327,7 +327,7 @@ mod tests {
 
     /// A key this build does not carry is refused, not quietly dropped.
     ///
-    /// `afd_wire` DEFINES this request and clients conform to the published
+    /// `af_wire` DEFINES this request and clients conform to the published
     /// document, so leniency here would let a typo silently change what was
     /// asked for.
     #[test]

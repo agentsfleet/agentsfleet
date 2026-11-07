@@ -4,7 +4,7 @@
 //! and this crate only ever reads, counts and purges what setup wrote. Every
 //! row carries the resource version the conditional purge compares against.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::test_util::FleetSeed;
 use jiff::Timestamp;
 
@@ -77,7 +77,7 @@ impl Lane {
         .fetch_one(&mut *self.connection().await)
         .await
         .expect("an active fleet can be killed");
-        afd_core::etag::versioned(fleet, version)
+        af_core::etag::versioned(fleet, version)
     }
 
     /// The tag a purge must present for a fleet left where it is.
@@ -88,6 +88,6 @@ impl Lane {
                 .fetch_one(&mut *self.connection().await)
                 .await
                 .expect("reading a fleet's version");
-        afd_core::etag::versioned(fleet, version)
+        af_core::etag::versioned(fleet, version)
     }
 }

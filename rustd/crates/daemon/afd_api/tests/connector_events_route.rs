@@ -23,8 +23,8 @@
 use crate::harness;
 
 use self::harness::Fleet;
+use af_core::error_code;
 use afd_api_ingress::BUFFER_CEILING;
-use afd_core::error_code;
 use http::{Method, StatusCode};
 
 /// A provider that delivers events to this daemon.

@@ -26,9 +26,9 @@
 //! the spend is the last thing before the vendor call. The header of
 //! `crate::state` states the same ordering rule from the state's side.
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::SecretBytes;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::SecretBytes;
 use afd_dragonfly::Dragonfly;
 use jiff::Timestamp;
 
@@ -233,7 +233,7 @@ impl Connectors {
     ///
     /// # Errors
     /// [`Rejected`], which the caller logs by [`Rejected::reason`] and answers
-    /// as one code — see [`afd_core::error_code::CONNECTOR_STATE_INVALID`].
+    /// as one code — see [`af_core::error_code::CONNECTOR_STATE_INVALID`].
     pub fn verify(
         &self,
         provider: Provider,

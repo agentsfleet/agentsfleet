@@ -11,8 +11,8 @@ mod rejections;
 mod wire;
 
 use super::*;
-use afd_crypto::secret::SecretString;
-use afd_wire::inference::{InferenceApi, ModelInference};
+use af_crypto::secret::SecretString;
+use af_wire::inference::{InferenceApi, ModelInference};
 use rig_core::{completion::CompletionRequest, message::Message};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -104,7 +104,7 @@ fn reply(api: InferenceApi) -> Value {
 #[tokio::test]
 async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {
     // rig's GenerateContent wire puts the key in a `key` query parameter;
-    // afd_inference moves it to `x-goog-api-key` before any transport sees the
+    // af_inference moves it to `x-goog-api-key` before any transport sees the
     // request, so the daemon's dispatch path sends it as a header too. Ollama's
     // native chat sends a bearer header.
     for (api, path, header) in [
@@ -195,7 +195,7 @@ async fn physical_failure_invalid_json_status_and_oversize_never_retry() {
         (99, b"{}".to_vec(), false),
         (
             200,
-            vec![b' '; afd_wire::authoring::ENVELOPE_BYTES_MAX + 1],
+            vec![b' '; af_wire::authoring::ENVELOPE_BYTES_MAX + 1],
             false,
         ),
         (200, b"{}".to_vec(), true),

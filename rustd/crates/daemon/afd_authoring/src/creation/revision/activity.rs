@@ -2,7 +2,7 @@
 
 use super::super::{CONTEXT, stored::Stored};
 use crate::{Result, error::raise::query};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde_json::json;
 use sqlx::PgConnection;
 
@@ -32,7 +32,7 @@ pub(super) async fn record(
         .bind(MODEL_CHANGED)
         .bind(sqlx::types::Json(payload))
         .bind(None::<&str>)
-        .bind(afd_core::event::status::PROCESSED)
+        .bind(af_core::event::status::PROCESSED)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

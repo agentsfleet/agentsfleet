@@ -5,13 +5,13 @@
 //! is what lets the verb next door read as a sequence of decisions rather than
 //! as a sequence of decisions interleaved with serialization.
 
-use afd_core::id::Uuid7;
-use afd_core::timing::NO_WORK_RETRY_AFTER;
-use afd_wire::decision::DecisionAssignment;
-use afd_wire::event::{EventEnvelope, EventType};
-use afd_wire::lease::{LeasePayload, LeaseResponse, SecretDelivery, TaggedLease, Turn};
-use afd_wire::memory::MemoryHydrateResponse;
-use afd_wire::policy::ExecutionPolicy;
+use af_core::id::Uuid7;
+use af_core::timing::NO_WORK_RETRY_AFTER;
+use af_wire::decision::DecisionAssignment;
+use af_wire::event::{EventEnvelope, EventType};
+use af_wire::lease::{LeasePayload, LeaseResponse, SecretDelivery, TaggedLease, Turn};
+use af_wire::memory::MemoryHydrateResponse;
+use af_wire::policy::ExecutionPolicy;
 
 use crate::error::{DETAIL_EVENT_MALFORMED, Result, rejected};
 use crate::lease::envelope::Acquired;
@@ -55,9 +55,9 @@ pub(super) fn no_work(runner_id: &Uuid7, reason: &str) -> Result<String> {
 /// # Errors
 /// Reports a payload that would not serialize.
 pub(super) fn answer(lease: Option<LeasePayload<'_>>) -> Result<String> {
-    // A wire span spelled as a count of milliseconds, which `afd_wire` defines.
+    // A wire span spelled as a count of milliseconds, which `af_wire` defines.
     let retry_after_ms = lease.is_none().then(|| {
-        u32::try_from(afd_core::clock::saturating_millis(NO_WORK_RETRY_AFTER)).unwrap_or(u32::MAX)
+        u32::try_from(af_core::clock::saturating_millis(NO_WORK_RETRY_AFTER)).unwrap_or(u32::MAX)
     });
     serde_json::to_string(&LeaseResponse {
         lease: lease.map(|payload| TaggedLease::<serde_json::Value>::Fleet(Box::new(payload))),
@@ -73,7 +73,7 @@ pub(super) struct Context<'a> {
     pub(super) history: Vec<Turn<'a>>,
     pub(super) memory: Option<MemoryHydrateResponse<'a>>,
     pub(super) decision: Option<Box<DecisionAssignment>>,
-    pub(super) task: Option<afd_wire::task::TaskContext<'static>>,
+    pub(super) task: Option<af_wire::task::TaskContext<'static>>,
     pub(super) expires_at: Option<jiff::Timestamp>,
     pub(super) execution_deadline: Option<jiff::Timestamp>,
 }

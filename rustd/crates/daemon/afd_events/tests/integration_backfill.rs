@@ -44,7 +44,7 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::fleet_activity_channel;

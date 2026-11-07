@@ -5,8 +5,8 @@ use crate::{
     error::query,
     task::{TaskRefusal, execution, row::counter},
 };
-use afd_core::id::Uuid7;
-use afd_wire::task::{CheckpointMode, CheckpointPin, CheckpointPlan, CheckpointTransferPurpose};
+use af_core::id::Uuid7;
+use af_wire::task::{CheckpointMode, CheckpointPin, CheckpointPlan, CheckpointTransferPurpose};
 use sqlx::PgConnection;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -82,7 +82,7 @@ impl Plan {
         let version = counter(self.task_generation, "checkpoint task generation")?;
         if self.abandoned
             || self.format_version
-                != i32::try_from(afd_wire::task::CHECKPOINT_FORMAT)
+                != i32::try_from(af_wire::task::CHECKPOINT_FORMAT)
                     .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?
             || version > owned.snapshot.context.generation
             || purpose == CheckpointTransferPurpose::Upload

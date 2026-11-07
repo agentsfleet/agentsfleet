@@ -28,8 +28,8 @@
 
 use crate::harness;
 
-use afd_core::error_code;
-use afd_webhook::Scheme;
+use af_core::error_code;
+use af_webhook::Scheme;
 use http::{Method, StatusCode};
 use serde_json::Value;
 

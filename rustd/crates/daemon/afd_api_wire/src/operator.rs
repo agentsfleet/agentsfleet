@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::admin::AdminState;
-use afd_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
+use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
 
 /// One runner in the newest-first operator list.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -29,10 +29,10 @@ pub struct RunnerItem<'a> {
     #[serde(borrow)]
     pub labels: Vec<Cow<'a, str>>,
     /// Last heartbeat instant.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub last_seen_at: jiff::Timestamp,
     /// Enrolment instant.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// Policy currently assigned to the host.
     #[serde(borrow)]
@@ -83,10 +83,10 @@ pub struct RunnerDetail<'a> {
     /// Lifetime expired count.
     pub leases_expired: i64,
     /// Outstanding self-test request instant.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub selftest_requested_at: Option<jiff::Timestamp>,
     /// Latest self-test completion instant.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub selftest_completed_at: Option<jiff::Timestamp>,
     /// Latest complete self-test report.
     #[serde(borrow)]
@@ -192,10 +192,10 @@ pub struct RunnerLeaseItem<'a> {
     /// Settled wall time, absent before settlement.
     pub wall_ms: Option<i64>,
     /// Holder deadline.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub lease_expires_at: jiff::Timestamp,
     /// Claim instant.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
 

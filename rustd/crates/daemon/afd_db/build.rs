@@ -21,7 +21,7 @@ const LISTING: &str = "schema_files.rs";
 
 #[expect(
     clippy::disallowed_methods,
-    reason = "a build script has no build-dependency on afd_core, and OUT_DIR is cargo's, not a knob"
+    reason = "a build script has no build-dependency on af_core, and OUT_DIR is cargo's, not a knob"
 )]
 fn out_dir() -> Option<PathBuf> {
     std::env::var_os("OUT_DIR").map(PathBuf::from)

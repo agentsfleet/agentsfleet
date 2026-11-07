@@ -2,10 +2,10 @@
 
 use std::mem;
 
-use afd_core::error_code;
-use afd_wire::memory::MemoryDelta;
-use afd_wire::report::RunSegments;
-use afd_wire::tool_detail::ToolCallRecord;
+use af_core::error_code;
+use af_wire::memory::MemoryDelta;
+use af_wire::report::RunSegments;
+use af_wire::tool_detail::ToolCallRecord;
 use bytes::Bytes;
 
 use super::LeaseRun;

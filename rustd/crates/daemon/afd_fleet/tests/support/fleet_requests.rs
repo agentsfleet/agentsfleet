@@ -10,7 +10,7 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use afd_wire::runner::{
+use af_wire::runner::{
     AssignedPolicy, CapabilityReport, NetworkPolicy, RegisterRequest, SandboxTier,
 };
 use std::borrow::Cow;
@@ -34,7 +34,7 @@ pub(crate) fn enrolment(
         host_id: Cow::Borrowed("host-01.fixture.test"),
         assigned_policy: AssignedPolicy {
             decision_model_id: None,
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             sandbox_tier: tier,
             network_policy: network,
             registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],
@@ -94,8 +94,8 @@ pub(crate) fn capable() -> CapabilityReport<'static> {
 pub(crate) fn mint<'a>(
     lease_id: &'a str,
     integration: &'a str,
-) -> afd_wire::credentials::MintCredentialRequest<'a> {
-    afd_wire::credentials::MintCredentialRequest {
+) -> af_wire::credentials::MintCredentialRequest<'a> {
+    af_wire::credentials::MintCredentialRequest {
         lease_id: lease_id.into(),
         integration: integration.into(),
         // No narrowing: the fleet's binding is what scopes a mint, and a scope

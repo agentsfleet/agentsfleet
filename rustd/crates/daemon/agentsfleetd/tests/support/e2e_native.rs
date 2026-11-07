@@ -13,9 +13,9 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_fleet_runtime::Definition;
+use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use afd_db::test_util::SetupRevision;
-use afd_fleet_runtime::Definition;
-use afd_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use serde_json::{Value, json};
 
 /// Appends the next revision and makes it the fleet's head, in one statement,

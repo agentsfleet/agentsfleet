@@ -10,7 +10,7 @@
 //! meter, never off a return value, and a production caller that wanted them
 //! here would be measuring the wrong seam.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::error::Result;
 use crate::lease::envelope::Acquired;

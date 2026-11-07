@@ -13,8 +13,8 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-use afd_wire::activity::CALL_ID_MAX_BYTES;
-use afd_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES;
+use af_wire::activity::CALL_ID_MAX_BYTES;
+use af_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
@@ -55,7 +55,7 @@ async fn test_activity_carries_a_required_call_id() {
         assert_eq!(answer.status().as_u16(), 400, "{refused}");
         assert_eq!(
             code_of(answer).await,
-            afd_core::error_code::INVALID_REQUEST.as_str()
+            af_core::error_code::INVALID_REQUEST.as_str()
         );
     }
     assert_eq!(
@@ -101,7 +101,7 @@ async fn test_activity_tool_outcome_reaches_channel() {
     assert_eq!(answer.status().as_u16(), 400);
     assert_eq!(
         code_of(answer).await,
-        afd_core::error_code::INVALID_REQUEST.as_str()
+        af_core::error_code::INVALID_REQUEST.as_str()
     );
     assert_eq!(
         silence(&mut tailed.tail).await,

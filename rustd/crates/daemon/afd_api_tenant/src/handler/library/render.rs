@@ -1,8 +1,8 @@
 //! Domain projections move into wire types without copying instructions.
 
+use af_fleet_runtime::Definition;
 use afd_api_wire::library as wire;
 use afd_authoring::types;
-use afd_fleet_runtime::Definition;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},
@@ -51,7 +51,7 @@ pub(super) fn library(value: types::Library) -> Response {
     response
 }
 
-pub(super) fn published(workspace: &afd_core::id::Uuid7, value: types::Published) -> Response {
+pub(super) fn published(workspace: &af_core::id::Uuid7, value: types::Published) -> Response {
     let location = format!(
         "/v1/workspaces/{workspace}/fleet-libraries/{}/revisions/{}",
         value.library_id, value.revision_id

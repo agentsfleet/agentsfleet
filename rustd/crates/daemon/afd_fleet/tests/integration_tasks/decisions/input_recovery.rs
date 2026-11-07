@@ -4,9 +4,9 @@ use super::{
     existing_inputs::proposed,
     fixture::Decisions,
 };
-use afd_core::{error_code, paging::Cursor};
+use af_core::{error_code, paging::Cursor};
+use af_wire::task::{TaskInputAction, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
 use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::{TaskInputAction, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
 
 fn query(case: &Case, cursor: Option<String>, after: Option<u64>) -> garde::Valid<TaskInputsQuery> {
     garde::Unvalidated::new(TaskInputsQuery {
@@ -68,7 +68,7 @@ fn invalid_cursors(id: &str) -> Vec<String> {
     vec![
         "invalid cursor".to_owned(),
         Cursor::Timestamp {
-            at: afd_core::clock::now(),
+            at: af_core::clock::now(),
             id: id.to_owned(),
         }
         .to_string(),
@@ -147,8 +147,8 @@ async fn accepted_input_recovery_retains_exact_meaning_and_applied_cursor() {
 }
 
 fn assert_recovered(
-    page: &afd_wire::task::TaskInputsResponse<'_>,
-    plan: &afd_wire::task::TaskBindingsInput,
+    page: &af_wire::task::TaskInputsResponse<'_>,
+    plan: &af_wire::task::TaskBindingsInput,
     item: &str,
     applied: bool,
 ) {
@@ -175,9 +175,9 @@ fn assert_recovered(
 
 fn apply_receipt(
     case: &Case,
-    plan: &afd_wire::task::TaskBindingsInput,
+    plan: &af_wire::task::TaskBindingsInput,
     item: &str,
-    task: afd_wire::task::DecisionTaskVersion,
+    task: af_wire::task::DecisionTaskVersion,
 ) -> garde::Valid<TaskInputReceiptInput> {
     garde::Unvalidated::new(TaskInputReceiptInput {
         fencing_token: case.lease().fencing_token,

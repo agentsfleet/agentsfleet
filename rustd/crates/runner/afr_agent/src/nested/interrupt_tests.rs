@@ -6,9 +6,9 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_providers::Chunk;
+use af_core::test_util::trace::Capture;
+use af_providers::Chunk;
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::ToolErrorCode;
 use afr_tools::catalog::{DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, SPAWN, WAIT_AGENT};
 use serde_json::json;

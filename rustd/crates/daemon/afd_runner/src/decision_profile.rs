@@ -1,8 +1,8 @@
 //! Shared read of a runner's currently enabled reviewed decision profile.
 
 use crate::{Result, error::query};
-use afd_core::id::Uuid7;
-use afd_wire::decision::{DecisionAssignment, DecisionModelSettings, DecisionProfile};
+use af_core::id::Uuid7;
+use af_wire::decision::{DecisionAssignment, DecisionModelSettings, DecisionProfile};
 use sqlx::{PgConnection, types::Json};
 
 #[derive(sqlx::FromRow)]

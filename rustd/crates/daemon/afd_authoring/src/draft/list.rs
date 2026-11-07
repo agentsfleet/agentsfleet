@@ -6,7 +6,7 @@ use crate::{
     paging, replay, sql,
     types::{DraftCard, DraftState, ListQuery, Page},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::statement::{LIKE_ANY, like_escape};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;

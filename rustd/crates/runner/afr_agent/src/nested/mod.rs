@@ -10,7 +10,7 @@
 //! seventeenth started child (`docs/architecture/runner_execution.md` §"Tool
 //! catalog").
 
-use afr_providers::Call;
+use af_providers::Call;
 use afr_tools::ToolOutput;
 use afr_tools::nested::Nested;
 

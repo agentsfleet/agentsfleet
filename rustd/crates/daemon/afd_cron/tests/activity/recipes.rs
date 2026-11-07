@@ -141,7 +141,7 @@ async fn conditional_schedule_edits_record_the_saved_revision_only() {
     assert_eq!(
         (error.code(), error.etag()),
         (
-            afd_core::error_code::AUTHORING_STALE,
+            af_core::error_code::AUTHORING_STALE,
             Some(edited.etag().as_str())
         )
     );

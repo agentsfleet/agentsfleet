@@ -23,7 +23,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_vault::{Deleted, SecretBody};
 use serde_json::value::RawValue;
 

@@ -17,6 +17,7 @@ use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::{Services, TenantSurface};
 
 use crate::identity::SignupWriteback;
+use af_observability::Analytics;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
@@ -25,7 +26,6 @@ use afd_fleet::lease::Plane;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_memory::Memories;
-use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
 use afd_tenant::apikey::ApiKeys;
@@ -119,11 +119,11 @@ impl Services for ServingPlane {
         &self.outbound.schedule_destination
     }
 
-    fn platform_admin_workspace(&self) -> Option<&afd_core::id::Uuid7> {
+    fn platform_admin_workspace(&self) -> Option<&af_core::id::Uuid7> {
         self.platform_admin_workspace.as_ref()
     }
 
-    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes> {
+    fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretBytes> {
         self.identity_webhook_secret.as_ref()
     }
 
@@ -203,13 +203,13 @@ impl Services for ServingPlane {
 
     /// The wall clock, read once per verb by whichever handler asked.
     ///
-    /// Not a `Clock` behind an `Arc`: `afd_core::clock` reserves injection for
+    /// Not a `Clock` behind an `Arc`: `af_core::clock` reserves injection for
     /// an owner that reads repeatedly and asks everything else to take the
     /// instant as a parameter, which is exactly what a handler does with this.
     /// A test drives its own instant by implementing `Services` itself, so the
     /// seam a fixed clock would provide already exists one level up.
     fn now(&self) -> Timestamp {
-        afd_core::clock::now()
+        af_core::clock::now()
     }
 }
 

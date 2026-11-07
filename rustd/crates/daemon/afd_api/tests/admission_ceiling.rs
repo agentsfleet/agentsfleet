@@ -15,12 +15,12 @@ mod support;
 
 use std::num::NonZeroUsize;
 
+use af_core::clock;
 use afd_api::admission::{
     HEADER_RATELIMIT_LIMIT, HEADER_RATELIMIT_REMAINING, HEADER_RATELIMIT_RESET,
     RETRY_AFTER_SECONDS, SHED_DETAIL,
 };
 use afd_api::{RouteClass, is_metered};
-use afd_core::clock;
 use http::{StatusCode, header};
 
 use self::support::{Fixture, header_str};

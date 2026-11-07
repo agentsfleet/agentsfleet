@@ -39,7 +39,7 @@ pub const DELETE_TENANT_KEY: &str = include_str!("apikey/delete_tenant_key.sql")
 // order so the plan cannot reorder what it produced.
 //
 // The `{order}` and `{comparator}` slots are filled from
-// `afd_core::paging::SortOrder`, whose only constructor is a parse against a
+// `af_core::paging::SortOrder`, whose only constructor is a parse against a
 // closed allowlist — there is no expression anywhere that puts a caller's bytes
 // in either slot. No index serves these orderings, deliberately: a tenant holds
 // roughly a hundred human-created keys, which the page limit already covers.

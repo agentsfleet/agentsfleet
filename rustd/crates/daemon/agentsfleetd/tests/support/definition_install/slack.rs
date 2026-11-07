@@ -7,10 +7,10 @@
 
 use super::{install_with, seal};
 use crate::e2e::{Scenario, unique_ids};
+use af_core::id::Uuid7;
+use af_webhook::{Scheme, test_util::signature};
 use afd_connector::{Provider, test_util::FakeSlack};
-use afd_core::id::Uuid7;
 use afd_db::test_util::{InstallSeed, WorkspaceSeed};
-use afd_webhook::{Scheme, test_util::signature};
 use agentsfleetd::{
     preflight::{PLATFORM_ADMIN_WORKSPACE_KNOB, SLACK_API_URL_KNOB},
     supervisor::Supervisor,
@@ -54,7 +54,7 @@ impl Producer {
         .await;
         let team = format!("T{}", run.workspace.replace('-', "").to_ascii_uppercase());
         seed(&run, &admin, &team).await;
-        let timestamp = afd_core::clock::now().as_second().to_string();
+        let timestamp = af_core::clock::now().as_second().to_string();
         let body = json!({"type": "event_callback", "team_id": team, "event_id": "EvSameSignedRepair",
             "event": {"type": "app_mention", "user": "UPERSONFIXTURE", "text": format!("<@{BOT}> ci-repairer: repair https://github.com/agentsfleet/linkwarden/actions/runs/77 attempt 1"),
                 "ts": "1700000000.000200", "thread_ts": THREAD, "channel": CHANNEL}}).to_string();

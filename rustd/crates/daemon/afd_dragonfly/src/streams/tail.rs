@@ -5,7 +5,7 @@
 //! here is fire-and-forget telemetry: no consumer group, no persistence, and a
 //! frame nobody was subscribed for is simply gone.
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use serde::Serialize;
 
 use super::{FleetStreams, fleet_activity_channel};
@@ -141,7 +141,7 @@ mod tests {
     /// and its causes, not its rendered `[CODE]` and backtrace.
     #[tokio::test]
     async fn a_dropped_frame_reason_carries_no_code_prefix() {
-        let recorder = afd_core::test_util::trace::Capture::install();
+        let recorder = af_core::test_util::trace::Capture::install();
         let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned())
             .with_request_timeout(Duration::from_millis(200));
         let queue = Dragonfly::unreachable(&config).expect("a lazy handle opens no socket");

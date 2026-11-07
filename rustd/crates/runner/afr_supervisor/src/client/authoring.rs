@@ -2,8 +2,8 @@
 
 use super::{ControlPlane, Verb};
 use crate::Result;
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     authoring::{
         ActivityAccepted, ActivityRequest, ModelCall, ModelResult, Renew, Renewed, Report, Reported,
     },

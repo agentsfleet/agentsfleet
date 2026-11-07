@@ -124,7 +124,7 @@ async fn an_ownership_layer_mounted_by_hand_fails_closed() {
         );
         assert_eq!(
             harness::code_of(response).await,
-            afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+            af_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
             "{path}"
         );
     }

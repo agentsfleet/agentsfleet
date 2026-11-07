@@ -19,7 +19,7 @@ impl Leasing for Plane {
         drafts: &afd_authoring::Drafts,
         runner_id: &Uuid7,
         held: &[Uuid7],
-        accepted: afd_wire::lease::AcceptedKinds,
+        accepted: af_wire::lease::AcceptedKinds,
         degraded: bool,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
@@ -63,7 +63,7 @@ impl Leasing for Plane {
         lease: &Uuid7,
         branch: &Uuid7,
         fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<afd_context::Checkpoint>>> + Send {
+    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send {
         self.leases.context_load(runner, lease, branch, fence)
     }
 
@@ -74,7 +74,7 @@ impl Leasing for Plane {
         branch: &Uuid7,
         fence: u64,
         expected: u64,
-        checkpoint: afd_context::Checkpoint,
+        checkpoint: af_context::Checkpoint,
     ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
         self.leases
             .context_commit(runner, lease, branch, fence, expected, checkpoint)

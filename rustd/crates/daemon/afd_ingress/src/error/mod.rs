@@ -9,19 +9,19 @@
 //! # Nothing a SENDER did wrong is an error here
 //!
 //! A delivery with no signature, a stale timestamp, a fleet with no configured
-//! secret — none of those reach this type. They are `afd_webhook::Verdict`, or
+//! secret — none of those reach this type. They are `af_webhook::Verdict`, or
 //! an `Ok(None)`, because nothing failed: the wall did its job and the ingress
 //! answers a refusal. What lives here is the other half — THIS side being
 //! broken. Keeping them apart is what stops an operator's alert on `Error`
 //! from firing every time an internet scanner probes `/v1/webhooks/{id}`
-//! (RULE ECL), and it is the same split `afd_webhook::verdict` draws one layer
+//! (RULE ECL), and it is the same split `af_webhook::verdict` draws one layer
 //! up.
 //!
 //! The one apparent exception proves it: [`ErrorKind::ConfigUnreadable`] is a
 //! document THIS daemon stored and can no longer parse, which is an operator's
 //! incident and not a sender's.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 pub mod detail;
 mod raise;
@@ -37,7 +37,7 @@ pub(crate) use self::raise::{query, row_unreadable, stored_fleet, stored_status}
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An ingress failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -80,7 +80,7 @@ pub(crate) enum ErrorKind {
     #[error("the stored fleet document no longer parses")]
     ConfigUnreadable {
         #[source]
-        source: afd_fleet_runtime::Error,
+        source: af_fleet_runtime::Error,
     },
 
     /// A column of the fleet row this build cannot make sense of.
@@ -101,14 +101,14 @@ pub(crate) enum ErrorKind {
     #[error("the entropy a row identifier is minted from could not be drawn")]
     Entropy {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     /// A row identifier could not be minted from the current instant.
     #[error("a row identifier could not be minted")]
     Identifier {
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     /// A notice's obligation could not be recorded.
@@ -136,7 +136,7 @@ impl Error {
             ),
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
-            // constants in `afd_core::error` exist to prevent. It carries the
+            // constants in `af_core::error` exist to prevent. It carries the
             // 503-versus-500 distinction the dashboard's retry turns on.
             ErrorKind::Admission { source } => (source.code(), source.detail()),
             // The ledger decided which of its failures is an outage; the

@@ -5,8 +5,8 @@ use super::{
     compaction, fixture,
     reasoning::Reasoning,
 };
+use af_wire::authoring::ModelMessage;
 use afd_authoring::types::Source;
-use afd_wire::authoring::ModelMessage;
 use serde_json::{Value, json};
 use std::sync::Arc;
 

@@ -6,7 +6,7 @@
 //! `409` a caller retries out of. One rendering, so a person and a fleet read
 //! one schedule identically.
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_cron::{Reconciled, Refused, validate};
 use axum::Json;
 use axum::response::{IntoResponse as _, Response};

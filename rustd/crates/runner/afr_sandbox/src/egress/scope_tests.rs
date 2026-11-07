@@ -7,7 +7,7 @@ use std::fs::File;
 use std::net::Ipv4Addr;
 use std::os::fd::AsFd as _;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use super::{Scope, remove};
 use crate::egress::kernel::Kernel as _;

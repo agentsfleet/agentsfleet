@@ -15,8 +15,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
 
 use super::{Fanout, MAX_FANOUT, fanout, replay_id};
@@ -32,7 +32,7 @@ const WORKSPACE: &str = "01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8ea0";
 
 /// A stored document declaring one GitHub webhook trigger.
 ///
-/// The surrounding keys are the ones [`afd_fleet_runtime::FleetConfig::stored`]
+/// The surrounding keys are the ones [`af_fleet_runtime::FleetConfig::stored`]
 /// requires. Written out rather than loaded from a fixture so a reader sees the
 /// whole input beside the assertion.
 fn subscribed() -> String {

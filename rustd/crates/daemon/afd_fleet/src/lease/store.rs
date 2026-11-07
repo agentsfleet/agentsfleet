@@ -10,7 +10,7 @@
 //! file — [`super::affinity`] is the claim and the fence, and the modules
 //! beside it add the gates and the row.
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_dragonfly::doorbell::Waited;
 use afd_dragonfly::{Doorbell, Dragonfly, FleetStreams, OutboundQueue};

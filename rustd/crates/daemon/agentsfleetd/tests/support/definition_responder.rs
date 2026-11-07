@@ -1,6 +1,6 @@
 //! Scripted GitHub CI evidence for native fleet wiring tests.
 
-use afr_providers::Chunk;
+use af_providers::Chunk;
 use hyper::Method;
 use serde_json::{Value, json};
 

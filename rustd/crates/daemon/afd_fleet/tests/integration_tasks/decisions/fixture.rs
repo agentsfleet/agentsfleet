@@ -3,18 +3,18 @@
 use afd_admin::test_util::DecisionModelFixture;
 use std::sync::Arc;
 
-use afd_core::{clock, etag::sha256_hex, id::Uuid7};
-use afd_crypto::{entropy::Entropy, secret::Kek};
-use afd_db::test_util::mint_id;
-use afd_fleet::task::{PreparedPlan, PreparedTask, TaskDependencies, TaskLifecycle as _, Tasks};
-use afd_vault::{SecretBody, SecretName, Vault};
-use afd_wire::{
+use af_core::{clock, etag::sha256_hex, id::Uuid7};
+use af_crypto::{entropy::Entropy, secret::Kek};
+use af_wire::{
     decision::{DecisionAssignment, DecisionProfile, DecisionRequest},
     task::{
         DecisionAssessment, DecisionReceipt, DecisionReceiptInput, DecisionReceiptResult,
         DecisionReservationInput, DecisionTaskVersion, TaskLimits,
     },
 };
+use afd_db::test_util::mint_id;
+use afd_fleet::task::{PreparedPlan, PreparedTask, TaskDependencies, TaskLifecycle as _, Tasks};
+use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::{Value, json, value::RawValue};
 use sqlx::types::Json;
 
@@ -231,7 +231,7 @@ impl<'a> Decisions<'a> {
 
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
         sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1::uuid), (SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1::uuid), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2)")
-            .bind(self.case.held.lease_key.as_str()).bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+            .bind(self.case.held.lease_key.as_str()).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
             .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("financial counts"))
             .await.expect("retained financial and private row counts")
     }

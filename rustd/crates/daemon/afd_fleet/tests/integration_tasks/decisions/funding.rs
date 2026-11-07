@@ -1,8 +1,8 @@
 //! Native credit refusals retain one unsent assessment and never debit its payer.
 
-use afd_core::{error_code, test_util::trace::Capture};
+use af_core::{error_code, test_util::trace::Capture};
+use af_wire::task::{DecisionAssessment, DecisionCallState};
 use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::{DecisionAssessment, DecisionCallState};
 use serde_json::{Value, json};
 
 use super::{

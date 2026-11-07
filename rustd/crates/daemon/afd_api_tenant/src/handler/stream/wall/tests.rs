@@ -7,8 +7,8 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
 use tokio::time::Instant;
 
 use super::{EVENT_HELLO_COUNTERS_UNREAD, REFRESH_INTERVAL, Recount, counters_unread};
@@ -77,7 +77,7 @@ fn an_unread_hello_counter_reason_carries_no_code_prefix() {
     let workspace =
         Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011").expect("a fixture identifier");
     let refused = afd_db::PoolConfig::resolve(
-        &afd_core::env::MapEnv::default(),
+        &af_core::env::MapEnv::default(),
         afd_db::config::DbRole::Api,
     )
     .expect_err("no database is configured");

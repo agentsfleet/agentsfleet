@@ -8,7 +8,7 @@ mod readiness;
 mod sql;
 mod wallet;
 
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use jiff::Timestamp;
 use serde_json::{Value, json};
 use sqlx::{Connection as _, PgConnection};

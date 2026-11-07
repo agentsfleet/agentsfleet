@@ -60,7 +60,7 @@ impl Halt {
 
     /// Takes no new lease; whatever is running finishes.
     pub(crate) fn stop_leasing(&self) {
-        let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        let code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
         let event = EVENT_LEASING_STOPPED;
         tracing::warn!(error_code = code, event, "this runner takes no new lease");
         self.leasing.cancel();

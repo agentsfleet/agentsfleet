@@ -19,8 +19,8 @@
 
 use std::sync::Arc;
 
+use af_crypto::entropy::Entropy;
 use afd_credential::provider::{Added, Entry, Providers, RegistryPage, RegistryRow};
-use afd_crypto::entropy::Entropy;
 
 use super::{Fixture, NOW};
 

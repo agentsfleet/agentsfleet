@@ -5,8 +5,8 @@ mod replay;
 mod validation;
 
 use super::{attempt::Attempt, fixture::Fixture, mint};
+use af_wire::authoring::{ActivityEvent, CandidateVersion, Proposal};
 use afd_authoring::{ActivityInput, types::Source};
-use afd_wire::authoring::{ActivityEvent, CandidateVersion, Proposal};
 use serde_json::json;
 
 fn edit(a: &Attempt, sequence: u32, base: &CandidateVersion, text: &str) -> ActivityInput {

@@ -1,8 +1,8 @@
 //! A loop's conversation between turns: what a parent sent, what the model
 //! said, what the memory checkpoint wrote back, and the cap's last word.
 
-use afd_wire::memory::MemoryDelta;
-use afr_providers::{Call, Message, Replay};
+use af_providers::{Call, Message, Replay};
+use af_wire::memory::MemoryDelta;
 
 use super::{EVENT_CHECKPOINT_FAILED, Harness, INPUT_JOIN};
 

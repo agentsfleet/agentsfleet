@@ -33,10 +33,10 @@
 pub mod fingerprint;
 pub mod input;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::mac::HmacSha256Tag;
-use afd_crypto::secret::SecretBytes;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::mac::HmacSha256Tag;
+use af_crypto::secret::SecretBytes;
 use afd_dragonfly::session::{
     AbortReason, ApproveOutcome, SESSION_TTL, SessionState, SessionStore, VerifyOutcome,
 };
@@ -295,7 +295,7 @@ impl Sessions {
 /// database's: the session lives in Dragonfly, whose key time-to-live is the
 /// same span.
 fn expiry_of(now: Timestamp) -> Timestamp {
-    afd_core::clock::after(now, SESSION_TTL)
+    af_core::clock::after(now, SESSION_TTL)
 }
 
 /// Refuses a session id that is not a version 7 identifier.

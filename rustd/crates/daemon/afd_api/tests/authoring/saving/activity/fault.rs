@@ -1,7 +1,7 @@
 //! A workspace-scoped receipt refusal; its nontransactional counter proves it fired.
 
 use super::super::super::mint;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::{AssertSqlSafe, Connection as _};
 use std::time::Duration;
 

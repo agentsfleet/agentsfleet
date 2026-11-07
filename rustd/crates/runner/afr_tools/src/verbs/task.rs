@@ -1,6 +1,6 @@
 //! The root coordinator receives accounted evidence, never a dispatch credential.
 
-use afd_wire::task::{DecisionCallState, DecisionRecorded};
+use af_wire::task::{DecisionCallState, DecisionRecorded};
 
 /// A native physical call and its non-secret, originally bound result.
 /// Existing unresolved reservations remain unresolved; reading never sends again.

@@ -1,6 +1,6 @@
 //! Saved physical calls never reissue their credential or rerender questions.
 
-use afd_wire::task::{
+use af_wire::task::{
     DecisionCallState, DecisionReceipt, DecisionRecorded, DecisionReservationResult,
 };
 use zeroize::Zeroizing;
@@ -25,7 +25,7 @@ pub(super) async fn response(tasks: &Tasks, call: Call) -> Result<ReservedDecisi
         recorded,
     };
     let body =
-        Zeroizing::new(serde_json::to_string(&packet).map_err(afd_core::json::Unreadable::from)?);
+        Zeroizing::new(serde_json::to_string(&packet).map_err(af_core::json::Unreadable::from)?);
     Ok(ReservedDecision {
         body,
         issued: false,

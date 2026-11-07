@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Scripted, json_body};
-use afd_core::error_code;
+use af_core::error_code;
 use http::StatusCode;
 use serde_json::Value;
 

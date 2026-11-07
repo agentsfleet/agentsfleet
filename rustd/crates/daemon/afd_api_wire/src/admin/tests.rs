@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use afd_wire::runner::{LABEL_MAX_BYTES, LABELS_MAX};
+use af_wire::runner::{LABEL_MAX_BYTES, LABELS_MAX};
 use garde::Validate as _;
 
 use super::{PlatformKeyPut, RunnerAdminPatchRequest, RunnerEventType};
@@ -115,7 +115,7 @@ fn a_platform_key_put_refuses_a_nul_in_provider_or_model() {
         assert!(
             refused
                 .as_deref()
-                .is_some_and(|report| report.contains(afd_validate::rules::HAS_NUL)),
+                .is_some_and(|report| report.contains(af_validate::rules::HAS_NUL)),
             "a NUL is refused as one: {refused:?}"
         );
     }

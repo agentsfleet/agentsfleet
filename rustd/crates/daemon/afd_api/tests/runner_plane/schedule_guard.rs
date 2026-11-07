@@ -16,9 +16,9 @@
 
 use std::pin::Pin;
 
+use af_crypto::entropy::Entropy;
 use afd_api::SchedulePlane;
 use afd_cron::{Change, DesiredStatus, Fire, QStash, Refused, ScheduleService, Schedules};
-use afd_crypto::entropy::Entropy;
 use afd_db::Precondition;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_uuid7};
@@ -58,7 +58,7 @@ async fn a_guarded_change_refuses_an_unheld_lease_and_finds_no_unknown_schedule(
             Schedules::new(database.clone(), Entropy::new()),
             QStash::new(
                 reqwest::Client::new(),
-                afd_crypto::secret::SecretString::new(String::new()),
+                af_crypto::secret::SecretString::new(String::new()),
                 SCHEDULE_DESTINATION.to_owned(),
                 SCHEDULE_API_BASE.to_owned(),
             ),

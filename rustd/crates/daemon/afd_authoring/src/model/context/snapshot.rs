@@ -1,8 +1,8 @@
 //! Revalidate funded inputs without rebuilding or remeasuring the provider body.
 use super::{ModelCallInput, continuation, source::Source};
 use crate::{Result, error::ErrorKind, lease::guard, replay};
-use afd_context::repository::{Repository, Scope};
-use afd_context::{Checkpoint, CheckpointStore as _, Group, HistorySource as _};
+use af_context::repository::{Repository, Scope};
+use af_context::{Checkpoint, CheckpointStore as _, Group, HistorySource as _};
 use sqlx::PgConnection;
 
 #[derive(Default, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub(super) struct Fingerprint {
 
 impl Fingerprint {
     pub(super) fn include(&mut self, groups: &[Group], has_more: bool) {
-        self.digest = afd_context::digest_groups(&self.digest, groups);
+        self.digest = af_context::digest_groups(&self.digest, groups);
         self.through = groups.last().map_or(self.through, |group| group.sequence);
         self.has_more = has_more;
     }
@@ -66,7 +66,7 @@ impl Snapshot {
         let mut source = Source::new(connection, attempt);
         loop {
             let page = source
-                .page(source.fingerprint.through, afd_context::HISTORY_PAGE_SIZE)
+                .page(source.fingerprint.through, af_context::HISTORY_PAGE_SIZE)
                 .await?;
             if !page.has_more
                 || (self.source.has_more && source.fingerprint.through >= self.source.through)

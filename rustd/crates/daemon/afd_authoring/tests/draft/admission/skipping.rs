@@ -8,11 +8,11 @@
 
 use super::fixture::{attempts, fund, queue};
 use super::{Fixture, mint, now};
+use af_crypto::entropy::Entropy;
+use af_wire::lease::AcceptedKinds;
 use afd_authoring::Claimed;
 use afd_authoring::types::Draft;
-use afd_crypto::entropy::Entropy;
 use afd_runner::Runners;
-use afd_wire::lease::AcceptedKinds;
 use sqlx::pool::PoolConnection;
 use std::time::Duration;
 

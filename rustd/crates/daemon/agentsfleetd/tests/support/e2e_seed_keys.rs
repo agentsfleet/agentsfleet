@@ -10,9 +10,9 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_crypto::aad::Aad;
-use afd_crypto::envelope::Sealer;
-use afd_crypto::secret::Kek;
+use af_crypto::aad::Aad;
+use af_crypto::envelope::Sealer;
+use af_crypto::secret::Kek;
 use agentsfleetd::serve::Booted;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -189,7 +189,7 @@ async fn seal_named(booted: &Booted, workspace: &str, name: &str, kind: Option<&
     .bind(envelope.payload_nonce().as_slice())
     .bind(envelope.payload_ciphertext())
     .bind(envelope.payload_tag().as_slice())
-    .bind(afd_core::clock::now().to_sqlx())
+    .bind(af_core::clock::now().to_sqlx())
     .bind(kind)
     .bind(projected)
     .bind(kind.map(|_kind| true))

@@ -23,7 +23,7 @@ export interface SvixHeaders {
 }
 
 function decodeWhsec(secret: string): Buffer {
-  // The agentsfleetd verifier (rustd/crates/protocol/afd_webhook/src/vendor/svix.rs)
+  // The agentsfleetd verifier (rustd/crates/protocol/af_webhook/src/vendor/svix.rs)
   // refuses any configured secret that does NOT start with `whsec_`. Accepting
   // a bare base64 value here would produce a plausible signature the API
   // always rejects, surfacing as a confusing bootstrap

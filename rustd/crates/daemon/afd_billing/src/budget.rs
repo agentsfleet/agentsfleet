@@ -25,8 +25,8 @@
 //! channels: a fault is `Err`, and a verdict — including "the stored ceiling
 //! will not parse" — is `Ok`.
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::config::Budget;
+use af_core::id::Uuid7;
+use af_fleet_runtime::config::Budget;
 
 use crate::Nanos;
 use crate::error::Result;
@@ -132,7 +132,7 @@ mod tests {
     )]
     use super::{Spend, Verdict, covers};
     use crate::{NANOS_PER_USD, Nanos};
-    use afd_fleet_runtime::config::Budget;
+    use af_fleet_runtime::config::Budget;
 
     /// A ceiling built the only way one can be: through the parser that bounds
     /// it.
@@ -146,7 +146,7 @@ mod tests {
         let document = format!(
             r#"{{"name":"b","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"{daily}"{monthly}}}}}}}"#
         );
-        afd_fleet_runtime::FleetConfig::stored(&document)
+        af_fleet_runtime::FleetConfig::stored(&document)
             .expect("the fixture document is well-formed")
             .budget()
     }

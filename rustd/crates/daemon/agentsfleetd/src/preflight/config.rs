@@ -6,10 +6,10 @@
 //! present and well formed, which is the property every accessor below relies
 //! on — nothing downstream re-validates, and nothing downstream can.
 
+use af_core::id::Uuid7;
+use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
-use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
-use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::PoolConfig;
 use afd_dragonfly::DragonflyConfig;
 use afd_identity::ProviderSecret;
@@ -46,7 +46,7 @@ pub struct BootConfig {
     pub(super) platform_admin_workspace: Option<Uuid7>,
     pub(super) checkpoint_storage:
         Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
-    pub(super) qstash_token: Option<afd_crypto::secret::SecretString>,
+    pub(super) qstash_token: Option<af_crypto::secret::SecretString>,
     pub(super) qstash_url: Option<Box<str>>,
     pub(super) slack_api_url: Option<Box<str>>,
     pub(super) identity_webhook_secret: Option<Box<str>>,
@@ -213,7 +213,7 @@ impl BootConfig {
     pub fn qstash_token(&self) -> Option<&str> {
         self.qstash_token
             .as_ref()
-            .map(afd_crypto::secret::SecretString::expose)
+            .map(af_crypto::secret::SecretString::expose)
     }
 
     /// Which scheduler deployment the management calls go to.

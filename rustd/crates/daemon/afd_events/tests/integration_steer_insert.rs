@@ -16,14 +16,14 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer, Reply};
 use afd_events::{ACTOR_MACHINE, Steer, Steered};
-use afd_wire::event::EventType;
 
 use crate::integration_steer_replay::{CAUSE_PAYLOAD, CHANGED_JSON};
 use crate::integration_steer_retry::{KEY_SEPARATOR, PRODUCER_STEER, REQUEST_JSON};
 use crate::support::EventsLane;
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 /// The operation id these tests send twice.
 const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a21";

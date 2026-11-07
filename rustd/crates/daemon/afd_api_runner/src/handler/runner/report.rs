@@ -33,12 +33,12 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use af_observability::metrics::label::cost::ErrorType;
+use af_observability::producers::cost::{self, Spend};
+use af_observability::producers::fleet::runner;
+use af_observability::{Delivery, Segments, Telemetry};
+use af_wire::report::{Outcome, ReportRequest, ReportResponse, RunSegments};
 use afd_fleet::lease::report::Reconciled;
-use afd_observability::metrics::label::cost::ErrorType;
-use afd_observability::producers::cost::{self, Spend};
-use afd_observability::producers::fleet::runner;
-use afd_observability::{Delivery, Segments, Telemetry};
-use afd_wire::report::{Outcome, ReportRequest, ReportResponse, RunSegments};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -60,16 +60,16 @@ const DESCRIPTION: &str = const_format::concatcp!(
     "identifier; no `Idempotency-Key` is accepted. Repeats return the saved result ",
     "without another charge or run count. Invalid bodies return `UZ-REQ-001` with the ",
     "rejected field or limit: retired cumulative totals, more than ",
-    afd_wire::usage::LINES_MAX,
+    af_wire::usage::LINES_MAX,
     " `requests`, or `seq` above ",
-    afd_wire::usage::RUNNER_SEQ_MAX,
+    af_wire::usage::RUNNER_SEQ_MAX,
     ".",
 );
 
 /// Records one terminal execution result.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::RUNNER_REPORTS,
+    path = af_wire::paths::RUNNER_REPORTS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_report",
     summary = "Report the result of one run",
@@ -128,14 +128,14 @@ pub(crate) async fn handle<D: Services>(
         // zero on this arm; the counters are not, and they are the reason this
         // is a branch rather than arithmetic.
         Ok(settled) if settled.repeated => {
-            afd_observability::producers::fleet::report_answered(
-                afd_observability::metrics::label::fleet::ReportAnswer::Repeated,
+            af_observability::producers::fleet::report_answered(
+                af_observability::metrics::label::fleet::ReportAnswer::Repeated,
             );
             Json(ReportResponse { ok: true }).into_response()
         }
         Ok(settled) => {
-            afd_observability::producers::fleet::report_answered(
-                afd_observability::metrics::label::fleet::ReportAnswer::Settled,
+            af_observability::producers::fleet::report_answered(
+                af_observability::metrics::label::fleet::ReportAnswer::Settled,
             );
             // Attributed to the WORKSPACE, as the daemon this ports attributes
             // it: a run has no person behind it — a cron, a webhook and a steer
@@ -155,14 +155,14 @@ pub(crate) async fn handle<D: Services>(
             // run's record actually closed.
             #[expect(
                 clippy::disallowed_methods,
-                reason = "a span ends at a SystemTime at the host's full precision; afd_core::clock::now truncates to milliseconds"
+                reason = "a span ends at a SystemTime at the host's full precision; af_core::clock::now truncates to milliseconds"
             )]
             let ended = settled
                 .completed_at
                 .map_or_else(SystemTime::now, SystemTime::from);
             let complete = settled
                 .completed_at
-                .map(|completed| afd_core::clock::elapsed(received, completed));
+                .map(|completed| af_core::clock::elapsed(received, completed));
             delivery_of(&settled, &request, complete).record(ended);
             meter(&settled, &request, runner.id().as_str());
             Json(ReportResponse { ok: true }).into_response()
@@ -254,7 +254,7 @@ fn segments_of(
     let runner = runner.unwrap_or_default();
     let reported = |ms: Option<u64>| ms.map(Duration::from_millis);
     Segments {
-        queue_wait: Some(afd_core::clock::elapsed(
+        queue_wait: Some(af_core::clock::elapsed(
             settled.event_created_at,
             settled.lease_created_at,
         )),
@@ -280,21 +280,19 @@ fn count(sum: i64) -> u64 {
 /// by its count — where one absurd report is not an outlier a percentile
 /// absorbs but a total nothing recovers from until the window rolls.
 fn reported_wall(request: &ReportRequest<'_>) -> Duration {
-    Duration::from_millis(request.telemetry.wall_ms).min(afd_observability::MAX_RUN)
+    Duration::from_millis(request.telemetry.wall_ms).min(af_observability::MAX_RUN)
 }
 
 #[cfg(test)]
 mod tests {
     use std::borrow::Cow;
 
-    use afd_core::id::Uuid7;
+    use af_core::id::Uuid7;
     use afd_fleet::lease::report::{Reconciled, RunTokens};
     use std::time::{Duration, SystemTime};
 
-    use afd_observability::Segments;
-    use afd_wire::report::{
-        Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry, RunSegments,
-    };
+    use af_observability::Segments;
+    use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry, RunSegments};
 
     use super::{delivery_of, spend_of};
 
@@ -327,9 +325,9 @@ mod tests {
             model: "claude-opus-5".to_owned(),
             repeated: false,
             tokens,
-            event_created_at: afd_core::clock::instant_at(after(0)),
-            lease_created_at: afd_core::clock::instant_at(after(QUEUE_WAIT_MS)),
-            completed_at: Some(afd_core::clock::instant_at(after(COMPLETED_MS))),
+            event_created_at: af_core::clock::instant_at(after(0)),
+            lease_created_at: af_core::clock::instant_at(after(QUEUE_WAIT_MS)),
+            completed_at: Some(af_core::clock::instant_at(after(COMPLETED_MS))),
         })
     }
 
@@ -362,7 +360,7 @@ mod tests {
             failure_detail: Cow::Borrowed(""),
             response_text: Cow::Borrowed("done"),
             tokens: 0,
-            requests: afd_wire::usage::RequestLines::default(),
+            requests: af_wire::usage::RequestLines::default(),
             telemetry: ReportTelemetry {
                 time_to_first_token_ms: 0,
                 wall_ms: 1_250,

@@ -2,10 +2,10 @@
 
 use super::{Object, Session, files::Workspace, transfer::Transfers};
 use crate::{Result, client::ControlPlane, error};
-use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
-use afd_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
-use afd_wire::task::{
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretBytes;
+use af_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
+use af_wire::task::{
     CHECKPOINT_FORMAT, CHECKPOINT_PAGE_BYTES, CHECKPOINT_PAGES, CheckpointAuthorizationInput,
     CheckpointEntry, CheckpointMode, CheckpointPlan, CheckpointReadQuery,
     CheckpointTransferPurpose, DecisionTaskVersion, TaskContext,
@@ -95,8 +95,8 @@ impl Restore<'_> {
     }
 
     pub(crate) async fn run(&self, destination: Option<(PathBuf, (u32, u32))>) -> Result<Restored> {
-        let activity = afd_crypto::entropy::Entropy::new()
-            .uuid7(afd_core::clock::now())?
+        let activity = af_crypto::entropy::Entropy::new()
+            .uuid7(af_core::clock::now())?
             .to_string();
         super::activity::emit(
             self.plane,
@@ -285,7 +285,7 @@ impl Session<'_> {
                     "checkpoint manifest exceeds its ordered bounds",
                 ));
             }
-            digests.push((id.as_str(), afd_core::etag::sha256_hex(&encoded)));
+            digests.push((id.as_str(), af_core::etag::sha256_hex(&encoded)));
             for entry in page.entries {
                 if previous.as_deref().is_some_and(|path| path >= entry.path()) {
                     return Err(error::config("checkpoint manifest paths are not ordered"));
@@ -298,7 +298,7 @@ impl Session<'_> {
                 return Err(error::config("checkpoint history object bound exceeded"));
             }
         }
-        if afd_crypto::checkpoint_digest::manifest_root(
+        if af_crypto::checkpoint_digest::manifest_root(
             digests.iter().map(|(id, digest)| (*id, digest.as_str())),
         ) != expected
         {
@@ -384,13 +384,13 @@ impl Session<'_> {
                 }
                 digests.push((
                     id.clone(),
-                    afd_core::etag::sha256_hex(bytes.expose()),
+                    af_core::etag::sha256_hex(bytes.expose()),
                     bytes.expose().len() as u64,
                 ));
                 history.extend_from_slice(bytes.expose());
             }
         }
-        let root = afd_crypto::checkpoint_digest::history_root(
+        let root = af_crypto::checkpoint_digest::history_root(
             digests
                 .iter()
                 .map(|(id, digest, size)| (id.as_str(), digest.as_str(), *size)),

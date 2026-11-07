@@ -3,12 +3,12 @@
 //! places on the same host as the runtime lease.
 
 use super::fixture::Running;
+use af_core::{clock, id::Uuid7, money::NANOS_PER_USD};
+use af_crypto::{aad::Aad, entropy::Entropy, envelope::Sealer, secret::Kek};
 use afd_authoring::{
     Access, Claimed, Drafts,
     types::{CreateDraft, Draft, Source},
 };
-use afd_core::{clock, id::Uuid7, money::NANOS_PER_USD};
-use afd_crypto::{aad::Aad, entropy::Entropy, envelope::Sealer, secret::Kek};
 use afd_db::{
     Db,
     test_util::{ModelSeed, mint_id},
@@ -163,7 +163,7 @@ impl Seat {
     }
 }
 
-fn definition() -> afd_fleet_runtime::Definition {
+fn definition() -> af_fleet_runtime::Definition {
     serde_json::from_value(serde_json::json!({
         "schema_version": 1,
         "description": "Explain failures.",

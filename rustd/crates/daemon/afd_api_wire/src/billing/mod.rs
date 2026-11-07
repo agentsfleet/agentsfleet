@@ -75,10 +75,10 @@ pub struct Report<'a> {
     /// `month` or `today`, both interpreted in Coordinated Universal Time (UTC).
     pub period: Cow<'a, str>,
     /// Inclusive beginning of the selected period.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub from_at: jiff::Timestamp,
     /// Inclusive reporting cutoff, retained by continuations.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub through_at: jiff::Timestamp,
     /// Totals across every matching settled line.
     pub totals: Totals,

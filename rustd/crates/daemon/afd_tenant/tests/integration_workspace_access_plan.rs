@@ -16,7 +16,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
@@ -146,7 +146,7 @@ impl Seeded {
         // Eight hex digits from the random half of a fresh identifier: unique
         // per run, and unlike `mint_id`, whose ids all begin `01900000`.
         let fresh = Entropy::new()
-            .uuid7(afd_core::clock::now())
+            .uuid7(af_core::clock::now())
             .expect("the host draws entropy");
         let prefix: String = fresh.as_str().chars().rev().take(8).collect();
         seed(&database, &prefix).await;

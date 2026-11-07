@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::env::{EnvSource, LOG_LEVEL_VAR};
+use af_core::env::{EnvSource, LOG_LEVEL_VAR};
 
 use super::{READY_TIMEOUT, SANDBOX_HOST_IDS};
 use crate::bubblewrap::SANDBOX_SUBCOMMAND;

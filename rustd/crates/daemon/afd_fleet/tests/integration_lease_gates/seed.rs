@@ -3,10 +3,10 @@
 //! Split from the parent at the file-length cap, and along a real seam: the
 //! parent drives the verb, this puts the rows there.
 
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::envelope::Sealer;
-use afd_crypto::secret::Kek;
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::envelope::Sealer;
+use af_crypto::secret::Kek;
 use afd_db::test_util::{DefaultSeed, PlatformDefault, mint_id};
 use afd_gate::gate::GateRef;
 

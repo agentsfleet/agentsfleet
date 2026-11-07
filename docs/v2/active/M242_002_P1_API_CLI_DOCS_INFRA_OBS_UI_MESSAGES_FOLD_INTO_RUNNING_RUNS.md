@@ -86,7 +86,7 @@ report {folded_through_event_id} ─► meter_lease.sql says folds wait ─► s
 | `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | §1: registers the three slots |
 | `rustd/crates/daemon/afd_fleet/src/lease/fold.rs`, `lease/mod.rs`, `lease/sql/lease/fold_pending.sql`, `lease/sql/queue.rs`, `lease/pull/mod.rs` | CREATE, EDIT | §1: the fenced fold verb on `Leases` and `Plane` |
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | EDIT | §1: a claim clears the compacting marker |
-| `rustd/crates/protocol/afd_wire/src/paths.rs`, `afd_wire/src/lease/folds.rs`, `afd_wire/src/lease/mod.rs` | EDIT, CREATE | §1: `LEASE_FOLDS` and its request and response types |
+| `rustd/crates/protocol/af_wire/src/paths.rs`, `af_wire/src/lease/folds.rs`, `af_wire/src/lease/mod.rs` | EDIT, CREATE | §1: `LEASE_FOLDS` and its request and response types |
 | `rustd/crates/daemon/afd_http/src/route/runner.rs`, `afd_http/src/services/leasing/mod.rs`, `leasing/plane.rs` | EDIT | §1: `RunnerRoute::Folds` and the `Leasing::fold` seam |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/folds.rs`, `handler/runner/mod.rs`, `src/lib.rs`, `src/openapi.rs` | CREATE, EDIT | §1: the handler, its mount and its annotation |
 | `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, `tests/harness/stubs_runner.rs` | EDIT | §1: `INVENTORY`, the counts, the `NoWork` stub |
@@ -94,21 +94,21 @@ report {folded_through_event_id} ─► meter_lease.sql says folds wait ─► s
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/settle_folded.sql`, `lease/settle_folded.rs` | CREATE | §2: settle and release a head's folds |
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/settle_terminal.sql` | EDIT | §2: a refused head releases its folds |
 | `rustd/crates/daemon/afd_fleet/src/lease/report/mod.rs`, `report/steps.rs`, `afd_api_runner/src/handler/runner/report.rs` | EDIT | §2: the cursor reaches the settle; each settled fold's `event_complete` |
-| `rustd/crates/protocol/afd_wire/src/report/mod.rs` | EDIT | §2: `ReportRequest.folded_through_event_id` |
+| `rustd/crates/protocol/af_wire/src/report/mod.rs` | EDIT | §2: `ReportRequest.folded_through_event_id` |
 | `rustd/crates/daemon/afd_fleet/src/lease/history.rs`, `lease/history_tests.rs` | EDIT | §2: a run's folds join its turn |
 | `rustd/crates/daemon/afd_events/src/history/row.rs`, `history/detail.rs`, every statement under `history/statement/` | EDIT | §2, §4: each page and the thread carry `folded_into_event_id`, as each carries `resumes_event_id` |
 | `rustd/crates/runner/afr_agent/src/engine/mod.rs`, `engine/inbox.rs` | EDIT, CREATE | §3: the `Inbox` port, `AgentRun.inbox`, `RunOutput.folded_through_event_id` |
 | `rustd/crates/runner/afr_agent/src/loop/mod.rs`, `loop/inbox.rs`, `loop/shared.rs`, `loop/context/mod.rs`, `loop/finish.rs` | EDIT, CREATE | §3: the boundary read, the compaction mark, the continuing turn, the joined reply |
 | `rustd/crates/runner/afr_agent/src/error/mod.rs`, `error/raise.rs`, `src/testing.rs` | EDIT | §3: the `Inbox` error kind; a scripted inbox double |
-| `rustd/crates/runner/afr_agent/src/loop/inbox_tests.rs`, `turn_tests.rs`, `compaction_tests.rs`, every test building an `AgentRun` (`engine/tests.rs`, `loop/*_tests.rs`, `nested/run_tests.rs`, `afr_providers/tests/support/mod.rs`) | CREATE, EDIT | §3: the loop proofs; each literal gains `inbox` |
+| `rustd/crates/runner/afr_agent/src/loop/inbox_tests.rs`, `turn_tests.rs`, `compaction_tests.rs`, every test building an `AgentRun` (`engine/tests.rs`, `loop/*_tests.rs`, `nested/run_tests.rs`, `af_providers/tests/support/mod.rs`) | CREATE, EDIT | §3: the loop proofs; each literal gains `inbox` |
 | `rustd/crates/runner/afr_supervisor/src/inbox.rs`, `client/folds.rs`, `client/mod.rs`, `client/verb.rs`, `lease_loop/drive.rs`, `report/mod.rs`, `lib.rs`, `test_util.rs` | CREATE, EDIT | §3: `LeaseInbox` over the plane; the report carries the cursor |
 | `rustd/crates/daemon/afd_admission/src/sql/admit_one.sql` (created by M242_001), `sql/select_repeated.sql`, `admit.rs`, `repeat.rs` | EDIT | §4: the disposition facts, fresh and replayed |
 | `rustd/crates/daemon/afd_events/src/steer/mod.rs`, `steer/disposition.rs`, `steer/tests.rs`, `afd_http/src/services/event.rs` | EDIT, CREATE | §4: `Disposition::of`; `Steered` and `FleetSteering` carry it |
-| `rustd/crates/protocol/afd_wire/src/event/steer.rs`, `afd_wire/src/event/mod.rs` | EDIT | §4: `SteerAccepted`, `EventSummary`, `EventDetail` |
+| `rustd/crates/protocol/af_wire/src/event/steer.rs`, `af_wire/src/event/mod.rs` | EDIT | §4: `SteerAccepted`, `EventSummary`, `EventDetail` |
 | `rustd/crates/daemon/afd_api_wire/src/tail/mod.rs`, `tail/tests.rs` | EDIT | §4: `TailFrame::EventFolded`; `TailRow.folded_into_event_id` |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs`, `message_steer/tests.rs` | EDIT | §4: the 202 carries the disposition |
 | `rustd/crates/daemon/afd_api/src/openapi/stability/mod.rs`, `public/openapi.json` | EDIT | §1, §4: new fields published `beta`; the document regenerated with `--no-banner` |
-| `rustd/crates/protocol/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `tests/producers_drive.rs`, `docs/metrics.census.tsv` | EDIT | §4, §2: two counter families |
+| `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `tests/producers_drive.rs`, `docs/metrics.census.tsv` | EDIT | §4, §2: two counter families |
 | `rustd/crates/daemon/afd_fleet/tests/integration_lease_fold.rs`, `integration_lease_fold_settle.rs`, `fleet_suite.rs` | CREATE, EDIT | §1, §2: the store proofs |
 | `rustd/crates/daemon/agentsfleetd/tests/integration_runner_folds.rs`, `integration_steer_disposition.rs`, `daemon_suite.rs` | CREATE, EDIT | §1, §3, §4: the router and real-runner proofs |
 | `cli/src/commands/fleet_steer.ts`, `fleet_steer_events.ts`, `cli/test/fleet-steer-fold.integration.test.ts`, `fleet-steer-tail.unit.test.ts` | EDIT, CREATE | §5 |
@@ -361,7 +361,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   - Compaction runs inside preflight (`loop/context/mod.rs:85-96`) and emits summarizing and resuming frames (`loop/context/effects/progress.rs:30-53`).
   - The claim stamps `lease_fence` on the head (`claim_admission_head.sql:45-58`); a report settles only that fence's head (`meter_lease.sql:36-40,55-61`); `settle_terminal.sql:1-6` settles a refused head.
   - A steer is producer `steer` with no reply (`afd_events/src/steer/mod.rs:319-344`); Slack mentions are `chat` with a thread reply (`afd_ingress/src/slack/admit.rs:62-71`); activation is a keyed steer (`afd_authoring/src/creation/start/admit.rs:25-33`).
-  - The 202 is `SteerAccepted { status, event_id, replayed }` (`afd_wire/src/event/steer.rs:85-96`), built at `message_steer/mod.rs:227`.
+  - The 202 is `SteerAccepted { status, event_id, replayed }` (`af_wire/src/event/steer.rs:85-96`), built at `message_steer/mod.rs:227`.
   - The thread read returns unsettled steer admissions beside events (`afd_events/src/history/statement/select_thread_page.sql:15-26`).
   - Event pages share `EventRow`, and all 16 statements under `history/statement/` select `resumes_event_id` (`git grep -l resumes_event_id -- rustd/crates/daemon/afd_events/src/history/statement`).
   - New response fields default `stable` unless listed in `afd_api/src/openapi/stability/mod.rs`.
@@ -395,7 +395,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 07, 2026: 05:10 PM): "I prefer guffbolt to be moved to a directory like @rustd/crates/guffbolt/ so we have it there." — context: the harness crate's home.
   > Indy (Nov 07, 2026: 05:40 PM): chose "Full regroup" — "it is time we do this and make crates individual and separate." — context: supersedes the flat `rustd/crates/` layout (`rustd/Cargo.toml:3-9`, his Aug 23, 2026 call).
   > Indy (Nov 07, 2026: 05:52 PM): chose "Five layers + lint", "Rename in this PR" and "Approve path-only edits" — context: `rustd/crates/` becomes `foundation/` → `protocol/` → `harness/` → `runner/` | `daemon/`; a crate depends only on its own folder or a lower one, and `runner/` and `daemon/` never on each other, checked in `make lint-rustd`. Shared crates (foundation, protocol, harness) take the `af_` prefix; daemon-only keep `afd_`, runner-only keep `afr_` (`afd_memory` and `afr_memory` both exist, so one prefix would collide). The path-only edits to `.github/actions/sign-toolbox/action.yml` and `deploy/local/*.sh` are approved.
-  - Facts the layout rests on (Nov 07, 2026): `agentsfleetd` links seven runner crates through two edges, `afd_authoring` → `afr_providers` and `afd_fleet` → `afr_secrets`; the one runtime edge that breaks the layers is `afr_providers` → `afr_telemetry`. Fourteen test-only edges cross runner and daemon, led by 14 of `agentsfleetd`'s 88 test files that boot a real runner; those move to a system-test crate.
+  - Facts the layout rests on (Nov 07, 2026): `agentsfleetd` links seven runner crates through two edges, `afd_authoring` → `af_providers` and `afd_fleet` → `af_secrets`; the one runtime edge that breaks the layers is `af_providers` → `afr_telemetry`. Fourteen test-only edges cross runner and daemon, led by 14 of `agentsfleetd`'s 88 test files that boot a real runner; those move to a system-test crate.
 
   Approved disposition SQL (added to `admit_one.sql` after `already_sent`; `$17` binds `LEASE_STATUS_ACTIVE`). Built with one change, listed in the final report for Indy's morning review: the `run_live` column is dropped, and a live run is read as `run_event_id IS NOT NULL`. The two are the same fact, because `live_run` returns a row only with its event, and the change keeps the answer row under clippy's limit on bools per struct:
 

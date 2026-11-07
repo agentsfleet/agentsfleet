@@ -96,7 +96,7 @@ The repairer answers where the responder was asked because the steer copies the 
 
 ## 6. Not this feature
 
-- Named outcomes, subscriptions or a new trigger type. A steer reaches every fleet whatever it declares (`rustd/crates/protocol/afd_fleet_runtime/src/config/trigger/mod.rs`).
+- Named outcomes, subscriptions or a new trigger type. A steer reaches every fleet whatever it declares (`rustd/crates/protocol/af_fleet_runtime/src/config/trigger/mod.rs`).
 - Waking the sender when the receiver answers. The sender reads the answer with `fleet_activity`; a durable wait is M236's.
 - A fleet posting to a channel other than the thread it was asked from.
 - Steering across workspaces.

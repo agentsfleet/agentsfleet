@@ -9,7 +9,7 @@
 
 use axum::response::{IntoResponse as _, Response};
 
-use afd_core::error_code::ErrorCode;
+use af_core::error_code::ErrorCode;
 
 use crate::envelope::ProblemResponse;
 use crate::request_id::RequestId;
@@ -71,7 +71,7 @@ impl Refusable for afd_cron::Error {
         Self::detail(self)
     }
     fn is_datastore_unavailable(&self) -> bool {
-        Self::code(self) == afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+        Self::code(self) == af_core::error_code::INTERNAL_DB_UNAVAILABLE
     }
     fn reason(&self) -> String {
         self.to_string()
@@ -90,7 +90,7 @@ impl Refusable for afd_connector::Error {
     /// code for both a pool that would not answer and a queue that is gone, and
     /// a second predicate would be a second place for the two to disagree.
     fn is_datastore_unavailable(&self) -> bool {
-        Self::code(self) == afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+        Self::code(self) == af_core::error_code::INTERNAL_DB_UNAVAILABLE
     }
     fn reason(&self) -> String {
         self.to_string()
@@ -271,7 +271,7 @@ impl Refusable for afd_ingress::Error {
 
 /// Turns a control-plane failure into the response its code prescribes.
 ///
-/// The status is NOT chosen here. `afd_core::problem` holds one status per
+/// The status is NOT chosen here. `af_core::problem` holds one status per
 /// code, so a datastore that would not answer is a 503 wherever it is raised
 /// and a rejected field is a 400 wherever it is raised — which is what keeps
 /// the runner client's backoff working, since it classifies on the transport
@@ -279,7 +279,7 @@ impl Refusable for afd_ingress::Error {
 pub fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> Response {
     let request_id = RequestId::mint();
     log_refusal(error, event, &request_id);
-    if error.code() == afd_core::error_code::AUTHORING_POLICY {
+    if error.code() == af_core::error_code::AUTHORING_POLICY {
         return ProblemResponse::conflict(
             error.code(),
             error.detail(),

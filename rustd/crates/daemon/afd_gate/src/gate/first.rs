@@ -16,7 +16,7 @@
 //! those. What bounds a write fleet now is that grant, the fleet's
 //! `budget.daily_nanos`, and `agentsfleet grant delete`.
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
 use serde_json::Value;
 
@@ -208,12 +208,12 @@ mod tests {
         //! because a pass that let policy speak over a recorded question would
         //! withdraw it from the human holding the card.
 
-        use afd_core::id::Uuid7;
-        use afd_core::test_util::trace::Capture;
-        use afd_crypto::entropy::Entropy;
+        use af_core::id::Uuid7;
+        use af_core::test_util::trace::Capture;
+        use af_crypto::entropy::Entropy;
+        use af_fleet_runtime::FleetConfig;
         use afd_dragonfly::Dragonfly;
         use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-        use afd_fleet_runtime::FleetConfig;
 
         use crate::gate::pass::{Check, Verdict, Waiting};
         use crate::gate::route::RefState;

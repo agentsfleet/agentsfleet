@@ -1,17 +1,17 @@
 //! Complete synthetic catalogue definitions; no upstream model is contacted.
 
-use afd_admin::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
-use afd_core::{
+use af_core::{
     catalogue::{Metadata, Price},
     id::Uuid7,
 };
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
+use af_wire::decision::DecisionConfiguration;
+use afd_admin::{CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate, Models};
 use afd_db::{
     Db,
     config::DbRole,
     test_util::{TestDatabase, mint_id},
 };
-use afd_wire::decision::DecisionConfiguration;
 use jiff::Timestamp;
 use serde_json::json;
 

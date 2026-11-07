@@ -18,10 +18,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::paging::Ceiling;
+use af_core::paging::Ceiling;
+use af_validate::Limit;
+use af_wire::event::ThreadResponse;
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
-use afd_validate::Limit;
-use afd_wire::event::ThreadResponse;
 use axum::Json;
 use axum::extract::{Path, Query, RawQuery, State, rejection::QueryRejection};
 use axum::response::{IntoResponse as _, Response};
@@ -48,7 +48,7 @@ const DETAIL_EVENT_TYPE: &str = "event_type must contain 1 to 64 bytes without n
 
 #[derive(Deserialize, garde::Validate)]
 pub(crate) struct EventFilter {
-    #[garde(inner(length(bytes, min = 1, max = 64), custom(afd_validate::nul_free)))]
+    #[garde(inner(length(bytes, min = 1, max = 64), custom(af_validate::nul_free)))]
     event_type: Option<String>,
 }
 

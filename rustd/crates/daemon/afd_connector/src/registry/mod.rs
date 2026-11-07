@@ -174,7 +174,7 @@ pub struct Echo {
 ///
 /// `None` from [`Provider::event_ingress`] for a provider that delivers none,
 /// which is four of the five today. The signature SCHEME is deliberately not a
-/// field: [`afd_webhook::Scheme::for_source`] already resolves it from the
+/// field: [`af_webhook::Scheme::for_source`] already resolves it from the
 /// provider id, and a second table naming the same fact is the drift RULE UFS
 /// exists to catch — a provider could be configured with one scheme and
 /// verified under another, and the failure would read as a rotated secret.
@@ -262,7 +262,7 @@ impl Provider {
     /// the events route refuses a path naming one before it reads a header.
     ///
     /// Adding a connector that does deliver — a second chat vendor, an MCP
-    /// gateway — is an arm here plus its [`afd_webhook::Scheme`] entry. Neither
+    /// gateway — is an arm here plus its [`af_webhook::Scheme`] entry. Neither
     /// the route, the wall, nor the handler changes, which is the same claim
     /// [`Self::archetype`] makes for the outbound half.
     #[must_use]

@@ -1,8 +1,8 @@
 //! Continued chat appends V2 to the selected entry and preserves V1.
 
 use super::{Case, mint, now};
+use af_core::id::Uuid7;
 use afd_authoring::types::{PublishRevision, Published};
-use afd_core::id::Uuid7;
 
 /// Publishes `request` onto `first`'s entry under `first`'s tag — current on
 /// the first call, stale on any replay after it advanced.
@@ -160,7 +160,7 @@ async fn a_revision_that_loses_its_key_to_a_lapsed_claim_publishes_nothing() {
         crate::draft::locks::commit_receipt(holder).await;
     });
     let refused = refused.expect_err("the key went to a claim whose receipt has lapsed");
-    assert_eq!(refused.code(), afd_core::error_code::AUTHORING_GONE);
+    assert_eq!(refused.code(), af_core::error_code::AUTHORING_GONE);
     assert_eq!(case.counts().await, (1, 1, 0), "no second revision");
     case.base.cleanup().await;
 }

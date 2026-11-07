@@ -4,7 +4,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::policy::{ExecutionPolicy, NetworkPolicy, RepositoryBinding};
+use af_wire::policy::{ExecutionPolicy, NetworkPolicy, RepositoryBinding};
 
 use crate::egress::{Bound, Reach};
 

@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
+use af_wire::authoring::{Knowledge, Meter, Usage};
 use afd_billing::RUN_NANOS_PER_SEC;
-use afd_wire::authoring::{Knowledge, Meter, Usage};
 use sqlx::PgConnection;
 
 use super::guard::Attempt;
@@ -182,8 +182,8 @@ fn check_cost(reported: &Meter, authoritative: i64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::check_cost;
-    use afd_core::error_code;
-    use afd_wire::authoring::{Knowledge, Meter};
+    use af_core::error_code;
+    use af_wire::authoring::{Knowledge, Meter};
 
     fn meter(knowledge: Knowledge, cost: Option<&str>, tokens: Option<u64>) -> Meter {
         Meter {
@@ -196,7 +196,7 @@ mod tests {
         }
     }
 
-    fn refused(reported: &Meter, authoritative: i64) -> Option<afd_core::error_code::ErrorCode> {
+    fn refused(reported: &Meter, authoritative: i64) -> Option<af_core::error_code::ErrorCode> {
         check_cost(reported, authoritative)
             .err()
             .map(|error| error.code())

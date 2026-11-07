@@ -20,7 +20,7 @@ const SAMPLE_UNKNOWN_SLOT: i64 = 9999;
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// The M-TEST-UTIL seam, and the same argument as the mocked entropy in
-/// `afd_crypto`: `Display`, `code()` and `source()` are what a human reads
+/// `af_crypto`: `Display`, `code()` and `source()` are what a human reads
 /// while something is already going wrong, and most of these kinds cannot be
 /// provoked on demand from a test — a pool does not exhaust itself politely.
 /// These are the values the production paths build, constructed directly.

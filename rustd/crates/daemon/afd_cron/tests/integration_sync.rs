@@ -40,7 +40,7 @@ mod support;
 #[path = "support/live_qstash.rs"]
 mod live_qstash;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::qstash::QStash;
 use afd_cron::{DesiredStatus, Reconciled, Schedule, ScheduleService as Reconciler, SyncStatus};
 
@@ -191,7 +191,7 @@ async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
         lane.store.clone(),
         QStash::new(
             reqwest::Client::new(),
-            afd_crypto::secret::SecretString::new("unused".to_owned()),
+            af_crypto::secret::SecretString::new("unused".to_owned()),
             LIVE_DESTINATION.to_owned(),
             UNREACHABLE_BASE.to_owned(),
         ),

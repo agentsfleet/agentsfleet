@@ -7,7 +7,7 @@
 //! every event after it. They travel together on the lease path and are not
 //! the same question.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::grant_sql;
 use crate::error::{Result, query};

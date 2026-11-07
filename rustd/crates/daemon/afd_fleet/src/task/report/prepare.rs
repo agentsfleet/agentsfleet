@@ -6,7 +6,7 @@ use crate::{
     error::query,
     task::{TaskLease, Tasks, continuation::Continuation, decision, execution, guard, transaction},
 };
-use afd_wire::{
+use af_wire::{
     report::ReportRequest,
     task::{TaskDisposition, TaskTarget},
 };
@@ -107,10 +107,10 @@ pub(super) async fn prepare(
 async fn snapshot(
     tasks: &Tasks,
     lease: TaskLease<'_>,
-    input: &afd_wire::task::TaskReport,
+    input: &af_wire::task::TaskReport,
 ) -> Result<(
     execution::Owned,
-    afd_core::id::Uuid7,
+    af_core::id::Uuid7,
     Option<crate::task::github::BoundPr>,
 )> {
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;

@@ -1,11 +1,11 @@
 //! Uncertainty retains credit; a late known result accounts exactly once.
 
-use afd_core::error_code;
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::{
+use af_core::error_code;
+use af_wire::task::{
     DecisionAssessment, DecisionCallState, DecisionNotSentCause, DecisionReceipt,
     DecisionReceiptInput, DecisionRetryDelay, DecisionUnavailableCause,
 };
+use afd_fleet::task::TaskLifecycle as _;
 use serde_json::{Value, json};
 
 use super::{
@@ -64,7 +64,7 @@ async fn uncertain(case: &Case) {
 
 async fn immutable_uncertainty(
     fixture: &Decisions<'_>,
-    input: &garde::Valid<afd_wire::task::DecisionReservationInput>,
+    input: &garde::Valid<af_wire::task::DecisionReservationInput>,
     call: &str,
 ) {
     for receipt in [

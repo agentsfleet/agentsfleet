@@ -8,11 +8,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
+use af_observability::Analytics;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
-use afd_observability::Analytics;
 
 use super::clients::Clients;
 use super::optional::{announce_identity, open_live};
@@ -154,10 +154,10 @@ async fn open_broker(
 ///
 /// Fail-closed: a deployment that named no secret refuses every signup
 /// delivery rather than trusting an unverified one to open an account.
-fn identity_webhook_secret(config: &BootConfig) -> Option<afd_crypto::secret::SecretBytes> {
+fn identity_webhook_secret(config: &BootConfig) -> Option<af_crypto::secret::SecretBytes> {
     config
         .identity_webhook_secret()
-        .map(|secret| afd_crypto::secret::SecretBytes::new(secret.as_bytes().to_vec()))
+        .map(|secret| af_crypto::secret::SecretBytes::new(secret.as_bytes().to_vec()))
 }
 
 /// What the login flow signs codes with and redirects between.
@@ -178,7 +178,7 @@ fn login_config(config: &BootConfig) -> crate::plane::LoginConfig {
 fn schedule_config(config: &BootConfig, client: reqwest::Client) -> crate::plane::ScheduleConfig {
     crate::plane::ScheduleConfig {
         client,
-        token: afd_crypto::secret::SecretString::new(
+        token: af_crypto::secret::SecretString::new(
             config.qstash_token().unwrap_or_default().to_owned(),
         ),
         destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),

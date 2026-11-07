@@ -1,7 +1,7 @@
 //! Only the root assesses completed action groups; children cannot settle goals.
 
 use super::{Ending, Harness};
-use afd_wire::task::{TaskDisposition, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
+use af_wire::task::{TaskDisposition, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
 
 impl Harness<'_, '_> {
     pub(super) async fn assess_task(&mut self, answer: &str) -> Option<Ending> {
@@ -108,7 +108,7 @@ impl Harness<'_, '_> {
                     return Err(crate::decision::unavailable());
                 }
                 let text = serde_json::json!({ "accepted_task_input": input });
-                self.messages.push(afr_providers::Message::User(
+                self.messages.push(af_providers::Message::User(
                     self.shared.scrub.clean(text.to_string()).into_inner(),
                 ));
                 // Durable application follows incorporation. A replacement reconstructs
@@ -165,7 +165,7 @@ impl Harness<'_, '_> {
 async fn record_input(
     verbs: &dyn afr_tools::LeaseVerbs,
     fencing_token: u64,
-    input: &afd_wire::task::TaskAcceptedInput,
+    input: &af_wire::task::TaskAcceptedInput,
     mode: TaskInputMode,
     response: Option<&str>,
 ) -> crate::Result<()> {
@@ -196,7 +196,7 @@ async fn read_inputs(
     verbs: &dyn afr_tools::LeaseVerbs,
     fencing_token: u64,
     incorporated: u64,
-) -> crate::Result<afd_wire::task::TaskInputsResponse<'static>> {
+) -> crate::Result<af_wire::task::TaskInputsResponse<'static>> {
     verbs
         .task_inputs(TaskInputsQuery {
             fencing_token,

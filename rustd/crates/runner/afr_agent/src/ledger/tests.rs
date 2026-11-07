@@ -3,14 +3,14 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_wire::activity::ActivityFrame;
-use afd_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, ToolCallRecord};
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_providers::Call;
+use af_providers::Call;
+use af_wire::activity::ActivityFrame;
+use af_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, ToolCallRecord};
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::ToolOutput;
 use afr_tools::catalog::UPDATE_PLAN;
 
-use afd_core::test_util::trace::{Capture, CapturedEvent};
+use af_core::test_util::trace::{Capture, CapturedEvent};
 
 use super::{EVENT_RECORD_DROPPED, Ledger};
 use crate::fixture::{Frames, GITHUB_TOKEN, clean_json, scrub};
@@ -286,7 +286,7 @@ async fn dropping_a_call_with_one_open_inside_it_interrupts_both_once() {
 /// counted nor typed.
 #[tokio::test]
 async fn a_call_killed_for_memory_is_counted_and_typed_on_its_span() {
-    use afd_observability::semconv::{ATTR_ERROR_TYPE, OPERATION_EXECUTE_TOOL};
+    use af_observability::semconv::{ATTR_ERROR_TYPE, OPERATION_EXECUTE_TOOL};
     use afr_telemetry::testing::{Recorded, Tally, scoped};
     use afr_tools::ToolErrorCode;
 

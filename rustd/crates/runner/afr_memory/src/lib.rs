@@ -19,7 +19,7 @@ mod seed;
 
 use std::fmt;
 
-use afd_wire::memory::MemoryDelta;
+use af_wire::memory::MemoryDelta;
 
 pub use self::error::{Error, Result};
 pub use self::hydrated::Hydrated;
@@ -47,7 +47,7 @@ pub trait MemoryBackend: Send + Sync + fmt::Debug {
     /// Stores `entry`, replacing what its key held.
     ///
     /// # Errors
-    /// The entry breaks a bound `afd_wire` declares on a stored entry, asks
+    /// The entry breaks a bound `af_wire` declares on a stored entry, asks
     /// the workspace to read it from a fleet that may not publish, or the
     /// backend cannot take it.
     async fn store(&mut self, entry: MemoryDelta<'static>) -> Result<()>;

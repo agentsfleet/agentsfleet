@@ -6,7 +6,7 @@ use crate::{
     error::raise::{query, stored},
     types::Candidate,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 pub(super) async fn entry(

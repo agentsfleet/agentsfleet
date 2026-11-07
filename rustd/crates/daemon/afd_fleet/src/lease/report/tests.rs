@@ -3,8 +3,8 @@
 //! step. Split from [`super`] the way `verdict/tests.rs` is, so the verb's
 //! own file stays readable.
 
+use af_core::id::{ENTROPY_LEN, Uuid7};
 use afd_billing::rates::Posture;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
 use jiff::Timestamp;
 
 use super::steps::step;
@@ -104,7 +104,7 @@ fn a_failed_finalize_step_renders_every_refusal() -> Result<(), &'static str> {
 
 #[test]
 fn a_failed_report_step_reason_carries_no_code_prefix() -> Result<(), &'static str> {
-    let log = afd_core::test_util::trace::Capture::install();
+    let log = af_core::test_util::trace::Capture::install();
     let lease = reported(Posture::Platform.as_str())?;
     let failure = crate::error::lease_lost();
     let (code, told) = (failure.code(), failure.told());

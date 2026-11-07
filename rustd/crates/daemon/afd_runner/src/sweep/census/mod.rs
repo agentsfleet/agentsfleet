@@ -19,9 +19,9 @@
 
 use std::time::Duration;
 
+use af_observability::metrics::label::fleet::FleetStatusLabel;
+use af_observability::producers::fleet::{self, census};
 use afd_db::Db;
-use afd_observability::metrics::label::fleet::FleetStatusLabel;
-use afd_observability::producers::fleet::{self, census};
 
 use crate::error::{Result, query};
 use crate::sql;

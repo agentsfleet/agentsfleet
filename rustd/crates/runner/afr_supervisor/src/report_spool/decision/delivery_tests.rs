@@ -5,8 +5,8 @@ use crate::{
     config::{Config, ENV_API_URL, ENV_RUNNER_TOKEN},
     storage_home::StorageHome,
 };
-use afd_core::id::Uuid7;
-use afd_wire::task::{DecisionNotSentCause, DecisionReceipt};
+use af_core::id::Uuid7;
+use af_wire::task::{DecisionNotSentCause, DecisionReceipt};
 use axum::{
     body::Bytes,
     http::{HeaderMap, Method, StatusCode, Uri},
@@ -48,7 +48,7 @@ impl Server {
         let worker = tokio::spawn(async move {
             let _served = axum::serve(listener, app).await;
         });
-        let env = afd_core::env::MapEnv::from_pairs([
+        let env = af_core::env::MapEnv::from_pairs([
             (ENV_API_URL, base.as_str()),
             (ENV_RUNNER_TOKEN, "agt_r_spool_fixture"),
         ]);
@@ -133,7 +133,7 @@ async fn wrong_acknowledgement_cannot_remove_a_saved_original_owner_receipt() ->
         .ok_or("retained operation was redispatched")?;
     assert_eq!(
         duplicate.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     server.finish().await;
     Ok(())

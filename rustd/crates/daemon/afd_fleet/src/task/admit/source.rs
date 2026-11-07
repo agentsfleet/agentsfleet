@@ -1,7 +1,7 @@
 //! Source identity is proved from native admissions, never model prose.
 
+use af_wire::task::TaskLimits;
 use afd_admission::Producer;
-use afd_wire::task::TaskLimits;
 use sqlx::PgConnection;
 
 use super::super::{PreparedPlan, TaskLease, TaskRefusal, guard::LeaseRow, sql};
@@ -33,7 +33,7 @@ pub(in crate::task) async fn lock(
 pub(in crate::task) async fn load(
     connection: &mut PgConnection,
     current: &LeaseRow,
-    admission: &afd_core::id::Uuid7,
+    admission: &af_core::id::Uuid7,
 ) -> Result<Source> {
     let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
         .bind(admission.as_str())
@@ -53,7 +53,7 @@ pub(in crate::task) fn check_claim(
     source: &Source,
     lease: TaskLease<'_>,
     current: &LeaseRow,
-    admission: &afd_core::id::Uuid7,
+    admission: &af_core::id::Uuid7,
 ) -> Result<()> {
     let owns_claim = source.input_claim_lease_id.as_deref() == Some(lease.lease_id.as_str())
         && source.input_claim_fence == Some(current.fence);
@@ -126,10 +126,10 @@ pub(in crate::task) fn message_for<'a>(
     body: &'a str,
 ) -> Result<std::borrow::Cow<'a, str>> {
     if producer != Producer::SlackMention.as_str() {
-        return Ok(afd_wire::event::message_of(body));
+        return Ok(af_wire::event::message_of(body));
     }
     let human: SlackPayload<'_> =
-        serde_json::from_str(body).map_err(afd_core::json::Unreadable::from)?;
+        serde_json::from_str(body).map_err(af_core::json::Unreadable::from)?;
     Ok(human.human_message)
 }
 

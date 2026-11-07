@@ -2,9 +2,9 @@
 
 use super::{Suggestion, native};
 use crate::{Result, types::Candidate};
-use afd_core::{id::Uuid7, money::NANOS_PER_USD};
-use afd_fleet_runtime::definition::EditBatch;
-use afd_wire::authoring::{Proposal, ProposalRejection};
+use af_core::{id::Uuid7, money::NANOS_PER_USD};
+use af_fleet_runtime::definition::EditBatch;
+use af_wire::authoring::{Proposal, ProposalRejection};
 use serde_json::{Value, json};
 
 pub(in crate::model::provider) fn candidate(
@@ -21,7 +21,7 @@ pub(in crate::model::provider) fn candidate(
             }}
         }))?,
         canonical_digest: String::new(),
-        policy_semantics: afd_fleet_runtime::definition::POLICY_SEMANTICS.into(),
+        policy_semantics: af_fleet_runtime::definition::POLICY_SEMANTICS.into(),
     })
 }
 

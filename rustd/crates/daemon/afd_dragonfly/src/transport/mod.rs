@@ -130,8 +130,8 @@ fn repairing(config: &DragonflyConfig, response_timeout: Duration) -> Result<Clu
     let mut builder = ClusterClientBuilder::new([config.url().to_owned()])
         .use_protocol(ProtocolVersion::RESP3)
         .retries(REDIRECT_RETRIES)
-        .min_retry_wait(afd_core::clock::saturating_millis(RETRY_MIN_WAIT))
-        .max_retry_wait(afd_core::clock::saturating_millis(RETRY_MAX_WAIT))
+        .min_retry_wait(af_core::clock::saturating_millis(RETRY_MIN_WAIT))
+        .max_retry_wait(af_core::clock::saturating_millis(RETRY_MAX_WAIT))
         .connection_timeout(CONNECT_ATTEMPT_TIMEOUT)
         .response_timeout(response_timeout);
     if let Some(path) = config.ca_cert_file().filter(|_| config.is_tls()) {

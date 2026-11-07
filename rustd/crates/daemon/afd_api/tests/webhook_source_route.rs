@@ -92,7 +92,7 @@ async fn the_fleet_only_address_is_not_served() {
 /// Custom recipe headers and encodings are selected by the saved source.
 #[tokio::test]
 async fn a_declared_verifier_wakes_a_fleet_from_a_provider_outside_the_registry() {
-    use afd_crypto::{mac::HmacSha256Tag, secret::SecretBytes};
+    use af_crypto::{mac::HmacSha256Tag, secret::SecretBytes};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     const HEADER: &str = "x-acme-signature";
     let key = SecretBytes::new(signed::SECRET.to_vec());
@@ -158,7 +158,7 @@ async fn a_declared_verifier_wakes_a_fleet_from_a_provider_outside_the_registry(
 async fn slack_recipes_require_their_signed_timestamp_and_untouched_body() {
     let timestamp = harness::frozen_unix_seconds().to_string();
     let proof = signed::signature_at(
-        afd_webhook::Scheme::SlackV0,
+        af_webhook::Scheme::SlackV0,
         signed::SECRET,
         Some(&timestamp),
         PAYLOAD.as_bytes(),

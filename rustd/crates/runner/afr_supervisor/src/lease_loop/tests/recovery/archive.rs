@@ -1,7 +1,7 @@
 //! External checkpoint-service fixture models pre-existing content-addressed objects.
 //! It proves orchestration and manifest acknowledgement, not ciphertext retention.
 use super::{CHECKPOINT, ID, PAGE, fixture};
-use afd_wire::task::*;
+use af_wire::task::*;
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,7 +108,7 @@ impl Archive {
         assert_eq!(input.pin_id, ID);
         assert_eq!(
             input.digest,
-            afd_core::etag::sha256_hex(&serde_json::to_vec(&input.contents).unwrap())
+            af_core::etag::sha256_hex(&serde_json::to_vec(&input.contents).unwrap())
         );
         assert!(input.contents.entries.is_empty());
         assert_eq!(input.contents.history_objects, vec![ID.to_owned()]);
@@ -120,15 +120,15 @@ impl Archive {
         let input: CheckpointCommitInput = serde_json::from_value(body).unwrap();
         assert_eq!(input.pin_id, ID);
         let page_digest =
-            afd_core::etag::sha256_hex(&serde_json::to_vec(self.page.as_ref().unwrap()).unwrap());
+            af_core::etag::sha256_hex(&serde_json::to_vec(self.page.as_ref().unwrap()).unwrap());
         assert_eq!(
             input.manifest_root,
-            afd_crypto::checkpoint_digest::manifest_root([(PAGE, page_digest.as_str())])
+            af_crypto::checkpoint_digest::manifest_root([(PAGE, page_digest.as_str())])
         );
         let history = self.descriptors.first().unwrap();
         assert_eq!(
             input.history_digest,
-            afd_crypto::checkpoint_digest::history_root([(
+            af_crypto::checkpoint_digest::history_root([(
                 ID,
                 history.sha256.as_str(),
                 history.size

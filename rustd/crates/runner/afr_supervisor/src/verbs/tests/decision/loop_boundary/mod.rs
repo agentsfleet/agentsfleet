@@ -26,7 +26,7 @@ async fn real_decision_client_preflight_is_receipted_before_root_can_use_it() {
 async fn exercise(mode: &'static str) {
     let server = server::Server::start(mode).await;
     let host = Host::new();
-    let lease_id = afd_core::id::Uuid7::parse(LEASE_ID).unwrap();
+    let lease_id = af_core::id::Uuid7::parse(LEASE_ID).unwrap();
     let verbs = FencedVerbs::new(
         &server.plane,
         &lease_id,
@@ -71,7 +71,7 @@ fn assert_stopped(output: &afr_agent::RunOutput, model: &model::Model) {
 
 async fn execute(
     engine: &afr_agent::Loop,
-    lease: &afd_wire::lease::LeasePayload<'_>,
+    lease: &af_wire::lease::LeasePayload<'_>,
     prepared: &afr_agent::PreparedTask,
     verbs: &FencedVerbs<'_>,
     host: &Host,
@@ -85,7 +85,7 @@ async fn execute(
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
             ),
-            mint: &afr_egress::testing::CountingMint::never(),
+            mint: &af_egress::testing::CountingMint::never(),
             verbs,
             checkpoint: &afr_agent::testing::Discard,
             context_checkpoints: &afr_agent::testing::ContextMemory::default(),

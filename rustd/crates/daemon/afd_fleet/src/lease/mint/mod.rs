@@ -44,9 +44,9 @@
 //! still sees one token issued — the same one-request bound, and the same
 //! reason a later re-check would buy nothing.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_wire::credentials::MintCredentialRequest;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_wire::credentials::MintCredentialRequest;
 use jiff::Timestamp;
 use serde_json::Value;
 
@@ -130,8 +130,7 @@ impl Plane {
             .ok_or_else(lease_not_found)?;
         if purpose == Purpose::TaskPublish
             && !scope.binding.as_ref().is_some_and(|binding| {
-                binding.publication()
-                    == afd_fleet_runtime::config::RepositoryPublication::ExistingPr
+                binding.publication() == af_fleet_runtime::config::RepositoryPublication::ExistingPr
             })
         {
             return Err(crate::task::TaskRefusal::InvalidTarget.into());
@@ -149,14 +148,13 @@ impl Plane {
         } else if request.integration == "github"
             && purpose == Purpose::Runner
             && scope.binding.as_ref().is_some_and(|binding| {
-                binding.publication()
-                    == afd_fleet_runtime::config::RepositoryPublication::ExistingPr
+                binding.publication() == af_fleet_runtime::config::RepositoryPublication::ExistingPr
             })
         {
             scope.binding = scope
                 .binding
                 .as_ref()
-                .map(afd_fleet_runtime::config::RepositoryBinding::read_only);
+                .map(af_fleet_runtime::config::RepositoryBinding::read_only);
         }
         self.mint_scoped(&scope, &request.integration, now, None)
             .await
@@ -313,7 +311,7 @@ impl Plane {
         // What this exchange actually posted, read from the pre-exchange
         // snapshot — the guard the write-back compares the stored row against.
         let Some(posted) = handle
-            .get(afd_core::credential::FIELD_REFRESH_TOKEN)
+            .get(af_core::credential::FIELD_REFRESH_TOKEN)
             .and_then(Value::as_str)
         else {
             return;

@@ -1,8 +1,8 @@
 //! Expiry closes the spinner while the original accounting obligation remains.
 
 use super::{Attempt, Fixture};
+use af_wire::authoring::FailureReason;
 use afd_authoring::types::{MessageQuery, Source};
-use afd_wire::authoring::FailureReason;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]

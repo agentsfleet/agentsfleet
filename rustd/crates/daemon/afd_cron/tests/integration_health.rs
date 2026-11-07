@@ -3,7 +3,7 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::ScheduleService;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -53,7 +53,7 @@ async fn health_tracks_real_states_and_refuses_a_closed_database() {
     let client = reqwest::Client::new();
     let upstream = afd_cron::qstash::QStash::new(
         client,
-        afd_crypto::secret::SecretString::new("fixture-token".into()),
+        af_crypto::secret::SecretString::new("fixture-token".into()),
         "https://example.test/fire".into(),
         "http://127.0.0.1:1".into(),
     );

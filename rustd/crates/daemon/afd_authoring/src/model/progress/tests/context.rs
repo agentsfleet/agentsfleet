@@ -7,16 +7,16 @@
 
 use super::super::ContextPublisher;
 use crate::{Drafts, lease::guard::Counters};
-use afd_core::{error_code, test_util::trace::Capture};
-use afd_crypto::entropy::Entropy;
+use af_core::{error_code, test_util::trace::Capture};
+use af_crypto::entropy::Entropy;
+use af_wire::{
+    authoring::{Knowledge, Meter, Renew},
+    context::ContextState,
+};
 use afd_db::{config::DbRole, test_util::TestDatabase};
 use afd_dragonfly::{
     Dragonfly, FleetStreams,
     config::{DragonflyConfig, DragonflyRole},
-};
-use afd_wire::{
-    authoring::{Knowledge, Meter, Renew},
-    context::ContextState,
 };
 use std::{sync::Arc, time::Duration};
 
@@ -72,7 +72,7 @@ async fn setup() -> (afd_db::Db, Drafts, FleetStreams) {
     (pool, drafts, FleetStreams::new(queue))
 }
 
-fn assert_deadline(capture: &Capture, id: &afd_core::id::Uuid7) {
+fn assert_deadline(capture: &Capture, id: &af_core::id::Uuid7) {
     let failure = capture.only("draft_preview_failed");
     assert_eq!(failure.field("reason"), Some("deadline"));
     assert_eq!(failure.field("frames"), Some("0"));

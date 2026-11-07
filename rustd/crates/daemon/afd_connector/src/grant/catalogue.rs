@@ -2,7 +2,7 @@
 
 use super::{Connection, Grants};
 use crate::{Provider, Result};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_vault::SecretName;
 use serde::Deserialize;
 use std::collections::BTreeMap;

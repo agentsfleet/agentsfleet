@@ -1,7 +1,7 @@
 //! A shared vault name must satisfy every runtime use the candidate declares.
 
+use af_fleet_runtime::config::Trigger;
 use afd_credential::{secrets::connector::SLACK_INTEGRATION, vault::CredentialInspection};
-use afd_fleet_runtime::config::Trigger;
 use std::collections::BTreeMap;
 
 use crate::types::{Candidate, Requirements};
@@ -24,20 +24,21 @@ pub(super) fn collect<'a>(
         needs.entry(name).or_default().push(Purpose::Execution);
     }
     for trigger in candidate.definition.runtime().triggers() {
-        let (name, purpose) = match trigger {
-            Trigger::Mention(mention) => (&*mention.source, Purpose::Mention(&mention.source)),
-            Trigger::Webhook(hook) => (
-                hook.credential_name.as_deref().unwrap_or(&hook.source),
-                if hook.verifier.as_ref().is_some_and(|v| {
-                    matches!(v, afd_fleet_runtime::config::WebhookVerifier::SvixV1)
-                }) {
-                    Purpose::Svix
-                } else {
-                    Purpose::Webhook
-                },
-            ),
-            Trigger::Cron(_) => continue,
-        };
+        let (name, purpose) =
+            match trigger {
+                Trigger::Mention(mention) => (&*mention.source, Purpose::Mention(&mention.source)),
+                Trigger::Webhook(hook) => (
+                    hook.credential_name.as_deref().unwrap_or(&hook.source),
+                    if hook.verifier.as_ref().is_some_and(|v| {
+                        matches!(v, af_fleet_runtime::config::WebhookVerifier::SvixV1)
+                    }) {
+                        Purpose::Svix
+                    } else {
+                        Purpose::Webhook
+                    },
+                ),
+                Trigger::Cron(_) => continue,
+            };
         needs.entry(name).or_default().push(purpose);
     }
     needs

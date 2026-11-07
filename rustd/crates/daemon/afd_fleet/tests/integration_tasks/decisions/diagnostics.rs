@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 
-use afd_wire::{
+use af_wire::{
     decision::{DecisionOutcome, DecisionQuestion, DecisionRequest},
     task::DecisionReservationResult,
 };

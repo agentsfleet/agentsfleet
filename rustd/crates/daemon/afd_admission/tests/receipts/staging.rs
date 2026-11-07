@@ -4,8 +4,8 @@ use super::{
     lane::Lane,
     queue::{confirm, over_fake},
 };
+use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer, Reply as ReplyTo};
-use afd_wire::event::EventType;
 use sqlx::Connection as _;
 
 fn request(lane: &Lane) -> Admission<'_> {

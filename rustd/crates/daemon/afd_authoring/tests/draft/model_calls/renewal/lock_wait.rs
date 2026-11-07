@@ -7,8 +7,8 @@
 
 use super::super::fixture::{self, Provider};
 use super::{Attempt, EXPIRE_NOW, Fixture, request, snapshot};
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use sqlx::Connection as _;
 use std::{sync::Arc, time::Duration};
 

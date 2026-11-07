@@ -5,8 +5,8 @@
 
 use std::borrow::Cow;
 
-use afd_wire::policy::ExecutionPolicy;
-use afr_egress::fixture::{BASE, REPOSITORY, policy};
+use af_egress::fixture::{BASE, REPOSITORY, policy};
+use af_wire::policy::ExecutionPolicy;
 
 use super::{Checkout, checkouts};
 use crate::catalog::{HTTP_REQUEST, PUBLISHED, SHELL};
@@ -95,7 +95,7 @@ fn should_refuse_a_bound_name_that_is_not_owner_and_name() {
         assert!(refused.to_string().contains(name), "{name}: {refused}");
         assert_eq!(
             refused.code(),
-            afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
+            af_core::error_code::AGENTSFLEET_INVALID_CONFIG
         );
     }
 }
@@ -122,7 +122,7 @@ fn should_refuse_two_bound_repositories_that_share_a_directory() {
     );
     assert_eq!(
         refused.code(),
-        afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
+        af_core::error_code::AGENTSFLEET_INVALID_CONFIG
     );
 }
 

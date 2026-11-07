@@ -4,7 +4,7 @@
 //! (`M-ERRORS-CANONICAL-STRUCTS`, with the workspace's declared divergence): a
 //! struct carrying a captured backtrace over a private kind, with the code and
 //! the sentence decided together in one table rather than spelled at each
-//! raise site. The hull is `afd_core::error_shell!`, so nothing here repeats
+//! raise site. The hull is `af_core::error_shell!`, so nothing here repeats
 //! what its sibling crates already share.
 //!
 //! # A cursor this daemon did not mint is not a failure of this daemon
@@ -19,10 +19,10 @@
 //! A steer whose ledger row would not commit is one this daemon has NOT
 //! accepted, so the refusal travels. It answers the LEDGER's code and
 //! sentence rather than a second spelling of the same condition — the drift
-//! `afd_core::error`'s shared constants exist to prevent.
+//! `af_core::error`'s shared constants exist to prevent.
 
-use afd_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE};
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE};
+use af_core::error_code::{self, ErrorCode};
 
 mod raise;
 
@@ -37,7 +37,7 @@ pub(crate) use self::raise::{cursor_malformed, operation_conflict, query, row_ma
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An event-log failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );

@@ -1,7 +1,7 @@
 //! What the executor and its client refuse, and what they report.
 //!
 //! One error type with `pub type Result<T, E = Error>` beside it, under the
-//! `afd_core::error_shell!` hull every `rustd` crate carries: the boxed kind
+//! `af_core::error_shell!` hull every `rustd` crate carries: the boxed kind
 //! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
 //! the `[CODE]` rendering and the self-skipping `source()` are generated.
 //!
@@ -22,7 +22,7 @@
 
 use std::io;
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 use jsonrpsee_types::error::{
     CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
 };
@@ -42,7 +42,7 @@ pub(crate) use self::raise::{
     unknown_process, unresponsive,
 };
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An executor failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );

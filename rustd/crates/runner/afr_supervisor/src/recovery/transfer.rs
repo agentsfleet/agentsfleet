@@ -1,16 +1,16 @@
 //! Exact native presigned transfers carry neither runner tokens nor provider keys.
 
 use crate::{Result, error};
-use afd_core::id::Uuid7;
-use afd_crypto::{
+use af_core::id::Uuid7;
+use af_crypto::{
     checkpoint::{CheckpointScope, EncryptedCheckpointObject},
     secret::SecretBytes,
 };
-use afd_wire::task::{CheckpointObject, CheckpointTransfer};
+use af_wire::task::{CheckpointObject, CheckpointTransfer};
 use base64::Engine as _;
 use zeroize::Zeroizing;
 
-const MAX_BYTES: u64 = super::files::CHUNK + afd_crypto::TAG_LEN as u64;
+const MAX_BYTES: u64 = super::files::CHUNK + af_crypto::TAG_LEN as u64;
 
 #[derive(Debug)]
 pub(super) struct Transfers {
@@ -97,7 +97,7 @@ impl Transfers {
             bytes.extend_from_slice(&chunk);
         }
         if bytes.len() as u64 != expected
-            || Some(afd_core::etag::sha256_hex(&bytes).as_str())
+            || Some(af_core::etag::sha256_hex(&bytes).as_str())
                 != object.ciphertext_sha256.as_deref()
         {
             return Err(error::config("checkpoint ciphertext digest mismatch"));
@@ -115,14 +115,14 @@ impl Transfers {
             || !url.username().is_empty()
             || url.password().is_some()
             || url.fragment().is_some()
-            || transfer.expires_at <= afd_core::clock::now()
+            || transfer.expires_at <= af_core::clock::now()
         {
             return Err(error::config(
                 "checkpoint transfer authority is invalid or expired",
             ));
         }
         let mut request = self.client.request(method, url).timeout(
-            crate::deadline::left(afd_core::clock::now(), transfer.expires_at)
+            crate::deadline::left(af_core::clock::now(), transfer.expires_at)
                 .min(std::time::Duration::from_secs(60)),
         );
         for (name, value) in &transfer.headers {
@@ -144,7 +144,7 @@ pub(super) fn seal(
     plaintext: Zeroizing<Vec<u8>>,
 ) -> Result<Vec<u8>> {
     if plaintext.len() as u64 != object.plaintext.size
-        || afd_core::etag::sha256_hex(&plaintext) != object.plaintext.sha256
+        || af_core::etag::sha256_hex(&plaintext) != object.plaintext.sha256
     {
         return Err(error::config(
             "checkpoint plaintext differs from native registration",
@@ -176,7 +176,7 @@ pub(super) fn open(
     if object.ciphertext_length != Some(ciphertext.len() as u64)
         || ciphertext.len() as u64 > MAX_BYTES
         || object.ciphertext_sha256.as_deref()
-            != Some(afd_core::etag::sha256_hex(&ciphertext).as_str())
+            != Some(af_core::etag::sha256_hex(&ciphertext).as_str())
     {
         return Err(error::config(
             "checkpoint ciphertext differs from native registration",
@@ -184,9 +184,9 @@ pub(super) fn open(
     }
     let tag_at = ciphertext
         .len()
-        .checked_sub(afd_crypto::TAG_LEN)
+        .checked_sub(af_crypto::TAG_LEN)
         .ok_or_else(|| error::config("checkpoint authentication tag is absent"))?;
-    let tag: [u8; afd_crypto::TAG_LEN] = ciphertext
+    let tag: [u8; af_crypto::TAG_LEN] = ciphertext
         .get(tag_at..)
         .ok_or_else(|| error::config("checkpoint authentication tag is absent"))?
         .try_into()
@@ -205,7 +205,7 @@ pub(super) fn open(
         },
     )?;
     if plaintext.expose().len() as u64 != object.plaintext.size
-        || afd_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
+        || af_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
     {
         return Err(error::config(
             "checkpoint plaintext authentication mismatch",
@@ -214,7 +214,7 @@ pub(super) fn open(
     Ok(plaintext)
 }
 
-fn material(object: &mut CheckpointObject) -> Result<(SecretBytes, [u8; afd_crypto::NONCE_LEN])> {
+fn material(object: &mut CheckpointObject) -> Result<(SecretBytes, [u8; af_crypto::NONCE_LEN])> {
     let key = Zeroizing::new(
         object
             .data_key

@@ -493,11 +493,11 @@ Wire records remain validated data rather than gaining a trait for each field.
 | Owner and planned files | Data structs and behavior |
 |---|---|
 | `afd_fleet/src/task/{mod,admit,input,wait,effect,limits}.rs` | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native admission staging and lease fences with real database tests. |
-| `afr_providers/src/decision/{mod,client,wire,types}.rs` | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
+| `af_providers/src/decision/{mod,client,wire,types}.rs` | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
 | `afr_tools/src/verbs/`; `afr_supervisor/src/{verbs/,client/task/}` | Extend the existing `LeaseVerbs` with bounded native input/binding/receipt/decision/effect calls. `FencedVerbs` supplies its own lease fence. The root receives an accounted `DecisionEvaluation`, never dispatch keys. Native checkpoint calls stay with supervisor recovery. The existing closed `Verb` vocabulary owns methods and diagnostic names; calls reuse `ControlPlane` and `RunnerApi`. |
 | `afr_supervisor/src/recovery/{mod,capture,restore,manifest}.rs` | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
 | Planned `storage` module under `afd_fleet/src/task/` | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
-| `afd_wire/src/task/`, `afd_wire/src/decision/` | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
+| `af_wire/src/task/`, `af_wire/src/decision/` | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
 
 Use trait objects at existing runtime composition boundaries, following `AgentRun` and its `Executor`, `LeaseVerbs`, `EventSink` and `Clock` dependencies.
 An `Arc<dyn DecisionEvaluator>` can share the configured client; the loop borrows it through the current run context.
@@ -517,7 +517,7 @@ Keep native HTTP refusal and wire validation types consistent with their existin
 
 ### Observability aligned to native outcomes
 
-Reuse `afd_observability` producers, typed metric families, closed label sets, tracing and `docs/metrics.census.tsv`.
+Reuse `af_observability` producers, typed metric families, closed label sets, tracing and `docs/metrics.census.tsv`.
 Instrument asynchronous futures rather than holding an entered span across an await.
 Task rows and canonical billing lines remain the source of truth; emit signals from validated native outcomes.
 

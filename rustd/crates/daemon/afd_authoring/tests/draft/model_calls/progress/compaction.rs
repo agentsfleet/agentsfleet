@@ -1,8 +1,8 @@
 //! Publication status cannot outrun the durable checkpoint or escape a stopped lease.
 use super::fixture::{Live, WAIT};
 use crate::draft::{attempt::Attempt, fixture::Fixture, model_calls};
+use af_wire::context::ContextState;
 use afd_authoring::types::Source;
-use afd_wire::context::ContextState;
 use serde_json::{Value, json};
 
 const SUMMARY: &str = r#"{"goal":"private summary goal","constraints":[],"decisions":[],"completed":[],"remaining":["continue"],"references":[]}"#;
@@ -104,7 +104,7 @@ async fn unusable_summary_reports_interruption_and_retains_known_usage_without_a
         .expect("summary receipt")
         .expect("dispatch task")
         .expect_err("unusable notes");
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_PROVIDER);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_PROVIDER);
     assert!(checkpoint(&f, &attempt).await.is_none());
     assert_eq!(
         model_calls::fixture::receipts(&f, &attempt).await,
@@ -135,7 +135,7 @@ async fn stop_withholds_the_summary_ending_while_its_known_usage_still_settles()
         .expect("late summary settlement")
         .expect("dispatch task")
         .expect_err("stopped publication");
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_FENCE);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_FENCE);
     assert!(checkpoint(&f, &attempt).await.is_none());
     assert_eq!(
         model_calls::fixture::receipts(&f, &attempt).await,
@@ -177,7 +177,7 @@ async fn changed_or_removed_history_withholds_late_notes_but_settles_known_usage
             .expect("late history verification")
             .expect("dispatch task")
             .expect_err("stale summary cannot replace notes");
-        assert_eq!(error.code(), afd_core::error_code::AUTHORING_FENCE);
+        assert_eq!(error.code(), af_core::error_code::AUTHORING_FENCE);
         assert!(checkpoint(&f, &attempt).await.is_none());
         assert_eq!(
             model_calls::fixture::receipts(&f, &attempt).await,

@@ -10,7 +10,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afr_egress::testing::RecordingTransport;
+use af_egress::testing::RecordingTransport;
 use afr_executor::Client;
 use serde_json::json;
 

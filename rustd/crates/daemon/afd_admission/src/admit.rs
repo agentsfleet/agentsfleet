@@ -1,11 +1,11 @@
 //! Commit acceptance, then publish a bounded best-effort notification.
 
-use afd_core::clock;
-use afd_core::error_code::{self, Coded as _, Logged};
-use afd_core::id::Uuid7;
+use af_core::clock;
+use af_core::error_code::{self, Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_observability::metrics::label::fleet::AdmissionOutcome;
+use af_observability::producers::fleet::admission as metrics;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_observability::metrics::label::fleet::AdmissionOutcome;
-use afd_observability::producers::fleet::admission as metrics;
 use jiff::Timestamp;
 
 use crate::error::{Error, Result};

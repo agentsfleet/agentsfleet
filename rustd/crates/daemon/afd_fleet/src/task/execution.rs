@@ -2,8 +2,8 @@
 
 use super::{TaskLease, TaskRefusal, TaskScope, TaskSnapshot, guard, read, sql};
 use crate::{Result, error::query};
-use afd_core::clock;
-use afd_wire::task::{DecisionTaskVersion, TaskState};
+use af_core::clock;
+use af_wire::task::{DecisionTaskVersion, TaskState};
 use sqlx::PgConnection;
 
 pub(super) struct Owned {

@@ -1,8 +1,8 @@
 //! Native recovery facts share the existing event activity and retained history.
 
 use crate::client::ControlPlane;
-use afd_core::id::Uuid7;
-use afd_wire::activity::{
+use af_core::id::Uuid7;
+use af_wire::activity::{
     ActivityFrame, ActivityRequest, TaskActivity, TaskActivityOperation, TaskActivityPhase,
 };
 

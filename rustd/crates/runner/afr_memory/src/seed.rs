@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::ops::Deref;
 
-use afd_wire::memory::{MemoryDelta, MemoryRecallResponse, SharedMemory};
+use af_wire::memory::{MemoryDelta, MemoryRecallResponse, SharedMemory};
 
 use crate::error::Result;
 
@@ -95,7 +95,7 @@ impl<'m> Recalled<'m> {
                 key: Cow::Borrowed(&shared.key),
                 content: Cow::Borrowed(&shared.content),
                 category: Cow::Borrowed(&shared.category),
-                visibility: afd_wire::memory::Visibility::Workspace,
+                visibility: af_wire::memory::Visibility::Workspace,
             },
             writer: Some(Cow::Borrowed(&shared.writer_fleet_name)),
         }
@@ -109,7 +109,7 @@ impl<'m> Recalled<'m> {
                 key: shared.key,
                 content: shared.content,
                 category: shared.category,
-                visibility: afd_wire::memory::Visibility::Workspace,
+                visibility: af_wire::memory::Visibility::Workspace,
             },
             writer: Some(shared.writer_fleet_name),
         }

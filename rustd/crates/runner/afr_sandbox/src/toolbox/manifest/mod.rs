@@ -7,8 +7,8 @@
 //! release to this host: its architecture, this runner's version, and EROFS
 //! features every kernel this runner supports parses.
 
-use afd_core::lower_hex;
-use afd_validate::rules::charset;
+use af_core::lower_hex;
+use af_validate::rules::charset;
 use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 use base64::Engine as _;
 use garde::Validate as _;

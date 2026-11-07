@@ -45,7 +45,7 @@ pub struct Item<R = serde_json::Value> {
     /// Whether new tenant discovery and installation are allowed.
     pub published: bool,
     /// Last metadata update timestamp, such as `2026-10-24T05:00:00.000Z`.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
 }
 

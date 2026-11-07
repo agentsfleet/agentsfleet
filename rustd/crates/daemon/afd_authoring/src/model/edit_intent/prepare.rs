@@ -1,10 +1,10 @@
 //! Newest accepted message and reviewed profile are read from native owners.
 
-use afd_billing::price::PriceBook;
-use afd_core::id::Uuid7;
-use afd_wire::decision::{
+use af_core::id::Uuid7;
+use af_wire::decision::{
     DecisionPurpose, DecisionQuestion, DecisionRequest, NamedQuestion, NoulCriteria,
 };
+use afd_billing::price::PriceBook;
 use sqlx::Connection as _;
 
 use super::{CONTEXT, ModelCallInput, ModelCalls, Prepared, QUESTION, QUESTION_NAME, Snapshot};
@@ -75,7 +75,7 @@ impl ModelCalls {
         let profile = &selected.assignment.profile;
         garde::Validate::validate(selected.assignment.as_ref())?;
         if !profile.capabilities.noul
-            || !afd_wire::decision::serialized_within(
+            || !af_wire::decision::serialized_within(
                 &(&request.state, &request.questions),
                 profile.input_max_bytes as usize,
             )
@@ -94,7 +94,7 @@ impl ModelCalls {
             .decision_reservation(
                 guarded.now,
                 profile.input_max_bytes,
-                u32::try_from(afd_wire::decision::REPLY_MAX_BYTES)
+                u32::try_from(af_wire::decision::REPLY_MAX_BYTES)
                     .map_err(|_overflow| ErrorKind::Balance)?,
             )
             .ok_or(ErrorKind::Balance)?
@@ -126,7 +126,7 @@ pub(super) async fn record_fallback(
         .bind(guarded.attempt.id.as_str())
         .bind(guarded.attempt.tenant_id.as_str())
         .bind(guarded.attempt.workspace_id.as_str())
-        .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE) + i64::from(request.call_index))
+        .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE) + i64::from(request.call_index))
         .bind(guarded.draft.candidate_revision)
         .bind(disposition)
         .execute(connection)

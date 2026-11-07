@@ -1,7 +1,7 @@
 //! Refresh-token rotation against a locked, encrypted vault row, and the
 //! platform's own credentials loading row by row.
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_credential::credential::platform::Platform;
 use afd_credential::vault::rotate::Rotated;
 use serde_json::Value;

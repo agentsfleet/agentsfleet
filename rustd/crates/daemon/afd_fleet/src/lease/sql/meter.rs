@@ -1,7 +1,7 @@
 //! The one metering statement: a renewal and a settle measure the same slice
 //! the same way and differ only in how the lease ends the pass.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::statement::Bound;
 
 /// Measure the run time since the lease's cursor, then extend the lease or
@@ -73,7 +73,7 @@ pub struct Metering<'a> {
     /// The runner that holds it.
     pub runner_id: &'a Uuid7,
     /// One line per provider request since the last acknowledged renewal.
-    pub requests: &'a [afd_wire::usage::RequestUsage],
+    pub requests: &'a [af_wire::usage::RequestUsage],
 }
 
 impl<'a> Metering<'a> {
@@ -89,13 +89,13 @@ impl<'a> Metering<'a> {
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(super::LEASE_STATUS_ACTIVE)
             .bind(settles)
-            .bind(afd_core::timing::LEASE_TTL)
-            .bind(afd_core::timing::MAX_RUNTIME)
+            .bind(af_core::timing::LEASE_TTL)
+            .bind(af_core::timing::MAX_RUNTIME)
             .bind(super::LEASE_STATUS_REPORTED)
             .bind(succeeded)
             .bind(afd_billing::sql::work::FLEET_LEASE)
-            .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
-            .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
-            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
+            .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
+            .bind(af_wire::task::TaskState::Running.as_str())
     }
 }

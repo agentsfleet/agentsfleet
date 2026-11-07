@@ -36,9 +36,9 @@ mod sending;
 mod switching;
 mod window;
 
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
-use afd_fleet_runtime::Definition;
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::Definition;
 use serde_json::json;
 
 /// What a funded fixture wallet holds: a thousand dollars, past any reservation

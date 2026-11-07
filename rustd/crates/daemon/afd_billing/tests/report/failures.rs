@@ -1,7 +1,7 @@
 use super::fixture::{self, Fixture, Line};
+use af_core::env::MapEnv;
+use af_core::error_code;
 use afd_billing::tenant::Billing;
-use afd_core::env::MapEnv;
-use afd_core::error_code;
 use afd_db::config::PoolConfig;
 use afd_db::test_util::TestDatabase;
 use afd_db::{Db, DbRole};
@@ -76,7 +76,7 @@ fn config_through(options: &PgConnectOptions, addr: SocketAddr) -> PoolConfig {
         .host(&addr.ip().to_string())
         .port(addr.port())
         .to_url_lossy();
-    let timeout = afd_core::clock::saturating_millis(CONNECTION_BUDGET).to_string();
+    let timeout = af_core::clock::saturating_millis(CONNECTION_BUDGET).to_string();
     let env = MapEnv::from_pairs([
         (DbRole::Api.url_knob(), url.as_str()),
         ("DATABASE_ACQUIRE_TIMEOUT_MS", timeout.as_str()),

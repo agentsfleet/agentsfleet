@@ -3,7 +3,7 @@ use std::fmt;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use afd_core::error_code;
+use af_core::error_code;
 use afr_supervisor::StorageHome;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};

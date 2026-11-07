@@ -7,10 +7,10 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::credentials::MintCredentialResponse;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_core::test_util::trace::Capture;
+use af_wire::credentials::MintCredentialResponse;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::{RepositoryAccess, RepositoryBinding};
 use afr_executor::Unavailable;
 use afr_tools::catalog::GIT;
 use tokio::sync::mpsc;
@@ -149,7 +149,7 @@ async fn test_build_failure_leaves_the_run_going() {
     assert_eq!(failed.field("lease_id"), Some(LEASE_ID));
     assert_eq!(
         failed.field("error_code"),
-        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
         "{:?}",
         failed.fields
     );

@@ -5,7 +5,7 @@
     reason = "schema regression prerequisites fail loudly"
 )]
 
-use afd_wire::{
+use af_wire::{
     decision::DecisionAnswer,
     task::{CheckpointEntry, CheckpointFile},
 };

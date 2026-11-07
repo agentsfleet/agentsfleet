@@ -22,10 +22,10 @@ mod sort;
 mod view;
 pub use self::view::{KeyRow, Listing};
 
+use af_core::id::Uuid7;
+use af_core::paging::{BoundaryKind, Cursor, Page, SortOrder as _};
+use af_crypto::entropy::Entropy;
 use afd_auth::credential::CredentialKind;
-use afd_core::id::Uuid7;
-use afd_core::paging::{BoundaryKind, Cursor, Page, SortOrder as _};
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
@@ -187,9 +187,9 @@ impl ApiKeys {
     /// The slots take [`SortOrder::order_by`] and [`Comparator::as_sql`], both
     /// of which are methods on `Copy` enums whose only constructor is a parse
     /// against a closed allowlist. There is no expression in this workspace
-    /// that puts a caller's bytes in either — see [`afd_core::paging`].
+    /// that puts a caller's bytes in either — see [`af_core::paging`].
     ///
-    /// [`Comparator::as_sql`]: afd_core::paging::Comparator::as_sql
+    /// [`Comparator::as_sql`]: af_core::paging::Comparator::as_sql
     fn page_statement(page: &Page<ApiKeySort>) -> String {
         let template = match page.cursor.as_ref().map(Cursor::kind) {
             None => sql::SELECT_TENANT_KEY_PAGE_FIRST,

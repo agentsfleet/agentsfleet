@@ -1,11 +1,11 @@
 //! Real broker, encrypted App/installation credentials and local external GitHub exchange.
 use super::{fixture::Decisions, github_server::Server};
 use crate::report_seed::FIXTURE_KEK_HEX;
-use afd_core::clock;
+use af_core::clock;
+use af_crypto::secret::Kek;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::connector::Registry;
-use afd_crypto::secret::Kek;
 use afd_db::test_util::mint_id;
 use afd_fleet::task::{Github, Tasks};
 use afd_vault::{SecretBody, SecretName};
@@ -13,17 +13,17 @@ use serde_json::{json, value::RawValue};
 use std::sync::Arc;
 
 pub(super) async fn tasks(fixture: &Decisions<'_>, server: &Server) -> Tasks {
-    configured(fixture, server, afd_fleet_runtime::config::Access::Read).await
+    configured(fixture, server, af_fleet_runtime::config::Access::Read).await
 }
 
 pub(super) async fn publisher(fixture: &Decisions<'_>, server: &Server) -> Tasks {
-    configured(fixture, server, afd_fleet_runtime::config::Access::Write).await
+    configured(fixture, server, af_fleet_runtime::config::Access::Write).await
 }
 
 async fn configured(
     fixture: &Decisions<'_>,
     server: &Server,
-    access: afd_fleet_runtime::config::Access,
+    access: af_fleet_runtime::config::Access,
 ) -> Tasks {
     let case = fixture.case;
     // Each installation belongs to one workspace, including concurrent fixture cases.
@@ -33,7 +33,7 @@ async fn configured(
         "budget":{"daily_nanos":"1000000000"},"decision_policy":super::fixture::policy(),
         "repositories":["example/linkwarden"],
         "repository_access":"write","repository_base":"main","repository_publication":"existing_pr",
-        "repository_validation_workflows":[{"path":".github/workflows/test.yml","sha256":afd_core::etag::sha256_hex(WORKFLOW.as_bytes())}]}});
+        "repository_validation_workflows":[{"path":".github/workflows/test.yml","sha256":af_core::etag::sha256_hex(WORKFLOW.as_bytes())}]}});
     case.held
         .fixtures
         .native_config(&case.held.fleet, &config.to_string())
@@ -62,13 +62,13 @@ async fn platform(
     vault: &afd_credential::vault::Vault,
     server: &Server,
     installation: u32,
-    access: afd_fleet_runtime::config::Access,
+    access: af_fleet_runtime::config::Access,
 ) -> Platform {
     let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_RSA_SHA256).expect("generated App RSA key");
     server.app(
         installation,
         &key.public_key_pem(),
-        access == afd_fleet_runtime::config::Access::Write,
+        access == af_fleet_runtime::config::Access::Write,
     );
     let raw = RawValue::from_string(
         json!({"app_id":"7","private_key_pem":key.serialize_pem()}).to_string(),
@@ -91,7 +91,7 @@ async fn platform(
 
 fn installation() -> u32 {
     let mut bytes = [0; 4];
-    afd_crypto::entropy::Entropy::new()
+    af_crypto::entropy::Entropy::new()
         .fill(&mut bytes)
         .expect("fixture entropy");
     u32::from_be_bytes(bytes).max(1)

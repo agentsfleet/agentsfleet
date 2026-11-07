@@ -11,11 +11,11 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
+use af_crypto::secret::Kek;
 use afd_authoring::{
     Setup,
     types::{Draft, DraftPatch, PublishLibrary, Published},
 };
-use afd_crypto::secret::Kek;
 use std::sync::Arc;
 
 struct Case {

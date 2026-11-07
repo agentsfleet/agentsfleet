@@ -6,6 +6,7 @@
 
 use std::process::ExitCode;
 
+use af_core::env::ProcessEnv;
 use afd_bench::RunPrefix;
 use afd_bench::cli;
 use afd_bench::error::Result;
@@ -14,7 +15,6 @@ use afd_bench::lane::lease::shape::Shape;
 use afd_bench::lane::lease::{self, drain, saturation};
 use afd_bench::lane::sweep;
 use afd_bench::report::Lane;
-use afd_core::env::ProcessEnv;
 use core::time::Duration;
 
 use afd_bench::knobs::{WINDOW_VARIABLE, number};

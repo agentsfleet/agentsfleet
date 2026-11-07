@@ -245,7 +245,7 @@ pub static MIGRATIONS: &[Migration] = &[
 /// Derives the slot number from the filename during constant evaluation.
 ///
 /// Slice patterns rather than index arithmetic, the way
-/// `afd_core::error_code::is_registry_spelling` reads every bound out of the
+/// `af_core::error_code::is_registry_spelling` reads every bound out of the
 /// pattern instead of out of a comparison.
 ///
 /// # Panics

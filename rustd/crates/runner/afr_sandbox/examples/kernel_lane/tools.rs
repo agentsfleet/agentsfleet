@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use afr_egress::testing::RecordingTransport;
+use af_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use afr_tools::catalog::SHELL;
 use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode, ToolOutput};

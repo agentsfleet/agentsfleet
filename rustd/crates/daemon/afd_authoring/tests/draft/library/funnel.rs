@@ -3,9 +3,9 @@
 
 use super::super::funnel::{only, property};
 use super::{Case, mint, now};
+use af_core::id::Uuid7;
+use af_observability::Telemetry;
 use afd_authoring::types::{PublishLibrary, PublishRevision, Published};
-use afd_core::id::Uuid7;
-use afd_observability::Telemetry;
 
 /// The funnel's publication step.
 pub(super) const PUBLISHED: &str = "fleet_library_published";

@@ -19,9 +19,9 @@
     reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
 )]
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
+use af_wire::tool_detail::DETAIL_FIELD_MAX_BYTES;
 use afd_runner::Runners;
-use afd_wire::tool_detail::DETAIL_FIELD_MAX_BYTES;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
@@ -216,7 +216,7 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     assert_eq!(answer.status().as_u16(), 404, "{path}");
     assert_eq!(
         body_of(answer).await["error_code"],
-        json!(afd_core::error_code::TOOL_CALL_NOT_FOUND.as_str())
+        json!(af_core::error_code::TOOL_CALL_NOT_FOUND.as_str())
     );
     supervisor.shutdown().await;
     run.cleanup().await;

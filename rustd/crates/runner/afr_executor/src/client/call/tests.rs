@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use tokio::sync::mpsc;
 
 use super::{CallIds, EVENT_KILL_UNQUEUED, kill, kill_on_abandon};

@@ -5,7 +5,7 @@
 //! other digested field, so the property each proves is that the rows stored
 //! before it still hash as they did.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::*;
 

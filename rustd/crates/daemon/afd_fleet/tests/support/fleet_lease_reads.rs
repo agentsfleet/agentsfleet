@@ -12,8 +12,8 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
+use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use afd_db::test_util::{FleetSeed, SetupRevision, TenantSeed, WorkspaceSeed};
-use afd_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use jiff::Timestamp;
 
 use crate::rows::Row;

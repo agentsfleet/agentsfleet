@@ -8,7 +8,7 @@
 //! serializes concurrent replays, and the outcome the settlement stamps on the
 //! attempt is what every later replay reads.
 
-use afd_wire::authoring::{Knowledge, Outcome, Reported};
+use af_wire::authoring::{Knowledge, Outcome, Reported};
 use sqlx::PgConnection;
 
 use super::{Basis, CONTEXT, Status, guard::Attempt, prepare::Prepared, settle, sql};

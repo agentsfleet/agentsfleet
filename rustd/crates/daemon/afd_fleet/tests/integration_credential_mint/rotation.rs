@@ -10,7 +10,7 @@
 use std::pin::Pin;
 use std::sync::Arc;
 
-use afd_core::test_util::trace::{Capture, CapturedEvent};
+use af_core::test_util::trace::{Capture, CapturedEvent};
 use afd_credential::credential::{Ask, Broker, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::{Connector, Registry};
 use afd_credential::vault::KeyRef;
@@ -77,7 +77,7 @@ impl Exchanger for Rotating {
             }
             Outcome::Ok(Minted {
                 token: Zeroizing::new(ACCESS.to_owned()),
-                expires_at: afd_core::clock::after(afd_core::clock::now(), LEASE_WINDOW),
+                expires_at: af_core::clock::after(af_core::clock::now(), LEASE_WINDOW),
                 rotated_refresh_token: Some(Zeroizing::new(REPLACEMENT.to_owned())),
             })
         })

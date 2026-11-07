@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use afd_crypto::secret::SecretBytes;
+use af_crypto::secret::SecretBytes;
 
 use super::{BagFault, Relay, SMTPS_PORT, Security, TlsCache};
 use crate::test_util::{FROM, PASSWORD, bag_json};

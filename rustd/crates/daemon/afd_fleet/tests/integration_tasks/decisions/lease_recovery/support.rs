@@ -23,7 +23,7 @@ pub(in super::super) async fn provider(fixture: &Decisions<'_>) -> PlatformDefau
             &case.scope.workspace_id,
             &SecretName::parse(crate::seed::PROVIDER).expect("provider name"),
             &SecretBody::parse(&body).expect("provider credential"),
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
         .expect("encrypted coding-provider key");
@@ -42,7 +42,7 @@ pub(in super::super) async fn provider(fixture: &Decisions<'_>) -> PlatformDefau
 
 pub(in super::super) async fn model(
     fixture: &Decisions<'_>,
-    selected: Option<&afd_core::id::Uuid7>,
+    selected: Option<&af_core::id::Uuid7>,
 ) {
     let runners = fixture.case.held.fixtures.runners();
     let row = runners
@@ -58,7 +58,7 @@ pub(in super::super) async fn model(
                 assigned_policy: Some(&policy),
                 labels: None,
             },
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
         .expect("reviewed native decision model selection");
@@ -149,13 +149,13 @@ async fn chat_source(case: &Case) {
         "UPDATE fleet.admissions SET event_type=$2 WHERE id=$1::uuid AND event_type='steer'",
     )
     .bind(&case.held.event_id)
-    .bind(afd_wire::event::EventType::Chat.as_str())
+    .bind(af_wire::event::EventType::Chat.as_str())
     .execute(&mut *connection)
     .await
     .expect("native human admission kind");
     assert_eq!(admission.rows_affected(), 1);
     let event = sqlx::query("UPDATE fleet.events SET event_type=$3 WHERE fleet_id=$1::uuid AND event_id=$2 AND event_type='steer'")
-        .bind(&case.held.fleet).bind(&case.held.event_id).bind(afd_wire::event::EventType::Chat.as_str())
+        .bind(&case.held.fleet).bind(&case.held.event_id).bind(af_wire::event::EventType::Chat.as_str())
         .execute(&mut *connection).await.expect("same native history kind");
     assert_eq!(event.rows_affected(), 1);
 }

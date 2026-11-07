@@ -2,7 +2,7 @@
 
 use super::{entry::Metadata, files};
 use crate::{Result, error};
-use afd_crypto::{
+use af_crypto::{
     aad::Aad,
     entropy::Entropy,
     envelope::{Envelope, Sealer},
@@ -33,7 +33,7 @@ struct Ciphertext {
 }
 
 pub(super) fn seal(directory: &Path, metadata: Metadata, answer: &str) -> Result<()> {
-    let mut key = Zeroizing::new([0_u8; afd_crypto::KEY_LEN]);
+    let mut key = Zeroizing::new([0_u8; af_crypto::KEY_LEN]);
     Entropy::new().fill(key.as_mut())?;
     let kek = Kek::from_bytes(*key);
     let canonical = serde_json::to_vec(&metadata).map_err(error::encode)?;
@@ -68,7 +68,7 @@ pub(super) fn metadata(directory: &Path) -> Result<(Metadata, Kek)> {
             .map_err(error::malformed(crate::client::Verb::AuthoringReport))?;
     let bytes = Zeroizing::new(files::read(
         &directory.join(files::KEY),
-        afd_crypto::KEY_LEN as u64,
+        af_crypto::KEY_LEN as u64,
     )?);
     let key = bytes
         .as_slice()
@@ -96,7 +96,7 @@ pub(super) fn open(directory: &Path, metadata: &Metadata, key: &Kek) -> Result<S
         &ciphertext.nonce,
         ciphertext.bytes,
         &ciphertext.tag,
-        afd_crypto::KEK_VERSION,
+        af_crypto::KEK_VERSION,
     )?;
     let plaintext = envelope.open(key, &aad)?;
     let answer = std::str::from_utf8(plaintext.expose())

@@ -11,14 +11,14 @@
 //! # Environment arrives as a source, not as a read
 //!
 //! Every entry point takes `env: &dyn EnvSource` rather than calling
-//! [`std::env::var`], for `afd_core::env`'s reason: a test proving the
+//! [`std::env::var`], for `af_core::env`'s reason: a test proving the
 //! production refusal hands in a map instead of mutating the process. The
 //! binaries pass `ProcessEnv`.
 
 use core::fmt;
 use core::time::Duration;
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 
 use crate::error::{Error, ErrorKind, Result};
 

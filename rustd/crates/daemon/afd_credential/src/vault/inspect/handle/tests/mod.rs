@@ -8,7 +8,7 @@ use super::Handle;
 use crate::secrets::{Exchange, Supply};
 
 fn usable(raw: &str, name: &str, supply: Supply, exchange: Exchange) -> bool {
-    afd_core::json::object_from_slice::<Handle<'_>>(raw.as_bytes())
+    af_core::json::object_from_slice::<Handle<'_>>(raw.as_bytes())
         .is_ok_and(|handle| handle.usable(name, supply, Some(exchange)))
 }
 
@@ -28,7 +28,7 @@ fn svix_readiness_uses_the_same_named_signing_field_as_ingress() {
         (serde_json::json!({"webhook_secret":42}).to_string(), false),
         (serde_json::json!({"secret":secret}).to_string(), false),
     ] {
-        let parsed = afd_core::json::object_from_slice::<Handle<'_>>(raw.as_bytes());
+        let parsed = af_core::json::object_from_slice::<Handle<'_>>(raw.as_bytes());
         assert_eq!(
             parsed.map(|handle| handle.svix_usable()).ok(),
             Some(accepted)

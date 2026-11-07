@@ -21,7 +21,7 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
+use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use agentsfleetd::serve::boot;
 use agentsfleetd::supervisor::Supervisor;
 

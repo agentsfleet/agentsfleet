@@ -1,11 +1,11 @@
 //! What this crate refuses, and what it reports.
 //!
 //! The hull — the boxed struct, the backtrace, `Display`, `source()` — comes
-//! from [`afd_core::error_shell!`]. What is here is the part that varies: the
+//! from [`af_core::error_shell!`]. What is here is the part that varies: the
 //! kinds this plane can fail with, the code and sentence each answers, and the
 //! raisers that bind data.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 #[cfg(test)]
 mod tests;
@@ -17,7 +17,7 @@ mod tests;
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A policy or gate failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -62,14 +62,14 @@ pub(crate) enum ErrorKind {
     #[error("the entropy source could not answer for the gate plane")]
     Entropy {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     /// An identifier could not be minted from the current instant.
     #[error("an identifier could not be minted for the gate plane")]
     Identifier {
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     /// A money read a gate is priced against failed.
@@ -151,7 +151,7 @@ impl Error {
 }
 
 /// The sentence an unreachable datastore or queue earns.
-use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
+use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The operation could not be completed";
@@ -162,13 +162,13 @@ pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "The approval binding could not
 /// The sentence a gate whose reference could not be written earns.
 pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "The approval reference could not be recorded";
 
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_dragonfly::Error => Queue,
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,
-    afd_crypto::error::Error => Entropy,
-    afd_core::error::Error => Identifier,
+    af_crypto::error::Error => Entropy,
+    af_core::error::Error => Identifier,
 );
 
 /// Reports a statement that would not run, naming what it was doing.

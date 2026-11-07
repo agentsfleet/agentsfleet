@@ -15,9 +15,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::error_code;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Budgets, Key, Producer};
-use afd_core::error_code;
-use afd_wire::event::EventType;
 
 use crate::support::EventsLane;
 

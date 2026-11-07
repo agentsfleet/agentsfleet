@@ -1,8 +1,8 @@
 //! Event deadlines allow recovery; standing access still needs a human answer.
 
+use af_core::id::Uuid7;
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_core::id::Uuid7;
 use afd_fleet::lease::sql::{self, queue::CLAIM_HEAD};
 use sqlx::Connection as _;
 
@@ -161,14 +161,14 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &str, runner: &Uuid7) 
     let row = sqlx::query(CLAIM_HEAD)
         .bind(fleet)
         .bind(runner.as_str())
-        .bind(afd_core::timing::LEASE_TTL)
-        .bind(afd_core::timing::RUNNER_OFFLINE_AFTER)
+        .bind(af_core::timing::LEASE_TTL)
+        .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
         .bind(sql::RUNNER_STATUS_ACTIVE)
         .bind(sql::LEASE_STATUS_ACTIVE)
         .bind(sql::LEASE_STATUS_EXPIRED)
-        .bind(afd_wire::task::CAPABILITY)
-        .bind(afd_wire::task::TaskState::Ready.as_str())
-        .bind(afd_wire::task::TaskState::Running.as_str())
+        .bind(af_wire::task::CAPABILITY)
+        .bind(af_wire::task::TaskState::Ready.as_str())
+        .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
         .fetch_optional(&mut *tx)
         .await

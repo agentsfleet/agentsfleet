@@ -14,9 +14,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer, Reply};
 use afd_events::{ACTOR_MACHINE, Steer};
-use afd_wire::event::EventType;
 
 use crate::integration_steer_replay::{CHANGED_JSON, OPERATION};
 use crate::integration_steer_retry::{KEY_SEPARATOR, REQUEST_JSON, admissions_for, append_with};

@@ -35,11 +35,11 @@ fn test_the_balance_is_published_as_a_signed_amount() {
     );
     assert_eq!(
         schemas.pointer("/SignedNanos/pattern"),
-        Some(&json!(afd_wire::nanos::signed::PATTERN))
+        Some(&json!(af_wire::nanos::signed::PATTERN))
     );
     assert_eq!(
         schemas.pointer("/Nanos/pattern"),
-        Some(&json!(afd_wire::nanos::PATTERN)),
+        Some(&json!(af_wire::nanos::PATTERN)),
         "every other amount stays unsigned"
     );
 }

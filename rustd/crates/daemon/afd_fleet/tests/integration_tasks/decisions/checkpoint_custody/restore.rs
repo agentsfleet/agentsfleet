@@ -5,13 +5,13 @@ use super::super::{
     checkpoint::{complete, input, storage, valid},
     fixture::Decisions,
 };
-use afd_core::{clock, error_code};
-use afd_fleet::task::TaskLifecycle as _;
-use afd_vault::{SecretBody, SecretName};
-use afd_wire::task::{
+use af_core::{clock, error_code};
+use af_wire::task::{
     CheckpointAuthorizationInput, CheckpointMode, CheckpointPinInput, CheckpointReadQuery,
     CheckpointTransferPurpose,
 };
+use afd_fleet::task::TaskLifecycle as _;
+use afd_vault::{SecretBody, SecretName};
 use serde_json::value::RawValue;
 
 pub(super) async fn run(case: &Case) {
@@ -57,8 +57,8 @@ pub(super) async fn run(case: &Case) {
 async fn renew_writer(
     tasks: &afd_fleet::task::Tasks,
     case: &Case,
-    plan: &afd_wire::task::CheckpointPlan,
-    task: &afd_wire::task::DecisionTaskVersion,
+    plan: &af_wire::task::CheckpointPlan,
+    task: &af_wire::task::DecisionTaskVersion,
 ) {
     let renew = CheckpointPinInput {
         fencing_token: case.lease().fencing_token,
@@ -108,7 +108,7 @@ async fn credentials(fixture: &Decisions<'_>, case: &Case) {
 async fn read_pages(
     tasks: &afd_fleet::task::Tasks,
     case: &Case,
-    plan: &afd_wire::task::CheckpointPlan,
+    plan: &af_wire::task::CheckpointPlan,
     reader: &str,
 ) {
     let query = valid(CheckpointReadQuery {
@@ -148,7 +148,7 @@ async fn read_pages(
 async fn restore_pages(
     tasks: &afd_fleet::task::Tasks,
     case: &Case,
-    plan: &afd_wire::task::CheckpointPlan,
+    plan: &af_wire::task::CheckpointPlan,
     bootstrap: CheckpointAuthorizationInput,
 ) {
     let restored = tasks

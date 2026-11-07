@@ -13,7 +13,7 @@
 //! The servers themselves are [`ZOHO_ACCOUNTS_SERVERS`], shared with the refresh
 //! exchange that refuses every other host.
 
-use afd_core::credential::{ZOHO_ACCOUNTS_SERVERS, ZOHO_TOKEN_PATH};
+use af_core::credential::{ZOHO_ACCOUNTS_SERVERS, ZOHO_TOKEN_PATH};
 
 /// The default token endpoint, for a callback that named no data centre.
 ///

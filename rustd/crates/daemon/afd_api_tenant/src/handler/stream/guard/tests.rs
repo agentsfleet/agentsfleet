@@ -6,9 +6,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::error_code::{self, ErrorCode};
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::{Capture, CapturedEvent};
+use af_core::error_code::{self, ErrorCode};
+use af_core::id::Uuid7;
+use af_core::test_util::trace::{Capture, CapturedEvent};
 use afd_http::handler::Refusable;
 use afd_sse::{Frame, KIND_ACCESS_REVOKED};
 use futures_util::StreamExt as _;

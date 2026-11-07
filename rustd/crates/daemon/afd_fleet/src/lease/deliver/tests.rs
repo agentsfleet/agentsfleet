@@ -15,10 +15,10 @@
 )]
 
 use super::{Plane, Ungranted, answers, written};
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::FleetConfig;
 use afd_approval::Requested;
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
-use afd_fleet_runtime::FleetConfig;
 use afd_gate::policy::repair;
 use serde_json::json;
 
@@ -67,7 +67,7 @@ fn a_request_that_could_not_be_written_retries_rather_than_ending() {
 /// `Entropy::uuid7` lifts into `afd_approval::Error`, so this is the real
 /// variant with its real `code()`, not a stand-in.
 fn unwritable() -> afd_approval::Error {
-    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
     afd_approval::Error::from(
         entropy
@@ -101,7 +101,7 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
     // no line, no error_code, and a `no_work` identical to a healthy park — a
     // failure with no error, redelivering every second. `written` must answer
     // `None` (so the delivery is retried) AND emit the line that says why.
-    let log = afd_core::test_util::trace::Capture::install();
+    let log = af_core::test_util::trace::Capture::install();
     assert_eq!(written(Err(unwritable()), &fleet(), "github"), None);
 
     let line = log.only(super::EVENT_REQUEST_FAILED).fields;

@@ -7,8 +7,8 @@ use crate::{
     sql,
     types::{CANCELLED, QUEUED, RUNNING},
 };
-use afd_core::id::Uuid7;
-use afd_observability::AuthoringStep;
+use af_core::id::Uuid7;
+use af_observability::AuthoringStep;
 use serde::Serialize;
 use sqlx::Connection as _;
 

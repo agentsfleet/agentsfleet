@@ -25,8 +25,8 @@ mod seed;
 mod stream;
 
 use crate::harness::{json_body, send, send_with_headers};
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
 
 /// What a funded fixture wallet holds: a thousand dollars, past any reservation
 /// a fixture turn or activation can make.

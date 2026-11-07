@@ -15,7 +15,7 @@
 
 use std::process::ExitCode;
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 
 use crate::datastores::{
     DATABASE_URL_VARIABLE, DRAGONFLY_CA_CERT_VARIABLE, DRAGONFLY_URL_VARIABLE, Datastores,

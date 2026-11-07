@@ -4,8 +4,8 @@ use afd_cron::{SigningKeys, qstash::QStash};
 #[test]
 fn signing_keys_do_not_render_either_rotation_key() {
     let keys = SigningKeys {
-        current: afd_crypto::secret::SecretString::new("current-private-value".to_owned()),
-        next: afd_crypto::secret::SecretString::new("next-private-value".to_owned()),
+        current: af_crypto::secret::SecretString::new("current-private-value".to_owned()),
+        next: af_crypto::secret::SecretString::new("next-private-value".to_owned()),
     };
     let rendered = format!("{keys:?}");
     assert!(!rendered.contains("current-private-value"));
@@ -20,7 +20,7 @@ fn signing_keys_do_not_render_either_rotation_key() {
 fn scheduler_client_does_not_render_its_bearer() {
     let client = QStash::new(
         reqwest::Client::new(),
-        afd_crypto::secret::SecretString::new("scheduler-private-value".to_owned()),
+        af_crypto::secret::SecretString::new("scheduler-private-value".to_owned()),
         "https://daemon.example.test/fires".to_owned(),
         "https://scheduler.example.test".to_owned(),
     );

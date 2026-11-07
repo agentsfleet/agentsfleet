@@ -48,7 +48,7 @@ async fn every_accepted_input_page_is_applied_and_answered_before_action() -> cr
         .first()
         .ok_or_else(crate::decision::unavailable)?
         .messages;
-    assert_eq!(messages.iter().filter(|message| matches!(message,afr_providers::Message::User(text) if text.contains("accepted_task_input"))).count(),2);
+    assert_eq!(messages.iter().filter(|message| matches!(message,af_providers::Message::User(text) if text.contains("accepted_task_input"))).count(),2);
     Ok(())
 }
 
@@ -75,7 +75,7 @@ async fn applied_input_is_restored_without_duplicate_application_or_reply() -> c
             .expect("fixture mutex is unpoisoned")
             .is_empty()
     );
-    assert!(script.sent().first().is_some_and(|sent| sent.messages.iter().any(|message| matches!(message,afr_providers::Message::User(text) if text.contains("Do not remove tests")))));
+    assert!(script.sent().first().is_some_and(|sent| sent.messages.iter().any(|message| matches!(message,af_providers::Message::User(text) if text.contains("Do not remove tests")))));
     Ok(())
 }
 
@@ -131,7 +131,7 @@ async fn uncertain_effect_is_read_by_original_identity_before_any_new_action() -
             *native.reads.lock().expect("fixture mutex is unpoisoned"),
             vec![ITEM.to_owned()]
         );
-        assert!(script.sent().first().is_some_and(|sent| sent.messages.iter().any(|message| matches!(message,afr_providers::Message::User(text) if text.contains("native_publication_receipt")))));
+        assert!(script.sent().first().is_some_and(|sent| sent.messages.iter().any(|message| matches!(message,af_providers::Message::User(text) if text.contains("native_publication_receipt")))));
     }
     Ok(())
 }

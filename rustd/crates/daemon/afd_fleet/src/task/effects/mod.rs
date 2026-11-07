@@ -9,8 +9,8 @@ mod row;
 
 use super::{TaskLease, TaskRefusal, Tasks};
 use crate::Result;
-use afd_core::id::Uuid7;
-use afd_wire::task::{TaskEffect, TaskEffectInput, TaskEffectsPage, TaskEffectsQuery};
+use af_core::id::Uuid7;
+use af_wire::task::{TaskEffect, TaskEffectInput, TaskEffectsPage, TaskEffectsQuery};
 
 pub(in crate::task) use record::PublicationPermit;
 

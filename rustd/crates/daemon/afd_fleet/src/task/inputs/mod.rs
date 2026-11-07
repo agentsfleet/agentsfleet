@@ -2,8 +2,8 @@
 
 mod recover;
 
-use afd_core::paging::Cursor;
-use afd_wire::task::{
+use af_core::paging::Cursor;
+use af_wire::task::{
     DecisionTaskVersion, TaskAcceptedInput, TaskHumanInput, TaskInputCandidate, TaskInputsQuery,
     TaskInputsResponse,
 };
@@ -148,7 +148,7 @@ fn cursor(value: Option<&str>) -> Result<i64> {
     else {
         return Err(rejected("Invalid task input cursor"));
     };
-    afd_core::id::Uuid7::parse(&id).map_err(|_invalid| rejected("Invalid task input cursor"))?;
+    af_core::id::Uuid7::parse(&id).map_err(|_invalid| rejected("Invalid task input cursor"))?;
     value
         .parse::<i64>()
         .ok()
@@ -166,7 +166,7 @@ async fn accepted(
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(row::sql_counter(
-            afd_wire::task::INPUT_BATCH_MAX,
+            af_wire::task::INPUT_BATCH_MAX,
             "input batch limit",
         )?)
         .bind(
@@ -217,11 +217,11 @@ async fn candidates(
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/input_candidates.sql"))
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(i64::from(afd_wire::task::UNFINISHED_MAX) + 1)
+        .bind(i64::from(af_wire::task::UNFINISHED_MAX) + 1)
         .fetch_all(&mut *connection)
         .await
         .map_err(query("read native input association candidates"))?;
-    if candidates.len() > afd_wire::task::UNFINISHED_MAX as usize {
+    if candidates.len() > af_wire::task::UNFINISHED_MAX as usize {
         return Err(super::TaskRefusal::LimitExhausted.into());
     }
     let candidates = candidates

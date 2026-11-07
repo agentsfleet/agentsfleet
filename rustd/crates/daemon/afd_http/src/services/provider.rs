@@ -23,7 +23,7 @@
 //! one. So activation is a single verb, [`TenantProviders::activate`], and the
 //! ladder's refusals come back as outcome VALUES rather than as errors.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
 use afd_credential::provider::{Activation, PlatformDefault, Providers, Selection};
 use jiff::Timestamp;

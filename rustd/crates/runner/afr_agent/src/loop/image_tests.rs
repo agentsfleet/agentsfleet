@@ -6,8 +6,8 @@
 
 use std::borrow::Cow;
 
-use afd_wire::activity::ActivityFrame;
-use afr_providers::{ImageInput, ImageKind, Message};
+use af_providers::{ImageInput, ImageKind, Message};
+use af_wire::activity::ActivityFrame;
 use afr_tools::NoArguments;
 use afr_tools::catalog::{MEMORY_RECALL, UPDATE_PLAN};
 use afr_tools::sandbox::{ImageAttachment, ImageKind as Attached};

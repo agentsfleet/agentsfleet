@@ -3,11 +3,11 @@
 mod authority;
 mod identity;
 
+use af_crypto::secret::Kek;
 use afd_authoring::{
     Setup,
     types::{DraftPatch, Review},
 };
-use afd_crypto::secret::Kek;
 use serde_json::json;
 use std::sync::Arc;
 

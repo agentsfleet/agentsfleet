@@ -7,7 +7,7 @@
 //! reader looking for "how can this crate fail" reads one file rather than
 //! finding out one signature at a time.
 //!
-//! The hull is `afd_core::error_shell!`, the same one every sibling crate
+//! The hull is `af_core::error_shell!`, the same one every sibling crate
 //! carries, so the boxed kind keeps `Result` pointer-sized on the `Ok` path and
 //! the backtrace, the `Display` and the `source()` that skips our own kind are
 //! all generated rather than written here for the ninth time.
@@ -35,7 +35,7 @@
 //! directory it could not reach. A metadata writeback is best-effort and behind
 //! an already-committed tenant row, so it is internal rather than either.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 mod raise;
 
@@ -57,7 +57,7 @@ pub use self::raise::one_of_each_kind;
 /// cannot quietly introduce a second error type without saying so.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An identity failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -98,7 +98,7 @@ impl Error {
             ErrorKind::Claim { .. } => (error_code::AUTH_UNAVAILABLE, DETAIL_CLAIM),
             ErrorKind::Metadata { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
-                afd_core::error::DETAIL_OPERATION_FAILED,
+                af_core::error::DETAIL_OPERATION_FAILED,
             ),
         }
     }

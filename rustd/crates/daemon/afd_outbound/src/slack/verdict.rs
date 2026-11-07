@@ -65,7 +65,7 @@ pub(super) const fn verdict_of(status: u16) -> Verdict {
 /// added later cannot be the one that forgets to say anything.
 pub(super) fn failed(job: &OutboundDelivery, event: &'static str, verdict: Verdict) -> Verdict {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
+    let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
     let workspace_id = job.workspace_id.as_str();
     let fleet_id = job.fleet_id.as_str();
     let reason = match verdict {

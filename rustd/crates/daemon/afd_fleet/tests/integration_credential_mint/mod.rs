@@ -34,18 +34,18 @@ mod rotation;
 mod write_gate;
 use crate::seed;
 use crate::support;
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::envelope::Sealer;
-use afd_crypto::secret::Kek;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::envelope::Sealer;
+use af_crypto::secret::Kek;
 use afd_db::test_util::{EventKind, FleetEventSeed, mint_id};
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
 
 /// How long the fixture leases, gates and minted credentials stay live.
-const LEASE_WINDOW: std::time::Duration = afd_core::timing::LEASE_TTL;
+const LEASE_WINDOW: std::time::Duration = af_core::timing::LEASE_TTL;
 
 /// The key every fixture in this lane seals and opens under.
 ///
@@ -146,7 +146,7 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
     let kind = EventKind {
         actor: "fixture:steer",
         event_type: "chat",
-        status: afd_core::event::status::RECEIVED,
+        status: af_core::event::status::RECEIVED,
     };
     let event = FleetEventSeed::new(fleet, workspace, EVENT_ID, kind)
         .insert(&mut *connection)

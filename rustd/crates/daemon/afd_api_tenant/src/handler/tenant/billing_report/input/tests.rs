@@ -6,9 +6,9 @@
 
 use super::{Input, read};
 use crate::handler::tenant::billing_report::cursor::{Cursor, Position};
+use af_core::id::Uuid7;
 use afd_billing::report::{BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY};
 use afd_billing::sql::work;
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 
 const TENANT: &str = "01924f4e-0000-7000-8000-00000000c4a1";
@@ -44,7 +44,7 @@ fn default_month_and_today_use_utc_calendar_boundaries() {
     assert_eq!(month.scope.period, BILLING_PERIOD_MONTH);
     assert_eq!(month.request.window.from, instant(MONTH_START));
     assert_eq!(month.request.window.through, instant(NOW));
-    assert_eq!(month.request.limit, afd_core::paging::DEFAULT_LIMIT);
+    assert_eq!(month.request.limit, af_core::paging::DEFAULT_LIMIT);
     let today = parsed("period=today");
     assert_eq!(today.scope.period, BILLING_PERIOD_TODAY);
     assert_eq!(today.request.window.from, instant(DAY_START));
@@ -62,7 +62,7 @@ fn cutoff_offsets_are_normalized_before_selecting_the_utc_day() {
 
 #[test]
 fn report_limits_keep_the_shared_edges_and_refuse_other_spellings() {
-    for count in [1, afd_core::paging::MAX_LIMIT] {
+    for count in [1, af_core::paging::MAX_LIMIT] {
         assert_eq!(parsed(&format!("limit={count}")).request.limit, count);
     }
     for query in [

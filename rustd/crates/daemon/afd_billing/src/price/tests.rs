@@ -3,9 +3,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::catalogue::Price;
-use afd_core::id::Uuid7;
-use afd_wire::usage::UsageLine;
+use af_core::catalogue::Price;
+use af_core::id::Uuid7;
+use af_wire::usage::UsageLine;
 use jiff::Timestamp;
 
 use super::{PriceBook, Rater, Tier, Window};

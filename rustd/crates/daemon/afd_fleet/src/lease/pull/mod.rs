@@ -34,8 +34,8 @@
 //! — that last would need a new registry code. Any body, or none, gets that
 //! shape.
 
-use afd_core::{error_code, id::Uuid7};
-use afd_wire::event::EventType;
+use af_core::{error_code, id::Uuid7};
+use af_wire::event::EventType;
 use jiff::Timestamp;
 
 use crate::error::Result;
@@ -44,8 +44,8 @@ use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::store::Leases;
+use af_core::event::label;
 use afd_billing::Accounts;
-use afd_core::event::label;
 use afd_credential::provider::{Providers, Resolved};
 use afd_credential::vault::Vault;
 use afd_gate::gate::{Check, Gates};

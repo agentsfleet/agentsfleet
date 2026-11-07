@@ -34,9 +34,9 @@ pub struct VerifiedClaims {
     /// The `sub` claim — the provider's identifier for the person.
     pub subject: crate::principal::Subject,
     /// The tenant claim, absent on a token minted before a tenant exists.
-    pub tenant: Option<afd_core::id::Uuid7>,
+    pub tenant: Option<af_core::id::Uuid7>,
     /// The `workspace_id` claim, the only ceiling any credential can carry.
-    pub workspace_scope: Option<afd_core::id::Uuid7>,
+    pub workspace_scope: Option<af_core::id::Uuid7>,
     /// The raw space-delimited `scopes` claim, absent when the token carries
     /// none. Left unparsed so [`crate::scope::parse_claim`] stays the single
     /// place a claim becomes a capability set.

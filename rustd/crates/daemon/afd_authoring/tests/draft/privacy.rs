@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use afd_core::error_code::{AUTHORING_GONE, AUTHORING_NOT_FOUND};
+use af_core::error_code::{AUTHORING_GONE, AUTHORING_NOT_FOUND};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

@@ -10,9 +10,9 @@ pub(crate) mod tests;
 
 use self::{meter::Observed, turn::Turn};
 use crate::{Result, lease_loop::Lessee};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
-use afd_wire::authoring::{Accounting, FailureReason, Lease, Outcome, Report};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::authoring::{Accounting, FailureReason, Lease, Outcome, Report};
 use serde_json::Value;
 
 struct Ending {

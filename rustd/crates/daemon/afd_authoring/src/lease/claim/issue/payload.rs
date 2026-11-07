@@ -1,7 +1,7 @@
 //! Only native setup and bounded text accompany the scoped invocation token.
 
+use af_wire::authoring::{ENVELOPE_BYTES_MAX, Limits, ModelAccess, Pricing, SelectedModel};
 use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, Limits, ModelAccess, Pricing, SelectedModel};
 
 use super::{FENCE, Placement};
 use crate::{
@@ -40,7 +40,7 @@ pub(super) fn build(
         model_access: ModelAccess {
             token: placement.token.clone(),
             expires_at: placement.until,
-            invocation_path: afd_wire::paths::AUTHORING_MODEL_CALLS
+            invocation_path: af_wire::paths::AUTHORING_MODEL_CALLS
                 .replace("{lease_id}", placement.lease.as_str()),
         },
         candidate: context.candidate,

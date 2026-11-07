@@ -10,7 +10,7 @@
 
 use std::time::Duration;
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_tenant::error::InviteConflict;
 use jiff::Timestamp;
 

@@ -21,7 +21,7 @@
 
 use std::time::Duration;
 
-use afd_fleet_runtime::config::{GateRule, RepositoryBinding};
+use af_fleet_runtime::config::{GateRule, RepositoryBinding};
 
 /// The trustworthy half of one approval card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,7 +100,7 @@ mod tests {
     use std::time::Duration;
 
     use super::Stated;
-    use afd_fleet_runtime::config::{Behavior, GateRule};
+    use af_fleet_runtime::config::{Behavior, GateRule};
 
     /// A rule's timeout, as a fixture authors one.
     const FIFTEEN_MINUTES: Duration = Duration::from_mins(15);

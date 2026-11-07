@@ -232,7 +232,7 @@ The runner reserves and records intent and goal calls through these routes; the 
 | Report | the final slice is logged in the report's transaction; nothing else | `rustd/crates/daemon/afd_fleet/src/lease/report/mod.rs`, `settle.rs` |
 | Relay | every unsettled line, and the last slice of a lease that ended unreported | `rustd/crates/daemon/afd_fleet/src/lease/billing_sweep.rs`, `afd_billing::ledger::resettle` |
 
-**Request lines.** The runner reports one line per provider request, `{seq, at, input, cached input, three cache-write classes, output}`, in each renewal and in its report (`afd_wire::usage::RequestUsage`). It numbers them from zero and keeps every line the daemon has not recorded. A renewal's answer names `recorded_through`, the highest line it recorded, and the runner forgets only those, so a lost answer or an unreadable body re-sends its lines instead of losing them. One body carries at most 512 lines (`afd_wire::usage::LINES_MAX`), a cap a renewal and the report share, and the runner sends its oldest 512 unrecorded lines in each. Before its report, a runner holding more than 512 renews them away in full bodies (`afr_supervisor::renew::flush`). If a renewal fails mid-flush, the lines past the report's 512 are logged as `usage_lines_unflushed` and never billed.
+**Request lines.** The runner reports one line per provider request, `{seq, at, input, cached input, three cache-write classes, output}`, in each renewal and in its report (`af_wire::usage::RequestUsage`). It numbers them from zero and keeps every line the daemon has not recorded. A renewal's answer names `recorded_through`, the highest line it recorded, and the runner forgets only those, so a lost answer or an unreadable body re-sends its lines instead of losing them. One body carries at most 512 lines (`af_wire::usage::LINES_MAX`), a cap a renewal and the report share, and the runner sends its oldest 512 unrecorded lines in each. Before its report, a runner holding more than 512 renews them away in full bodies (`afr_supervisor::renew::flush`). If a renewal fails mid-flush, the lines past the report's 512 are logged as `usage_lines_unflushed` and never billed.
 
 The two paths answer a broken body differently:
 
@@ -245,7 +245,7 @@ A runner still sending cumulative totals can never have a line recorded, so its 
 
 **Measuring run time.** `METER_LEASE` (`rustd/crates/daemon/afd_fleet/src/lease/sql/meter_lease.sql`) keeps its fence, its two deadlines and its lifetime tally, and moves no money. It answers the run time since the lease's own `last_metered_at`, on the database's clock and never past the deadline the lease was granted, and advances that cursor. Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` serialises every pass on one lease.
 
-**Logging the lines.** The lease path prices every request line and the runtime line through the `Rater` and logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing. Runtime lines take numbers from `afd_wire::usage::DAEMON_SEQ_BASE`, after the runtime lines the lease already logged, read under its row lock. A runner line and a daemon line never share a number, and two passes never take one (`rustd/crates/daemon/afd_fleet/tests/integration_lease_billing_races.rs`).
+**Logging the lines.** The lease path prices every request line and the runtime line through the `Rater` and logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing. Runtime lines take numbers from `af_wire::usage::DAEMON_SEQ_BASE`, after the runtime lines the lease already logged, read under its row lock. A runner line and a daemon line never share a number, and two passes never take one (`rustd/crates/daemon/afd_fleet/tests/integration_lease_billing_races.rs`).
 
 **Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, about 2 s later. After a restart, its first pass settles what the crash left.
 
@@ -390,7 +390,7 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 | Fleet declares **no** `budget` | **admit** | undeclared is unbounded, exactly as before this gate existed. The tenant credit pool still bounds it. Refusing would enforce a ceiling nobody wrote |
 | `budget` declared but unparseable | **refuse** (fail closed) | a ceiling we cannot read is not a ceiling we may ignore |
 
-The stored budget is parsed by the same `FleetConfig` parser that accepted it at ingest (`afd_fleet_runtime::config::policy::Budget`), so the ceiling that admits a run and the ceiling that kills it are one number.
+The stored budget is parsed by the same `FleetConfig` parser that accepted it at ingest (`af_fleet_runtime::config::policy::Budget`), so the ceiling that admits a run and the ceiling that kills it are one number.
 
 **The fleet list reads a counter, not a sum.** `fleet.activity_counters.budget_used_nanos` is kept by a trigger on `billing.usage_lines` (`schema/2040_billing_usage_lines.sql`), so the fleet list stays one indexed counter read per fleet with no per-row aggregate.
 
@@ -467,7 +467,7 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 - Persisted event rows — `fleet.events`, `billing.usage_lines`, anything else under `core.*` or `billing.*`.
 - User-facing artefacts — fleet setup and reviews, the dashboard, CLI table output, status-page bodies.
 
-The boundary is "process-internal vs user-facing," not "in memory vs not in memory." Within `agentsfleetd`, the resolved provider key and connector tokens are held as `afd_crypto::secret::SecretString`, whose owned buffer is wiped on drop (`rustd/crates/foundation/afd_crypto/src/secret/string.rs`). The decrypted `secrets_map` a lease carries, authorization-header storage, and plaintext during active use remain outside this guarantee. A grep across the event log, `agentsfleetd` logs, runner logs, and user-facing HTTP responses for the api_key bytes after a self-managed run is a Continuous Integration (CI) invariant (M48 acceptance criteria).
+The boundary is "process-internal vs user-facing," not "in memory vs not in memory." Within `agentsfleetd`, the resolved provider key and connector tokens are held as `af_crypto::secret::SecretString`, whose owned buffer is wiped on drop (`rustd/crates/foundation/af_crypto/src/secret/string.rs`). The decrypted `secrets_map` a lease carries, authorization-header storage, and plaintext during active use remain outside this guarantee. A grep across the event log, `agentsfleetd` logs, runner logs, and user-facing HTTP responses for the api_key bytes after a self-managed run is a Continuous Integration (CI) invariant (M48 acceptance criteria).
 
 ### 8.3 The credential metadata list and whole-body replace
 
@@ -506,7 +506,7 @@ The column is nullable; catalogue seeding fills missing settings and preserves e
 An unconfigured row remains visible to administrators and cannot drive chat or runtime inference.
 Configure its real endpoint and token limits before enabling it.
 
-`afd_inference::Configured` validates these settings and builds rig's Chat Completions, Responses, Messages, native Gemini `GenerateContent`, or native Ollama chat codec. Provider names and model names identify rows; neither chooses a URL or API format. The runner's JSON routing table is deleted. Curation input for prices remains an operator tool and does not decide runtime routes.
+`af_inference::Configured` validates these settings and builds rig's Chat Completions, Responses, Messages, native Gemini `GenerateContent`, or native Ollama chat codec. Provider names and model names identify rows; neither chooses a URL or API format. The runner's JSON routing table is deleted. Curation input for prices remains an operator tool and does not decide runtime routes.
 
 Workspace choices join the owner's model registrations to credentials and the exact `(provider, model_id)` catalogue row. The active platform default uses its own configured model and credential. Both choices require credentials, valid settings, nonnegative prices, and a usable context window. Authoring additionally requires that the selected SDK wire supports proposal tools; runtime eligibility is checked separately. A credential carrying an endpoint restriction authorizes only that saved endpoint. Catalogue changes advance the revision pinned into the model identity; stale admitted work cannot silently acquire different routing or limits.
 
@@ -519,7 +519,7 @@ The fleet's operating context cap can trigger earlier [conversation compaction](
 The selected model still supplies the physical window. Each request bounds output by the saved maximum and remaining physical headroom after complete encoded input.
 Pinned input that cannot fit refuses dispatch.
 
-`rig-core` and `rig-http` are pinned to 0.44.0. The shared `afd_inference::log_filter` filters rig's request/reply traces and the warning containing a provider's private error text in both daemon and runner logging. Model keys and private prompts never become log fields.
+`rig-core` and `rig-http` are pinned to 0.44.0. The shared `af_inference::log_filter` filters rig's request/reply traces and the warning containing a provider's private error text in both daemon and runner logging. Model keys and private prompts never become log fields.
 
 ---
 
@@ -584,7 +584,7 @@ A biller in another process never joins or delays our transaction, and the lease
 
 A `Settlement` carries each line's raw usage and the daemon's price. A biller that prices for itself may ignore our price, and `LedgerBiller` charges it.
 
-**Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`: the tier from the request's whole prompt (uncached input, cache reads and cache writes together), the date range from the request's `at`, clamped by the daemon to the work's own window so a runner cannot backdate. Self-managed work charges runtime only. Cache writes reach the line apart from uncached input: the runner takes them out of rig's prompt total and splits them by the lifetime the provider reports (`afr_providers::usage`), so a write bills at its class's rate and never also as input. A write the provider names no lifetime for bills at the tier's unspecified-lifetime rate, and a tier that publishes none leaves it unpriced, never free. Each token category rounds **up** per line, so the platform never under-bills and over-bills by at most one nano per category per request.
+**Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`: the tier from the request's whole prompt (uncached input, cache reads and cache writes together), the date range from the request's `at`, clamped by the daemon to the work's own window so a runner cannot backdate. Self-managed work charges runtime only. Cache writes reach the line apart from uncached input: the runner takes them out of rig's prompt total and splits them by the lifetime the provider reports (`af_providers::usage`), so a write bills at its class's rate and never also as input. A write the provider names no lifetime for bills at the tier's unspecified-lifetime rate, and a tier that publishes none leaves it unpriced, never free. Each token category rounds **up** per line, so the platform never under-bills and over-bills by at most one nano per category per request.
 
 **Outage policy.** `WithOutagePolicy<B>` wraps any biller. Under `OutagePolicy::Open`, a `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` reads the policy; a failed `settle` leaves the lines for the relay's next pass.
 

@@ -3,8 +3,8 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use afd_core::id::Uuid7;
-use afr_egress::Mint as _;
+use af_core::id::Uuid7;
+use af_egress::Mint as _;
 
 use super::{LeaseMint, mint};
 use crate::client::Verb;
@@ -54,7 +54,7 @@ async fn a_refused_mint_is_not_retried() {
 #[tokio::test]
 async fn a_lease_mint_hands_the_model_the_daemons_code_first() {
     let lease_id = Uuid7::parse(LEASE_ID).unwrap();
-    let drift = afd_core::error_code::REPAIR_BINDING_DRIFT;
+    let drift = af_core::error_code::REPAIR_BINDING_DRIFT;
     let (plane, _calls) =
         plane(move |_call| Answer::Fail(error::refused(Verb::Mint, 403, Some(drift))));
 

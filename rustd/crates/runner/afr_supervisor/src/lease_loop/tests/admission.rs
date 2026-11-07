@@ -7,10 +7,10 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use afd_core::error_code;
-use afd_core::test_util::trace::Capture;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::ExecutionPolicy;
+use af_core::error_code;
+use af_core::test_util::trace::Capture;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::ExecutionPolicy;
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::Unavailable;
 use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
@@ -225,7 +225,7 @@ struct NamelessRefusal;
 #[async_trait::async_trait]
 impl AgentEngine for NamelessRefusal {
     fn admit(&self, _policy: &ExecutionPolicy<'_>) -> afr_agent::Result<Needs> {
-        Err(afr_providers::Error::refused(NAMELESS_STATUS).into())
+        Err(af_providers::Error::refused(NAMELESS_STATUS).into())
     }
 
     async fn run(&self, _run: AgentRun<'_>) -> afr_agent::Result<RunOutput> {
@@ -252,6 +252,6 @@ async fn a_refusal_naming_nothing_still_ends_the_lease_before_anything_starts() 
     let refused = capture.only(EVENT_UNHOSTED);
     assert_eq!(refused.level, tracing::Level::ERROR);
     assert_eq!(refused.field(FIELD_NAME), None, "there is nothing to name");
-    let code = afr_providers::Error::refused(NAMELESS_STATUS).code();
+    let code = af_providers::Error::refused(NAMELESS_STATUS).code();
     assert_eq!(refused.field(FIELD_ERROR_CODE), Some(code.as_str()));
 }

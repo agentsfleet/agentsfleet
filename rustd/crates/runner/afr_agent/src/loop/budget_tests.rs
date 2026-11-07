@@ -4,9 +4,9 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_wire::activity::ActivityFrame;
-use afr_egress::testing::CountingMint;
-use afr_providers::Message;
+use af_egress::testing::CountingMint;
+use af_providers::Message;
+use af_wire::activity::ActivityFrame;
 use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use tokio_util::sync::CancellationToken;

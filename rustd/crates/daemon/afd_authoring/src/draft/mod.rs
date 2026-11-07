@@ -9,11 +9,11 @@ pub(crate) mod read;
 use std::sync::Arc;
 
 use crate::{Result, error::raise::stored};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_observability::Analytics;
 use afd_billing::biller::Biller;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_observability::Analytics;
 use moka::future::Cache;
 use tokio::sync::Mutex;
 
@@ -63,7 +63,7 @@ impl Drafts {
 }
 
 pub(crate) fn etag(id: &Uuid7, version: i64) -> String {
-    afd_core::etag::versioned(id, version)
+    af_core::etag::versioned(id, version)
 }
 
 pub(crate) fn value<T: serde::de::DeserializeOwned>(value: &str) -> Result<T> {

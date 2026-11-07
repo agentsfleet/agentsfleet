@@ -10,7 +10,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_wire::event::EventType;
+use af_wire::event::EventType;
 use afr_tools::ToolErrorCode;
 use agentsfleetd::supervisor::Supervisor;
 use hyper::Method;

@@ -3,8 +3,8 @@
 //! request extension a layer inserted, and fails closed when that layer is not
 //! mounted, because a handler running without it is a routing fault.
 
+use af_core::error_code;
 use afd_auth::principal::Principal;
-use afd_core::error_code;
 use axum::response::{IntoResponse as _, Response};
 
 use super::{DETAIL_NOT_YOURS, Owned};

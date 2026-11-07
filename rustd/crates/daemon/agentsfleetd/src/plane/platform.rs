@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 use afd_mail::InviteMailer;

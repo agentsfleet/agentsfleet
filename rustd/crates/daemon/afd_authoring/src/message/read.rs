@@ -9,7 +9,7 @@ use crate::{
     replay, sql,
     types::{Message, MessageQuery, MessageState, Page, QUEUED, RUNNING},
 };
-use afd_core::{id::Uuid7, paging::Cursor};
+use af_core::{id::Uuid7, paging::Cursor};
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -165,7 +165,7 @@ fn project(stored: Stored) -> Result<Message> {
         failure: stored
             .failure_reason
             .as_deref()
-            .map(word::<afd_wire::authoring::FailureReason>)
+            .map(word::<af_wire::authoring::FailureReason>)
             .transpose()?
             .map(|reason| crate::types::Failure::for_message(reason, cause)),
         created_at: stored.created_at,

@@ -1,6 +1,6 @@
 //! Requirements are copied from validated setup, without substituting live status.
 
-use afd_fleet_runtime::{Definition, config::Budget};
+use af_fleet_runtime::{Definition, config::Budget};
 use serde::Serialize;
 use serde_json::Value;
 

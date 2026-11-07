@@ -4,9 +4,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use af_core::clock::{Clock, FixedClock};
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifyError};
-use afd_core::clock::{Clock, FixedClock};
 use afd_identity::jwks::cache::{DEFAULT_TTL, REFRESH_MIN_INTERVAL, STALE_GRACE};
 use afd_identity::jwks::source::KeySetSource;
 use afd_identity::{JwksVerifier, VerifierConfig};

@@ -30,9 +30,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::SecretBytes;
+use af_core::env::MapEnv;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::SecretBytes;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::Dragonfly;
@@ -91,7 +91,7 @@ fn connectors() -> Connectors {
         NOWHERE_QUEUE.to_owned(),
     ))
     .expect("a lazy manager opens no socket, so it cannot fail to open one");
-    let kek = std::sync::Arc::new(afd_crypto::secret::Kek::from_bytes([7_u8; 32]));
+    let kek = std::sync::Arc::new(af_crypto::secret::Kek::from_bytes([7_u8; 32]));
 
     Connectors::new(
         PlatformApp::new(Vault::new(
@@ -202,7 +202,7 @@ async fn a_state_minted_for_one_connector_does_not_verify_as_another() {
 #[tokio::test]
 async fn a_state_past_its_window_is_expired_rather_than_forged() {
     let presented = state_for(Provider::Slack, STARTER);
-    let long_after = afd_core::clock::after(NOW, ONE_DAY);
+    let long_after = af_core::clock::after(NOW, ONE_DAY);
 
     assert_eq!(
         connectors()

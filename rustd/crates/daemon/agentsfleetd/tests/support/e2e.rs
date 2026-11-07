@@ -11,7 +11,7 @@
 //! directly and pass the instant in. Here the daemon reads its own clock, so a
 //! frozen seed would place the admission and the lease deadline years
 //! apart and the assignment pass would correctly find nothing. Everything below
-//! is stamped from [`afd_core::clock::now`] for that reason, which is also why
+//! is stamped from [`af_core::clock::now`] for that reason, which is also why
 //! nothing here asserts on an absolute instant.
 #![allow(
     dead_code,
@@ -25,11 +25,11 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use afd_core::env::{EnvSource as _, ProcessEnv};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::event::EventType;
 use afd_runner::Runners;
-use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
 use jiff::Timestamp;
@@ -211,7 +211,7 @@ pub(crate) async fn scenario_with(
     .await
     .expect("the lane's Postgres and Dragonfly are up");
     let base = format!("http://{}", booted.address);
-    let now = afd_core::clock::now();
+    let now = af_core::clock::now();
 
     let (fleet, workspace, tenant) = unique_ids();
     seed_fleet(
@@ -261,7 +261,7 @@ impl Scenario {
             &self.fleet,
             &self.workspace,
             event_type,
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
     }

@@ -11,16 +11,16 @@
 
 use std::sync::Arc;
 
+use af_core::env::MapEnv;
+use af_crypto::secret::{Kek, SecretBytes, SecretString};
+use af_observability::Analytics;
 use afd_api::{Services as _, TenantSurface as _};
 use afd_auth::{NoCapabilitySource, NoVerifier};
-use afd_core::env::MapEnv;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
-use afd_crypto::secret::{Kek, SecretBytes, SecretString};
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_observability::Analytics;
 use afd_sse::{Ceiling, Live};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
@@ -168,7 +168,7 @@ async fn production_plane_hands_each_route_its_deployment_facts() {
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_the_daemon_doorbell_hears_its_hub() {
-    use afd_core::id::Uuid7;
+    use af_core::id::Uuid7;
     use afd_dragonfly::SubscriptionHub;
 
     /// Long enough for the listener task to hear a frame the server pushed.

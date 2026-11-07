@@ -1,5 +1,5 @@
 //! How a call ended, the output edges a frame and the trace show, and the run's
-//! trace under the bounds `afd_wire::tool_trace` declares.
+//! trace under the bounds `af_wire::tool_trace` declares.
 //!
 //! The daemon re-checks every bound and drops a trace that breaks one, so the
 //! runner builds one that cannot: past `TRACE_MAX_CALLS` a call is counted as
@@ -12,13 +12,13 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
-use afd_wire::tool_trace::{
+use af_wire::tool_trace::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
     TRACE_MAX_BYTES, TRACE_MAX_CALLS, ToolCallStatus, ToolTrace, ToolTraceCall, encoded_len,
 };
 use serde_json::{Map, Value};
 
-use afr_secrets::{Clean, json};
+use af_secrets::{Clean, json};
 
 /// How one call ended, as its completion frame and its trace row carry it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +153,7 @@ impl Trace {
             output_tail: outcome.tail.map(Cow::Owned),
             output_line_count: outcome.line_count,
             exit_code: outcome.exit_code,
-            duration_ms: afd_core::clock::saturating_millis(outcome.elapsed),
+            duration_ms: af_core::clock::saturating_millis(outcome.elapsed),
         };
         // A comma joins every row after the first.
         let joint = usize::from(!self.calls.is_empty());

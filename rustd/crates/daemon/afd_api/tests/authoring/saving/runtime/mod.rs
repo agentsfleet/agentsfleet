@@ -12,8 +12,8 @@ use super::{
     super::{json_body, mint, send, send_with_headers},
     fixture::{Case, history_identities, runtime_history},
 };
+use af_core::id::Uuid7;
 use afd_auth::Scope;
-use afd_core::id::Uuid7;
 use axum::Router;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};

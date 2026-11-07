@@ -4,7 +4,7 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use afd_core::error_code::{AUTHORING_MODEL, AUTHORING_REPLAY};
+use af_core::error_code::{AUTHORING_MODEL, AUTHORING_REPLAY};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -92,7 +92,7 @@ async fn a_replayed_create_whose_draft_row_is_unreadable_surfaces_the_stored_fau
         .expect_err("a replay cannot project an unreadable draft");
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_DB_QUERY,
+        af_core::error_code::INTERNAL_DB_QUERY,
         "a stored fault, not gone"
     );
     f.cleanup().await;

@@ -12,7 +12,7 @@
 //! statement decodes through `query_as` and folds each column read into the
 //! one failure sqlx already reports for the query.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::FromRow;
 use sqlx::postgres::PgRow;

@@ -34,7 +34,7 @@ impl Precondition for Verdict {
 }
 
 /// A fleet's new schedule on the lane's fleet.
-fn fleet_made(fleet: &afd_core::id::Uuid7) -> NewSchedule<'_> {
+fn fleet_made(fleet: &af_core::id::Uuid7) -> NewSchedule<'_> {
     NewSchedule {
         fleet,
         source: Source::Fleet,

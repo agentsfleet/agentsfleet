@@ -1,8 +1,8 @@
 //! A matching native task proves the signed route retains early completion evidence.
 
 use super::Fixture;
+use af_wire::decision::{DecisionQuestion, NamedQuestion, NoulCriteria};
 use afd_db::test_util::mint_id;
-use afd_wire::decision::{DecisionQuestion, NamedQuestion, NoulCriteria};
 use sqlx::Acquire as _;
 
 impl Fixture {
@@ -43,7 +43,7 @@ impl Fixture {
             }])
             .expect("typed questions serialize"),
         )
-        .bind(afd_wire::task::TaskState::Waiting.as_str())
+        .bind(af_wire::task::TaskState::Waiting.as_str())
         .bind(false)
         .bind(0_i64)
         .execute(&mut *tx)

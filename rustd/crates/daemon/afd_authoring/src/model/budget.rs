@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_billing::biller::{Account, Ask, Biller, Funds, WorkKey};
 use afd_billing::{Nanos, RUN_NANOS_PER_SEC};
-use afd_core::id::Uuid7;
 use afd_credential::provider::RegisteredModel;
 use sqlx::PgConnection;
 
@@ -15,9 +15,9 @@ use crate::{
 };
 
 pub(crate) const MAX_CALLS: i64 = 8;
-pub(crate) const PROVIDER_TIMEOUT: Duration = afd_inference::stream::READ_TIMEOUT;
+pub(crate) const PROVIDER_TIMEOUT: Duration = af_inference::stream::READ_TIMEOUT;
 /// How long a provider's private result outlives its dispatch.
-pub(crate) const PRIVATE_TTL: Duration = afd_core::timing::DAY;
+pub(crate) const PRIVATE_TTL: Duration = af_core::timing::DAY;
 /// The longest an authoring attempt runs, renewal included.
 pub(crate) const WALL: Duration = Duration::from_secs(300);
 const MILLION: i128 = 1_000_000;

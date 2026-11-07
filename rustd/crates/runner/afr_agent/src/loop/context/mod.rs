@@ -1,8 +1,8 @@
 //! Preflight, compact and continue over the same private working-context engine.
 use super::Harness;
-use afd_context::{Checkpoint, CheckpointStore as _, Identity, Plan, Window};
-use afd_core::clock::{Clock as _, SystemClock};
-use afr_providers::Message;
+use af_context::{Checkpoint, CheckpointStore as _, Identity, Plan, Window};
+use af_core::clock::{Clock as _, SystemClock};
+use af_providers::Message;
 use sha2::{Digest as _, Sha256};
 
 mod effects;
@@ -36,7 +36,7 @@ impl State {
 }
 
 impl Harness<'_, '_> {
-    pub(super) async fn preflight(&mut self) -> afd_context::Result<()> {
+    pub(super) async fn preflight(&mut self) -> af_context::Result<()> {
         let physical = self.shared.model_context_tokens;
         // A scripted provider can deliberately have no physical model. Production
         // connections reject that unresolved policy before a loop starts.
@@ -62,7 +62,7 @@ impl Harness<'_, '_> {
                 harness: self,
             };
             let mut paging = source.pages();
-            let plan = afd_context::prepare(
+            let plan = af_context::prepare(
                 &mut paging,
                 &mut estimator,
                 identity.clone(),
@@ -97,14 +97,14 @@ impl Harness<'_, '_> {
             }
         }
     }
-    async fn context_parameters(&mut self) -> afd_context::Result<(String, Identity, Window)> {
+    async fn context_parameters(&mut self) -> af_context::Result<(String, Identity, Window)> {
         if self.context.branch.is_none() {
             self.context.branch = Some(if self.depth == 0 {
                 self.shared.lease_id.to_owned()
             } else {
-                afd_crypto::entropy::Entropy::new()
+                af_crypto::entropy::Entropy::new()
                     .uuid7(SystemClock.now())
-                    .map_err(afd_context::Error::boundary)?
+                    .map_err(af_context::Error::boundary)?
                     .to_string()
             });
         }
@@ -112,7 +112,7 @@ impl Harness<'_, '_> {
             .context
             .branch
             .as_deref()
-            .ok_or_else(afd_context::Error::stale)?;
+            .ok_or_else(af_context::Error::stale)?;
         let mut store = effects::Store {
             port: self.shared.context_checkpoints,
             branch,
@@ -136,7 +136,7 @@ impl Harness<'_, '_> {
                     self.shared.inference,
                     self.shared.model_context_tokens,
                 ))
-                .map_err(afd_context::Error::boundary)?,
+                .map_err(af_context::Error::boundary)?,
             )),
             pinned: hex::encode(Sha256::digest(self.shared.instructions.as_bytes())),
         };

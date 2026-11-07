@@ -206,7 +206,7 @@ impl Drain {
             self.in_flight()
         };
         if in_flight_at_close > 0 {
-            let bound_ms = afd_core::clock::saturating_millis(bound);
+            let bound_ms = af_core::clock::saturating_millis(bound);
             tracing::info!(
                 in_flight = in_flight_at_close,
                 bound_ms,
@@ -221,7 +221,7 @@ impl Drain {
         if abandoned > 0 {
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
-            let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
                 error_code,
                 in_flight = abandoned,

@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use afd_core::env::{EnvSource, optional};
+use af_core::env::{EnvSource, optional};
 use redis::{ConnectionAddr, IntoConnectionInfo as _};
 
 use crate::error::{Error, ErrorKind, Result};

@@ -2,8 +2,8 @@
 
 use super::{Fixture, Provider, call, claim, funded, queue, state, unknown_report};
 use crate::draft::funnel::{FINISHED, only, property};
+use af_core::{error_code, id::Uuid7};
 use afd_authoring::{Claimed, ProviderRequest, ProviderResponse, Transport};
-use afd_core::{error_code, id::Uuid7};
 use serde_json::json;
 use std::sync::{Arc, atomic::AtomicUsize};
 use tokio::{

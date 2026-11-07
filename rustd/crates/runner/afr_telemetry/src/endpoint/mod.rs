@@ -12,8 +12,8 @@
 //! one, and merges it into every request whatever this crate configured — so
 //! checking the general knob alone would leave three ways in.
 
-use afd_core::env::EnvSource;
-use afd_otlp::{COMPRESSION_KNOBS, HEADER_KNOBS, OTEL_ENDPOINT_KNOB, OtlpConfig, Refused};
+use af_core::env::EnvSource;
+use af_otlp::{COMPRESSION_KNOBS, HEADER_KNOBS, OTEL_ENDPOINT_KNOB, OtlpConfig, Refused};
 
 use crate::error::Result;
 
@@ -43,7 +43,7 @@ impl Endpoint {
     ///
     /// # Errors
     /// A header knob or a user in the endpoint, naming the knob; a
-    /// compression knob, naming it; any knob `afd_otlp` cannot read, naming
+    /// compression knob, naming it; any knob `af_otlp` cannot read, naming
     /// that knob.
     pub fn from_env<E: EnvSource + ?Sized>(env: &E) -> Result<Option<Self>> {
         if let Some(knob) = first_set(env, &HEADER_KNOBS) {
@@ -76,7 +76,7 @@ fn first_set<E: EnvSource + ?Sized>(env: &E, knobs: &[&'static str]) -> Option<&
     knobs
         .iter()
         .copied()
-        .find(|knob| afd_core::env::optional(env, knob).is_some())
+        .find(|knob| af_core::env::optional(env, knob).is_some())
 }
 
 /// `knob` refused, for the reason `why`.

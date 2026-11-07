@@ -14,8 +14,8 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::id::Uuid7;
-use afd_wire::tool_detail::{
+use af_core::id::Uuid7;
+use af_wire::tool_detail::{
     DETAIL_EVENT_MAX_BYTES, DetailRejection, RawToolCallRecord, ToolCallRecord,
     ToolCallRecordsRequest, ToolCallRecordsStored,
 };

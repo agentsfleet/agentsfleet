@@ -5,9 +5,9 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use afd_core::error_code;
+use af_core::error_code;
+use af_wire::task::{TaskLimits, TaskState, TaskUsage};
 use afd_fleet::task::{PreparedPlan, TaskBindings, TaskLease, TaskLifecycle as _, TaskScope};
-use afd_wire::task::{TaskLimits, TaskState, TaskUsage};
 use futures_util::future::join_all;
 use tokio::sync::Barrier;
 
@@ -246,7 +246,7 @@ async fn stored_deadline(case: &Case, reply: &TaskBindings) {
         .tasks
         .inputs(
             case.lease(),
-            &garde::Unvalidated::new(afd_wire::task::TaskInputsQuery {
+            &garde::Unvalidated::new(af_wire::task::TaskInputsQuery {
                 fencing_token: case.lease().fencing_token,
                 starting_after: None,
                 after_input_sequence: None,

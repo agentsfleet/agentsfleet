@@ -182,7 +182,7 @@ async fn the_single_gate_read_names_the_decider_too() {
         .page(&lane.workspace, Filter::default(), None, WHOLE_PAGE)
         .await
         .expect("the queue read must not fault");
-    let gate_id = afd_core::id::Uuid7::parse(&listed.first().expect("the resolved gate").gate_id)
+    let gate_id = af_core::id::Uuid7::parse(&listed.first().expect("the resolved gate").gate_id)
         .expect("the read returns a well-formed gate id");
 
     let one = lane

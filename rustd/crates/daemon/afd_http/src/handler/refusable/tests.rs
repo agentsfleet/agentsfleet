@@ -4,7 +4,7 @@
 //! length rule asks for: inline tests are what a coverage instrument counts
 //! as product, and moving them frees the most lines for the least risk.
 
-use afd_core::error_code::INTERNAL_DB_UNAVAILABLE;
+use af_core::error_code::INTERNAL_DB_UNAVAILABLE;
 
 /// Every adapter here is four one-line delegations, and that is exactly why
 /// they are worth grading: a `code()` that called the wrong inherent method

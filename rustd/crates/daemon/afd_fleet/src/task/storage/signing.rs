@@ -32,7 +32,7 @@ pub(super) async fn upload(
         .identity(&identity)
         .region("auto")
         .name("s3")
-        .time(afd_core::clock::now().into())
+        .time(af_core::clock::now().into())
         .settings(settings(lifetime))
         .build()?
         .into();

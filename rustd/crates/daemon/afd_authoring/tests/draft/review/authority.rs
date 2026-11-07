@@ -1,8 +1,8 @@
 //! Joined creators use owner resources; current revocation still wins before review.
 
 use super::*;
+use af_core::error_code::AUTHORING_NOT_FOUND;
 use afd_authoring::types::{CheckKind, CheckState};
-use afd_core::error_code::AUTHORING_NOT_FOUND;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -119,7 +119,7 @@ async fn an_inline_connector_other_than_slack_is_ready_on_its_credential_alone()
 }
 
 async fn store_named(f: &Fixture, name: &str, object: &str) {
-    use afd_crypto::entropy::Entropy;
+    use af_crypto::entropy::Entropy;
     use afd_vault::{SecretBody, SecretName, Vault};
     let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
         .expect("fixture key");

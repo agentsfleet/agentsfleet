@@ -6,8 +6,8 @@
 //! for itself. Keeping them in one table meant every arm restating which of
 //! the two planes it belonged to.
 
+use af_wire::paths;
 use afd_auth::Scope;
-use afd_wire::paths;
 
 use super::path::fleet_runner_path;
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};

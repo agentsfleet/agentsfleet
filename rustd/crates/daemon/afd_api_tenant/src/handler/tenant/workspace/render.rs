@@ -2,12 +2,12 @@
 
 use std::borrow::Cow;
 
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::paging::Cursor;
 use afd_api_wire::workspace::{
     CreatedWorkspaceResponse, WorkspaceAccount, WorkspaceSummary, WorkspacesResponse,
 };
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::paging::Cursor;
 use afd_tenant::workspace::accounts::Accounts;
 use afd_tenant::workspace::directory::{Created, WorkspacePage, WorkspaceRow};
 
@@ -100,9 +100,9 @@ pub(super) fn created_response<'created>(
     reason = "test module: an unmet precondition should fail the test loudly"
 )]
 mod tests {
-    use afd_core::error_code;
-    use afd_core::id::Uuid7;
-    use afd_core::test_util::trace::Capture;
+    use af_core::error_code;
+    use af_core::id::Uuid7;
+    use af_core::test_util::trace::Capture;
     use afd_tenant::workspace::access::Role;
     use afd_tenant::workspace::accounts::{Account, Accounts};
     use afd_tenant::workspace::directory::{WorkspacePage, WorkspaceRow};

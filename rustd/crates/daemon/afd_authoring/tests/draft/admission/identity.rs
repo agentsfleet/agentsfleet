@@ -1,8 +1,8 @@
 //! Native placement pins a single accepted request and never discloses credentials.
 
 use super::{claim, funded, mint, now, queue};
+use af_core::timing::LEASE_TTL;
 use afd_authoring::types::SendMessage;
-use afd_core::timing::LEASE_TTL;
 use jiff::SignedDuration;
 use sha2::{Digest as _, Sha256};
 

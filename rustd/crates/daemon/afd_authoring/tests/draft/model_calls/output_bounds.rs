@@ -4,9 +4,9 @@ use super::{
     super::{attempt::Attempt, definition, fixture::Fixture},
     fixture::{self, Provider},
 };
+use af_core::error_code;
+use af_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage, Proposal, ProposalCall};
 use afd_authoring::types::Source;
-use afd_core::error_code;
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage, Proposal, ProposalCall};
 use serde_json::{Value, json};
 use std::sync::Arc;
 

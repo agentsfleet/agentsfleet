@@ -34,7 +34,7 @@ use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::{Held, held};
 
 /// The first line number the daemon's runtime lines take.
-const BASE: i64 = afd_wire::usage::DAEMON_SEQ_BASE as i64;
+const BASE: i64 = af_wire::usage::DAEMON_SEQ_BASE as i64;
 
 /// Holds the row the renewal's usage-line insert trigger must update.
 const HOLD_COUNTER: &str =

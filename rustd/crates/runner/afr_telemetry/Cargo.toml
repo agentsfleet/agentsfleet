@@ -22,14 +22,14 @@ test-util = []
 [dependencies]
 # The environment seam, the error hull, the registry codes, the worker clamp
 # the lease table is sized from.
-afd_core.workspace = true
+af_core.workspace = true
 # The census reader, the instrument set, the family kinds, the span and label
 # vocabulary, and the closed-set macro the label enums are declared with.
-afd_observability.workspace = true
+af_observability.workspace = true
 # The transport the daemon builds through too: the knobs and the pipelines.
-afd_otlp.workspace = true
+af_otlp.workspace = true
 # Optional provider token observations shared with daemon calls.
-afd_wire.workspace = true
+af_wire.workspace = true
 # The published tool catalog, so a tool label is a catalog name or `_other`.
 afr_tools.workspace = true
 opentelemetry.workspace = true
@@ -44,7 +44,7 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 # Independent coverage of every provider the SDK registers.
 rig-core.workspace = true
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 # An exporter build failure, lifted to prove it stays a transport failure.
 opentelemetry-otlp.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }

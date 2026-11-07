@@ -19,10 +19,10 @@
 //! letting it retry forever.
 
 use crate::error::{Result, Unavailable};
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::principal::Subject;
-use afd_core::error_code;
-use afd_core::id::Uuid7;
 use sqlx::FromRow;
 
 /// The column a malformed tenant identifier is reported against.

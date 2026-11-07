@@ -1,6 +1,6 @@
 //! A conversation owns its encoded history; only its unfinished tail may change.
-use afd_context::Group;
-use afr_providers::Message;
+use af_context::Group;
+use af_providers::Message;
 use std::ops::Range;
 
 pub(super) type Entry = (Group, Range<usize>);
@@ -18,22 +18,22 @@ impl Index {
         }
     }
 
-    pub(super) fn refresh(&mut self, messages: &[Message]) -> afd_context::Result<()> {
+    pub(super) fn refresh(&mut self, messages: &[Message]) -> af_context::Result<()> {
         self.refresh_with(messages, |group| {
-            afr_providers::context_document(group).map_err(afd_context::Error::boundary)
+            af_providers::context_document(group).map_err(af_context::Error::boundary)
         })
     }
 
     fn refresh_with(
         &mut self,
         messages: &[Message],
-        mut encode: impl FnMut(&[Message]) -> afd_context::Result<String>,
-    ) -> afd_context::Result<()> {
+        mut encode: impl FnMut(&[Message]) -> af_context::Result<String>,
+    ) -> af_context::Result<()> {
         // Completed groups are immutable in Harness. read_input can extend the
         // last user message, and the next turn can complete that same group.
         let mut index = self.groups.pop().map_or(0, |(_, range)| range.start);
         if index > messages.len() {
-            return Err(afd_context::Error::stale());
+            return Err(af_context::Error::stale());
         }
         while index < messages.len() {
             if index == self.pinned {
@@ -53,7 +53,7 @@ impl Index {
             }
             let group = messages
                 .get(start..index)
-                .ok_or_else(afd_context::Error::stale)?;
+                .ok_or_else(af_context::Error::stale)?;
             self.groups.push((
                 Group {
                     sequence: index as u64,

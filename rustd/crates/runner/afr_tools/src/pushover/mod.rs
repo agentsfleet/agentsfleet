@@ -9,8 +9,8 @@
 
 use std::ops::RangeInclusive;
 
-use afr_egress::{Draft, Error, Placement};
-use afr_secrets::FIELD_TOKEN;
+use af_egress::{Draft, Error, Placement};
+use af_secrets::FIELD_TOKEN;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
+use af_wire::task::DecisionAssessment;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _, Tasks};
-use afd_wire::task::DecisionAssessment;
 use sqlx::Connection as _;
 use tokio::time::timeout;
 

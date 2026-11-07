@@ -16,10 +16,10 @@
 
 use crate::requests;
 use crate::support;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_auth::directory::Digest;
 use afd_runner::Verdict;
 use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::enrolment;
 use self::support::Fixtures;
@@ -92,10 +92,10 @@ async fn test_enrolment_stores_the_clamped_assignment() {
         .expect("an out-of-range worker count is clamped, never refused");
 
     let runner = enrolled.runner_id.as_str().to_owned();
-    assert_eq!(enrolled.worker_count, afd_core::limits::MAX_WORKERS);
+    assert_eq!(enrolled.worker_count, af_core::limits::MAX_WORKERS);
     assert_eq!(
         fixtures.text(Row::Runner(&runner), "worker_count").await,
-        Some(afd_core::limits::MAX_WORKERS.to_string()),
+        Some(af_core::limits::MAX_WORKERS.to_string()),
         "the reply and the row must agree — two values with a comment saying \
          which is authoritative is the shape this avoids"
     );

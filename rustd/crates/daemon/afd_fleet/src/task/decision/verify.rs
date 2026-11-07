@@ -1,6 +1,6 @@
 //! Fresh authority checks reuse saved questions, prices and logical identity.
 
-use afd_wire::task::DecisionReservationInput;
+use af_wire::task::DecisionReservationInput;
 use sqlx::PgConnection;
 
 use super::{context::AssessedContext, ownership::NativeContext, prepare, row::Call};

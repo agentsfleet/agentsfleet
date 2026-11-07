@@ -9,13 +9,13 @@ use crate::{
     fixture::{Canned, Frames, call, lease, say, spent, unbounded},
     testing::{ContextMemory, Discard},
 };
-use afd_wire::{
+use af_providers::{Chunk, Connect, End, Message, Provider, Request};
+use af_wire::{
     activity::ActivityFrame,
     context::{ContextProgress, ContextState},
     lease::LeasePayload,
     policy::ExecutionPolicy,
 };
-use afr_providers::{Chunk, Connect, End, Message, Provider, Request};
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::{StreamExt as _, stream::BoxStream};
 use std::sync::{
@@ -53,15 +53,15 @@ enum SummaryFailure {
     Truncated,
 }
 impl Connect for Model {
-    fn admit(&self, _: &ExecutionPolicy<'_>) -> afr_providers::Result<()> {
+    fn admit(&self, _: &ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
-    fn connect(&self, _: &LeasePayload<'_>) -> afr_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
 impl Provider for Model {
-    fn measure(&self, request: Request<'_>) -> afr_providers::Result<u64> {
+    fn measure(&self, request: Request<'_>) -> af_providers::Result<u64> {
         // The external scripted wire's framing: deterministic pressure after
         // complete tool pairs, independent of machine speed or reported usage.
         Ok(if request.single_attempt {
@@ -70,14 +70,14 @@ impl Provider for Model {
             100 + request.messages.len() as u64 * TOKENS_PER_MESSAGE
         })
     }
-    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, afr_providers::Result<Chunk>> {
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
         let mut chunks = if request.single_attempt {
             self.seen.summaries.fetch_add(1, Ordering::SeqCst);
             assert!(request.tools.is_empty() && request.hosted.is_empty());
-            assert_eq!(request.instructions, afd_context::SUMMARY_INSTRUCTIONS);
+            assert_eq!(request.instructions, af_context::SUMMARY_INSTRUCTIONS);
             assert_eq!(
                 request.max_output_tokens,
-                Some(afd_context::SUMMARY_OUTPUT_TOKENS)
+                Some(af_context::SUMMARY_OUTPUT_TOKENS)
             );
             let summary = summary();
             vec![
@@ -135,8 +135,8 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
     lease.policy.model_context_tokens = 10_000;
     lease.policy.context.context_cap_tokens = 10_000;
     lease.policy.context.stage_chunk_threshold = 0.90;
-    lease.policy.inference = Some(afd_wire::inference::ModelInference {
-        api: afd_wire::inference::InferenceApi::Chat,
+    lease.policy.inference = Some(af_wire::inference::ModelInference {
+        api: af_wire::inference::InferenceApi::Chat,
         base_url: "https://models.example.com/v1".into(),
         dialect: None,
         max_output_tokens: 2_048,
@@ -153,7 +153,7 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
             ),
-            mint: &afr_egress::testing::CountingMint::never(),
+            mint: &af_egress::testing::CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
             context_checkpoints: &contexts,

@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use afd_wire::activity::{ActivityAccepted, ActivityRequest};
+use af_wire::activity::{ActivityAccepted, ActivityRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -40,7 +40,7 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
 /// Forwards one batch of live-tail frames.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::LEASE_ACTIVITY,
+    path = af_wire::paths::LEASE_ACTIVITY,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_publish_activity",
     summary = "Publish live activity",

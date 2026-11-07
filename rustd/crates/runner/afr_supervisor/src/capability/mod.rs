@@ -8,8 +8,8 @@
 
 use std::borrow::Cow;
 
-use afd_core::spelling::to_spelling;
-use afd_wire::runner::{
+use af_core::spelling::to_spelling;
+use af_wire::runner::{
     CapabilityReport, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
 };
 use afr_sandbox::{HostProbe, Kvm, MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP};
@@ -50,7 +50,7 @@ const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a work
 pub fn capability_report(probe: &HostProbe) -> CapabilityReport<'_> {
     CapabilityReport {
         durable_tasks_v1: true,
-        build_id: afd_core::build::SOURCE_ID.map(Cow::Borrowed),
+        build_id: af_core::build::SOURCE_ID.map(Cow::Borrowed),
         landlock: probe.landlock,
         seccomp: probe.seccomp,
         cgroup_controllers: probe

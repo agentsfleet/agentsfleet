@@ -23,14 +23,14 @@
 //! callback cost a hash rather than a round trip, and the signature is where
 //! that is stated.
 
+use af_core::id::Uuid7;
+use af_crypto::secret::{SecretBytes, SecretString};
 use afd_connector::grant::BotIdentity;
 use afd_connector::slack::{Replies, Thread, Unavailable};
 use afd_connector::{
     Catalogued, Connection, Connectors, Finishing, Forgotten, Landed, Provider, Rejected,
     Result as ConnectorResult, Spent, Started, Starting, Verified,
 };
-use afd_core::id::Uuid7;
-use afd_crypto::secret::{SecretBytes, SecretString};
 use jiff::Timestamp;
 
 /// Everything the connector routes act through.
@@ -52,7 +52,7 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
     ///
     /// # Errors
     /// [`Rejected`], which the caller logs by [`Rejected::reason`] and answers
-    /// as one code — see [`afd_core::error_code::CONNECTOR_STATE_INVALID`].
+    /// as one code — see [`af_core::error_code::CONNECTOR_STATE_INVALID`].
     fn verify(
         &self,
         provider: Provider,

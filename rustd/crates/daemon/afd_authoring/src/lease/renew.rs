@@ -11,8 +11,8 @@
 //! refused by `can_renew` either way. Database time is sampled again after the
 //! host lock, so every expiry check reads time after every wait.
 
-use afd_core::{clock, id::Uuid7, timing::LEASE_TTL};
-use afd_wire::authoring::{Renew, Renewed};
+use af_core::{clock, id::Uuid7, timing::LEASE_TTL};
+use af_wire::authoring::{Renew, Renewed};
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 

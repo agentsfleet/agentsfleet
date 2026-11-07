@@ -5,10 +5,10 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_wire::runner::{CONTROLLER_NAME_MAX_BYTES, HeartbeatRequest, REPORT_CONTROLLERS_MAX};
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::{CONTROLLER_NAME_MAX_BYTES, HeartbeatRequest, REPORT_CONTROLLERS_MAX};
 use serde_json::json;
 
 use super::{EVENT_LIVENESS_WRITE, bounded_report, refuse_selftest, report};

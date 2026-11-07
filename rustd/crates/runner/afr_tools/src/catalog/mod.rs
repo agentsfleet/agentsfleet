@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use afr_egress::Transport;
+use af_egress::Transport;
 
 use crate::error::{self, Result};
 use crate::handler::Typed;

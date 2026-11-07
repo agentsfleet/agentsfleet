@@ -2,8 +2,8 @@
 
 use super::{Intake, interpretation, unavailable};
 use crate::Result;
-use afd_wire::task::{TaskAcceptedInterpretation, TaskInputsResponse, TaskRecoveredItem};
-use afr_providers::{Message, Request};
+use af_providers::{Message, Request};
+use af_wire::task::{TaskAcceptedInterpretation, TaskInputsResponse, TaskRecoveredItem};
 
 impl Intake<'_> {
     pub(crate) async fn reply(
@@ -12,7 +12,7 @@ impl Intake<'_> {
         item: &TaskRecoveredItem,
         inputs: &TaskInputsResponse<'_>,
     ) -> Result<String> {
-        let scrub = afr_secrets::Scrub::new(&self.lease.policy)?;
+        let scrub = af_secrets::Scrub::new(&self.lease.policy)?;
         let context = serde_json::json!({ "original_message": accepted.message,
             "accepted_item": item, "current_task": inputs.current_task, "current_work": inputs.tasks });
         let instructions = format!(

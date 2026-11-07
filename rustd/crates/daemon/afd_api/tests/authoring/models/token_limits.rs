@@ -7,7 +7,7 @@
 
 use super::super::{json_body, send};
 use super::fixture::Model;
-use afd_core::error_code;
+use af_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;

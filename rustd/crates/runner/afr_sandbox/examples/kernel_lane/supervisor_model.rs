@@ -18,8 +18,8 @@ const MESSAGE: &str = "message";
 const ORIGIN: &str = "origin";
 
 use crate::supervisor_plane::SCHEDULE_ID;
-use afd_wire::activity::StreamTextKind;
-use afr_providers::{Call, Chunk};
+use af_providers::{Call, Chunk};
+use af_wire::activity::StreamTextKind;
 use serde_json::{Value, json};
 
 #[path = "../../../../daemon/agentsfleetd/tests/support/fake_model.rs"]
@@ -139,7 +139,7 @@ pub(crate) fn refused_calls() -> Vec<Call> {
         ),
     ]
 }
-pub(crate) fn mutations() -> Vec<afr_providers::Call> {
+pub(crate) fn mutations() -> Vec<af_providers::Call> {
     vec![
         call(
             SCHEDULE,

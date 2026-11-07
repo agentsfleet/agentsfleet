@@ -67,14 +67,14 @@ afd_dragonfly.workspace = true
 redis.workspace = true
 # Identifiers, the clock the pass is given, and the environment source the
 # daemon's own pool config resolves through.
-afd_core.workspace = true
+af_core.workspace = true
 # The entropy surface a lease mints its identifiers from.
 # The ledger a steer is admitted through. The lane builds one so its
 # measured cost is the production path's, not a shortcut around it.
 afd_admission.workspace = true
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # The enrolment request shape a seeded runner is registered with.
-afd_wire.workspace = true
+af_wire.workspace = true
 # The reads the lanes take of what they measured, and the connection the
 # shared seeds write through.
 sqlx.workspace = true
@@ -87,7 +87,7 @@ tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time
 # The daemon's own lease instrument: candidates per poll are READ from
 # `producers::fleet::lease_polled`. Statements come from `pg_stat_statements`,
 # which counts what every crate sends (M241_001 §3).
-afd_observability.workspace = true
+af_observability.workspace = true
 # The manual reader the counters are collected through. Nothing exports
 # anywhere; the provider exists so an in-process reader can be asked for a sum.
 opentelemetry.workspace = true
@@ -103,7 +103,7 @@ thiserror.workspace = true
 [dev-dependencies]
 # `MapEnv`: the environment a test hands every knob reader instead of
 # mutating the process.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 # `Redis::unreachable`: a handle that opens no socket, so the abort rail can be
 # proven wired into a lane without a datastore to kill.
 afd_dragonfly = { workspace = true, features = ["test-util"] }

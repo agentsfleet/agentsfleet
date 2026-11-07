@@ -6,7 +6,7 @@
 //! is: a record of another workspace's fleet is not read and then hidden, it
 //! is never read.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::History;
 use crate::error::{self, Result};

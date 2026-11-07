@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use afd_core::{error_code, id::Uuid7};
+use af_core::{error_code, id::Uuid7};
 use afd_fleet::task::TaskLifecycle as _;
 
 use super::fixture::{Case, exercise};

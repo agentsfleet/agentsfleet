@@ -12,8 +12,8 @@
 
 use crate::harness;
 
-use afd_core::test_util::trace::{Capture, CapturedSpan};
-use afd_observability::semconv;
+use af_core::test_util::trace::{Capture, CapturedSpan};
+use af_observability::semconv;
 use axum::body::Body;
 use http::{Method, Request};
 use tower::ServiceExt as _;
@@ -55,7 +55,7 @@ async fn test_span_route_template() {
 ///
 /// `tracing` takes field names as syntax, so two of the three cannot be written
 /// as constants. This is what stops the literals in `trace.rs` and the
-/// vocabulary in `afd_observability` drifting apart — the compiler cannot.
+/// vocabulary in `af_observability` drifting apart — the compiler cannot.
 #[test]
 fn test_span_fields_are_the_semconv_keys() {
     assert_eq!(semconv::ATTR_HTTP_ROUTE, "http.route");

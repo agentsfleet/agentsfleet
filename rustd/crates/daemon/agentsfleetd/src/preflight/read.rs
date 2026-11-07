@@ -7,10 +7,10 @@
 
 use std::fmt;
 
+use af_core::env::{EnvSource, optional};
+use af_core::id::Uuid7;
+use af_crypto::secret::Kek;
 use afd_connector::Dashboard;
-use afd_core::env::{EnvSource, optional};
-use afd_core::id::Uuid7;
-use afd_crypto::secret::Kek;
 use afd_identity::ProviderSecret;
 use url::Host;
 
@@ -144,7 +144,7 @@ pub(super) fn classify<T, E: fmt::Display>(
 
 /// Resolves the master key, which no sibling crate reads from the environment.
 ///
-/// `afd_crypto` deliberately takes hex rather than a knob name — it is the
+/// `af_crypto` deliberately takes hex rather than a knob name — it is the
 /// layer that must not know where a key came from — so the read belongs here.
 pub(super) fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<Kek> {
     // Held as a secret from the moment it is read, so the hex is zeroed when

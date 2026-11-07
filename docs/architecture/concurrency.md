@@ -172,9 +172,9 @@ constraint. Each is documented at its declaration (C4).
 |---|---|---|---|
 | hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await — the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
 | outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
-| runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
+| runner series table | `af_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
 | doorbell hint buffer | `afd_dragonfly::Doorbell` | at most 64 distinct recent fleet IDs | leaf mutex; no database or network calls while held |
-| metric instruments | `afd_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf — held alone |
+| metric instruments | `af_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf — held alone |
 | Capability caches | `afd_identity`'s `ProviderCapabilities` | separate Moka stores for fresh claims and last confirmed claims; each is bounded to 4096 subjects | conditional per-key invalidation precedes `try_get_with`, which coalesces concurrent fetches; failed refreshes retain the original stale timestamp, and unknown subjects clear the fallback |
 | JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
 | run ledger | `afr_agent`'s `Ledger` | one run's open calls and the counter they share | taken to open a call and again to end it, never across its handler, so a child's call can open and end inside its parent's `delegate` |
@@ -209,8 +209,8 @@ timeouts already bound it.
 The runner bounds each call in the HTTP client that makes it: the control-plane
 client's `CALL_TIMEOUT` (`rustd/crates/runner/afr_supervisor/src/client/http.rs`), the
 egress transport's request and connect timeouts
-(`rustd/crates/harness/afr_egress/src/network/mod.rs`), and the model providers' connect and
-read timeouts (`rustd/crates/harness/afr_providers/src/connect/mod.rs`).
+(`rustd/crates/harness/af_egress/src/network/mod.rs`), and the model providers' connect and
+read timeouts (`rustd/crates/harness/af_providers/src/connect/mod.rs`).
 
 ---
 

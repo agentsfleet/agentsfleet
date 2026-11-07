@@ -2,8 +2,8 @@
 
 use super::sql;
 use crate::{Result, error::query};
+use af_wire::task::TaskState;
 use afd_billing::Nanos;
-use afd_wire::task::TaskState;
 use sqlx::PgConnection;
 
 const NANOS_PER_SECOND: i64 = 1_000_000_000;

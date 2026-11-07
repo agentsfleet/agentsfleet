@@ -1,6 +1,6 @@
 //! Semantic identity excludes worker ownership and changing accounting counters.
 
-use afd_wire::task::{DecisionAssessment, TaskContext};
+use af_wire::task::{DecisionAssessment, TaskContext};
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
@@ -86,11 +86,11 @@ impl AssessedContext {
             &self.execution,
             &self.candidates,
         ))
-        .map_err(afd_core::json::Unreadable::from)?;
+        .map_err(af_core::json::Unreadable::from)?;
         Ok(format!(
             "{}/{}",
             self.subject()?,
-            afd_core::etag::sha256_hex(&bytes)
+            af_core::etag::sha256_hex(&bytes)
         ))
     }
 }

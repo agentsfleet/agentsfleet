@@ -5,8 +5,8 @@ mod record;
 mod reserve;
 mod verdict;
 
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     authoring::{Proposal, ProposalCall},
     decision::{DecisionAssignment, DecisionRequest},
 };
@@ -88,7 +88,7 @@ impl ModelCalls {
     }
 
     async fn evaluate_edit(&self, prepared: &Prepared) -> verdict::Evaluation {
-        use afr_providers::decision::DecisionEvaluator as _;
+        use af_providers::decision::DecisionEvaluator as _;
         let outcome = async {
             let config = self
                 .decisions
@@ -100,7 +100,7 @@ impl ModelCalls {
                 .providers
                 .resolve_decision_key(&config.admin, profile.api)
                 .await?;
-            let evaluator = afr_providers::decision::DecisionClient::with_client(
+            let evaluator = af_providers::decision::DecisionClient::with_client(
                 config.client.clone(),
                 profile,
                 key,

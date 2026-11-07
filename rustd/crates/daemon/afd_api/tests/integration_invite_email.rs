@@ -13,10 +13,10 @@
 
 use std::time::Duration;
 
+use af_observability::{InviteEmailOutcome, Recorded, Telemetry};
 use afd_db::test_util::mint_id;
 use afd_mail::test_util::{FakeRelay, LOOPBACK, Session, bag_json};
 use afd_mail::{IDEMPOTENCY_HEADER, SMTP_RELAY_BAG};
-use afd_observability::{InviteEmailOutcome, Recorded, Telemetry};
 use afd_tenant::team::{EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT, EMAIL_STATUS_UNCONFIGURED};
 use afd_vault::{SecretBody, SecretName};
 use axum::Router;

@@ -15,8 +15,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL, MAX_RUNTIME};
+use af_core::id::Uuid7;
+use af_core::timing::{LEASE_TTL, MAX_RUNTIME};
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Leases, Renewed};
@@ -82,14 +82,14 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
     let renewed_at = fixtures.metered_since(&fleet).await;
     assert_eq!(
         deadline(&early),
-        Some(afd_core::clock::after(renewed_at, LEASE_TTL)),
+        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
         "with hours of budget left, a renewal takes the full lease TTL"
     );
     assert_eq!(
         fixtures
             .instant(Row::Slot(&fleet), "lease_expires_at")
             .await,
-        Some(afd_core::clock::after(renewed_at, LEASE_TTL)),
+        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
         "the SLOT moves with the lease — advancing one without the other is what \
          gets a healthy run reclaimed mid-flight"
     );
@@ -104,7 +104,7 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         .instant(Row::Lease(lease), "created_at")
         .await
         .expect("the lease row carries its start");
-    let ceiling = afd_core::clock::after(started, MAX_RUNTIME);
+    let ceiling = af_core::clock::after(started, MAX_RUNTIME);
 
     let clamped = extend(&leases, lease, &runner, (&lease_key, &pricing), now)
         .await
@@ -234,14 +234,14 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
         .renew(
             &runner,
             lease,
-            afd_wire::report::RenewRequest::default(),
+            af_wire::report::RenewRequest::default(),
             now,
         )
         .await
         .expect_err("an exhausted tenant cannot fund another slice");
     assert_eq!(
         refusal.code(),
-        afd_core::error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        af_core::error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
         "the runner is told WHICH pool ran dry: the tenant's balance, not the fleet's ceiling"
     );
 

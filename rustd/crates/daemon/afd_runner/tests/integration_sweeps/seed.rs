@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use afd_core::clock;
+use af_core::clock;
 use afd_db::test_util::{FleetSeed, RunnerSeed, TenantSeed, WorkspaceSeed};
 use afd_state::sql::{FLEET_STATUS_ACTIVE, LEASE_STATUS_ACTIVE, LEASE_STATUS_REPORTED};
 use jiff::Timestamp;

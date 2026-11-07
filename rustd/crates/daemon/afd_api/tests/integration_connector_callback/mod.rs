@@ -29,9 +29,9 @@
 
 use crate::harness;
 
+use af_core::error_code;
+use af_core::test_util::trace::Capture;
 use afd_connector::Provider;
-use afd_core::error_code;
-use afd_core::test_util::trace::Capture;
 use afd_tenant::workspace::crossing::EVENT_CROSSING;
 use http::{Method, StatusCode, header};
 use serde_json::Value;

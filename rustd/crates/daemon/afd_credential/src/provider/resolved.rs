@@ -1,7 +1,7 @@
 //! A resolved provider owns its redacted, zeroizing credential.
 
+use af_crypto::secret::SecretString;
 use afd_billing::Posture;
-use afd_crypto::secret::SecretString;
 
 /// One tenant's provider, resolved for one lease.
 ///
@@ -46,7 +46,7 @@ pub struct Resolved {
     /// no defensive re-check, and there is none.
     pub endpoint: Option<Dialled>,
     /// Model settings pinned by explicit native model selection.
-    pub inference: Option<afd_wire::inference::ModelInference>,
+    pub inference: Option<af_wire::inference::ModelInference>,
     /// The key itself.
     ///
     /// Private. See the module note: this is the field Invariant 3 is about,
@@ -82,7 +82,7 @@ impl Resolved {
 
     /// Pins the configured model's non-secret inference settings on this resolution.
     #[must_use]
-    pub fn with_inference(mut self, inference: afd_wire::inference::ModelInference) -> Self {
+    pub fn with_inference(mut self, inference: af_wire::inference::ModelInference) -> Self {
         self.inference = Some(inference);
         self
     }

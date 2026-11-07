@@ -25,10 +25,10 @@ pub(crate) mod slack;
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
 use afd_credential::credential::{Ask, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::Connector;
-use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot_with_connector_boundary, boot_with_exchanger};
 use agentsfleetd::supervisor::Supervisor;
 use jiff::Timestamp;
@@ -63,7 +63,7 @@ impl Exchanger for MintedToken {
         _connector: &'a dyn Connector,
         _ask: Ask<'a>,
     ) -> std::pin::Pin<Box<dyn Future<Output = Outcome> + Send + 'a>> {
-        let expires_at = afd_core::clock::after(afd_core::clock::now(), TOKEN_LIFETIME);
+        let expires_at = af_core::clock::after(af_core::clock::now(), TOKEN_LIFETIME);
         Box::pin(std::future::ready(Outcome::Ok(Minted {
             token: MINTED_TOKEN.to_owned().into(),
             expires_at,
@@ -107,7 +107,7 @@ pub(super) async fn install_with(
     install_subscriber();
     let exclusive = SCENARIOS.lock().await;
     let booted = boot_minting(supervisor, provider_base, extra).await;
-    let now = afd_core::clock::now();
+    let now = af_core::clock::now();
     let (_unused, workspace, tenant) = unique_ids();
     seed_workspace(&booted, &workspace, &tenant, now).await;
     seed_wallet(&booted, &tenant, DEEP_POOL, now).await;

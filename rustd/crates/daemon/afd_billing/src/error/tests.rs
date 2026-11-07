@@ -5,8 +5,8 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 
 use super::{billing_wallet_missing, charges_cursor_invalid, query, row_malformed};
 

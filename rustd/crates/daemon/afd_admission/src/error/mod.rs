@@ -4,16 +4,14 @@
 //! (`M-ERRORS-CANONICAL-STRUCTS`, with the workspace's declared divergence): a
 //! struct carrying a captured backtrace over a private kind, with the code and
 //! the sentence decided together in one table rather than spelled at each
-//! raise site. The hull is `afd_core::error_shell!`, so nothing here repeats
+//! raise site. The hull is `af_core::error_shell!`, so nothing here repeats
 //! what fifteen sibling crates already share.
 //!
 //! A failed durable write is returned to the producer. Notification failure
 //! happens after acceptance and never changes that answer.
 
-use afd_core::error::{
-    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_OPERATION_FAILED,
-};
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_OPERATION_FAILED};
+use af_core::error_code::{self, ErrorCode};
 
 mod raise;
 
@@ -28,7 +26,7 @@ pub(crate) use self::raise::query;
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An admission failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -95,7 +93,7 @@ pub(crate) enum ErrorKind {
     #[error("a row identifier could not be minted")]
     Entropy {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 }
 
@@ -105,15 +103,15 @@ impl Error {
         match self.kind() {
             ErrorKind::Policy => (
                 error_code::AUTHORING_POLICY,
-                afd_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
+                af_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
             ),
             ErrorKind::FleetAbsent => (
                 error_code::AGENTSFLEET_NOT_FOUND,
-                afd_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
+                af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
             ),
             ErrorKind::NotRunnable { .. } => (
                 error_code::AGENTSFLEET_PAUSED_INGRESS,
-                afd_core::problem::Problem::of(error_code::AGENTSFLEET_PAUSED_INGRESS).title(),
+                af_core::problem::Problem::of(error_code::AGENTSFLEET_PAUSED_INGRESS).title(),
             ),
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
@@ -136,7 +134,7 @@ impl Error {
         self.answer().0
     }
 
-    /// The sentence the caller is told — one of `afd_core::error`'s three,
+    /// The sentence the caller is told — one of `af_core::error`'s three,
     /// never a spelling of this crate's own.
     #[must_use]
     pub fn detail(&self) -> &'static str {

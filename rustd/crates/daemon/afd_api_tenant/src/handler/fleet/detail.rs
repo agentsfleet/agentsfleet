@@ -51,7 +51,7 @@ pub(crate) async fn purge<D: Services>(
     let fleet = parse_fleet_id(&fleet_id)?;
     let expected = crate::handler::input::expected(&headers)?.ok_or_else(|| {
         Refusal::coded(
-            afd_core::error_code::AUTHORING_PRECONDITION,
+            af_core::error_code::AUTHORING_PRECONDITION,
             "Send the current fleet If-Match tag",
         )
     })?;
@@ -62,7 +62,7 @@ pub(crate) async fn purge<D: Services>(
         .map_err(|error| {
             if let Some(etag) = error.stale_tag() {
                 Refusal::preconditioned(error.code(), error.detail(), etag)
-            } else if error.code() == afd_core::error_code::AGENTSFLEET_ALREADY_TERMINAL {
+            } else if error.code() == af_core::error_code::AGENTSFLEET_ALREADY_TERMINAL {
                 Refusal::conflict_at(EVENT_PURGE, "kill_required")(error)
             } else {
                 Refusal::at(EVENT_PURGE)(error)

@@ -65,8 +65,8 @@ pub(super) async fn bind(fixture: &Fixture) -> (TaskBindingsInput, Value) {
 }
 
 fn new_work_answer(
-    request: &afd_wire::decision::DecisionRequest,
-) -> afd_wire::decision::DecisionResult {
+    request: &af_wire::decision::DecisionRequest,
+) -> af_wire::decision::DecisionResult {
     let mut result = crate::decision_reply::known_result(request);
     let DecisionOutcome::Answered { answers } = &mut result.result else {
         panic!("synthetic successful provider answers");

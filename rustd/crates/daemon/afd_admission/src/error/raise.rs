@@ -11,9 +11,9 @@ use super::{Error, ErrorKind};
 // `sqlx::Error` is deliberately absent: a statement failure carries WHICH
 // statement, which is context only the call site knows, so it goes through
 // [`query`] instead of a blanket lift.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_crypto::error::Error => Entropy,
+    af_crypto::error::Error => Entropy,
 );
 
 /// The SQLSTATE class Postgres answers when it is out of something —
@@ -159,7 +159,7 @@ impl sqlx::error::DatabaseError for LockWaitExpired {
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    let (entropy, ctrl) = afd_crypto::entropy::Entropy::new_mocked();
+    let (entropy, ctrl) = af_crypto::entropy::Entropy::new_mocked();
     ctrl.fail_next();
     let entropy = entropy
         .uuid_randomness()

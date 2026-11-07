@@ -11,10 +11,10 @@ use super::{Error, ErrorKind};
 // `sqlx::Error` is deliberately absent: a statement failure carries WHICH
 // statement, which is context only the call site knows, so it goes through
 // [`query`] instead of a blanket lift.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_admission::Error => Admission,
-    afd_crypto::error::Error => Identifier,
+    af_crypto::error::Error => Identifier,
     reqwest::Error => UpstreamUnreachable,
     serde_json::Error => Json,
 );
@@ -132,7 +132,7 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
     let admission = admission_sample("query");
     let admission_gone = admission_sample("datastore");
     let identifier =
-        afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
+        af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     vec![
         (
             "datastore",

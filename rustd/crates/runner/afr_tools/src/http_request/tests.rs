@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use afd_core::test_util::trace::Capture;
-use afr_egress::error::one_of_each_kind;
-use afr_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, LEASE_ID};
-use afr_egress::testing::{RecordingTransport, Sent, inbound};
-use afr_egress::{Inbound, Outbound, RESPONSE_MAX_BYTES, Transport};
+use af_core::test_util::trace::Capture;
+use af_egress::error::one_of_each_kind;
+use af_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, LEASE_ID};
+use af_egress::testing::{RecordingTransport, Sent, inbound};
+use af_egress::{Inbound, Outbound, RESPONSE_MAX_BYTES, Transport};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
@@ -268,7 +268,7 @@ struct Gated {
 
 #[async_trait::async_trait]
 impl Transport for Gated {
-    async fn send(&self, _outbound: Outbound) -> afr_egress::Result<Inbound> {
+    async fn send(&self, _outbound: Outbound) -> af_egress::Result<Inbound> {
         self.sending.notify_one();
         self.release.notified().await;
         Ok(inbound(200, ANSWERED))

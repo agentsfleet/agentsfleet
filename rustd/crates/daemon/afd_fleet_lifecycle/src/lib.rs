@@ -26,7 +26,7 @@
 // `unused_crate_dependencies` counts a dev-dependency against the LIB target
 // unless the crate root says it knows about them.
 #[cfg(test)]
-use {afd_crypto as _, tokio as _};
+use {af_crypto as _, tokio as _};
 
 pub mod error;
 
@@ -160,7 +160,7 @@ mod tests {
         assert_eq!(runnable, [super::FleetStatus::Active]);
     }
 
-    use afd_observability::metrics::label::fleet::FleetStatusLabel;
+    use af_observability::metrics::label::fleet::FleetStatusLabel;
 
     use super::FleetStatus;
 

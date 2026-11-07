@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_tenant::team::{Email, EmailAttempt, Invitation, NewInvite, Waiting};
 use afd_tenant::workspace::access::ROLE_OWNER;
@@ -19,7 +19,7 @@ use crate::access_lane::{Account, Fixture, id};
 /// What a readback reports when the lane gives it no connection.
 const NO_CONNECTION: &str = "an API connection";
 
-/// Where a UUID spells its variant, as `afd_core::id` reads it.
+/// Where a UUID spells its variant, as `af_core::id` reads it.
 const VARIANT_AT: usize = 19;
 
 impl Fixture {

@@ -1,0 +1,238 @@
+//! The provider seam: one model turn, streamed as chunks.
+//!
+//! The types here are provider-neutral. Each wire maps them onto its own
+//! function-calling shape, so the loop never knows which provider it drives.
+//! The one provider-owned value the loop carries is a turn's [`Replay`], which
+//! it hands back untouched.
+
+use std::fmt;
+use std::ops::AddAssign;
+
+use af_wire::activity::StreamTextKind;
+use futures_util::stream::BoxStream;
+use rig_core::message::{AssistantContent, AssistantMessage};
+
+use crate::error::Result;
+use crate::image_input::ImageInput;
+
+/// The name the provider's own web search is called by.
+const WEB_SEARCH: &str = "web_search";
+
+/// One tool call the model asked for.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Call {
+    /// The provider's id for the call, echoed with its result.
+    pub id: String,
+    /// The tool's name.
+    pub name: String,
+    /// The arguments, as the model wrote them.
+    pub arguments: serde_json::Value,
+}
+
+/// What a provider needs back on the next turn to continue its own reasoning.
+///
+/// Thinking blocks with their signatures, `reasoning_content`, or a gateway's
+/// reasoning details. Opaque to the loop, which keeps it with the turn that
+/// produced it and hands it back unopened; a provider that reasons in the
+/// open, or not at all, leaves it empty.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Replay(pub(crate) AssistantMessage);
+
+impl Replay {
+    /// Whether there is nothing to hand back.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0
+            .content
+            .iter()
+            .all(|part| matches!(part, AssistantContent::Text(_)))
+    }
+}
+
+/// How a turn ended, once every chunk of it was sent.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct End {
+    /// What the provider needs back on the next turn.
+    pub replay: Replay,
+    /// The turn stopped at its output limit: a call it made may have been
+    /// cut mid-argument and must not run.
+    pub cut: bool,
+}
+
+/// One message of the conversation a turn continues.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Message {
+    /// What the fleet was asked.
+    User(String),
+    /// What the model answered and which tools it called.
+    Assistant {
+        /// The answer text of the turn, possibly empty.
+        text: String,
+        /// The calls the turn asked for.
+        calls: Vec<Call>,
+        /// What the provider needs back to continue its own reasoning.
+        replay: Replay,
+    },
+    /// One call's output, fed back to the model.
+    ToolResult {
+        /// The provider's id for the call.
+        call_id: String,
+        /// What the call returned.
+        output: String,
+        /// An image the call read, for the model to see with the output.
+        image: Option<ImageInput>,
+    },
+}
+
+/// One tool as the model is offered it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ToolSpec<'a> {
+    /// The name the model calls it by.
+    pub name: &'a str,
+    /// What the tool does.
+    pub description: &'a str,
+    /// The arguments' JSON Schema.
+    pub parameters: &'a serde_json::Value,
+}
+
+/// A tool the provider runs itself, offered as the wire's own spec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hosted {
+    /// The provider's web search.
+    WebSearch,
+}
+
+impl Hosted {
+    /// The name the model calls it by.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::WebSearch => WEB_SEARCH,
+        }
+    }
+}
+
+/// What one turn asks the model.
+#[derive(Debug, Clone, Copy)]
+pub struct Request<'a> {
+    /// The model to run.
+    pub model: &'a str,
+    /// The system prompt.
+    pub instructions: &'a str,
+    /// The conversation so far.
+    pub messages: &'a [Message],
+    /// The functions the model may call; empty once the context cap is reached.
+    pub tools: &'a [ToolSpec<'a>],
+    /// The provider-hosted tools offered, sent as the provider's own specs.
+    pub hosted: &'a [Hosted],
+    /// The conversation's cache key: the fleet, so every lease of one
+    /// conversation, and every child run in it, shares a cache. Only the
+    /// Responses wire sends it.
+    pub cache_key: &'a str,
+    /// Physical output allowance, further clipped by the selected model.
+    pub max_output_tokens: Option<u32>,
+    /// Summary calls never reopen an uncertain physical request.
+    pub single_attempt: bool,
+}
+
+/// Tokens one turn spent, or a run summed over its turns.
+///
+/// Each prompt token is counted once, in exactly one of five places: read
+/// fresh, read from the provider's cache, or written to it under one of three
+/// lifetimes. The daemon bills each at its own rate (billing §11). Reasoning is
+/// inside `output`, once.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Usage {
+    /// Prompt tokens the provider read fresh, neither from its cache nor
+    /// written to it.
+    pub input: u64,
+    /// Prompt tokens read from the provider's cache.
+    pub cached_input: u64,
+    /// Prompt tokens written to the provider's cache with no lifetime
+    /// reported, never folded into either lifetime.
+    pub cache_write: u64,
+    /// Prompt tokens written to the provider's cache for five minutes.
+    pub cache_write_5m: u64,
+    /// Prompt tokens written to the provider's cache for one hour.
+    pub cache_write_1h: u64,
+    /// Completion tokens, reasoning included.
+    pub output: u64,
+}
+
+impl Usage {
+    /// Every token the turn spent: the whole prompt and the completion.
+    #[must_use]
+    pub const fn total(self) -> u64 {
+        self.prompt().saturating_add(self.output)
+    }
+
+    /// The whole prompt, fresh, read and written: what fills the context
+    /// window.
+    #[must_use]
+    pub const fn prompt(self) -> u64 {
+        self.input
+            .saturating_add(self.cached_input)
+            .saturating_add(self.cache_written())
+    }
+
+    /// Prompt tokens written to the provider's cache, whatever their lifetime.
+    #[must_use]
+    pub const fn cache_written(self) -> u64 {
+        self.cache_write
+            .saturating_add(self.cache_write_5m)
+            .saturating_add(self.cache_write_1h)
+    }
+}
+
+impl AddAssign for Usage {
+    fn add_assign(&mut self, rhs: Self) {
+        self.input = self.input.saturating_add(rhs.input);
+        self.cached_input = self.cached_input.saturating_add(rhs.cached_input);
+        self.cache_write = self.cache_write.saturating_add(rhs.cache_write);
+        self.cache_write_5m = self.cache_write_5m.saturating_add(rhs.cache_write_5m);
+        self.cache_write_1h = self.cache_write_1h.saturating_add(rhs.cache_write_1h);
+        self.output = self.output.saturating_add(rhs.output);
+    }
+}
+
+/// One piece of a streamed turn.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Chunk {
+    /// Text, as the answer or the model's reasoning.
+    Text {
+        /// Which of the two it is.
+        kind: StreamTextKind,
+        /// The text.
+        text: String,
+    },
+    /// A complete tool call.
+    Call(Call),
+    /// What the turn spent.
+    Usage(Usage),
+    /// How the turn ended; the last chunk of a turn that ended.
+    End(End),
+}
+
+/// A model provider.
+pub trait Provider: Send + Sync + fmt::Debug {
+    /// Measure a complete request before sending it. Production overrides this
+    /// with its selected wire; scripted providers use the canonical chat shape.
+    ///
+    /// # Errors
+    /// The request cannot be encoded.
+    fn measure(&self, request: Request<'_>) -> Result<u64> {
+        let body = crate::request::request(af_wire::inference::InferenceApi::Chat, &request)?;
+        let text = serde_json::to_string(&body)?;
+        Ok(af_inference::input_tokens(request.model, &text)
+            .saturating_add(body.chat_history.len().saturating_mul(32)) as u64)
+    }
+
+    /// Streams one turn. The stream ends when the turn does; an error ends it
+    /// early, and the run with it.
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>>;
+
+    /// Whether a call's result may carry an image for the model to see. A
+    /// handler that would attach one refuses the call, before any read, on a
+    /// provider that answers no.
+    fn accepts_images(&self) -> bool;
+}

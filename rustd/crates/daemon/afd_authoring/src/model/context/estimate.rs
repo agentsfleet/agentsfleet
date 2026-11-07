@@ -1,6 +1,6 @@
 //! Estimate exactly the request shape selected by the shared planner.
-use afd_context::{Compaction, Group, Summary, TokenEstimator};
-use afd_inference::Configured;
+use af_context::{Compaction, Group, Summary, TokenEstimator};
+use af_inference::Configured;
 use rig_core::{completion::CompletionRequest, message::Message};
 use std::sync::Arc;
 
@@ -17,7 +17,7 @@ impl Estimator<'_> {
         &self,
         summary: Option<&Summary>,
         groups: &[Group],
-    ) -> afd_context::Result<CompletionRequest> {
+    ) -> af_context::Result<CompletionRequest> {
         let digest = super::prefix(summary, groups)?;
         let mut body = if self.native_prefixes.iter().any(|prefix| prefix != &digest) {
             self.quoted.clone()
@@ -40,10 +40,10 @@ impl Estimator<'_> {
         Ok(body)
     }
 
-    pub(super) fn summary(&self, task: &Compaction) -> afd_context::Result<CompletionRequest> {
+    pub(super) fn summary(&self, task: &Compaction) -> af_context::Result<CompletionRequest> {
         let mut body = CompletionRequest::new(Message::user(task.input()?))
             .model(self.model)
-            .preamble(afd_context::SUMMARY_INSTRUCTIONS)
+            .preamble(af_context::SUMMARY_INSTRUCTIONS)
             .max_tokens(u64::from(task.output_tokens));
         body.additional_params
             .clone_from(&self.body.additional_params);
@@ -56,16 +56,16 @@ impl TokenEstimator for Estimator<'_> {
         &mut self,
         summary: Option<&Summary>,
         groups: &[Group],
-    ) -> afd_context::Result<u64> {
+    ) -> af_context::Result<u64> {
         let body = self.continued(summary, groups)?;
         self.route
             .measure_input(self.model, &body)
-            .map_err(afd_context::Error::boundary)
+            .map_err(af_context::Error::boundary)
     }
-    fn compaction(&mut self, task: &Compaction) -> afd_context::Result<u64> {
+    fn compaction(&mut self, task: &Compaction) -> af_context::Result<u64> {
         let body = self.summary(task)?;
         self.route
             .measure_input(self.model, &body)
-            .map_err(afd_context::Error::boundary)
+            .map_err(af_context::Error::boundary)
     }
 }

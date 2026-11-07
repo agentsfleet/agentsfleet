@@ -10,7 +10,7 @@
 //! Environment arrives as an [`EnvSource`], as it does for the profile, so a
 //! test can hand in a map rather than mutate the process.
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 
 use crate::error::{ErrorKind, Result};
 
@@ -28,7 +28,7 @@ pub const RETRYABLE_FRACTION_VARIABLE: &str = "BENCH_RETRYABLE_FRACTION";
 
 /// A variable's value as it was set, or nothing when it is unset or blank.
 ///
-/// Untrimmed, unlike `afd_core::env::optional`: provenance records the
+/// Untrimmed, unlike `af_core::env::optional`: provenance records the
 /// revision and image byte for byte, and only the exact ownership word counts
 /// as one.
 #[must_use]

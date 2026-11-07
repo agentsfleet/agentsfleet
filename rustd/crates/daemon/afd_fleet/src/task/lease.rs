@@ -2,8 +2,8 @@
 
 use super::{TaskScope, guard, read};
 use crate::{Result, error::query, lease::envelope::Acquired};
-use afd_core::id::Uuid7;
-use afd_wire::task::{TaskContext, TaskState};
+use af_core::id::Uuid7;
+use af_wire::task::{TaskContext, TaskState};
 use sqlx::PgConnection;
 
 // Setup-head writers first hold the parent FOR UPDATE; KEY SHARE also fences that writer,
@@ -56,7 +56,7 @@ pub(crate) async fn attach(
         .bind(&acquired.event_id)
         .bind(acquired.fleet_id.as_str())
         .bind(runner.as_str())
-        .bind(afd_wire::task::CAPABILITY)
+        .bind(af_wire::task::CAPABILITY)
         .bind(super::DECISION_POLICY_PATH)
         .fetch_optional(&mut *connection)
         .await
@@ -144,7 +144,7 @@ impl crate::lease::Leases {
             .await
             .map_err(query("hold claimed slot before authority refusal"))?;
         match Self::installed_on(&mut tx, &acquired.fleet_id, Some(&acquired.event_id)).await {
-            Err(fault) if fault.code() == afd_core::error_code::TASK_INVALID_TARGET => (),
+            Err(fault) if fault.code() == af_core::error_code::TASK_INVALID_TARGET => (),
             Err(fault) => return Err(fault),
             Ok(_) => return Ok(()),
         }

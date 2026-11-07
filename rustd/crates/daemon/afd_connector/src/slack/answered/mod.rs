@@ -25,7 +25,7 @@
 use std::ops::ControlFlow;
 use std::time::Duration;
 
-use afd_crypto::secret::SecretString;
+use af_crypto::secret::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

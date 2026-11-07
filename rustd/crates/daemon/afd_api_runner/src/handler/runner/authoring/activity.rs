@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use afd_authoring::ActivityInput;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 #[cfg(feature = "openapi")]
-use afd_wire::authoring::{ActivityAccepted, ActivityRequest};
+use af_wire::authoring::{ActivityAccepted, ActivityRequest};
+use afd_authoring::ActivityInput;
 use axum::{
     Json,
     body::Bytes,
@@ -19,7 +19,7 @@ use afd_http::handler::{Refusal, authoring_refusal};
 
 /// Applies the one fixed proposal tool, under live membership and attempt fences.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = afd_wire::paths::AUTHORING_ACTIVITY,
+    post, path = af_wire::paths::AUTHORING_ACTIVITY,
     tag = afd_http::openapi::tag::RUNNERS, operation_id = "runner_publish_authoring_activity",
     summary = "Send private setup progress", request_body = ActivityRequest,
     params(afd_http::openapi::path::Lease),
@@ -41,7 +41,7 @@ pub(crate) async fn handle<D: Services>(
         Uuid7::parse(&lease).map_err(|_invalid| Refusal::malformed("lease_id must be a UUIDv7"))?;
     // Definition keys and proposed text are private authored data. The shared
     // object parser refuses malformed/unknown input without logging those keys.
-    let request: ActivityInput = afd_core::json::object_from_slice(&body)
+    let request: ActivityInput = af_core::json::object_from_slice(&body)
         .map_err(|_invalid| Refusal::malformed("Invalid authoring activity body"))?;
     let accepted = services
         .authoring()

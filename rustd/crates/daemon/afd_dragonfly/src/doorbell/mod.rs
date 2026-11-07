@@ -5,12 +5,12 @@ use crate::{
     Dragonfly, FleetStreams, SubscriptionHub,
     hub::{Received, Subscription},
 };
-use afd_core::{
+use af_core::{
     error_code::{Coded as _, Logged},
     id::Uuid7,
     timing::READY_WAKE_DEADLINE,
 };
-use afd_observability::{metrics::label::fleet::ReadyWake, producers};
+use af_observability::{metrics::label::fleet::ReadyWake, producers};
 use std::{
     collections::VecDeque,
     sync::{

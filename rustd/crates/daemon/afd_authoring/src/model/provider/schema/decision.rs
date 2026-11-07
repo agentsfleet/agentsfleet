@@ -1,6 +1,6 @@
 //! The proposal tool exposes the same fixed roles the native setup validates.
 
-use afd_fleet_runtime::config::decision::{
+use af_fleet_runtime::config::decision::{
     ASSOCIATION_CRITERIA, INTENT_OPTIONS, MAX_COMPLETION_STATEMENTS, NEXT_ACTION_OPTIONS,
     NOUL_CRITERIA,
 };

@@ -11,7 +11,7 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 pub(crate) fn row_malformed(
     table: &'static str,
     column: &'static str,
-) -> impl Fn(afd_core::error::Error) -> Error {
+) -> impl Fn(af_core::error::Error) -> Error {
     move |source| {
         Error::new(ErrorKind::RowMalformed {
             table,

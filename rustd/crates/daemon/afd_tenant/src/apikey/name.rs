@@ -1,6 +1,6 @@
 //! What a tenant may call an api-key.
 
-use afd_validate::charset;
+use af_validate::charset;
 use garde::{Unvalidated, Valid, Validate};
 
 use crate::Result;
@@ -118,7 +118,7 @@ impl Deactivation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use afd_core::error_code::{self, ErrorCode};
+    use af_core::error_code::{self, ErrorCode};
 
     fn refusal<T>(result: Result<T>) -> Option<ErrorCode> {
         result.err().map(|error| error.code())

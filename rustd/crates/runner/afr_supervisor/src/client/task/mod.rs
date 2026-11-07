@@ -2,8 +2,8 @@
 
 use super::{Body, ControlPlane, Verb};
 use crate::Result;
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     paths,
     task::{
         DecisionReceiptInput, DecisionReceiptResult, DecisionReservationInput, TaskBindingsInput,
@@ -169,7 +169,7 @@ fn queried(
 ) -> Cow<'static, str> {
     let mut encoded = Serializer::new(String::new());
     encoded.append_pair(
-        afd_wire::schedule_verb::QUERY_FENCING_TOKEN,
+        af_wire::schedule_verb::QUERY_FENCING_TOKEN,
         &fence.to_string(),
     );
     extend(&mut encoded);

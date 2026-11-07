@@ -1,9 +1,9 @@
 //! Empty logical state still crosses native plan, page, pin and recovery guards.
 
-use afd_core::etag::sha256_hex;
-use afd_crypto::checkpoint_digest;
+use af_core::etag::sha256_hex;
+use af_crypto::checkpoint_digest;
+use af_wire::task::CheckpointPage;
 use afd_db::test_util::mint_uuid7;
-use afd_wire::task::CheckpointPage;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 

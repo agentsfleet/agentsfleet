@@ -18,9 +18,9 @@ workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about streams, and a frame the multiplex could
 # not route is a fact only this crate holds.
-afd_observability.workspace = true
+af_observability.workspace = true
 # The registry code a shed stream answers with.
-afd_core.workspace = true
+af_core.workspace = true
 # The process's ONE pub/sub connection. A stream costs a map entry here, never
 # a Redis dial — which is the whole reason a wall of tiles is affordable.
 afd_dragonfly.workspace = true
@@ -51,4 +51,4 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 # The trace capture a closed tail's line is read back through, and the sink
 # subscriber that makes the event macros under test evaluate their fields.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }

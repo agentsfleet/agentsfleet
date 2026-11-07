@@ -9,11 +9,11 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
-use afd_core::clock::saturating_millis;
-use afd_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
+use af_core::clock::saturating_millis;
+use af_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 
 use crate::engine::EventSink;
-use afr_secrets::{Carry, Scrub};
+use af_secrets::{Carry, Scrub};
 
 /// Frames that go nowhere: a child loop's text is its parent's to read
 /// through the call that started it, never the thread's answer.

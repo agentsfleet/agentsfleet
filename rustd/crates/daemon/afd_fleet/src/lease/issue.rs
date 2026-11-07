@@ -15,12 +15,12 @@
 //! run meters forward from where the dead holder stopped, which is the whole
 //! reason the cursor survives a claim.
 
-use afd_core::id::Uuid7;
-use afd_observability::metrics::label::fleet::DeliveryStage;
-use afd_observability::producers;
+use af_core::id::Uuid7;
+use af_observability::metrics::label::fleet::DeliveryStage;
+use af_observability::producers;
+use af_wire::decision::DecisionAssignment;
+use af_wire::lease::LeaseKind;
 use afd_runner::capacity::choice;
-use afd_wire::decision::DecisionAssignment;
-use afd_wire::lease::LeaseKind;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -62,7 +62,7 @@ pub struct Issued {
     /// The exact non-secret selection committed with this lease.
     pub decision: Option<Box<DecisionAssignment>>,
     /// Frozen native task and recovery state.
-    pub task: Option<afd_wire::task::TaskContext<'static>>,
+    pub task: Option<af_wire::task::TaskContext<'static>>,
     /// Actual slot deadline after task limits were applied.
     pub expires_at: Timestamp,
     /// Immutable native runtime ceiling, including any shorter task slice.
@@ -188,7 +188,7 @@ fn record_issued(
 ) {
     producers::fleet::delivery_stage(
         DeliveryStage::EventToLease,
-        afd_core::clock::elapsed(acquired.event_created_at, afd_core::clock::now()),
+        af_core::clock::elapsed(acquired.event_created_at, af_core::clock::now()),
     );
 
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov

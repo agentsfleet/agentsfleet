@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 
-use afd_core::error_code;
+use af_core::error_code;
 use afr_tools::{ToolErrorCode, ToolOutput};
 use serde::Serialize;
 

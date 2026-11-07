@@ -10,13 +10,13 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use afd_wire::activity::ActivityFrame;
-use afd_wire::lease::LeasePayload;
+use af_wire::activity::ActivityFrame;
+use af_wire::lease::LeasePayload;
 use afr_tools::NoArguments;
 use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
 
 pub(crate) use self::model::{Script, Sent, Unreachable, call, ended, say, spent, spent_caching};
-use afr_secrets::{Clean, Scrub};
+use af_secrets::{Clean, Scrub};
 
 mod model;
 

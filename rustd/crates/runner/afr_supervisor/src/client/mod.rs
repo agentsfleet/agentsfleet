@@ -3,7 +3,7 @@
 //! [`RunnerApi`] is one method — send this verb to this path with this body —
 //! so a fake answers every verb from one closure and production implements it
 //! once over HTTP ([`HttpRunnerApi`]). [`ControlPlane`] is the typed face the
-//! duties call: it builds each path from `afd_wire::paths`, serializes the
+//! duties call: it builds each path from `af_wire::paths`, serializes the
 //! body, and hands back the reply as a [`Body`] that decodes on demand into a
 //! wire type borrowing from it, so a lease is parsed without copying a field.
 
@@ -11,14 +11,14 @@ use std::borrow::Cow;
 use std::fmt;
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_wire::activity::ActivityRequest;
-use afd_wire::credentials::MintCredentialRequest;
-use afd_wire::lease::{AcceptedKinds, LeaseRequest};
-use afd_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
-use afd_wire::paths;
-use afd_wire::report::{RenewRequest, RenewResponse};
-use afd_wire::runner::{HeartbeatRequest, HeldFleets};
+use af_core::id::Uuid7;
+use af_wire::activity::ActivityRequest;
+use af_wire::credentials::MintCredentialRequest;
+use af_wire::lease::{AcceptedKinds, LeaseRequest};
+use af_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
+use af_wire::paths;
+use af_wire::report::{RenewRequest, RenewResponse};
+use af_wire::runner::{HeartbeatRequest, HeldFleets};
 use backon::{ExponentialBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -95,7 +95,7 @@ impl Body {
     /// Decodes the reply into `T`, borrowing every text field from it, through
     /// the gate that refuses a JSON array read into a struct's fields in order.
     pub(crate) fn decode<'a, T: Deserialize<'a>>(&'a self) -> Result<T> {
-        afd_core::json::object_from_slice(&self.bytes).map_err(error::malformed(self.verb))
+        af_core::json::object_from_slice(&self.bytes).map_err(error::malformed(self.verb))
     }
 }
 

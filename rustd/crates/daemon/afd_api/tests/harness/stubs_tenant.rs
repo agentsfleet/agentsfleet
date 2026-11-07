@@ -12,9 +12,9 @@
 //! and then every workspace route would be unreachable for the wrong reason and
 //! the matrix would prove nothing.
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_api::services::WorkspaceOwnership;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::access::{Access, Grant, Role};

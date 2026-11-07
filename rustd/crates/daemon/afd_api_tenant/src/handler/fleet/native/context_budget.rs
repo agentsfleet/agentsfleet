@@ -96,7 +96,7 @@ fn encoded_len<T: Serialize + ?Sized>(value: &T) -> Result<usize, Refusal> {
 }
 
 fn read_refusal(cause: Option<&serde_json::Error>) -> Refusal {
-    let code = afd_core::error_code::INTERNAL_OPERATION_FAILED;
+    let code = af_core::error_code::INTERNAL_OPERATION_FAILED;
     let error_code = code.as_str();
     tracing::error!(event = READ_FAILED, error_code, error = ?cause);
     Refusal::coded(code, "The editor context could not be loaded")

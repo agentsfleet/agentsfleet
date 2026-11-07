@@ -7,8 +7,8 @@
               indexes the JSON it just rendered"
 )]
 
-use afd_core::error_code::{self, ErrorCode};
-use afd_core::id::Uuid7;
+use af_core::error_code::{self, ErrorCode};
+use af_core::id::Uuid7;
 use afd_cron::{DesiredStatus, Reconciled, Refused, Schedule, Source, SyncStatus, validate};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;

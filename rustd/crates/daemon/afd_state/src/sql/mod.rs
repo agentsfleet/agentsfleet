@@ -109,7 +109,7 @@ mod tests {
             (super::RUNNER_STATUS_DRAINED, AdminState::Drained),
         ] {
             assert_eq!(
-                afd_core::spelling::from_spelling::<AdminState>(bind),
+                af_core::spelling::from_spelling::<AdminState>(bind),
                 Some(expected),
                 "{bind}"
             );

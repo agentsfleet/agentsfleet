@@ -197,7 +197,7 @@ pub async fn deliver_with_retry<S: Deliver>(
 /// connects but has no answer surface yet.
 fn unroutable(job: &OutboundDelivery, reason: &'static str) -> Verdict {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let provider = job.provider.as_str();
     let fleet_id = job.fleet_id.as_str();
     tracing::warn!(

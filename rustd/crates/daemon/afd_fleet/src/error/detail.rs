@@ -18,11 +18,11 @@ pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be 
 /// The refusal when the token authenticated and the runner row is gone.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
-/// The database-outage detail every crate shares through `afd_core::error`.
-pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
+/// The database-outage detail every crate shares through `af_core::error`.
+pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
-/// The database-fault detail every crate shares through `afd_core::error`.
-pub use afd_core::error::DETAIL_DATABASE_ERROR;
+/// The database-fault detail every crate shares through `af_core::error`.
+pub use af_core::error::DETAIL_DATABASE_ERROR;
 
 /// An admitted event this daemon cannot run.
 ///
@@ -32,7 +32,7 @@ pub use afd_core::error::DETAIL_DATABASE_ERROR;
 pub const DETAIL_EVENT_MALFORMED: &str = "leased event malformed";
 
 /// The detail a caller is told when the queue cannot be reached.
-pub use afd_core::error::DETAIL_QUEUE_UNAVAILABLE;
+pub use af_core::error::DETAIL_QUEUE_UNAVAILABLE;
 
 /// The detail when enrolment could not mint the identifier a client waits on.
 ///
@@ -174,7 +174,7 @@ pub const DETAIL_MESSAGE_NO_CHANNEL: &str =
 /// The refusal a message past the per-run count earns.
 pub const DETAIL_MESSAGE_LIMIT: &str = const_format::concatcp!(
     "This run already posted ",
-    afd_wire::message_verb::MESSAGES_PER_RUN_MAX,
+    af_wire::message_verb::MESSAGES_PER_RUN_MAX,
     " messages; put the rest in the answer"
 );
 

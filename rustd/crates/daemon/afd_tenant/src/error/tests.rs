@@ -6,7 +6,7 @@
 //! those three methods for every variant without inventing a cause.
 
 use super::{ApiKeyField, Error, InviteConflict, SessionField};
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 use std::error::Error as _;
 
 fn data_only_kinds() -> Vec<(&'static str, Error)> {
@@ -166,19 +166,19 @@ fn field_names_render_as_the_wire_spells_them() {
 #[test]
 fn contextual_database_failures_keep_their_classification_and_cause() -> Result<(), &'static str> {
     let query = super::query("tenant coverage query")(sqlx::Error::PoolClosed);
-    assert_eq!(query.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(query.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert!(query.source().is_some());
 
-    let malformed_id = afd_core::id::Uuid7::parse("not-an-id")
+    let malformed_id = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("malformed fixture unexpectedly parsed")?;
     let row = super::row_malformed("workspaces", "tenant_id")(malformed_id);
-    assert_eq!(row.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(row.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert!(row.to_string().contains("workspaces"));
     assert!(row.source().is_some());
 
     let page = super::library_page_unavailable(sqlx::Error::PoolClosed);
-    assert_eq!(page.code(), afd_core::error_code::LIBRARY_DB_UNAVAILABLE);
+    assert_eq!(page.code(), af_core::error_code::LIBRARY_DB_UNAVAILABLE);
     assert!(page.is_datastore_unavailable());
     assert!(page.source().is_some());
     Ok(())
@@ -190,7 +190,7 @@ fn a_machine_collision_is_detectable_only_inside_the_tenant_crate() {
     assert!(collision.is_machine_collision());
     assert_eq!(
         collision.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
 }
 
@@ -206,11 +206,11 @@ fn foreign_failures_keep_their_cause() -> Result<(), &'static str> {
     use std::error::Error as _;
 
     let malformed = super::row_malformed("identity.users", "id")(
-        afd_core::id::Uuid7::parse("not-an-id")
+        af_core::id::Uuid7::parse("not-an-id")
             .err()
             .ok_or("a malformed identifier unexpectedly parsed")?,
     );
-    let drawn: super::Error = afd_crypto::secret::Kek::from_hex("zz")
+    let drawn: super::Error = af_crypto::secret::Kek::from_hex("zz")
         .err()
         .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")?
         .into();
@@ -221,7 +221,7 @@ fn foreign_failures_keep_their_cause() -> Result<(), &'static str> {
         assert!(!failure.code().as_str().is_empty(), "{label}");
     }
     // A key that is not hex mints nothing, so the sentence must not claim an
-    // identifier failed: it names the step every `afd_crypto` failure shares.
+    // identifier failed: it names the step every `af_crypto` failure shares.
     let said = drawn.to_string();
     assert!(said.contains("a cryptographic operation failed"), "{said}");
     assert!(!said.contains("minted"), "{said}");
@@ -235,7 +235,7 @@ fn a_queue_outage_tells_the_caller_the_queue_is_unavailable() {
     /// An environment with no knob set, so resolving a Dragonfly URL fails
     /// without a server — the cheapest real `afd_dragonfly::Error` there is.
     struct Unset;
-    impl afd_core::env::EnvSource for Unset {
+    impl af_core::env::EnvSource for Unset {
         fn get(&self, _key: &str) -> Option<String> {
             None
         }

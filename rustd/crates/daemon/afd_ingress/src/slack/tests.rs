@@ -8,11 +8,11 @@
               is for the daemon"
 )]
 
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::FleetConfig;
+use af_fleet_runtime::config::ChannelId;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::ChannelId;
 use serde_json::{Value, json};
 
 use super::{Subscriber, subscribed};

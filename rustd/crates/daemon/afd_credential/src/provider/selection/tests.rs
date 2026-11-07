@@ -134,7 +134,7 @@ fn an_active_default_whose_source_workspace_is_no_identifier_is_refused() {
         !refused.is_config_permanent(),
         "a broken row, not a missing key"
     );
-    assert_eq!(refused.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_QUERY);
 }
 
 fn pointed_with(pointer: &str) -> SelectionRow {

@@ -4,12 +4,12 @@ use super::{
     super::{attempt::Attempt, definition, fixture::Fixture},
     fixture::{self, Provider},
 };
+use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
+use af_wire::authoring::{ActivityEvent, Proposal, ProposalCall};
 use afd_authoring::{
     ModelCallResult,
     types::{Candidate, Source},
 };
-use afd_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
-use afd_wire::authoring::{ActivityEvent, Proposal, ProposalCall};
 use serde_json::json;
 use std::sync::Arc;
 

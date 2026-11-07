@@ -1,7 +1,7 @@
 //! Explicit publication inputs and native Library snapshots.
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::Definition;
+use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +33,7 @@ pub struct RevisionSummary {
     /// Content identity.
     pub canonical_digest: String,
     /// Publication time.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: Timestamp,
 }
 
@@ -45,7 +45,7 @@ pub struct PublishLibrary {
     #[garde(skip)]
     pub draft_candidate_id: Uuid7,
     /// Display label of the reusable entry.
-    #[garde(length(chars, min = 1, max = super::MAX_TITLE_CHARS), custom(afd_validate::rules::nul_free))]
+    #[garde(length(chars, min = 1, max = super::MAX_TITLE_CHARS), custom(af_validate::rules::nul_free))]
     pub label: String,
 }
 
@@ -100,7 +100,7 @@ pub struct LibraryRevision {
     /// Pinned policy meaning.
     pub policy_semantics: String,
     /// Publication time.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: Timestamp,
 }
 
@@ -116,7 +116,7 @@ pub struct LibraryCard {
     /// Audience, platform or tenant.
     pub visibility: String,
     /// Publication time.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: Timestamp,
     /// Immutable head requirements.
     pub requirements: super::Requirements,

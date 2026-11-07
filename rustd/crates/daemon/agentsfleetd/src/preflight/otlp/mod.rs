@@ -11,8 +11,8 @@
 
 use std::time::Duration;
 
-use afd_core::env::EnvSource;
-use afd_otlp::{
+use af_core::env::EnvSource;
+use af_otlp::{
     DEFAULT_TIMEOUT, Encoding, OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB,
     OTEL_TIMEOUT_KNOB, OtlpConfig, Refused,
 };
@@ -30,7 +30,7 @@ const WHY_HEADERS: &str = "comma-joined `key=value` pairs; a pair with no `=` \
 /// would make a telemetry backend a prerequisite for running the product.
 ///
 /// Every knob is read even when an earlier one faulted, so one restart can fix
-/// all of them; the endpoint itself is graded by `afd_otlp`, the one place an
+/// all of them; the endpoint itself is graded by `af_otlp`, the one place an
 /// endpoint becomes a configuration.
 pub(super) fn otlp<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<OtlpConfig> {
     let (endpoint, source) = endpoint(env)?;
@@ -51,7 +51,7 @@ pub(super) fn otlp<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> O
     }
 }
 
-/// A knob `afd_otlp` refused, as the fault preflight reports beside the rest.
+/// A knob `af_otlp` refused, as the fault preflight reports beside the rest.
 fn fault(refused: Refused) -> Fault {
     Fault::Invalid {
         knob: refused.knob,
@@ -105,7 +105,7 @@ fn timeout<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Duration 
     let Some(raw) = super::optional(env, OTEL_TIMEOUT_KNOB) else {
         return DEFAULT_TIMEOUT;
     };
-    afd_otlp::config::timeout_from(&raw).unwrap_or_else(|refused| {
+    af_otlp::config::timeout_from(&raw).unwrap_or_else(|refused| {
         faults.push(fault(refused));
         DEFAULT_TIMEOUT
     })

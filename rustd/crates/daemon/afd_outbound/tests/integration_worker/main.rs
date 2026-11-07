@@ -328,7 +328,7 @@ async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
     let reported: afd_outbound::Error = refused.into();
     assert_eq!(
         reported.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED,
+        af_core::error_code::INTERNAL_OPERATION_FAILED,
         "the queue answered — that is a defect here, not the outage an \
          operator retries against"
     );

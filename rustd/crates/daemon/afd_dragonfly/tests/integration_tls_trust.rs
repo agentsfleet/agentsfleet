@@ -24,7 +24,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::{EnvSource, ProcessEnv};
+use af_core::env::{EnvSource, ProcessEnv};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 /// The TLS endpoint, which is NOT the one the rest of the lane uses.

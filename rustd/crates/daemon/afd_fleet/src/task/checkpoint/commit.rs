@@ -10,8 +10,8 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, guard as task_guard, row::counter, transaction},
 };
-use afd_core::id::Uuid7;
-use afd_wire::task::{
+use af_core::id::Uuid7;
+use af_wire::task::{
     CheckpointCommitInput, CheckpointMode, CheckpointPage, CheckpointPlan,
     CheckpointTransferPurpose,
 };
@@ -139,7 +139,7 @@ async fn verify_manifest(
     input: &CheckpointCommitInput,
 ) -> Result<()> {
     let manifest = scan(connection, plan).await?;
-    if afd_crypto::checkpoint_digest::manifest_root(
+    if af_crypto::checkpoint_digest::manifest_root(
         manifest
             .pages
             .iter()
@@ -181,7 +181,7 @@ async fn scan(connection: &mut PgConnection, plan: &Plan) -> Result<Manifest> {
             &mut manifest_bytes,
         )
         .await?;
-        if Some(afd_crypto::checkpoint_digest::manifest_root(
+        if Some(af_crypto::checkpoint_digest::manifest_root(
             base.pages
                 .iter()
                 .map(|(id, digest)| (id.as_str(), digest.as_str())),
@@ -241,16 +241,16 @@ async fn scan_pages(
             .checked_add(bytes.len())
             .ok_or(TaskRefusal::LimitExhausted)?;
         if *manifest_bytes
-            > afd_wire::task::CHECKPOINT_PAGE_BYTES * afd_wire::task::CHECKPOINT_PAGES as usize
+            > af_wire::task::CHECKPOINT_PAGE_BYTES * af_wire::task::CHECKPOINT_PAGES as usize
         {
             return Err(TaskRefusal::LimitExhausted.into());
         }
         let digest = page.digest.ok_or(TaskRefusal::CheckpointIncompatible)?;
-        if afd_core::etag::sha256_hex(&bytes) != digest {
+        if af_core::etag::sha256_hex(&bytes) != digest {
             return Err(TaskRefusal::CheckpointIncompatible.into());
         }
         let contents: CheckpointPage =
-            serde_json::from_slice(&bytes).map_err(afd_core::json::Unreadable::from)?;
+            serde_json::from_slice(&bytes).map_err(af_core::json::Unreadable::from)?;
         for entry in contents.entries {
             if last_path
                 .as_deref()
@@ -297,5 +297,5 @@ async fn history(connection: &mut PgConnection, plan: &Plan, ids: &[String]) -> 
             ))
         })
         .collect::<Result<Vec<_>>>()?;
-    Ok(afd_crypto::checkpoint_digest::history_root(chunks))
+    Ok(af_crypto::checkpoint_digest::history_root(chunks))
 }

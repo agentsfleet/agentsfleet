@@ -1,6 +1,6 @@
 //! The one line every failure the loop continues past is logged through.
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use super::report;
 use crate::error::query;

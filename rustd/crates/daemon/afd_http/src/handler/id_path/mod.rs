@@ -10,7 +10,7 @@
 
 use std::marker::PhantomData;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use axum::extract::{FromRequestParts, Path};
 use axum::response::{IntoResponse, Response};
 use http::request::Parts;

@@ -1,9 +1,9 @@
 //! The HTTP billing seam: the tenant's money, read and never moved.
 
+use af_core::id::Uuid7;
 use afd_billing::Wallet;
 use afd_billing::tenant::ChargeRow;
 use afd_billing::tenant::cursor::Boundary;
-use afd_core::id::Uuid7;
 
 /// The tenant's wallet, raw charges and settled usage reports.
 ///

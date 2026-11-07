@@ -34,8 +34,8 @@ mod row;
 pub(crate) mod statement;
 mod tool_call;
 
-use afd_core::event::status;
-use afd_core::id::Uuid7;
+use af_core::event::status;
+use af_core::id::Uuid7;
 use afd_db::Db;
 use jiff_sqlx::ToSqlx as _;
 

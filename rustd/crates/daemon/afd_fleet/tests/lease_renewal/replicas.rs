@@ -11,7 +11,7 @@ use super::{
     holders::{Outcome, assert_one_holder},
     replica::{Replica, expire, original},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::Renewed;
 use sqlx::{Connection as _, Postgres, Transaction};
 use std::time::Duration;

@@ -1,8 +1,8 @@
 //! A routed mention becomes one admission, owed back to its thread.
 
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admitted, Key, Producer, Reply};
-use afd_core::id::Uuid7;
-use afd_wire::event::EventType;
 
 use crate::Ingress;
 use crate::error::Result;

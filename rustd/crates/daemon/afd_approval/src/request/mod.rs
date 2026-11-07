@@ -30,9 +30,9 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
+use af_core::timing::DAY;
 use afd_api_wire::grant::status;
-use afd_core::id::Uuid7;
-use afd_core::timing::DAY;
 use jiff::Timestamp;
 use sqlx::Acquire as _;
 
@@ -68,7 +68,7 @@ const EVENT_STATUS_UNKNOWN: &str = "grant_status_unrecognised";
 /// How long a grant card stands before the sweeper may take it.
 ///
 /// Thirty days, and deliberately not the hour an event gate gets
-/// (`afd_fleet_runtime::config::DEFAULT_TIMEOUT`). That hour bounds a
+/// (`af_fleet_runtime::config::DEFAULT_TIMEOUT`). That hour bounds a
 /// question about ONE delivery, where a run is waiting and a stale answer is
 /// worse than none. This card asks for a STANDING authorisation, raised at
 /// install for a person who may not be at their desk, and an hour would expire
@@ -126,7 +126,7 @@ impl Origin {
 
 /// The provenance an install-time request records.
 ///
-/// The vocabulary the codebase already assumed: `afd_wire`'s own wire fixture
+/// The vocabulary the codebase already assumed: `af_wire`'s own wire fixture
 /// and this crate's grant suite both carry this sentence, and both were
 /// test-only until a production writer existed to mean it.
 pub const REASON_DECLARED_AT_INSTALL: &str = "Declared by the fleet's setup at install";

@@ -7,11 +7,11 @@
 
 use std::time::Duration;
 
-use afd_observability::metrics::family::{CounterKind, Declared, HistogramKind};
-use afd_observability::metrics::instrument::Instruments;
-use afd_observability::metrics::label::http::{DiscardReason, Signal};
-use afd_observability::metrics::registry::Registry;
-use afd_observability::semconv::{LABEL_OUTCOME, LABEL_REASON, LABEL_SIGNAL};
+use af_observability::metrics::family::{CounterKind, Declared, HistogramKind};
+use af_observability::metrics::instrument::Instruments;
+use af_observability::metrics::label::http::{DiscardReason, Signal};
+use af_observability::metrics::registry::Registry;
+use af_observability::semconv::{LABEL_OUTCOME, LABEL_REASON, LABEL_SIGNAL};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
@@ -93,7 +93,7 @@ pub const OTLP_ENTRIES_DISCARDED: Declared<CounterKind> =
 ///
 /// # Errors
 /// A row the reader or the closed vocabularies reject.
-pub fn registry() -> afd_observability::Result<Registry> {
+pub fn registry() -> af_observability::Result<Registry> {
     Registry::read(CENSUS)
 }
 
@@ -129,7 +129,7 @@ impl Families {
     /// # Errors
     /// A family the census does not declare, or declares as another kind or
     /// number: the code and the census were edited apart.
-    pub fn claim(instruments: &Instruments) -> afd_observability::Result<Self> {
+    pub fn claim(instruments: &Instruments) -> af_observability::Result<Self> {
         Ok(Self {
             decisions: instruments.counter_u64(&DECISION_EVALUATIONS)?,
             decision_duration: instruments.histogram_f64(&DECISION_DURATION)?,
@@ -191,15 +191,10 @@ impl Recorder for Families {
         );
     }
 
-    fn model_tokens(
-        &self,
-        model: &str,
-        provider: Provider,
-        usage: afd_wire::usage::ObservedTokens,
-    ) {
-        use afd_observability::semconv::{ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL, ATTR_TOKEN_TYPE};
+    fn model_tokens(&self, model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens) {
+        use af_observability::semconv::{ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL, ATTR_TOKEN_TYPE};
         let mut base = vec![KeyValue::new(ATTR_REQUEST_MODEL, model.to_owned())];
-        if let Some(name) = afd_observability::semconv::provider::normalize(provider.as_str()) {
+        if let Some(name) = af_observability::semconv::provider::normalize(provider.as_str()) {
             base.push(KeyValue::new(ATTR_PROVIDER_NAME, name));
         }
         for (kind, count) in [("input", usage.input), ("output", usage.output)] {
@@ -225,12 +220,12 @@ impl Recorder for Families {
         elapsed: Duration,
         first_text: Option<Duration>,
     ) {
-        use afd_observability::semconv::{ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL};
+        use af_observability::semconv::{ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL};
         let mut labels = vec![
             KeyValue::new(ATTR_REQUEST_MODEL, model.to_owned()),
             KeyValue::new(LABEL_OUTCOME, outcome.as_str()),
         ];
-        if let Some(name) = afd_observability::semconv::provider::normalize(provider.as_str()) {
+        if let Some(name) = af_observability::semconv::provider::normalize(provider.as_str()) {
             labels.push(KeyValue::new(ATTR_PROVIDER_NAME, name));
         }
         self.model_calls.record(elapsed.as_secs_f64(), &labels);

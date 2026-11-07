@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use afd_observability::{metrics::label::task::DecisionRecoveryOutcome as Outcome, producers};
-use afd_wire::task::{DecisionNotSentCause, DecisionReceipt};
+use af_observability::{metrics::label::task::DecisionRecoveryOutcome as Outcome, producers};
+use af_wire::task::{DecisionNotSentCause, DecisionReceipt};
 use sqlx::PgConnection;
 
 use super::{
@@ -133,7 +133,7 @@ fn failure(
     fault: Error,
     id: &str,
     swept: &mut DecisionMaintenance,
-    first_failure: &mut Option<afd_core::error_code::ErrorCode>,
+    first_failure: &mut Option<af_core::error_code::ErrorCode>,
 ) -> Result<Outcome> {
     // A busy lock answers as unavailable too (55P03), so it is read first: it
     // defers one candidate and never stops the sweep.
@@ -154,7 +154,7 @@ fn failure(
     Ok(outcome)
 }
 
-fn completed(swept: &DecisionMaintenance, first_failure: Option<afd_core::error_code::ErrorCode>) {
+fn completed(swept: &DecisionMaintenance, first_failure: Option<af_core::error_code::ErrorCode>) {
     if let Some(error_code) = first_failure {
         let error_code = error_code.as_str();
         tracing::warn!(

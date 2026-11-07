@@ -9,7 +9,7 @@
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use super::tests::{FLEET_A, FLEET_B, fleets, hold, holds, park, released, releases};
 use super::{Parked, Release};

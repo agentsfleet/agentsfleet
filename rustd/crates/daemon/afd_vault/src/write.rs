@@ -15,9 +15,9 @@
 //! is total for the same reason it is safe: a stored secret is never readable,
 //! so a partial write is one the caller cannot reason about.
 
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::envelope::Envelope;
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::envelope::Envelope;
 use jiff::Timestamp;
 
 use sqlx::Transaction;

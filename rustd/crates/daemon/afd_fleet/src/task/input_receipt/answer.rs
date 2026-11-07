@@ -13,9 +13,9 @@ use crate::{
         guard::{self, LeaseRow},
     },
 };
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
+use af_wire::task::TaskInputReceiptInput;
 use afd_outbound::obligation::Delivery;
-use afd_wire::task::TaskInputReceiptInput;
 use sqlx::PgConnection;
 
 #[derive(sqlx::FromRow)]
@@ -69,7 +69,7 @@ pub(super) async fn finish(
         .bind(source.event_type)
         .bind(source.request_json)
         .bind(Some(&current.source_admission_id))
-        .bind(afd_core::event::status::RECEIVED)
+        .bind(af_core::event::status::RECEIVED)
         .bind(&input.source_admission_id)
         .bind(afd_admission::Producer::Steer.as_str())
         .fetch_one(&mut *connection)

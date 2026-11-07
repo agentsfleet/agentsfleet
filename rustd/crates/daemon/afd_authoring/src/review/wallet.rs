@@ -1,6 +1,6 @@
 //! Readiness is a current observation; wallet balances never enter review identity.
 
-use afd_core::timing::LEASE_TTL;
+use af_core::timing::LEASE_TTL;
 use sqlx::PgConnection;
 
 use super::{Context, Observed};

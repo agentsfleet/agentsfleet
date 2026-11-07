@@ -15,7 +15,7 @@
 
 use core::time::Duration;
 
-use afd_core::env::{EnvSource, ProcessEnv};
+use af_core::env::{EnvSource, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole, SubscriptionHub};

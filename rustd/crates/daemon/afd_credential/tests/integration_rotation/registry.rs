@@ -11,11 +11,11 @@
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_credential::provider::{
     Activation, Added, Entry, OwnModel, Providers, Removed, Retargeted,
 };
-use afd_crypto::entropy::Entropy;
 
 use super::{Fixture, NOW};
 
@@ -263,7 +263,7 @@ async fn a_retarget_the_database_refuses_off_the_domain_key_is_a_query_failure()
         .await
         .expect_err("the statement is refused");
 
-    assert_eq!(refused.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_QUERY);
     assert!(holds(&store, &fixture, &entry.id).await, "the entry stands");
     fixture.cleanup().await;
 }
@@ -274,11 +274,11 @@ async fn a_retarget_the_database_refuses_off_the_domain_key_is_a_query_failure()
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_inspection_of_an_envelope_that_will_not_open_fails() {
     let fixture = Fixture::create().await;
-    let foreign = afd_crypto::secret::Kek::from_bytes([0x24; 32]);
-    let envelope = afd_crypto::envelope::Sealer::new()
+    let foreign = af_crypto::secret::Kek::from_bytes([0x24; 32]);
+    let envelope = af_crypto::envelope::Sealer::new()
         .seal(
             &foreign,
-            &afd_crypto::aad::Aad::new(fixture.workspace.as_str(), CREDENTIAL),
+            &af_crypto::aad::Aad::new(fixture.workspace.as_str(), CREDENTIAL),
             BODY,
         )
         .expect("the foreign envelope seals");
@@ -298,7 +298,7 @@ async fn an_inspection_of_an_envelope_that_will_not_open_fails() {
 
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     drop(connection);
     fixture.cleanup().await;

@@ -116,8 +116,8 @@ async fn expiring_slice_assesses_continuation_before_starting_another_action() -
     let engine = super::super::super::tests::engine(vec![], &script);
     let lease = assigned_lease(&[], 16_384);
     let mut native = goals([evaluation("CONTINUE", Some(1.0), 0.0)]);
-    native.inputs.execution_deadline = Some(afd_core::clock::after(
-        afd_core::clock::now(),
+    native.inputs.execution_deadline = Some(af_core::clock::after(
+        af_core::clock::now(),
         std::time::Duration::from_secs(150),
     ));
     let prepared = PreparedTask {
@@ -178,7 +178,7 @@ fn assert_complete_summary(evidence: &serde_json::Value) {
     );
     assert_eq!(
         evidence["complete_group_sha256"],
-        serde_json::json!(afd_core::etag::sha256_hex(canonical.as_bytes()))
+        serde_json::json!(af_core::etag::sha256_hex(canonical.as_bytes()))
     );
     assert_eq!(
         evidence

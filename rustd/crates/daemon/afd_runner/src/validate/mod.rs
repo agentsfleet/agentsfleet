@@ -2,7 +2,7 @@
 //! before a row is written.
 //!
 //! Every bound is declared on the wire type with garde
-//! (`afd_wire::runner::{RegisterRequest, AssignedPolicy, ExtraBind}`, and
+//! (`af_wire::runner::{RegisterRequest, AssignedPolicy, ExtraBind}`, and
 //! `afd_api_wire::admin::RunnerAdminPatchRequest`, whose labels share
 //! enrolment's `label_list` rule); what stays here is the sentence each broken bound earns, keyed by the path
 //! garde reports, the worker clamp, and the one label set both writers store.
@@ -12,10 +12,10 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_core::limits::WorkerCount;
-use afd_validate::Sentences;
-use afd_wire::runner::{
+use af_core::id::Uuid7;
+use af_core::limits::WorkerCount;
+use af_validate::Sentences;
+use af_wire::runner::{
     AssignedPolicy, BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, EXTRA_BINDS_MAX,
     LABEL_MAX_BYTES, LABELS_MAX, RegisterRequest, label_list,
 };

@@ -7,13 +7,13 @@
 
 use std::sync::Arc;
 
+use af_core::error_code;
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
 /// go with them or the feature-off build fails on an unused name.
 #[cfg(feature = "openapi")]
 use afd_api_wire::tenant_provider::TenantProviderResponse;
 use afd_api_wire::tenant_provider::{ProviderMode, TenantProviderRequest};
-use afd_core::error_code;
 use afd_credential::provider::Activation;
 use axum::Json;
 use axum::body::Bytes;
@@ -70,7 +70,7 @@ pub(crate) async fn reset<D: Services>(
         .map_err(Refusal::at(EVENT_RESET))?
         .ok_or_else(|| {
             Refusal::coded(
-                afd_core::error_code::PROVIDER_PLATFORM_KEY_MISSING,
+                af_core::error_code::PROVIDER_PLATFORM_KEY_MISSING,
                 DETAIL_PLATFORM_KEY_MISSING,
             )
         })?;

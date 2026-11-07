@@ -3,14 +3,14 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use af_core::test_util::trace::Capture;
+use af_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RUNNER_SEQ_MAX, RequestUsage, UsageLine};
 use afd_billing::rates::Posture;
 use afd_billing::{
     Nanos,
     biller::{Account, Attribution, Settlement, WorkKey},
     price::RatedLine,
 };
-use afd_core::test_util::trace::Capture;
-use afd_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RUNNER_SEQ_MAX, RequestUsage, UsageLine};
 use tracing::Level;
 
 use super::{EVENT_TOKENS_UNPRICED, Pricing, Slice, charged};
@@ -123,7 +123,7 @@ async fn coding_and_runtime_keep_their_ranges_and_refuse_runtime_exhaustion() {
                 &[request(RUNNER_SEQ_MAX)],
             )
             .expect_err("runtime cannot reuse a decision sequence or wrap");
-        assert_eq!(failure.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+        assert_eq!(failure.code(), af_core::error_code::INTERNAL_DB_QUERY);
         assert!(!failure.is_config_permanent());
         assert_eq!(
             pricing

@@ -37,10 +37,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use afd_core::timing::{DAY, MAX_RUNTIME};
+use af_core::timing::{DAY, MAX_RUNTIME};
+use af_observability::producers;
 use afd_db::Db;
 use afd_db::statement::Bound;
-use afd_observability::producers;
 
 use crate::error::{Result, query};
 use crate::sql;

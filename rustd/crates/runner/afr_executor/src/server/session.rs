@@ -133,7 +133,7 @@ impl Session {
 
     /// Decodes one line and routes it.
     fn dispatch(&mut self, frame: &[u8]) {
-        match afd_core::json::object_from_slice::<Request<'_>>(frame) {
+        match af_core::json::object_from_slice::<Request<'_>>(frame) {
             Ok(request) => self.route(&request),
             Err(failure) => {
                 let code = if failure.is_syntax() || failure.is_eof() {

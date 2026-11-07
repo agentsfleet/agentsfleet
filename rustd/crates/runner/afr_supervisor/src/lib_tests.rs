@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::error_code::RUN_STALE_FENCING_TOKEN;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_wire::lease::{LeaseResponse, TaggedLease};
+use af_core::error_code::RUN_STALE_FENCING_TOKEN;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_wire::lease::{LeaseResponse, TaggedLease};
 use afr_sandbox::{HostProbe, Kvm, Limits};
 use bytes::Bytes;
 use tokio_util::sync::CancellationToken;
@@ -175,7 +175,7 @@ async fn an_unreachable_daemon_is_retried_until_shutdown() {
     bounded("an_unreachable_daemon_is_retried_until_shutdown", async {
         let root = tempfile::tempdir().unwrap();
         let home = root.path().to_str().unwrap();
-        let env = afd_core::env::MapEnv::from_pairs([
+        let env = af_core::env::MapEnv::from_pairs([
             (crate::config::ENV_API_URL, "http://127.0.0.1:1"),
             (crate::config::ENV_RUNNER_TOKEN, "agt_r_token"),
             (crate::config::ENV_STORAGE_HOME, home),

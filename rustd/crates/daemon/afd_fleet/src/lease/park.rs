@@ -8,7 +8,7 @@ use crate::{
         store::Leases,
     },
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::Connection as _;
 const CONTEXT: &str = "admission queue transition";
 
@@ -88,7 +88,7 @@ impl Leases {
             .bind(acquired.fleet_id.as_str())
             .bind(&acquired.event_id)
             .bind(acquired.fence.as_i64())
-            .bind(afd_core::event::status::RECEIVED)
+            .bind(af_core::event::status::RECEIVED)
             .execute(connection)
             .await
             .map_err(query(CONTEXT))?;

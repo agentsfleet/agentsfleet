@@ -45,7 +45,7 @@ pub(crate) async fn open<D: Services>(
         .map_err(authoring_refusal)?;
     let live = services.live();
     let slot = live.admit().ok_or_else(|| {
-        afd_observability::producers::http::stream_shed();
+        af_observability::producers::http::stream_shed();
         Refusal::at_stream_ceiling(live.carrying(), live.capacity())
     })?;
     let subscription = live

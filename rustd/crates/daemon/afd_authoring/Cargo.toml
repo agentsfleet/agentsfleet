@@ -13,20 +13,20 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-afd_core.workspace = true
-afd_inference.workspace = true
-afr_providers.workspace = true
-afd_context = { workspace = true, features = ["postgres"] }
+af_core.workspace = true
+af_inference.workspace = true
+af_providers.workspace = true
+af_context = { workspace = true, features = ["postgres"] }
 afd_billing.workspace = true
 afd_identity.workspace = true
-afd_crypto.workspace = true
+af_crypto.workspace = true
 afd_db.workspace = true
 afd_dragonfly.workspace = true
 afd_credential.workspace = true
 afd_connector.workspace = true
-afd_fleet_runtime.workspace = true
-afd_validate.workspace = true
-afd_wire.workspace = true
+af_fleet_runtime.workspace = true
+af_validate.workspace = true
+af_wire.workspace = true
 afd_runner.workspace = true
 afd_admission.workspace = true
 afd_approval.workspace = true
@@ -35,7 +35,7 @@ afd_events.workspace = true
 afd_api_wire.workspace = true
 # The product-analytics reporter the private-chat-to-fleet funnel steps go to,
 # each after the commit that made it true.
-afd_observability.workspace = true
+af_observability.workspace = true
 garde.workspace = true
 async-trait.workspace = true
 base64.workspace = true
@@ -70,16 +70,16 @@ rustls.workspace = true
 tokio-rustls.workspace = true
 const_format.workspace = true
 # One isolated allocator observer also checks the runner's public secret owner.
-afr_secrets.workspace = true
+af_secrets.workspace = true
 afd_runner = { workspace = true, features = ["test-util"] }
 afd_approval = { workspace = true, features = ["test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
-afd_observability = { workspace = true, features = ["test-util"] }
+af_observability = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
 # The mocked entropy source, so a proof can make one draw fail.
-afd_crypto = { workspace = true, features = ["test-util"] }
+af_crypto = { workspace = true, features = ["test-util"] }
 # The fleet purge, so the deletion-matrix test (Dimension 4.1) drives both
 # erasure roots from one fixture. Already in the tree through afd_approval.
 afd_fleet_lifecycle.workspace = true

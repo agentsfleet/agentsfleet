@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use afd_crypto::secret::{SecretBytes, SecretString};
+use af_crypto::secret::{SecretBytes, SecretString};
 use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::{Tls, TlsParameters};

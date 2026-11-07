@@ -173,7 +173,7 @@ async fn a_failed_report_settles_and_is_recorded_as_a_fleet_error() {
         .events()
         .into_iter()
         .filter_map(|event| match event {
-            afd_observability::Telemetry::FleetCompleted { exit_status, .. } => Some(exit_status),
+            af_observability::Telemetry::FleetCompleted { exit_status, .. } => Some(exit_status),
             _ => None,
         })
         .collect();

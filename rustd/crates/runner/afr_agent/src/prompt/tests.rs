@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
-use afd_wire::policy::{
+use af_wire::lease::LeasePayload;
+use af_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
+use af_wire::policy::{
     HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch, HttpRequestRule,
     RepositoryAccess, RepositoryBinding,
 };

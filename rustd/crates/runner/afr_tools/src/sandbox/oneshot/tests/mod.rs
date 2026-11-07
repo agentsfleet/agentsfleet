@@ -5,7 +5,7 @@ mod socket;
 
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_executor::Ending;
 use serde_json::json;
 use tokio::sync::Notify;

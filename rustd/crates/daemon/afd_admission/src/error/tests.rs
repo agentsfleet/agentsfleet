@@ -23,10 +23,8 @@
 use std::collections::BTreeSet;
 use std::error::Error as _;
 
-use afd_core::error::{
-    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_OPERATION_FAILED,
-};
-use afd_core::error_code;
+use af_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_OPERATION_FAILED};
+use af_core::error_code;
 
 use super::one_of_each_kind;
 
@@ -184,9 +182,9 @@ fn every_sentence_is_one_the_workspace_declares() {
         DETAIL_DATABASE_UNAVAILABLE,
         DETAIL_DATABASE_ERROR,
         DETAIL_OPERATION_FAILED,
-        afd_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
-        afd_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
-        afd_core::problem::Problem::of(error_code::AGENTSFLEET_PAUSED_INGRESS).title(),
+        af_core::problem::Problem::of(error_code::AUTHORING_POLICY).title(),
+        af_core::problem::Problem::of(error_code::AGENTSFLEET_NOT_FOUND).title(),
+        af_core::problem::Problem::of(error_code::AGENTSFLEET_PAUSED_INGRESS).title(),
     ];
     for (label, error) in one_of_each_kind() {
         assert!(

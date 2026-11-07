@@ -2,12 +2,12 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::error_code;
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::{
+use af_core::error_code;
+use af_wire::{
     task::{DecisionAssessment, DecisionCallState, DecisionRecordDisposition},
     usage::DECISION_SEQ_BASE,
 };
+use afd_fleet::task::TaskLifecycle as _;
 use futures_util::future::join_all;
 use serde_json::{Value, json};
 use tokio::sync::Barrier;
@@ -65,7 +65,7 @@ async fn replays(case: &Case, operations: Operations) {
         .expect("decision model fixture lifecycle");
 }
 
-fn compiled_request(fixture: &Decisions<'_>, body: &Value) -> afd_wire::decision::DecisionRequest {
+fn compiled_request(fixture: &Decisions<'_>, body: &Value) -> af_wire::decision::DecisionRequest {
     assert_eq!(
         body.pointer("/dispatch/assignment"),
         Some(&serde_json::to_value(&fixture.assignment).expect("frozen assignment"))
@@ -92,7 +92,7 @@ fn compiled_request(fixture: &Decisions<'_>, body: &Value) -> afd_wire::decision
 
 async fn contend(
     fixture: &Decisions<'_>,
-    input: &garde::Valid<afd_wire::task::DecisionReservationInput>,
+    input: &garde::Valid<af_wire::task::DecisionReservationInput>,
     operations: Operations,
 ) -> Vec<(bool, Value)> {
     const CALLERS: usize = 100;
@@ -132,7 +132,7 @@ async fn contend(
 async fn accounted(
     fixture: &Decisions<'_>,
     call: &str,
-    request: &afd_wire::decision::DecisionRequest,
+    request: &af_wire::decision::DecisionRequest,
 ) {
     let receipt = known(request);
     let recorded = fixture.record(call, receipt.clone()).await;
@@ -163,8 +163,8 @@ async fn accounted(
 
 async fn saved_replay(
     fixture: &Decisions<'_>,
-    input: &garde::Valid<afd_wire::task::DecisionReservationInput>,
-    request: &afd_wire::decision::DecisionRequest,
+    input: &garde::Valid<af_wire::task::DecisionReservationInput>,
+    request: &af_wire::decision::DecisionRequest,
 ) {
     let (issued, replay) = fixture.reserve(input).await;
     assert!(!issued);

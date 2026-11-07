@@ -7,7 +7,7 @@
 //! `redirect_uri_mismatch`, which reads to an operator like a rotated client
 //! secret. The path is named once, in `RELAY_PATH` and `RELAY_LEAF`.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use url::Url;
 
 use crate::provider::Provider;

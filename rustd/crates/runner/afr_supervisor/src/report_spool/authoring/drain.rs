@@ -2,7 +2,7 @@
 
 use super::{Spool, files};
 use crate::{Result, client::ControlPlane, halt::Halt};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use std::{path::PathBuf, time::Duration};
 use tokio::time::Instant;
 

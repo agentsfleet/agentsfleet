@@ -10,7 +10,7 @@
 //! authority order to save one round trip would be two places for that order
 //! to drift apart, and the wire answer is byte-identical either way.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;

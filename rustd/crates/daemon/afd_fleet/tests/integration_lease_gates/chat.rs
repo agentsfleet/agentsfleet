@@ -9,14 +9,14 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
-use afd_core::event::status;
-use afd_core::id::Uuid7;
+use af_core::event::status;
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
+use af_wire::lease::LeaseResponse;
+use af_wire::memory::MemoryDelta;
+use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_db::test_util::{EventKind, FleetEventSeed, PlatformDefault};
 use afd_fleet::lease::Plane;
-use afd_wire::event::EventType;
-use afd_wire::lease::LeaseResponse;
-use afd_wire::memory::MemoryDelta;
-use afd_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use jiff::Timestamp;
 
 use super::seed::seed_provider_resolution;
@@ -160,7 +160,7 @@ impl Chat {
         );
         let response: LeaseResponse<'_> =
             serde_json::from_str(&answer).expect("the plane answers a lease response");
-        let afd_wire::lease::TaggedLease::Fleet(lease) = response.lease.expect("an issued lease")
+        let af_wire::lease::TaggedLease::Fleet(lease) = response.lease.expect("an issued lease")
         else {
             panic!("the fleet plane grants fleet work");
         };
@@ -214,7 +214,7 @@ impl Chat {
             failure_detail: Cow::Borrowed(""),
             response_text: Cow::Borrowed(answer),
             tokens: 0,
-            requests: afd_wire::usage::RequestLines::default(),
+            requests: af_wire::usage::RequestLines::default(),
             telemetry: ReportTelemetry {
                 time_to_first_token_ms: 0,
                 wall_ms: SLICE_MS.unsigned_abs(),

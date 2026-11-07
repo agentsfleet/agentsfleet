@@ -6,15 +6,15 @@
 
 use std::borrow::Cow;
 
-use afd_wire::lease::LeaseResponse;
-use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
-use afd_wire::paths::{
+use af_wire::lease::LeaseResponse;
+use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
+use af_wire::paths::{
     LEASE_CONTEXT, LEASE_RENEW_SUFFIX, LEASE_TOOL_CALLS_SUFFIX, RUNNER_HEARTBEATS, RUNNER_LEASES,
     RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_SELF,
 };
-use afd_wire::report::{RenewResponse, ReportResponse};
-use afd_wire::runner::{AssignedPolicy, HeartbeatResponse, HeartbeatStatus, SelfResponse};
-use afd_wire::tool_detail::ToolCallRecordsStored;
+use af_wire::report::{RenewResponse, ReportResponse};
+use af_wire::runner::{AssignedPolicy, HeartbeatResponse, HeartbeatStatus, SelfResponse};
+use af_wire::tool_detail::ToolCallRecordsStored;
 use serde::Serialize;
 use serde_json::Value;
 

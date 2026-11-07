@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use tokio::sync::{mpsc, oneshot};
 
 /// One claimer: the fleet it asked for, and where its turn goes.

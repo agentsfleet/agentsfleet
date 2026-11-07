@@ -19,7 +19,7 @@
     reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
 )]
 
-use afd_wire::tool_trace::TRACE_MAX_CALLS;
+use af_wire::tool_trace::TRACE_MAX_CALLS;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 use sqlx::{AssertSqlSafe, Row as _};

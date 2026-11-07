@@ -30,12 +30,12 @@
 //! `crate::lease::write_fence` is the shape that would close it: the fence
 //! proved inside the write's own transaction.
 
-use afd_core::id::Uuid7;
-use afd_memory::Captured;
-use afd_wire::memory::{
+use af_core::id::Uuid7;
+use af_wire::memory::{
     MemoryDelta, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
     MemoryRecallResponse,
 };
+use afd_memory::Captured;
 use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};

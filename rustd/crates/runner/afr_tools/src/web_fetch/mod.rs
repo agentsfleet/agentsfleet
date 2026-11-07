@@ -5,7 +5,7 @@
 //! carries a fleet's credential. An HTML page comes back as its text, through
 //! a real HTML parser (`html2text`).
 
-use afr_egress::{Draft, Placement};
+use af_egress::{Draft, Placement};
 use schemars::JsonSchema;
 use serde::Deserialize;
 

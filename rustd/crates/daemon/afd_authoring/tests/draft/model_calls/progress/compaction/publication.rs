@@ -1,8 +1,8 @@
 //! Conflicting notes and a real storage failure cannot partially publish a summary.
 use super::{SUMMARY, WAIT, checkpoint, finish, model_calls, ready, ready_in};
 use crate::draft::fixture::Fixture;
-use afd_core::error_code;
-use afd_wire::context::ContextState;
+use af_core::error_code;
+use af_wire::context::ContextState;
 use model_calls::compaction::competing;
 use sqlx::Connection as _;
 

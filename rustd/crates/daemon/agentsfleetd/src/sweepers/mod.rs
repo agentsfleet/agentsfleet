@@ -13,9 +13,9 @@
 //! anywhere in this daemon. [`Supervisor::spawn`] hands each one a cancellation
 //! token and keeps its handle, so shutdown cancels, joins, and only then drops.
 //!
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
+use af_observability::Analytics;
 use afd_db::Db;
-use afd_observability::Analytics;
 use afd_runner::sweep::{self, census::Census, liveness::Liveness, retention::Retention};
 
 use crate::supervisor::Supervisor;

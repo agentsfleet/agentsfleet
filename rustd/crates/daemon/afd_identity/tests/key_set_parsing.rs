@@ -10,8 +10,8 @@
 
 use std::sync::Arc;
 
+use af_core::clock::{Clock, FixedClock};
 use afd_auth::verifier::VerifyError;
-use afd_core::clock::{Clock, FixedClock};
 use afd_identity::jwks::key_set::{MAX_MODULUS_BYTES, MIN_MODULUS_BYTES};
 use afd_identity::{JwkKeySet, JwksVerifier, StaticKeySet, VerifierConfig};
 use base64::Engine as _;

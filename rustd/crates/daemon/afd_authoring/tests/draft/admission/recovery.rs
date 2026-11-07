@@ -1,15 +1,15 @@
 //! Retained provider liability must not regain private chat ownership after Stop.
 
 use super::{Fixture, claim, funded, mint, now, queue};
-use afd_authoring::types::{Draft, Failure, MessageQuery, SendMessage};
-use afd_authoring::{Claimed, ModelCalls, ProviderRequest, ProviderResponse, Transport};
-use afd_core::{error_code, id::Uuid7};
-use afd_credential::provider::Providers;
-use afd_crypto::{entropy::Entropy, secret::Kek};
-use afd_wire::authoring::{
+use af_core::{error_code, id::Uuid7};
+use af_crypto::{entropy::Entropy, secret::Kek};
+use af_wire::authoring::{
     Accounting, ActivityEvent, ActivityRequest, FailureReason, Knowledge, Meter, ModelCall,
     ModelMessage, ModelRequest, Outcome, Proposal, Report,
 };
+use afd_authoring::types::{Draft, Failure, MessageQuery, SendMessage};
+use afd_authoring::{Claimed, ModelCalls, ProviderRequest, ProviderResponse, Transport};
+use afd_credential::provider::Providers;
 use std::sync::Arc;
 
 const FIRST: &str = "A request whose provider usage cannot be read";

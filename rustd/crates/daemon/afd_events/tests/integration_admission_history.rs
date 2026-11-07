@@ -10,10 +10,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer};
-use afd_core::id::Uuid7;
 use afd_events::{Filter, History, next_cursor};
-use afd_wire::event::EventType;
 use jiff::Timestamp;
 
 use crate::support::EventsLane;

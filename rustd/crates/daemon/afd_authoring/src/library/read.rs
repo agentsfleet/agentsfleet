@@ -8,7 +8,7 @@ use crate::{
     review,
     types::{Library, SourcePin},
 };
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use sqlx::{Connection as _, PgConnection};
 
 impl Setup {
@@ -112,7 +112,7 @@ pub(crate) fn context(
 struct Identifier<'a> {
     #[garde(
         length(bytes, min = 1, max = 128),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     )]
     value: &'a str,
 }

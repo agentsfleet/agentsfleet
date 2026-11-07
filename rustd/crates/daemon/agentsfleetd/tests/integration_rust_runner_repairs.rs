@@ -13,8 +13,8 @@
               indexes the JSON it just read"
 )]
 
+use af_wire::event::EventType;
 use afd_gate::policy::repair::branch_for;
-use afd_wire::event::EventType;
 use afr_tools::ToolErrorCode;
 use agentsfleetd::supervisor::Supervisor;
 use hyper::Method;

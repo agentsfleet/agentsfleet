@@ -8,7 +8,7 @@
 use std::borrow::Cow;
 use std::net::Ipv4Addr;
 
-use afd_wire::policy::{ExecutionPolicy, RepositoryAccess, RepositoryBinding};
+use af_wire::policy::{ExecutionPolicy, RepositoryAccess, RepositoryBinding};
 use afr_sandbox::Allowlist;
 
 use super::BuiltUnder;
@@ -64,7 +64,7 @@ fn the_same_policy_files_the_same_key() {
 #[test]
 fn a_change_to_any_network_field_files_another_key() {
     let changes: [Change; 5] = [
-        |policy| policy.network_policy.http_egress = afd_wire::policy::HttpEgress::Public,
+        |policy| policy.network_policy.http_egress = af_wire::policy::HttpEgress::Public,
         |policy| policy.network_policy.package_manager_domains = true,
         |policy| policy.network_policy.allow.push(Cow::Borrowed(HOST)),
         |policy| policy.network_policy.read_only = !policy.network_policy.read_only,

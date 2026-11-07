@@ -1,15 +1,15 @@
 //! A rejected request never generated tokens; ambiguous failures remain unknown.
 
 use crate::{Result, error::ErrorKind};
-use afd_crypto::secret::SecretString;
-use afd_wire::inference::InferenceApi;
+use af_crypto::secret::SecretString;
+use af_wire::inference::InferenceApi;
 use serde_json::Value;
 
 const ERROR: &str = "error";
 
 /// Parse before committing intent, using the same HTTP header parser as dispatch.
 pub(in crate::model) fn validate_key(api: InferenceApi, key: &SecretString) -> Result<()> {
-    afd_inference::validate_key(api, key.expose()).map_err(|_invalid| ErrorKind::Model.into())
+    af_inference::validate_key(api, key.expose()).map_err(|_invalid| ErrorKind::Model.into())
 }
 
 /// Only a standalone HTTP authentication error proves rejection. Any response

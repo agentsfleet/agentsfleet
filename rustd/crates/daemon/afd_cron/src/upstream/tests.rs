@@ -5,7 +5,7 @@
     reason = "test target: an unparseable fixture should fail the test loudly"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::{UPSTREAM_ID_PREFIX, schedule_of, upstream_id};
 

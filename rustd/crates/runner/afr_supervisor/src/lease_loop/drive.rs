@@ -3,9 +3,9 @@
 
 use std::panic::AssertUnwindSafe;
 
-use afd_core::error_code;
-use afd_core::timing::ENGINE_STOP_GRACE;
-use afd_wire::report::FailureClass;
+use af_core::error_code;
+use af_core::timing::ENGINE_STOP_GRACE;
+use af_wire::report::FailureClass;
 use afr_agent::AgentRun;
 use afr_executor::ExecutorSource;
 use afr_memory::Seed;

@@ -111,7 +111,7 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
     let explained = sqlx::query(sqlx::AssertSqlSafe(format!("EXPLAIN {SELECT_FLEET_SPEND}")))
         .bind(&workspace)
         .bind(&held.fleet)
-        .bind(afd_core::timing::DAY)
+        .bind(af_core::timing::DAY)
         .fetch_all(&mut *connection)
         .await
         .expect("the spend read is explainable");

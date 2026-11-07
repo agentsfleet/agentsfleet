@@ -1,7 +1,7 @@
 //! What the row readers share: an identifier parsed where it is read.
 //!
 //! The statements select identifiers as text (`id::text`), because
-//! `afd_core::id::Uuid7` carries no `sqlx` decoding, so each reader parses
+//! `af_core::id::Uuid7` carries no `sqlx` decoding, so each reader parses
 //! them at the row (M-STRONG-TYPES) and nothing past it holds a `String` that
 //! might not be one. A stored value that does not parse is a row this daemon
 //! cannot read, reported as that, never as the caller's fault.
@@ -9,7 +9,7 @@
 //! Instants need nothing here: each row struct decodes its `TIMESTAMPTZ(3)`
 //! columns through jiff-sqlx by `FromRow`.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::sql::COLUMN_ID;
 use crate::{Result, error};
@@ -33,7 +33,7 @@ pub(crate) fn tenant(stored: &str) -> Result<Uuid7> {
 
 #[cfg(test)]
 mod tests {
-    use afd_core::error_code;
+    use af_core::error_code;
 
     use super::{tenant, uuid};
 

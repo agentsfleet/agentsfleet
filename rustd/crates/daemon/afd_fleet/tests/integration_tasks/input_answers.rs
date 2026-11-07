@@ -1,13 +1,13 @@
 //! A separate accepted source completes only after every item has an immutable answer.
 
-use afd_admission::{Admission, Key, Producer, Reply};
-use afd_connector::Provider;
-use afd_core::{error_code, id::Uuid7};
-use afd_fleet::task::{TaskBinding, TaskLifecycle as _};
-use afd_wire::{
+use af_core::{error_code, id::Uuid7};
+use af_wire::{
     event::EventType,
     task::{DecisionTaskVersion, TaskInputMode, TaskInputReceiptInput, TaskLimits},
 };
+use afd_admission::{Admission, Key, Producer, Reply};
+use afd_connector::Provider;
+use afd_fleet::task::{TaskBinding, TaskLifecycle as _};
 use serde_json::{Value, json};
 
 use super::fixture::{Case, GOALS, exercise, id};
@@ -251,7 +251,7 @@ fn assert_event(event: &Value) {
     );
     assert_eq!(
         event.get("status"),
-        Some(&json!(afd_core::event::status::PROCESSED))
+        Some(&json!(af_core::event::status::PROCESSED))
     );
     assert_eq!(event.get("response_text"), Some(&json!(ANSWER)));
     assert_eq!(event.get("token_count"), Some(&json!(0)));

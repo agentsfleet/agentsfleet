@@ -11,8 +11,8 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_api_wire::approval::GateStatus;
-use afd_core::id::Uuid7;
 use sqlx::postgres::PgArguments;
 use sqlx::query::QueryScalar;
 
@@ -145,7 +145,7 @@ impl<'a> PendingRow<'a> {
 /// microsecond, so a timeout carrying sub-millisecond noise would otherwise
 /// fail the park rather than round.
 fn timeout(span: Duration) -> Duration {
-    Duration::from_millis(afd_core::clock::saturating_millis(span))
+    Duration::from_millis(af_core::clock::saturating_millis(span))
 }
 
 #[cfg(test)]

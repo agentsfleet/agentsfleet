@@ -5,7 +5,7 @@ mod fixture;
 
 use std::time::Instant;
 
-use afd_wire::report::Outcome;
+use af_wire::report::Outcome;
 use futures_util::future::join_all;
 use serde_json::json;
 
@@ -41,7 +41,7 @@ async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
         assert_eq!(document.get("detail"), Some(&json!("Fleet not found")));
         assert_eq!(
             document.get("error_code"),
-            Some(&json!(afd_core::error_code::AGENTSFLEET_NOT_FOUND.as_str()))
+            Some(&json!(af_core::error_code::AGENTSFLEET_NOT_FOUND.as_str()))
         );
     }
     let path = format!(

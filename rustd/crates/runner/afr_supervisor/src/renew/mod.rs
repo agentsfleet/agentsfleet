@@ -3,12 +3,12 @@
 
 use std::time::Duration;
 
-use afd_core::clock::Clock;
-use afd_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_RENEW_BODY_MALFORMED};
-use afd_core::id::Uuid7;
-use afd_core::timing::{MAX_RUNTIME, RENEWAL_TICK};
-use afd_wire::report::{FailureClass, RenewRequest};
-use afd_wire::usage::LINES_MAX;
+use af_core::clock::Clock;
+use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_RENEW_BODY_MALFORMED};
+use af_core::id::Uuid7;
+use af_core::timing::{MAX_RUNTIME, RENEWAL_TICK};
+use af_wire::report::{FailureClass, RenewRequest};
+use af_wire::usage::LINES_MAX;
 use afr_agent::Meter;
 use jiff::Timestamp;
 use tokio::time::{Instant, MissedTickBehavior};

@@ -12,16 +12,16 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-test-util = ["dep:serde_json", "afd_core/test-util", "afd_crypto/test-util", "afd_db/test-util"]
+test-util = ["dep:serde_json", "af_core/test-util", "af_crypto/test-util", "afd_db/test-util"]
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, optional = true }
-afd_core.workspace = true
-afd_crypto.workspace = true
+af_core.workspace = true
+af_crypto.workspace = true
 afd_db.workspace = true
-afd_wire.workspace = true
-afd_inference.workspace = true
+af_wire.workspace = true
+af_inference.workspace = true
 # Instants are `jiff::Timestamp`; `TIMESTAMPTZ(3)` columns decode through jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true

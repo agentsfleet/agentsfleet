@@ -1,9 +1,9 @@
 //! Private-content cleanup is supervised and joined before its database closes.
 
 use crate::supervisor::Supervisor;
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
+use af_observability::Analytics;
 use afd_db::Db;
-use afd_observability::Analytics;
 use std::time::Duration;
 
 const INTERVAL: Duration = Duration::from_secs(10);
@@ -58,9 +58,9 @@ async fn maintain(drafts: &afd_authoring::Drafts) {
 
 #[cfg(test)]
 mod tests {
-    use afd_core::error_code;
-    use afd_core::test_util::trace::Capture;
-    use afd_crypto::entropy::Entropy;
+    use af_core::error_code;
+    use af_core::test_util::trace::Capture;
+    use af_crypto::entropy::Entropy;
     use afd_db::test_util::unreachable_db;
 
     use super::{FAILED, maintain};

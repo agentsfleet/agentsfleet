@@ -208,7 +208,7 @@ pub(crate) fn report_body(lease_id: &str, event_id: &str, fence: u64) -> Value {
         "response_text": "the fixture run produced this",
         "tokens": u64::from(INPUT_TOKENS + CACHED_INPUT_TOKENS + OUTPUT_TOKENS),
         "requests": [{
-            "seq": 1, "at": afd_core::clock::now().to_string(),
+            "seq": 1, "at": af_core::clock::now().to_string(),
             "input_tokens": INPUT_TOKENS, "cached_input_tokens": CACHED_INPUT_TOKENS,
             "cache_write_tokens": 0, "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0,
             "output_tokens": OUTPUT_TOKENS,
@@ -230,7 +230,7 @@ pub(crate) async fn get(http: &reqwest::Client, run: &Scenario, path: &str) -> r
 /// The claim body a fleet worker sends: it implements the fleet protocol only,
 /// and `accepted_kinds` is required on the claim.
 pub(crate) fn fleet_poll() -> Value {
-    json!({"accepted_kinds": afd_wire::lease::AcceptedKinds::FLEET})
+    json!({"accepted_kinds": af_wire::lease::AcceptedKinds::FLEET})
 }
 
 /// A `POST` carrying the scenario's runner credential and a JSON body.

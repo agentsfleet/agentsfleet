@@ -7,7 +7,7 @@ execution-telemetry store. Two halves write into one PostHog project:
 | Half | Owner | Captures |
 |---|---|---|
 | **Client activation events** | `ui/packages/app` (`posthog-js`) | User-driven dashboard actions (catalog below), autocapture, pageviews, `identify` on Clerk sign-in, `reset` on sign-out. |
-| **Server conversion truth** | agentsfleetd (`posthog-rs`, `rustd/crates/protocol/afd_observability/src/product/telemetry/mod.rs`) | Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry". |
+| **Server conversion truth** | agentsfleetd (`posthog-rs`, `rustd/crates/protocol/af_observability/src/product/telemetry/mod.rs`) | Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry". |
 
 Client events stitch to the same person via `identify(clerk_user_id)`. A
 conversion that completes server-side — workspace creation, fleet runs — is
@@ -59,7 +59,7 @@ browser click into conversion truth. Join only through opaque identifiers within
 The daemon reports each step from `afd_authoring` after the commit that made it
 true, attributed to the person's identity-provider subject. Every property is a
 UUID or a fixed word, and
-`rustd/crates/protocol/afd_observability/src/product/telemetry/authoring_tests.rs` pins
+`rustd/crates/protocol/af_observability/src/product/telemetry/authoring_tests.rs` pins
 each event's exact key set.
 
 These events allow only kind, state, outcome, and opaque authorized identifiers.

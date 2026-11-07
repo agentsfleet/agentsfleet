@@ -9,8 +9,8 @@
 //! `..` would aim the secret-bearing request at the user COLLECTION instead of
 //! at a person, and no escaping can make either name a single user.
 
+use af_validate::not_relative;
 use afd_auth::principal::Subject;
-use afd_validate::not_relative;
 use reqwest::Url;
 
 /// The collection every person lives under, appended to the API base.

@@ -9,7 +9,7 @@
 //!
 //! An entry belongs to the fleet that wrote it, under `(workspace, fleet,
 //! key)`. A fleet holding the publish grant may mark an entry
-//! [`Visibility::Workspace`](afd_wire::memory::Visibility); a fleet holding the
+//! [`Visibility::Workspace`](af_wire::memory::Visibility); a fleet holding the
 //! read grant hydrates and recalls those entries from the workspace's other
 //! fleets, each naming its writer. No fleet overwrites or forgets another's.
 //! `docs/architecture/runner_fleet.md` §"Memory backends and scope" is the

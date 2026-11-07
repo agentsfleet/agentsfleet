@@ -5,11 +5,11 @@
 //! fail where production would see an aborted write, and every other runner in
 //! the lane beats through untouched.
 
-use afd_core::clock;
-use afd_core::error_code;
-use afd_core::test_util::trace::Capture;
+use af_core::clock;
+use af_core::error_code;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets};
 use afd_runner::sql::NEVER_SEEN;
-use afd_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets};
 
 use super::Fixture;
 use super::refusal::Refusal;

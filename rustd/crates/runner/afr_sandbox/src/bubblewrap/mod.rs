@@ -18,7 +18,7 @@ pub use self::requirements::Requirements;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
-use afd_core::env::LOG_LEVEL_VAR;
+use af_core::env::LOG_LEVEL_VAR;
 
 use crate::network::{SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
 use crate::tenant::Inherited;

@@ -84,7 +84,7 @@ async fn mark(
         .bind(attempt.message_sequence)
         .bind(FAILED)
         .bind(crate::lease::report::verdict::reason(
-            afd_wire::authoring::FailureReason::ProviderUsageUnknown,
+            af_wire::authoring::FailureReason::ProviderUsageUnknown,
         ))
         .bind(RUNNING)
         .execute(&mut *connection)

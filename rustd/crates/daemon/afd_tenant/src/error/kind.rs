@@ -35,16 +35,16 @@ pub(crate) enum ErrorKind {
         table: &'static str,
         column: &'static str,
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
-    /// Every `afd_crypto` failure lands here: a draw from the entropy source,
+    /// Every `af_crypto` failure lands here: a draw from the entropy source,
     /// an identifier minted from it, or a key or tag it was handed. The source
     /// says which.
     #[error("a cryptographic operation failed")]
     Crypto {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     #[error("a device-flow login field was refused: {field}")]

@@ -8,12 +8,12 @@
 
 use std::borrow::Cow;
 
+use af_crypto::entropy::Entropy;
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use afd_auth::scope::ScopeSet;
-use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_runner::Runners;
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use http::{Method, StatusCode};
 use jiff::Timestamp;
 
@@ -43,7 +43,7 @@ async fn test_heartbeat_reply_names_the_holds_to_release() {
     let beat = send(
         &router,
         Method::POST,
-        afd_wire::paths::RUNNER_HEARTBEATS,
+        af_wire::paths::RUNNER_HEARTBEATS,
         Some(&token),
         &format!(r#"{{"holds":["{never_held}"],"closing":false}}"#),
     )
@@ -87,7 +87,7 @@ async fn test_an_assignment_that_will_not_decode_is_refused_on_the_beat_and_the_
     let beat = send(
         &router,
         Method::POST,
-        afd_wire::paths::RUNNER_HEARTBEATS,
+        af_wire::paths::RUNNER_HEARTBEATS,
         Some(&token),
         r#"{"holds":[],"closing":false}"#,
     )
@@ -113,7 +113,7 @@ fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("heartbeat.fixture.test"),
         assigned_policy: AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::DevNone,
             network_policy: NetworkPolicy::AllowAll,
@@ -143,7 +143,7 @@ async fn test_a_beat_asking_to_be_held_answers_woken_after_its_liveness() {
     let beat = send(
         &router,
         Method::POST,
-        afd_wire::paths::RUNNER_HEARTBEATS,
+        af_wire::paths::RUNNER_HEARTBEATS,
         Some(&token),
         r#"{"holds":[],"closing":false,"wake":true}"#,
     )

@@ -11,7 +11,7 @@ use crate::lease::Plane;
 #[derive(Debug, Clone)]
 pub struct TaskDependencies {
     /// Deployment-owned Secrets workspace, never selected by fleet/model input.
-    pub admin_workspace: Option<afd_core::id::Uuid7>,
+    pub admin_workspace: Option<af_core::id::Uuid7>,
     /// The same payer funds check as fleet leases; the relay settles logged usage.
     pub biller: Arc<dyn Biller>,
     /// Fresh platform-admin provider-secret resolution.

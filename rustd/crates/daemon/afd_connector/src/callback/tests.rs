@@ -6,7 +6,7 @@
 
 use super::{Dashboard, connected_url, relay_uri};
 use crate::provider::Provider;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 /// The dashboard base a suite builds URLs under.
 const DASHBOARD: &str = "https://app.example.test";

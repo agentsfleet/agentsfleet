@@ -2,9 +2,9 @@
 //! the attempt's deadline, completed only when no dispatch failed.
 
 use super::{Attempt, Fixture, counts, fixture, report};
+use af_core::error_code;
+use af_wire::authoring::{FailureReason, Outcome, Report};
 use afd_authoring::types::Source;
-use afd_core::error_code;
-use afd_wire::authoring::{FailureReason, Outcome, Report};
 use std::sync::Arc;
 
 /// Moves the attempt's wall-clock deadline behind database time, leaving its

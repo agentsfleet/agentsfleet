@@ -8,11 +8,11 @@
 use std::time::Duration;
 
 use crate::ResultOutcome;
-use afd_wire::activity::ActivityFrame;
-use afd_wire::lease::LeasePayload;
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_egress::testing::CountingMint;
-use afr_providers::Message;
+use af_egress::testing::CountingMint;
+use af_providers::Message;
+use af_wire::activity::ActivityFrame;
+use af_wire::lease::LeasePayload;
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::{Catalog, Tool};
 use tokio_util::sync::CancellationToken;

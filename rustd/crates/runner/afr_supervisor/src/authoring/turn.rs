@@ -2,9 +2,9 @@
 
 use super::{Ending, meter::Observed, proposal};
 use crate::{Result, client::ControlPlane, error};
-use afd_core::{clock::Clock, id::Uuid7};
-use afd_crypto::entropy::Entropy;
-use afd_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest};
+use af_core::{clock::Clock, id::Uuid7};
+use af_crypto::entropy::Entropy;
+use af_wire::authoring::{ContextRole, Lease, ModelCall, ModelMessage, ModelRequest};
 use serde_json::Value;
 
 pub(super) struct Turn<'a> {
@@ -48,7 +48,7 @@ impl Turn<'_> {
                 ));
             }
             self.observed.accept(&result.usage)?;
-            if matches!(result.usage, afd_wire::authoring::ModelUsage::Unknown) {
+            if matches!(result.usage, af_wire::authoring::ModelUsage::Unknown) {
                 return Ok(Ending::unknown());
             }
             if result.compacted {

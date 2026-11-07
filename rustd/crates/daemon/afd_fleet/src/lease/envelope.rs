@@ -1,7 +1,7 @@
 //! Work read from the admissions ledger under the fleet's current fence.
 
 use crate::lease::{affinity::Fence, reclaim::Reused};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 /// Whether the work was pulled fresh or taken back from a dead holder.

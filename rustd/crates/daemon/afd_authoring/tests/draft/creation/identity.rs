@@ -142,7 +142,7 @@ fn unreachable(c: &Case) -> afd_authoring::Creations {
     let admissions = afd_admission::Admissions::new(
         c.base.db.clone(),
         queue.clone(),
-        afd_crypto::entropy::Entropy::new(),
+        af_crypto::entropy::Entropy::new(),
     );
     afd_authoring::Creations::new(c.setup.clone(), admissions)
 }
@@ -196,7 +196,7 @@ async fn save_with_unavailable_notifications_activates_and_still_binds_body_and_
 async fn assert_bound(
     c: &Case,
     creations: &afd_authoring::Creations,
-    key: &afd_core::id::Uuid7,
+    key: &af_core::id::Uuid7,
     request: &afd_authoring::types::SaveFleet,
 ) {
     let mut changed = request.clone();
@@ -207,10 +207,10 @@ async fn assert_bound(
         .save(c.base.access(), key, changed, now())
         .await
         .expect_err("body is bound");
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_REPLAY);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_REPLAY);
     let error = creations
         .save(c.base.member_access(), key, request.clone(), now())
         .await
         .expect_err("creator is bound");
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_NOT_FOUND);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_NOT_FOUND);
 }

@@ -28,7 +28,7 @@ fn test_runner_scopes_satisfy_every_runner_route() {
 #[tokio::test]
 async fn an_authorized_enrolment_reports_a_datastore_outage_without_minting_a_token() {
     use super::{ENROL_PATH, Fleet, OPERATOR, Scope, ScopeSet, TENANT_KEY, send};
-    use afd_core::error_code;
+    use af_core::error_code;
     use http::StatusCode;
 
     let router = Fleet::new()

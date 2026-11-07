@@ -2,8 +2,8 @@
 #![expect(clippy::expect_used, reason = "a wrong answer fails the proof loudly")]
 
 use super::{Receipt, Resource, decide, sql};
-use afd_core::error_code::{self, ErrorCode};
-use afd_core::id::Uuid7;
+use af_core::error_code::{self, ErrorCode};
+use af_core::id::Uuid7;
 
 const ACTOR: &str = "019f0000-0000-7000-8000-000000000001";
 const OTHER: &str = "019f0000-0000-7000-8000-000000000002";

@@ -2,8 +2,8 @@
 
 use std::{borrow::Cow, sync::Arc};
 
+use af_core::paging::Cursor;
 use afd_api_wire::fleet::{TaskResponse, TaskSummary, TasksResponse};
-use afd_core::paging::Cursor;
 use afd_fleet::task::{TaskPage, TaskScope};
 use afd_http::handler::Refusal;
 use axum::{

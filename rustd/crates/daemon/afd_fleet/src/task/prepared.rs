@@ -1,8 +1,8 @@
 //! Prepared action meaning is distinct from an optional new objective owner.
 
 use super::PreparedTask;
-use afd_core::id::Uuid7;
-use afd_wire::task::TaskInputAction;
+use af_core::id::Uuid7;
+use af_wire::task::TaskInputAction;
 use std::ops::Range;
 
 #[derive(Debug, Clone)]

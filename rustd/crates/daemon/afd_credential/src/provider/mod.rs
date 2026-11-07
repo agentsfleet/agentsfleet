@@ -66,7 +66,7 @@ mod wire;
 
 use std::fmt::Debug;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::de::DeserializeOwned;
 
 use crate::error::{Result, provider_malformed, provider_no_workspace, provider_secret_missing};
@@ -134,7 +134,7 @@ pub trait Resolution: Debug + Send + Sync {
 
 /// One credential body, typed — refusing anything that is not a JSON OBJECT.
 ///
-/// The gate lives in [`afd_core::json`], which carries the reasoning: a derived
+/// The gate lives in [`af_core::json`], which carries the reasoning: a derived
 /// struct fills from a JSON ARRAY positionally, so `["anthropic","sk-live"]`
 /// parses as a credential with a provider and a key and passes every shape
 /// check after it. `loadJson` refuses a non-object at the top and so does this.
@@ -146,7 +146,7 @@ pub trait Resolution: Debug + Send + Sync {
 /// Reports a body that is not an object, and one the strategy's own shape
 /// cannot read.
 fn credential<T: DeserializeOwned>(body: &[u8], field: &'static str) -> Result<T> {
-    afd_core::json::object_from_slice(body).map_err(|_shape| provider_malformed(field))
+    af_core::json::object_from_slice(body).map_err(|_shape| provider_malformed(field))
 }
 
 impl Providers {

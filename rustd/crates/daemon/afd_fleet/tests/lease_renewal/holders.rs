@@ -5,7 +5,7 @@ use super::{
     fixture::Running,
     replica::{Replica, original},
 };
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use afd_fleet::lease::Renewed;
 use jiff::Timestamp;
 use sqlx::Connection as _;

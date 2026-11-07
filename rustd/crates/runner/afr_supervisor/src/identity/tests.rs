@@ -4,12 +4,12 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use afd_core::test_util::trace::{Capture, CapturedSpan};
-use afd_observability::semconv::{
+use af_core::test_util::trace::{Capture, CapturedSpan};
+use af_observability::semconv::{
     ATTR_AGENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID, RUNNER_SCOPE_NAME,
     SPAN_RUNNER_LEASE,
 };
-use afd_wire::lease::LeasePayload;
+use af_wire::lease::LeasePayload;
 
 use super::EVENT_IDENTITY_FAILED;
 use crate::client::{Call, Verb};

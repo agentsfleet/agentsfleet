@@ -8,10 +8,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_wire::event::EventType;
 use afd_db::test_util::unreachable_db;
 use afd_events::History;
 use afd_fleet::lease::Plane;
-use afd_wire::event::EventType;
 
 use super::chat::{ASKED_LATER, Chat, FIRST_ANSWER, FIRST_MESSAGE, FOLLOW_UP, first_turn};
 use crate::report_seed::SLICE;
@@ -156,7 +156,7 @@ async fn test_runner_lease_issued_logs_queue_wait() {
     chat.ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
 
-    let log = afd_core::test_util::trace::Capture::install();
+    let log = af_core::test_util::trace::Capture::install();
     let polled = std::time::Instant::now();
     chat.lease(&chat.runner, chat.fixtures.after(WAITED)).await;
     let call_ms = i64::try_from(polled.elapsed().as_millis()).expect("a short call");

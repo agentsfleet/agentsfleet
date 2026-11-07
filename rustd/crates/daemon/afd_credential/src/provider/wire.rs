@@ -40,8 +40,8 @@ impl Resolved {
 mod tests {
     use super::Resolved;
     use crate::provider::resolved::Dialled;
+    use af_crypto::secret::SecretString;
     use afd_billing::rates::Posture;
-    use afd_crypto::secret::SecretString;
 
     fn resolved(endpoint: Option<Dialled>) -> Resolved {
         Resolved::new(

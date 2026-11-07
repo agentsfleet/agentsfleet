@@ -6,7 +6,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afr_executor::{Client, Ending, Executor as _, READ_CHUNK_BYTES, Spawn};
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use serde_json::Value;

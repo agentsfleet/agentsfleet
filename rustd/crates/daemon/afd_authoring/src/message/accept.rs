@@ -11,8 +11,8 @@ use crate::{
     model, replay, sql,
     types::{Accepted, DraftState, QUEUED, SendMessage},
 };
-use afd_core::id::Uuid7;
-use afd_observability::AuthoringStep;
+use af_core::id::Uuid7;
+use af_observability::AuthoringStep;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 use std::sync::Arc;

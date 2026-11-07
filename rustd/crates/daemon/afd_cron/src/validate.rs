@@ -31,7 +31,7 @@
 //! [`Fields`], and the three readers take `&garde::Valid<Fields>` — a value only
 //! a passed validation constructs.
 
-use afd_validate::PathTable;
+use af_validate::PathTable;
 use const_format::concatcp;
 use garde::{Unvalidated, Valid};
 use jiff::tz::TimeZone;

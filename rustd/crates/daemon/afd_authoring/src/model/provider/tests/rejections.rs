@@ -4,9 +4,9 @@
 
 use super::super::{Outbound, ProviderRequest, ProviderResponse, Transport, complete};
 use crate::{Result, error::ErrorKind};
-use afd_core::error_code;
-use afd_crypto::secret::SecretString;
-use afd_wire::inference::{InferenceApi, ModelInference};
+use af_core::error_code;
+use af_crypto::secret::SecretString;
+use af_wire::inference::{InferenceApi, ModelInference};
 use rig_core::{completion::CompletionRequest, message::Message};
 use serde_json::{Value, json};
 use std::{

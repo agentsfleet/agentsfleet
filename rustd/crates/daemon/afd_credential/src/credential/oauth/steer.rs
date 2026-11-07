@@ -13,7 +13,7 @@
 //! admission, which refuses the same handles earlier and under the provider
 //! they claim to be.
 
-use afd_core::credential::{FIELD_ACCOUNTS_BASE, ZOHO_ACCOUNTS_SERVERS, ZOHO_TOKEN_PATH};
+use af_core::credential::{FIELD_ACCOUNTS_BASE, ZOHO_ACCOUNTS_SERVERS, ZOHO_TOKEN_PATH};
 use serde_json::{Map, Value};
 
 /// Where a stored handle asks its refresh to be posted.

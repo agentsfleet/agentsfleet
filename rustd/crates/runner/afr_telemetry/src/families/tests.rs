@@ -10,9 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
-use afd_observability::metrics::instrument::Instruments;
-use afd_observability::metrics::label::http::{DiscardReason, Signal};
-use afd_observability::metrics::registry::Policy;
+use af_observability::metrics::instrument::Instruments;
+use af_observability::metrics::label::http::{DiscardReason, Signal};
+use af_observability::metrics::registry::Policy;
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, Metric, MetricData, ResourceMetrics};
@@ -261,7 +261,7 @@ fn record_every_family(families: &Families) {
     families.model_tokens(
         "accounts/fireworks/models/minimax-m3p1-flash",
         Provider::of("fireworks"),
-        afd_wire::usage::ObservedTokens {
+        af_wire::usage::ObservedTokens {
             input: Some(10),
             output: Some(3),
             cache_read: Some(4),

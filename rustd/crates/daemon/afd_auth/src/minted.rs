@@ -4,7 +4,7 @@
 //!
 //! It is built from exactly two things this crate owns — [`CredentialKind`],
 //! which supplies the marker, and [`Digest`], which is what a row stores — and
-//! one thing `afd_crypto` owns. Keeping it in the domain crate that WRITES the
+//! one thing `af_crypto` owns. Keeping it in the domain crate that WRITES the
 //! rows meant every store touching a credential had to depend on that whole
 //! crate to draw one. Here, minting sits with classification: the two halves of
 //! one fact, which is that a credential's class is carried by its bytes.
@@ -19,8 +19,8 @@
 //! Here it is one type taking the class's marker. What varies between the three
 //! is the marker and nothing else, which is what the parameter says.
 
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::SecretString;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::SecretString;
 use std::fmt;
 
 use crate::credential::CredentialKind;
@@ -58,7 +58,7 @@ impl Minted {
     /// Returns an entropy failure when the host cannot produce random bytes. It
     /// is not degraded to a weaker source: a predictable credential is one an
     /// attacker mints for themselves.
-    pub fn draw(kind: CredentialKind, entropy: &Entropy) -> afd_crypto::error::Result<Self> {
+    pub fn draw(kind: CredentialKind, entropy: &Entropy) -> af_crypto::error::Result<Self> {
         let mut raw = [0u8; TOKEN_RANDOM_BYTES];
         entropy.fill(&mut raw)?;
         // Every class this crate mints carries a marker; the session bearer is
@@ -79,7 +79,7 @@ impl Minted {
     /// The token, for the one response that reveals it.
     ///
     /// Named `expose` so every call site reads as a deliberate act — the
-    /// convention `afd_crypto`'s secret newtypes and `afd_auth::Presented` both
+    /// convention `af_crypto`'s secret newtypes and `afd_auth::Presented` both
     /// follow.
     #[must_use]
     pub fn expose(&self) -> &str {
@@ -105,7 +105,7 @@ impl fmt::Debug for Minted {
 
 #[cfg(test)]
 mod tests {
-    use afd_crypto::entropy::Entropy;
+    use af_crypto::entropy::Entropy;
 
     use super::Minted;
     use crate::credential::CredentialKind;

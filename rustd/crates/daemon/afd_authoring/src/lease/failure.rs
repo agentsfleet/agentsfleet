@@ -1,7 +1,7 @@
 //! Retry actions follow daemon observations, never a runner's chosen label.
 
-use afd_core::error_code;
-use afd_wire::authoring::FailureReason;
+use af_core::error_code;
+use af_wire::authoring::FailureReason;
 use sqlx::PgConnection;
 
 use super::{guard::Attempt, report::verdict, sql};

@@ -12,7 +12,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::{EnvSource as _, ProcessEnv};
+use af_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 
 /// The lane's Dragonfly URL.

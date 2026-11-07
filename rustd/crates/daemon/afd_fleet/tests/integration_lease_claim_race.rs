@@ -16,8 +16,8 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
+use af_core::id::Uuid7;
+use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
 use afd_fleet::lease::sql::lease::CLAIM_FLEET_SLOT;
 use sqlx::Connection as _;
 

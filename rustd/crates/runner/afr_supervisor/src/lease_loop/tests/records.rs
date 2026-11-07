@@ -4,7 +4,7 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use crate::client::{Call, Verb};
 use crate::error;

@@ -9,9 +9,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use af_wire::runner::SelfResponse;
 use afd_runner::SelfRow;
 use afd_runner::policy::capability;
-use afd_wire::runner::SelfResponse;
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -26,7 +26,7 @@ const EVENT: &str = "runner_self_read_failed";
 /// Answers the runner's own registration row.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = afd_wire::paths::RUNNER_SELF,
+    path = af_wire::paths::RUNNER_SELF,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "get_runner_self",
     summary = "Read this runner's status",

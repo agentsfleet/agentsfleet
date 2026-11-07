@@ -10,12 +10,12 @@ use crate::support;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_api_wire::admin::{AdminState, RunnerAdminAction};
-use afd_core::id::Uuid7;
-use afd_runner::RunnerEdit;
-use afd_wire::runner::{
+use af_core::id::Uuid7;
+use af_wire::runner::{
     AssignedPolicy, BindMode, CapabilityReport, ExtraBind, NetworkPolicy, SandboxTier,
 };
+use afd_api_wire::admin::{AdminState, RunnerAdminAction};
+use afd_runner::RunnerEdit;
 use tokio::sync::Barrier;
 
 use self::requests::enrolment;
@@ -51,7 +51,7 @@ async fn transition(
             runner,
             action,
             ACTOR,
-            afd_core::clock::after(
+            af_core::clock::after(
                 fixtures.enrolled_at(),
                 std::time::Duration::from_millis(
                     u64::try_from(offset).expect("a fixture span is not negative"),
@@ -110,7 +110,7 @@ async fn concurrent_identical_transitions_append_one_event() {
     let enrolled = enrol(&fixtures).await;
     let gate = Arc::new(Barrier::new(3));
     let cordoned_at =
-        afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1));
+        af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1));
     let mut tasks = Vec::new();
     for actor in ["fixture:operator-a", "fixture:operator-b"] {
         let runners = fixtures.runners().clone();
@@ -144,7 +144,7 @@ async fn concurrent_identical_transitions_append_one_event() {
 fn reassignment(worker_count: u32) -> AssignedPolicy<'static> {
     AssignedPolicy {
         decision_model_id: None,
-        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
         sandbox_tier: SandboxTier::LandlockFull,
         network_policy: NetworkPolicy::AllowListEgress,
         registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],
@@ -218,7 +218,7 @@ async fn assign(
         .edit(
             runner,
             edit,
-            afd_core::clock::after(
+            af_core::clock::after(
                 fixtures.enrolled_at(),
                 std::time::Duration::from_millis(
                     u64::try_from(offset).expect("a fixture span is not negative"),

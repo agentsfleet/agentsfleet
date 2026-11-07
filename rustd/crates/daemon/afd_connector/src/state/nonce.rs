@@ -15,7 +15,7 @@
 //! started it is [`super::verify`]'s and the caller's, decided before this
 //! module is reached.
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_dragonfly::Dragonfly;
 
 use crate::error::Result;
@@ -115,7 +115,7 @@ mod tests {
     /// The rendered nonce is twice the byte width, which is what hex means.
     #[test]
     fn the_rendered_nonce_is_two_hex_characters_per_byte() {
-        let entropy = afd_crypto::entropy::Entropy::new();
+        let entropy = af_crypto::entropy::Entropy::new();
 
         let nonce = super::mint(&entropy).expect("the host has entropy");
 
@@ -127,7 +127,7 @@ mod tests {
     /// slot key a state names is the one the mint remembered.
     #[test]
     fn the_rendered_nonce_is_lower_case_with_every_leading_zero() {
-        let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+        let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
         control.push_bytes(&[0x0a; NONCE_BYTES]);
 
         let nonce = super::mint(&entropy).expect("the mock answers");

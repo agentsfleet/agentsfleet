@@ -22,11 +22,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_wire::lease::LeasePayload;
-use afd_wire::memory::MemoryHydrateResponse;
-use afd_wire::report::FailureClass;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_wire::lease::LeasePayload;
+use af_wire::memory::MemoryHydrateResponse;
+use af_wire::report::FailureClass;
 use afr_agent::Meter;
 use afr_executor::{ExecutorSlot, Unavailable};
 use afr_memory::Seed;

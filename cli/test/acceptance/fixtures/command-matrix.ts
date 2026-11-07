@@ -102,7 +102,7 @@ export interface RequiresIdentifierRow {
 //              client-side and would stress the API).
 //   expectedErrorCode — server-side UZ-* code emitted on not-found
 //              (only meaningful when `apiHits: true`). The codes are
-//              declared in rustd/crates/foundation/afd_core/src/error_code/ —
+//              declared in rustd/crates/foundation/af_core/src/error_code/ —
 //              fleet.rs, auth.rs and integration.rs carry the three this
 //              matrix names.
 //   clientRejectCode — CLI-emitted error code when local validation /

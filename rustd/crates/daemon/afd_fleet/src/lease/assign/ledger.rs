@@ -1,9 +1,9 @@
 //! Claim a slot and its exact oldest unsettled admission in one transaction.
 
-use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
-use afd_observability::metrics::label::fleet::HeldClaim;
-use afd_observability::producers;
+use af_core::id::Uuid7;
+use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER};
+use af_observability::metrics::label::fleet::HeldClaim;
+use af_observability::producers;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -60,9 +60,9 @@ impl Leases {
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(&held)
             .bind(hint.as_ref().map(Uuid7::as_str))
-            .bind(afd_wire::task::CAPABILITY)
-            .bind(afd_wire::task::TaskState::Ready.as_str())
-            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(af_wire::task::CAPABILITY)
+            .bind(af_wire::task::TaskState::Ready.as_str())
+            .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
             .fetch_all(&mut *connection)
             .await
@@ -95,9 +95,9 @@ impl Leases {
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(sql::LEASE_STATUS_EXPIRED)
-            .bind(afd_wire::task::CAPABILITY)
-            .bind(afd_wire::task::TaskState::Ready.as_str())
-            .bind(afd_wire::task::TaskState::Running.as_str())
+            .bind(af_wire::task::CAPABILITY)
+            .bind(af_wire::task::TaskState::Ready.as_str())
+            .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
             .fetch_optional(&mut *transaction)
             .await

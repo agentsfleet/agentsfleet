@@ -4,8 +4,8 @@
 //! the two meet only where two deployed replicas meet: rows and queue keys.
 
 use super::fixture::Running;
-use afd_core::{clock, id::Uuid7};
-use afd_crypto::entropy::Entropy;
+use af_core::{clock, id::Uuid7};
+use af_crypto::entropy::Entropy;
 use afd_db::{Db, config::DbRole, test_util::TestDatabase};
 use afd_fleet::lease::{Billed, Kind, Leases};
 

@@ -24,7 +24,7 @@
 //! matches give the guarantee a hand-written table would need a separate
 //! assertion for.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 /// The error code a gate answers with when the principal is short a capability.
 ///

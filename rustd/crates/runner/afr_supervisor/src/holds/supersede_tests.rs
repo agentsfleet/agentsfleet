@@ -7,7 +7,7 @@
 
 use std::sync::atomic::Ordering;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 use super::Release;
 use super::tests::{FLEET_A, LEASE, fleets, holds, id, key, released, releases, sandbox};

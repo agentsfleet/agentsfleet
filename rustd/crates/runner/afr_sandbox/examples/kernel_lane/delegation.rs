@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use afd_core::env::ProcessEnv;
+use af_core::env::ProcessEnv;
 use afr_sandbox::{
     Booted, BubblewrapBackend, BubblewrapEngine, HostPaths, LeaseCgroup, Limits,
     REQUIRED_CONTROLLERS, SUBTREE_CONTROL, ToolboxHome, probe,

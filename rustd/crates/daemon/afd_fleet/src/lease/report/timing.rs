@@ -11,8 +11,8 @@
 //! hosts cannot bend a sample. A report that closed no event row published
 //! nothing, and records nothing.
 
-use afd_observability::metrics::label::fleet::DeliveryStage;
-use afd_observability::producers;
+use af_observability::metrics::label::fleet::DeliveryStage;
+use af_observability::producers;
 use jiff::Timestamp;
 
 use crate::lease::settle::Reported;
@@ -24,7 +24,7 @@ pub(super) fn completed(lease: &Reported, received: Timestamp, completed_at: Opt
         return;
     };
     for (stage, from, to) in stages(lease, received, completed) {
-        producers::fleet::delivery_stage(stage, afd_core::clock::elapsed(from, to));
+        producers::fleet::delivery_stage(stage, af_core::clock::elapsed(from, to));
     }
 }
 

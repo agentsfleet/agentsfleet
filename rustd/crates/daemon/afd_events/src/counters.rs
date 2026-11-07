@@ -25,8 +25,8 @@
 //! second acquire; the pool-taking variants are for the publishers whose
 //! write already returned its connection.
 
+use af_core::error_code::{Coded as _, Logged};
 use afd_api_wire::tail::FleetCounters;
-use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use sqlx::PgConnection;
 

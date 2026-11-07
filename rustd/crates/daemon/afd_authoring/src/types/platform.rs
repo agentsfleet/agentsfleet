@@ -13,7 +13,7 @@ pub struct PlatformLibrary {
     /// Explicit platform publication state.
     pub published: bool,
     /// Last mutation.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: Timestamp,
 }
 
@@ -23,11 +23,11 @@ pub struct PlatformLibrary {
 pub struct PlatformPatch {
     /// Display label; an absent field preserves it.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(chars, min = 1, max = super::MAX_TITLE_CHARS), custom(afd_validate::rules::nul_free)))]
+    #[garde(inner(length(chars, min = 1, max = super::MAX_TITLE_CHARS), custom(af_validate::rules::nul_free)))]
     pub name: Option<String>,
     /// Curated description, independent of immutable authored content.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(bytes, max = 2000), custom(afd_validate::rules::nul_free)))]
+    #[garde(inner(length(bytes, max = 2000), custom(af_validate::rules::nul_free)))]
     pub description: Option<String>,
     /// Explanations keyed by credential name, containing no credential values.
     #[serde(default, deserialize_with = "super::present")]
@@ -43,10 +43,10 @@ pub struct PlatformPatch {
 struct Reason<'a> {
     #[garde(
         length(bytes, min = 1, max = 200),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     )]
     credential: &'a str,
-    #[garde(length(bytes, max = 500), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, max = 500), custom(af_validate::rules::nul_free))]
     text: &'a str,
 }
 

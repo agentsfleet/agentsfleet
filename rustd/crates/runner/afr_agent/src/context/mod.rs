@@ -1,6 +1,6 @@
 //! Semantic-memory persistence cadence is independent of model-window checkpoints.
 
-use afd_wire::policy::ContextBudget;
+use af_wire::policy::ContextBudget;
 
 /// When a run writes its memory back mid-run: every `every` calls, never when
 /// `every` is zero.

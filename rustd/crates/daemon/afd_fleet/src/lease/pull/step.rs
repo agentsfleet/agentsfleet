@@ -1,6 +1,6 @@
 //! Continue-or-stop value for the lease admission sequence.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_gate::gate::Waiting;
 
 use crate::error::Result;
@@ -90,7 +90,7 @@ mod tests {
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
 
-    use afd_core::id::{ENTROPY_LEN, Uuid7};
+    use af_core::id::{ENTROPY_LEN, Uuid7};
     use afd_gate::gate::Waiting;
     use jiff::Timestamp;
 

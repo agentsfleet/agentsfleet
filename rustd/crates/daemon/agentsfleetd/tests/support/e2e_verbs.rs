@@ -16,10 +16,10 @@
 
 use std::sync::{Arc, Mutex};
 
+use af_core::id::Uuid7;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_connector::Provider;
 use afd_connector::test_util::FakeSlack;
-use afd_core::id::Uuid7;
 use axum::Router;
 use axum::extract::Path;
 use axum::http::HeaderMap;
@@ -168,7 +168,7 @@ pub(crate) async fn seal_slack_grant(run: &Scenario) {
         &workspace,
         Provider::Slack.grant_key(),
         &body.to_string(),
-        afd_core::clock::now(),
+        af_core::clock::now(),
     )
     .await;
 }

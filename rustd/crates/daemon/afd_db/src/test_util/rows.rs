@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use sqlx::Connection as _;
 
 use super::TestDatabase;
@@ -98,7 +98,7 @@ fn unremoved(removed: std::thread::Result<Result<()>>) -> Option<Logged> {
         Ok(Ok(())) => None,
         Ok(Err(cause)) => Some(cause.logged()),
         Err(_panicked) => Some(Logged {
-            error_code: afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
+            error_code: af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str(),
             reason: CLEANUP_PANICKED.to_owned(),
         }),
     }
@@ -131,8 +131,8 @@ async fn remove(url: &str, rows: &[Row]) -> Result<()> {
     reason = "a test asserts by panicking; the restriction set is for the library"
 )]
 mod tests {
-    use afd_core::error_code::{self, Coded as _};
-    use afd_core::test_util::trace::Capture;
+    use af_core::error_code::{self, Coded as _};
+    use af_core::test_util::trace::Capture;
 
     use super::{CLEANUP_PANICKED, NOT_REMOVED, OwnedRows, Row, unremoved};
 

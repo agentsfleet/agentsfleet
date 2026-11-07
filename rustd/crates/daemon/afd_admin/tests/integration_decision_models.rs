@@ -11,9 +11,9 @@ mod fixture;
 #[path = "decision_model/ownership.rs"]
 mod ownership;
 
+use af_core::{error_code, id::Uuid7};
 use afd_admin::{Model, ModelUpdate, Models};
 use afd_billing::price::{PriceBook, Tier};
-use afd_core::{error_code, id::Uuid7};
 
 use fixture::{NOW, Scenario, details, price, read};
 

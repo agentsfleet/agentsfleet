@@ -9,8 +9,8 @@ use std::borrow::Cow;
 #[cfg_attr(feature = "openapi", schema(as = BillingTotals))]
 pub struct Totals {
     /// Actual combined credit charge, as integer nanodollar text.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     pub charged_nanos: i64,
     /// Recorded input tokens, including the cached subset.
     pub input_tokens: i64,
@@ -42,7 +42,7 @@ pub struct Activity<'a> {
     /// Runtime name captured in the ledger; never private draft text.
     pub fleet_name: Option<Cow<'a, str>>,
     /// Latest included usage-line timestamp.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub recorded_at: jiff::Timestamp,
     /// Exact totals for the selected period and filters.
     pub totals: Totals,
@@ -66,8 +66,8 @@ pub struct Charge<'a> {
     /// Whether the platform or customer supplied the provider key.
     pub posture: Cow<'a, str>,
     /// Actual combined credit charge, as integer nanodollar text.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     pub charged_nanos: i64,
     /// Recorded input tokens.
     pub input_tokens: i64,
@@ -78,9 +78,9 @@ pub struct Charge<'a> {
     /// Tokens without a platform price.
     pub unpriced_tokens: i64,
     /// When the model request or runtime piece began.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub requested_at: jiff::Timestamp,
     /// When the charge settled.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub settled_at: jiff::Timestamp,
 }

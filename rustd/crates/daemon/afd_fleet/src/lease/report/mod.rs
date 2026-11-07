@@ -33,8 +33,8 @@
 //! attaches the instrument. An exporter fused into the money path would be one
 //! a report could not settle without.
 
-use afd_core::id::Uuid7;
-use afd_wire::report::ReportRequest;
+use af_core::id::Uuid7;
+use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};

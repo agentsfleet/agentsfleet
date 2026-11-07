@@ -8,7 +8,7 @@
 //!
 //! [`ToolContext`]: crate::ToolContext
 
-use afr_egress::Egress;
+use af_egress::Egress;
 use afr_memory::MemoryBackend;
 use tokio::sync::Mutex;
 
@@ -84,7 +84,7 @@ impl Default for Lease<'_> {
     fn default() -> Self {
         Self::new(
             Box::new(afr_memory::Hydrated::default()),
-            afr_egress::testing::closed(),
+            af_egress::testing::closed(),
             &crate::verbs::CLOSED,
         )
     }

@@ -4,9 +4,9 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture, mint},
     fixture::{self, Provider},
 };
+use af_core::error_code;
+use af_wire::inference::{InferenceApi, ModelInference};
 use afd_authoring::types::Source;
-use afd_core::error_code;
-use afd_wire::inference::{InferenceApi, ModelInference};
 use std::sync::Arc;
 
 #[tokio::test]

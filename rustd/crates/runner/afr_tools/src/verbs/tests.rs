@@ -1,6 +1,6 @@
 //! The refusal vocabulary a tool reads `agentsfleetd`'s answers through.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 use super::{CLOSED, LeaseVerbs as _, ScheduleCall, Unanswered, answered};
 use crate::runtime::ToolErrorCode;

@@ -14,7 +14,7 @@
               indexes the JSON it was answered"
 )]
 
-use afd_wire::message_verb::MESSAGES_PER_RUN_MAX;
+use af_wire::message_verb::MESSAGES_PER_RUN_MAX;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 

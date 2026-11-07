@@ -3,7 +3,7 @@
 use afd_admin::test_util::DecisionModelFixture;
 use std::time::Duration;
 
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use afd_db::config::DbRole;
 use afd_fleet::lease::{Billed, Delivery};
 use sqlx::{Connection as _, PgConnection, Postgres, Transaction};

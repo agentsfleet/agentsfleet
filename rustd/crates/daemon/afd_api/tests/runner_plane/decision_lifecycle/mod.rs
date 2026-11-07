@@ -9,7 +9,7 @@ mod fixture;
 mod setup;
 mod task_routes;
 
-use afd_wire::task::{DecisionReceiptInput, DecisionRecordDisposition, DecisionReservationInput};
+use af_wire::task::{DecisionReceiptInput, DecisionRecordDisposition, DecisionReservationInput};
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -69,10 +69,7 @@ async fn decision_http_replays_never_resend_credentials_or_charge_another_owner(
 
 async fn issue_and_replay(
     fixture: &Fixture,
-) -> (
-    DecisionReservationInput,
-    afd_wire::decision::DecisionRequest,
-) {
+) -> (DecisionReservationInput, af_wire::decision::DecisionRequest) {
     let input = fixture.reservation();
     refuse_scalar_evidence(fixture, &input).await;
     let initial = success(

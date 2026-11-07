@@ -13,12 +13,12 @@
 //! the CRUD half does. A second trait would mean a second stub in every suite
 //! that arranges either.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_cron::{
     Change, EditRequest, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused,
     Result as CronResult, Schedule, ScheduleService, Schedules,
 };
-use afd_crypto::entropy::Entropy;
 use afd_db::Precondition;
 use jiff::Timestamp;
 

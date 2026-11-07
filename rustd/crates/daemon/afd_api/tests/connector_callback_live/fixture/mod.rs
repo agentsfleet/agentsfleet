@@ -11,11 +11,11 @@
 //! serves both the approval callbacks and the connect states. A fixture sealing
 //! two would be inventing a split the daemon does not have.
 
+use af_core::id::Uuid7;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};

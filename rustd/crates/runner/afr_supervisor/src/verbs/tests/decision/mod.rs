@@ -5,8 +5,8 @@ mod loop_boundary;
 use super::{FENCING, FencedVerbs, Host, LEASE_ID};
 use crate::client::Verb;
 use crate::test_support::{Answer, drain, json, plane};
-use afd_core::id::Uuid7;
-use afd_wire::task::{DecisionCallState, DecisionReservationInput};
+use af_core::id::Uuid7;
+use af_wire::task::{DecisionCallState, DecisionReservationInput};
 use afr_agent::{LeaseVerbs as _, Unanswered};
 
 const CALL: &str = "019f0000-0000-7000-8000-000000000001";
@@ -16,7 +16,7 @@ fn input() -> DecisionReservationInput {
         operation_id: CALL.to_owned(),
         fencing_token: 0,
         source_admission_id: CALL.to_owned(),
-        assessment: afd_wire::task::DecisionAssessment::Message,
+        assessment: af_wire::task::DecisionAssessment::Message,
         task: None,
         retry_of: None,
         evidence: serde_json::json!({}),
@@ -27,7 +27,7 @@ fn dispatch(api: &str, purpose: &str) -> serde_json::Value {
     let threshold = serde_json::json!({"probability_bps":9000,"confidence_bps":9000});
     serde_json::json!({"status":"dispatch","call_id":CALL,"dispatch":{
         "assessment_id":CALL,"attempt":0,"api_key":"fixture-secret-never-sent",
-        "expires_at":afd_core::clock::after(afd_core::clock::now(),std::time::Duration::from_secs(30)),
+        "expires_at":af_core::clock::after(af_core::clock::now(),std::time::Duration::from_secs(30)),
         "assignment":{"revision_id":CALL,"profile":{
             "model_id":CALL,"revision":"reviewed-1","api":api,
             "endpoint":"https://decision.invalid/v1","model":"fixture-model",
@@ -211,7 +211,7 @@ fn failed_dispatch(api: &str, purpose: &str, fault: &str) -> serde_json::Value {
     match fault {
         "expired" => {
             *reservation.pointer_mut("/dispatch/expires_at").unwrap() =
-                serde_json::json!(afd_core::clock::now());
+                serde_json::json!(af_core::clock::now());
         }
         "profile" => {
             *reservation

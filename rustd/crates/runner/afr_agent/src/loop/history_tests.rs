@@ -4,9 +4,9 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_wire::event::message_of;
-use afd_wire::lease::{LeasePayload, Turn};
-use afr_providers::{Message, Replay};
+use af_providers::{Message, Replay};
+use af_wire::event::message_of;
+use af_wire::lease::{LeasePayload, Turn};
 use afr_tools::catalog::DELEGATE;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -108,8 +108,8 @@ fn test_history_message_matches_its_first_reading() {
 /// prompt, so a trace shows what a follow-up's repeated prefix cost.
 #[tokio::test]
 async fn test_cache_tokens_recorded_on_the_chat_span() {
-    use afd_core::test_util::trace::Capture;
-    use afd_observability::semconv::{
+    use af_core::test_util::trace::Capture;
+    use af_observability::semconv::{
         ATTR_USAGE_CACHE_CREATION_TOKENS, ATTR_USAGE_CACHE_READ_TOKENS, ATTR_USAGE_INPUT_TOKENS,
         ATTR_USAGE_OUTPUT_TOKENS, OPERATION_CHAT,
     };
@@ -194,8 +194,8 @@ async fn test_history_prefix_is_byte_identical_across_leases() {
 /// and out of every message, earlier turns included.
 #[tokio::test]
 async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
-    use afd_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
-    use afd_wire::policy::{
+    use af_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
+    use af_wire::policy::{
         HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch, HttpRequestRule,
         RepositoryAccess, RepositoryBinding,
     };

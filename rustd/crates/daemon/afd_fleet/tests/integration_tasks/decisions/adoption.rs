@@ -1,8 +1,8 @@
 //! Reviewed goal adoption preserves custody, cumulative limits and replay identity.
 
-use afd_core::{error_code, id::Uuid7};
+use af_core::{error_code, id::Uuid7};
+use af_wire::task::TaskState;
 use afd_fleet::task::{TaskAdoption, TaskControl, TaskLifecycle as _, TaskSnapshot};
-use afd_wire::task::TaskState;
 use serde_json::json;
 
 use super::super::fixture::{Case, exercise, id};

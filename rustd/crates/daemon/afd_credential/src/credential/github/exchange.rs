@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use afd_fleet_runtime::config::RepositoryBinding;
+use af_fleet_runtime::config::RepositoryBinding;
 use jiff::Timestamp;
 use serde_json::Value;
 use url::Url;
@@ -109,7 +109,7 @@ pub(super) async fn request_token(
 
     Outcome::Ok(Minted {
         token: granted.token.into(),
-        expires_at: afd_core::clock::after(now, INSTALLATION_TOKEN_TTL),
+        expires_at: af_core::clock::after(now, INSTALLATION_TOKEN_TTL),
         rotated_refresh_token: None,
     })
 }

@@ -11,11 +11,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::test_util::trace::Capture;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
-use afd_core::test_util::trace::Capture;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_wire::event::EventType;
 
 /// A queue address nothing listens on.
 const NOWHERE: &str = "redis://127.0.0.1:1";

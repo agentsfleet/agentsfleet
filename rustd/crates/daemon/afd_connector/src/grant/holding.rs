@@ -22,9 +22,9 @@
 //! revoked upstream, or whose install drifted, presses Connect again and the
 //! flow starts clean.
 
-use afd_core::id::Uuid7;
-use afd_core::json::non_empty_str;
-use afd_crypto::secret::SecretString;
+use af_core::id::Uuid7;
+use af_core::json::non_empty_str;
+use af_crypto::secret::SecretString;
 use afd_vault::{Deleted, SecretName};
 use sqlx::Acquire as _;
 

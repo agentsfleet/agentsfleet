@@ -5,12 +5,12 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_observability::metrics::label::fleet::FleetStatusLabel;
+use af_observability::producers::fleet::census::fleet_census_readings;
+use af_observability::test_util::Capture;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
-use afd_observability::metrics::label::fleet::FleetStatusLabel;
-use afd_observability::producers::fleet::census::fleet_census_readings;
-use afd_observability::test_util::Capture;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::census::Census;
 
@@ -147,7 +147,7 @@ impl Fixture {
             .bind(&self.fleets.first().expect("seeded fleet").0)
             .bind(&self.workspace)
             .bind(afd_admission::Producer::Steer.as_str())
-            .bind(afd_wire::event::EventType::Chat.as_str())
+            .bind(af_wire::event::EventType::Chat.as_str())
             .bind(ordinal == 1)
             .bind(ordinal == 3)
             .execute(&mut *connection)

@@ -4,13 +4,13 @@
 //! them and a client prints the rest.
 
 /// The detail a caller is told when the database cannot be reached.
-pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
+pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
 /// The detail a caller is told when a statement would not run.
-pub use afd_core::error::DETAIL_DATABASE_ERROR;
+pub use af_core::error::DETAIL_DATABASE_ERROR;
 
 /// The detail a caller is told when the queue cannot be reached.
-pub use afd_core::error::DETAIL_QUEUE_UNAVAILABLE;
+pub use af_core::error::DETAIL_QUEUE_UNAVAILABLE;
 
 /// The device-flow refusal for a public key this daemon will not store.
 pub const DETAIL_SESSION_PUBLIC_KEY: &str = "The supplied public_key is malformed";

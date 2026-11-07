@@ -6,7 +6,7 @@ use crate::{
     error::raise::{query, stored},
     types::{InitialStart, Start},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 pub(in crate::creation) fn key(fleet: &Uuid7) -> String {

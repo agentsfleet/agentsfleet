@@ -95,8 +95,8 @@ fn mint(claims: &FireClaims, key: &str) -> String {
 /// Both of this deployment's keys.
 fn keys() -> SigningKeys {
     SigningKeys {
-        current: afd_crypto::secret::SecretString::new(CURRENT_KEY.to_owned()),
-        next: afd_crypto::secret::SecretString::new(NEXT_KEY.to_owned()),
+        current: af_crypto::secret::SecretString::new(CURRENT_KEY.to_owned()),
+        next: af_crypto::secret::SecretString::new(NEXT_KEY.to_owned()),
     }
 }
 
@@ -130,8 +130,8 @@ fn a_token_signed_with_the_next_key_is_believed_too() {
 fn a_deployment_holding_no_key_refuses_before_it_reads_the_token() {
     let token = mint(&FireClaims::good(), CURRENT_KEY);
     let none = SigningKeys {
-        current: afd_crypto::secret::SecretString::new(String::new()),
-        next: afd_crypto::secret::SecretString::new(String::new()),
+        current: af_crypto::secret::SecretString::new(String::new()),
+        next: af_crypto::secret::SecretString::new(String::new()),
     };
 
     assert_eq!(
@@ -147,8 +147,8 @@ fn a_deployment_holding_no_key_refuses_before_it_reads_the_token() {
 #[test]
 fn one_configured_key_is_enough_to_verify() {
     let only_current = SigningKeys {
-        current: afd_crypto::secret::SecretString::new(CURRENT_KEY.to_owned()),
-        next: afd_crypto::secret::SecretString::new(String::new()),
+        current: af_crypto::secret::SecretString::new(CURRENT_KEY.to_owned()),
+        next: af_crypto::secret::SecretString::new(String::new()),
     };
 
     verify_at(
@@ -298,8 +298,8 @@ fn a_body_differing_by_one_byte_is_still_a_mismatch() {
 fn every_refusal_reads_under_its_own_stable_reason() {
     let good = mint(&FireClaims::good(), CURRENT_KEY);
     let none = SigningKeys {
-        current: afd_crypto::secret::SecretString::new(String::new()),
-        next: afd_crypto::secret::SecretString::new(String::new()),
+        current: af_crypto::secret::SecretString::new(String::new()),
+        next: af_crypto::secret::SecretString::new(String::new()),
     };
     let refusals = [
         (
@@ -345,7 +345,7 @@ fn every_refusal_answers_the_sender_one_code_and_one_sentence() {
 
     assert_eq!(
         refused.code(),
-        afd_core::error_code::WEBHOOK_SIGNATURE_INVALID
+        af_core::error_code::WEBHOOK_SIGNATURE_INVALID
     );
     assert_eq!(refused.detail(), afd_cron::error::detail::FIRE_UNVERIFIED);
 }

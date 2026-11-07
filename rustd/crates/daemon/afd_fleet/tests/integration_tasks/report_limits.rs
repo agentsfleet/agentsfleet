@@ -3,8 +3,8 @@ use super::{
     fixture::{Case, exercise, id},
     report_settlement::request,
 };
+use af_wire::task::{DecisionTaskVersion, TaskDisposition, TaskLimits, TaskReport, TaskState};
 use afd_fleet::task::{TaskLifecycle as _, TaskReportOwner as _};
-use afd_wire::task::{DecisionTaskVersion, TaskDisposition, TaskLimits, TaskReport, TaskState};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -81,7 +81,7 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
     );
     let mut plane = case.held.fixtures.plane();
     plane.task_reports = Some(Arc::new(case.tasks.clone()));
-    let now = afd_core::clock::after(case.held.now, crate::report_seed::SLICE);
+    let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     if reason.is_none() {
         Box::pin(report_after_preparation_deadline(
             case, &plane, &report, now,
@@ -148,7 +148,7 @@ async fn exhausted(case: &Case, task: &str, reason: Option<&str>) -> afd_fleet::
 async fn report_after_preparation_deadline(
     case: &Case,
     plane: &afd_fleet::lease::Plane,
-    report: &afd_wire::report::ReportRequest<'_>,
+    report: &af_wire::report::ReportRequest<'_>,
     now: jiff::Timestamp,
 ) {
     use sqlx::Connection as _;

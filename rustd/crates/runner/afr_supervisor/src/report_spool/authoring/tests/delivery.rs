@@ -11,7 +11,7 @@ use crate::{
     halt::Halt,
     test_support::{self, Answer},
 };
-use afd_wire::authoring::{Outcome, Reported};
+use af_wire::authoring::{Outcome, Reported};
 use std::{
     sync::{
         Arc,
@@ -146,16 +146,16 @@ async fn a_report_the_daemon_never_answers_is_resent_without_text_after_private_
         ],
         "the stalled upload carried text; the resend after expiry finds none on disk"
     );
-    let reports: Vec<afd_wire::authoring::Report> = calls
+    let reports: Vec<af_wire::authoring::Report> = calls
         .iter()
         .map(|call| serde_json::from_slice(call.body.as_deref().unwrap()).unwrap())
         .collect();
     assert!(matches!(
         reports[1],
-        afd_wire::authoring::Report::Accounting { .. }
+        af_wire::authoring::Report::Accounting { .. }
     ));
     let accounting =
-        |report: &afd_wire::authoring::Report| serde_json::to_value(report.accounting()).unwrap();
+        |report: &af_wire::authoring::Report| serde_json::to_value(report.accounting()).unwrap();
     assert_eq!(
         accounting(&reports[0]),
         accounting(&reports[1]),

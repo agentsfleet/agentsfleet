@@ -5,13 +5,13 @@
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
-use afd_wire::lease::LeasePayload;
-use afd_wire::paths::{
+use af_wire::lease::LeasePayload;
+use af_wire::paths::{
     RUNNER_CREDENTIALS_MINT, RUNNER_LEASES, RUNNER_REPORTS, SCHEDULE_RUNS_SUFFIX,
 };
-use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
-use afd_wire::schedule_verb::ScheduleRun;
+use af_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use af_wire::schedule_verb::ScheduleRun;
 use afr_supervisor::test_util::{FENCING, FLEET_ID, Healthy, LEASE_ID, LEASE_JSON};
 use axum::extract::State;
 use axum::http::{Method, StatusCode, Uri};
@@ -68,10 +68,10 @@ impl Server {
     ) -> Result<Self, Failed> {
         let (calls, received) = mpsc::channel();
         let reported = Arc::new(Notify::new());
-        let granted_until = afd_core::clock::after(afd_core::clock::now(), GRANTED_FOR);
+        let granted_until = af_core::clock::after(af_core::clock::now(), GRANTED_FOR);
         let healthy = Healthy {
             assigned: AssignedPolicy {
-                durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+                durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
                 decision_model_id: None,
                 sandbox_tier: SandboxTier::LandlockFull,
                 network_policy: NetworkPolicy::DenyAllEgress,
@@ -164,7 +164,7 @@ async fn reply(
 fn response(plane: &Plane, method: &Method, path: &str) -> Value {
     match path {
         RUNNER_CREDENTIALS_MINT => {
-            json!(afd_wire::credentials::MintCredentialResponse {
+            json!(af_wire::credentials::MintCredentialResponse {
                 token: TOKEN.into(),
                 expires_at: plane.healthy.granted_until
             })
@@ -218,7 +218,7 @@ fn lease(
         crate::supervisor_recovery::Config::configure(&mut lease)?;
     }
     // The poll reply tags each lease with its kind, as the daemon does.
-    Ok(serde_json::to_value(afd_wire::lease::TaggedLease::<
+    Ok(serde_json::to_value(af_wire::lease::TaggedLease::<
         '_,
         Value,
     >::Fleet(Box::new(lease)))?)

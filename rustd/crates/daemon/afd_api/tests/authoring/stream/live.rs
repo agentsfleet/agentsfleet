@@ -1,8 +1,8 @@
 //! Real authorization and durable state; the detached server supplies network pushes.
 
 use super::super::{fixture::Fixture, json_body, mint, send};
+use af_core::id::Uuid7;
 use afd_auth::scope::Scope;
-use afd_core::id::Uuid7;
 use afd_dragonfly::{SubscriptionHub, hub::DetachedServer};
 use axum::{Router, body::BodyDataStream, response::Response};
 use futures_util::StreamExt as _;

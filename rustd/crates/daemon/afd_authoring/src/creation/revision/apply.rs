@@ -7,7 +7,7 @@ use crate::{
     replay, review,
     types::{AppliedRevision, ApplyRevision, SaveSource},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::Transaction;
 
@@ -150,7 +150,7 @@ fn validate(
     }
     super::target(captured, &row.id, row.head_revision)?;
     captured.candidate.definition.validate_for_save()?;
-    if captured.candidate.policy_semantics != afd_fleet_runtime::definition::POLICY_SEMANTICS {
+    if captured.candidate.policy_semantics != af_fleet_runtime::definition::POLICY_SEMANTICS {
         return Err(ErrorKind::Policy.into());
     }
     Ok(())

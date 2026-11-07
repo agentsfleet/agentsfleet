@@ -9,7 +9,7 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 use super::{
     ACKNOWLEDGEMENT_VALUE, ACKNOWLEDGEMENT_VARIABLE, Parameter, Profile, TARGET_RIG,

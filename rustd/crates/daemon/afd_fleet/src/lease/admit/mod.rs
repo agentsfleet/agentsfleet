@@ -34,8 +34,8 @@ mod verdict;
 
 pub use self::declined::Declined;
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::config::Budget;
+use af_core::id::Uuid7;
+use af_fleet_runtime::config::Budget;
 use jiff::Timestamp;
 
 use crate::error::Result;
@@ -230,7 +230,7 @@ fn unowned_workspace(workspace_id: &Uuid7) -> Declined {
         "the workspace resolves to no tenant; the event cannot be charged to anyone"
     );
     Declined::Refuse(Refusal::labelled(
-        afd_core::event::label::TENANT_RESOLVE_FAILED,
+        af_core::event::label::TENANT_RESOLVE_FAILED,
     ))
 }
 

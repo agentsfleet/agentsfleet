@@ -104,7 +104,7 @@ fn private_preview() {
 }
 
 fn daemon_secret_text_and_clone() {
-    let secret: afd_crypto::secret::SecretString =
+    let secret: af_crypto::secret::SecretString =
         serde_json::from_str("\"private credential 日本語\"").expect("secret text");
     let cloned = secret.clone();
     assert_ne!(secret.expose().as_ptr(), cloned.expose().as_ptr());
@@ -118,7 +118,7 @@ fn daemon_secret_text_and_clone() {
 }
 
 fn daemon_secret_text_during_unwinding() {
-    let secret = afd_crypto::secret::SecretString::new("unwinding credential".to_owned());
+    let secret = af_crypto::secret::SecretString::new("unwinding credential".to_owned());
     arm(secret.expose().as_bytes());
     let outcome = std::panic::catch_unwind(move || {
         let _held = secret;
@@ -129,14 +129,14 @@ fn daemon_secret_text_during_unwinding() {
 }
 
 fn daemon_secret_bytes() {
-    let secret = afd_crypto::secret::SecretBytes::new(b"decrypted credential bytes".to_vec());
+    let secret = af_crypto::secret::SecretBytes::new(b"decrypted credential bytes".to_vec());
     arm(secret.expose());
     drop(secret);
     assert_wiped();
 }
 
 fn runner_secret_and_clone() {
-    let secret = afr_secrets::Secret::new("runner credential 日本語".to_owned());
+    let secret = af_secrets::Secret::new("runner credential 日本語".to_owned());
     let cloned = secret.clone();
     assert_ne!(secret.expose().as_ptr(), cloned.expose().as_ptr());
     arm(cloned.expose().as_bytes());
@@ -148,8 +148,8 @@ fn runner_secret_and_clone() {
     assert_wiped();
 }
 
-fn secret_object() -> afd_crypto::secret::SecretObject {
-    afd_crypto::secret::SecretObject::parse(
+fn secret_object() -> af_crypto::secret::SecretObject {
+    af_crypto::secret::SecretObject::parse(
         br#"{"credential":{"private-field":["nested credential"]},"account":"kept"}"#,
     )
     .expect("nested secret object")

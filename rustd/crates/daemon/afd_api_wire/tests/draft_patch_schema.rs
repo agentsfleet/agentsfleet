@@ -12,10 +12,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_api_wire::authoring::DraftPatchRequest;
-use afd_fleet_runtime::definition::{
+use af_fleet_runtime::definition::{
     ConfigOp, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
 };
+use afd_api_wire::authoring::DraftPatchRequest;
 use garde::Validate as _;
 use serde_json::{Value, json};
 use utoipa::{PartialSchema, ToSchema};

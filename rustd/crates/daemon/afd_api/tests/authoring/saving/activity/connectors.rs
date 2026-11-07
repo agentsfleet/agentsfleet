@@ -1,13 +1,13 @@
 //! Connector landing owns the outer transaction, including access receipts.
 
 use super::{fixture::*, streams::Reader};
+use af_core::{error_code, id::Uuid7};
+use af_crypto::entropy::Entropy;
 use afd_connector::{
     Grants,
     grant::{Grant, Install, InstallClaim},
     provider::Provider,
 };
-use afd_core::{error_code, id::Uuid7};
-use afd_crypto::entropy::Entropy;
 use afd_dragonfly::FleetStreams;
 use serde_json::json;
 

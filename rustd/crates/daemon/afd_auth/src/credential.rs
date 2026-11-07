@@ -32,7 +32,7 @@
 //! token still fails at the verifier, and a deployment with no verifier refuses
 //! the whole class.
 
-use afd_crypto::secret::SecretString;
+use af_crypto::secret::SecretString;
 use std::fmt;
 
 /// One credential class the daemon can prove.
@@ -75,7 +75,7 @@ pub const TENANT_API_KEY_PREFIX: &str = "agt_t";
 /// The marker a credential minted by `agentsfleet login` carries.
 pub const CLI_CREDENTIAL_PREFIX: &str = "afc_";
 /// The runner wire's token prefix, the one the runner presents.
-pub use afd_wire::paths::RUNNER_TOKEN_PREFIX;
+pub use af_wire::paths::RUNNER_TOKEN_PREFIX;
 
 /// Marker → class.
 ///
@@ -244,7 +244,7 @@ impl Presented {
     /// The raw value, for hashing or for a verifier.
     ///
     /// Named `expose` rather than `as_str` so every call site reads as a
-    /// deliberate act — the reason `afd_crypto`'s secret newtypes name theirs
+    /// deliberate act — the reason `af_crypto`'s secret newtypes name theirs
     /// that way.
     #[must_use]
     pub fn expose(&self) -> &str {

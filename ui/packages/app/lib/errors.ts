@@ -65,7 +65,7 @@ interface CodeEntry {
 //
 // Every code that CAN be backend-authored now carries its friendly copy as
 // `user_message` on the RFC 7807 error body (the field of that name on each
-// entry in rustd/crates/foundation/afd_core/src/problem/) instead of living here —
+// entry in rustd/crates/foundation/af_core/src/problem/) instead of living here —
 // client.ts/approvals.ts prefer it automatically, no call-site changes
 // needed. What's left below is exactly the set that can't be: codes minted
 // client-side that never round-trip to a real backend response, plus two
@@ -115,10 +115,10 @@ export const ERROR_CODE = {
   ...MINTED_CODES,
   /** A workspace that is not the caller's, and the code an `access_revoked`
    * frame carries. Mirrors `AUTH_FORBIDDEN` in
-   * `rustd/crates/foundation/afd_core/src/error_code/auth.rs`. */
+   * `rustd/crates/foundation/af_core/src/error_code/auth.rs`. */
   AUTH_FORBIDDEN: "UZ-AUTH-001",
   /** A steer's operation id already names another message. Mirrors
-   * `AGENTSFLEET_OPERATION_CONFLICT` in `rustd/crates/foundation/afd_core/src/error_code/fleet.rs`. */
+   * `AGENTSFLEET_OPERATION_CONFLICT` in `rustd/crates/foundation/af_core/src/error_code/fleet.rs`. */
   AGENTSFLEET_OPERATION_CONFLICT: "UZ-AGT-016",
 } as const;
 

@@ -69,7 +69,7 @@ async fn a_create_refused_for_any_reason_but_busygroup_is_reported() {
     );
     assert_eq!(
         refused.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED,
+        af_core::error_code::INTERNAL_OPERATION_FAILED,
         "{refused}"
     );
     assert!(

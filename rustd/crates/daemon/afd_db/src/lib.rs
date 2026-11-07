@@ -16,7 +16,7 @@
 //! [`Error::is_datastore_unavailable`] answer them separately, because the
 //! operator's next move differs and the client's does not.
 
-// Same reasoning as afd_crypto: an unused dependency is supply-chain surface
+// Same reasoning as af_crypto: an unused dependency is supply-chain surface
 // and compile time for nothing, and this is the level the check has to sit at
 // because a dev-dependency legitimately goes unused by the library itself.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
@@ -50,7 +50,7 @@ pub mod statement;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 
-pub use afd_core::env::EnvSource;
+pub use af_core::env::EnvSource;
 
 pub use crate::config::{DbRole, PoolConfig};
 pub use crate::error::{Error, Result};

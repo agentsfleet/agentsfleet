@@ -1,7 +1,7 @@
 //! A message's operation id across a stop and across a workspace boundary, on
 //! a fleet created through Save.
 
-use afd_core::error_code;
+use af_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -174,7 +174,7 @@ const STATUS_BLIND_KEY: &str =
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_steer_reads_no_fleet_status_before_admitting() {
     let saved = Saved::create().await;
-    let workspace = afd_core::id::Uuid7::parse(saved.case.base.workspace.as_str())
+    let workspace = af_core::id::Uuid7::parse(saved.case.base.workspace.as_str())
         .expect("a canonical workspace id");
     let router = crate::harness::Fleet::new()
         .with_owned_workspace(workspace)

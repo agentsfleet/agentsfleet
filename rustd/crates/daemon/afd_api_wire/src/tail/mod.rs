@@ -1,6 +1,6 @@
 //! The frames the daemon itself publishes on a fleet's live tail.
 //!
-//! The runner forwards its mid-run frames through [`afd_wire::activity`]; these
+//! The runner forwards its mid-run frames through [`af_wire::activity`]; these
 //! are the daemon's own. `event_admitted` says a person's message was accepted,
 //! before any runner has it; the brackets open and close a run —
 //! `event_received` when the lease verb records the row, `event_complete` when
@@ -43,7 +43,7 @@ use std::borrow::Cow;
 
 use serde::Serialize;
 
-use afd_wire::event::EventSummary;
+use af_wire::event::EventSummary;
 
 /// The terminal row as a completion carries it: [`EventSummary`] without the
 /// two scope columns the channel already names.
@@ -73,13 +73,13 @@ pub struct TailRow<'a> {
     /// The event this one continues, set on a continuation.
     pub resumes_event_id: Option<Cow<'a, str>>,
     /// When the row was created.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// When the row last changed.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
     /// What this event actually cost, summed over its telemetry rows.
-    #[serde(with = "afd_wire::nanos::option")]
+    #[serde(with = "af_wire::nanos::option")]
     pub cost_nanos: Option<i64>,
 }
 
@@ -138,7 +138,7 @@ pub struct FleetCounters {
     /// Lifetime event count. Server truth, never client arithmetic.
     pub events_processed: i64,
     /// Lifetime spend, in nanos.
-    #[serde(with = "afd_wire::nanos")]
+    #[serde(with = "af_wire::nanos")]
     pub budget_used_nanos: i64,
 }
 
@@ -165,10 +165,10 @@ pub enum TailFrame<'a> {
         actor: Cow<'a, str>,
         /// How the event entered the system.
         event_type: Cow<'a, str>,
-        /// What was typed, at most [`afd_wire::event::STEER_MESSAGE_MAX_BYTES`].
+        /// What was typed, at most [`af_wire::event::STEER_MESSAGE_MAX_BYTES`].
         message: Cow<'a, str>,
         /// When the admission was recorded.
-        #[serde(with = "afd_wire::instant")]
+        #[serde(with = "af_wire::instant")]
         created_at: jiff::Timestamp,
     },
     /// The narrative log opened: a run is about to start.
@@ -180,10 +180,10 @@ pub enum TailFrame<'a> {
         /// How the event entered the system.
         event_type: Cow<'a, str>,
         /// When the row was created.
-        #[serde(with = "afd_wire::instant")]
+        #[serde(with = "af_wire::instant")]
         created_at: jiff::Timestamp,
         /// What a person typed, on a steer only: absent for every other
-        /// actor, above [`afd_wire::event::STEER_MESSAGE_MAX_BYTES`], or when the
+        /// actor, above [`af_wire::event::STEER_MESSAGE_MAX_BYTES`], or when the
         /// stored body does not parse.
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<Cow<'a, str>>,

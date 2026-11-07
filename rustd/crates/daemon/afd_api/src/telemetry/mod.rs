@@ -21,14 +21,14 @@
 //! # The names are the funnels' names
 //!
 //! The event names, property keys and shapes are the ones
-//! `afd_observability::product::Telemetry` declares, and the funnels and
+//! `af_observability::product::Telemetry` declares, and the funnels and
 //! alerts downstream match on them byte for byte.
 
 use std::sync::Arc;
 
+use af_core::error_code::ErrorCode;
+use af_observability::Telemetry;
 use afd_auth::principal::Principal;
-use afd_core::error_code::ErrorCode;
-use afd_observability::Telemetry;
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::Response;

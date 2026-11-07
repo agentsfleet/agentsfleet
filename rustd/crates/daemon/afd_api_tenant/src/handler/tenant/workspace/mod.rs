@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
+use af_core::error_code;
+use af_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_api_wire::workspace::CreateWorkspaceRequest;
-use afd_core::error_code;
-use afd_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_tenant::workspace::name::Chosen;
 use axum::Json;
 use axum::body::Bytes;
@@ -15,7 +15,7 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
-use afd_observability::Telemetry;
+use af_observability::Telemetry;
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;

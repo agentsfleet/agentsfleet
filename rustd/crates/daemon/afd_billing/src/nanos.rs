@@ -4,7 +4,7 @@
 //!
 //! `billing.usage_lines.charged_nanos` is `BIGINT`, and every drain in
 //! this product is a whole number of nanos. One US dollar is
-//! [`NANOS_PER_USD`], which [`afd_core::money`] declares because an account
+//! [`NANOS_PER_USD`], which [`af_core::money`] declares because an account
 //! balance is denominated in it too. The rates below are this crate's alone:
 //! the daemon is what charges a lease, and a client renders the charge it was
 //! served rather than recomputing it, so a bump lands here and nowhere else.
@@ -12,7 +12,7 @@
 //! Authored ceilings are decimal strings of integer nanos. The runtime parser
 //! proves their bounds; conversion into ledger units preserves every nano.
 
-use afd_fleet_runtime::config::BudgetCeiling;
+use af_fleet_runtime::config::BudgetCeiling;
 
 /// A quantity of credit, in nanos.
 ///
@@ -23,7 +23,7 @@ use afd_fleet_runtime::config::BudgetCeiling;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Nanos(i64);
 
-pub use afd_core::money::NANOS_PER_USD;
+pub use af_core::money::NANOS_PER_USD;
 
 /// What one second of active runtime costs, under either posture.
 ///
@@ -138,7 +138,7 @@ mod tests {
         // And a five-dollar daily ceiling is five billion nanos.
         assert_eq!(NANOS_PER_USD * 5, 5_000_000_000);
 
-        let config = afd_fleet_runtime::FleetConfig::stored(
+        let config = af_fleet_runtime::FleetConfig::stored(
             r#"{"name":"b","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"5000000000"}}}"#,
         )
         .expect("the fixture document is well-formed");

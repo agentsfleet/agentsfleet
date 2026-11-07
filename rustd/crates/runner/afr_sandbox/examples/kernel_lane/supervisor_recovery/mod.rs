@@ -6,7 +6,7 @@ use crate::{
     supervisor::{Case, Observed},
     supervisor_model::call,
 };
-use afd_wire::{lease::LeasePayload, task::TaskTarget};
+use af_wire::{lease::LeasePayload, task::TaskTarget};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 mod archive;
@@ -108,7 +108,7 @@ fn exercise(lane: &Lane, mode: Mode) -> Result<(), Failed> {
         observed.origin_unchanged,
         "capture does not publish to the source repository",
     )?;
-    let report = crate::supervisor_checks::received(&observed, afd_wire::paths::RUNNER_REPORTS)?;
+    let report = crate::supervisor_checks::received(&observed, af_wire::paths::RUNNER_REPORTS)?;
     if mode == Mode::WrongHead {
         expect(
             report.body.get("outcome") == Some(&json!("fleet_error")),
@@ -157,7 +157,7 @@ fn completed(observed: &Observed, report: &Value, mode: Mode) -> Result<(), Fail
     let report_at = observed
         .received
         .iter()
-        .position(|request| request.path == afd_wire::paths::RUNNER_REPORTS);
+        .position(|request| request.path == af_wire::paths::RUNNER_REPORTS);
     expect(
         matches!((commit,report_at),(Some(commit),Some(report)) if commit<report),
         "checkpoint commits before report",
@@ -175,7 +175,7 @@ fn captured_file(observed: &Observed, mode: Mode) -> Result<(), Failed> {
     } else {
         ("widget/README.md", "first\ncaptured progress\n")
     };
-    let digest = afd_core::etag::sha256_hex(content.as_bytes());
+    let digest = af_core::etag::sha256_hex(content.as_bytes());
     expect(
         observed.received.iter().any(|request| {
             request

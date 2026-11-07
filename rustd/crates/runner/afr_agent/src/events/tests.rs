@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use afd_wire::activity::{ActivityFrame, StreamTextKind};
+use af_wire::activity::{ActivityFrame, StreamTextKind};
 
 use super::Live;
 use crate::fixture::{Frames, GITHUB_TOKEN, scrub};

@@ -11,15 +11,15 @@
 
 use std::sync::Arc;
 
+use af_core::id::{ENTROPY_LEN, Uuid7};
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_billing::Accounts;
-use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_gate::gate::Gates;
@@ -59,7 +59,7 @@ pub(crate) fn leases() -> Leases {
     reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
 )]
 pub(crate) fn plane() -> Plane {
-    let kek = Arc::new(Kek::from_bytes([7; afd_crypto::KEY_LEN]));
+    let kek = Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN]));
     Plane {
         task_reports: None,
         leases: leases(),
@@ -83,7 +83,7 @@ pub(crate) fn biller() -> afd_billing::ledger::LedgerBiller {
     afd_billing::ledger::LedgerBiller::new(
         database(),
         Entropy::new(),
-        Arc::new(afd_core::clock::SystemClock),
+        Arc::new(af_core::clock::SystemClock),
     )
 }
 
@@ -97,7 +97,7 @@ pub(crate) fn acquired() -> Acquired {
     Acquired {
         fleet_id: id(1),
         fence: Fence::from_i64(3),
-        leased_until: afd_core::clock::after(AT, afd_core::timing::LEASE_TTL),
+        leased_until: af_core::clock::after(AT, af_core::timing::LEASE_TTL),
         kind: Kind::Fresh,
         event_id: "1767225600000-1".to_owned(),
         actor: "fixture:steer".to_owned(),

@@ -6,8 +6,8 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_providers::Error;
+use af_providers::Error;
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{DELEGATE, INTERRUPT_AGENT, SEND_INPUT, SPAWN, WAIT_AGENT};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;

@@ -4,7 +4,7 @@ use super::{
     super::{json_body, mint, send_with_headers},
     fixture::Case,
 };
-use afd_core::error_code;
+use af_core::error_code;
 use http::{Method, StatusCode, header};
 
 #[tokio::test]
@@ -76,7 +76,7 @@ async fn assert_delete_refusals(case: &Case, item: &str, stale: &str, current: &
     assert_eq!(json_body(stale).await["etag"], current);
 }
 
-async fn assert_retained_identity(case: &Case, key: &afd_core::id::Uuid7) {
+async fn assert_retained_identity(case: &Case, key: &af_core::id::Uuid7) {
     let mut connection = case.base.db.acquire().await.expect("purge inspection");
     let remaining: i64 =
         sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")

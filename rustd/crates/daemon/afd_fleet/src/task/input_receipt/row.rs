@@ -5,7 +5,7 @@ use crate::{
     error::query,
     task::{TaskRefusal, guard::LeaseRow, row::counter},
 };
-use afd_wire::task::{TaskInputReceiptInput, TaskInputReceiptResult};
+use af_wire::task::{TaskInputReceiptInput, TaskInputReceiptResult};
 use sqlx::PgConnection;
 
 #[derive(sqlx::FromRow)]

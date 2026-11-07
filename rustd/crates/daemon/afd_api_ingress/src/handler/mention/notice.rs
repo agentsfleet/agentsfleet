@@ -1,9 +1,9 @@
 //! Fixed routing text uses a stable channel carrier and the ordinary outbound ledger.
 //! A carrier is never an admission target and never creates or rewrites a fleet.
 
+use af_core::id::Uuid7;
 use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_ingress::slack::{Notice, NoticeOwed, notice_key, notice_text};
 use std::borrow::Cow;
 
@@ -123,8 +123,8 @@ async fn owner<D: Services>(
         .map(Some)
         .ok_or_else(|| {
             Refusal::coded(
-                afd_core::error_code::INTERNAL_DB_UNAVAILABLE,
-                afd_core::error::DETAIL_DATABASE_UNAVAILABLE,
+                af_core::error_code::INTERNAL_DB_UNAVAILABLE,
+                af_core::error::DETAIL_DATABASE_UNAVAILABLE,
             )
         })
 }

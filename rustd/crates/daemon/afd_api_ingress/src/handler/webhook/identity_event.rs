@@ -4,7 +4,7 @@
 //! and how an address and a name are read off it, apart from the route that
 //! verifies the delivery and opens the account.
 
-use afd_observability::metrics::label::fleet::SignupFailure;
+use af_observability::metrics::label::fleet::SignupFailure;
 use serde::Deserialize;
 
 /// The identity provider's `user.created` payload, tolerant of unknown fields.

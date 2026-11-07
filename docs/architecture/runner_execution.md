@@ -6,7 +6,7 @@
 
 | Fact | Value |
 |---|---|
-| Language | Rust, in the `rustd` workspace beside `agentsfleetd`, under the same principles: one error type per crate through `afd_core::error_shell!`, one source per constant, pure logic apart from I/O. The wire is `afd_wire` and nothing else. Daemon→runner types decode leniently, so a runner never refuses a field a newer daemon adds |
+| Language | Rust, in the `rustd` workspace beside `agentsfleetd`, under the same principles: one error type per crate through `af_core::error_shell!`, one source per constant, pure logic apart from I/O. The wire is `af_wire` and nothing else. Daemon→runner types decode leniently, so a runner never refuses a field a newer daemon adds |
 | Process model | A trusted **supervisor** runs the lease loop and the agent loop; a per-lease **sandbox** executes tool calls and nothing else |
 | Hosts | Bare metal or a virtual machine (VM), multi-tenant from the first release |
 | Sandbox engine | bubblewrap (Landlock, seccomp, cgroup v2, a per-lease network namespace except under `allow_all`) is the one engine built, `BubblewrapEngine`, and stays as the engine for development, Continuous Integration (CI) and hosts without `/dev/kvm`. Firecracker microVMs, for code-running leases from many tenants on hosts that expose `/dev/kvm`, are the target and are not built |
@@ -14,7 +14,7 @@
 | Toolbox | A signed, read-only Enhanced Read-Only File System (EROFS) root filesystem built once per release from pinned Debian snapshots, downloaded before any lease and admitted by descriptor. No container image is pulled or unpacked on the lease path |
 | Workspace disk | Per sandbox, a writable block image sized to the lease's disk limit, attached with direct I/O, holding both `/workspace` and `/tmp`, deleted when its sandbox is destroyed |
 | Warm slot | A sandbox already started before any lease arrives: cgroup made, workspace disk mounted, executor idle. It serves one lease. Built but unwired: only the kernel lane and tests start one (`afr_sandbox/src/warm_slots/mod.rs`) |
-| Held sandbox | The sandbox of a lease that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next lease for an idle window of ten minutes (`afd_core::timing::SANDBOX_HOLD_IDLE`). Every other lease's sandbox is destroyed when the lease ends |
+| Held sandbox | The sandbox of a lease that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next lease for an idle window of ten minutes (`af_core::timing::SANDBOX_HOLD_IDLE`). Every other lease's sandbox is destroyed when the lease ends |
 | Workspace | Target, not built: per fleet, restored from and saved to R2 (or any S3-compatible store, such as a self-hosted RustFS), with only the supervisor moving bytes. No restore or save exists yet (§"A lease's sandbox today") |
 | Model keys | Supervisor only; never inside a sandbox |
 | Coding engines | Codex first-class, split across the wall; Claude Code in the sandbox, its model calls through a supervisor relay |
@@ -89,7 +89,7 @@ A lease's inputs are the trigger payload, input files (logs, traces, exports), t
 ## Process model
 
 ```
-agentsfleetd ◄── the runner verbs (afd_wire), unchanged, plus workspace and tool-call verbs
+agentsfleetd ◄── the runner verbs (af_wire), unchanged, plus workspace and tool-call verbs
    ▲
 agentsfleet-runner (one binary; a VM or a bare-metal host)
  ┌ supervisor — trusted, outside every sandbox ─────────────────────────┐
@@ -157,7 +157,7 @@ Not covered: the bytes handed to the HTTP client, which it frees unzeroed. Nor t
 
 **The report is the record.** The report settles before the live tail is waited on, and a report the daemon cannot take stays spooled for the drain (`afr_supervisor/src/lease_loop/settle.rs`, `afr_supervisor/src/report_spool/mod.rs`). A renewal the daemon refuses, or a runner told to stop, cuts the run; the cut keeps the tokens and memory the run handed back and reports why it ended (`afr_supervisor/src/lease_loop/mod.rs`).
 
-**Usage rides renewals and the report, at most 512 lines a body.** Each renewal and the report carry the provider requests the daemon has not yet recorded, one line each, oldest first, capped at 512 (`afd_wire::usage::LINES_MAX`, taken in `afr_agent/src/engine/mod.rs`). The cap binds both bodies; what differs is the answer to a body past it. A renewal past the cap still extends the lease and records no lines, so the runner sends them again; a report past it is refused 400 `UZ-REQ-001` naming the bound. [Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
+**Usage rides renewals and the report, at most 512 lines a body.** Each renewal and the report carry the provider requests the daemon has not yet recorded, one line each, oldest first, capped at 512 (`af_wire::usage::LINES_MAX`, taken in `afr_agent/src/engine/mod.rs`). The cap binds both bodies; what differs is the answer to a body past it. A renewal past the cap still extends the lease and records no lines, so the runner sends them again; a report past it is refused 400 `UZ-REQ-001` naming the bound. [Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
 
 **A backlog past one body is renewed away before the report.** A run can end with more than 512 unrecorded lines, after failed renewals or a burst of requests. Before its report, the settle renews with the oldest 512 until one body holds the rest (`flush` in `afr_supervisor/src/renew/mod.rs`). Each answer's `recorded_through` forgets the lines that renewal recorded. A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, seq)`.
 
@@ -165,39 +165,39 @@ Not covered: the bytes handed to the HTTP client, which it frees unzeroed. Nor t
 
 ```
 rustd/crates/
-  afd_wire              the one wire: only what agentsfleetd and the runner both speak
+  af_wire              the one wire: only what agentsfleetd and the runner both speak
   afd_api_wire          agentsfleetd's own API types (admin, tenant, operator, ingress);
-                        depends on afd_wire, never the reverse, and no runner crate links it
-  afd_core              error_shell!, timing constants (exists; no datastore dependency)
+                        depends on af_wire, never the reverse, and no runner crate links it
+  af_core              error_shell!, timing constants (exists; no datastore dependency)
   afr_executor          executor protocol, in-sandbox server, supervisor-side client
   afr_sandbox           engine interface; bubblewrap engine now, Firecracker engine next;
                         each engine sweeps what a crashed runner's sandboxes left
   afr_agent             agent loop, tool router, events, run trace
-  afr_providers         Anthropic Messages, OpenAI Responses, OpenAI-compatible chat
+  af_providers         Anthropic Messages, OpenAI Responses, OpenAI-compatible chat
   afr_tools             the catalog: supervisor-side and sandbox-side handlers, each
                         a typed `Handler` whose arguments' type is its JSON Schema
-  afr_egress            the outbound guard: admission before any connection, a lease's
+  af_egress            the outbound guard: admission before any connection, a lease's
                         credentials put in place at send time, the shared transport
-  afr_secrets           a held `Secret`, a lease's static secrets, and the one scrub
+  af_secrets           a held `Secret`, a lease's static secrets, and the one scrub
   afr_memory            one run's memory behind `MemoryBackend`; `Hydrated` holds the
                         window agentsfleetd hydrated and the run's writes, pushed back fenced
   afr_supervisor        lease loop, renewal, report spool, activity, memory, minting,
                         storage home, capability report, control-plane client
   afr_telemetry         the runner's spans and metrics, exported over OpenTelemetry
-                        Protocol (OTLP) to the runner collector, through afd_otlp
+                        Protocol (OTLP) to the runner collector, through af_otlp
   agentsfleet_runner    the one binary: composition root; `agentsfleet-runner sandbox`
                         is the sub-mode that runs inside each sandbox (a microVM's init, later)
 ```
 
-Dependencies point from the binary through the supervisor to agent, tools, providers and sandbox crates. The supervisor implements credential minting over the control plane for `afr_egress`.
+Dependencies point from the binary through the supervisor to agent, tools, providers and sandbox crates. The supervisor implements credential minting over the control plane for `af_egress`.
 
-Shared daemon-prefixed crates are `afd_wire`, `afd_core`, `afd_validate`, `afd_observability`, `afd_inference`, `afd_otlp` and `afd_crypto`. The supervisor uses `afd_crypto` for encrypted private reports (`afr_supervisor/Cargo.toml`). No runner crate links a datastore crate or `afd_api_wire`.
+Shared daemon-prefixed crates are `af_wire`, `af_core`, `af_validate`, `af_observability`, `af_inference`, `af_otlp` and `af_crypto`. The supervisor uses `af_crypto` for encrypted private reports (`afr_supervisor/Cargo.toml`). No runner crate links a datastore crate or `afd_api_wire`.
 
 `afd_api_wire` owns the daemon's tenant, operator and ingress shapes. Changes there do not rebuild the runner protocol.
 
 One binary supplies both the host supervisor and its in-sandbox `sandbox` entry. The sandbox entry builds only the executor server, and each sandbox binds the binary read-only. The planned Firecracker guest receives it inside the root image or a second read-only disk (§Toolbox).
 
-A lease carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `afd_inference` validates them and builds the codec; missing settings refuse admission. [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing--saved-model-settings) owns configuration and credential matching. `rig-core` and `rig-http`, pinned to 0.44.0, speak the three supported API formats. The transport under rig is the runner's: one HTTP client per runner that follows no redirect, so a turn and its key reach the admitted host and no other, and a bounded retry that honours `Retry-After`. A turn that fails before anything visible went out is opened again under the same bound. The reasoning a provider signs goes back with the turn that made it; a call from a turn cut at the output limit is answered `output_limit_reached` and never runs; a call whose arguments are not JSON reaches its tool as the text the model wrote, so the tool refuses it with a reason. rig traces every request and reply whole, before the scrub, so the shared log filter (`afd_inference::log_filter`), installed by daemon and runner, holds rig to its warnings at any level and turns off the one warning that repeats a provider's error message. The model key rides the one header its wire names, and everything the model is sent passes the secret scrub first, the instructions, the event's message and the model's own earlier turns included. A chat lease also carries the fleet's thread before its event, the rows the dashboard thread shows: up to eight finished turns within 64 KiB, each a message and the fleet's answer, which the loop sends as user and assistant turns ahead of the new message, through the same scrub. Webhook, cron and continuation leases carry none. The trusted repair context stays in the system prompt, and no turn enters it. Because a conversation repeats its prefix lease after lease, the Messages wire marks the tools and the system prompt for caching beside the provider's moving breakpoint, at the five-minute default, and the Responses wire sends the fleet id as `prompt_cache_key`. A turn reports its cache writes apart from its input, split by the lifetime the provider names: Messages sends five minutes and one hour, Responses and Chat send a write with no lifetime (`afr_providers::usage`). Each request line carries the split, and the daemon prices each class at its tier's write rate ([billing §11](./billing_and_provider_keys.md#11-one-billing-lifecycle-behind-a-biller-trait)). The wire still asks for the five-minute default; asking for one hour is not decided. Spans and their export: [Observability](./observability.md) §"`agentsfleet-runner` — a collector of its own".
+A lease carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `af_inference` validates them and builds the codec; missing settings refuse admission. [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing--saved-model-settings) owns configuration and credential matching. `rig-core` and `rig-http`, pinned to 0.44.0, speak the three supported API formats. The transport under rig is the runner's: one HTTP client per runner that follows no redirect, so a turn and its key reach the admitted host and no other, and a bounded retry that honours `Retry-After`. A turn that fails before anything visible went out is opened again under the same bound. The reasoning a provider signs goes back with the turn that made it; a call from a turn cut at the output limit is answered `output_limit_reached` and never runs; a call whose arguments are not JSON reaches its tool as the text the model wrote, so the tool refuses it with a reason. rig traces every request and reply whole, before the scrub, so the shared log filter (`af_inference::log_filter`), installed by daemon and runner, holds rig to its warnings at any level and turns off the one warning that repeats a provider's error message. The model key rides the one header its wire names, and everything the model is sent passes the secret scrub first, the instructions, the event's message and the model's own earlier turns included. A chat lease also carries the fleet's thread before its event, the rows the dashboard thread shows: up to eight finished turns within 64 KiB, each a message and the fleet's answer, which the loop sends as user and assistant turns ahead of the new message, through the same scrub. Webhook, cron and continuation leases carry none. The trusted repair context stays in the system prompt, and no turn enters it. Because a conversation repeats its prefix lease after lease, the Messages wire marks the tools and the system prompt for caching beside the provider's moving breakpoint, at the five-minute default, and the Responses wire sends the fleet id as `prompt_cache_key`. A turn reports its cache writes apart from its input, split by the lifetime the provider names: Messages sends five minutes and one hour, Responses and Chat send a write with no lifetime (`af_providers::usage`). Each request line carries the split, and the daemon prices each class at its tier's write rate ([billing §11](./billing_and_provider_keys.md#11-one-billing-lifecycle-behind-a-biller-trait)). The wire still asks for the five-minute default; asking for one hour is not decided. Spans and their export: [Observability](./observability.md) §"`agentsfleet-runner` — a collector of its own".
 
 ## Tool catalog
 
@@ -255,7 +255,7 @@ Fleets on shared hosts run their own programs — build scripts, test suites, pa
 
   Its throttle, `tenant/memory.high`, sits an eighth below that limit and never more than 128 MiB below it. A tenant writing past its disk is slowed while its pages are written back, and reads `ENOSPC` rather than being killed first. The cap keeps the slow band narrow on a large lease: with no swap, everything inside it is throttled.
 - An enforced disk quota: the workspace disk is sized by the lease's `limits.disk_bytes`, or the runner's 4 GiB default, holds `/tmp` as well as `/workspace`, and answers `ENOSPC` when full. `/tmp` is never a tmpfs, because tmpfs pages stay charged to the lease's memory until the sandbox ends. The disk attaches with direct I/O, so the host does not cache its writes a second time. Its image file is `0600`, formatted ext4 with no journal, and its root is owned by the sandbox user (`afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/host/mod.rs`).
-- A lease's size: `LeasePayload.limits` names its processor share, memory and disk within declared bounds (`afd_wire::lease::SandboxLimits`), a lease naming none gets the runner's defaults, and a size past a bound refuses the lease before any sandbox exists. The process cap stays the host's. Nothing yet reserves host disk: no check holds live sandboxes' disk limits against the state disk, so leases can fill it.
+- A lease's size: `LeasePayload.limits` names its processor share, memory and disk within declared bounds (`af_wire::lease::SandboxLimits`), a lease naming none gets the runner's defaults, and a size past a bound refuses the lease before any sandbox exists. The process cap stays the host's. Nothing yet reserves host disk: no check holds live sandboxes' disk limits against the state disk, so leases can fill it.
 - A supervisor whose capability set is only what sandbox setup needs (mounts, cgroups, namespaces), while tenant code never holds a capability; and a kernel patch cadence for runner hosts.
 - The network the assigned `network_policy` names ([Runner Fleet](./runner_fleet.md) §Egress model).
 
@@ -387,7 +387,7 @@ Three questions have no signal yet. Nothing times an event's wait for its lease,
 | Processes | the lease's memory cgroup, no swap | 2 GiB | one command, unless it leaves the shell's process group; exec sessions close at run end | `afr_sandbox/src/cgroup/mod.rs`, `afr_executor/src/server/process/mod.rs`, `afr_agent/src/loop/finish.rs` |
 | Report spool, repository mirrors, lease sandboxes | the storage home's `spool/`, `git/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config/mod.rs:21-24`, `afr_supervisor/src/storage_home/mod.rs` |
 
-**What bounds a runner host.** The image does not: its blocks sit in shared page cache, which memory pressure evicts. Memory is bounded by the lease limits: 2 GiB per sandbox by default and up to 64 GiB for a lease that names its size, summed over the host's workers. The worker count defaults to 1 and caps at 64 (`afd_core/src/limits.rs:14-20`), so 128 GiB of default limits at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease by default and up to 256 GiB for a sized one, sparse, with no headroom reserved.
+**What bounds a runner host.** The image does not: its blocks sit in shared page cache, which memory pressure evicts. Memory is bounded by the lease limits: 2 GiB per sandbox by default and up to 64 GiB for a lease that names its size, summed over the host's workers. The worker count defaults to 1 and caps at 64 (`af_core/src/limits.rs:14-20`), so 128 GiB of default limits at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease by default and up to 256 GiB for a sized one, sparse, with no headroom reserved.
 
 **Where the code and this page differ today.**
 
@@ -668,7 +668,7 @@ Artifacts a fleet saves for the user live beside the snapshots and are downloade
 - **Model keys** stay in the supervisor.
 - **Repository reads.** The supervisor clones with the lease's own one-hour, repository-scoped token from the mint verb, which reads on a read binding and writes on a write binding (`rustd/crates/daemon/afd_credential/src/credential/github/request.rs`). The token never enters the sandbox: the fetch presents it in an in-memory header, and the clone's configuration names the plain URL (`rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs`).
 - **Tools that need a login reuse today's mint path.** Fleets already name credentials and never hold them: a `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, and the supervisor calls that verb. What is new is only where a token lands. Today it is minted once per lease, kept in that lease's egress guard until shortly before it expires, substituted only into a request's `Authorization` header, and masked in whatever the upstream sends back. A command-line tool such as the GitHub one needs it as a file or variable. The design writes it into a memory-only `/run/creds` for that lease; that is not built, so a token stays in the egress guard and no sandbox command receives one. Each token is bound to the hosts it is for, and the lease's allowlist admits only those hosts.
-- **A line said to the thread, and a schedule's message, are masked twice.** The `message`, `cron_add`, `cron_update` and `schedule` tools mask every token the lease minted before the text leaves the runner; `agentsfleetd` masks the fleet's declared static secrets with the same `afr_secrets::Scrub` before it posts a line through the outbound worker's Slack poster or stores a schedule. The runner never holds the channel credential.
+- **A line said to the thread, and a schedule's message, are masked twice.** The `message`, `cron_add`, `cron_update` and `schedule` tools mask every token the lease minted before the text leaves the runner; `agentsfleetd` masks the fleet's declared static secrets with the same `af_secrets::Scrub` before it posts a line through the outbound worker's Slack poster or stores a schedule. The runner never holds the channel credential.
 - **A placeholder-swap proxy can replace the file later without fleets noticing.** The mint path stays the same, and the supervisor writes a placeholder into the planned `/run/creds` instead of the token. Every connection an `allow_list_egress` sandbox makes already leaves through the host-side end of its veth pair, and the toolbox's trust store has an empty slot for a proxy's certificate. Adding the proxy reverses the no-interception rule in [Runner Fleet](./runner_fleet.md) §Traps, and that reversal is recorded when it ships.
 
 ## Coding engines
@@ -691,7 +691,7 @@ When a fleet requires approval, the push runs in the continuation lease after so
 
 - **Memory safety is checked by the compiler.** The runner this one replaced relied on rules a reviewer enforced by hand. They were one owner per resource, init and deinit pairing, idempotent cleanup, and draining before deinit. OWN is still in the [code standard](../../.orly/standards/code.md); DEINIT, DIDEM and DRAIN retired with that runner, which needed a memory-leak lane of its own.
 - **The language is stable.** The runner this one replaced was written in a pre-1.0 language: a standard-library list change cost the rulebook a rule (ZAL), and a process I/O change cost its engine a patched fork.
-- **One wire.** The runner speaks `afd_wire`, the daemon's own types, so a mismatch between the two sides fails to compile.
+- **One wire.** The runner speaks `af_wire`, the daemon's own types, so a mismatch between the two sides fails to compile.
 - **The next work already exists in Rust.** Pseudo-terminals, patch application, the bubblewrap helper, Landlock and seccomp bindings, S3 presigning and Firecracker itself.
 
 The costs are the rewrite, slower compiles, async complexity and larger binaries. Speed is not a reason: both compile to native code.

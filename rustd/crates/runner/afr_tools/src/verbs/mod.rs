@@ -27,9 +27,9 @@
 use std::borrow::Cow;
 use std::fmt;
 
-use afd_core::error_code::{self, ErrorCode};
-use afd_core::id::Uuid7;
-use afd_core::problem::Problem;
+use af_core::error_code::{self, ErrorCode};
+use af_core::id::Uuid7;
+use af_core::problem::Problem;
 
 use crate::runtime::{ToolErrorCode, ToolOutput};
 
@@ -193,31 +193,31 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
     /// Read complete native input and accepted recovery meaning at a safe boundary.
     async fn task_inputs(
         &self,
-        _query: afd_wire::task::TaskInputsQuery,
-    ) -> Result<afd_wire::task::TaskInputsResponse<'static>, Unanswered> {
+        _query: af_wire::task::TaskInputsQuery,
+    ) -> Result<af_wire::task::TaskInputsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Freeze the complete interpretation once, with native decision proofs.
     async fn task_bindings(
         &self,
-        _input: afd_wire::task::TaskBindingsInput,
-    ) -> Result<afd_wire::task::TaskBindingsResponse<'static>, Unanswered> {
+        _input: af_wire::task::TaskBindingsInput,
+    ) -> Result<af_wire::task::TaskBindingsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Acknowledge an accepted input or answer without replaying its meaning.
     async fn task_input_receipt(
         &self,
-        _input: afd_wire::task::TaskInputReceiptInput,
-    ) -> Result<afd_wire::task::TaskInputReceiptResult, Unanswered> {
+        _input: af_wire::task::TaskInputReceiptInput,
+    ) -> Result<af_wire::task::TaskInputReceiptResult, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Reserve, evaluate and account one decision outside model/sandbox custody.
     async fn task_decision(
         &self,
-        _input: afd_wire::task::DecisionReservationInput,
+        _input: af_wire::task::DecisionReservationInput,
     ) -> Result<DecisionEvaluation, Unanswered> {
         Err(Unanswered::Refused(None))
     }
@@ -225,24 +225,21 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
     /// Publish a tested tree through the native exact-head effect owner.
     async fn task_publish(
         &self,
-        _input: afd_wire::task::TaskEffectInput,
-    ) -> Result<afd_wire::task::TaskEffect, Unanswered> {
+        _input: af_wire::task::TaskEffectInput,
+    ) -> Result<af_wire::task::TaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Read back one original publication; this never authorizes a new write.
-    async fn task_effect(
-        &self,
-        _effect_id: &str,
-    ) -> Result<afd_wire::task::TaskEffect, Unanswered> {
+    async fn task_effect(&self, _effect_id: &str) -> Result<af_wire::task::TaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Recover all effects beyond a checkpoint's confirmed watermark.
     async fn task_effects(
         &self,
-        _query: afd_wire::task::TaskEffectsQuery,
-    ) -> Result<afd_wire::task::TaskEffectsPage, Unanswered> {
+        _query: af_wire::task::TaskEffectsQuery,
+    ) -> Result<af_wire::task::TaskEffectsPage, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 }
@@ -251,7 +248,7 @@ pub trait LeaseVerbs: Send + Sync + fmt::Debug {
 ///
 /// For a lease that runs with no control plane, in a suite, so a tool that
 /// reaches for one says so rather than pretending it worked. Test-only, as
-/// `afr_egress::testing::closed` is: production always has a plane.
+/// `af_egress::testing::closed` is: production always has a plane.
 #[cfg(any(test, feature = "test-util"))]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Closed;

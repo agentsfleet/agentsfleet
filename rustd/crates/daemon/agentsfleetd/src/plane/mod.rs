@@ -17,22 +17,22 @@
 
 use std::sync::Arc;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::SecretBytes;
+use af_observability::Analytics;
 use afd_admission::Admissions;
 use afd_api::Planes;
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_approval::IntegrationGrants;
 use afd_billing::Accounts;
-use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use afd_credential::vault::Vault;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::SecretBytes;
 use afd_dragonfly::Doorbell;
 use afd_events::History;
 use afd_fleet::lease::{Leases, Plane};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
-use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
 use afd_state::Credentials;
@@ -235,7 +235,7 @@ pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 fn lease_plane(
     database: afd_db::Db,
     queue: afd_dragonfly::Dragonfly,
-    kek: Arc<afd_crypto::secret::Kek>,
+    kek: Arc<af_crypto::secret::Kek>,
     providers: Providers,
     doorbell: Doorbell,
     broker: Arc<afd_credential::credential::Broker>,
@@ -298,7 +298,7 @@ fn task_plane(
     admissions: Admissions,
     admin_workspace: Option<Uuid7>,
     storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
-    master: Arc<afd_crypto::secret::Kek>,
+    master: Arc<af_crypto::secret::Kek>,
     client: reqwest::Client,
 ) -> afd_fleet::task::Tasks {
     let storage = storage_config

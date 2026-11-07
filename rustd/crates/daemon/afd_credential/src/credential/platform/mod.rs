@@ -18,8 +18,8 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
 use serde::Deserialize;
 use zeroize::Zeroizing;
 

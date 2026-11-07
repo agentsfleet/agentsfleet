@@ -71,7 +71,7 @@ async fn a_closed_hub_ends_the_tail() {
 /// `error_code` field and says why without repeating it, or a backtrace.
 #[tokio::test]
 async fn a_closed_tail_reason_carries_no_code_prefix() {
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let (hub, _server) = SubscriptionHub::detached();
     let mut frames = Box::pin(tail(hub.subscribe(CHANNEL)));
     hub.shutdown();

@@ -5,7 +5,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 use super::{OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, otlp};
 
@@ -196,8 +196,8 @@ fn an_unusable_knob_is_a_fault_that_names_itself() {
 fn unset_knobs_resolve_to_the_documented_defaults() {
     let config = resolved([(OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT)]);
 
-    assert_eq!(config.encoding(), afd_otlp::Encoding::HttpProtobuf);
-    assert_eq!(config.timeout(), afd_otlp::DEFAULT_TIMEOUT);
+    assert_eq!(config.encoding(), af_otlp::Encoding::HttpProtobuf);
+    assert_eq!(config.timeout(), af_otlp::DEFAULT_TIMEOUT);
     assert_eq!(config.headers(), []);
 }
 

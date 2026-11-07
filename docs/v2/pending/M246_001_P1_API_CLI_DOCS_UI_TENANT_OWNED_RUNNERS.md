@@ -56,7 +56,7 @@ admission for fleet F of tenant T, offered to runner R:
    issue / authoring admit ─ lock_host returns R.owner FOR UPDATE; a foreign owner → refuse, count
    gate ─ R tenant-owned and posture platform → model_access proxied {token, path}; else direct {api_key}
 proxied turn: runner ─► POST /v1/runners/me/leases/{lease_id}/model-calls
-   ─► daemon opens the platform key, runs afd_inference::stream ─► chunk frames back
+   ─► daemon opens the platform key, runs af_inference::stream ─► chunk frames back
    ─► usage line logged by the daemon under the lease row lock, then the end frame
 rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN_OVERLAP
    host: new token into the file, then SIGHUP or the next 401 ─► reload ─► new stream supersedes old
@@ -78,7 +78,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 
 1. `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` and `select_ledger_candidates.sql` — the claim and the scan the ownership predicate enters; the claim is the control, the scan only a filter.
 2. `rustd/crates/daemon/afd_runner/src/capacity/mod.rs` and `capacity/sql/lock_host.sql` — the host lock both `Leases::issue` and the authoring `admit` take; the owner rides this row.
-3. `rustd/crates/daemon/afd_authoring/src/model/capability.rs`, `afd_wire/src/authoring/lease.rs` (`ModelAccess`) and `afd_api_runner/src/handler/runner/authoring/model_call.rs` — the proxied capability §4 mirrors.
+3. `rustd/crates/daemon/afd_authoring/src/model/capability.rs`, `af_wire/src/authoring/lease.rs` (`ModelAccess`) and `afd_api_runner/src/handler/runner/authoring/model_call.rs` — the proxied capability §4 mirrors.
 4. `docs/AUTH.md` §"Runner token (`agt_r`) — the machine principal" — the trust model, per-request runner auth and why the principal carries no tenant.
 5. `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/api_key.rs` with `cli/src/commands/api_key.ts` and `ui/packages/app/app/(dashboard)/settings/api-keys/` — the tenant-minted, reveal-once credential surfaces §2 and §6 mirror.
 
@@ -90,15 +90,15 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | `schema/2850_runner_runners_owner_and_token_overlap.sql`, `2860_runner_tenant_placements.sql`, `2870_runner_leases_model_token.sql`, `2880_runner_enrolment_receipts.sql` | CREATE | §1; placeholder numbers, renumbered from `origin/main` at CHORE(open) |
 | `rustd/crates/daemon/afd_db/src/migration.rs` and its position assertions | EDIT | §1: register the slots (MIG) |
 | `rustd/crates/daemon/afd_state/src/sql/select_runner_token.sql`, `credentials/mod.rs`, `credentials/rows.rs`, `credentials/tests.rs` | EDIT | §1, §5: the previous digest authenticates inside its window |
-| `rustd/crates/foundation/afd_core/src/timing.rs` | EDIT | §3, §5: `PLATFORM_FALLBACK_AFTER`, `RUNNER_TOKEN_OVERLAP`, with their assertions |
-| `rustd/crates/foundation/afd_core/src/error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §2: `UZ-RUN-024` const, `REGISTRY` row, problem entry |
+| `rustd/crates/foundation/af_core/src/timing.rs` | EDIT | §3, §5: `PLATFORM_FALLBACK_AFTER`, `RUNNER_TOKEN_OVERLAP`, with their assertions |
+| `rustd/crates/foundation/af_core/src/error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §2: `UZ-RUN-024` const, `REGISTRY` row, problem entry |
 | `rustd/crates/daemon/afd_auth/src/scope.rs` and its tests | EDIT | §2: `Scope::RunnerOwn`; `TENANT_OWNER_GRANT` grows to 11 |
 | `rustd/crates/daemon/afd_runner/src/store.rs`, `rotate.rs`, `sql/runner/insert_runner_with_event.sql`, `sql/runner/rotate_runner_token.sql` | EDIT | §2, §5: owner and receipt at enrolment; overlap rotation |
 | `rustd/crates/daemon/afd_runner/src/sql/runner/select_runner_owned.sql`, `sql/runner_view/list_owned_runners_first.sql`, `list_owned_runners_after.sql`, `list_runners_first.sql`, `list_runners_after.sql`, `runner_detail.sql`, `view/` | CREATE, EDIT | §2: ownership proof, owned list, operator views gain the owner |
 | `rustd/crates/daemon/afd_runner/src/placement/mod.rs`, `placement/tests.rs`, `placement/sql/*.sql` | CREATE | §2, §3: setting names, rule table, settings read and write |
 | `rustd/crates/daemon/afd_runner/src/capacity/mod.rs`, `capacity/sql/lock_host.sql` | EDIT | §3: the owner rides the host lock |
 | `rustd/crates/daemon/afd_api_wire/src/admin/mod.rs`, `afd_api_wire/src/tenant/runners.rs` | EDIT, CREATE | §2: `owner_tenant_id`; placement wire |
-| `rustd/crates/protocol/afd_wire/src/paths.rs`, `afd_wire/src/policy/mod.rs`, `afd_wire/src/redact.rs`, `afd_wire/src/runner/model_call.rs` | EDIT, CREATE | §2, §4: paths, `ModelAccess`, model-call frames |
+| `rustd/crates/protocol/af_wire/src/paths.rs`, `af_wire/src/policy/mod.rs`, `af_wire/src/redact.rs`, `af_wire/src/runner/model_call.rs` | EDIT, CREATE | §2, §4: paths, `ModelAccess`, model-call frames |
 | `rustd/crates/daemon/afd_http/src/route/tenant.rs`, `route/runner.rs`, `services/leasing/mod.rs` | EDIT | §2, §4: four route templates; the model-call service |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/runner/` (`mod.rs`, `enrol.rs`, `manage.rs`, `placement.rs`), `handler/tenant/mod.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §2: tenant handlers and their mount |
 | `rustd/crates/daemon/afd_api_operator/src/handler/operator/runners.rs` | EDIT | §2: owner in the operator view |
@@ -109,12 +109,12 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | `rustd/crates/daemon/afd_fleet/src/lease/model_call/` (`mod.rs`, `meter.rs`, `tests.rs`), `lease/usage/mod.rs`, `lease/renew/`, `lease/report/`, `Cargo.toml` | CREATE, EDIT | §4: daemon-side turn, daemon metering, runner lines skipped |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/model_call.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §4: the runner-plane route |
 | `rustd/crates/runner/afr_supervisor/src/model_proxy/` (`mod.rs`, `tests.rs`), `lib.rs`, `client/`, `config/mod.rs`, `config/tests.rs`, `halt/mod.rs` | CREATE, EDIT | §4, §5: proxied provider; token file and reload |
-| `rustd/crates/harness/afr_providers/src/connect/mod.rs`, `turn.rs`; `afr_sandbox/examples/kernel_lane/supervisor_plane.rs` | EDIT | §4: read `ModelAccess::Direct` only |
-| `rustd/crates/runner/agentsfleet_runner/src/main.rs`, `afd_core/src/signal.rs`, `agentsfleet_runner/tests/fake_daemon.rs`, `tests/fixtures/runner/help.txt` | EDIT | §5: SIGHUP reload and its tests; help lists the file variable |
+| `rustd/crates/harness/af_providers/src/connect/mod.rs`, `turn.rs`; `afr_sandbox/examples/kernel_lane/supervisor_plane.rs` | EDIT | §4: read `ModelAccess::Direct` only |
+| `rustd/crates/runner/agentsfleet_runner/src/main.rs`, `af_core/src/signal.rs`, `agentsfleet_runner/tests/fake_daemon.rs`, `tests/fixtures/runner/help.txt` | EDIT | §5: SIGHUP reload and its tests; help lists the file variable |
 | The M243 gateway's stream re-check (path fixed when M243 merges) | EDIT | §5: re-check by the digest that opened the connection |
 | `rustd/crates/daemon/afd_fleet/tests/integration_runner_owner.rs`, `integration_runner_owner/`; `afd_authoring/tests/` placement module | CREATE | §3: matrix, claim, issue, hold, authoring |
 | `rustd/crates/daemon/agentsfleetd/tests/integration_rust_runner_tenant.rs`, `daemon_suite.rs`, `tests/support/fake_model.rs` | CREATE, EDIT | §4: end-to-end run; the fake records the auth header it received |
-| `rustd/crates/protocol/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3, §4: two operator families |
+| `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3, §4: two operator families |
 | `cli/src/commands/runner.ts`, `cli/src/program/tree/runner.command.ts`, `root.command.ts`, `flags.ts`, `cli/test/runner.integration.test.ts` | CREATE, EDIT | §6: the `runner` command group |
 | `ui/packages/app/app/(dashboard)/settings/runners/` (`page.tsx`, `actions.ts`, `loading.tsx`, `components/`), `settings/page.tsx` | CREATE, EDIT | §6: Settings → Runners |
 | `ui/packages/app/lib/api/tenant_runners.ts`, `lib/auth/scopes.ts`, `lib/analytics/events.ts` | CREATE, EDIT | §6: client, scope, product events |
@@ -138,7 +138,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| `gitleaks` at commit and `orly gate pr` | yes, the key-sentinel test | the sentinel is drawn from `afd_crypto::entropy` at test time; no key-shaped literal is committed |
+| `gitleaks` at commit and `orly gate pr` | yes, the key-sentinel test | the sentinel is drawn from `af_crypto::entropy` at test time; no key-shaped literal is committed |
 | `make lint-all` (clippy `-D warnings`, `cargo shear`, TypeScript lint) | yes, eleven crates, the CLI and the app change | `lint-rustd` and the app lint per Section |
 | Route inventory and `route_meta_total` | yes, four templates, eight operations | `INVENTORY` and counts move in §2's and §4's commits |
 | Error registry and problem parity | yes, `UZ-RUN-024` | const, row and problem entry in one commit |
@@ -207,11 +207,11 @@ The rule's authority is `runner.runners.owner_tenant_id` with `runner.tenant_pla
 
 ### §4 — The platform key never leaves the daemon
 
-`ExecutionPolicy` replaces `api_key`, `inference_host` and `base_url` with `model_access`: `direct` with those three fields, or `proxied` with a token, its expiry and an invocation path, mirroring authoring's `ModelAccess`. `proxied` has no key field, so no code path can fill one. The gate picks `proxied` when the host-locked owner is a tenant and the posture is `platform`; every other pair stays `direct`. Issue draws the capability from `afd_crypto::entropy`, stores its SHA-256 as `model_token_hash`, and the lease returns it once.
+`ExecutionPolicy` replaces `api_key`, `inference_host` and `base_url` with `model_access`: `direct` with those three fields, or `proxied` with a token, its expiry and an invocation path, mirroring authoring's `ModelAccess`. `proxied` has no key field, so no code path can fill one. The gate picks `proxied` when the host-locked owner is a tenant and the posture is `platform`; every other pair stays `direct`. Issue draws the capability from `af_crypto::entropy`, stores its SHA-256 as `model_token_hash`, and the lease returns it once.
 
-`POST /v1/runners/me/leases/{lease_id}/model-calls` (`Guard::RunnerBearer`, `runner:self`, `RouteClass::Stream`) checks the lease and the capability before any provider call. The lease must be this runner's, active, at its current fence and proxied, and the capability matches in constant time, as `afd_authoring::model::capability::check` does. `afd_fleet::lease::model_call` re-resolves the platform key through `Providers`, pins the lease's model, and opens one `afd_inference::stream::StreamTurn`. Its chunks return as newline-delimited JSON (NDJSON) frames. At the turn's end the daemon logs the call's usage line under the lease row lock, numbered by the daemon in the runner range, and commits it before the `end` frame. Renew and report on a lease with `model_token_hash` skip runner request lines, answer `recorded_through` so the runner forgets them, and log runtime only.
+`POST /v1/runners/me/leases/{lease_id}/model-calls` (`Guard::RunnerBearer`, `runner:self`, `RouteClass::Stream`) checks the lease and the capability before any provider call. The lease must be this runner's, active, at its current fence and proxied, and the capability matches in constant time, as `afd_authoring::model::capability::check` does. `afd_fleet::lease::model_call` re-resolves the platform key through `Providers`, pins the lease's model, and opens one `af_inference::stream::StreamTurn`. Its chunks return as newline-delimited JSON (NDJSON) frames. At the turn's end the daemon logs the call's usage line under the lease row lock, numbered by the daemon in the runner range, and commits it before the `end` frame. Renew and report on a lease with `model_token_hash` skip runner request lines, answer `recorded_through` so the runner forgets them, and log runtime only.
 
-On the runner, `afr_supervisor::model_proxy` implements `afr_providers::Connect` over the supervisor's daemon client, and `direct` leases reach today's `Connector` unchanged. **Implementation default:** the runner sends its provider-neutral turn request and the daemon runs the attempt through `afd_inference`, rather than forwarding provider bytes. The daemon then pins the model, reads usage from the attempt it ran, and needs no per-format parser. This default stands until open blocker 2 is answered.
+On the runner, `afr_supervisor::model_proxy` implements `af_providers::Connect` over the supervisor's daemon client, and `direct` leases reach today's `Connector` unchanged. **Implementation default:** the runner sends its provider-neutral turn request and the daemon runs the attempt through `af_inference`, rather than forwarding provider bytes. The daemon then pins the model, reads usage from the attempt it ran, and needs no per-format parser. This default stands until open blocker 2 is answered.
 
 - **Dimension 4.1** — the platform key never reaches a tenant host → Test `platform_key_never_reaches_a_tenant_runner` (integration): the platform default key is a sentinel drawn per run. T's runner leases T's platform-posture fleet, makes one proxied call and reports. The sentinel bytes appear in no lease body, model-call frame, renew or report answer, `runner.leases` row or captured daemon log line. The fake provider received exactly the sentinel, so a lease with no model access at all fails the test.
 - **Dimension 4.2** — ownership, not posture alone, picks the access → Test `platform_host_keeps_direct_access` (integration): the same fleet on a platform host carries `model_access.type = "direct"`; T's self-managed fleet on T's runner carries `direct` with T's own key.
@@ -277,7 +277,7 @@ A proxied lease's policy carries no key:
                  "invocation_path": "/v1/runners/me/leases/<lease_id>/model-calls"}
 ```
 
-A direct lease carries `{"type": "direct", "api_key", "inference_host", "base_url"}`. The operator list and detail gain `owner_tenant_id` (UUID or null). `UZ-RUN-024` is a `409` carrying `current_state: "enrolled"`. The runner reads `AGENTSFLEET_RUNNER_TOKEN_FILE` and reloads on SIGHUP. `afd_core::timing` adds `RUNNER_TOKEN_OVERLAP` and `PLATFORM_FALLBACK_AFTER`; the second's value is open blocker 1. PATCH with `{"action": "rotate"}` is not idempotent: each call mints a token, and §5's overlap rule makes a retry safe.
+A direct lease carries `{"type": "direct", "api_key", "inference_host", "base_url"}`. The operator list and detail gain `owner_tenant_id` (UUID or null). `UZ-RUN-024` is a `409` carrying `current_state: "enrolled"`. The runner reads `AGENTSFLEET_RUNNER_TOKEN_FILE` and reloads on SIGHUP. `af_core::timing` adds `RUNNER_TOKEN_OVERLAP` and `PLATFORM_FALLBACK_AFTER`; the second's value is open blocker 1. PATCH with `{"action": "rotate"}` is not idempotent: each call mints a token, and §5's overlap rule makes a retry safe.
 
 ## Failure Modes
 
@@ -391,7 +391,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   - Placement checks only `required_tags <@ labels` (`select_ledger_candidates.sql`, the `eligible` step); the claim re-checks neither labels nor owner (`claim_admission_head.sql`); issue checks capacity and the ticket after `capacity::lock` (`afd_fleet/src/lease/issue.rs`); `lock_host.sql` already reads the runner row `FOR UPDATE`.
   - `runner.runners` has no tenant column (`schema/1800_runner_runners.sql`); the token lookup returns id, status and degraded (`select_runner_token.sql`); `Principal::Runner` holds no tenant (`afd_auth/src/principal.rs`).
   - Rotation overwrites `token_hash` (`rotate_runner_token.sql`, `afd_runner/src/rotate.rs`); the runner sets its bearer once into default headers (`afr_supervisor/src/client/http.rs`).
-  - The lease carries the resolved key (`afd_gate/src/policy/build/mod.rs`, `ExecutionPolicy.api_key` in `afd_wire/src/policy/mod.rs`), and the runner dials with it (`afr_providers/src/connect/mod.rs`, `turn.rs`). Authoring already keeps its key in the daemon behind a capability (`afd_authoring/src/model/capability.rs`, `AUTH.md:762`).
+  - The lease carries the resolved key (`afd_gate/src/policy/build/mod.rs`, `ExecutionPolicy.api_key` in `af_wire/src/policy/mod.rs`), and the runner dials with it (`af_providers/src/connect/mod.rs`, `turn.rs`). Authoring already keeps its key in the daemon behind a capability (`afd_authoring/src/model/capability.rs`, `AUTH.md:762`).
   - Rule interpretation: HTTP-IDEMKEY asks a replay to return the first response, and AUTH-SECRET forbids keeping the token that response revealed. The receipt answers a replay with `409`, which keeps the retry from enrolling twice; the operator enrolment and API-key create take no key today and stay as they are.
 - **Owner decisions** —
   > Indy (Nov 06, 2026: 08:50 AM): "And we are not in production yet, so i want to rethink the approach on admissions, lease, and so on as i am focussed on scale. If something fails in one host bare metal, it should automatically cordon and respawn in another runner" — context: respawn across hosts, which the placement setting governs across ownership.
@@ -401,6 +401,6 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet. The EGM (Elephant-Goldfish Model) review runs before this spec leaves `pending/`.
 - **Open blockers** —
-  1. **The platform-fallback threshold for `own_then_platform`.** Question for Indy: how long does a tenant's work wait for its own runners before a platform host may take it, and is the trigger time or liveness? Options: a platform-wide wait in `afd_core::timing` (☠️ my call: 30 s, one `LEASE_TTL`, so a dead own host is replaced as fast as a lapsed lease is today); fall back only when none of the tenant's runners is online, which needs a runner scan in the claim; or a per-tenant value, a column on `runner.tenant_placements`. Dimension 3.6 binds whichever he picks.
+  1. **The platform-fallback threshold for `own_then_platform`.** Question for Indy: how long does a tenant's work wait for its own runners before a platform host may take it, and is the trigger time or liveness? Options: a platform-wide wait in `af_core::timing` (☠️ my call: 30 s, one `LEASE_TTL`, so a dead own host is replaced as fast as a lapsed lease is today); fall back only when none of the tenant's runners is online, which needs a runner scan in the claim; or a per-tenant value, a column on `runner.tenant_placements`. Dimension 3.6 binds whichever he picks.
   2. **Proxied platform inference on tenant runners, or the tenant's own key only.** Question for Indy: is it acceptable that every platform-posture turn on a tenant runner goes through the daemon? The costs are a provider stream held per turn, one hop per model call, and a daemon crash mid-call losing that call's usage line (the platform pays the provider; the tenant is not charged). The alternative refuses platform posture on tenant runners: such fleets run only on platform hosts, `own_only` with platform posture never runs, and §4 shrinks to Dimensions 4.1 to 4.2 plus a placement refusal. ☠️ my call: proxy, because `own_only` then works for every fleet and the daemon already runs this path for authoring.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

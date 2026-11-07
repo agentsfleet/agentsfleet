@@ -5,7 +5,7 @@ use crate::{
     error::{ErrorKind, raise::query},
     sql,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "check current authoring membership";

@@ -5,9 +5,9 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_crypto::entropy::Entropy;
 use afd_auth::principal::{PersonCredential, Principal, Runner};
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::workspace::Workspaces;

@@ -27,7 +27,7 @@ const TRANSPORT: &str = "transport";
 /// The value everything past a closed set is attributed under: the spelling
 /// the daemon's runner table already uses for "past the set", so one panel
 /// reads both.
-pub const OTHER: &str = afd_observability::runner::OVERFLOW_RUNNER;
+pub const OTHER: &str = af_observability::runner::OVERFLOW_RUNNER;
 
 /// A canonical public vendor name, or [`OTHER`] for a workspace's own provider name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,13 +38,13 @@ impl Provider {
     /// [`OTHER`].
     #[must_use]
     pub fn count() -> usize {
-        afd_observability::semconv::provider::count() + 1
+        af_observability::semconv::provider::count() + 1
     }
 
     /// The label for the provider a lease configured.
     #[must_use]
     pub fn of(configured: &str) -> Self {
-        Self(afd_observability::semconv::provider::normalize(configured).unwrap_or(OTHER))
+        Self(af_observability::semconv::provider::normalize(configured).unwrap_or(OTHER))
     }
 
     /// The label value, byte-exact.
@@ -77,7 +77,7 @@ impl Tool {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// How one provider turn ended.
     TurnOutcome {
         /// The provider streamed the turn to its end.
@@ -89,7 +89,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// Why a turn's send was retried.
     RetryReason {
         /// The provider answered 429.
@@ -119,7 +119,7 @@ impl RetryReason {
 /// The status a provider rate-limits with.
 const TOO_MANY_REQUESTS: u16 = 429;
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// How a sandbox start ended.
     SandboxStart {
         /// The sandbox's executor answered.
@@ -129,7 +129,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// How a lease's sandbox build, beside its first model call, ended. A
     /// build that fails no longer ends its lease, so this is where a host or
     /// repository fault shows.
@@ -145,7 +145,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// How a sandbox tool call's wait for its lease's build ended.
     SandboxWait {
         /// The build finished, and the call ran in its sandbox.
@@ -156,7 +156,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// How the release of a sandbox's disk after its report ended.
     SandboxRelease {
         /// Egress, cgroup, mount, image and directory are gone.
@@ -166,7 +166,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// What became of a sandbox held for its fleet between two leases: held,
     /// reused, or released for the reason given.
     SandboxHold {
@@ -199,7 +199,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// Why live-tail frames never left the runner.
     FrameDrop {
         /// Every batch slot was held, so a full batch was dropped.
@@ -212,7 +212,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// Why a memory push did not land.
     PushFailure {
         /// The daemon answered 5xx or 429 past the retries.
@@ -227,7 +227,7 @@ afd_observability::closed_set! {
     }
 }
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// How one tool call ended, as its trace row says.
     ///
     /// The wire's `ToolCallStatus`, mirrored member for member on purpose: a
@@ -247,9 +247,9 @@ afd_observability::closed_set! {
 mod tests;
 
 /// Terminal outcome of an individual provider stream request.
-pub use afd_observability::metrics::label::models::CallOutcome;
+pub use af_observability::metrics::label::models::CallOutcome;
 
-afd_observability::closed_set! {
+af_observability::closed_set! {
     /// Where a lease obtains its memory window, regardless of the run's outcome.
     MemorySource {
         /// The daemon attached the window to the lease.

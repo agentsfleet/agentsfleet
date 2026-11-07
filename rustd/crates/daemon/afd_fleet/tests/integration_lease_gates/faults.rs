@@ -5,8 +5,8 @@ mod parking;
 use super::seed::seed_provider_resolution;
 use super::*;
 
+use af_core::test_util::trace::Capture;
 use afd_billing::Accounts;
-use afd_core::test_util::trace::Capture;
 use afd_fleet::lease::Plane;
 
 use crate::rows::{LAPSE, Row};
@@ -54,7 +54,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     );
     assert_eq!(
         line.get("error_code").map(String::as_str),
-        Some(afd_core::error_code::INTERNAL_DB_QUERY.as_str())
+        Some(af_core::error_code::INTERNAL_DB_QUERY.as_str())
     );
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
@@ -101,7 +101,7 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
 
     let expected = Some((
         STATUS_GATE_BLOCKED.to_owned(),
-        afd_core::event::label::CONFIG_UNREADABLE.to_owned(),
+        af_core::event::label::CONFIG_UNREADABLE.to_owned(),
     ));
     assert!(first.contains(NO_LEASE) && second.contains(NO_LEASE));
     assert_eq!(ended, expected, "the first pass ends the event");
@@ -129,7 +129,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
         .end_event(
             &seeded.fleet,
             &seeded.event_id,
-            afd_core::event::status::PROCESSED,
+            af_core::event::status::PROCESSED,
         )
         .await;
     let before = afd_events::fleet_counters(&fixtures.database, &seeded.fleet)
@@ -142,7 +142,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
     assert!(answer.contains(NO_LEASE));
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
-        Some((afd_core::event::status::PROCESSED.to_owned(), String::new()))
+        Some((af_core::event::status::PROCESSED.to_owned(), String::new()))
     );
     assert!(fixtures.admission_settled(&seeded.event_id).await);
     assert_eq!(
@@ -211,7 +211,7 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     fixtures.age(slot, "lease_expires_at", LAPSE).await;
     let won = fixtures
         .leases()
-        .claim(&claimed.fleet_id, &rival, afd_core::timing::LEASE_TTL)
+        .claim(&claimed.fleet_id, &rival, af_core::timing::LEASE_TTL)
         .await
         .expect("the claim statement answers");
     assert!(won.is_some(), "the rival takes the lapsed slot");

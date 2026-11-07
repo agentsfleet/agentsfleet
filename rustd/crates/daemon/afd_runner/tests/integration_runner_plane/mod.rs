@@ -22,15 +22,15 @@ mod refusal;
 
 use std::borrow::Cow;
 
+use af_core::clock;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use afd_api_wire::admin::RunnerEventItem;
-use afd_core::clock;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_runner::{RunnerEventFilter, Runners};
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 
 /// The page size every history read here asks for: more than any test writes.
 const HISTORY_PAGE: u32 = 20;
@@ -41,7 +41,7 @@ fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("host-01.plane.test"),
         assigned_policy: AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::DevNone,
             network_policy: NetworkPolicy::AllowAll,

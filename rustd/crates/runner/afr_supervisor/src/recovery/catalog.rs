@@ -2,7 +2,7 @@
 
 use super::files::{self, Entry, Identity, Workspace};
 use crate::{Result, error};
-use afd_wire::task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
+use af_wire::task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
 use std::{collections::BTreeMap, sync::Arc};
 use zeroize::Zeroizing;
 
@@ -201,7 +201,7 @@ impl Catalog {
                 chunk.descriptor.size,
             ));
         }
-        Ok(afd_crypto::checkpoint_digest::history_root(history))
+        Ok(af_crypto::checkpoint_digest::history_root(history))
     }
 
     pub(super) fn pages(
@@ -238,10 +238,10 @@ impl Catalog {
                 .ok_or_else(|| error::config("checkpoint page is absent"))?;
             let separator = usize::from(!page.entries.is_empty());
             if page.entries.len() == 4096
-                || page_bytes + separator + entry_bytes > afd_wire::task::CHECKPOINT_PAGE_BYTES
+                || page_bytes + separator + entry_bytes > af_wire::task::CHECKPOINT_PAGE_BYTES
             {
                 if page.entries.is_empty()
-                    || pages.len() == afd_wire::task::CHECKPOINT_PAGES as usize
+                    || pages.len() == af_wire::task::CHECKPOINT_PAGES as usize
                 {
                     return Err(error::config("checkpoint manifest exceeds its page bound"));
                 }
@@ -274,7 +274,7 @@ impl Catalog {
                     None => Ok(PLACEHOLDER.to_owned()),
                 })
                 .collect::<Result<_>>()?;
-        if !afd_wire::decision::serialized_within(page, afd_wire::task::CHECKPOINT_PAGE_BYTES) {
+        if !af_wire::decision::serialized_within(page, af_wire::task::CHECKPOINT_PAGE_BYTES) {
             let history_objects = std::mem::take(&mut page.history_objects);
             pages.push(CheckpointPage {
                 page_number: u32::try_from(pages.len())
@@ -283,12 +283,12 @@ impl Catalog {
                 history_objects,
             });
         }
-        if pages.len() > afd_wire::task::CHECKPOINT_PAGES as usize {
+        if pages.len() > af_wire::task::CHECKPOINT_PAGES as usize {
             return Err(error::config("checkpoint manifest exceeds its page bound"));
         }
         for page in &pages {
             garde::Validate::validate(page)?;
-            if !afd_wire::decision::serialized_within(page, afd_wire::task::CHECKPOINT_PAGE_BYTES) {
+            if !af_wire::decision::serialized_within(page, af_wire::task::CHECKPOINT_PAGE_BYTES) {
                 return Err(error::config("checkpoint entry exceeds a manifest page"));
             }
         }
@@ -298,7 +298,7 @@ impl Catalog {
 
 fn descriptor(bytes: &[u8], kind: &str) -> CheckpointPlaintext {
     CheckpointPlaintext {
-        sha256: afd_core::etag::sha256_hex(bytes),
+        sha256: af_core::etag::sha256_hex(bytes),
         size: bytes.len() as u64,
         kind: kind.to_owned(),
     }

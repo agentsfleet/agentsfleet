@@ -32,7 +32,7 @@
 //!
 //! The one thing kept by hand is how an IPv6 host is RENDERED back. `url` hands
 //! it over unbracketed, and this value travels to the runner as its
-//! egress-allowlist entry, where `afr_egress` compares it against
+//! egress-allowlist entry, where `af_egress` compares it against
 //! `Url::host_str` — the bracketed form. Normalisation is otherwise safe here,
 //! which was checked rather than assumed: the runner compares hosts with
 //! `eq_ignore_ascii_case` at every site that matches one, so a lower-cased host

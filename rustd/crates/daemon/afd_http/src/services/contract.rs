@@ -10,11 +10,11 @@
 //! the subtrait. What the split buys is that a tenant-surface accessor lands in
 //! the file about the tenant surface.
 
+use af_core::id::Uuid7;
+use af_observability::Analytics;
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_connector::Dashboard;
-use afd_core::id::Uuid7;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
 use jiff::Timestamp;
@@ -217,7 +217,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     ///
     /// `None` refuses every delivery — see [`IdentityWebhookSecret`] on why
     /// fail-closed is the only safe answer for a route that creates accounts.
-    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes>;
+    fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretBytes>;
 
     /// What the connector routes act through.
     ///

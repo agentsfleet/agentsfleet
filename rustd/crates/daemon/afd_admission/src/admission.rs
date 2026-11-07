@@ -1,7 +1,7 @@
 //! What a producer asks the ledger for: who is asking, what the work is keyed
 //! on, where its answer goes, and the digest a retry is checked against.
 
-use afd_wire::event::EventType;
+use af_wire::event::EventType;
 use sha2::{Digest as _, Sha256};
 
 /// Who is asking a fleet to run something.

@@ -9,7 +9,7 @@
 #![cfg(feature = "test-util")]
 
 use super::*;
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 /// The refusal every ownership case answers, and the state it leaves.
 async fn assert_ownership_refused(

@@ -27,16 +27,16 @@
 
 use std::sync::Arc;
 
+use af_core::error_code::{self, ErrorCode};
+use af_core::id::Uuid7;
+use af_wire::schedule_verb::{QUERY_FENCING_TOKEN, ScheduleCreateRequest};
 use afd_api_wire::schedule::Page;
-use afd_core::error_code::{self, ErrorCode};
-use afd_core::id::Uuid7;
 use afd_cron::model::DEFAULT_TIMEZONE;
 use afd_cron::{NewSchedule, Reconciled, Refused, Source, validate};
 use afd_fleet::lease::Standing;
 use afd_fleet::lease::write_fence::WriteFence;
 use afd_http::handler::schedule::{checked, not_fleet_owned, not_found, refused, rendered};
 use afd_http::handler::{Refusal, parameter, parse_id, read_strict_body};
-use afd_wire::schedule_verb::{QUERY_FENCING_TOKEN, ScheduleCreateRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
@@ -86,7 +86,7 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
 /// Creates a schedule for the fleet the lease runs.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::LEASE_SCHEDULES,
+    path = af_wire::paths::LEASE_SCHEDULES,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_create_schedule",
     summary = "Create a schedule for the running fleet",
@@ -155,7 +155,7 @@ pub(crate) async fn create<D: Services>(
 /// Lists every schedule of the fleet the lease runs.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = afd_wire::paths::LEASE_SCHEDULES,
+    path = af_wire::paths::LEASE_SCHEDULES,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_list_schedules",
     summary = "List the running fleet's schedules",

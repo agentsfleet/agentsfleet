@@ -4,7 +4,7 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_wire::tool_detail::{DETAIL_POST_MAX_BYTES, ToolCallRecord, ToolCallRecordsRequest};
+use af_wire::tool_detail::{DETAIL_POST_MAX_BYTES, ToolCallRecord, ToolCallRecordsRequest};
 
 use super::bodies;
 

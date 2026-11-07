@@ -216,7 +216,7 @@ fn publication_request(request: &Request) {
         .expect("fixture clientMutationId")
         .as_str()
         .expect("native receipt identity");
-    afd_core::id::Uuid7::parse(identity).expect("native UUID7");
+    af_core::id::Uuid7::parse(identity).expect("native UUID7");
     assert_eq!(
         (*input.pointer("/message/body").expect("fixture body")),
         format!("agentsfleet-effect:{identity}")

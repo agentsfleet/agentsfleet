@@ -116,7 +116,7 @@ fn assert_uncertain_outcome(
         .first()
         .ok_or_else(crate::decision::unavailable)?;
     assert_eq!(call.name, "propose_change");
-    assert_eq!(call.status, afd_wire::tool_trace::ToolCallStatus::Failed);
+    assert_eq!(call.status, af_wire::tool_trace::ToolCallStatus::Failed);
     let record = output
         .records
         .first()

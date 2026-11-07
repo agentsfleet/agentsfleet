@@ -1,7 +1,7 @@
 //! Durable receipts join the fleet history without admitting or executing work.
 
+use af_core::{event::status::RECORDED, id::Uuid7};
 use afd_api_wire::activity::FleetActivity;
-use afd_core::{event::status::RECORDED, id::Uuid7};
 use afd_dragonfly::FleetStreams;
 use futures_util::StreamExt as _;
 use serde::Serialize;

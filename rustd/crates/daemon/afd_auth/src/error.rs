@@ -27,7 +27,7 @@
 //! attacker (an expired token was already validly signed) or actionable by a
 //! legitimate holder (this credential is revoked, stop retrying it).
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 /// The result every fallible function in this crate returns.
 ///

@@ -19,12 +19,12 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use afd_observability::semconv::{ATTR_LEASE_ID, RESOURCE_SERVICE_INSTANCE_ID, SPAN_RUNNER_LEASE};
-use afd_otlp::config::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB};
-use afd_otlp::resource::INSTANCE_ID_KNOB;
+use af_observability::semconv::{ATTR_LEASE_ID, RESOURCE_SERVICE_INSTANCE_ID, SPAN_RUNNER_LEASE};
+use af_otlp::config::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB};
+use af_otlp::resource::INSTANCE_ID_KNOB;
 use serde_json::Value;
 
-use afd_wire::runner::NetworkPolicy;
+use af_wire::runner::NetworkPolicy;
 
 use crate::fake_daemon::{FENCING, FakeCollector, FakeDaemon, LEASE_ID};
 use crate::support::{RUN_FAILED, Runner};

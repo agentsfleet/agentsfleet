@@ -4,11 +4,11 @@ use crate::{
     handler::Refusal,
     services::{FleetSchedules as _, Services},
 };
+use af_core::id::Uuid7;
+use af_fleet_runtime::FleetConfig;
+use af_fleet_runtime::config::Trigger;
 use afd_api_wire::fleet::{FleetResponse, WebhookUrl};
 use afd_authoring::SavedFleet;
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::Trigger;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},
@@ -41,7 +41,7 @@ pub(super) async fn response<D: Services>(
 }
 
 pub(super) type NativeFleet<'s> = FleetResponse<
-    afd_fleet_runtime::Definition,
+    af_fleet_runtime::Definition,
     afd_authoring::SetupProgress,
     afd_authoring::types::StartOutcome,
     afd_api_wire::schedule::View<'s>,

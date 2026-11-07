@@ -1,8 +1,8 @@
 //! A lost terminal acknowledgement and post-deletion accounting share one debit.
 
 use super::{Attempt, Fixture, accounting, balance, counts, fixture, messages, report};
+use af_core::error_code;
 use afd_authoring::types::Source;
-use afd_core::error_code;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -85,7 +85,7 @@ async fn first_accounting_report_after_deletion_settles_without_creating_private
     assert_eq!(counts(&f, &a).await, (1, 1, 0));
     assert_eq!(balance(&f).await, before - 100);
     let mut changed = request;
-    if let afd_wire::authoring::Report::Accounting { accounting } = &mut changed {
+    if let af_wire::authoring::Report::Accounting { accounting } = &mut changed {
         accounting.usage.runtime_ms = 2;
     }
     assert_eq!(
@@ -100,9 +100,9 @@ async fn first_accounting_report_after_deletion_settles_without_creating_private
     f.cleanup().await;
 }
 
-async fn changed_answer_refuses(f: &Fixture, a: &Attempt, request: &afd_wire::authoring::Report) {
+async fn changed_answer_refuses(f: &Fixture, a: &Attempt, request: &af_wire::authoring::Report) {
     let mut changed = request.clone();
-    if let afd_wire::authoring::Report::Terminal { answer, .. } = &mut changed {
+    if let af_wire::authoring::Report::Terminal { answer, .. } = &mut changed {
         *answer = Some("changed".into());
     }
     assert_eq!(

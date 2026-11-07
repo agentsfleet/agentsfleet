@@ -59,13 +59,13 @@ pub struct GrantSummary<'a> {
     /// Where the decision stands, from [`status`].
     pub status: Cow<'a, str>,
     /// When the grant was raised.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// When a person approved it, or `null`.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub approved_at: Option<jiff::Timestamp>,
     /// When a person took that back, or `null`.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub revoked_at: Option<jiff::Timestamp>,
     /// Why the row exists at all — the install's own words, stored once.
     pub reason: Cow<'a, str>,

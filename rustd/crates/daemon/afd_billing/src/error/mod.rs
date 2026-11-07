@@ -3,7 +3,7 @@
 //! Same shape as [`afd_events::Error`] and `afd_admission::Error`: a struct
 //! carrying a captured backtrace over a private kind, with the code and the
 //! sentence decided together in one table rather than spelled at each raise
-//! site. The hull is `afd_core::error_shell!`, so nothing here repeats what its
+//! site. The hull is `af_core::error_shell!`, so nothing here repeats what its
 //! sibling crates already share, and the boxed kind keeps `Result` pointer-sized
 //! on the `Ok` path — the shape every statement in this crate returns through.
 //!
@@ -14,7 +14,7 @@
 //! cursor, and a tenant with no wallet row is an invariant that was already
 //! broken before this crate looked (`RUST_ERROR_STANDARD` rule 4's second half).
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 mod raise;
 
@@ -32,7 +32,7 @@ pub(crate) use self::raise::{
 /// appeared after macro expansion is one a reader cannot see.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A billing failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -58,7 +58,7 @@ pub(crate) enum ErrorKind {
         table: &'static str,
         column: &'static str,
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     /// A ledger row's identifier could not be minted.
@@ -67,7 +67,7 @@ pub(crate) enum ErrorKind {
     /// land, which is what the caller needs rather than a second sentence about
     /// randomness.
     #[error(transparent)]
-    Entropy { source: afd_crypto::error::Error },
+    Entropy { source: af_crypto::error::Error },
 
     /// A tenant reached billing with no wallet row behind it.
     ///
@@ -206,7 +206,7 @@ const DETAIL_WALLET_MISSING: &str = "Tenant billing row missing — bootstrap in
 const DETAIL_CURSOR_INVALID: &str = "invalid cursor";
 
 /// The sentence an unreachable datastore earns.
-use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
+use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 
 #[cfg(test)]
 mod tests;

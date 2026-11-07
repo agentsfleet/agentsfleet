@@ -42,7 +42,7 @@ use afd_api_wire::grant::status;
 use afd_approval::{Decision, IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, Wanted};
 use std::time::Duration;
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 
 use crate::lane::{Lane, NOW, mint};
 

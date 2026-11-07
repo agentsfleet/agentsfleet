@@ -3,10 +3,10 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
 use crate::{queue, requests, seed, support::Fixtures};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 use afd_db::test_util::mint_id;
 use afd_dragonfly::Doorbell;
-use afd_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 

@@ -9,11 +9,11 @@
 
 use std::time::Instant;
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::Access;
-use afd_wire::policy::ExecutionPolicy;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_fleet_runtime::FleetConfig;
+use af_fleet_runtime::config::Access;
+use af_wire::policy::ExecutionPolicy;
 use futures_util::future;
 use jiff::Timestamp;
 
@@ -25,7 +25,7 @@ use crate::lease::envelope::Acquired;
 use crate::lease::history;
 use crate::lease::issue::Billed;
 use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
-use afd_core::event::label;
+use af_core::event::label;
 use afd_gate::policy::build::{self, Assembled};
 use afd_gate::policy::repair;
 
@@ -173,7 +173,7 @@ impl Plane {
         // unparseable event, a denied budget, an unauthorised branch — end
         // without a lease row. Counting one there would make the gauge climb
         // on requests that were refused.
-        afd_observability::producers::fleet::runner::lease_taken(runner_id.as_str());
+        af_observability::producers::fleet::runner::lease_taken(runner_id.as_str());
         let issued_at = queue_wait::issued_at(now, began);
         log_issued(runner_id, &issued.lease_id, &admitted.acquired, issued_at);
         // Two independent reads, overlapped: the thread's turns and the

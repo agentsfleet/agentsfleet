@@ -1,7 +1,7 @@
 //! Shared observations never turn an unresolved provider call into zero usage.
 
 use crate::{Result, error};
-use afd_wire::authoring::{Knowledge, Meter, ModelUsage};
+use af_wire::authoring::{Knowledge, Meter, ModelUsage};
 use std::sync::{Arc, Mutex};
 use tokio::time::Instant;
 
@@ -35,7 +35,7 @@ impl Observed {
             .lock()
             .map_err(|_poisoned| error::config(METER_INTERRUPTED))?
             .clone();
-        meter.runtime_ms = afd_core::clock::saturating_millis(self.started.elapsed()).min(300_000);
+        meter.runtime_ms = af_core::clock::saturating_millis(self.started.elapsed()).min(300_000);
         Ok(meter)
     }
 

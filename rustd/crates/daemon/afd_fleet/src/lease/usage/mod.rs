@@ -10,14 +10,14 @@
 
 mod original;
 
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RequestUsage, UsageLine};
 use afd_billing::Nanos;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
 use afd_billing::rates::Posture;
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
 use afd_db::Db;
-use afd_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RequestUsage, UsageLine};
 use jiff::Timestamp;
 
 use crate::error::{Result, row_malformed, sequence_corrupt};
@@ -238,7 +238,7 @@ impl SliceColumns {
 /// As [`afd_billing::ledger::log_lines`].
 pub(crate) async fn log_measured(
     connection: &mut sqlx::PgConnection,
-    entropy: &afd_crypto::entropy::Entropy,
+    entropy: &af_crypto::entropy::Entropy,
     now: Timestamp,
     settlement: Option<&Settlement>,
 ) -> Result<bool> {

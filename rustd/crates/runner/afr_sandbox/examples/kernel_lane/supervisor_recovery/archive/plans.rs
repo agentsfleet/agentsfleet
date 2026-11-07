@@ -83,7 +83,7 @@ impl Archive {
                 .ok_or("all planned pages must be written")?;
             digests.push((
                 id.clone(),
-                afd_core::etag::sha256_hex(&serde_json::to_vec(page)?),
+                af_core::etag::sha256_hex(&serde_json::to_vec(page)?),
             ));
             for object in &page.history_objects {
                 let descriptor = self
@@ -95,7 +95,7 @@ impl Archive {
         }
         expect(
             input.manifest_root
-                == afd_crypto::checkpoint_digest::manifest_root(
+                == af_crypto::checkpoint_digest::manifest_root(
                     digests
                         .iter()
                         .map(|(id, digest)| (id.as_str(), digest.as_str())),
@@ -104,7 +104,7 @@ impl Archive {
         )?;
         expect(
             input.history_digest
-                == afd_crypto::checkpoint_digest::history_root(
+                == af_crypto::checkpoint_digest::history_root(
                     histories
                         .iter()
                         .map(|(id, digest, size)| (id.as_str(), digest.as_str(), *size)),

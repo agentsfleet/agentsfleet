@@ -1,8 +1,8 @@
 //! Observational data is excluded; effective selections and sealed versions are included.
 
 use super::*;
+use af_core::error_code::AUTHORING_REVIEW;
 use afd_authoring::types::{CheckKind, CheckState};
-use afd_core::error_code::AUTHORING_REVIEW;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

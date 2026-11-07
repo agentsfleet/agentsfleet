@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_fleet::lease::{Acquired, Leases};
 use sqlx::Connection as _;
@@ -38,7 +38,7 @@ async fn test_concurrent_claims_lease_one_row() {
     let replica = Leases::new(
         fixtures.open(DbRole::Api).await,
         crate::queue::unreachable(),
-        afd_crypto::entropy::Entropy::new(),
+        af_crypto::entropy::Entropy::new(),
     );
     let replicas = [fixtures.leases_with_dead_queue(), replica];
     let owner = fixtures.open(DbRole::Migrator).await;

@@ -1,7 +1,7 @@
 //! What this crate refuses, and what it reports.
 //!
 //! One error type with `pub type Result<T, E = Error>` beside it, under the
-//! `afd_core::error_shell!` hull its sibling crates carry — so the boxed kind
+//! `af_core::error_shell!` hull its sibling crates carry — so the boxed kind
 //! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
 //! the `[CODE]` rendering and the self-skipping `source()` are generated rather
 //! than written here again. `error_lifts!` composes the sources, so `?` lifts a
@@ -10,7 +10,7 @@
 //! is what an operator follows from "the enrolment did not land" to the
 //! Postgres detail that says why.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 /// The sentence an out-of-bounds host identifier earns.
 pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
@@ -42,7 +42,7 @@ pub(crate) use self::raise::{
     stored_json,
 };
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A runner-plane failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -57,7 +57,7 @@ pub(crate) enum ErrorKind {
     DecisionModelId {
         /// The identifier parser's value-free rejection.
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
     /// A statement would not run.
     #[error("the runner store could not {context}")]
@@ -78,7 +78,7 @@ pub(crate) enum ErrorKind {
         column: &'static str,
         /// The parse failure underneath.
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     /// An authenticated runner's row has since disappeared.
@@ -159,7 +159,7 @@ pub(crate) enum ErrorKind {
     Entropy {
         /// The entropy failure underneath.
         #[from]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     /// An identifier could not be minted from the current instant.
@@ -167,7 +167,7 @@ pub(crate) enum ErrorKind {
     Identifier {
         /// The identifier failure underneath.
         #[from]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     /// The queue would not take the repaired delivery.
@@ -221,7 +221,7 @@ impl Error {
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => DETAIL_UNAVAILABLE,
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
-            // constants in `afd_core::error` exist to prevent.
+            // constants in `af_core::error` exist to prevent.
             ErrorKind::Admission { source } => source.detail(),
         }
     }
@@ -287,7 +287,7 @@ impl Error {
 /// The sentence a failure carries has to be true of every variant mapped to it
 /// — `detail()` maps four here — and a verb-shaped sentence is true of at most
 /// one.
-pub use afd_core::error::DETAIL_DATABASE_ERROR;
+pub use af_core::error::DETAIL_DATABASE_ERROR;
 
 /// The sentence this plane's non-statement failures earn.
 ///
@@ -299,7 +299,7 @@ pub use afd_core::error::DETAIL_DATABASE_ERROR;
 const DETAIL_OPERATION_FAILED: &str = "The runner operation could not be completed";
 
 /// The sentence an unreachable datastore earns.
-use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
+use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
 
 /// This crate's result, defaulting to its own error.
 pub type Result<T, E = Error> = std::result::Result<T, E>;

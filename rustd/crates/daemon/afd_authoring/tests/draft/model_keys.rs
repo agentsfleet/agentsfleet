@@ -1,9 +1,9 @@
 //! Key opening rechecks the owner and admitted snapshot under one transaction.
 
 use super::fixture::Fixture;
-use afd_core::error_code;
+use af_core::error_code;
+use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_credential::provider::{Providers, registered_model};
-use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use sqlx::Connection as _;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ async fn saved_workspace_reference_resolves_only_its_owners_key_and_model_settin
     );
     assert_eq!(resolved.context_cap_tokens, 128_000);
     let inference = resolved.inference.expect("saved inference settings");
-    assert_eq!(inference.api, afd_wire::inference::InferenceApi::Responses);
+    assert_eq!(inference.api, af_wire::inference::InferenceApi::Responses);
     assert_eq!(inference.base_url, "https://models.example.com/v1");
     assert_eq!(inference.max_output_tokens, 8192);
     let refused = providers

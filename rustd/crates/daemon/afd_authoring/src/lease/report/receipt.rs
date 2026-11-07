@@ -1,6 +1,6 @@
 //! Exact accounting replay never reads, recreates or returns private answer text.
 
-use afd_wire::authoring::Reported;
+use af_wire::authoring::Reported;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 

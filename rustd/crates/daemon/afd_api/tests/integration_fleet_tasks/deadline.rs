@@ -93,7 +93,7 @@ async fn page_waits(
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(
             code_of(response).await,
-            afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
+            af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
         );
     }
     for path in [&collection, &detail] {
@@ -139,7 +139,7 @@ async fn scope_waits(
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(
         code_of(response).await,
-        afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
+        af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()
     );
     let response = send(
         router,

@@ -18,7 +18,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::error_surface::{Expect, grade};
+use af_core::test_util::error_surface::{Expect, grade};
 
 use afd_cron::error::{detail, one_of_each_kind};
 
@@ -40,7 +40,7 @@ const FIRE_REFUSALS: &[&str] = &[
 const OPERATIONAL_REASON: &str = "operational_fault";
 
 /// Everything every error surface owes, graded once by
-/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
 /// rendering, no kind repeating its cause, and these measured counts. The
 /// sample count is pinned exactly, so a kind added without a sample fails.
 #[test]

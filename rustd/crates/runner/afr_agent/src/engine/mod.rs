@@ -11,20 +11,20 @@ use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use afd_core::clock::{Clock, SystemClock};
-use afd_wire::usage::{LINES_MAX, RUNNER_SEQ_MAX, RequestLines, RequestUsage};
+use af_core::clock::{Clock, SystemClock};
+use af_wire::usage::{LINES_MAX, RUNNER_SEQ_MAX, RequestLines, RequestUsage};
 
 use crate::ExecutionResult;
-use afd_wire::activity::ActivityFrame;
-use afd_wire::lease::LeasePayload;
-use afd_wire::memory::MemoryDelta;
-use afd_wire::policy::ExecutionPolicy;
-use afd_wire::tool_detail::ToolCallRecord;
-use afd_wire::tool_trace::ToolTrace;
-use afr_egress::Mint;
+use af_egress::Mint;
+use af_providers::Usage;
+use af_wire::activity::ActivityFrame;
+use af_wire::lease::LeasePayload;
+use af_wire::memory::MemoryDelta;
+use af_wire::policy::ExecutionPolicy;
+use af_wire::tool_detail::ToolCallRecord;
+use af_wire::tool_trace::ToolTrace;
 use afr_executor::ExecutorSource;
 use afr_memory::Seed;
-use afr_providers::Usage;
 use afr_tools::LeaseVerbs;
 use tokio_util::sync::CancellationToken;
 
@@ -251,7 +251,7 @@ pub struct RunOutput {
     pub recovery: Option<TaskRecovery>,
     /// Native decision-backed disposition at the last completed safe boundary.
     /// A conversational answer alone never supplies a durable task outcome.
-    pub task: Option<afd_wire::task::TaskReport>,
+    pub task: Option<af_wire::task::TaskReport>,
     /// The result the report carries.
     pub result: ExecutionResult<'static>,
     /// The memory to push, fenced, before the report.

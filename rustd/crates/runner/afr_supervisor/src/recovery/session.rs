@@ -2,8 +2,8 @@
 
 use super::{Object, Session, transfer};
 use crate::{Result, error};
-use afd_core::{clock, id::Uuid7};
-use afd_wire::task::{
+use af_core::{clock, id::Uuid7};
+use af_wire::task::{
     CHECKPOINT_BATCH, CheckpointAuthorizationInput, CheckpointObjectStatus, CheckpointObjectsInput,
     CheckpointPinInput, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload,
     CheckpointUploadsInput,
@@ -95,7 +95,7 @@ impl Session<'_> {
         batch: Vec<(Object, Zeroizing<Vec<u8>>)>,
     ) -> Result<()> {
         let bytes = batch.iter().fold(0_u64, |sum, (_, bytes)| {
-            sum.saturating_add(bytes.len() as u64 + afd_crypto::TAG_LEN as u64)
+            sum.saturating_add(bytes.len() as u64 + af_crypto::TAG_LEN as u64)
         });
         if batch.is_empty() || batch.len() > CHECKPOINT_BATCH || bytes > super::UPLOAD_BATCH_BYTES {
             return Err(error::config("checkpoint physical batch exceeds its bound"));
@@ -112,7 +112,7 @@ impl Session<'_> {
             let bytes = transfer::seal(self.workspace, &mut object, plaintext)?;
             descriptors.push(CheckpointUpload {
                 object_id: object.object_id.clone(),
-                ciphertext_sha256: afd_core::etag::sha256_hex(&bytes),
+                ciphertext_sha256: af_core::etag::sha256_hex(&bytes),
                 ciphertext_length: bytes.len() as u64,
             });
             ciphertexts.insert(object.object_id.clone(), bytes);
@@ -211,8 +211,8 @@ impl Session<'_> {
             complete &= confirmed;
         }
         self.progress(
-            afd_wire::activity::TaskActivityOperation::Capture,
-            afd_wire::activity::TaskActivityPhase::Uploading,
+            af_wire::activity::TaskActivityOperation::Capture,
+            af_wire::activity::TaskActivityPhase::Uploading,
             None,
         )
         .await;
@@ -232,7 +232,7 @@ impl Session<'_> {
     pub(super) async fn download_batch(
         &mut self,
         ids: &[String],
-    ) -> Result<Vec<afd_crypto::secret::SecretBytes>> {
+    ) -> Result<Vec<af_crypto::secret::SecretBytes>> {
         if ids.is_empty() || ids.len() > 4 {
             return Err(error::config("checkpoint restore batch exceeds its bound"));
         }
@@ -272,14 +272,14 @@ impl Session<'_> {
             let length = object
                 .ciphertext_length
                 .filter(|length| {
-                    (17..=super::files::CHUNK + afd_crypto::TAG_LEN as u64).contains(length)
+                    (17..=super::files::CHUNK + af_crypto::TAG_LEN as u64).contains(length)
                 })
                 .ok_or_else(|| error::config("checkpoint ciphertext length is invalid"))?;
             self.progress.discover(&object.object_id, length, false);
         }
         self.progress(
-            afd_wire::activity::TaskActivityOperation::Restore,
-            afd_wire::activity::TaskActivityPhase::Restoring,
+            af_wire::activity::TaskActivityOperation::Restore,
+            af_wire::activity::TaskActivityPhase::Restoring,
             None,
         )
         .await;
@@ -309,8 +309,8 @@ impl Session<'_> {
             }
         }
         self.progress(
-            afd_wire::activity::TaskActivityOperation::Restore,
-            afd_wire::activity::TaskActivityPhase::Restoring,
+            af_wire::activity::TaskActivityOperation::Restore,
+            af_wire::activity::TaskActivityPhase::Restoring,
             None,
         )
         .await;

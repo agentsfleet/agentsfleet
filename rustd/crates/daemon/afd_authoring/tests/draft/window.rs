@@ -5,12 +5,12 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
-use afd_authoring::types::{Accepted, MessageQuery, SendMessage};
-use afd_core::{
+use af_core::{
     error_code::{AUTHORING_GONE, AUTHORING_REPLAY},
     id::Uuid7,
     timing::DAY,
 };
+use afd_authoring::types::{Accepted, MessageQuery, SendMessage};
 use std::time::Duration;
 
 /// A minute inside the window.

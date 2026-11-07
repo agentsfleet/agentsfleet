@@ -176,7 +176,7 @@ async fn a_schedule_id_that_is_not_one_never_leaves() {
 async fn a_refusal_reaches_the_model_with_its_code() {
     let verbs = RecordingVerbs::answering(
         Err(Unanswered::Refused(Some(
-            afd_core::error_code::SCHEDULE_NOT_FLEET_OWNED,
+            af_core::error_code::SCHEDULE_NOT_FLEET_OWNED,
         ))),
         Ok(true),
     );

@@ -1,6 +1,6 @@
 //! Read durable event, usage and unsettled admission counts after the drain.
 
-use afd_core::event::status::PROCESSED;
+use af_core::event::status::PROCESSED;
 
 use crate::datastores::Datastores;
 use crate::error::Result;

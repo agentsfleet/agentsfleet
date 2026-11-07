@@ -5,11 +5,11 @@
 //! assembly: a reader checking "what does a fleet that declared nothing get"
 //! should find the answer beside the assertion that proves it.
 
-use afd_fleet_runtime::FleetConfig;
-use afd_fleet_runtime::config::{
+use af_fleet_runtime::FleetConfig;
+use af_fleet_runtime::config::{
     Access, HttpEgress as AuthoredEgress, RepositoryBinding as Authored,
 };
-use afd_wire::policy::{HttpEgress, NetworkPolicy, RepositoryAccess, RepositoryBinding};
+use af_wire::policy::{HttpEgress, NetworkPolicy, RepositoryAccess, RepositoryBinding};
 
 /// The fleet's egress policy, or the deny-all a fleet that declared none gets.
 ///
@@ -76,7 +76,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{network, wire_binding};
-    use afd_wire::policy::RepositoryAccess;
+    use af_wire::policy::RepositoryAccess;
 
     use crate::policy::fixture::config;
 
@@ -90,7 +90,7 @@ mod tests {
 
         assert_eq!(policy.allow, [] as [std::borrow::Cow<'_, str>; 0]);
         assert!(!policy.read_only);
-        assert_eq!(policy.http_egress, afd_wire::policy::HttpEgress::Restricted);
+        assert_eq!(policy.http_egress, af_wire::policy::HttpEgress::Restricted);
         assert!(!policy.package_manager_domains);
         assert_eq!(policy.read_post_paths, [] as [std::borrow::Cow<'_, str>; 0]);
     }
@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(policy.allow, vec!["api.stripe.com"]);
         assert!(policy.read_only);
         assert_eq!(policy.read_post_paths, vec!["/v1/graphql"]);
-        assert_eq!(policy.http_egress, afd_wire::policy::HttpEgress::Public);
+        assert_eq!(policy.http_egress, af_wire::policy::HttpEgress::Public);
         assert!(policy.package_manager_domains);
     }
 
@@ -116,7 +116,7 @@ mod tests {
         let declared = config(r#","network":{}"#);
         assert_eq!(
             network(&declared),
-            afd_wire::policy::NetworkPolicy::default()
+            af_wire::policy::NetworkPolicy::default()
         );
     }
 

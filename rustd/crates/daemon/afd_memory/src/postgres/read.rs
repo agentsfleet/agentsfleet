@@ -1,8 +1,8 @@
 //! The Postgres store's reads: the hydration input, recall, and the operator
 //! page.
 
+use af_wire::memory::MAX_ENTRIES_PER_FLEET;
 use afd_db::statement::Bound;
-use afd_wire::memory::MAX_ENTRIES_PER_FLEET;
 use sqlx::PgConnection;
 
 use super::{Failure, PgStore, page, record};

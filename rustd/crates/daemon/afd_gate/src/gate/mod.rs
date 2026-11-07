@@ -47,7 +47,7 @@ mod route;
 pub mod sql;
 mod store;
 
-use afd_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};
+use af_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};
 use serde_json::Value;
 
 pub use self::anomaly::Anomaly;
@@ -151,7 +151,7 @@ mod tests {
     use std::time::Duration;
 
     use super::{Decision, match_rule};
-    use afd_fleet_runtime::config::{Behavior, GatePolicy, GateRule};
+    use af_fleet_runtime::config::{Behavior, GatePolicy, GateRule};
     use serde_json::json;
 
     fn rule(tool: &str, action: &str, condition: Option<&str>, behavior: Behavior) -> GateRule {

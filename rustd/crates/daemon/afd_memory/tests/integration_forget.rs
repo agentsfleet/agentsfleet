@@ -5,12 +5,12 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::error_code::{MEM_AGENTSFLEET_NOT_FOUND, MEM_ENTRY_NOT_FOUND};
+use af_wire::memory::{PINNED_CATEGORY, Visibility};
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
-use afd_core::error_code::{MEM_AGENTSFLEET_NOT_FOUND, MEM_ENTRY_NOT_FOUND};
 use afd_db::test_util::mint_uuid7;
 use afd_memory::error::detail::{ENTRY_NOT_FOUND, FLEET_NOT_FOUND};
 use afd_memory::page::View;
-use afd_wire::memory::{PINNED_CATEGORY, Visibility};
 
 use crate::workspace::{Grants, Workspace, delta};
 
@@ -42,7 +42,7 @@ async fn test_a_forget_removes_the_fleets_own_entry_and_never_anothers() {
         .await
         .expect("the fleet's own entry is forgotten");
 
-    let keys = |hydrated: afd_wire::memory::MemoryHydrateResponse<'static>| {
+    let keys = |hydrated: af_wire::memory::MemoryHydrateResponse<'static>| {
         hydrated
             .memory
             .into_iter()

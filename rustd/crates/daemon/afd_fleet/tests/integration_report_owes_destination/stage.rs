@@ -4,8 +4,8 @@
 //! Split from the cases in `integration_report_owes_destination/mod.rs` at the file
 //! cap. The cases state what is owed; this is the stage they state it on.
 
+use af_core::id::Uuid7;
 use afd_admission::{Admission, Key, Producer, Reply};
-use afd_core::id::Uuid7;
 use afd_fleet::lease::{Billed, Committed, Leases, Owing, Reported};
 use jiff::Timestamp;
 use sqlx::Row as _;
@@ -143,7 +143,7 @@ impl Stage {
         response: &str,
         issued_at: Timestamp,
     ) -> afd_fleet::Result<Committed> {
-        let lease_key = afd_core::id::Uuid7::parse(lease_id).expect("a lease id is a v7 spelling");
+        let lease_key = af_core::id::Uuid7::parse(lease_id).expect("a lease id is a v7 spelling");
         let pricing = self.fixtures.pricing(lease_id).await;
         self.leases
             .commit_report(report(
@@ -152,7 +152,7 @@ impl Stage {
                 lease,
                 (&lease_key, &pricing),
                 response,
-                afd_core::clock::after(
+                af_core::clock::after(
                     issued_at,
                     std::time::Duration::from_millis(
                         u64::try_from(SLICE_MS).expect("a fixture span is not negative"),
@@ -164,7 +164,7 @@ impl Stage {
 
     /// Reports and settles the next admission, answering what was owed.
     pub(crate) async fn run_next(&self, run: i64) -> Committed {
-        let now = afd_core::clock::after(
+        let now = af_core::clock::after(
             self.fixtures.enrolled_at(),
             std::time::Duration::from_millis(
                 u64::try_from(run * RUN_SPACING_MS).expect("a fixture span is not negative"),

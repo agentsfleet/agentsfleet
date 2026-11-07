@@ -12,8 +12,8 @@
 //! keeps "this workspace holds no such fleet" and "this fleet holds no grants"
 //! distinguishable at the edge, where they are two different refusals.
 
+use af_core::id::Uuid7;
 use afd_approval::{GrantRow, IntegrationGrants, Result as ApprovalResult, Revocation};
-use afd_core::id::Uuid7;
 
 /// Everything the integration-grant routes act through.
 pub trait FleetGrants: Send + Sync + std::fmt::Debug + 'static {

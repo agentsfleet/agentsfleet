@@ -1,8 +1,8 @@
 //! How a lease that cannot go on ends: the failure logged under its registry
 //! code, and the ending its report carries.
 
-use afd_core::error_code::{Coded, Logged};
-use afd_wire::report::FailureClass;
+use af_core::error_code::{Coded, Logged};
+use af_wire::report::FailureClass;
 use afr_agent::Unhosted;
 
 use super::{

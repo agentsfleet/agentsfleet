@@ -195,7 +195,7 @@ impl FanIn {
                         // Publisher shape drift. Dropped rather than guessed:
                         // routing it to the wrong tile is worse than losing it.
                         Err(Error::Untaggable) => {
-                            afd_observability::producers::http::frame_dropped();
+                            af_observability::producers::http::frame_dropped();
                             let reason = Error::Untaggable.to_string();
                             let fleet_id = &*fleet_id;
                             tracing::debug!(fleet_id, reason, event = "sse_fanin_frame_dropped");

@@ -5,8 +5,8 @@ mod input;
 mod sql;
 mod write;
 
+use af_core::id::Uuid7;
 use afd_api_wire::schedule::Patch;
-use afd_core::id::Uuid7;
 
 /// One conditional edit, with the workspace proven by the mounted route.
 #[derive(Debug, Clone, Copy)]

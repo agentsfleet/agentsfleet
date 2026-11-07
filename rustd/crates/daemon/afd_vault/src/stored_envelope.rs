@@ -1,6 +1,6 @@
 //! Named `SQLx` storage projection shared by every vault-opening path.
 use crate::error::Result;
-use afd_crypto::envelope::Envelope;
+use af_crypto::envelope::Envelope;
 
 /// Ciphertext columns, independent of their position in a SELECT projection.
 #[derive(Debug, sqlx::FromRow)]
@@ -19,7 +19,7 @@ impl StoredEnvelope {
     ///
     /// # Errors
     /// Returns the crypto error for an unsupported version or malformed component.
-    pub fn into_envelope(self) -> Result<Envelope, afd_crypto::error::Error> {
+    pub fn into_envelope(self) -> Result<Envelope, af_crypto::error::Error> {
         Envelope::from_parts(
             self.dek_ciphertext,
             &self.dek_nonce,

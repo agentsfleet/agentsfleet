@@ -12,7 +12,7 @@
 //! by the ORDER of its arms, so both facts live wherever someone last wrote
 //! them down.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 use super::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED,
@@ -286,7 +286,7 @@ impl Error {
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
-            ErrorKind::Scrub { .. } => afd_core::error::DETAIL_OPERATION_FAILED,
+            ErrorKind::Scrub { .. } => af_core::error::DETAIL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
             ErrorKind::SetupUnavailable => "The fleet needs a reviewed native setup before it can run",

@@ -1,8 +1,8 @@
 //! Pre-claim refusal survives reload with a bounded action and no obligation.
 
 use super::{claim, fixture, funded, queue};
+use af_core::error_code;
 use afd_authoring::types::MessageState;
-use afd_core::error_code;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]

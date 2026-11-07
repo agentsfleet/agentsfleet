@@ -16,7 +16,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::cli_credential::CliCredentials;
@@ -89,7 +89,7 @@ async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
         .expect_err("a subject with no row is refused");
     assert_eq!(
         refused.code(),
-        afd_core::error_code::AUTH_FORBIDDEN,
+        af_core::error_code::AUTH_FORBIDDEN,
         "an authenticating credential naming nobody is forbidden, not missing"
     );
     assert_eq!(

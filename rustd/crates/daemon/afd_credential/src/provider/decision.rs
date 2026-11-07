@@ -1,8 +1,8 @@
 //! Decision calls spend the deployment's own key, read again for each dispatch.
 
-use afd_core::{id::Uuid7, json::Unreadable};
-use afd_crypto::secret::SecretString;
-use afd_wire::decision::DecisionApi;
+use af_core::{id::Uuid7, json::Unreadable};
+use af_crypto::secret::SecretString;
+use af_wire::decision::DecisionApi;
 use serde::Deserialize;
 
 use super::Providers;
@@ -69,7 +69,7 @@ impl Providers {
 }
 
 fn decode(body: &[u8], api: DecisionApi) -> Result<SecretString> {
-    let stored: StoredKey = afd_core::json::object_from_slice(body).map_err(|source| {
+    let stored: StoredKey = af_core::json::object_from_slice(body).map_err(|source| {
         ErrorKind::DecisionCredentialInvalid {
             api,
             source: Unreadable::from(source),

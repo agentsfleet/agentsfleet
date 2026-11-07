@@ -1,7 +1,7 @@
 //! What the catalog refuses.
 //!
 //! One error type with `pub type Result<T, E = Error>` beside it, under the
-//! `afd_core::error_shell!` hull: the refusal carries the tool's name, so it
+//! `af_core::error_shell!` hull: the refusal carries the tool's name, so it
 //! takes the boxed kind, the backtrace and the `[CODE]` rendering. Nothing
 //! here wraps a cause, so there is no `error_lifts!`.
 //!
@@ -12,9 +12,9 @@
 //! cannot run, the way the rest of the runner reuses codes
 //! (`docs/RUST_ERROR_STANDARD.md`). The log line's `event` says which refusal.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A catalog refusal, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );

@@ -10,8 +10,8 @@
 
 use std::collections::HashMap;
 
-use afd_core::catalogue::{Metadata, Price};
-use afd_core::id::Uuid7;
+use af_core::catalogue::{Metadata, Price};
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{PgConnection, PgExecutor};
@@ -21,8 +21,8 @@ use crate::{
     error::{query, row},
     model::{DecisionModel, Model, ModelUpdate},
 };
-use afd_crypto::entropy::Entropy;
-use afd_wire::{decision::DecisionConfiguration, inference::ModelInference};
+use af_crypto::entropy::Entropy;
+use af_wire::{decision::DecisionConfiguration, inference::ModelInference};
 use sqlx::types::Json;
 
 const MODEL_TABLE: &str = "model.platform_models";

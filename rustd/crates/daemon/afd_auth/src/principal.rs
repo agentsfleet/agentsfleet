@@ -34,7 +34,7 @@
 //! ([`crate::scope::RUNNER_SCOPES`]), so there is no assignment to get wrong
 //! and no way to construct a runner holding a tenant capability.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::scope::{RUNNER_SCOPES, ScopeSet};
 

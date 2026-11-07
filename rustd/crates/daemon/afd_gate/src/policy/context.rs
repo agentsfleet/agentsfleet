@@ -18,8 +18,8 @@
 //! The order matters: an inherited cap has to feed the tiering, or a fleet that
 //! authors nothing gets the mid tier no matter what model it ends up on.
 
-use afd_fleet_runtime::config::ContextBudget as Authored;
-use afd_wire::policy::ContextBudget;
+use af_fleet_runtime::config::ContextBudget as Authored;
+use af_wire::policy::ContextBudget;
 
 /// The window when the cap is unknown, and for every cap between the tiers.
 ///
@@ -117,7 +117,7 @@ mod tests {
         DEFAULT_STAGE_CHUNK_THRESHOLD, DEFAULT_TOOL_WINDOW, Overlay, TOOL_WINDOW_LARGE,
         TOOL_WINDOW_SMALL, resolve,
     };
-    use afd_fleet_runtime::config::ContextBudget as Authored;
+    use af_fleet_runtime::config::ContextBudget as Authored;
 
     /// A block with every knob at its sentinel — the "fleet authored nothing".
     const NOTHING: Authored = Authored {

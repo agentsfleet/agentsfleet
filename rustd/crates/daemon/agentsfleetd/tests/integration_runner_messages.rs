@@ -19,8 +19,8 @@
               indexes the JSON it just built"
 )]
 
-use afd_core::id::Uuid7;
-use afd_wire::message_verb::{MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MESSAGES_PER_RUN_MAX};
+use af_core::id::Uuid7;
+use af_wire::message_verb::{MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MESSAGES_PER_RUN_MAX};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
@@ -176,7 +176,7 @@ async fn test_message_is_scrubbed() {
         &workspace,
         CREDENTIAL,
         &body,
-        afd_core::clock::now(),
+        af_core::clock::now(),
     )
     .await;
     let (lease_id, fence) = speaking.lease_thread().await;

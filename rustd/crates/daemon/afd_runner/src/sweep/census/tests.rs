@@ -6,8 +6,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use afd_observability::metrics::label::fleet::FleetStatusLabel;
-use afd_observability::producers::fleet::census::fleet_census_readings;
+use af_observability::metrics::label::fleet::FleetStatusLabel;
+use af_observability::producers::fleet::census::fleet_census_readings;
 
 use super::{Counted, Tally, settle, tally};
 use crate::error::query;

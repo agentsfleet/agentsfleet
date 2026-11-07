@@ -1,8 +1,8 @@
 //! Real Postgres catalogue reads; provider evidence below is synthetic fixture data.
 
+use af_core::catalogue::{Metadata, Price};
+use af_crypto::entropy::Entropy;
 use afd_admin::{CreateModel, ModelInput, ModelUpdate};
-use afd_core::catalogue::{Metadata, Price};
-use afd_crypto::entropy::Entropy;
 use afd_db::{Db, Migrator, config::DbRole, test_util::TestDatabase};
 use afd_tenant::{
     Result,

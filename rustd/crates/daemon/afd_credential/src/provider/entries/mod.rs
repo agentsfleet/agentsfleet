@@ -37,8 +37,8 @@ mod page;
 pub mod sql;
 mod write;
 
-use afd_core::catalogue::Metadata;
-use afd_core::id::Uuid7;
+use af_core::catalogue::Metadata;
+use af_core::id::Uuid7;
 use afd_vault::Descriptor;
 use jiff::Timestamp;
 
@@ -238,7 +238,7 @@ mod tests {
     )]
     use super::{Entry, EntryRow, is_active};
     use crate::provider::selection::{OwnModel, Selection};
-    use afd_core::id::Uuid7;
+    use af_core::id::Uuid7;
     use jiff::Timestamp;
 
     /// A fixed identity, so two entries in one test are distinguishable.

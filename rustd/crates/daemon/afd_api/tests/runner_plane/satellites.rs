@@ -123,7 +123,7 @@ async fn runner_activity_is_acknowledged_with_a_body() {
 
 #[tokio::test]
 async fn runner_tool_call_records_validate_and_render() {
-    use afd_wire::tool_detail::DETAIL_POST_MAX_BYTES;
+    use af_wire::tool_detail::DETAIL_POST_MAX_BYTES;
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
@@ -204,7 +204,7 @@ async fn runner_lease_poll_refuses_a_body_without_kinds_or_with_unreadable_holds
         let polled = send(
             &router,
             Method::POST,
-            afd_wire::paths::RUNNER_LEASES,
+            af_wire::paths::RUNNER_LEASES,
             Some(RUNNER_TOKEN),
             body,
         )
@@ -214,7 +214,7 @@ async fn runner_lease_poll_refuses_a_body_without_kinds_or_with_unreadable_holds
     let polled = send(
         &router,
         Method::POST,
-        afd_wire::paths::RUNNER_LEASES,
+        af_wire::paths::RUNNER_LEASES,
         Some(RUNNER_TOKEN),
         &held,
     )
@@ -236,7 +236,7 @@ async fn runner_lease_poll_hands_its_holds_to_the_plane() {
         let polled = send(
             &router,
             Method::POST,
-            afd_wire::paths::RUNNER_LEASES,
+            af_wire::paths::RUNNER_LEASES,
             Some(RUNNER_TOKEN),
             body,
         )

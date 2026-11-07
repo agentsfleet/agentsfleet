@@ -2,8 +2,8 @@
 
 use super::{Intent, ModelCallInput, ModelCallResult, ModelCalls, guard, provider, receipt};
 use crate::{Result, error::ErrorKind};
-use afd_core::id::Uuid7;
-use afd_wire::context::ContextState;
+use af_core::id::Uuid7;
+use af_wire::context::ContextState;
 use std::sync::Arc;
 use tracing::Instrument as _;
 
@@ -22,7 +22,7 @@ impl ModelCalls {
             .as_ref()
             .map(|task| task.expected_generation.saturating_add(1));
         let mut trace = intent.compaction.as_ref().map(|task| {
-            afd_context::Trace::start(dispatch.as_str().into(), afd_context::Host::Authoring, task)
+            af_context::Trace::start(dispatch.as_str().into(), af_context::Host::Authoring, task)
         });
         let span = trace
             .as_ref()

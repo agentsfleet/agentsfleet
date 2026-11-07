@@ -1,8 +1,8 @@
 //! A count for an earlier body never authorizes a changed physical request.
 
 use super::{Physical, complete, outbound, reply};
-use afd_core::error_code;
-use afd_wire::inference::InferenceApi;
+use af_core::error_code;
+use af_wire::inference::InferenceApi;
 use std::sync::{Arc, Mutex};
 
 #[tokio::test]
@@ -10,7 +10,7 @@ async fn changed_body_after_measurement_is_refused_before_the_physical_send() {
     let api = InferenceApi::Responses;
     let mut request = outbound(api);
     request.measurement = Some(
-        afd_inference::Configured::new(&request.inference, request.context_tokens)
+        af_inference::Configured::new(&request.inference, request.context_tokens)
             .expect("saved inference route")
             .input_count(&request.model, &request.body)
             .expect("the original complete request is measured"),

@@ -8,12 +8,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::clock::{FixedClock, before};
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_wire::report::{FailureClass, RenewResponse};
+use af_core::clock::{FixedClock, before};
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_providers::Usage;
+use af_wire::report::{FailureClass, RenewResponse};
 use afr_agent::Meter;
-use afr_providers::Usage;
 use jiff::Timestamp;
 use tokio::time::Instant;
 
@@ -21,7 +21,7 @@ use super::{EXPIRY_MARGIN, Renewal};
 use crate::client::Verb;
 use crate::error;
 use crate::test_support::{Answer, GRANTED_UNTIL, LEASE_ID, drain, json, plane};
-use afd_core::timing::RENEWAL_TICK;
+use af_core::timing::RENEWAL_TICK;
 
 /// The renew body's usage lines, by the key the daemon reads them under.
 const REQUESTS: &str = "requests";

@@ -6,12 +6,12 @@ use std::future::{Ready, ready};
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_core::test_util::trace::{Capture, CapturedEvent};
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::{Kek, SecretBytes};
+use af_core::error_code;
+use af_core::test_util::trace::{Capture, CapturedEvent};
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::{Kek, SecretBytes};
+use af_observability::InviteEmailOutcome;
 use afd_db::test_util::unreachable_db;
-use afd_observability::InviteEmailOutcome;
 use afd_vault::Vault;
 use lettre::transport::smtp::client::{TlsParameters, TlsVersion};
 use tracing::Level;

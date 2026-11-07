@@ -5,8 +5,8 @@ use super::{
     RADIUS_PREFIX, RADIUS_SUFFIX, Wanted,
 };
 use crate::{Result, error, grant::IntegrationGrants, grant_sql};
+use af_core::id::Uuid7;
 use afd_api_wire::grant::status;
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 

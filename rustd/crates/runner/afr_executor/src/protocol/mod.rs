@@ -175,7 +175,7 @@ pub(crate) struct ExitedParams {
     /// Whether its output was still open when the drain gave it up, past the
     /// grace or the cap, so what was written after is not read. Absent from
     /// an executor that never measured it, which is `false`: a type the
-    /// runner reads stays lenient (`afd_core::json`).
+    /// runner reads stays lenient (`af_core::json`).
     #[serde(default)]
     pub(crate) output_abandoned: bool,
 }
@@ -208,7 +208,7 @@ pub(crate) fn request(id: u64, method: &str, params: &impl Serialize) -> serde_j
 /// A message's parameters or result, through the object-only gate: whatever
 /// is on the other end of the socket is not trusted.
 pub(crate) fn decoded<'a, T: Deserialize<'a>>(raw: &'a RawValue) -> serde_json::Result<T> {
-    afd_core::json::object_from_slice(raw.get().as_bytes())
+    af_core::json::object_from_slice(raw.get().as_bytes())
 }
 
 /// Bytes as standard base64, written straight into the message and read

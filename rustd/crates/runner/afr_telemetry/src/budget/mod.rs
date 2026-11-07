@@ -42,8 +42,8 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use afd_core::limits::MAX_WORKERS;
-use afd_otlp::SpanEnd;
+use af_core::limits::MAX_WORKERS;
+use af_otlp::SpanEnd;
 use opentelemetry::trace::{Link, SpanKind, TraceContextExt as _, TraceId, TraceState};
 use opentelemetry::{Context, KeyValue};
 use opentelemetry_sdk::trace::{SamplingDecision, SamplingResult, ShouldSample, SpanData};
@@ -67,8 +67,8 @@ pub const MAX_LEASE_SPANS: u32 = 256;
 /// roots that start while the second has room. A root in a spent second is
 /// kept anyway, so this bounds everything but roots.
 ///
-/// The batch processor holds [`afd_otlp::SPAN_QUEUE`] spans and sends every
-/// [`afd_otlp::SPAN_SEND_EVERY`], both pinned, so 128 a second fills at most
+/// The batch processor holds [`af_otlp::SPAN_QUEUE`] spans and sends every
+/// [`af_otlp::SPAN_SEND_EVERY`], both pinned, so 128 a second fills at most
 /// 640 of its 2048: against a collector that keeps up, the queue never drops
 /// a span the budget admitted. A collector slower than the budget is a
 /// different matter — its failed exports are counted in
@@ -198,7 +198,7 @@ impl ShouldSample for LeaseSampler {
 ///
 /// An observer inside the pipeline's one processor rather than a processor of
 /// its own, so the SDK moves each ended span once instead of cloning it for a
-/// second processor (`afd_otlp::SpanEnd` says why).
+/// second processor (`af_otlp::SpanEnd` says why).
 #[derive(Debug)]
 pub struct LeaseReaper {
     budget: Arc<Budget>,

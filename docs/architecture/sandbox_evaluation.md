@@ -540,15 +540,15 @@ Use conditional object creation and replay the identical ciphertext buffer when 
 Before enabling R2, an integration proof must reject a second different write to the same object key.
 If the configured backend cannot enforce create-only writes, checkpoint publication stays disabled rather than accepting mutable referenced objects.
 
-For each new object, the daemon generates a fresh 256-bit data key through `afd_crypto::entropy`.
-Wrap that key with the existing `afd_crypto::envelope` under the daemon's configured versioned master key.
+For each new object, the daemon generates a fresh 256-bit data key through `af_crypto::entropy`.
+Wrap that key with the existing `af_crypto::envelope` under the daemon's configured versioned master key.
 Bind the wrapped key to workspace, repository, random object identity and checkpoint format through associated data.
 
 The trusted supervisor receives only the scoped temporary data key and its assigned nonce, never the master key.
 Encrypt each object with AES-256-GCM, its native fresh 96-bit nonce and the ownership/format binding.
 Save only ciphertext, nonce, authentication tag, wrapped key envelope and ciphertext digest; zero plaintext keys when buffers leave scope.
 
-`afd_crypto::checkpoint` now defines scoped key wrapping and object encryption; vault envelope bytes remain compatible.
+`af_crypto::checkpoint` now defines scoped key wrapping and object encryption; vault envelope bytes remain compatible.
 Native registration, R2 transfer, manifests and restore remain pending.
 
 The key wrapper also binds the registered nonce and wrapping-key version.
@@ -854,7 +854,7 @@ The proposed daemon recovery owner above supplies a boundary, while its detailed
 | Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](scenarios/slack-incident-responder.md#6-how-the-answer-comes-back) and [outbound abandonment](../../rustd/crates/daemon/afd_outbound/src/abandon.rs). |
 | Bound monitoring delay | Set critical-alert diagnosis delay and repair queue capacity. Track successful sweep freshness separately from accepted-alert queue time, including failed provider reads and evidence gaps. | [Ordered queue without a waiting-time guarantee](datastore_scaling.md#the-admissions-ledger-is-the-queue), [serial diagnosis](#several-incidents-under-the-same-fleets). |
 | Report recoverable progress | Show which files were saved, which tests cover that generation and which command outcomes remain unknown. Give a verification step before retrying an uncertain effect. | [Command reconnect limits](#selective-space-reuse), [proposed recovery units](#walkthrough-to-build-and-test). |
-| Upgrade and roll back | Choose whether adoption starts with new sessions or imports verified in-progress work. Retained saves need compatible readers or a validated conversion before older workers resume them. | [Current lease payload](../../rustd/crates/protocol/afd_wire/src/lease/payload.rs), upstream [versioning](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/versioning.md). |
+| Upgrade and roll back | Choose whether adoption starts with new sessions or imports verified in-progress work. Retained saves need compatible readers or a validated conversion before older workers resume them. | [Current lease payload](../../rustd/crates/protocol/af_wire/src/lease/payload.rs), upstream [versioning](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/versioning.md). |
 | Choose bounded source reuse | Owner selected a small SPACE-derived Firecracker wrapper with the existing executor. Exact extraction, dependency closure and real Linux measurements still need proof. | [First wrapper](#first-firecracker-wrapper), [local atomic report publication](../../rustd/crates/runner/afr_supervisor/src/report_spool/mod.rs), [reuse criteria](#selective-space-reuse). |
 
 Guest resource limits do not bound supervisor compression, upload buffers or temporary storage.
@@ -869,14 +869,14 @@ File checkpoints and full guest snapshots carry different compatibility costs; r
 
 | Slice | Files or existing area | Change and proof |
 |---|---|---|
-| Shared preparation | `rustd/crates/protocol/afd_context/src/{plan,ports}.rs`, [preparation work tests](../../rustd/crates/protocol/afd_context/tests/work.rs) and existing planner tests | Reduce cumulative estimates, retain a final complete provider estimate and exact output safety, and reject stale source. A blocked summary must not block another conversation. |
+| Shared preparation | `rustd/crates/protocol/af_context/src/{plan,ports}.rs`, [preparation work tests](../../rustd/crates/protocol/af_context/tests/work.rs) and existing planner tests | Reduce cumulative estimates, retain a final complete provider estimate and exact output safety, and reject stale source. A blocked summary must not block another conversation. |
 | Runtime history | `rustd/crates/runner/afr_agent/src/loop/{mod,conversation}.rs`, `loop/context/{mod,source,estimate}.rs`; proposed history-index module | One owned encoded-history index and borrowed views; invalidate the affected tail when pending input changes. Preserve complete tool groups and native continuation rules. |
 | Authoring preparation | `rustd/crates/daemon/afd_authoring/src/model/context/`, `model/dispatch/{mod,funding}.rs`, existing funding/source-change integration tests | Reuse prepared input only with an exact source/authority witness after funding. Funding and model access stay outside datastore locks. |
 | Repository preparation proposal | `rustd/crates/runner/afr_supervisor/src/{lease_loop/checkout.rs,workspace_clone/}`, related checkout and concurrency tests | Separate trusted repository acquisition from local or remote materialization. Preserve credential isolation; publish an immutable source before shortening mirror lock duration. |
 | Native backend experiment | Existing `afr_sandbox` engine/boot and `afr_executor` boundaries; proposed guest engine informed by SPACE | Map readiness, process identity, bounded streams, cancellation, network policy, quota and cleanup. Unsupported semantics must refuse explicitly. |
 | Recovery proposal | Existing `afr_supervisor` held-sandbox and lease paths, plus a manifest/storage owner to be selected with the persistence mechanism | Bind durable workspace generation to current fleet authority. Test host loss, source changes, deletion and revoked credentials. No new scheduler. |
 
-Do not extract a checkpoint-storage crate solely to anticipate SPACE. The [current optional PostgreSQL feature](../../rustd/crates/protocol/afd_context/Cargo.toml) already excludes that dependency from runtime builds. Extract only if a concrete caller or dependency boundary improves.
+Do not extract a checkpoint-storage crate solely to anticipate SPACE. The [current optional PostgreSQL feature](../../rustd/crates/protocol/af_context/Cargo.toml) already excludes that dependency from runtime builds. Extract only if a concrete caller or dependency boundary improves.
 
 ## Selective SPACE reuse
 

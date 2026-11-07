@@ -8,9 +8,9 @@
 #[path = "support/gate_fixture.rs"]
 mod fixture;
 
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_crypto::entropy::Entropy;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_gate::gate::{

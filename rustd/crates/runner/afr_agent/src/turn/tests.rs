@@ -2,7 +2,7 @@
 #![expect(clippy::expect_used, reason = "fixture preconditions must fail loudly")]
 
 use super::*;
-use afr_secrets::Scrub;
+use af_secrets::Scrub;
 use futures_util::stream;
 use std::time::Instant;
 
@@ -22,16 +22,13 @@ async fn usage_is_recorded_once_even_when_the_next_chunk_fails() {
     let meter = Meter::default();
     let source = stream::iter([
         Ok(Chunk::Usage(SPENT)),
-        Err(afr_providers::Error::lost(std::io::Error::other("reset"))),
+        Err(af_providers::Error::lost(std::io::Error::other("reset"))),
     ])
     .boxed();
     let error = take(source, &mut live, &meter)
         .await
         .expect_err("the next chunk failed");
-    assert_eq!(
-        error.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
-    );
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(meter.read(), SPENT);
     assert_eq!(meter.backlog(), 1);
 }
@@ -43,7 +40,7 @@ async fn a_successful_turn_does_not_record_usage_twice() {
     let meter = Meter::default();
     let source = stream::iter([
         Ok(Chunk::Usage(SPENT)),
-        Ok(Chunk::End(afr_providers::End {
+        Ok(Chunk::End(af_providers::End {
             replay: Replay::default(),
             cut: false,
         })),

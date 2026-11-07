@@ -8,10 +8,10 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
-use afr_egress::testing::{CountingMint, RecordingTransport};
-use afr_providers::{Chunk, Message};
+use af_core::test_util::trace::Capture;
+use af_egress::testing::{CountingMint, RecordingTransport};
+use af_providers::{Chunk, Message};
+use af_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 use afr_tools::Catalog;
 use afr_tools::catalog::{MEMORY_FORGET, MEMORY_LIST, MEMORY_RECALL, MEMORY_STORE};
 use serde_json::json;
@@ -41,7 +41,7 @@ async fn test_memory_tools_round_trip_through_push() {
         key: Cow::Borrowed("incident:41"),
         content: Cow::Borrowed("escalated to the on-call"),
         category: Cow::Borrowed(PINNED_CATEGORY),
-        visibility: afd_wire::memory::Visibility::Fleet,
+        visibility: af_wire::memory::Visibility::Fleet,
     }];
     let script = Script::new([
         vec![call(
@@ -113,7 +113,7 @@ async fn test_memory_tools_round_trip_through_push() {
             key: Cow::Borrowed("incident:42"),
             content: Cow::Borrowed("deploy 812 broke iad"),
             category: Cow::Borrowed("daily"),
-            visibility: afd_wire::memory::Visibility::Fleet,
+            visibility: af_wire::memory::Visibility::Fleet,
         }],
         "the push carries what the run stored, and nothing it only read"
     );
@@ -199,7 +199,7 @@ struct Refused;
 #[async_trait::async_trait]
 impl Checkpoint for Refused {
     async fn push(&self, _memory: Vec<MemoryDelta<'static>>) -> crate::Result<()> {
-        Err(crate::Error::checkpoint(afr_providers::Error::refused(503)))
+        Err(crate::Error::checkpoint(af_providers::Error::refused(503)))
     }
 }
 
@@ -257,7 +257,7 @@ async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
     assert_eq!(output.result.content, "answered");
     let failed = capture.only(EVENT_CHECKPOINT_FAILED);
     assert_eq!(failed.level, tracing::Level::WARN);
-    let code = afr_providers::Error::refused(503).code();
+    let code = af_providers::Error::refused(503).code();
     assert_eq!(failed.field("error_code"), Some(code.as_str()));
     assert_eq!(failed.field("lease_id"), Some("lease-1"));
 }

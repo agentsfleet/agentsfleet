@@ -4,15 +4,15 @@
     reason = "a provider fixture with another variant must fail loudly"
 )]
 
-use afd_core::{error_code, test_util::trace::Capture};
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::{
+use af_core::{error_code, test_util::trace::Capture};
+use af_wire::{
     decision::DecisionUsage,
     task::{
         DecisionAssessment, DecisionCallState, DecisionNotSentCause, DecisionReceipt,
         DecisionReceiptInput, DecisionRecordDisposition,
     },
 };
+use afd_fleet::task::TaskLifecycle as _;
 use serde_json::Value;
 
 use super::{
@@ -98,7 +98,7 @@ async fn set_rate(fixture: &Decisions<'_>, rate: Option<i64>) {
             fixture
                 .model
                 .models
-                .update(&fixture.model.model.id, details, afd_core::clock::now())
+                .update(&fixture.model.model.id, details, af_core::clock::now())
                 .await
                 .expect("publish a valid signed-64-bit price")
         );
@@ -138,7 +138,7 @@ async fn assert_unpriced(
 
 async fn refuse_retry(
     fixture: &Decisions<'_>,
-    input: &garde::Valid<afd_wire::task::DecisionReservationInput>,
+    input: &garde::Valid<af_wire::task::DecisionReservationInput>,
     call: &str,
 ) {
     let mut retry = (**input).clone();

@@ -9,7 +9,7 @@ use jiff::Timestamp;
 
 /// How long from `now` until `then`; zero once `then` has passed.
 pub(crate) fn left(now: Timestamp, then: Timestamp) -> Duration {
-    afd_core::clock::elapsed(now, then)
+    af_core::clock::elapsed(now, then)
 }
 
 #[cfg(test)]
@@ -24,7 +24,7 @@ mod tests {
 
     #[test]
     fn the_time_left_is_the_span_to_the_deadline() {
-        let then = afd_core::clock::after(NOW, Duration::from_millis(1_500));
+        let then = af_core::clock::after(NOW, Duration::from_millis(1_500));
         assert_eq!(left(NOW, then), Duration::from_millis(1_500));
         assert_eq!(left(then, NOW), Duration::ZERO);
     }

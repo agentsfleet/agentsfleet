@@ -26,7 +26,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 
 use crate::knobs;
 

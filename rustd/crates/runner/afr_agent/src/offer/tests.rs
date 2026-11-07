@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use afr_egress::testing::RecordingTransport;
-use afr_providers::Hosted;
+use af_egress::testing::RecordingTransport;
+use af_providers::Hosted;
 use afr_tools::Catalog;
 use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
 

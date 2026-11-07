@@ -9,7 +9,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 
 use crate::error::{Result, program as failed};
 use crate::workspace_disk::{Mount, loop_mount};

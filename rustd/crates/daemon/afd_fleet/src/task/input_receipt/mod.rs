@@ -5,14 +5,14 @@ mod row;
 
 use super::{TaskLease, TaskRefusal, Tasks, execution, guard, transaction};
 use crate::{Result, error::query};
-use afd_wire::task::{TaskInputMode, TaskInputReceiptInput, TaskInputReceiptResult};
+use af_wire::task::{TaskInputMode, TaskInputReceiptInput, TaskInputReceiptResult};
 
 pub(super) async fn accept(
     tasks: &Tasks,
     lease: TaskLease<'_>,
     input: &garde::Valid<TaskInputReceiptInput>,
 ) -> Result<TaskInputReceiptResult> {
-    let digest = afd_core::etag::sha256_hex(
+    let digest = af_core::etag::sha256_hex(
         &serde_json::to_vec(&(
             &input.source_admission_id,
             &input.plan_digest,
@@ -21,7 +21,7 @@ pub(super) async fn accept(
             input.mode,
             &input.response_text,
         ))
-        .map_err(afd_core::json::Unreadable::from)?,
+        .map_err(af_core::json::Unreadable::from)?,
     );
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
@@ -127,7 +127,7 @@ async fn response(
                 .as_deref()
                 .map(super::row::state)
                 .transpose()?
-                .is_some_and(afd_wire::task::TaskState::is_terminal)
+                .is_some_and(af_wire::task::TaskState::is_terminal)
             {
                 return Err(TaskRefusal::StaleState.into());
             }

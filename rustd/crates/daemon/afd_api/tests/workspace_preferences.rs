@@ -24,8 +24,8 @@
 use crate::harness;
 use crate::harness::code_of;
 
+use af_core::error_code;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code;
 use afd_tenant::preference::MAX_PREF_VALUE_BYTES;
 use http::{Method, StatusCode};
 

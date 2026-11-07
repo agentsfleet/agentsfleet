@@ -1,11 +1,11 @@
 //! Routing, accepted task budgets and actual overages keep distinct owners.
 
-use afd_core::error_code;
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::{
+use af_core::error_code;
+use af_wire::{
     decision::DecisionUsage,
     task::{DecisionAssessment, DecisionCallState, DecisionTaskVersion},
 };
+use afd_fleet::task::TaskLifecycle as _;
 use serde_json::{Value, json};
 
 use super::{
@@ -166,7 +166,7 @@ async fn further_work_is_blocked(fixture: &Decisions<'_>, task: DecisionTaskVers
     );
     assert_eq!(fixture.counts().await, (2, 2, 2));
     let lines: Vec<(String, i64)> = sqlx::query_as("SELECT event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2 ORDER BY seq")
-        .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+        .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
         .fetch_all(&mut *fixture.case.held.fixtures.database.acquire().await.expect("source and goal charges"))
         .await.expect("two original-work lines");
     assert_eq!(

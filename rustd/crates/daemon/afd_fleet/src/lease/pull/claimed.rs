@@ -1,6 +1,6 @@
 //! Test entry for running the production gate and issue sequence over an already claimed admission.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::error::Result;

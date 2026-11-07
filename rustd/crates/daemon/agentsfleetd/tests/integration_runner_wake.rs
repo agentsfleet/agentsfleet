@@ -9,7 +9,7 @@
 
 use std::time::{Duration, Instant};
 
-use afd_core::timing::WAKE_HOLD_MAX;
+use af_core::timing::WAKE_HOLD_MAX;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
 

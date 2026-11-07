@@ -2,12 +2,12 @@
 
 use std::borrow::Cow;
 
+use af_core::clock;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::{BindMode, ExtraBind, RunnerLiveness};
 use afd_api_wire::admin::{AdminState, RunnerAdminAction, RunnerEventType};
-use afd_core::clock;
-use afd_core::test_util::trace::Capture;
 use afd_runner::sql::NEVER_SEEN;
 use afd_runner::{DETAIL_SELFTEST_REFUSED, KeysetCursor, RunnerEdit};
-use afd_wire::runner::{BindMode, ExtraBind, RunnerLiveness};
 use serde_json::Value;
 
 use super::{Fixture, enrolment};

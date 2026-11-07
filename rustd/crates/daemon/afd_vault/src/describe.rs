@@ -31,7 +31,7 @@
 
 use std::collections::HashMap;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::classified::Classified;
 use crate::error::{Result, query};

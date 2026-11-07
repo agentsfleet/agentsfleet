@@ -3,19 +3,19 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::event::EventType;
+use af_wire::runner::{
+    AssignedPolicy, CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, RegisterRequest,
+    SandboxTier,
+};
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
 use afd_dragonfly::Dragonfly;
 use afd_runner::Runners;
 use afd_runner::heartbeat::holds::prove;
-use afd_wire::event::EventType;
-use afd_wire::runner::{
-    AssignedPolicy, CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, RegisterRequest,
-    SandboxTier,
-};
 use jiff::Timestamp;
 
 use crate::error::{Result, seed_refused};
@@ -253,7 +253,7 @@ pub async fn runner_with(
     let request = RegisterRequest {
         host_id: host.into(),
         assigned_policy: AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowListEgress,

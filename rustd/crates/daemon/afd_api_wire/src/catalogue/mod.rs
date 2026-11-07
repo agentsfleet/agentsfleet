@@ -1,7 +1,7 @@
 //! A model's evidence and dated prices, as both API planes spell them.
 //!
 //! Every rate is integer nanos (10⁻⁹ US dollars) per million tokens, written as
-//! a decimal string of whole nanos ([`afd_wire::nanos`]), so a client converts
+//! a decimal string of whole nanos ([`af_wire::nanos`]), so a client converts
 //! what an operator types to nanos once and never round-trips a stored amount
 //! through a float. Parsing refuses a negative or non-canonical rate, so garde
 //! has no bound left to prove on one. A cache-write rate that is `null` is unknown or unsupported, never
@@ -9,7 +9,7 @@
 
 use std::borrow::Cow;
 
-use afd_validate::spans::{Span, disjoint};
+use af_validate::spans::{Span, disjoint};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -36,7 +36,7 @@ pub const NO_BASE_TIER: &str = "prices must include a tier with prompt_tokens_ab
 pub struct CatalogueMetadata<'a> {
     /// Human-readable label; never used to route a request.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = DISPLAY_NAME_MAX_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, min = 1, max = DISPLAY_NAME_MAX_BYTES), custom(af_validate::rules::nul_free))]
     pub display_name: Cow<'a, str>,
     /// Verified request-context ceiling for this model and protocol.
     #[garde(range(min = CONTEXT_CAP_MIN))]
@@ -44,10 +44,10 @@ pub struct CatalogueMetadata<'a> {
     /// Provider limit source: models API for coding, published limits for a
     /// decision API whose model metadata omits context.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(af_validate::rules::nul_free))]
     pub context_source_url: Cow<'a, str>,
     /// When that response was verified.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     #[garde(skip)]
     pub context_verified_at: jiff::Timestamp,
     /// Whether a picker lists the model only when asked for advanced models.
@@ -61,11 +61,11 @@ pub struct CatalogueMetadata<'a> {
 #[serde(deny_unknown_fields)]
 pub struct CataloguePrice<'a> {
     /// The first instant this quote applies.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     #[garde(skip)]
     pub effective_from: jiff::Timestamp,
     /// The first instant it no longer applies, or `null` for an open range.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     #[garde(skip)]
     pub effective_until: Option<jiff::Timestamp>,
     /// The tier applies to a request whose whole prompt exceeds this many
@@ -73,46 +73,46 @@ pub struct CataloguePrice<'a> {
     #[garde(range(min = BASE_TIER))]
     pub prompt_tokens_above: i32,
     /// Uncached input.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     #[garde(skip)]
     pub input_nanos_per_mtok: i64,
     /// Input read from the provider's cache.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     #[garde(skip)]
     pub cached_input_nanos_per_mtok: i64,
     /// Cache writes whose provider reports no lifetime.
-    #[serde(with = "afd_wire::nanos::option", default)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     #[garde(skip)]
     pub cache_write_nanos_per_mtok: Option<i64>,
     /// Cache writes with a five-minute lifetime.
-    #[serde(with = "afd_wire::nanos::option", default)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     #[garde(skip)]
     pub cache_write_5m_nanos_per_mtok: Option<i64>,
     /// Cache writes with a one-hour lifetime.
-    #[serde(with = "afd_wire::nanos::option", default)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<afd_wire::nanos::Decimal>))]
+    #[serde(with = "af_wire::nanos::option", default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<af_wire::nanos::Decimal>))]
     #[garde(skip)]
     pub cache_write_1h_nanos_per_mtok: Option<i64>,
     /// Output, reasoning included once where the provider bills it.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     #[garde(skip)]
     pub output_nanos_per_mtok: i64,
     /// The provider's pricing page or response the quote came from.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, min = 1, max = EVIDENCE_URL_MAX_BYTES), custom(af_validate::rules::nul_free))]
     pub source_url: Cow<'a, str>,
     /// When the quote was verified.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     #[garde(skip)]
     pub verified_at: jiff::Timestamp,
     /// Scope, exclusions and provider-specific conditions; may be empty.
     #[serde(borrow)]
-    #[garde(length(bytes, max = CONDITIONS_MAX_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, max = CONDITIONS_MAX_BYTES), custom(af_validate::rules::nul_free))]
     pub conditions: Cow<'a, str>,
 }
 

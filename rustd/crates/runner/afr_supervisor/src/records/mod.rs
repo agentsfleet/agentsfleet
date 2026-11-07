@@ -4,7 +4,7 @@
 //! `DETAIL_POST_MAX_BYTES`; the agent already cut every record to fit a post
 //! on its own. Records are encoded once and carried as raw JSON.
 
-use afd_wire::tool_detail::{
+use af_wire::tool_detail::{
     DETAIL_POST_MAX_BYTES, RawToolCallRecord, ToolCallRecord, ToolCallRecordsRequest,
 };
 use bytes::Bytes;

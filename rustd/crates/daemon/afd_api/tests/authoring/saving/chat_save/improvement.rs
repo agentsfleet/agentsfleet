@@ -26,7 +26,7 @@ async fn a_fleet_killed_during_the_turn_cannot_be_changed_or_reactivated() {
     super::refusals::assert_refused(
         &case,
         &draft_item,
-        afd_core::error_code::AUTHORING_STATE.as_str(),
+        af_core::error_code::AUTHORING_STATE.as_str(),
     )
     .await;
     let after = read(&case, &item).await;

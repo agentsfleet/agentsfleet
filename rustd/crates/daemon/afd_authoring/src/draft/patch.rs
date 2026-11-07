@@ -10,8 +10,8 @@ use crate::{
     model, sql,
     types::{Draft, DraftPatch, DraftState, QUEUED, RUNNING},
 };
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::definition::{ConfigOp, EditBatch};
+use af_core::id::Uuid7;
+use af_fleet_runtime::definition::{ConfigOp, EditBatch};
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
@@ -39,7 +39,7 @@ impl Drafts {
         let patch = garde::Unvalidated::new(patch).validate()?.into_inner();
         nonempty(&patch)?;
         if let Some(name) = patch.instance_name.as_deref() {
-            afd_fleet_runtime::FleetName::parse(name)?;
+            af_fleet_runtime::FleetName::parse(name)?;
         }
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;

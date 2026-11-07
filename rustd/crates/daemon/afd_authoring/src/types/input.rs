@@ -1,8 +1,8 @@
 //! Strict native sources and bounded human mutations. There is no file source.
 
 use super::{MAX_MESSAGE_BYTES, MAX_MODEL_REF_BYTES, MAX_TITLE_CHARS};
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::definition::{
+use af_core::id::Uuid7;
+use af_fleet_runtime::definition::{
     ConfigOp, Definition, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS,
 };
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ pub enum Source {
         /// Selected opaque entry identifier.
         #[garde(
             length(bytes, min = 1, max = 128),
-            custom(afd_validate::rules::nul_free)
+            custom(af_validate::rules::nul_free)
         )]
         library_id: String,
         /// Selected revision; never inferred from mutable head.
@@ -33,7 +33,7 @@ pub enum Source {
         /// Decimal revision observed by the caller.
         #[garde(
             length(bytes, min = 1, max = 19),
-            custom(afd_validate::rules::ascii_digits)
+            custom(af_validate::rules::ascii_digits)
         )]
         setup_revision: String,
     },
@@ -53,7 +53,7 @@ pub struct CreateDraft {
     #[garde(dive)]
     pub source: Source,
     /// Owner model selected explicitly by the human.
-    #[garde(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free))]
     pub authoring_model_ref: String,
     /// First message shares the draft creation transaction.
     #[serde(
@@ -61,7 +61,7 @@ pub struct CreateDraft {
         deserialize_with = "super::present",
         skip_serializing_if = "Option::is_none"
     )]
-    #[garde(inner(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(afd_validate::rules::nul_free)))]
+    #[garde(inner(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(af_validate::rules::nul_free)))]
     pub message: Option<String>,
     /// Save the finalized candidate when this message completes successfully.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -77,7 +77,7 @@ pub struct CreateDraft {
 #[serde(deny_unknown_fields)]
 pub struct SendMessage {
     /// User text, never trimmed or interpreted as executable setup.
-    #[garde(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(afd_validate::rules::nul_free))]
+    #[garde(length(bytes, min = 1, max = MAX_MESSAGE_BYTES), custom(af_validate::rules::nul_free))]
     pub message: String,
     /// Durable authorization to save the candidate finalized by this turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -98,15 +98,15 @@ pub struct DraftPatch {
     pub instance_name: Option<String>,
     /// Human display name; cannot change authored slugs.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(chars, min = 1, max = MAX_TITLE_CHARS), custom(afd_validate::rules::nul_free)))]
+    #[garde(inner(length(chars, min = 1, max = MAX_TITLE_CHARS), custom(af_validate::rules::nul_free)))]
     pub title: Option<String>,
     /// Applies only to future messages.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(afd_validate::rules::nul_free)))]
+    #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free)))]
     pub authoring_model_ref: Option<String>,
     /// Changes the Definition's runtime model through the same validator.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(afd_validate::rules::nul_free)))]
+    #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free)))]
     pub runtime_model_ref: Option<String>,
     /// Supported metadata and policy patches.
     #[serde(default)]
@@ -157,7 +157,7 @@ pub struct ListQuery {
     #[serde(default, deserialize_with = "super::present")]
     #[garde(inner(
         length(chars, min = 1, max = super::MAX_QUERY_CHARS),
-        custom(afd_validate::rules::nul_free)
+        custom(af_validate::rules::nul_free)
     ))]
     pub q: Option<String>,
     /// Opaque continuation, bound to these filters and the authenticated creator.

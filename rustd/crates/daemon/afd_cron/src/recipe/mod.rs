@@ -16,8 +16,8 @@ struct Stored {
 }
 
 use crate::{Result, error::ErrorKind, validate};
+use af_core::id::Uuid7;
 use afd_api_wire::schedule::{Override, Status};
-use afd_core::id::Uuid7;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 

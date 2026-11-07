@@ -27,7 +27,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::num::NonZeroU64;
 
-use afd_fleet_runtime::config::RepositoryBinding;
+use af_fleet_runtime::config::RepositoryBinding;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

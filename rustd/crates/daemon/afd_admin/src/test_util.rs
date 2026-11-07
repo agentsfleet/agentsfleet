@@ -3,11 +3,11 @@
 use crate::{
     CreateModel, DecisionModel, DeleteModel, Model, ModelInput, ModelUpdate, Models, Result,
 };
-use afd_core::{
+use af_core::{
     catalogue::{Metadata, Price},
     clock,
 };
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_db::{Db, test_util::mint_id};
 use serde_json::json;
 
@@ -34,7 +34,7 @@ impl DecisionModelFixture {
         let mut model_name = format!("runner-decision-{}", mint_id());
         model_name.extend(std::iter::repeat_n(
             'x',
-            afd_wire::inference::MODEL_ID_MAX_BYTES - model_name.len(),
+            af_wire::inference::MODEL_ID_MAX_BYTES - model_name.len(),
         ));
         let input = ModelInput {
             provider: "typesafe".into(),

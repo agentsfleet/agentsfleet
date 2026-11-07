@@ -75,7 +75,7 @@ pub mod meta {
 
 /// `runner.events.event_type` values this crate writes.
 ///
-/// `afd_wire`'s [`RunnerEventType`](afd_api_wire::admin::RunnerEventType)
+/// `af_wire`'s [`RunnerEventType`](afd_api_wire::admin::RunnerEventType)
 /// carries these values as serde renames, so the strings come from there
 /// rather than being restated — a rename on either side then fails to compile
 /// instead of writing rows nothing queries.

@@ -3,7 +3,7 @@
 use super::{CONTEXT_READ, FireTarget, Schedules};
 use crate::error::{self, COLUMN_DESIRED_STATUS, COLUMN_FLEET, COLUMN_WORKSPACE};
 use crate::{DesiredStatus, Result, sql};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 /// What [`sql::FIRE_TARGET`] answers, by column name, before its words are
 /// read.

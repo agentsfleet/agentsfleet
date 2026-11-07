@@ -20,11 +20,11 @@ pub(crate) struct Counters {
 }
 
 impl Counters {
-    pub(crate) fn renew(request: &garde::Valid<afd_wire::authoring::Renew>) -> Result<Self> {
+    pub(crate) fn renew(request: &garde::Valid<af_wire::authoring::Renew>) -> Result<Self> {
         Self::lease(&request.fence)
     }
 
-    pub(crate) fn report(request: &garde::Valid<afd_wire::authoring::Report>) -> Result<Self> {
+    pub(crate) fn report(request: &garde::Valid<af_wire::authoring::Report>) -> Result<Self> {
         Self::lease(&request.accounting().fence)
     }
 
@@ -79,8 +79,8 @@ mod tests {
 
     use super::Counters;
     use crate::lease::ActivityInput;
-    use afd_core::error_code;
-    use afd_wire::authoring::{ActivityEvent, Knowledge, Meter, Renew};
+    use af_core::error_code;
+    use af_wire::authoring::{ActivityEvent, Knowledge, Meter, Renew};
 
     fn activity(fence: &str, sequence: &str, activity: &str) -> garde::Valid<ActivityInput> {
         garde::Unvalidated::new(ActivityInput {

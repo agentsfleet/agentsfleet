@@ -87,7 +87,7 @@ async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_po
         .expect_err("the admission meets the new head");
     assert_eq!(
         refused.code(),
-        afd_core::error_code::AUTHORING_POLICY,
+        af_core::error_code::AUTHORING_POLICY,
         "{refused}"
     );
     let rows: i64 =
@@ -184,10 +184,7 @@ async fn a_send_behind_a_held_fleet_row_times_out() {
         !refused.is_over_capacity(),
         "a timeout is not capacity: {refused}"
     );
-    assert_eq!(
-        refused.code(),
-        afd_core::error_code::INTERNAL_DB_UNAVAILABLE
-    );
+    assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_UNAVAILABLE);
     assert!(timed_out_on_a_lock(&refused), "{refused}");
     holder.rollback().await.expect("release");
     drop(connection);
@@ -208,7 +205,7 @@ async fn a_send_behind_a_held_fleet_row_times_out() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_stopped_fleet_refusal_counts_no_admission() {
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let lane = Lane::seed().await;
     let (_server, admissions) = over_fake(&lane, &[]).await;
     let key = mint_id();

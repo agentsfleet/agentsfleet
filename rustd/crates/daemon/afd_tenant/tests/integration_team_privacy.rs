@@ -7,7 +7,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afd_tenant::team::Removal;
 use jiff::Timestamp;
 

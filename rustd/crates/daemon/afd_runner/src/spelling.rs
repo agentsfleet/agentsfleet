@@ -12,7 +12,7 @@
 //! the variant that wrote it. That property is the only reason `parse_wire` is
 //! visible outside its own module.
 
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 
 /// The wire spelling a `sandbox_tier` column stores.
 ///

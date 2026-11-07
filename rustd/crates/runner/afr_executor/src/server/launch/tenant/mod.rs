@@ -20,7 +20,7 @@ use std::os::unix::fs::FileExt as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use afd_core::error_code;
+use af_core::error_code;
 use rustix::fs::OFlags;
 use rustix::io::{Errno, FdFlags};
 

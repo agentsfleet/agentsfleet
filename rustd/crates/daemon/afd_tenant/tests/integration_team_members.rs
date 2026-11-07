@@ -7,7 +7,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_db::test_util::mint_id;
 use afd_tenant::error::InviteConflict;
 use afd_tenant::team::{Email, NewInvite, Removal};

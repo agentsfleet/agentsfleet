@@ -19,7 +19,7 @@ use crate::support::Fixtures;
 
 /// Far enough to put any deadline a claim, an issue or a renewal wrote behind
 /// the database clock: each lies at most one lease lifetime ahead of it.
-pub(crate) const LAPSE: std::time::Duration = afd_core::timing::LEASE_TTL.saturating_mul(2);
+pub(crate) const LAPSE: std::time::Duration = af_core::timing::LEASE_TTL.saturating_mul(2);
 
 /// One row a test reads a column of, or ages: the table it lives in and the
 /// key that names it.

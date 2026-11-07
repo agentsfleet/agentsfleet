@@ -35,13 +35,13 @@
 
 use std::sync::Arc;
 
+use af_core::error_code;
+use af_observability::metrics::label::fleet::SignupFailure;
+use af_observability::producers;
+use af_webhook::vendor::svix::{self, SvixHeaders, SvixSecret};
+use af_webhook::{Refusal as WallRefusal, Verdict};
 use afd_auth::principal::Subject;
 use afd_auth::scope::signup_owner_claim;
-use afd_core::error_code;
-use afd_observability::metrics::label::fleet::SignupFailure;
-use afd_observability::producers;
-use afd_webhook::vendor::svix::{self, SvixHeaders, SvixSecret};
-use afd_webhook::{Refusal as WallRefusal, Verdict};
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};

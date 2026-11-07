@@ -77,9 +77,9 @@ mod write;
 
 use std::sync::Arc;
 
-use afd_crypto::entropy::Entropy;
-use afd_crypto::envelope::Sealer;
-use afd_crypto::secret::Kek;
+use af_crypto::entropy::Entropy;
+use af_crypto::envelope::Sealer;
+use af_crypto::secret::Kek;
 use afd_db::Db;
 
 pub use self::classified::Classified;
@@ -136,7 +136,7 @@ pub struct Vault {
     sealer: Sealer,
     /// Draws the row identifier, which is not key material.
     ///
-    /// Separate from [`Vault::sealer`] because `afd_crypto` draws that
+    /// Separate from [`Vault::sealer`] because `af_crypto` draws that
     /// distinction itself: `Sealer` takes key and nonce bytes where it uses
     /// them so a caller never holds them, and [`Entropy`] is the public face
     /// for the non-secret identifiers a daemon mints. One field for each keeps

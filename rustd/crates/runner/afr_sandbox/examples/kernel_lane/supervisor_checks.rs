@@ -4,7 +4,7 @@
 const POST: &str = "POST";
 const FENCING_FIELD: &str = "fencing_token";
 
-use afd_wire::paths::{
+use af_wire::paths::{
     LEASE_SCHEDULES_SUFFIX, RUNNER_LEASES, RUNNER_MEMORY, RUNNER_REPORTS, SCHEDULE_RUNS_SUFFIX,
 };
 use afr_supervisor::test_util::{FENCING, LEASE_ID};

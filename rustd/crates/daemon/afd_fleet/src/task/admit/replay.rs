@@ -45,7 +45,7 @@ pub(super) async fn read(
     let items = rows
         .into_iter()
         .map(|row| {
-            let action: afd_wire::task::TaskInputAction = serde::Deserialize::deserialize(
+            let action: af_wire::task::TaskInputAction = serde::Deserialize::deserialize(
                 serde::de::value::StrDeserializer::new(row.action.as_str()),
             )
             .map_err(|source: serde::de::value::Error| {
@@ -55,7 +55,7 @@ pub(super) async fn read(
                 item_id: guard::id(&row.item_id, "item_id")?,
                 applies_here: row.task_id == current.task_id
                     && row.task_state.as_deref()
-                        == Some(afd_wire::task::TaskState::Running.as_str()),
+                        == Some(af_wire::task::TaskState::Running.as_str()),
                 task_id: row
                     .task_id
                     .map(|task_id| guard::id(&task_id, "id"))

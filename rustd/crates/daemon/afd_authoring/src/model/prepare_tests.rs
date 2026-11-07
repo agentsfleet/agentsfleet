@@ -2,8 +2,8 @@
 
 use super::{body, request};
 use crate::{Result, model::ModelCallInput};
+use af_wire::authoring::{ModelCall, ModelMessage, ModelRequest};
 use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::{ModelCall, ModelMessage, ModelRequest};
 use rig_core::message::Message;
 use serde_json::json;
 
@@ -143,6 +143,6 @@ fn an_irreducible_request_refuses_before_any_output_is_admitted() -> Result<()> 
     let error = body(&call, &selected, Vec::new(), true)
         .err()
         .ok_or(crate::error::ErrorKind::Provider)?;
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_TOKEN);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_TOKEN);
     Ok(())
 }

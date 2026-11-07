@@ -6,8 +6,8 @@ use crate::{
     error::{ErrorKind, raise::query},
     lease::guard::Guarded,
 };
-use afd_core::id::Uuid7;
-use afd_wire::authoring::{ActivityAccepted, CandidateVersion};
+use af_core::id::Uuid7;
+use af_wire::authoring::{ActivityAccepted, CandidateVersion};
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "read or save authoring activity receipt";

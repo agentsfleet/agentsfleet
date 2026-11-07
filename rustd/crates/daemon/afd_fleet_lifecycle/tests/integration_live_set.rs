@@ -15,8 +15,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::Fleets;
 use tokio::task::JoinSet;
 

@@ -1,6 +1,6 @@
 //! The supervisor: the trusted half of the runner, outside every sandbox.
 //!
-//! It speaks the runner verbs through [`afd_wire`] and keeps every duty the
+//! It speaks the runner verbs through [`af_wire`] and keeps every duty the
 //! daemon relies on — the worker pool, renewal, the report spooled before it is
 //! posted and drained until answered, the bounded activity sender, memory
 //! hydrate and fenced push, native instructions and the capability report
@@ -65,10 +65,10 @@ mod lease_telemetry_tests;
 
 use std::sync::Arc;
 
-use afd_core::clock::{Clock, SystemClock};
-use afd_core::env::EnvSource;
+use af_core::clock::{Clock, SystemClock};
+use af_core::env::EnvSource;
+use af_egress::SystemResolver;
 use afr_agent::AgentEngine;
-use afr_egress::SystemResolver;
 use afr_sandbox::{Engine, HostProbe, Limits};
 use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;

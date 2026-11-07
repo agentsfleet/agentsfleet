@@ -30,7 +30,7 @@
 //! [`crate::scope::Scope`] already gets from `wire()`/`bit()`, and the reason
 //! the escape hatch is the only place dynamism is allowed to enter.
 
-use afd_core::lower_hex;
+use af_core::lower_hex;
 
 use crate::capability::CapabilitySource;
 use crate::credential::{CredentialKind, Presented};

@@ -2,7 +2,7 @@
 #![expect(clippy::expect_used, reason = "fixture refusals fail the proof loudly")]
 
 use super::{Error, ErrorKind};
-use afd_core::error_code;
+use af_core::error_code;
 use std::error::Error as _;
 
 // Value: protects=public status and recovery fields agree for lifecycle refusals;
@@ -41,7 +41,7 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
         let error = Error::from(kind);
         assert_eq!(error.code(), code);
         assert_eq!(error.current_state(), state);
-        assert_eq!(error.detail(), afd_core::problem::Problem::of(code).title());
+        assert_eq!(error.detail(), af_core::problem::Problem::of(code).title());
         assert_eq!(error.etag(), None);
         assert_eq!(error.review_digest(), None);
         assert!(!error.is_datastore_unavailable());
@@ -54,7 +54,7 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
 // seam=existing subsystem failure fixtures; no_claim=live datastore outages.
 #[test]
 fn subsystem_failures_retain_their_original_classification_and_typed_cause() {
-    let mut samples: Vec<(Error, afd_core::error_code::ErrorCode)> = Vec::new();
+    let mut samples: Vec<(Error, af_core::error_code::ErrorCode)> = Vec::new();
     for (_, source) in afd_runner::error::one_of_each_kind() {
         let code = source.code();
         samples.push((source.into(), code));
@@ -80,8 +80,8 @@ fn subsystem_failures_retain_their_original_classification_and_typed_cause() {
 // seam=the real public identifier/key parsers; no_claim=OS entropy exhaustion.
 #[test]
 fn identity_and_entropy_failures_keep_internal_classification() {
-    let identifier = afd_core::id::Uuid7::parse("invalid").expect_err("invalid identifier");
-    let entropy = afd_crypto::secret::Kek::from_hex("invalid").expect_err("invalid encryption key");
+    let identifier = af_core::id::Uuid7::parse("invalid").expect_err("invalid identifier");
+    let entropy = af_crypto::secret::Kek::from_hex("invalid").expect_err("invalid encryption key");
     for error in [Error::from(identifier), Error::from(entropy)] {
         assert_eq!(error.code(), error_code::INTERNAL_OPERATION_FAILED);
         assert!(error.source().is_some());
@@ -108,7 +108,7 @@ fn credential_refusals_preserve_the_vault_code_and_original_cause() {
 // Value: a stale checkpoint keeps its retry classification and typed context cause.
 #[test]
 fn context_refusals_preserve_the_shared_code_without_exposing_private_notes() {
-    let source = afd_context::Error::stale();
+    let source = af_context::Error::stale();
     let code = source.code();
     let error = Error::from(source);
     assert_eq!(error.code(), code);
@@ -117,7 +117,7 @@ fn context_refusals_preserve_the_shared_code_without_exposing_private_notes() {
         error
             .source()
             .expect("context cause")
-            .is::<afd_context::Error>()
+            .is::<af_context::Error>()
     );
 }
 
@@ -131,8 +131,8 @@ async fn a_biller_fault_keeps_the_billing_code_and_its_cause() {
     let ledger =
         afd_billing::ledger::LedgerBiller::on_system_clock(afd_db::test_util::unreachable_db());
     let payer = Account {
-        tenant: afd_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
-        workspace: afd_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
+        tenant: af_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
+        workspace: af_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
     };
     let fault = ledger
         .balance(&payer)

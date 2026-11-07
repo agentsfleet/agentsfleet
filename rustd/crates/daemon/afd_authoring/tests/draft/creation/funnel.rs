@@ -3,9 +3,9 @@
 
 use super::super::{fixture::now, funnel::property, mint};
 use super::fixture::Case;
+use af_core::error_code;
+use af_observability::Telemetry;
 use afd_authoring::{SavedFleet, types::Start};
-use afd_core::error_code;
-use afd_observability::Telemetry;
 
 const FINISHED: &str = "fleet_setup_finished";
 const CANCELLED: &str = "fleet_setup_cancelled";

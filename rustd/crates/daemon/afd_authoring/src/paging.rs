@@ -1,7 +1,7 @@
 //! Continuations bind an immutable sort boundary to the authorized walk.
 
 use crate::{Result, error::ErrorKind};
-use afd_core::{id::Uuid7, paging::Cursor};
+use af_core::{id::Uuid7, paging::Cursor};
 use jiff::Timestamp;
 
 /// A continuation after the row at `at` and `id`. The instant is RFC 3339, so
@@ -37,7 +37,7 @@ mod tests {
     #![expect(clippy::expect_used, reason = "fixture identifiers are well formed")]
 
     use super::{boundary, cursor};
-    use afd_core::{error_code, id::Uuid7, paging::Cursor};
+    use af_core::{error_code, id::Uuid7, paging::Cursor};
     use jiff::Timestamp;
 
     const BINDING: &str = "drafts:owner";

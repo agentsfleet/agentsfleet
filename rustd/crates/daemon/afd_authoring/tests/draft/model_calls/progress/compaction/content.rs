@@ -1,7 +1,7 @@
 //! Reasoning is private metadata; an unexpected executable call cannot become notes.
 use super::{SUMMARY, WAIT, checkpoint, json, model_calls, ready};
-use afd_core::error_code;
-use afd_wire::context::ContextState;
+use af_core::error_code;
+use af_wire::context::ContextState;
 
 // Value: native reasoning can accompany valid notes without escaping to the runner.
 #[tokio::test]

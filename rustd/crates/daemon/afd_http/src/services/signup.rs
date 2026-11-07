@@ -13,8 +13,8 @@
 //! configured once for the deployment and resolved at boot, exactly as the App
 //! ingress secret is.
 
+use af_crypto::secret::SecretBytes;
 use afd_auth::principal::Subject;
-use afd_crypto::secret::SecretBytes;
 use afd_identity::MetadataUnwritten;
 use afd_tenant::Result as TenantResult;
 use jiff::Timestamp;

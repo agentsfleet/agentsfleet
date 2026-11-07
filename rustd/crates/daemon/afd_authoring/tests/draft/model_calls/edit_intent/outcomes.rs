@@ -5,8 +5,8 @@ use super::{
     fixture::{Case, SOAK, reply},
     server::Server,
 };
-use afd_core::error_code;
-use afd_wire::authoring::{ActivityEvent, ProposalCall, ProposalRejection};
+use af_core::error_code;
+use af_wire::authoring::{ActivityEvent, ProposalCall, ProposalRejection};
 
 // Value: protects=the soak question leaves the candidate unchanged even if the setup model proposes an edit;
 // fails_when=the newest-message decision is skipped, the refusal remains executable, or activity bypasses it;
@@ -135,11 +135,11 @@ pub(super) fn edit(case: &Case) -> afd_authoring::ActivityInput {
     let base = case.attempt.draft.candidate.as_ref().expect("base");
     let mut activity = case.attempt.initialize(1);
     activity.event = ActivityEvent::Proposal {
-        proposal: afd_wire::authoring::Proposal::Edit {
+        proposal: af_wire::authoring::Proposal::Edit {
             base_candidate_id: base.id.to_string(),
             base_candidate_revision: base.revision.clone(),
             config_ops: Vec::new(),
-            instruction_edits: vec![afd_fleet_runtime::definition::InstructionEdit {
+            instruction_edits: vec![af_fleet_runtime::definition::InstructionEdit {
                 start_byte: base.definition.instructions_md().len(),
                 end_byte: base.definition.instructions_md().len(),
                 text: "\nPrefer clarity.".into(),
@@ -151,7 +151,7 @@ pub(super) fn edit(case: &Case) -> afd_authoring::ActivityInput {
 
 async fn assert_charge(case: &Case) {
     let charge: (String, String, i64, i64) = sqlx::query_as("SELECT work_type, provider, input_token_count, output_token_count FROM billing.usage_lines WHERE work_id=$1::uuid AND seq>= $2")
-        .bind(case.attempt.id.as_str()).bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+        .bind(case.attempt.id.as_str()).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
         .fetch_one(&mut *case.f.connection().await).await.expect("setup usage line");
     assert_eq!(
         charge,
@@ -176,7 +176,7 @@ async fn assert_charge(case: &Case) {
 async fn settled(case: &Case) -> bool {
     sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2")
         .bind(case.attempt.id.as_str())
-        .bind(i64::from(afd_wire::usage::DECISION_SEQ_BASE))
+        .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
         .fetch_one(&mut *case.f.connection().await)
         .await
         .expect("native decision settlement receipt")

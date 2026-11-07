@@ -25,11 +25,11 @@
 //! `Published::of` is total over [`ActivityFrame`], so a new frame variant
 //! fails the build until somebody decides what the dashboard calls it.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
-use afd_observability::metrics::label::fleet::DeliveryStage;
-use afd_observability::producers;
-use afd_wire::activity::ActivityFrame;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_observability::metrics::label::fleet::DeliveryStage;
+use af_observability::producers;
+use af_wire::activity::ActivityFrame;
 use jiff::Timestamp;
 
 use self::published::Published;
@@ -87,10 +87,10 @@ impl Leases {
         target: &Target,
         runner_id: &Uuid7,
         lease_id: &str,
-        records: &[afd_wire::activity::TaskActivityRecord],
-    ) -> Result<Option<afd_wire::activity::TaskActivityHistory>> {
+        records: &[af_wire::activity::TaskActivityRecord],
+    ) -> Result<Option<af_wire::activity::TaskActivityHistory>> {
         let mut connection = self.pool().acquire().await?;
-        let history: Option<sqlx::types::Json<afd_wire::activity::TaskActivityHistory>> =
+        let history: Option<sqlx::types::Json<af_wire::activity::TaskActivityHistory>> =
             sqlx::query_scalar(include_str!("task_history.sql"))
                 .bind(target.fleet_id.as_str())
                 .bind(&target.event_id)
@@ -265,12 +265,12 @@ fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
     let Some(first_ms) = first_visible_candidate_ms(frames) else {
         return;
     };
-    let received_at = afd_core::clock::now();
+    let received_at = af_core::clock::now();
     for (stage, since) in [
         (DeliveryStage::LeaseToFirstChunk, target.lease_created_at),
         (DeliveryStage::EventToFirstChunk, target.event_created_at),
     ] {
-        producers::fleet::delivery_stage(stage, afd_core::clock::elapsed(since, received_at));
+        producers::fleet::delivery_stage(stage, af_core::clock::elapsed(since, received_at));
     }
     producers::fleet::delivery_stage(
         DeliveryStage::ZombieToFirstChunk,

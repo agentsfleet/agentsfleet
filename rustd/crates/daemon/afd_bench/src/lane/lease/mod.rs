@@ -28,8 +28,8 @@ mod window;
 use core::time::Duration;
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_fleet::lease::Leases;
 
 use self::seed::{ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};

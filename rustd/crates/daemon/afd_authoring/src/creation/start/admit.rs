@@ -6,8 +6,8 @@ use crate::{
     Result,
     types::{InitialStart, StartOutcome, StartState},
 };
+use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer, Reply};
-use afd_wire::event::EventType;
 use sqlx::PgConnection;
 
 impl Creations {

@@ -7,11 +7,11 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_core::clock::after;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_core::timing::SANDBOX_HOLD_IDLE;
-use afd_wire::lease::{LeasePayload, SandboxLimits};
+use af_core::clock::after;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_core::timing::SANDBOX_HOLD_IDLE;
+use af_wire::lease::{LeasePayload, SandboxLimits};
 use bytes::Bytes;
 use futures_util::FutureExt as _;
 use jiff::Timestamp;
@@ -23,7 +23,7 @@ use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, OUTCOME,
     PROCESSED, RENEWAL_TERMINATE, Rig, bounded, daemon, lease, position, reported,
 };
-use afd_core::timing::RENEWAL_TICK;
+use af_core::timing::RENEWAL_TICK;
 
 /// The fleet's second lease, after the one that left its sandbox held.
 pub(super) const NEXT_LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
@@ -230,7 +230,7 @@ async fn test_a_superseded_report_destroys_what_it_parked() {
             Answer::Fail(error::refused(
                 Verb::Report,
                 409,
-                Some(afd_core::error_code::RUN_STALE_FENCING_TOKEN),
+                Some(af_core::error_code::RUN_STALE_FENCING_TOKEN),
             ))
         })
     };

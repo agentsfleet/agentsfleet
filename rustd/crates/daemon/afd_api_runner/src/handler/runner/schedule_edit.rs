@@ -8,10 +8,10 @@
 
 use std::sync::Arc;
 
+use af_wire::schedule_verb::SchedulePatchRequest;
 use afd_cron::{Change, DesiredStatus, Reconciled, validate};
 use afd_http::handler::schedule::held_or;
 use afd_http::handler::{Refusal, read_strict_body};
-use afd_wire::schedule_verb::SchedulePatchRequest;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::Response;
@@ -30,7 +30,7 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
 /// Changes a schedule the fleet made.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
-    path = afd_wire::paths::LEASE_SCHEDULE,
+    path = af_wire::paths::LEASE_SCHEDULE,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_update_schedule",
     summary = "Change a schedule the fleet made",
@@ -102,7 +102,7 @@ pub(crate) async fn update<D: Services>(
 /// Retires a schedule the fleet made.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
-    path = afd_wire::paths::LEASE_SCHEDULE,
+    path = af_wire::paths::LEASE_SCHEDULE,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_delete_schedule",
     summary = "Delete a schedule the fleet made",

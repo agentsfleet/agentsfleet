@@ -1,10 +1,8 @@
 //! Resolve exact text anchors against the daemon's immutable candidate snapshot.
 
 use crate::{Result, types::Candidate};
-use afd_fleet_runtime::definition::{
-    ConfigOp, Definition, InstructionEdit, MAX_INSTRUCTIONS_CHARS,
-};
-use afd_wire::authoring::{Proposal, ProposalRejection};
+use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit, MAX_INSTRUCTIONS_CHARS};
+use af_wire::authoring::{Proposal, ProposalRejection};
 use serde::Deserialize;
 
 pub(super) type Suggestion = Proposal<Definition, ConfigOp, TextEdit>;
@@ -14,13 +12,13 @@ type Native = Proposal<Definition, ConfigOp, InstructionEdit>;
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum TextEdit {
     Append {
-        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(afd_validate::rules::nul_free))]
+        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
         text: String,
     },
     Replace {
-        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(afd_validate::rules::nul_free))]
+        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
         old_text: String,
-        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(afd_validate::rules::nul_free))]
+        #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
         text: String,
     },
 }

@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use afd_core::clock::Clock;
+use af_core::clock::Clock;
+use af_egress::Resolve;
 use afr_agent::AgentEngine;
-use afr_egress::Resolve;
 use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
 

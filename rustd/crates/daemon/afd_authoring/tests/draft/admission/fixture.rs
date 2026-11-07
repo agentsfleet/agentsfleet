@@ -1,11 +1,11 @@
 //! Each queued message and host belongs to this proof; the shared queue is untouched.
 
 use super::{Fixture, mint, now};
+use af_core::id::Uuid7;
 use afd_authoring::{
     Claimed,
     types::{Draft, MessageQuery},
 };
-use afd_core::id::Uuid7;
 use afd_db::test_util::{EventKind, FleetEventSeed, FleetSeed, RunnerPolicy, RunnerSeed};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;

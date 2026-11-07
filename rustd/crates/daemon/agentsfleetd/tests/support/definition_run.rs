@@ -134,12 +134,12 @@ pub(crate) fn runner(
     run: &Scenario,
     home: &std::path::Path,
     sandboxes: &std::path::Path,
-    network: afr_egress::Network,
+    network: af_egress::Network,
     (model, origin): (FakeModel, Option<String>),
     shutdown: CancellationToken,
 ) -> impl Future<Output = afr_supervisor::Result<()>> + use<> {
     let home = home.to_string_lossy().into_owned();
-    let env = afd_core::env::MapEnv::from_pairs([
+    let env = af_core::env::MapEnv::from_pairs([
         (ENV_API_URL, run.base.as_str()),
         (ENV_RUNNER_TOKEN, run.token.as_str()),
         (ENV_STORAGE_HOME, home.as_str()),

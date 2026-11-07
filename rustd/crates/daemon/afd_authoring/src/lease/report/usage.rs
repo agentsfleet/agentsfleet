@@ -7,10 +7,10 @@
 //! runtime at the report. The lines are logged inside the report's transaction
 //! and settled through the biller after it commits.
 
+use af_wire::usage::UsageLine;
 use afd_billing::Posture;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
-use afd_wire::usage::UsageLine;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 

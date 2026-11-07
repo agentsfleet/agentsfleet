@@ -6,9 +6,9 @@ use super::provider;
 #[cfg(test)]
 use crate::error::ErrorKind;
 use crate::{Result, error::raise::stored};
+use af_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
 #[cfg(test)]
 use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
 
 #[derive(garde::Validate)]
 struct Envelope<'a> {
@@ -21,12 +21,12 @@ pub(super) struct Prepared {
     pub(super) output_limit: u32,
     /// The route the body was validated against, so the dispatch sends on
     /// exactly that route.
-    pub(super) inference: afd_wire::inference::ModelInference,
+    pub(super) inference: af_wire::inference::ModelInference,
     /// The context window the body was measured against.
     pub(super) context_tokens: u32,
-    pub(super) compaction: Option<afd_context::Compaction>,
+    pub(super) compaction: Option<af_context::Compaction>,
     pub(super) input_tokens: u64,
-    pub(super) measurement: Option<afd_inference::InputCount>,
+    pub(super) measurement: Option<af_inference::InputCount>,
     pub(super) context_digest: String,
 }
 
@@ -57,7 +57,7 @@ pub(super) fn body(
     let settings = model.inference.as_ref().ok_or(ErrorKind::Model)?;
     let context =
         u32::try_from(model.context_window_tokens).map_err(|_invalid| ErrorKind::Model)?;
-    let route = afd_inference::Configured::new(settings, context)?;
+    let route = af_inference::Configured::new(settings, context)?;
     let mut canonical = provider::body(request, model, editing)?;
     super::continuation::restore(&mut canonical, request, continuations)?;
     let input = input_tokens(&route, &canonical, request, model)?;
@@ -82,7 +82,7 @@ pub(super) fn body(
 
 #[cfg(test)]
 fn input_tokens(
-    route: &afd_inference::Configured,
+    route: &af_inference::Configured,
     canonical: &rig_core::completion::CompletionRequest,
     request: &garde::Valid<ModelCallInput>,
     model: &RegisteredModel,

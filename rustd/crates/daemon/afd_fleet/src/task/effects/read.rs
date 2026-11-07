@@ -6,8 +6,8 @@ use crate::{
     error::{query, rejected},
     task::{TaskLease, TaskRefusal, Tasks, github::Reconciled, guard, transaction},
 };
-use afd_core::id::Uuid7;
-use afd_wire::task::{TaskEffect, TaskEffectsPage, TaskEffectsQuery};
+use af_core::id::Uuid7;
+use af_wire::task::{TaskEffect, TaskEffectsPage, TaskEffectsQuery};
 
 pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Result<TaskEffect> {
     let mut effect = load(tasks, lease, id).await?;

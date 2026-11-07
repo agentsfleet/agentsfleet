@@ -6,8 +6,8 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, TaskScope, Tasks, execution, guard, transaction},
 };
-use afd_core::id::Uuid7;
-use afd_wire::task::TaskEffectInput;
+use af_core::id::Uuid7;
+use af_wire::task::TaskEffectInput;
 
 pub(in crate::task) struct PublicationPermit<'a> {
     deadline: jiff::Timestamp,
@@ -46,7 +46,7 @@ pub(super) async fn issue<'a>(
         .lease_expires_at
         .min(owned.current.slot_expires_at)
         .min(owned.snapshot.context.expires_at);
-    if deadline <= afd_core::clock::now() {
+    if deadline <= af_core::clock::now() {
         return Err(TaskRefusal::StaleState.into());
     }
     if i64::try_from(owned.snapshot.context.generation)

@@ -2,9 +2,9 @@
 
 use super::{Session, catalog::Catalog, files::Workspace, transfer::Transfers};
 use crate::{Result, client::ControlPlane, error};
-use afd_core::id::Uuid7;
-use afd_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
-use afd_wire::task::{
+use af_core::id::Uuid7;
+use af_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
+use af_wire::task::{
     CHECKPOINT_BATCH, CHECKPOINT_FORMAT, CheckpointCommitInput, CheckpointMode,
     CheckpointObjectStatus, CheckpointPageInput, CheckpointPlan, CheckpointPlanInput,
     DecisionTaskVersion, TaskContext, TaskTarget,
@@ -34,8 +34,8 @@ impl Capture<'_> {
         history: Zeroizing<Vec<u8>>,
         base_paths: Vec<String>,
     ) -> Result<CheckpointPlan> {
-        let activity = afd_crypto::entropy::Entropy::new()
-            .uuid7(afd_core::clock::now())?
+        let activity = af_crypto::entropy::Entropy::new()
+            .uuid7(af_core::clock::now())?
             .to_string();
         super::activity::emit(
             self.plane,
@@ -113,7 +113,7 @@ impl Capture<'_> {
             .chunks
             .values()
             .try_fold(0_u64, |sum, chunk| {
-                sum.checked_add(chunk.descriptor.size + afd_crypto::TAG_LEN as u64)
+                sum.checked_add(chunk.descriptor.size + af_crypto::TAG_LEN as u64)
             })
             .ok_or_else(|| error::config("checkpoint upload allowance overflow"))?;
         let plan = self
@@ -195,7 +195,7 @@ impl Session<'_> {
                 if !matches!(object.status, CheckpointObjectStatus::Busy) {
                     self.progress.discover(
                         &object.object_id,
-                        object.plaintext.size + afd_crypto::TAG_LEN as u64,
+                        object.plaintext.size + af_crypto::TAG_LEN as u64,
                         matches!(object.status, CheckpointObjectStatus::Reused),
                     );
                 }
@@ -217,7 +217,7 @@ impl Session<'_> {
                     return Err(error::config("checkpoint chunk has another live writer"));
                 }
                 if !matches!(object.status, CheckpointObjectStatus::Reused) {
-                    let bytes = object.plaintext.size + afd_crypto::TAG_LEN as u64;
+                    let bytes = object.plaintext.size + af_crypto::TAG_LEN as u64;
                     if !pending.is_empty() && pending_bytes + bytes > super::UPLOAD_BATCH_BYTES {
                         self.upload_batch(std::mem::take(&mut pending)).await?;
                         pending_bytes = 0;
@@ -252,7 +252,7 @@ impl Session<'_> {
         for (page_id, contents) in self.plan.page_ids.clone().into_iter().zip(pages) {
             self.renew().await?;
             let digest =
-                afd_core::etag::sha256_hex(&serde_json::to_vec(&contents).map_err(error::encode)?);
+                af_core::etag::sha256_hex(&serde_json::to_vec(&contents).map_err(error::encode)?);
             let accepted = self
                 .plane
                 .task_checkpoint_page_write(
@@ -268,7 +268,7 @@ impl Session<'_> {
                     },
                 )
                 .await?;
-            if afd_core::etag::sha256_hex(&serde_json::to_vec(&accepted).map_err(error::encode)?)
+            if af_core::etag::sha256_hex(&serde_json::to_vec(&accepted).map_err(error::encode)?)
                 != digest
             {
                 return Err(error::config("checkpoint page acknowledgement differs"));
@@ -280,7 +280,7 @@ impl Session<'_> {
             fencing_token: self.fence,
             task: self.task.clone(),
             pin_id: self.plan.pin.id.clone(),
-            manifest_root: afd_crypto::checkpoint_digest::manifest_root(
+            manifest_root: af_crypto::checkpoint_digest::manifest_root(
                 digests
                     .iter()
                     .map(|(id, digest)| (id.as_str(), digest.as_str())),

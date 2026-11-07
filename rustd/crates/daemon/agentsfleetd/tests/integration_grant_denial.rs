@@ -9,12 +9,12 @@
 use crate::e2e::{GOOD_KEK, Scenario, scenario};
 use crate::reads::event_column;
 use crate::wire::{assert_no_lease_for_fleet_under_test, capable_beat, fleet_poll, json, post};
+use af_core::id::Uuid7;
+use af_crypto::{entropy::Entropy, secret::Kek};
+use af_wire::event::EventType;
 use afd_approval::{Decision, Inbox};
-use afd_core::id::Uuid7;
-use afd_crypto::{entropy::Entropy, secret::Kek};
 use afd_fleet::lease::Leases;
 use afd_vault::{SecretBody, SecretName, Vault};
-use afd_wire::event::EventType;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 use std::sync::Arc;
@@ -206,8 +206,8 @@ async fn refusal_drains(preended: bool) {
         // A pre-existing terminal narrative must settle the queue without executing.
         sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1::uuid AND event_id = $2")
             .bind(&run.fleet).bind(&run.event_id)
-            .bind(afd_core::event::status::GATE_BLOCKED)
-            .bind(afd_core::event::label::GRANT_DENIED)
+            .bind(af_core::event::status::GATE_BLOCKED)
+            .bind(af_core::event::label::GRANT_DENIED)
             .execute(&mut *run.booted.database.acquire().await.expect("database"))
             .await.expect("terminal narrative");
     }
@@ -227,12 +227,12 @@ async fn refusal_drains(preended: bool) {
     run.cleanup().await;
     assert_eq!(
         first_label.as_deref(),
-        Some(afd_core::event::label::GRANT_DENIED)
+        Some(af_core::event::label::GRANT_DENIED)
     );
     assert!(settled, "a terminal refusal must settle its admission");
     assert_eq!(
         second_label.as_deref(),
-        Some(afd_core::event::label::GRANT_DENIED),
+        Some(af_core::event::label::GRANT_DENIED),
         "the next event must be reached after the denied one"
     );
 }

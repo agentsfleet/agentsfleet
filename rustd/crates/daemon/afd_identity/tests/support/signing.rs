@@ -20,9 +20,9 @@
 
 use std::sync::Arc;
 
+use af_core::clock::{Clock, FixedClock};
 use afd_auth::credential::Presented;
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
-use afd_core::clock::{Clock, FixedClock};
 use afd_identity::{JwksVerifier, StaticKeySet, VerifierConfig};
 use aws_lc_rs::signature::KeyPair as _;
 use base64::Engine as _;

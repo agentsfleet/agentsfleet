@@ -1,7 +1,7 @@
+use af_core::id::Uuid7;
 use afd_billing::report::{Filter, Request, Window, dimension};
 use afd_billing::sql::{posture, work};
 use afd_billing::tenant::Billing;
-use afd_core::id::Uuid7;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_db::{Db, DbRole};
 use jiff::Timestamp;

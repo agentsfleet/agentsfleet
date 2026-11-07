@@ -1,7 +1,7 @@
 //! Each device-flow field at its bound, answering its own registry code.
 
 use super::*;
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 #[test]
 fn two_broken_fields_answer_for_the_first_the_request_carries() {

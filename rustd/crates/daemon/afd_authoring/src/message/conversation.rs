@@ -7,7 +7,7 @@ use crate::{
     error::raise::query,
     types::{Draft, Message, MessageQuery},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 const CONTEXT: &str = "read editor conversation";

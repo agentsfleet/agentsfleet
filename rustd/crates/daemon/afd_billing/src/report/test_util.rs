@@ -1,6 +1,6 @@
 //! Instrument the production bindings without exposing storage helpers in normal builds.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::postgres::{PgArguments, PgRow};
 use sqlx::query::QueryAs;
 use sqlx::{FromRow, Postgres, SqlSafeStr};

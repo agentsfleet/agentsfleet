@@ -6,11 +6,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_crypto::entropy::Entropy;
 use afd_billing::Nanos;
 use afd_billing::biller::conformance;
 use afd_billing::biller::{Account, Ask, Biller, Funds, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
-use afd_crypto::entropy::Entropy;
 use afd_db::test_util::mint_uuid7;
 use jiff::Timestamp;
 
@@ -170,7 +170,7 @@ async fn a_tenant_without_a_wallet_settles_with_nothing_taken() {
     let biller = ledger(&lane);
     let work = WorkKey::FleetLease(mint_uuid7());
 
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let receipt = biller
         .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
         .await

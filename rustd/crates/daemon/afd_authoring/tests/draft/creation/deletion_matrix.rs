@@ -10,13 +10,13 @@
 
 use super::super::{attempt::Attempt, fixture::now, mint};
 use super::fixture::Case;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 use afd_authoring::types::{Source, Start};
 use afd_billing::Posture;
 use afd_billing::sql::work::{AUTHORING_ATTEMPT, FLEET_LEASE};
-use afd_core::error_code;
-use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::Fleets;
-use afd_wire::authoring::{Accounting, Knowledge, Meter, Outcome, Report};
 
 /// The private output a dispatch holds until an erasure root scrubs it.
 const PRIVATE_RESULT: &str = r#"{"text":"private model output"}"#;

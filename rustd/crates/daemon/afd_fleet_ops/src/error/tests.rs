@@ -2,7 +2,7 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::Error;
 
@@ -43,7 +43,7 @@ fn database_context_keeps_the_driver_cause() {
 
 fn assert_error(
     error: &Error,
-    code: afd_core::error_code::ErrorCode,
+    code: af_core::error_code::ErrorCode,
     detail: &'static str,
     unavailable: bool,
 ) {

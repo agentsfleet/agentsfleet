@@ -32,7 +32,7 @@ use sqlx::pool::PoolConnection;
 
 use super::Db;
 use crate::error::{Result, acquire_stalled, classify_acquire};
-use afd_core::error_code;
+use af_core::error_code;
 
 impl Db {
     /// Takes a connection out of the pool.

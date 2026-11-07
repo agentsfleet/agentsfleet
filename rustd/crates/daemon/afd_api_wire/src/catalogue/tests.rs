@@ -69,7 +69,7 @@ fn a_negative_tier_breaks_its_bound_and_a_negative_rate_never_decodes() {
     let refusal = serde_json::from_str::<CataloguePrice<'_>>(&text)
         .map(|_| ())
         .expect_err("a negative rate never decodes");
-    assert!(refusal.to_string().contains(afd_wire::nanos::NOT_CANONICAL));
+    assert!(refusal.to_string().contains(af_wire::nanos::NOT_CANONICAL));
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn an_unknown_cache_write_is_null_and_instants_are_rfc_3339() {
 /// types must be the caller's 400 rather than the store's 500.
 #[test]
 fn a_nul_in_any_catalogue_text_is_refused_at_the_boundary() {
-    let refused = |report: garde::Report| report.to_string().contains(afd_validate::rules::HAS_NUL);
+    let refused = |report: garde::Report| report.to_string().contains(af_validate::rules::HAS_NUL);
     let metadata = |display_name: &'static str, url: &'static str| CatalogueMetadata {
         display_name: Cow::Borrowed(display_name),
         context_cap_tokens: 200_000,

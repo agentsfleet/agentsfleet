@@ -225,7 +225,7 @@ async fn test_a_shutdown_does_not_wait_out_the_backoff() {
 }
 
 /// The failures a capture holds of a read for new entries, oldest first.
-fn new_read_failures(capture: &afd_core::test_util::trace::Capture) -> usize {
+fn new_read_failures(capture: &af_core::test_util::trace::Capture) -> usize {
     capture
         .events()
         .iter()
@@ -242,7 +242,7 @@ fn new_read_failures(capture: &afd_core::test_util::trace::Capture) -> usize {
 /// Current-thread, so the worker's events land in this thread's capture.
 #[tokio::test]
 async fn test_a_failed_read_for_new_entries_is_retried_after_the_backoff() {
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let server = HangingQueue::spawn_failing_new_reads().await;
     let (worker, token, delivered) = worker_against(&server).await;
     let running = tokio::spawn(worker.run(token.clone()));

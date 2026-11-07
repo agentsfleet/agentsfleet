@@ -1,8 +1,8 @@
 //! Optional boot surfaces that degrade without refusing the daemon.
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
+use af_observability::Analytics;
 use afd_dragonfly::{DragonflyConfig, SubscriptionHub};
-use afd_observability::Analytics;
 use afd_sse::{Ceiling, Live};
 
 use crate::identity::Capabilities;
@@ -17,7 +17,7 @@ pub(super) fn announce_identity(capabilities: &Capabilities) {
             );
         }
         Capabilities::Unconfigured(_absent) => {
-            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
+            let code = af_core::error_code::AUTH_UNAVAILABLE.as_str();
             tracing::warn!(
                 error_code = code,
                 event = "identity_provider_unusable",
@@ -34,7 +34,7 @@ pub(super) async fn open_live(config: &DragonflyConfig, max_streams: usize) -> L
     match SubscriptionHub::start(config.clone()).await {
         Ok(hub) => Live::new(hub, ceiling),
         Err(unopened) => {
-            let code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
+            let code = af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
             let Logged {
                 error_code: cause_error_code,
                 reason,
@@ -97,7 +97,7 @@ mod tests {
             "redis://127.0.0.1:1".to_owned(),
         )
         .with_connect_timeout(Duration::from_millis(25));
-        let log = afd_core::test_util::trace::Capture::install();
+        let log = af_core::test_util::trace::Capture::install();
 
         drop(open_live(&config, 3).await);
 
@@ -105,11 +105,11 @@ mod tests {
         let reason = line.field("reason").unwrap_or_default();
         assert_eq!(
             line.field("error_code"),
-            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str())
+            Some(af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str())
         );
         assert_eq!(
             line.field("cause_error_code"),
-            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+            Some(af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
             "the unopened hub's own code rides `cause_error_code`"
         );
         assert!(

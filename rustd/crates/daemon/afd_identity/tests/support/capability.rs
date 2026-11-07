@@ -4,11 +4,11 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use af_core::clock::{Clock, FixedClock};
 use afd_auth::capability::CapabilitySource;
 use afd_auth::error::Unavailable;
 use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
-use afd_core::clock::{Clock, FixedClock};
 use afd_identity::ProviderCapabilities;
 use afd_identity::capability::ClaimSource;
 use afd_identity::error::ClaimUnavailable;

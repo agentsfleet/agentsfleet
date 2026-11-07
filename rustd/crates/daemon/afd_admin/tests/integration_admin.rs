@@ -5,13 +5,13 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_core::catalogue::{Metadata, Price};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_admin::{
     CreateModel, DeleteModel, Model, ModelInput, ModelUpdate, Models, PlatformKeyInput,
     PlatformKeys, SetPlatformKey,
 };
-use afd_core::catalogue::{Metadata, Price};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
 use afd_db::{Db, Migrator};

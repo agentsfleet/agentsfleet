@@ -3,8 +3,8 @@
 
 use super::{Fixture, mint, now};
 use crate::draft::window::{PAST, message_id, receipts, refile};
+use af_core::timing::DAY;
 use afd_authoring::types::MessageQuery;
-use afd_core::timing::DAY;
 use std::time::Duration;
 
 /// The most receipts one pass deletes (`afd_authoring`'s `SWEEP_LIMIT`).

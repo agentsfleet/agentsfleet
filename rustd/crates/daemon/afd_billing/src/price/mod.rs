@@ -5,8 +5,8 @@
 //! receives the same priced lines, whichever system moves the money. Nothing in
 //! [`rate`] reaches a datastore, so the arithmetic is proven without one.
 
-use afd_core::catalogue::Price;
-use afd_core::id::Uuid7;
+use af_core::catalogue::Price;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use serde::{Deserialize, Serialize};

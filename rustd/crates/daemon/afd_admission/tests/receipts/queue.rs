@@ -2,13 +2,13 @@
 
 use super::lane::Lane;
 use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use af_core::test_util::trace::Capture;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
-use afd_core::test_util::trace::Capture;
 use afd_dragonfly::{
     Dragonfly,
     config::{DragonflyConfig, DragonflyRole},
 };
-use afd_wire::event::EventType;
 use std::{collections::HashMap, time::Duration};
 
 /// Who the fixture's admission says raised it.

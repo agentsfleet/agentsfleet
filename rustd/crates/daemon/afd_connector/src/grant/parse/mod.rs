@@ -16,8 +16,8 @@
 //! Reading the envelope is the only way to tell, which is why this is a parse
 //! that can refuse rather than a deserialize that cannot.
 
-use afd_core::credential::FIELD_REFRESH_TOKEN;
-use afd_core::json::non_empty_str;
+use af_core::credential::FIELD_REFRESH_TOKEN;
+use af_core::json::non_empty_str;
 use jiff::Timestamp;
 use serde_json::{Map, Value};
 

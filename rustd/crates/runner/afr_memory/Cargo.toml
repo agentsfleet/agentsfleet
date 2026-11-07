@@ -20,10 +20,10 @@ aho-corasick.workspace = true
 # `MemoryBackend` is `dyn`: the backend is chosen per lease, at run time.
 async-trait.workspace = true
 # `error_shell!` and the registry codes a refused store carries.
-afd_core.workspace = true
+af_core.workspace = true
 # The entry shape, its bounds and the push cap, declared once for daemon and runner.
-afd_wire.workspace = true
-# An entry is checked against the bounds `afd_wire` declares on it.
+af_wire.workspace = true
+# An entry is checked against the bounds `af_wire` declares on it.
 garde.workspace = true
 thiserror.workspace = true
 # The one line a recall past the window leaves when the daemon does not answer.

@@ -8,11 +8,11 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_wire::context::ContextPut;
-use afd_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
-use afd_wire::report::RenewRequest;
-use afd_wire::runner::{AssignedPolicy, HeartbeatRequest, NetworkPolicy, SandboxTier};
+use af_core::id::Uuid7;
+use af_wire::context::ContextPut;
+use af_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
+use af_wire::report::RenewRequest;
+use af_wire::runner::{AssignedPolicy, HeartbeatRequest, NetworkPolicy, SandboxTier};
 use bytes::Bytes;
 
 use super::{FLEET_ID, Healthy, LEASE_ID};
@@ -22,7 +22,7 @@ use crate::test_support::{drain, json, plane};
 fn healthy() -> Healthy {
     Healthy {
         assigned: AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::DenyAllEgress,
@@ -48,7 +48,7 @@ async fn test_each_route_answers_as_its_verb() {
     let beat = HeartbeatRequest {
         capability_report: None,
         selftest: None,
-        holds: afd_wire::runner::HeldFleets::default(),
+        holds: af_wire::runner::HeldFleets::default(),
         closing: false,
         wake: false,
     };
@@ -133,7 +133,7 @@ async fn context_routes_answer_through_the_native_client() {
 #[tokio::test]
 async fn lease_context_restores_and_commits_through_the_native_client() {
     use afr_agent::ContextCheckpoints as _;
-    let checkpoint: afd_context::Checkpoint = serde_json::from_value(serde_json::json!({
+    let checkpoint: af_context::Checkpoint = serde_json::from_value(serde_json::json!({
         "format_version":1,
         "identity":{"scope":"private-run","model":"selected-model","pinned":"revision"},
         "generation":1,"covered_through":2,"source_digest":"a".repeat(64),

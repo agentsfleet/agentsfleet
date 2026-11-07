@@ -6,8 +6,8 @@
 
 use std::collections::BTreeMap;
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::tool_detail::{
+use af_core::test_util::trace::Capture;
+use af_wire::tool_detail::{
     DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, DetailRejection, ToolCallRecordsRequest,
 };
 use serde_json::json;
@@ -86,7 +86,7 @@ fn a_call_named_twice_keeps_its_last_record() {
         [Skip {
             position: 0,
             reason: DetailRejection::Malformed,
-            bytes: afd_wire::tool_detail::DETAIL_RECORD_MIN_BYTES,
+            bytes: af_wire::tool_detail::DETAIL_RECORD_MIN_BYTES,
         }]
     );
 }

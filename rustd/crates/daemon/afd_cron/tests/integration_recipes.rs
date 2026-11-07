@@ -13,8 +13,8 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_cron::{DesiredStatus, MAX_SCHEDULES_PER_FLEET, Recipe, RecipeSet, Refused, SyncStatus};
 use afd_db::test_util::mint_id;
 use sqlx::Connection as _;

@@ -19,7 +19,7 @@
 //! the selection carries no state flags and never replays the rule: it appears
 //! once, in [`fits`], and what is left is two counts and a countdown.
 
-use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
+use af_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 
 /// Scratch notes, which expire on a retention sweep.
 ///
@@ -104,7 +104,7 @@ pub struct Window<'a> {
 #[must_use]
 pub fn select(entries: Vec<MemoryDelta<'_>>, budget: usize) -> Window<'_> {
     let window = select_counted(entries, budget);
-    afd_observability::producers::memory::hydration_window(
+    af_observability::producers::memory::hydration_window(
         counted(window.kept.len()),
         counted(window.dropped.len()),
         counted(total_bytes(&window.dropped)),
@@ -163,7 +163,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::select;
-    use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
+    use af_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 
     /// The budget these tests reason against.
     ///
@@ -192,7 +192,7 @@ mod tests {
             key: key.into(),
             content: "x".repeat(content).into(),
             category: category.into(),
-            visibility: afd_wire::memory::Visibility::Fleet,
+            visibility: af_wire::memory::Visibility::Fleet,
         }
     }
 

@@ -8,9 +8,9 @@ use crate::{
     error::raise::query,
     types::{CheckKind, CheckState, DraftState},
 };
+use af_core::id::Uuid7;
+use af_observability::AuthoringStep;
 use afd_approval::{Origin, Wanted};
-use afd_core::id::Uuid7;
-use afd_observability::AuthoringStep;
 use jiff::Timestamp;
 use sqlx::Transaction;
 
@@ -34,7 +34,7 @@ impl Creations {
                 Err(_elapsed) => "budget_elapsed",
             };
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
         tracing::warn!(event = "fleet_setup_budget_elapsed", fleet_id = %fleet, error_code, reason);
         Ok(())
     }

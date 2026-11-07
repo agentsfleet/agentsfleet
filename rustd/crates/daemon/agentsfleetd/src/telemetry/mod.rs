@@ -1,7 +1,7 @@
 //! The daemon's half of the transport: its identity, its log pipeline, and the
 //! line that says what is exporting.
 //!
-//! The pipelines themselves are `afd_otlp`'s, which the runner builds through
+//! The pipelines themselves are `af_otlp`'s, which the runner builds through
 //! too; what is left here is what only this binary decides. It bridges its log
 //! records as well as its spans, so it asks for the log pipeline the runner
 //! does not build, and it names itself `agentsfleetd` on every signal.
@@ -11,10 +11,10 @@
 //! Read the environment. Knobs are `preflight`'s and arrive resolved, so this
 //! module cannot disagree with the refusal that already happened.
 
-use afd_observability::metrics::instrument::Instruments;
-use afd_observability::metrics::registry::Registry;
-use afd_observability::semconv;
-use afd_otlp::{Builder, OtlpConfig, Service};
+use af_observability::metrics::instrument::Instruments;
+use af_observability::metrics::registry::Registry;
+use af_observability::semconv;
+use af_otlp::{Builder, OtlpConfig, Service};
 
 use crate::error::BootFailure;
 
@@ -22,7 +22,7 @@ mod flush;
 mod resident;
 
 pub use self::flush::flush_within;
-pub use afd_otlp::{COLLECT_INTERVAL, Exports};
+pub use af_otlp::{COLLECT_INTERVAL, Exports};
 
 #[cfg(test)]
 mod tests;

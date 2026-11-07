@@ -64,7 +64,7 @@ pub(super) struct Wait {
 
 impl Wait {
     pub(super) fn current(&self) -> bool {
-        self.status == afd_wire::task::TaskState::Waiting.as_str()
+        self.status == af_wire::task::TaskState::Waiting.as_str()
             && self.task_generation == self.live_generation
             && self.stop_generation == self.live_stop_generation
             && self.target.installation_id == self.installation_id.unsigned_abs()

@@ -52,9 +52,9 @@ async fn upgrade_enables_existing_and_new_hosts_and_preserves_an_explicit_disabl
 
 async fn insert_host(database: &Db, id: &str, digest: &str) {
     let mut connection = database.acquire().await.expect("host seed connection");
-    let tier = afd_core::spelling::to_spelling(&afd_wire::runner::SandboxTier::DevNone)
+    let tier = af_core::spelling::to_spelling(&af_wire::runner::SandboxTier::DevNone)
         .expect("wire tier spelling");
-    let network = afd_core::spelling::to_spelling(&afd_wire::runner::NetworkPolicy::AllowAll)
+    let network = af_core::spelling::to_spelling(&af_wire::runner::NetworkPolicy::AllowAll)
         .expect("wire network spelling");
     sqlx::query("INSERT INTO runner.runners (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, registry_allowlist, worker_count, last_seen_at, lease_version, created_at, updated_at) VALUES ($1::uuid, $1::text, $2, $3, $4, '[]'::jsonb, $5, '[]'::jsonb, $6, now(), $7, now(), now())")
         .bind(id).bind(digest).bind(tier).bind(afd_runner::sql::RUNNER_STATUS_ACTIVE)

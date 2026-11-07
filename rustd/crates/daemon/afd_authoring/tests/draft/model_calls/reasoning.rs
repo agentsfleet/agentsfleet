@@ -4,8 +4,8 @@ use super::{
     super::{attempt::Attempt, definition, fixture::Fixture, mint},
     fixture,
 };
+use af_wire::authoring::ModelMessage;
 use afd_authoring::{ProviderRequest, ProviderResponse, Transport, types::Source};
-use afd_wire::authoring::ModelMessage;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
@@ -91,7 +91,7 @@ fn assert_native_replay(provider: &Reasoning) {
     for body in bodies.iter() {
         super::user_context::assert_no_baked_instructions(
             body,
-            afd_wire::inference::InferenceApi::Responses,
+            af_wire::inference::InferenceApi::Responses,
         );
         assert_eq!(body.pointer("/input/0/role"), Some(&json!("user")));
         assert_eq!(

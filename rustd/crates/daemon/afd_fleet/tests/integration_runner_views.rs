@@ -10,11 +10,11 @@ use crate::support;
 use crate::view_heartbeat;
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
+use af_core::paging::DEFAULT_LIMIT;
+use af_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 use afd_api_wire::admin::{RunnerAdminAction, RunnerEventType};
-use afd_core::id::Uuid7;
-use afd_core::paging::DEFAULT_LIMIT;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
-use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 use jiff::Timestamp;
 
 use self::requests::enrolment;
@@ -99,7 +99,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Time
             live_runner,
             &heartbeat,
             None,
-            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
+            af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1)),
         )
         .await
         .expect("the heartbeat lands");
@@ -109,7 +109,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Time
             live_runner,
             RunnerAdminAction::Cordon,
             ACTOR,
-            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
+            af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(2)),
         )
         .await
         .expect("the runner is cordoned");
@@ -119,7 +119,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) -> (Time
         .rotate_token(
             live_runner,
             ACTOR,
-            afd_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(3)),
+            af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(3)),
         )
         .await
         .expect("the token rotates");

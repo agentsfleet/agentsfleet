@@ -10,12 +10,12 @@ use super::{Error, ErrorKind};
 // `map_err` appears on a path that adds nothing (`RUST_ERROR_STANDARD` rule 2).
 // `sqlx::Error` is deliberately absent: a statement failure carries WHICH
 // statement, which is context only the call site knows, so it goes through
-// [`query`] instead of a blanket lift. `afd_core::error::Error` lifts to
+// [`query`] instead of a blanket lift. `af_core::error::Error` lifts to
 // `Identifier` and not to `RowMalformed` for the same reason — a malformed
 // column names the table and the column, and only its reader knows those.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_crypto::error::Error => Entropy,
+    af_crypto::error::Error => Entropy,
 );
 
 /// Reports a statement that would not run, naming what it was doing.
@@ -31,7 +31,7 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 pub(crate) fn row_malformed(
     table: &'static str,
     column: &'static str,
-) -> impl Fn(afd_core::error::Error) -> Error {
+) -> impl Fn(af_core::error::Error) -> Error {
     move |source| {
         ErrorKind::RowMalformed {
             table,
@@ -88,7 +88,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "row malformed",
             row_malformed("billing.usage_lines", "tenant_id")(
-                afd_core::id::Uuid7::parse("not-an-id").expect_err("the fixture is malformed"),
+                af_core::id::Uuid7::parse("not-an-id").expect_err("the fixture is malformed"),
             ),
         ),
         ("wallet missing", billing_wallet_missing()),

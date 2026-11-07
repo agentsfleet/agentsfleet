@@ -16,7 +16,7 @@
 
 use std::time::Duration;
 
-use afd_core::clock::after;
+use af_core::clock::after;
 use jiff::Timestamp;
 use serde_json::{Value, json};
 use zeroize::Zeroizing;

@@ -7,7 +7,7 @@
 //!
 //! A missing credential, a body that is not an object, an absent field, a field
 //! that is not a string, an empty string: all of them resolve to no secret, and
-//! no secret is [`afd_webhook::Refusal::Unconfigured`] one layer up — never a
+//! no secret is [`af_webhook::Refusal::Unconfigured`] one layer up — never a
 //! pass, and never a comparison against an empty key. `Scheme::verify_at`
 //! carries the same guard again on its own side, which is defence in depth
 //! rather than duplication: an empty key makes the tag deterministic and
@@ -17,8 +17,8 @@
 //! narrowing fact about a key (LOG-SECRET, `.orly/standards/domains/logging.md`), and
 //! [`afd_vault::Vault::load`] declines to log one for the same reason.
 
-use afd_core::id::Uuid7;
-use afd_crypto::secret::{SecretBytes, SecretString};
+use af_core::id::Uuid7;
+use af_crypto::secret::{SecretBytes, SecretString};
 use afd_vault::SecretName;
 use serde_json::value::RawValue;
 
@@ -65,7 +65,7 @@ impl Ingress {
     ///
     /// `Ok(None)` for every way the secret can turn out to be unusable, and for
     /// a deployment that has configured no admin workspace at all. All of them
-    /// are [`afd_webhook::Refusal::Unconfigured`] one layer up — never a pass.
+    /// are [`af_webhook::Refusal::Unconfigured`] one layer up — never a pass.
     ///
     /// # Errors
     /// As [`Self::signing_secret`].

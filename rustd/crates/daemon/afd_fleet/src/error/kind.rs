@@ -72,7 +72,7 @@ pub(crate) enum ErrorKind {
     #[error("a stored task document is malformed")]
     TaskDocument {
         #[source]
-        source: afd_core::json::Unreadable,
+        source: af_core::json::Unreadable,
     },
     #[error("a stored task lifecycle state is unknown")]
     TaskState {
@@ -93,18 +93,18 @@ pub(crate) enum ErrorKind {
     },
     #[error("the task continuation could not be admitted")]
     TaskControlAdmission {
-        state: afd_wire::task::TaskState,
+        state: af_wire::task::TaskState,
         #[source]
         source: afd_admission::Error,
     },
     #[error("the task mutation was refused")]
     TaskMutation {
-        state: afd_wire::task::TaskState,
+        state: af_wire::task::TaskState,
         #[source]
         source: Box<Error>,
     },
     #[error("the task generation or lifecycle state changed")]
-    TaskControlConflict { state: afd_wire::task::TaskState },
+    TaskControlConflict { state: af_wire::task::TaskState },
     #[error("the task resource version changed")]
     TaskPrecondition { current_etag: String },
     #[error("{reason}")]
@@ -112,7 +112,7 @@ pub(crate) enum ErrorKind {
     #[error("the private working context could not be accessed")]
     Context {
         #[source]
-        source: afd_context::Error,
+        source: af_context::Error,
     },
     #[error("private authoring admission could not complete")]
     Authoring {
@@ -167,7 +167,7 @@ pub(crate) enum ErrorKind {
         table: &'static str,
         column: &'static str,
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     #[error("the event store could not answer for the runner plane")]
@@ -195,19 +195,19 @@ pub(crate) enum ErrorKind {
     #[error("an identifier could not be minted from the current instant")]
     Mint {
         #[from]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     #[error("could not draw the entropy a credential is minted from")]
     Entropy {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     #[error("the fleet's stored configuration cannot be read")]
     ConfigUnreadable {
         #[from]
-        source: afd_fleet_runtime::Error,
+        source: af_fleet_runtime::Error,
     },
 
     #[error("the fleet needs a reviewed native setup before it can run")]
@@ -246,7 +246,7 @@ pub(crate) enum ErrorKind {
     #[error("the fleet's secret values could not be gathered into a mask")]
     Scrub {
         #[source]
-        source: afr_secrets::Error,
+        source: af_secrets::Error,
     },
 
     #[error("this workspace has connected no integration under that name")]

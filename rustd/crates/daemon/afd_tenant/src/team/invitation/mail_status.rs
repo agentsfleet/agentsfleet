@@ -7,8 +7,8 @@
 //! never reused, and [`Team::record_email`] writes the result only while that
 //! attempt is still the latest.
 
-use afd_core::id::Uuid7;
-use afd_core::spelling::from_spelling;
+use af_core::id::Uuid7;
+use af_core::spelling::from_spelling;
 use jiff::Timestamp;
 
 use crate::sql::invite as sql;

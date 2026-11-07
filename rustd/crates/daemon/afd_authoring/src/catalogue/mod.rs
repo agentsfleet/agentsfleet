@@ -9,7 +9,7 @@ use crate::{
     replay,
     types::{ModelsQuery, Page, WorkspaceModel},
 };
-use afd_core::paging::Cursor;
+use af_core::paging::Cursor;
 use afd_credential::provider::PLATFORM_MODEL_REF;
 use sqlx::Connection as _;
 
@@ -89,7 +89,7 @@ fn page(rows: Vec<project::Row>, request: &ModelsQuery, binding: &str) -> Page<W
 #[cfg(test)]
 mod boundary_tests {
     use super::boundary;
-    use afd_core::{error_code, paging::Cursor};
+    use af_core::{error_code, paging::Cursor};
 
     const BINDING: &str = "models:tenant";
 

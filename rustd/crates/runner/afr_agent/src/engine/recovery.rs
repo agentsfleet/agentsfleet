@@ -1,8 +1,8 @@
 //! Private conversation bytes bind to the same native task and file generation.
 
 use crate::Result;
-use afd_wire::task::TaskContext;
-use afr_providers::{Message, Replay};
+use af_providers::{Message, Replay};
+use af_wire::task::TaskContext;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
@@ -50,7 +50,7 @@ impl TaskRecovery {
             provider: provider.to_owned(),
             messages,
         };
-        if !afd_wire::decision::serialized_within(&history, 64 * 1024 * 1024) {
+        if !af_wire::decision::serialized_within(&history, 64 * 1024 * 1024) {
             return Err(crate::decision::unavailable());
         }
         let history = Zeroizing::new(serde_json::to_vec(&history)?);
@@ -62,7 +62,7 @@ impl TaskRecovery {
         task: &TaskContext<'_>,
         model: &str,
         provider: &str,
-        scrub: &afr_secrets::Scrub,
+        scrub: &af_secrets::Scrub,
     ) -> Result<Vec<Message>> {
         if bytes.len() > 64 * 1024 * 1024 {
             return Err(crate::decision::unavailable());

@@ -10,19 +10,19 @@
 //! makes the refusal matrix reachable: a verb refuses with the error its own
 //! crate raises rather than one this file invented.
 
+use af_core::id::Uuid7;
+use af_observability::Analytics;
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::{Planes, SchedulePlane, Services, TenantSurface};
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::mock::{MockCapabilities, MockVerifier};
 use afd_billing::tenant::Billing;
 use afd_connector::Connectors;
-use afd_core::id::Uuid7;
 use afd_credential::provider::Providers;
 use afd_events::{History, Steer};
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_memory::Memories;
-use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
 use afd_tenant::apikey::ApiKeys;
@@ -176,7 +176,7 @@ impl Services for Fleet {
     /// admin workspace refuses every App delivery as unconfigured, and one with
     /// it serves them. A suite that could not say which it was could prove only
     /// half of that.
-    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes> {
+    fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretBytes> {
         self.identity_webhook_secret.as_ref()
     }
 

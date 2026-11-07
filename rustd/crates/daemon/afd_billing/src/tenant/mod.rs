@@ -20,7 +20,7 @@
 
 pub mod cursor;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::Db;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;

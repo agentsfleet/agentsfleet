@@ -8,9 +8,9 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use afd_core::env::MapEnv;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::env::MapEnv;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed};
 use afd_db::{Db, PoolConfig};
@@ -162,7 +162,7 @@ impl Lane {
 
 /// A fresh identifier, so no two fixtures can name each other's rows.
 pub(crate) fn mint() -> Uuid7 {
-    let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];
+    let mut bytes = [0u8; af_core::id::ENTROPY_LEN];
     Entropy::new()
         .fill(&mut bytes)
         .expect("the host draws entropy");

@@ -14,10 +14,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use afd_core::clock::{after, now};
-use afd_wire::lease::LeaseKind;
-use afd_wire::paths::{RUNNER_LEASES, RUNNER_REPORTS};
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use af_core::clock::{after, now};
+use af_wire::lease::LeaseKind;
+use af_wire::paths::{RUNNER_LEASES, RUNNER_REPORTS};
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 pub(crate) use afr_supervisor::test_util::{FENCING, LEASE_ID};
 use afr_supervisor::test_util::{FLEET_ID, Healthy, LEASE_JSON};
 use axum::http::{Method, header};
@@ -73,7 +73,7 @@ impl FakeDaemon {
         let granted = Arc::new(AtomicBool::new(false));
         let healthy = Arc::new(Healthy {
             assigned: AssignedPolicy {
-                durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+                durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
                 decision_model_id: None,
                 sandbox_tier: SandboxTier::LandlockFull,
                 network_policy,

@@ -9,9 +9,9 @@ use crate::{
     },
     types::{CreateDraft, Source},
 };
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::Definition;
-use afd_fleet_runtime::definition::{ConfigOp, EditBatch};
+use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
+use af_fleet_runtime::definition::{ConfigOp, EditBatch};
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "capture native setup source";
@@ -138,7 +138,7 @@ async fn fleet_source(
 #[cfg(test)]
 mod tests {
     use super::positive_revision;
-    use afd_core::error_code;
+    use af_core::error_code;
 
     #[test]
     fn a_setup_revision_is_only_its_own_canonical_positive_decimal() {

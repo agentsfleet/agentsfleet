@@ -6,14 +6,14 @@
 
 use std::error::Error as _;
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::{Error, detail};
 
-/// A key that will not parse is the cheapest real `afd_crypto` failure; any
+/// A key that will not parse is the cheapest real `af_crypto` failure; any
 /// other one lifts through the same arm.
 fn crypto_failure() -> Error {
-    match afd_crypto::secret::Kek::from_hex("not hex") {
+    match af_crypto::secret::Kek::from_hex("not hex") {
         Ok(_unexpected) => panic!("a non-hex key must not parse"),
         Err(source) => Error::from(source),
     }

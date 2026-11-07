@@ -1,12 +1,12 @@
 //! Account the physical check even when its answer cannot affect the candidate.
 
+use af_core::id::Uuid7;
+use af_wire::{decision::DecisionUsage, usage::UsageLine};
 use afd_billing::{
     Posture,
     biller::{Account, Attribution, Settlement, WorkKey},
     price::{Rater, Window},
 };
-use afd_core::id::Uuid7;
-use afd_wire::{decision::DecisionUsage, usage::UsageLine};
 use sqlx::Connection as _;
 
 use super::{
@@ -38,9 +38,9 @@ impl ModelCalls {
             Err(error)
                 if matches!(
                     error.code(),
-                    afd_core::error_code::AUTHORING_FENCE
-                        | afd_core::error_code::AUTHORING_NOT_FOUND
-                        | afd_core::error_code::AUTHORING_MODEL
+                    af_core::error_code::AUTHORING_FENCE
+                        | af_core::error_code::AUTHORING_NOT_FOUND
+                        | af_core::error_code::AUTHORING_MODEL
                 ) =>
             {
                 false

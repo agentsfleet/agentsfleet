@@ -106,7 +106,7 @@ pub(crate) async fn handle<D: Services>(
 
 async fn mutate<'a, D: Services>(
     services: &D,
-    runner: &'a afd_core::id::Uuid7,
+    runner: &'a af_core::id::Uuid7,
     actor: &str,
     mutation: OrdinaryMutation<'_, 'a>,
 ) -> afd_runner::Result<RunnerAdminPatchResponse<'a>> {
@@ -152,7 +152,7 @@ async fn mutate<'a, D: Services>(
 fn finish(
     result: afd_runner::Result<RunnerAdminPatchResponse<'_>>,
     identity: &PersonIdentity,
-    runner: &afd_core::id::Uuid7,
+    runner: &af_core::id::Uuid7,
 ) -> Response {
     match result {
         Ok(payload) => {
@@ -174,7 +174,7 @@ fn finish(
 async fn rotate<D: Services>(
     services: &D,
     identity: &PersonIdentity,
-    runner: &afd_core::id::Uuid7,
+    runner: &af_core::id::Uuid7,
 ) -> Response {
     match services
         .runners()
@@ -217,7 +217,7 @@ fn mutation<'r, 'a>(request: &'r RunnerAdminPatchRequest<'a>) -> Option<Mutation
 fn refuse_rotation(
     error: &afd_runner::Error,
     identity: &PersonIdentity,
-    runner: &afd_core::id::Uuid7,
+    runner: &af_core::id::Uuid7,
 ) -> Response {
     let actor_id = identity.subject();
     let runner_id = runner.as_str();
@@ -230,12 +230,12 @@ fn refuse_rotation(
 mod tests {
     use super::*;
 
-    fn policy() -> afd_wire::runner::AssignedPolicy<'static> {
-        afd_wire::runner::AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+    fn policy() -> af_wire::runner::AssignedPolicy<'static> {
+        af_wire::runner::AssignedPolicy {
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
-            sandbox_tier: afd_wire::runner::SandboxTier::DevNone,
-            network_policy: afd_wire::runner::NetworkPolicy::AllowAll,
+            sandbox_tier: af_wire::runner::SandboxTier::DevNone,
+            network_policy: af_wire::runner::NetworkPolicy::AllowAll,
             registry_allowlist: Vec::new(),
             worker_count: 1,
             extra_binds: Vec::new(),
@@ -314,7 +314,7 @@ mod tests {
 
         let refused = afd_http::handler::read_strict_body::<RunnerAdminPatchRequest<'_>>(body)
             .err()
-            .and_then(|error| afd_core::json::unknown_field_of(&error));
+            .and_then(|error| af_core::json::unknown_field_of(&error));
 
         // `?` is how `serde_ignored` spells the `Option` the policy rides in.
         assert_eq!(refused.as_deref(), Some("assigned_policy.?.wroker_count"));

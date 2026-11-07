@@ -8,8 +8,8 @@ use std::fs;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::error_code::RUN_STALE_FENCING_TOKEN;
-use afd_core::test_util::trace::Capture;
+use af_core::error_code::RUN_STALE_FENCING_TOKEN;
+use af_core::test_util::trace::Capture;
 
 use crate::client::{Call, Verb};
 use crate::error;
@@ -225,9 +225,9 @@ async fn test_an_unspooled_report_lost_destroys_what_it_parked() {
 
 /// A lease carrying an empty memory window, as a daemon at this release
 /// issues every lease, an empty window included.
-fn window_lease() -> afd_wire::lease::LeasePayload<'static> {
+fn window_lease() -> af_wire::lease::LeasePayload<'static> {
     let mut payload = lease(LEASE_ID, FLEET_ID);
-    payload.memory = Some(afd_wire::memory::MemoryHydrateResponse {
+    payload.memory = Some(af_wire::memory::MemoryHydrateResponse {
         memory: Vec::new(),
         shared: Vec::new(),
         publish: false,

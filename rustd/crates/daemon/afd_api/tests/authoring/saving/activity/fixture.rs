@@ -4,9 +4,9 @@ use super::super::{
     super::{json_body, mint, send, send_with_headers},
     fixture::Case,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_fleet_runtime::{Definition, definition::canonical_digest};
 use afd_db::test_util::{FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision};
-use afd_fleet_runtime::{Definition, definition::canonical_digest};
 use axum::{Router, response::Response};
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};

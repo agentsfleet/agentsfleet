@@ -6,8 +6,8 @@
 //! through (`afd_outbound::obligation`), by a stable channel notice owner, under a key
 //! derived from the chat event's own id, so a retried delivery owes it once.
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
-use afd_core::id::Uuid7;
 use afd_outbound::obligation::{self, Delivery};
 use jiff::Timestamp;
 

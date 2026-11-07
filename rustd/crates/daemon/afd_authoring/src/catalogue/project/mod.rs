@@ -12,7 +12,7 @@ pub(super) struct Row {
     provider: String,
     model: String,
     display_name: String,
-    inference: Option<sqlx::types::Json<afd_wire::inference::ModelInference>>,
+    inference: Option<sqlx::types::Json<af_wire::inference::ModelInference>>,
     base_url: Option<String>,
     has_key: bool,
     context: i32,

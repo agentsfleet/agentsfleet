@@ -2,12 +2,12 @@
 
 use super::super::super::fixture::{Case, id};
 use super::super::{checkpoint::valid, checkpoint_server::Server};
-use afd_core::error_code;
-use afd_fleet::task::{TaskLifecycle as _, Tasks};
-use afd_wire::task::{
+use af_core::error_code;
+use af_wire::task::{
     CheckpointAuthorizationInput, CheckpointObject, CheckpointPlan, CheckpointTransferPurpose,
     DecisionTaskVersion,
 };
+use afd_fleet::task::{TaskLifecycle as _, Tasks};
 
 pub(super) async fn refuse(
     case: &Case,

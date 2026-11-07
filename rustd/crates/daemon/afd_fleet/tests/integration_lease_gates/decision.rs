@@ -3,13 +3,13 @@
 use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
-use afd_core::{clock, id::Uuid7};
-use afd_db::Db;
-use afd_runner::RunnerEdit;
-use afd_wire::{
+use af_core::{clock, id::Uuid7};
+use af_wire::{
     decision::DecisionAssignment,
     lease::{LeaseResponse, TaggedLease},
 };
+use afd_db::Db;
+use afd_runner::RunnerEdit;
 use garde::Validate as _;
 use sqlx::{Connection as _, types::Json};
 
@@ -48,7 +48,7 @@ async fn issued_selection_survives_edits_revocation_and_catalogue_removal() {
     assert_eq!(initial_profile.profile.model, model.model.model_name);
     assert_eq!(
         initial_profile.profile.model.len(),
-        afd_wire::inference::MODEL_ID_MAX_BYTES
+        af_wire::inference::MODEL_ID_MAX_BYTES
     );
     assert_eq!(initial_profile.profile.revision, "reviewed-1");
     assert_stored(&fixtures.database, &initial).await;

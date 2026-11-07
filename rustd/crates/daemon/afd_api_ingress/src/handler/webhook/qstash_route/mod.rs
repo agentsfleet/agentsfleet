@@ -19,11 +19,11 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_observability::metrics::label::scheduler::FireOutcome;
 use afd_cron::{FireTarget, VerifiedFire, verifier};
 use afd_fleet_lifecycle::FleetStatus;
-use afd_observability::metrics::label::scheduler::FireOutcome;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
@@ -112,7 +112,7 @@ pub(crate) async fn receive<D: Services>(
 ) -> Result<Response, Refusal> {
     webhook::within_cap(&body)?;
     let proven = prove(services.as_ref(), &headers, &body)?;
-    let mut observed = afd_observability::producers::scheduler::Callback::begin();
+    let mut observed = af_observability::producers::scheduler::Callback::begin();
 
     let result = dispatch(services, headers, proven, &mut observed).await;
     if result.is_err() {
@@ -125,7 +125,7 @@ async fn dispatch<D: Services>(
     services: Arc<D>,
     headers: HeaderMap,
     proven: VerifiedFire,
-    observed: &mut afd_observability::producers::scheduler::Callback,
+    observed: &mut af_observability::producers::scheduler::Callback,
 ) -> Result<Response, Refusal> {
     // The schedule that fell due, by the id this daemon registered it under:
     // a schedule the scheduler filed under an id of its own resolves to none.

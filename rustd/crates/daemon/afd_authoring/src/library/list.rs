@@ -25,7 +25,7 @@ struct Listed {
 }
 
 impl Listed {
-    fn card(self) -> Result<(Timestamp, afd_core::id::Uuid7, LibraryCard)> {
+    fn card(self) -> Result<(Timestamp, af_core::id::Uuid7, LibraryCard)> {
         let entry = self.entry.decode()?;
         let head: Revision = RevisionRow {
             id: entry.head_revision_id.to_string(),

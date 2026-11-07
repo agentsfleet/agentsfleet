@@ -25,8 +25,8 @@
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
+use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_core::id::Uuid7;
 use afd_events::Closed;
 
 use crate::error::{Result, query};
@@ -138,7 +138,7 @@ impl Leases {
             .bind(&acquired.event_type)
             .bind(&acquired.request_json)
             .bind(Option::<&str>::None)
-            .bind(afd_core::event::status::RECEIVED)
+            .bind(af_core::event::status::RECEIVED)
             .bind(admission.as_ref().map(Uuid7::as_str))
             .bind(afd_admission::Producer::Steer.as_str())
             .fetch_one(&mut *transaction)
@@ -192,7 +192,7 @@ impl Leases {
     /// the same predicate the failure and report updates guard on. Every other
     /// stored spelling is an ending somebody already wrote: a runner's
     /// `processed` or `fleet_error`, or a daemon-side refusal like
-    /// `gate_blocked`, which `afd_core::event::status` documents as terminal in
+    /// `gate_blocked`, which `af_core::event::status` documents as terminal in
     /// its own right. Asking "is it still open" rather than listing the endings
     /// is what keeps this correct when a new refusal spelling is added.
     ///
@@ -212,7 +212,7 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
         Ok(match stored.as_deref() {
-            Some(afd_core::event::status::RECEIVED) | None => Delivery::Repeat,
+            Some(af_core::event::status::RECEIVED) | None => Delivery::Repeat,
             Some(_) => Delivery::Terminal,
         })
     }
@@ -267,9 +267,9 @@ impl Leases {
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
             .bind(acquired.fleet_id.as_str())
             .bind(&acquired.event_id)
-            .bind(afd_core::event::status::GATE_BLOCKED)
+            .bind(af_core::event::status::GATE_BLOCKED)
             .bind(refusal.label)
-            .bind(afd_core::event::status::RECEIVED)
+            .bind(af_core::event::status::RECEIVED)
             // Empty stores as SQL NULL through the statement's `NULLIF`, which
             // is what keeps the row shape identical for the refusals that
             // carry no operator-readable instruction.

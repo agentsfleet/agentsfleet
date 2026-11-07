@@ -1,16 +1,16 @@
 //! Exercise the same authenticated capture envelope as the trusted runner.
 
 use super::super::super::fixture::{Case, id};
-use afd_crypto::{
+use af_crypto::{
     checkpoint::{CheckpointScope, EncryptedCheckpointObject},
     secret::SecretBytes,
 };
-use afd_wire::task::CheckpointObject;
+use af_wire::task::CheckpointObject;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use zeroize::Zeroizing;
 
 pub(super) fn encrypt(case: &Case, object: &CheckpointObject, plaintext: &[u8]) -> Vec<u8> {
-    let nonce: [u8; afd_crypto::NONCE_LEN] = BASE64_STANDARD
+    let nonce: [u8; af_crypto::NONCE_LEN] = BASE64_STANDARD
         .decode(object.nonce.as_ref().expect("nonce"))
         .expect("nonce encoding")
         .try_into()

@@ -6,7 +6,7 @@
 //! schedules or another event's thread, and a holder a reclaim has superseded
 //! is refused before anything is read or written on its behalf.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::error::{Result, lease_not_found, query, row_malformed, stale_fence};
 use crate::lease::pull::Plane;

@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use af_validate::Sentences;
 use afd_api_wire::fleet::{PatchTaskRequest, TaskControlState};
 use afd_fleet::task::{TaskAdoption, TaskControl, TaskScope};
 use afd_http::handler::{Refusal, setup_input::expected};
-use afd_validate::Sentences;
 use axum::{
     body::Bytes,
     extract::{Path, State},
@@ -69,17 +69,17 @@ pub(crate) async fn change<D: Services>(
         .validate()
         .map_err(|report| {
             Refusal::coded(
-                afd_core::error_code::PAYLOAD_TOO_LARGE,
+                af_core::error_code::PAYLOAD_TOO_LARGE,
                 SENTENCES.pick(&report),
             )
         })?;
-    let request: PatchTaskRequest = afd_core::json::object_from_slice(envelope.bytes)
+    let request: PatchTaskRequest = af_core::json::object_from_slice(envelope.bytes)
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     let request = garde::Unvalidated::new(request)
         .validate()
         .map_err(|report| Refusal::malformed(SENTENCES.pick(&report)))?;
     let tag = expected(&headers)?
-        .ok_or_else(|| Refusal::coded(afd_core::error_code::AUTHORING_PRECONDITION, REQUIRED))?;
+        .ok_or_else(|| Refusal::coded(af_core::error_code::AUTHORING_PRECONDITION, REQUIRED))?;
     let saved = match request.into_inner() {
         PatchTaskRequest::Control {
             state,
@@ -125,7 +125,7 @@ fn refusal(fault: afd_fleet::Error) -> Refusal {
     if let Some(current) = fault.task_precondition_tag() {
         return Refusal::preconditioned(fault.code(), fault.detail(), current);
     }
-    if afd_core::problem::Problem::of(fault.code()).status() == 409
+    if af_core::problem::Problem::of(fault.code()).status() == 409
         && let Some(state) = fault.task_current_state()
     {
         return Refusal::conflict(fault.code(), fault.detail(), state);

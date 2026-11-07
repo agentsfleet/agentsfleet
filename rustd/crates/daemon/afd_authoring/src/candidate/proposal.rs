@@ -5,8 +5,8 @@ use crate::{
     error::{ErrorKind, raise::invalid},
     lease::{ActivityInput, Event, Proposal, guard::Guarded},
 };
-use afd_fleet_runtime::{Definition, definition::EditBatch};
-use afd_wire::authoring::CandidateVersion;
+use af_fleet_runtime::{Definition, definition::EditBatch};
+use af_wire::authoring::CandidateVersion;
 use sqlx::PgConnection;
 
 const OVERFLOW: &str = "The candidate revision cannot advance further";

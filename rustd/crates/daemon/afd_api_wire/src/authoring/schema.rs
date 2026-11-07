@@ -4,11 +4,11 @@
 //! into the shared validator's types, and a derive on it cannot carry the batch
 //! sizes that validator enforces: utoipa takes only literal numbers there. The
 //! request is therefore described by the twin below and narrowed by
-//! `afd_fleet_runtime`, which reads the same constants its validator does.
+//! `af_fleet_runtime`, which reads the same constants its validator does.
 
 use std::borrow::Cow;
 
-use afd_fleet_runtime::definition::{ConfigOp, InstructionEdit, narrow_edit_batch};
+use af_fleet_runtime::definition::{ConfigOp, InstructionEdit, narrow_edit_batch};
 use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 use utoipa::{PartialSchema, ToSchema};

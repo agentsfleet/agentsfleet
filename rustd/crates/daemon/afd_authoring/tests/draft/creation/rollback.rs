@@ -4,8 +4,8 @@
 
 use super::super::{definition, fixture::now};
 use super::fixture::Case;
+use af_core::{error_code, test_util::trace::Capture};
 use afd_authoring::SystemSetup;
-use afd_core::{error_code, test_util::trace::Capture};
 use sqlx::Connection as _;
 
 /// Refuses `$event` on the workspace's fleets: the fault the proof installs.

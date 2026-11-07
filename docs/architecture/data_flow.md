@@ -218,7 +218,7 @@ An admission failure remains visible to its producer, which can retry the same i
 
 `fleet.events` is also the only one of the four carrying a `status` TEXT column rather than NULL tests. That is not a lapse from the rule the ledgers follow. An event has a genuine vocabulary (`received`, `processed`, `fleet_error`, `gate_blocked`, `balance_exhausted` and the rest), where a delivery has exactly two facts.
 
-The spellings live in `afd_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
+The spellings live in `af_core::event::status` and are never literals in schema (RULE STS). Asking "is it still `received`" is how the redelivery path tells a legitimate re-poll from an event that already ran.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|

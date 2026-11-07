@@ -2,8 +2,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use af_core::id::Uuid7;
 use afd_api::services::Leasing;
-use afd_core::id::Uuid7;
 use afd_fleet::lease::report::{Reconciled, RunTokens};
 use jiff::Timestamp;
 
@@ -66,7 +66,7 @@ impl Leasing for NoWork {
         _drafts: &afd_authoring::Drafts,
         _runner_id: &Uuid7,
         held: &[Uuid7],
-        _accepted: afd_wire::lease::AcceptedKinds,
+        _accepted: af_wire::lease::AcceptedKinds,
         _degraded: bool,
         _now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
@@ -100,7 +100,7 @@ impl Leasing for NoWork {
     fn report(
         &self,
         _runner_id: &Uuid7,
-        _request: &afd_wire::report::ReportRequest<'_>,
+        _request: &af_wire::report::ReportRequest<'_>,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send {
         std::future::ready(Ok(Reconciled {
@@ -134,7 +134,7 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _lease_id: &str,
-        _frames: &[afd_wire::activity::ActivityFrame<'_>],
+        _frames: &[af_wire::activity::ActivityFrame<'_>],
     ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
         std::future::ready(Ok(()))
     }
@@ -152,7 +152,7 @@ impl Leasing for NoWork {
     fn mint(
         &self,
         _runner_id: &Uuid7,
-        _request: &afd_wire::credentials::MintCredentialRequest<'_>,
+        _request: &af_wire::credentials::MintCredentialRequest<'_>,
         _now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<afd_credential::credential::Minted>> + Send {
         if let Some((token, expires_at)) = self.minted {
@@ -174,11 +174,11 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _fleet_id: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<afd_wire::memory::MemoryHydrateResponse<'static>>> + Send
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::memory::MemoryHydrateResponse<'static>>> + Send
     {
         std::future::ready(
             self.refused()
-                .map(|()| afd_wire::memory::MemoryHydrateResponse {
+                .map(|()| af_wire::memory::MemoryHydrateResponse {
                     memory: Vec::new(),
                     shared: Vec::new(),
                     publish: false,
@@ -191,7 +191,7 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _fleet_id: &Uuid7,
-        _request: &afd_wire::memory::MemoryPushRequest<'_>,
+        _request: &af_wire::memory::MemoryPushRequest<'_>,
         _now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<afd_memory::Captured>> + Send {
         std::future::ready(self.refused().map(|()| afd_memory::Captured::default()))
@@ -202,12 +202,12 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _fleet_id: &Uuid7,
-        _request: &afd_wire::memory::MemoryRecallRequest<'_>,
-    ) -> impl Future<Output = afd_fleet::Result<afd_wire::memory::MemoryRecallResponse<'static>>> + Send
+        _request: &af_wire::memory::MemoryRecallRequest<'_>,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::memory::MemoryRecallResponse<'static>>> + Send
     {
         std::future::ready(
             self.refused()
-                .map(|()| afd_wire::memory::MemoryRecallResponse {
+                .map(|()| af_wire::memory::MemoryRecallResponse {
                     memory: Vec::new(),
                     shared: Vec::new(),
                 }),
@@ -220,11 +220,11 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _lease_id: &str,
-        request: &afd_wire::tool_detail::ToolCallRecordsRequest<'_>,
+        request: &af_wire::tool_detail::ToolCallRecordsRequest<'_>,
         _now: Timestamp,
-    ) -> impl Future<Output = afd_fleet::Result<afd_wire::tool_detail::ToolCallRecordsStored>> + Send
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::tool_detail::ToolCallRecordsStored>> + Send
     {
-        std::future::ready(Ok(afd_wire::tool_detail::ToolCallRecordsStored {
+        std::future::ready(Ok(af_wire::tool_detail::ToolCallRecordsStored {
             stored_count: request.calls.len(),
             skipped_count: 0,
         }))
@@ -236,7 +236,7 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _lease_id: &str,
-        _request: afd_wire::report::RenewRequest,
+        _request: af_wire::report::RenewRequest,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Timestamp>> + Send {
         std::future::ready(Ok(now))
@@ -248,7 +248,7 @@ impl Leasing for NoWork {
         _lease: &Uuid7,
         _branch: &Uuid7,
         _fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<afd_context::Checkpoint>>> + Send {
+    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }
 
@@ -259,7 +259,7 @@ impl Leasing for NoWork {
         _branch: &Uuid7,
         _fence: u64,
         _expected: u64,
-        _checkpoint: afd_context::Checkpoint,
+        _checkpoint: af_context::Checkpoint,
     ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }
@@ -280,7 +280,7 @@ impl Leasing for NoWork {
         &self,
         _runner_id: &Uuid7,
         _lease_id: Uuid7,
-        _request: &afd_wire::message_verb::MessageRequest<'_>,
+        _request: &af_wire::message_verb::MessageRequest<'_>,
     ) -> impl Future<Output = afd_fleet::Result<afd_outbound::Interim>> + Send {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }

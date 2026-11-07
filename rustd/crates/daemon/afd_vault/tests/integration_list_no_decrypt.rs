@@ -76,7 +76,7 @@ async fn a_stored_secret_round_trips_from_write_to_list_to_delete() {
     // Stamped by the database's `now()` while this test ran.
     let age = provider_key
         .created_at
-        .duration_until(afd_core::clock::now())
+        .duration_until(af_core::clock::now())
         .unsigned_abs();
     assert!(age < STAMP_WINDOW, "stamped {age:?} from now");
 

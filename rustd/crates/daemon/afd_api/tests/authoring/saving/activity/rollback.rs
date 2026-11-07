@@ -160,7 +160,7 @@ async fn assert_receipt_refused(response: axum::response::Response) {
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
     assert_eq!(
         body["error_code"],
-        afd_core::error_code::INTERNAL_DB_QUERY.as_str()
+        af_core::error_code::INTERNAL_DB_QUERY.as_str()
     );
     assert!(
         !body.to_string().contains("injected receipt refusal"),

@@ -7,7 +7,7 @@
 //! fleet's `network.allow` names. Each host is resolved to its IPv4 addresses
 //! here, with the host's resolver, before the sandbox is built: the sandbox
 //! resolves nothing itself. A host the fleet names may not resolve to an
-//! address `afd_core::net` blocks (loopback, private, the tailnet's shared
+//! address `af_core::net` blocks (loopback, private, the tailnet's shared
 //! range, link-local and the cloud metadata service, reserved), the
 //! predicate `http_request` and the daemon's endpoint check refuse by too; a
 //! registry host is the operator's to point at its own mirror, so it is not
@@ -21,9 +21,9 @@ use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
-use afd_wire::policy::{NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy};
-use afr_egress::{Resolve, allowlist_host, unblocked};
+use af_egress::{Resolve, allowlist_host, unblocked};
+use af_wire::policy::{NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
+use af_wire::runner::{AssignedPolicy, NetworkPolicy};
 use afr_sandbox::{Allowlist, Network};
 use futures_util::future::try_join_all;
 

@@ -6,8 +6,8 @@ use crate::{
     recovery::{Capture, Restore},
     report::Ending,
 };
-use afd_core::id::Uuid7;
-use afd_wire::task::{CheckpointMode, CheckpointPlan, TaskDisposition, TaskTarget};
+use af_core::id::Uuid7;
+use af_wire::task::{CheckpointMode, CheckpointPlan, TaskDisposition, TaskTarget};
 use afr_agent::{PreparedTask, TaskRecovery};
 use afr_sandbox::Sandbox;
 use zeroize::Zeroizing;
@@ -20,7 +20,7 @@ pub(super) struct State {
 }
 
 fn api_toolbox() -> String {
-    afd_core::etag::sha256_hex(b"agentsfleet.api-only-recovery.v1")
+    af_core::etag::sha256_hex(b"agentsfleet.api-only-recovery.v1")
 }
 
 impl LeaseRun<'_> {
@@ -305,9 +305,9 @@ async fn verify_fresh_checkout(root: &std::path::Path, repository: &str, head: &
 
 /// A restored history carries the cursors authenticated by its saved manifest.
 fn recovered_history(
-    task: &afd_wire::task::TaskContext<'static>,
+    task: &af_wire::task::TaskContext<'static>,
     plan: &CheckpointPlan,
-    history: &afd_crypto::secret::SecretBytes,
+    history: &af_crypto::secret::SecretBytes,
 ) -> TaskRecovery {
     let mut task = task.clone();
     task.covered_input_sequence = plan.covered_input_sequence;

@@ -15,9 +15,9 @@
 //! spend it — see [`crate::jira`]. The call happens BEFORE the vault write, so
 //! a site listing that fails leaves nothing half-connected.
 
-use afd_core::credential::FIELD_ACCOUNTS_BASE;
-use afd_core::id::Uuid7;
-use afd_core::json::non_empty_str;
+use af_core::credential::FIELD_ACCOUNTS_BASE;
+use af_core::id::Uuid7;
+use af_core::json::non_empty_str;
 use jiff::Timestamp;
 use serde_json::{Map, Value};
 

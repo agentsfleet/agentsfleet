@@ -2,7 +2,7 @@
 
 use super::TaskSettlement;
 use crate::{Result, error::query, task::waits};
-use afd_wire::task::{TaskDisposition, TaskEffectState, TaskState};
+use af_wire::task::{TaskDisposition, TaskEffectState, TaskState};
 use sqlx::{Connection as _, PgConnection};
 
 #[derive(sqlx::FromRow)]
@@ -29,8 +29,8 @@ struct Current {
 /// A notice replaces an unverified completion claim in both history and delivery.
 pub(crate) async fn apply(
     connection: &mut PgConnection,
-    lease: &afd_core::id::Uuid7,
-    runner: &afd_core::id::Uuid7,
+    lease: &af_core::id::Uuid7,
+    runner: &af_core::id::Uuid7,
     settlement: Option<TaskSettlement<'_>>,
 ) -> Result<Option<&'static str>> {
     let current: Option<Current> = sqlx::query_as(include_str!("row.sql"))
@@ -309,7 +309,7 @@ async fn continue_ready(
         Ok(admitted) => admitted,
         Err(fault)
             if fault.is_over_capacity()
-                || fault.code() == afd_core::error_code::AUTHORING_POLICY =>
+                || fault.code() == af_core::error_code::AUTHORING_POLICY =>
         {
             savepoint.rollback().await.map_err(query(
                 "roll back refused continuation without discarding measured usage",

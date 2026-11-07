@@ -12,7 +12,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 #[tokio::test]
 async fn physical_responses_keep_status_and_stream_bytes_without_normalized_envelope_collection() {
-    for length in [3, afd_wire::authoring::ENVELOPE_BYTES_MAX + 1] {
+    for length in [3, af_wire::authoring::ENVELOPE_BYTES_MAX + 1] {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("fixture listener");
@@ -115,7 +115,7 @@ async fn a_relative_request_is_refused_before_any_socket_can_open() {
         .send(request)
         .await
         .expect_err("relative HTTP URI refused");
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_UNKNOWN);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_UNKNOWN);
     let source = std::error::Error::source(&error).expect("typed transport cause");
     assert!(source.downcast_ref::<reqwest::Error>().is_some());
 }

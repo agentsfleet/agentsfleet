@@ -14,14 +14,14 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source the suites open pools
 # with, through the crates that own it.
-test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_db/test-util"]
+test-util = ["afd_auth/test-util", "af_core/test-util", "afd_db/test-util"]
 
 [dependencies]
 # The trait implemented here, and the record it answers with. `afd_auth` cannot
 # name `sqlx` — that is the portability wall this crate exists on the far side
 # of.
 afd_auth.workspace = true
-afd_core.workspace = true
+af_core.workspace = true
 # The pool. A directory holds one and runs three statements against it.
 afd_db.workspace = true
 # `derive` for the typed credential rows.
@@ -40,7 +40,7 @@ tracing-subscriber.workspace = true
 # The unreachable pool a lookup fails against, and the trace capture its line
 # is read back through.
 afd_db = { workspace = true, features = ["test-util"] }
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

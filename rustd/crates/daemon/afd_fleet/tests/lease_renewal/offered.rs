@@ -6,7 +6,7 @@
 //! authoring lease, through the same response type a runtime lease rides in.
 
 use super::{fixture::Running, replica::expire, seat::Seat};
-use afd_wire::lease::{AcceptedKinds, LeaseResponse, TaggedLease};
+use af_wire::lease::{AcceptedKinds, LeaseResponse, TaggedLease};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]

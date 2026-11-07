@@ -10,8 +10,8 @@ use crate::{
     review,
     types::{Review, StartOutcome},
 };
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::Definition;
+use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
 use jiff::Timestamp;
 use serde::Serialize;
 use sqlx::{Connection as _, PgConnection};
@@ -42,10 +42,10 @@ pub struct SavedFleet {
     /// Initial admission outcome, independent of completed work.
     pub start: StartOutcome,
     /// Creation time.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: Timestamp,
     /// Latest resource mutation.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: Timestamp,
     /// Exact activity count.
     pub events_processed: String,
@@ -95,7 +95,7 @@ impl Creations {
             connection,
             &context,
             &row.accepted.candidate(row.definition.clone()),
-            afd_core::clock::now(),
+            af_core::clock::now(),
         )
         .await
     }

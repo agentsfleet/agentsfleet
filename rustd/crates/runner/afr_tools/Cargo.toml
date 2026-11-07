@@ -16,19 +16,19 @@ workspace = true
 
 [dependencies]
 # `error_shell!`, `error_lifts!` and the registry code a refusal is logged under.
-afd_core.workspace = true
+af_core.workspace = true
 # The charset and relative-step rules a repository binding's halves are held to.
-afd_validate.workspace = true
+af_validate.workspace = true
 # A memory entry's shape and its default category.
-afd_wire.workspace = true
+af_wire.workspace = true
 # The run's memory, which the memory tools read and write.
 afr_memory.workspace = true
 # A sandbox-side handler reaches `/workspace` through the lease's executor.
 afr_executor.workspace = true
 # The egress tools send through the lease's guard and the shared transport.
-afr_egress.workspace = true
+af_egress.workspace = true
 # The field a credential's token sits in, which `pushover` reads.
-afr_secrets.workspace = true
+af_secrets.workspace = true
 # What `write_stdin` queues to a process's input.
 bytes.workspace = true
 # `web_fetch` reads a page's text, never its markup.
@@ -55,12 +55,12 @@ tracing.workspace = true
 # M-TEST-UTIL. Stub handlers for any published tool, so the agent's and the
 # supervisor's suites prove routing and admission before every real handler
 # exists, and a lease whose guard admits nothing.
-test-util = ["afr_egress/test-util"]
+test-util = ["af_egress/test-util"]
 
 [dev-dependencies]
 # The counting mint and the recording transport the egress suites send through.
-afr_egress = { workspace = true, features = ["test-util"] }
-afd_core = { workspace = true, features = ["test-util"] }
+af_egress = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 # The session suites pause the clock so a yield passes without waiting.
 tokio = { workspace = true, features = ["macros", "rt", "test-util", "io-util", "net"] }
 # The live session suite serves a real executor on a scratch socket.

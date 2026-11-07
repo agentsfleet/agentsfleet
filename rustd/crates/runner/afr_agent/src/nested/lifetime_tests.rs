@@ -6,10 +6,10 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::activity::ActivityFrame;
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_providers::Chunk;
+use af_core::test_util::trace::Capture;
+use af_providers::Chunk;
+use af_wire::activity::ActivityFrame;
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{DELEGATE, SPAWN, WAIT_AGENT};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;

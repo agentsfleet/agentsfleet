@@ -1,9 +1,9 @@
 //! The tenant plane's HTTP seams: ownership, the workspace directory, api-keys,
 //! and terminal credentials.
 
+use af_core::id::Uuid7;
+use af_core::paging::Page;
 use afd_auth::principal::{Person, Principal};
-use afd_core::id::Uuid7;
-use afd_core::paging::Page;
 use afd_tenant::apikey::{ApiKeySort, Deactivation, Listing, MintRequest, Revealed, Revoked};
 use afd_tenant::workspace::access::Access;
 use afd_tenant::workspace::accounts::Accounts;

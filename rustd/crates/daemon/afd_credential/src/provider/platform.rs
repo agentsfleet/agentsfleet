@@ -20,8 +20,8 @@ use crate::provider::resolved::{Dialled, Resolved};
 use crate::provider::selection::PlatformDefault;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
+use af_crypto::secret::SecretString;
 use afd_billing::Posture;
-use afd_crypto::secret::SecretString;
 
 /// The credential field a platform default cannot resolve without.
 const FIELD_API_KEY: &str = "api_key";
@@ -121,8 +121,8 @@ mod tests {
     )]
     use super::{Credential, Platform};
     use crate::provider::selection::PlatformDefault;
+    use af_core::id::Uuid7;
     use afd_billing::Posture;
-    use afd_core::id::Uuid7;
 
     fn workspace() -> Uuid7 {
         Uuid7::parse("0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b").expect("a canonical v7 identifier")

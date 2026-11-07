@@ -2,13 +2,13 @@
 
 use std::time::Duration;
 
-use afd_core::{error_code, test_util::trace::Capture};
+use af_core::{error_code, test_util::trace::Capture};
+use af_wire::task::{DecisionAssessment, DecisionReservationInput};
 use afd_db::{Db, config::DbRole};
 use afd_fleet::{
     lease::Leases,
     task::{TaskLifecycle as _, Tasks},
 };
-use afd_wire::task::{DecisionAssessment, DecisionReservationInput};
 use sqlx::Connection as _;
 use tokio::time::timeout;
 
@@ -82,7 +82,7 @@ pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
         Leases::new(
             database.clone(),
             case.held.fixtures.queue().clone(),
-            afd_crypto::entropy::Entropy::new(),
+            af_crypto::entropy::Entropy::new(),
         ),
         case.admissions.clone(),
         fixture.dependencies.clone(),

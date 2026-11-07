@@ -6,12 +6,12 @@ use crate::{
     error::query,
     task::{TaskRefusal, Tasks, storage::StorageSession, transaction},
 };
-use afd_core::id::Uuid7;
-use afd_crypto::{
+use af_core::id::Uuid7;
+use af_crypto::{
     checkpoint::{CheckpointScope, EncryptedCheckpointObject},
     secret::SecretBytes,
 };
-use afd_wire::task::CheckpointObject;
+use af_wire::task::CheckpointObject;
 use serde::Serialize;
 use sqlx::types::Json;
 
@@ -46,9 +46,9 @@ pub(super) async fn remote(
     };
     let split = bytes
         .len()
-        .checked_sub(afd_crypto::TAG_LEN)
+        .checked_sub(af_crypto::TAG_LEN)
         .ok_or(TaskRefusal::CheckpointIncompatible)?;
-    let tag: [u8; afd_crypto::TAG_LEN] = bytes
+    let tag: [u8; af_crypto::TAG_LEN] = bytes
         .split_off(split)
         .try_into()
         .map_err(|_invalid| TaskRefusal::CheckpointIncompatible)?;
@@ -60,7 +60,7 @@ pub(super) async fn remote(
             .ok_or(TaskRefusal::CheckpointIncompatible)?,
     )
     .map_err(|_invalid| TaskRefusal::CheckpointIncompatible)?;
-    let nonce: [u8; afd_crypto::NONCE_LEN] = nonce
+    let nonce: [u8; af_crypto::NONCE_LEN] = nonce
         .try_into()
         .map_err(|_invalid| TaskRefusal::CheckpointIncompatible)?;
     let plaintext = EncryptedCheckpointObject::from_parts(bytes, tag).open(
@@ -75,7 +75,7 @@ pub(super) async fn remote(
         },
     )?;
     if plaintext.expose().len() as u64 != object.plaintext.size
-        || afd_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
+        || af_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
     {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }

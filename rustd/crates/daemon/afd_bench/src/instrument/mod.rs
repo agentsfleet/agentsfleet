@@ -33,10 +33,10 @@
 use core::time::Duration;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use afd_observability::metrics::instrument::Instruments;
-use afd_observability::metrics::registry::Registry;
-use afd_observability::producers::{self, GaugeSources};
-use afd_observability::semconv;
+use af_observability::metrics::instrument::Instruments;
+use af_observability::metrics::registry::Registry;
+use af_observability::producers::{self, GaugeSources};
+use af_observability::semconv;
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::metrics::data::{

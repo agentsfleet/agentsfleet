@@ -6,7 +6,7 @@ use crate::{
     Access, Drafts, Result, access, draft::read, error::raise::query,
     lease::guard::DELETION_GENERATION, types::DraftState,
 };
-use afd_core::{error_code, id::Uuid7};
+use af_core::{error_code, id::Uuid7};
 use sqlx::Connection as _;
 
 pub use rows::Notice;

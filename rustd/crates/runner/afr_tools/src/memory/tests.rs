@@ -5,7 +5,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::memory::{
+use af_wire::memory::{
     MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility,
 };
 use afr_memory::{Hydrated, Seed};
@@ -31,7 +31,7 @@ async fn the_four_tools_share_one_lease_memory() {
     let window = hydrated();
     let lease = Lease::new(
         Box::new(Hydrated::new(Seed::window(&window))),
-        afr_egress::testing::closed(),
+        af_egress::testing::closed(),
         &crate::verbs::CLOSED,
     );
     let (store, recall, list, forget) = (

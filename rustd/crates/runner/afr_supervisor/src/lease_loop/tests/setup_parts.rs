@@ -10,11 +10,11 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
-use afd_core::test_util::trace::{Capture, CapturedEvent};
-use afd_wire::credentials::MintCredentialResponse;
-use afd_wire::lease::LeasePayload;
-use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
-use afd_wire::runner::NetworkPolicy;
+use af_core::test_util::trace::{Capture, CapturedEvent};
+use af_wire::credentials::MintCredentialResponse;
+use af_wire::lease::LeasePayload;
+use af_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_wire::runner::NetworkPolicy;
 use afr_tools::catalog::GIT;
 use bytes::Bytes;
 

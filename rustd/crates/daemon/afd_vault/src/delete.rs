@@ -28,7 +28,7 @@
 //! caller has to keep. There is no flag, no idempotent abort, and no path that
 //! can forget.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::{Acquire as _, Transaction};
 
 use crate::error::{ErrorKind, Result, query, still_referenced};

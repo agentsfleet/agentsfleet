@@ -12,8 +12,8 @@ use crate::{
     review,
     types::{Candidate, SaveOrigin, SaveSource, SourcePin},
 };
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::Definition;
+use af_core::id::Uuid7;
+use af_fleet_runtime::Definition;
 use sqlx::PgConnection;
 
 pub(super) struct Captured {

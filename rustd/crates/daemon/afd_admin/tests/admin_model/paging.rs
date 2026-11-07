@@ -1,7 +1,7 @@
 //! Real API-role catalogue pages never mix generations or lose a tied provider.
 use super::{Lane, NOW, details};
+use af_core::error_code;
 use afd_admin::CreateModel;
-use afd_core::error_code;
 
 async fn seed(lane: &Lane) {
     for suffix in ["a", "b", "c"] {

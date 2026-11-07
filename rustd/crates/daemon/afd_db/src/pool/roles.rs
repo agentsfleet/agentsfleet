@@ -6,7 +6,7 @@
 use super::Db;
 use crate::config::{DbRole, PoolConfig};
 use crate::error::Result;
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 
 /// The three pools a daemon runs on.
 ///

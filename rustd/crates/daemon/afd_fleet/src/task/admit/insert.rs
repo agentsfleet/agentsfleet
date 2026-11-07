@@ -1,6 +1,6 @@
 //! Typed writes use the transaction whose source and slot are already locked.
 
-use afd_wire::task::{TaskState, UNFINISHED_MAX};
+use af_wire::task::{TaskState, UNFINISHED_MAX};
 use sqlx::PgConnection;
 
 use super::super::{
@@ -36,7 +36,7 @@ pub(super) async fn item(
         .bind(item.action().as_str())
         .bind(item.span().start)
         .bind(item.span().end)
-        .bind(binding.task_id.as_ref().map(afd_core::id::Uuid7::as_str))
+        .bind(binding.task_id.as_ref().map(af_core::id::Uuid7::as_str))
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -58,7 +58,7 @@ pub(super) async fn task(
         TaskState::Ready
     };
     let questions =
-        serde_json::to_string(&item.questions).map_err(afd_core::json::Unreadable::from)?;
+        serde_json::to_string(&item.questions).map_err(af_core::json::Unreadable::from)?;
     sqlx::query_scalar::<_, String>(sql::INSERT_TASK)
         .bind(
             binding
@@ -112,7 +112,7 @@ pub(super) async fn lease(
         .bind(lease.lease_id.as_str())
         .bind(lease.runner_id.as_str())
         .bind(afd_billing::biller::WorkKey::FleetLease(lease.lease_id.clone()).work_type())
-        .bind(i64::from(afd_wire::usage::DAEMON_SEQ_BASE))
+        .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
         .bind(super::super::lease::SLICE_SECONDS)
         .bind(1_000_000_000_i64)
         .execute(connection)

@@ -6,8 +6,8 @@
 //! John's. Each signs in with a browser session, the one credential resolved
 //! through the user row a membership hangs from.
 
+use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet, TENANT_OWNER_GRANT};
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};

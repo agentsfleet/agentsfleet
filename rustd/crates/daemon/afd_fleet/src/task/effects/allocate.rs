@@ -6,8 +6,8 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, execution, github::BoundPr, guard, row, transaction},
 };
-use afd_core::clock;
-use afd_wire::task::TaskEffectInput;
+use af_core::clock;
+use af_wire::task::TaskEffectInput;
 use sqlx::{PgConnection, types::Json};
 
 #[derive(sqlx::FromRow)]
@@ -19,12 +19,12 @@ struct PublicationContext {
 
 #[derive(serde::Serialize)]
 struct Canonical<'a> {
-    task: &'a afd_wire::task::DecisionTaskVersion,
+    task: &'a af_wire::task::DecisionTaskVersion,
     source_item_id: &'a str,
     covered_input_sequence: u64,
     expected_head: &'a str,
     tested_tree: &'a str,
-    changes: &'a [afd_wire::task::TaskFileChange],
+    changes: &'a [af_wire::task::TaskFileChange],
 }
 
 pub(super) async fn reserve(
@@ -40,8 +40,8 @@ pub(super) async fn reserve(
         tested_tree: &input.tested_tree,
         changes: &input.changes,
     })
-    .map_err(afd_core::json::Unreadable::from)?;
-    let digest = afd_core::etag::sha256_hex(request.as_bytes());
+    .map_err(af_core::json::Unreadable::from)?;
+    let digest = af_core::etag::sha256_hex(request.as_bytes());
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // Replays remain readable after a stop, but never regain mutation authority.
@@ -148,7 +148,7 @@ async fn publication_context(
 ) -> Result<PublicationContext> {
     if matches!(
         owned.snapshot.context.target,
-        afd_wire::task::TaskTarget::ApiOnly
+        af_wire::task::TaskTarget::ApiOnly
     ) {
         return Err(TaskRefusal::InvalidTarget.into());
     }

@@ -87,7 +87,7 @@ struct Abandoned<'a> {
 impl Abandoned<'_> {
     fn announce(&self) {
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
+        let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
         let Self {
             provider,
             fleet_id,

@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::{Acquired, Leases};
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
@@ -43,7 +43,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) -> String {
         .bind(fleet)
         .bind(workspace)
         .bind(afd_admission::Producer::Steer.as_str())
-        .bind(afd_wire::event::EventType::Chat.as_str())
+        .bind(af_wire::event::EventType::Chat.as_str())
         .bind(fixtures.enrolled_at().to_sqlx())
         .execute(
             &mut *fixtures

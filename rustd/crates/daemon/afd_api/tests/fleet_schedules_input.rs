@@ -13,8 +13,8 @@
 
 use crate::harness;
 
+use af_core::error_code;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code;
 use afd_cron::validate::{
     DETAIL_INVALID_CRON, DETAIL_INVALID_TIMEZONE, MAX_CRON_LEN, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN,
 };

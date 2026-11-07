@@ -14,7 +14,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_db::Db;
 use afd_db::config::DbRole;
 
@@ -22,7 +22,7 @@ use super::integration_pool_faults::fault_net::FaultProxy;
 use super::integration_pool_faults::lane::{
     ACQUIRE_BUDGET, config_through, lane_database, lane_target,
 };
-use afd_core::test_util::trace::install_subscriber;
+use af_core::test_util::trace::install_subscriber;
 
 /// A stall that a second attempt does not clear is answered as a stall, with
 /// the census, after exactly two budgets.

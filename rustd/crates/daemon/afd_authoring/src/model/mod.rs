@@ -1,9 +1,9 @@
 //! Model eligibility uses the workspace billing owner, never the chat creator's account.
 
 use crate::{Result, error::ErrorKind};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 use afd_credential::provider::{PLATFORM_MODEL_REF, RegisteredModel};
-use afd_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 use sqlx::PgConnection;
 
 pub(crate) mod budget;
@@ -23,12 +23,12 @@ pub use progress::{CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, draft_chann
 pub use provider::{Network, ProviderRequest, ProviderResponse, Transport};
 
 /// Model proposals use the same native types as drawer and activity edits.
-pub type ModelCallInput = afd_wire::authoring::ModelCall<Definition, ConfigOp, InstructionEdit>;
+pub type ModelCallInput = af_wire::authoring::ModelCall<Definition, ConfigOp, InstructionEdit>;
 /// A bounded result containing validated native proposal shapes.
-pub type ModelCallResult = afd_wire::authoring::ModelResult<Definition, ConfigOp, InstructionEdit>;
+pub type ModelCallResult = af_wire::authoring::ModelResult<Definition, ConfigOp, InstructionEdit>;
 
 #[cfg(test)]
-pub(crate) use afd_inference::input_tokens;
+pub(crate) use af_inference::input_tokens;
 
 /// The `authoring.dispatches.status` words, and the knowledge word a receipt's
 /// usage carries when its provider figures are authoritative.
@@ -79,16 +79,16 @@ pub(crate) async fn selected(
 }
 
 pub(crate) fn configured<'a>(
-    inference: Option<&'a afd_wire::inference::ModelInference>,
+    inference: Option<&'a af_wire::inference::ModelInference>,
     endpoint: Option<&str>,
     context: i32,
     input: i64,
     output: i64,
-) -> Option<afd_inference::Configured<'a>> {
+) -> Option<af_inference::Configured<'a>> {
     let context = u32::try_from(context).unwrap_or_default();
     inference
         .filter(|_| input >= 0 && output >= 0)
-        .and_then(|settings| afd_inference::Configured::new(settings, context).ok())
+        .and_then(|settings| af_inference::Configured::new(settings, context).ok())
         .filter(|route| route.accepts_endpoint(endpoint))
 }
 

@@ -30,7 +30,7 @@ const KNOB: &str = "GIT_COMMIT";
 
 #[expect(
     clippy::disallowed_methods,
-    reason = "a build script has no build-dependency on afd_core, and adding one for a single read would compile it for the host"
+    reason = "a build script has no build-dependency on af_core, and adding one for a single read would compile it for the host"
 )]
 fn main() {
     println!("cargo:rerun-if-env-changed={KNOB}");

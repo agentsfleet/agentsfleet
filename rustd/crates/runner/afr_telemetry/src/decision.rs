@@ -1,6 +1,6 @@
 //! Decision trace metadata excludes state, question text and credentials.
 
-use afd_observability::semconv::{ATTR_OPERATION_NAME, ATTR_PROVIDER_NAME, RUNNER_SCOPE_NAME};
+use af_observability::semconv::{ATTR_OPERATION_NAME, ATTR_PROVIDER_NAME, RUNNER_SCOPE_NAME};
 use tracing::Span;
 
 use crate::labels::decision::{DecisionProvider, DecisionPurpose};

@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use afd_core::error_code::ErrorCode;
+use af_core::error_code::ErrorCode;
 use serde::Deserialize;
 
 use super::{Error, ErrorKind};
@@ -13,11 +13,11 @@ use crate::client::Verb;
 // client's and the decoder's errors are absent on purpose: both need to know
 // WHICH verb failed, which only the call site can say. An address error has
 // one meaning wherever it arises, so it lifts.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     std::io::Error => Io,
-    afd_crypto::error::Error => Crypto,
+    af_crypto::error::Error => Crypto,
     tempfile::PersistError => Persist,
-    afd_core::error::Error => Identifier,
+    af_core::error::Error => Identifier,
     tokio::task::JoinError => Task,
     url::ParseError => Address,
     garde::Report => LeaseSize,
@@ -71,7 +71,7 @@ pub(crate) fn refused(verb: Verb, status: u16, code: Option<ErrorCode>) -> Error
 /// A body that is not a problem document, or names a code this build does not
 /// declare, refuses with no code rather than guessing one.
 pub(crate) fn refused_with_body(verb: Verb, status: u16, body: &[u8]) -> Error {
-    let code = afd_core::json::object_from_slice::<Problem<'_>>(body)
+    let code = af_core::json::object_from_slice::<Problem<'_>>(body)
         .ok()
         .and_then(|problem| problem.error_code)
         .and_then(|named| ErrorCode::lookup(&named));

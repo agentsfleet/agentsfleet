@@ -1,6 +1,6 @@
 //! Reuse the shared canonical cursor codec; bind each walk to its complete scope.
 
-use afd_core::paging::struct_cursor::{self, StructCursor};
+use af_core::paging::struct_cursor::{self, StructCursor};
 use serde::{Deserialize, Serialize};
 
 use super::input::{Bounds, DETAIL_CURSOR};

@@ -32,7 +32,7 @@
 //! the row marked synced. A stall between that read and the request still
 //! races; per-revision upstream ids are what close it.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use crate::error::Result;
 use crate::model::{DesiredStatus, Schedule};
@@ -108,7 +108,7 @@ impl Schedules {
         token: &Uuid7,
         attempts: Attempts,
     ) -> Result<Reconciled> {
-        use afd_observability::metrics::label::scheduler::SyncOutcome;
+        use af_observability::metrics::label::scheduler::SyncOutcome;
         let result = self.reconcile_inner(held, token, attempts).await;
         let outcome = match &result {
             Ok(Reconciled::Synced(_)) => SyncOutcome::Synced,
@@ -120,7 +120,7 @@ impl Schedules {
             Ok(Reconciled::Removed) => SyncOutcome::Removed,
             Err(_) => SyncOutcome::Error,
         };
-        afd_observability::producers::scheduler::synced(outcome);
+        af_observability::producers::scheduler::synced(outcome);
         result
     }
 

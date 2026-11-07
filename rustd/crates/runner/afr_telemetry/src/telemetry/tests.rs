@@ -9,10 +9,10 @@ use std::time::{Duration, Instant};
 
 use std::sync::atomic::Ordering;
 
-use afd_core::env::MapEnv;
-use afd_core::test_util::trace;
-use afd_observability::semconv::RUNNER_SCOPE_NAME;
-use afd_otlp::{OTEL_ENDPOINT_KNOB, OTEL_TIMEOUT_KNOB};
+use af_core::env::MapEnv;
+use af_core::test_util::trace;
+use af_observability::semconv::RUNNER_SCOPE_NAME;
+use af_otlp::{OTEL_ENDPOINT_KNOB, OTEL_TIMEOUT_KNOB};
 use tracing_subscriber::layer::SubscriberExt as _;
 
 use super::{EVENT_CLOSE_TIMED_OUT, EVENT_DISABLED, EVENT_STARTED, Telemetry, announce_disabled};
@@ -149,7 +149,7 @@ fn a_finished_lease_frees_its_slot_through_the_production_pipeline() {
         .expect("an endpoint is configured");
     let telemetry = Telemetry::install_on(&endpoint, clock.clone()).expect("the pipeline builds");
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
-    let leases = usize::try_from(afd_core::limits::MAX_WORKERS).unwrap_or(usize::MAX) * 4;
+    let leases = usize::try_from(af_core::limits::MAX_WORKERS).unwrap_or(usize::MAX) * 4;
 
     tracing::subscriber::with_default(subscriber, || {
         for _lease in 0..leases {
@@ -244,7 +244,7 @@ fn closing_against_a_silent_collector_stops_at_its_budget() {
     );
     assert_eq!(
         capture.only(EVENT_CLOSE_TIMED_OUT).field("error_code"),
-        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
 }
 

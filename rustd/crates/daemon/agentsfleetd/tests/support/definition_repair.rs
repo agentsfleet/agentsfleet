@@ -7,7 +7,7 @@
 //! existing draft ends the run with its link, a failed read ends it
 //! diagnosis-only — and [`routes`] is the GitHub it walks against.
 
-use afr_providers::Chunk;
+use af_providers::Chunk;
 use hyper::Method;
 use serde_json::{Value, json};
 

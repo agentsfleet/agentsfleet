@@ -3,12 +3,12 @@
 //!
 //! The arguments are `url`, `method`, `headers` and `body`, and the answer is
 //! `Status: N` then the body. Every policy rule is the lease's guard's
-//! (`afr_egress`), so this handler only drafts the request and words the
+//! (`af_egress`), so this handler only drafts the request and words the
 //! answer.
 
 use std::collections::BTreeMap;
 
-use afr_egress::{Draft, Inbound, Placement, RESPONSE_MAX_BYTES};
+use af_egress::{Draft, Inbound, Placement, RESPONSE_MAX_BYTES};
 use schemars::JsonSchema;
 use serde::Deserialize;
 

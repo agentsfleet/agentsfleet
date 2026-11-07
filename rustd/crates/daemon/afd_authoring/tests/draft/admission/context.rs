@@ -1,8 +1,8 @@
 //! Admission transfers the current request while history stays private in the daemon.
 
 use super::{Fixture, claim, fixture, funded, mint, now};
+use af_wire::authoring::{ContextRole, ENVELOPE_BYTES_MAX};
 use afd_authoring::types::{Draft, SendMessage, Source};
-use afd_wire::authoring::{ContextRole, ENVELOPE_BYTES_MAX};
 
 async fn blank(f: &Fixture) -> Draft {
     let mut request = f.request(mint(), Some("First question"));

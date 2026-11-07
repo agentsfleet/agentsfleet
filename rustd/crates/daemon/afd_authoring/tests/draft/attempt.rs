@@ -4,13 +4,13 @@ use super::{
     fixture::{Fixture, now},
     mint,
 };
+use af_core::id::Uuid7;
+use af_wire::authoring::{ActivityEvent, ActivityRequest, Proposal};
 use afd_authoring::{
     Access, ActivityInput,
     types::{Draft, Source},
 };
-use afd_core::id::Uuid7;
 use afd_db::test_util::{RunnerPolicy, RunnerSeed};
-use afd_wire::authoring::{ActivityEvent, ActivityRequest, Proposal};
 
 const ATTEMPT: &str = "\
 INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user_id,

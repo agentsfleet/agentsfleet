@@ -1,8 +1,8 @@
 //! Typed private context requests use the existing authenticated runner transport.
 use super::{ControlPlane, Verb};
 use crate::Result;
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     context::{ContextLoaded, ContextPut},
     paths,
 };

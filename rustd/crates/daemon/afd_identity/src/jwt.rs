@@ -91,7 +91,7 @@ impl Header {
     /// - [`VerifyError::MissingKeyId`] when there is no `kid` to select a key.
     pub(crate) fn parse(raw: &[u8]) -> Result<(Self, String), VerifyError> {
         let header: Self =
-            afd_core::json::object_from_slice(raw).map_err(|_invalid| VerifyError::Malformed)?;
+            af_core::json::object_from_slice(raw).map_err(|_invalid| VerifyError::Malformed)?;
         if header.alg != ACCEPTED_ALG {
             return Err(VerifyError::UnsupportedAlgorithm);
         }

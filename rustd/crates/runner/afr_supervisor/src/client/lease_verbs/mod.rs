@@ -7,11 +7,11 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
-use afd_wire::message_verb::MessageRequest;
-use afd_wire::paths;
-use afd_wire::schedule_verb::{
+use af_core::id::Uuid7;
+use af_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_wire::message_verb::MessageRequest;
+use af_wire::paths;
+use af_wire::schedule_verb::{
     QUERY_FENCING_TOKEN, ScheduleCreateRequest, SchedulePatchRequest, ScheduleRunRequest,
 };
 use afr_agent::ScheduleCall;

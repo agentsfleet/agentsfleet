@@ -3,16 +3,16 @@
 //! one. They nest inside the supervisor's lease span, which names the runner.
 //!
 //! `invoke_agent` is the run, `chat` one model turn and `execute_tool` one
-//! call. The keys are `afd_observability::semconv`'s, spelled nowhere else.
+//! call. The keys are `af_observability::semconv`'s, spelled nowhere else.
 
-use afd_observability::semconv::{
+use af_observability::semconv::{
     ATTR_ERROR_TYPE, ATTR_OPERATION_NAME, ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL,
     ATTR_TOOL_CALL_ID, ATTR_TOOL_NAME, ATTR_USAGE_CACHE_CREATION_TOKENS,
     ATTR_USAGE_CACHE_READ_TOKENS, ATTR_USAGE_INPUT_TOKENS, ATTR_USAGE_OUTPUT_TOKENS,
     OPERATION_CHAT, OPERATION_EXECUTE_TOOL, OPERATION_INVOKE_AGENT, RUNNER_SCOPE_NAME, provider,
 };
-use afd_wire::policy::ExecutionPolicy;
-use afr_providers::Usage;
+use af_providers::Usage;
+use af_wire::policy::ExecutionPolicy;
 use afr_tools::ToolErrorCode;
 use tracing::Span;
 use tracing::field::Empty;
@@ -84,8 +84,8 @@ pub(crate) fn failed(span: &Span, code: Option<ToolErrorCode>) {
 
 #[cfg(test)]
 mod tests {
-    use afd_core::test_util::trace;
-    use afd_observability::semconv::ATTR_TOOL_NAME;
+    use af_core::test_util::trace;
+    use af_observability::semconv::ATTR_TOOL_NAME;
 
     /// A tool name the catalog does not publish leaves the host as `_other`,
     /// so the model's own text never rides the span.

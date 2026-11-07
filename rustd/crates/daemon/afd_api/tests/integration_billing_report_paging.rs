@@ -1,7 +1,7 @@
 //! Served pagination, deterministic spend ordering and unreadable ledger refusals.
 use super::{MODEL, REPORT, assert_ledger, get, harness, seed};
 use crate::integration_workspace_members::fixture::Members;
-use afd_core::error_code;
+use af_core::error_code;
 use http::StatusCode;
 use serde_json::{Value, json};
 

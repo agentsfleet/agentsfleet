@@ -1,7 +1,7 @@
 //! A lease whose workspace holds a checkout runs `git` in it, without the
 //! model having to find it first.
 
-use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_wire::policy::{RepositoryAccess, RepositoryBinding};
 use afr_tools::catalog::GIT;
 use afr_tools::sandbox::{ScriptedExecutor, ScriptedProcess};
 use serde_json::json;

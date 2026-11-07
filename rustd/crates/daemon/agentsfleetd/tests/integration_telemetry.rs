@@ -22,8 +22,8 @@
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use afd_observability::producers::GaugeSources;
-use afd_observability::semconv;
+use af_observability::producers::GaugeSources;
+use af_observability::semconv;
 use agentsfleetd::preflight::{OTEL_ENDPOINT_KNOB, OtlpConfig};
 use agentsfleetd::telemetry::{Exports, install};
 use axum::Router;
@@ -86,7 +86,7 @@ fn configured(endpoint: &str) -> OtlpConfig {
         .expect("the fixture endpoint is an absolute URL")
         // See the module note: JSON so the assertions read the body rather
         // than decoding it through a second protobuf implementation.
-        .with_encoding(afd_otlp::Encoding::HttpJson)
+        .with_encoding(af_otlp::Encoding::HttpJson)
         .with_timeout(Duration::from_secs(2))
 }
 
@@ -149,7 +149,7 @@ fn bodies(received: &Received) -> String {
 /// does here what `open_telemetry` does there.
 fn installed(config: &OtlpConfig) -> Exports {
     let (exports, instruments) = install(config).expect("the fixture endpoint builds a transport");
-    let _claimed = afd_observability::producers::install(&instruments, &GaugeSources::silent())
+    let _claimed = af_observability::producers::install(&instruments, &GaugeSources::silent())
         .expect("the silent gauge set is one the producer layer accepts");
     exports
 }
@@ -291,8 +291,8 @@ async fn the_subscriber_slot_takes_the_export_bridges() {
 
     // First installer wins the process-wide slot; every later one is told so
     // rather than silently replacing a subscriber somebody is already reading.
-    let took = agentsfleetd::logs::install(&afd_core::env::MapEnv::default());
-    let took_again = agentsfleetd::logs::install(&afd_core::env::MapEnv::default());
+    let took = agentsfleetd::logs::install(&af_core::env::MapEnv::default());
+    let took_again = agentsfleetd::logs::install(&af_core::env::MapEnv::default());
     assert!(
         !took_again,
         "a second install answers false — the global default is set once"

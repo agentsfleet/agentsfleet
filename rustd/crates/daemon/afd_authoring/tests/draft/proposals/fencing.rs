@@ -1,7 +1,7 @@
 //! Revocation and fences precede every mutation and receipt replay.
 
 use super::{Attempt, Fixture, Source, mint};
-use afd_core::error_code::{AUTHORING_FENCE, AUTHORING_NOT_FOUND};
+use af_core::error_code::{AUTHORING_FENCE, AUTHORING_NOT_FOUND};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -120,7 +120,7 @@ async fn a_progress_hint_commits_no_candidate_and_unknown_usage_fences_the_next_
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let mut hint = a.initialize(1);
-    hint.event = afd_wire::authoring::ActivityEvent::Progress {
+    hint.event = af_wire::authoring::ActivityEvent::Progress {
         text: "Reading the checkout logs\r\n".into(),
     };
     let accepted = f
@@ -173,7 +173,7 @@ async fn a_model_the_catalogue_changed_fences_the_attempt_that_pinned_it() {
             .await
             .expect_err("the pinned snapshot no longer matches the live model")
             .code(),
-        afd_core::error_code::AUTHORING_MODEL
+        af_core::error_code::AUTHORING_MODEL
     );
     assert_eq!(a.activity_count(&f).await, 0);
     assert_eq!(f.counts().await, (1, 0, 1));

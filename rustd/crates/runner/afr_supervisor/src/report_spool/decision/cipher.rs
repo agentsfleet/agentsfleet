@@ -2,7 +2,7 @@
 
 use super::super::authoring::files;
 use crate::{Result, error};
-use afd_crypto::{
+use af_crypto::{
     aad::Aad,
     entropy::Entropy,
     envelope::{Envelope, Sealer},
@@ -14,7 +14,7 @@ use zeroize::Zeroizing;
 
 const KEY: &str = "receipt.key";
 pub(super) const CONTENT: &str = "receipt.enc";
-const MAX_BYTES: u64 = 8 * afd_wire::decision::REPLY_MAX_BYTES as u64;
+const MAX_BYTES: u64 = 8 * af_wire::decision::REPLY_MAX_BYTES as u64;
 
 #[derive(Serialize, Deserialize)]
 struct Ciphertext {
@@ -27,7 +27,7 @@ struct Ciphertext {
 }
 
 pub(super) fn create(directory: &Path) -> Result<()> {
-    let mut bytes = Zeroizing::new([0_u8; afd_crypto::KEY_LEN]);
+    let mut bytes = Zeroizing::new([0_u8; af_crypto::KEY_LEN]);
     Entropy::new().fill(bytes.as_mut_slice())?;
     files::write(&directory.join(KEY), bytes.as_slice())
 }
@@ -35,7 +35,7 @@ pub(super) fn create(directory: &Path) -> Result<()> {
 fn key(directory: &Path) -> Result<Kek> {
     let bytes = Zeroizing::new(files::read(
         &directory.join(KEY),
-        afd_crypto::KEY_LEN as u64,
+        af_crypto::KEY_LEN as u64,
     )?);
     let key = bytes
         .as_slice()
@@ -61,7 +61,7 @@ pub(super) fn write(directory: &Path, call: &str, plaintext: &[u8]) -> Result<()
     )
 }
 
-pub(super) fn read(directory: &Path, call: &str) -> Result<afd_crypto::secret::SecretBytes> {
+pub(super) fn read(directory: &Path, call: &str) -> Result<af_crypto::secret::SecretBytes> {
     let stored: Ciphertext =
         serde_json::from_slice(&files::read(&directory.join(CONTENT), MAX_BYTES)?)
             .map_err(error::malformed(crate::client::Verb::TaskDecisionRecord))?;
@@ -72,7 +72,7 @@ pub(super) fn read(directory: &Path, call: &str) -> Result<afd_crypto::secret::S
         &stored.nonce,
         stored.bytes,
         &stored.tag,
-        afd_crypto::KEK_VERSION,
+        af_crypto::KEK_VERSION,
     )?;
     Ok(envelope.open(
         &key(directory)?,

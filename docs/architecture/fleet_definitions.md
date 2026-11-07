@@ -24,7 +24,7 @@ A DT freezes its accepted goal revision.
 Applying fleet setup does not silently replace an unfinished objective.
 Explicit revision adoption invalidates prior goal decisions.
 
-One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/protocol/afd_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
+One validated Definition serves browser chat, terminal chat, review, Library publication and runtime setup. The typed implementation is in `rustd/crates/protocol/af_fleet_runtime/src/definition/`. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
 
 Customers supply the job through chat or an editable Library copy, such as a pull-request review starter.
 
@@ -87,7 +87,7 @@ Bundle upload, GitHub archive import, export, tar snapshots, runner bundle downl
 | `instructions_md` | Required string, at most 32,768 characters, no NUL; CRLF and lone CR normalize to LF. May be empty while editing. |
 | `config.name` | Required lowercase letters/digits/hyphens, 1..64 bytes. |
 
-Evidence: `rustd/crates/protocol/afd_fleet_runtime/src/definition/mod.rs:63–118` and `src/name/mod.rs:37–67`. Runner tags are not setup: no level of the Definition accepts `tags`, and placement requires none. Browser and terminal chat use the same validator.
+Evidence: `rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs:63–118` and `src/name/mod.rs:37–67`. Runner tags are not setup: no level of the Definition accepts `tags`, and placement requires none. Browser and terminal chat use the same validator.
 
 Retain approval gates, anomaly rules, monthly ceilings, repository write access, network `read_only`/`read_post_paths`, trigger options, and context limits. Reject model-generated grants, secret values, provider identities, permission receipts, and unknown configuration keys. Credential names and repository requirements retain their existing meaning. `triggers` lists what wakes the fleet besides the messages sent to it; it may be empty or omitted for a fleet that is only ever talked to, and is stored as `[]` either way. Credential aliases and independently modeled child roles are deferred.
 
@@ -105,7 +105,7 @@ An accepted edit retains the model's conversational answer. A tool-only reply co
 
 Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save and publication.
 
-Implementation: `afd_authoring/src/model/provider/edits.rs`, `afd_fleet_runtime/src/definition/edit/mod.rs`, and `afr_supervisor/src/authoring/{proposal,turn}.rs` under `rustd/crates`.
+Implementation: `afd_authoring/src/model/provider/edits.rs`, `af_fleet_runtime/src/definition/edit/mod.rs`, and `afr_supervisor/src/authoring/{proposal,turn}.rs` under `rustd/crates`.
 
 First generated instructions are at most 12,288 characters; later edited instructions at most 32,768 characters. These character ceilings never replace L9's tokenizer checks. Count system instructions, tools, history, and reserved output against the model window. Long instructions are changed through small edits rather than repeated full rewrites.
 

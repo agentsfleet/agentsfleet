@@ -1,7 +1,7 @@
 //! Probe subscription readiness and use ordered markers to detect extra notices.
 
 use super::fixture::Saved;
-use afd_core::{
+use af_core::{
     env::{EnvSource as _, ProcessEnv},
     id::Uuid7,
 };

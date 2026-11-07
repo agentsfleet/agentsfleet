@@ -99,7 +99,7 @@ pub const INSERT_LEASED_FLEET_EVENT: &str = include_str!("insert_leased_fleet_ev
 /// status this transition is guarded on, `$6` detail, `$7` the gate status that
 /// counts as pending.
 ///
-/// [`status::RECEIVED`]: afd_core::event::status::RECEIVED
+/// [`status::RECEIVED`]: af_core::event::status::RECEIVED
 pub const UPDATE_FLEET_EVENT_FAILURE: &str = include_str!("update_fleet_event_failure.sql");
 
 /// End an event with the runner's verdict.

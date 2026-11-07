@@ -1,6 +1,6 @@
 //! A fenced synchronization result and its history commit together.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::history::{Fact, Receipt};
 use super::{CONTEXT_WRITE, Schedules};

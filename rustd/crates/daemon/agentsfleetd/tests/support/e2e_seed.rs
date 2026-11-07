@@ -36,8 +36,8 @@
 
 use std::borrow::Cow;
 
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use afd_state::sql::FLEET_STATUS_ACTIVE;
-use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use agentsfleetd::serve::Booted;
 use jiff::Timestamp;
 
@@ -122,7 +122,7 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
         host_id: Cow::Borrowed("host-e2e.fixture.test"),
         assigned_policy: AssignedPolicy {
-            durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: SandboxTier::LandlockFull,
             network_policy: NetworkPolicy::AllowListEgress,

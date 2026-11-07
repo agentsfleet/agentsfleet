@@ -17,8 +17,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use afd_core::id::Uuid7;
-use afd_crypto::secret::SecretBytes;
+use af_core::id::Uuid7;
+use af_crypto::secret::SecretBytes;
 
 use crate::connect::Connectors;
 use crate::error::Result;
@@ -68,7 +68,7 @@ impl Connectors {
     /// lives in the same document as the OAuth pair.
     ///
     /// This crate still verifies nothing. It hands the secret to the caller and
-    /// `afd_webhook` does the checking, which is the split the module note
+    /// `af_webhook` does the checking, which is the split the module note
     /// states: one wall for every surface that has one.
     ///
     /// `Ok(None)` for a deployment that has configured no app for `provider`,

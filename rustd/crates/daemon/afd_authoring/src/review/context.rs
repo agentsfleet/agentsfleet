@@ -1,7 +1,7 @@
 //! The reviewed subject survives private-draft deletion without retaining a transcript.
 
 use crate::{draft::read::Locked, types::SourcePin};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -87,7 +87,7 @@ mod tests {
     #![expect(clippy::expect_used, reason = "fixture identifiers are well formed")]
 
     use super::{Context, Subject};
-    use afd_core::id::Uuid7;
+    use af_core::id::Uuid7;
 
     fn id(last: u8) -> Uuid7 {
         Uuid7::parse(&format!("01900000-0000-7000-8000-0000000000{last:02x}")).expect("fixture id")

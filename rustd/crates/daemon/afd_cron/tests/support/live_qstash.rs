@@ -7,7 +7,7 @@
     reason = "a self-skip names the missing knobs on stderr"
 )]
 
-use afd_core::env::{EnvSource, ProcessEnv};
+use af_core::env::{EnvSource, ProcessEnv};
 use afd_cron::ScheduleService as Reconciler;
 use afd_cron::qstash::QStash;
 
@@ -56,7 +56,7 @@ pub(crate) fn against_live(lane: &CronLane, url: String, token: String) -> Recon
         lane.store.clone(),
         QStash::new(
             reqwest::Client::new(),
-            afd_crypto::secret::SecretString::new(token),
+            af_crypto::secret::SecretString::new(token),
             LIVE_DESTINATION.to_owned(),
             url,
         ),

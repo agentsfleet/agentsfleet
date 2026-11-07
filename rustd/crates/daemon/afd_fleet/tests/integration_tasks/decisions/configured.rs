@@ -1,7 +1,7 @@
 //! Saved runner policy gates new placement without revoking issued task authority.
 
+use af_wire::task::DecisionAssessment;
 use afd_fleet::{lease::Acquired, task::TaskLifecycle as _};
-use afd_wire::task::DecisionAssessment;
 
 use super::{
     super::fixture::{Case, exercise},

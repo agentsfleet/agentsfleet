@@ -8,7 +8,7 @@
               which sample it was"
 )]
 
-use afd_core::test_util::error_surface::{Expect, grade, grade_sentences};
+use af_core::test_util::error_surface::{Expect, grade, grade_sentences};
 use std::error::Error as _;
 
 use afd_admission::error::one_of_each_kind;
@@ -27,7 +27,7 @@ const SENTENCES: usize = 6;
 const RETRYABLE: usize = 4;
 
 /// Everything every error surface owes, graded once by
-/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
 /// rendering, no kind repeating its cause, and the measured counts above.
 #[test]
 fn the_error_surface_holds() {

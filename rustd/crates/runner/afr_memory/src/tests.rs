@@ -6,8 +6,8 @@
 
 use std::borrow::Cow;
 
-use afd_core::error_code;
-use afd_wire::memory::{
+use af_core::error_code;
+use af_wire::memory::{
     MAX_CONTENT_LEN, MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility,
 };
 

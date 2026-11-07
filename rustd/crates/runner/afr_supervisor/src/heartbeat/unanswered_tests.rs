@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use tokio::sync::watch;
 use tokio::time::{Instant, timeout};
 use tokio_util::sync::CancellationToken;

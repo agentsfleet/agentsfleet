@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use afd_wire::activity::ActivityFrame;
+use af_wire::activity::ActivityFrame;
 use tokio::time::Instant;
 
 /// A run's elapsed time, split where the frames say it went.

@@ -7,7 +7,7 @@ mod result;
 
 use super::source::Captured;
 use crate::{Result, error::ErrorKind, types::SourcePin};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 pub(super) fn target(captured: &Captured, fleet: &Uuid7, current: i64) -> Result<()> {
     match &captured.context.source_pin {

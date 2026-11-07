@@ -24,7 +24,7 @@ use backon::{ConstantBuilder, RetryableWithContext as _};
 use sqlx::pool::PoolConnection;
 use sqlx::{Executor as _, Postgres};
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use crate::error::{Error, ErrorKind, Result, query};
 

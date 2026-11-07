@@ -25,9 +25,9 @@ use afd_api_wire::grant::status;
 use afd_approval::{IntegrationGrants, REASON_DECLARED_AT_INSTALL, Revocation};
 use std::time::Duration;
 
-use afd_core::clock::after;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::clock::after;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 

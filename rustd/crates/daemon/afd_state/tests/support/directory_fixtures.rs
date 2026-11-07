@@ -139,7 +139,7 @@ fn minted_seed() -> u32 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// An identifier the schema accepts and [`afd_core::id::Uuid7`] refuses.
+/// An identifier the schema accepts and [`af_core::id::Uuid7`] refuses.
 ///
 /// The version nibble is `7`, which is all `ck_*_id_uuidv7` checks — but the
 /// variant nibble is `0`, and RFC 4122 spells that `8`, `9`, `a` or `b`. So

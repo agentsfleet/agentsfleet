@@ -2,7 +2,7 @@
 //! carries, and what the run leaves behind.
 
 use crate::{Completed, ExecutionResult, Failure, ResultOutcome};
-use afd_wire::memory::MemoryDelta;
+use af_wire::memory::MemoryDelta;
 
 use super::{Ending, Harness};
 use crate::engine::RunOutput;
@@ -52,10 +52,10 @@ impl Harness<'_, '_> {
             ending = Ending::Answered(self.combined_task_answer(text));
         }
         if let Ending::Answered(text) = &ending {
-            self.messages.push(afr_providers::Message::Assistant {
+            self.messages.push(af_providers::Message::Assistant {
                 text: self.shared.scrub.text(text).into_owned(),
                 calls: Vec::new(),
-                replay: afr_providers::Replay::default(),
+                replay: af_providers::Replay::default(),
             });
         }
         let recovery_task = self

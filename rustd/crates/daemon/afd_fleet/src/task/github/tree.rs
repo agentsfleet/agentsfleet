@@ -6,7 +6,7 @@ use super::{
     types::{Commit, Object},
 };
 use crate::{Result, task::TaskRefusal};
-use afd_wire::task::TaskEffectInput;
+use af_wire::task::TaskEffectInput;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde::Deserialize;
 use serde_json::{Value, json};

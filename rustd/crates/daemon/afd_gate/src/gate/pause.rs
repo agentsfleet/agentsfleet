@@ -7,7 +7,7 @@
 //! an operator is told, which is why the trigger travels as a value rather than
 //! as two copies of this function.
 //!
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 
 use super::sql;

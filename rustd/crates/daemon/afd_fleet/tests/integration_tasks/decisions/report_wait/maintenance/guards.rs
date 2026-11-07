@@ -1,7 +1,7 @@
 //! A native wait cannot spend or access an external service after authority ends.
 use super::{Waiting, counts, exercise, wait_state};
+use af_wire::task::TaskState;
 use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::task::TaskState;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]

@@ -9,11 +9,11 @@
 
 use std::sync::Arc;
 
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_admission::Admissions;
 use afd_credential::provider::Providers;
 use afd_cron::SigningKeys;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 use afd_tenant::session::Sessions as Logins;
@@ -46,7 +46,7 @@ pub(super) fn authoring(
     providers: &Providers,
     admissions: &Admissions,
     transport: afd_authoring::Network,
-    decisions: Option<&afd_core::id::Uuid7>,
+    decisions: Option<&af_core::id::Uuid7>,
 ) -> Authoring {
     let setup = afd_authoring::Setup::new(drafts.clone(), Arc::clone(kek));
     let decision_client = transport.guarded_client();

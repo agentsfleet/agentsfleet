@@ -10,7 +10,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use agentsfleetd::serve::{
     Acceptor, BootFailure, DEFAULT_PORT, Drain, dual_stack_listener, serve_accepts,
 };
@@ -68,7 +68,7 @@ async fn test_boot_refuses_an_unusable_environment_before_connecting() {
         "boot must refuse on the environment, before any connection: {failure:?}"
     );
     assert_eq!(failure.phase(), "preflight");
-    assert_eq!(failure.code(), afd_core::error_code::STARTUP_ENV_CHECK);
+    assert_eq!(failure.code(), af_core::error_code::STARTUP_ENV_CHECK);
     assert!(
         supervisor.inventory().is_empty(),
         "nothing is supervised by a boot that refused"
@@ -96,7 +96,7 @@ async fn test_boot_refuses_when_a_datastore_will_not_answer() {
         "the URL parsed, so this is a database failure and not an environment one: {failure:?}"
     );
     assert_eq!(failure.phase(), "database");
-    assert_eq!(failure.code(), afd_core::error_code::STARTUP_DB_CONNECT);
+    assert_eq!(failure.code(), af_core::error_code::STARTUP_DB_CONNECT);
     assert!(
         supervisor.inventory().is_empty(),
         "the accept loop is spawned last; a boot that failed earlier supervises nothing"
@@ -133,7 +133,7 @@ fn test_every_boot_failure_renders_a_reason() {
     assert_eq!(listen.phase(), "listen");
     assert_eq!(
         listen.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
+        af_core::error_code::INTERNAL_OPERATION_FAILED
     );
     assert!(
         std::error::Error::source(&listen)
@@ -157,10 +157,7 @@ fn test_every_boot_failure_renders_a_reason() {
         .expect("the Dragonfly error fixture is exhaustive");
     let queue = BootFailure::from(queue_source);
     assert_eq!(queue.phase(), "queue");
-    assert_eq!(
-        queue.code(),
-        afd_core::error_code::STARTUP_DRAGONFLY_CONNECT
-    );
+    assert_eq!(queue.code(), af_core::error_code::STARTUP_DRAGONFLY_CONNECT);
     assert!(
         std::error::Error::source(&queue).is_some(),
         "the queue failure preserves the original Dragonfly error"

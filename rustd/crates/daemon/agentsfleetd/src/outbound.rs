@@ -24,8 +24,8 @@
 //! logged and skipped: answers queue durably on the stream and the next process
 //! that starts delivers them.
 
+use af_core::error_code::{Coded as _, Logged};
 use afd_connector::Grants;
-use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use afd_dragonfly::{
     Dedicated, Dragonfly, DragonflyConfig, OutboundQueue, OutboundReader, outbound_consumer,
@@ -102,8 +102,8 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use afd_crypto::entropy::Entropy;
-    use afd_crypto::secret::Kek;
+    use af_crypto::entropy::Entropy;
+    use af_crypto::secret::Kek;
     use afd_dragonfly::Dragonfly;
     use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
@@ -121,14 +121,14 @@ mod tests {
         let grants = afd_connector::Grants::new(
             afd_vault::Vault::new(
                 database.clone(),
-                Arc::new(Kek::from_bytes([7; afd_crypto::KEY_LEN])),
+                Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN])),
                 Entropy::new(),
             ),
             database.clone(),
             Entropy::new(),
         );
         let mut supervisor = Supervisor::new();
-        let log = afd_core::test_util::trace::Capture::install();
+        let log = af_core::test_util::trace::Capture::install();
 
         #[expect(
             clippy::disallowed_methods,

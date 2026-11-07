@@ -19,7 +19,7 @@
 //! Conditional edits preserve their refusal data in this type so callers can
 //! render the current tag or state without another read that could race.
 
-use afd_core::error_code::ErrorCode;
+use af_core::error_code::ErrorCode;
 
 mod answer;
 mod condition;
@@ -43,7 +43,7 @@ pub(crate) use self::raise::{
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A schedule failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -93,7 +93,7 @@ pub(crate) enum ErrorKind {
     #[error("a schedule identifier could not be minted")]
     Identifier {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     /// The fire's acceptance could not be recorded.

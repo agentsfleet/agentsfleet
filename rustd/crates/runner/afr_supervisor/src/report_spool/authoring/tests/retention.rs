@@ -2,7 +2,7 @@
 
 use super::{ANSWER, Fixture, report};
 use crate::report_spool::authoring::{PRIVATE_TTL, files};
-use afd_wire::authoring::Report;
+use af_wire::authoring::Report;
 use std::time::Duration;
 
 /// How far the clock moves before the sweep records its high-water mark; any

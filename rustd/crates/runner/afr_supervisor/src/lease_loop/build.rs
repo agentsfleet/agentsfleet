@@ -15,7 +15,7 @@
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use afr_executor::{ExecutorSlot, Unavailable};
 use afr_sandbox::{Limits, Sandbox, SandboxRequest};
 use afr_telemetry::labels::{SandboxBuild, SandboxStart};

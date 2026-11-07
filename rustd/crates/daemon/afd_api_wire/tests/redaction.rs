@@ -1,6 +1,6 @@
 //! The daemon-only secret-bearing types redact on `Debug` and still serialize.
 //!
-//! The same two halves `afd_wire`'s redaction suite proves for the shared
+//! The same two halves `af_wire`'s redaction suite proves for the shared
 //! types, for the daemon-only types that carry a secret.
 #![expect(
     clippy::unwrap_used,

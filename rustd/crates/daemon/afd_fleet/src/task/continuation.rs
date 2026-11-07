@@ -1,8 +1,8 @@
 //! Native continuations are ordinary admissions with an immutable task payload.
 
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer, Reply};
-use afd_core::id::Uuid7;
-use afd_wire::event::EventType;
 
 use super::{TaskScope, Tasks};
 

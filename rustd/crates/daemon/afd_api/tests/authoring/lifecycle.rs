@@ -1,7 +1,7 @@
 //! Both clients observe durable queue acceptance and explicit native revisions.
 
 use super::{fixture::Fixture, json_body, mint, send, send_with_headers};
-use afd_core::error_code;
+use af_core::error_code;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 

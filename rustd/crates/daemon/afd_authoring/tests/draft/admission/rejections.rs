@@ -3,16 +3,16 @@
 mod races;
 
 use super::{Fixture, claim, funded, mint, now, queue};
-use afd_authoring::types::{MessageQuery, SendMessage};
-use afd_authoring::{Claimed, ModelCalls, ProviderRequest, ProviderResponse, Transport};
-use afd_core::{error_code, id::Uuid7};
-use afd_crypto::{entropy::Entropy, secret::Kek};
-use afd_vault::{SecretBody, SecretName, Vault};
-use afd_wire::authoring::{
+use af_core::{error_code, id::Uuid7};
+use af_crypto::{entropy::Entropy, secret::Kek};
+use af_wire::authoring::{
     Accounting, FailureReason, Knowledge, Meter, ModelCall, ModelMessage, ModelRequest, Outcome,
     Report,
 };
-use afd_wire::inference::InferenceApi;
+use af_wire::inference::InferenceApi;
+use afd_authoring::types::{MessageQuery, SendMessage};
+use afd_authoring::{Claimed, ModelCalls, ProviderRequest, ProviderResponse, Transport};
+use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::{Value, json};
 use std::sync::{
     Arc,

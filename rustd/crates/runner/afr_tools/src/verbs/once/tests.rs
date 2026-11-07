@@ -7,8 +7,8 @@
 
 use std::time::Duration;
 
-use afd_core::clock;
-use afd_core::timing::DAY;
+use af_core::clock;
+use af_core::timing::DAY;
 use jiff::Timestamp;
 use serde_json::json;
 

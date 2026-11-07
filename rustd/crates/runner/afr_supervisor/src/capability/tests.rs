@@ -1,4 +1,4 @@
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afr_sandbox::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
 
 use super::{CGROUP_OFF, CGROUP_ON, capability_report, probe_answer, selftest};
@@ -21,7 +21,7 @@ fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
     }
 }
 
-fn check(report: &afd_wire::runner::SelftestReport<'_>, name: &str) -> (bool, String) {
+fn check(report: &af_wire::runner::SelftestReport<'_>, name: &str) -> (bool, String) {
     report
         .checks
         .iter()
@@ -91,7 +91,7 @@ fn every_missing_mechanism_fails_its_own_check() {
         report
             .checks
             .iter()
-            .all(|check| check.detail.len() <= afd_wire::runner::CHECK_DETAIL_MAX_BYTES)
+            .all(|check| check.detail.len() <= af_wire::runner::CHECK_DETAIL_MAX_BYTES)
     );
 }
 

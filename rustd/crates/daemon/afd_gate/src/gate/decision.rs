@@ -8,14 +8,14 @@
 //!
 //! # Every spelling is declared once
 //!
-//! Through `#[serde(rename)]` read by [`afd_core::spelling::from_spelling`],
+//! Through `#[serde(rename)]` read by [`af_core::spelling::from_spelling`],
 //! never a `match` over string literals. That module carries the reasoning: a
 //! hand-written match is a SECOND copy of every variant's name, and the failure
 //! it causes — a row one release writes that the next cannot read — has no
 //! failing test behind it.
 
+use af_core::spelling::from_spelling;
 use afd_api_wire::approval::GateStatus;
-use afd_core::spelling::from_spelling;
 use serde::Deserialize;
 
 /// The Dragonfly mirror's word for an approval.
@@ -89,8 +89,8 @@ pub(crate) const fn answer(status: GateStatus) -> Option<Answer> {
 
 #[cfg(test)]
 mod tests {
+    use af_core::spelling::from_spelling;
     use afd_api_wire::approval::GateStatus;
-    use afd_core::spelling::from_spelling;
 
     use super::{Answer, answer};
 

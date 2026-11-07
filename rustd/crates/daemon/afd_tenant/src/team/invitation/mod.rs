@@ -17,8 +17,8 @@ pub(crate) use self::status::InviteStatus;
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_core::timing::DAY;
+use af_core::id::Uuid7;
+use af_core::timing::DAY;
 use jiff::Timestamp;
 
 use super::{Invitee, email};
@@ -173,7 +173,7 @@ impl Invitation {
     reason = "test module: an unmet precondition should fail the test loudly"
 )]
 mod tests {
-    use afd_core::id::Uuid7;
+    use af_core::id::Uuid7;
     use jiff::{SignedDuration, Timestamp};
 
     use super::{Acceptance, DAY, EmailStatus, INVITE_TTL, INVITE_VALID_DAYS, Invitation};

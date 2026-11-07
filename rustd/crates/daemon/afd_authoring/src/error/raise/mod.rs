@@ -14,7 +14,7 @@ pub(crate) fn invalid(detail: &'static str) -> Error {
 /// the value it refused, so the cause keeps only its position and expected type.
 pub(crate) fn stored(source: serde_json::Error) -> Error {
     ErrorKind::Stored {
-        source: afd_core::json::Unreadable::from(source),
+        source: af_core::json::Unreadable::from(source),
     }
     .into()
 }

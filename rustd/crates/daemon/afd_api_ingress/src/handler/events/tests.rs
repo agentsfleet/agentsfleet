@@ -171,7 +171,7 @@ fn test_only_the_connectors_that_deliver_declare_an_ingress() {
         delivering,
         vec!["slack"],
         "a connector that started delivering needs an `event_ingress` arm \
-         and an `afd_webhook::Scheme` entry; one that stopped needs the \
+         and an `af_webhook::Scheme` entry; one that stopped needs the \
          arm removed"
     );
 }

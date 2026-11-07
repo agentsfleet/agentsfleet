@@ -7,13 +7,13 @@
 
 use std::borrow::Cow;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::memory::{MemoryDelta, Visibility};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
 use afd_memory::Memories;
-use afd_wire::memory::{MemoryDelta, Visibility};
 
 /// The status every seeded fleet carries.
 const FLEET_ACTIVE: &str = "active";

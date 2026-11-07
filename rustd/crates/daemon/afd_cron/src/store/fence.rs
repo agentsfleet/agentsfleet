@@ -13,7 +13,7 @@
 //! None of them takes the caller's clock: Postgres stamps the row and judges
 //! the lease (see [`sql`] on whose clock).
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use afd_db::Precondition;
 

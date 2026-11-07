@@ -34,8 +34,8 @@
 use crate::harness;
 use crate::harness::detail_of;
 
+use af_core::error_code;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code;
 use afd_events::Cursor;
 use axum::response::Response;
 use http::{Method, StatusCode};

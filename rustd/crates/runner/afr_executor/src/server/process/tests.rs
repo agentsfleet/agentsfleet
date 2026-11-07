@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use bytes::Bytes;
 use rustix::process::{Pid, Signal};

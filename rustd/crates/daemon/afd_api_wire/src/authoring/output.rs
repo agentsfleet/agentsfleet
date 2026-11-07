@@ -12,7 +12,7 @@ pub struct Candidate<D = Value> {
     /// Decimal draft-local revision.
     pub revision: String,
     /// Complete validated native Definition.
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_fleet_runtime::definition::DefinitionSchema))]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_fleet_runtime::definition::DefinitionSchema))]
     pub definition: D,
     /// Canonical content identity.
     pub canonical_digest: String,
@@ -51,11 +51,11 @@ pub struct Draft<D = Value, R = Value> {
     pub publication: Option<Publication>,
     /// Closing timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub closed_at: Option<jiff::Timestamp>,
     /// Private retention deadline, such as `2026-10-24T05:00:00.000Z`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub expires_at: Option<jiff::Timestamp>,
 }
 
@@ -112,11 +112,11 @@ pub struct DraftCard {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linked_fleet_id: Option<String>,
     /// Last mutation.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
     /// Private retention deadline.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub expires_at: Option<jiff::Timestamp>,
     /// The current candidate's revision; null before the chat proposes one.
     pub candidate_revision: Option<i64>,
@@ -151,16 +151,16 @@ pub struct Message {
     pub candidate_id: Option<String>,
     /// Provider usage and cumulative runtime charge, when recorded.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<afd_wire::authoring::Usage>,
+    pub usage: Option<af_wire::authoring::Usage>,
     /// Server-reported failure reason and suggested recovery action.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<Failure>,
     /// Acceptance timestamp, such as `2026-10-24T05:00:00.000Z`.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// Finish timestamp, such as `2026-10-24T05:00:00.000Z`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub finished_at: Option<jiff::Timestamp>,
 }
 
@@ -169,7 +169,7 @@ pub struct Message {
 #[derive(Debug, Serialize)]
 pub struct Failure {
     /// Server-reported failure reason.
-    pub reason: afd_wire::authoring::FailureReason,
+    pub reason: af_wire::authoring::FailureReason,
     /// Stable central registry code.
     pub error_code: String,
     /// Stable recovery action for the authorized client to render.

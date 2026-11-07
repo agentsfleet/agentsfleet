@@ -88,13 +88,13 @@ async fn meter_plan(
         runner = held.runner.as_str(),
         ms = afd_billing::nanos::MS_PER_SEC,
         active = afd_fleet::lease::sql::LEASE_STATUS_ACTIVE,
-        ttl = afd_core::timing::LEASE_TTL.as_secs_f64(),
-        cap = afd_core::timing::MAX_RUNTIME.as_secs_f64(),
+        ttl = af_core::timing::LEASE_TTL.as_secs_f64(),
+        cap = af_core::timing::MAX_RUNTIME.as_secs_f64(),
         reported = afd_fleet::lease::sql::LEASE_STATUS_REPORTED,
         work = afd_billing::sql::work::FLEET_LEASE,
-        seq = afd_wire::usage::DAEMON_SEQ_BASE,
-        decision_seq = afd_wire::usage::DECISION_SEQ_BASE,
-        running = afd_wire::task::TaskState::Running.as_str(),
+        seq = af_wire::usage::DAEMON_SEQ_BASE,
+        decision_seq = af_wire::usage::DECISION_SEQ_BASE,
+        running = af_wire::task::TaskState::Running.as_str(),
     )))
     .fetch_one(connection)
     .await

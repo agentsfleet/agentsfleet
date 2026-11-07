@@ -1,6 +1,6 @@
 //! The daemon supplies recovery links and labels; model output never supplies them.
 
-use afd_fleet_runtime::definition::POLICY_SEMANTICS;
+use af_fleet_runtime::definition::POLICY_SEMANTICS;
 
 use super::Observed;
 use crate::types::{Action, ActionKind, Candidate, Check, CheckKind, CheckState};

@@ -1,7 +1,7 @@
 //! Resolve source and execution authority once for preparation and issuance.
 
-use afd_core::id::Uuid7;
-use afd_wire::{decision::DecisionPurpose, task::DecisionReservationInput};
+use af_core::id::Uuid7;
+use af_wire::{decision::DecisionPurpose, task::DecisionReservationInput};
 use sqlx::PgConnection;
 
 use super::{
@@ -121,7 +121,7 @@ pub(super) async fn execution(
             if task.context.generation != expected.generation
                 || current.task_generation != i64::try_from(task.context.generation).ok()
                 || current.task_stop_generation != i64::try_from(task.context.stop_generation).ok()
-                || task.context.state != afd_wire::task::TaskState::Running
+                || task.context.state != af_wire::task::TaskState::Running
             {
                 return Err(TaskRefusal::StaleState.into());
             }

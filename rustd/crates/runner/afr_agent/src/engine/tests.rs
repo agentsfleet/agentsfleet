@@ -1,5 +1,5 @@
-use afd_wire::activity::ActivityFrame;
-use afr_egress::testing::CountingMint;
+use af_egress::testing::CountingMint;
+use af_wire::activity::ActivityFrame;
 use tokio_util::sync::CancellationToken;
 
 use super::{AgentRun, Meter};
@@ -39,7 +39,7 @@ fn a_run_debugs_without_the_leases_secrets() {
 const CACHE_WRITE_FIVE_MINUTE_TOKENS: u32 = 60;
 
 /// One provider turn's usage.
-const TURN: afr_providers::Usage = afr_providers::Usage {
+const TURN: af_providers::Usage = af_providers::Usage {
     input: 30,
     cached_input: 10,
     cache_write: 0,
@@ -52,8 +52,8 @@ const TURN: afr_providers::Usage = afr_providers::Usage {
 /// clock; a recorded number forgets the lines through it and no others.
 #[test]
 fn a_meter_numbers_its_requests_and_forgets_only_what_was_recorded() {
-    let at = afd_core::clock::now();
-    let meter = Meter::new(std::sync::Arc::new(afd_core::clock::FixedClock::at(at)));
+    let at = af_core::clock::now();
+    let meter = Meter::new(std::sync::Arc::new(af_core::clock::FixedClock::at(at)));
     for _ in 0..3 {
         meter.add(TURN);
     }
@@ -81,16 +81,16 @@ fn a_meter_numbers_its_requests_and_forgets_only_what_was_recorded() {
 #[test]
 fn a_meter_sends_at_most_one_bodys_worth() {
     let meter = Meter::default();
-    for _ in 0..=afd_wire::usage::LINES_MAX {
+    for _ in 0..=af_wire::usage::LINES_MAX {
         meter.add(TURN);
     }
-    assert_eq!(meter.unrecorded().0.len(), afd_wire::usage::LINES_MAX);
+    assert_eq!(meter.unrecorded().0.len(), af_wire::usage::LINES_MAX);
     assert_eq!(
         meter.backlog(),
-        afd_wire::usage::LINES_MAX + 1,
+        af_wire::usage::LINES_MAX + 1,
         "the backlog counts past one body"
     );
-    meter.recorded_through(u32::try_from(afd_wire::usage::LINES_MAX).unwrap_or(u32::MAX) - 1);
+    meter.recorded_through(u32::try_from(af_wire::usage::LINES_MAX).unwrap_or(u32::MAX) - 1);
     assert_eq!(
         meter.unrecorded().0.len(),
         1,
@@ -104,9 +104,9 @@ fn a_meter_sends_at_most_one_bodys_worth() {
 /// tier's write rate; the run's totals keep every count.
 #[test]
 fn a_meter_line_carries_cache_writes_by_lifetime() {
-    let at = afd_core::clock::now();
-    let meter = Meter::new(std::sync::Arc::new(afd_core::clock::FixedClock::at(at)));
-    let writing = afr_providers::Usage {
+    let at = af_core::clock::now();
+    let meter = Meter::new(std::sync::Arc::new(af_core::clock::FixedClock::at(at)));
+    let writing = af_providers::Usage {
         input: 500,
         cached_input: 400,
         cache_write: 5,
@@ -116,7 +116,7 @@ fn a_meter_line_carries_cache_writes_by_lifetime() {
     };
     meter.add(writing);
 
-    let line = afd_wire::usage::RequestUsage {
+    let line = af_wire::usage::RequestUsage {
         seq: 0,
         at,
         input_tokens: 500,

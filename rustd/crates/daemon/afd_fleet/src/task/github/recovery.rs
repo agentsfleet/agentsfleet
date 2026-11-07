@@ -6,12 +6,12 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_credential::credential::outcome::Minted;
-use afd_crypto::{
+use af_core::{clock, id::Uuid7};
+use af_crypto::{
     aad::Aad,
     envelope::{Envelope, Sealer},
 };
+use afd_credential::credential::outcome::Minted;
 use afd_vault::StoredEnvelope;
 use jiff_sqlx::ToSqlx as _;
 use serde::{Deserialize, Serialize};
@@ -71,7 +71,7 @@ impl Github {
                 installation_id: target.installation_id,
                 repository_id: target.repository_id,
             })
-            .map_err(afd_core::json::Unreadable::from)?,
+            .map_err(af_core::json::Unreadable::from)?,
         );
         let envelope = Sealer::new().seal(
             &self.master,
@@ -98,7 +98,7 @@ impl Github {
             .into_envelope()?
             .open(&self.master, &Aad::effect_recovery(workspace, effect))?;
         let capability: Capability<'_> =
-            serde_json::from_slice(plaintext.expose()).map_err(afd_core::json::Unreadable::from)?;
+            serde_json::from_slice(plaintext.expose()).map_err(af_core::json::Unreadable::from)?;
         let credential = Minted {
             token: Zeroizing::new(capability.token.to_owned()),
             expires_at: stored.expires_at,

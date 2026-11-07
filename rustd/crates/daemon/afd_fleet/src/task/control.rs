@@ -1,7 +1,7 @@
 //! Human controls share the fleet slot and retain all cumulative usage.
 
-use afd_core::id::Uuid7;
-use afd_wire::task::TaskState;
+use af_core::id::Uuid7;
+use af_wire::task::TaskState;
 use sqlx::{Acquire as _, PgConnection};
 
 use super::{

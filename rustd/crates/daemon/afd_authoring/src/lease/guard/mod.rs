@@ -9,9 +9,9 @@ use crate::{
     model,
     types::{DraftState, RUNNING},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::authoring::FailureReason;
 use afd_credential::provider::RegisteredModel;
-use afd_wire::authoring::FailureReason;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 

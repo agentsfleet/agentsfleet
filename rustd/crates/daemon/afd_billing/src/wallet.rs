@@ -17,7 +17,7 @@
 //! — the datastore would not answer — which is the distinction the gate's
 //! fail-open posture is applied to and the one RULE ECL is about.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::FromRow;
 use sqlx::postgres::PgRow;

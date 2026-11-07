@@ -1,8 +1,8 @@
 //! Task reads prove authentication, paging and dependency failure at served URLs.
 #![cfg(feature = "test-util")]
 
+use af_core::error_code;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code;
 use http::{Method, StatusCode};
 
 use crate::harness::{Fleet, OWNED_WORKSPACE, code_of, send};
@@ -56,11 +56,11 @@ async fn task_input_refusals_and_storage_outages_remain_distinct_and_bounded() {
     invalid.push(format!("{collection}?starting_after={}", "a".repeat(1025)));
     invalid.push(format!("{collection}/not-a-task"));
     for cursor in [
-        afd_core::paging::Cursor::Text {
+        af_core::paging::Cursor::Text {
             value: "title".into(),
             id: TASK.into(),
         },
-        afd_core::paging::Cursor::Timestamp {
+        af_core::paging::Cursor::Timestamp {
             at: jiff::Timestamp::UNIX_EPOCH,
             id: "not-a-task".into(),
         },

@@ -18,9 +18,9 @@
 
 use crate::requests;
 use crate::support;
-use afd_core::id::Uuid7;
-use afd_core::timing::LEASE_TTL;
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
+use af_core::id::Uuid7;
+use af_core::timing::LEASE_TTL;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::{enrolment_tagged, placement_tag};
 use afd_db::test_util::mint_id;

@@ -39,5 +39,5 @@ fn only_a_success_can_expose_a_minted_token() {
 
 #[test]
 fn never_expires_is_the_last_whole_millisecond_jiff_holds() {
-    assert_eq!(NEVER_EXPIRES, afd_core::clock::whole_millis(Timestamp::MAX));
+    assert_eq!(NEVER_EXPIRES, af_core::clock::whole_millis(Timestamp::MAX));
 }

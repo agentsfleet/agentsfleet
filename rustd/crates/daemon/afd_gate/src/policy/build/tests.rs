@@ -7,8 +7,8 @@
 )]
 use super::{Assembled, Inputs, assemble};
 use crate::policy::egress::DETAIL_NO_REPAIR_BRANCH;
-use afd_fleet_runtime::FleetConfig;
-use afd_wire::policy::ExecutionPolicy;
+use af_fleet_runtime::FleetConfig;
+use af_wire::policy::ExecutionPolicy;
 
 use crate::policy::fixture::{KEY, RESOLVED_CAP_TOKENS, config, provider, resolved_with};
 use crate::policy::grants::Grants;
@@ -51,7 +51,7 @@ fn an_unbound_fleet_carries_no_binding_and_no_egress_rules() {
     assert!(policy.repository_binding.is_none());
     assert_eq!(
         policy.http_origin_policies,
-        [] as [afd_wire::policy::HttpOriginPolicy<'_>; 0]
+        [] as [af_wire::policy::HttpOriginPolicy<'_>; 0]
     );
 }
 
@@ -83,7 +83,7 @@ fn no_static_credentials_is_absent_rather_than_an_empty_object() {
     let policy = ready(&config, &resolved, &declared);
 
     assert!(policy.secrets_map.is_none());
-    assert_eq!(policy.mintable, [] as [afd_wire::policy::Mintable<'_>; 0]);
+    assert_eq!(policy.mintable, [] as [af_wire::policy::Mintable<'_>; 0]);
 }
 
 #[test]

@@ -21,12 +21,12 @@ mod fake_redis;
 
 use std::time::Duration;
 
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Admitted, Key, Producer, Reply as ReplyTo};
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, DbRole};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_wire::event::EventType;
 use jiff::Timestamp;
 
 use self::fake_redis::{FakeRedis, Reply, install_subscriber};

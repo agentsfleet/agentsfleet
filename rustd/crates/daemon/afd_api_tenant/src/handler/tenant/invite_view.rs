@@ -5,9 +5,9 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use afd_api_wire::team::InviteSummary;
 use afd_connector::Dashboard;
-use afd_core::id::Uuid7;
 use afd_tenant::team::Invitation;
 
 /// The dashboard path an invite's accept page lives under.
@@ -41,8 +41,8 @@ pub(super) fn invite_link(dashboard: &Dashboard, invite: &Uuid7) -> String {
     reason = "test module: an unmet precondition should fail the test loudly"
 )]
 mod tests {
+    use af_core::id::Uuid7;
     use afd_connector::Dashboard;
-    use afd_core::id::Uuid7;
 
     use super::invite_link;
 

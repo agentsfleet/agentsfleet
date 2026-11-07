@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::time::Duration;
 
-use afd_otlp::SpanEnd as _;
+use af_otlp::SpanEnd as _;
 use opentelemetry::Context;
 use opentelemetry::trace::{
     Span as _, TraceContextExt as _, TraceId, Tracer as _, TracerProvider as _,
@@ -414,7 +414,7 @@ fn contended_children_never_overrun_the_second() {
 #[test]
 fn every_lease_a_full_runner_holds_is_tracked() {
     let pipeline = Pipeline::new(Limits::default());
-    let workers = usize::try_from(afd_core::limits::MAX_WORKERS).unwrap_or(usize::MAX);
+    let workers = usize::try_from(af_core::limits::MAX_WORKERS).unwrap_or(usize::MAX);
     let leases: Vec<Context> = (0..workers).map(|_lease| pipeline.lease()).collect();
 
     for lease in &leases {
@@ -446,13 +446,13 @@ fn traces_differing_only_in_their_high_half_get_different_keys() {
 /// rate leases start at.
 #[test]
 fn the_per_second_budget_fits_the_pinned_queue() {
-    let sends_every = usize::try_from(afd_otlp::SPAN_SEND_EVERY.as_secs()).unwrap_or(usize::MAX);
+    let sends_every = usize::try_from(af_otlp::SPAN_SEND_EVERY.as_secs()).unwrap_or(usize::MAX);
     let per_second = usize::try_from(RUNNER_SPANS_PER_SECOND).unwrap_or(usize::MAX);
 
     assert!(
-        per_second * sends_every <= afd_otlp::SPAN_QUEUE,
+        per_second * sends_every <= af_otlp::SPAN_QUEUE,
         "{per_second} a second for {sends_every} s overruns a {}-span queue",
-        afd_otlp::SPAN_QUEUE
+        af_otlp::SPAN_QUEUE
     );
 }
 

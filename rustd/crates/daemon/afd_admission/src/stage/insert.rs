@@ -1,6 +1,6 @@
 //! The one admission statement, on whatever connection the caller holds.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 use sqlx::PgConnection;
 
@@ -50,7 +50,7 @@ impl Admissions {
             .bind(reply.connector)
             .bind(reply.address)
             .bind(reply.inherited.as_ref().map(Uuid7::as_str))
-            .bind(afd_fleet_runtime::definition::POLICY_SEMANTICS)
+            .bind(af_fleet_runtime::definition::POLICY_SEMANTICS)
             .bind(runnable.map(FleetStatus::as_str))
             .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
             .fetch_one(&mut *connection)

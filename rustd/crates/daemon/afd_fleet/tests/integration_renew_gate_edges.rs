@@ -13,9 +13,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
+use af_wire::report::RenewRequest;
 use afd_db::config::DbRole;
-use afd_wire::report::RenewRequest;
 
 use crate::report_seed::{Held, held, held_in};
 use crate::support::Fixtures;

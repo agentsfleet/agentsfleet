@@ -6,8 +6,8 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, execution},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_wire::task::{CheckpointTransferPurpose, DecisionTaskVersion};
+use af_core::{clock, id::Uuid7};
+use af_wire::task::{CheckpointTransferPurpose, DecisionTaskVersion};
 use sqlx::PgConnection;
 
 pub(super) fn storage(tasks: &Tasks) -> Result<&crate::task::storage::R2CheckpointStore> {

@@ -17,15 +17,15 @@ workspace = true
 
 [dependencies]
 afd_admission.workspace = true
-afd_observability.workspace = true
+af_observability.workspace = true
 # Identifiers, the clock a liveness instant is stamped with, the registry codes.
-afd_core.workspace = true
+af_core.workspace = true
 garde.workspace = true
 # The sentence each enrolment bound earns, keyed by the path garde reports.
-afd_validate.workspace = true
+af_validate.workspace = true
 const_format.workspace = true
 # The entropy a runner credential is minted from, and the token digest.
-afd_crypto.workspace = true
+af_crypto.workspace = true
 # The minted-credential shape an enrolment answers with, and the kind column's
 # closed vocabulary.
 afd_auth.workspace = true
@@ -43,7 +43,7 @@ afd_state.workspace = true
 afd_dragonfly.workspace = true
 # The enrolment and heartbeat request shapes, as the frozen wire spells them.
 afd_api_wire.workspace = true
-afd_wire.workspace = true
+af_wire.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
@@ -58,7 +58,7 @@ tracing.workspace = true
 # suite reaches this crate's seam with no datastore behind it.
 test-util = [
     "afd_admission/test-util",
-    "afd_core/test-util",
+    "af_core/test-util",
     "afd_db/test-util",
     "afd_dragonfly/test-util",
 ]
@@ -70,7 +70,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "te
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 afd_dragonfly.workspace = true
-afd_observability = { workspace = true, features = ["test-util"] }
+af_observability = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "runner_suite"

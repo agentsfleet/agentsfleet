@@ -27,16 +27,16 @@ pub struct CatalogueModel<'a> {
     /// The context window the price is quoted for.
     pub context_cap_tokens: i32,
     /// The input rate, in nanos per million tokens.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     pub input_nanos_per_mtok: i64,
     /// The cached-input rate, likewise.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     pub cached_input_nanos_per_mtok: i64,
     /// The output rate, likewise.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     pub output_nanos_per_mtok: i64,
     /// The label a picker shows; never used to route a request.
     pub display_name: Cow<'a, str>,
@@ -45,7 +45,7 @@ pub struct CatalogueModel<'a> {
     /// The provider models API response the context limit came from.
     pub context_source_url: Cow<'a, str>,
     /// When that response was verified.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub context_verified_at: jiff::Timestamp,
     /// The complete schedule, ordered by tier then start. The three rates
     /// above are its base tier as it stands now.

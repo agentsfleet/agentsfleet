@@ -1,7 +1,7 @@
 //! One usage line priced: [`Rater::rate`].
 
-use afd_core::id::Uuid7;
-use afd_wire::usage::UsageLine;
+use af_core::id::Uuid7;
+use af_wire::usage::UsageLine;
 use jiff::Timestamp;
 
 use super::PriceBook;
@@ -112,7 +112,7 @@ fn tokens_of(usage: &UsageLine) -> u64 {
 ///
 /// `i128` throughout: a `u32` count times a 64-bit rate cannot overflow it, so
 /// the only fallible step is the final narrowing in [`Rater::rate`].
-fn token_cost(usage: &UsageLine, price: &afd_core::catalogue::Price) -> (i128, u64) {
+fn token_cost(usage: &UsageLine, price: &af_core::catalogue::Price) -> (i128, u64) {
     let categories = [
         (usage.input_tokens, Some(price.input_nanos_per_mtok)),
         (

@@ -20,7 +20,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use redis::cluster_async::ClusterConnection;
 use redis::{Cmd, FromRedisValue, Pipeline, Value};
 

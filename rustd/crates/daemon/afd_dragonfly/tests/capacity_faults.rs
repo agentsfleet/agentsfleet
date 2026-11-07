@@ -13,7 +13,7 @@
 
 use std::time::Duration;
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{Dragonfly, preflight};
 use afd_dragonfly::{OutboundJob, OutboundQueue};

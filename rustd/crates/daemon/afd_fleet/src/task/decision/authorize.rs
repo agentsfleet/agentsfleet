@@ -8,7 +8,7 @@ use crate::{
     Result,
     task::{TaskLease, TaskRefusal},
 };
-use afd_wire::{
+use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionThreshold},
     task::{DecisionAssessment, DecisionReceipt, TaskBindingsInput, TaskInputAction},
 };
@@ -109,7 +109,7 @@ fn source(evaluated: &Answered, input: &TaskBindingsInput) -> Result<()> {
     Ok(())
 }
 
-fn route(evaluated: &Answered, item: &afd_wire::task::TaskProposedItem) -> Result<()> {
+fn route(evaluated: &Answered, item: &af_wire::task::TaskProposedItem) -> Result<()> {
     let policy = &evaluated.call.profile_snapshot.intent;
     let intent = choice(&evaluated.answers, "intent", policy.intent)?;
     if intent != item.action.as_str() {
@@ -178,10 +178,10 @@ pub(super) fn choice<'a>(
 pub(in crate::task) async fn goal(
     connection: &mut PgConnection,
     lease: TaskLease<'_>,
-    input: &afd_wire::task::TaskReport,
-    task: &afd_wire::task::TaskContext<'_>,
+    input: &af_wire::task::TaskReport,
+    task: &af_wire::task::TaskContext<'_>,
 ) -> Result<()> {
-    use afd_wire::task::TaskDisposition;
+    use af_wire::task::TaskDisposition;
     if input.disposition == TaskDisposition::Blocked {
         return Ok(());
     }

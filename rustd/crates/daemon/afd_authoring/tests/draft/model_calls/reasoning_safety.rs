@@ -5,9 +5,9 @@ use super::{
     fixture,
     reasoning::Reasoning,
 };
+use af_core::error_code;
+use af_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
 use afd_authoring::types::Source;
-use afd_core::error_code;
-use afd_wire::authoring::{ENVELOPE_BYTES_MAX, ModelMessage};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]

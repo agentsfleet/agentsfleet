@@ -1,7 +1,7 @@
 //! No buffered private frame bypasses a fresh membership and generation check.
 
+use af_core::id::Uuid7;
 use afd_authoring::{Access, Drafts, Observation};
-use afd_core::id::Uuid7;
 use axum::response::sse::Event;
 use futures_util::{Stream, stream};
 use std::{collections::HashMap, convert::Infallible, time::Duration};

@@ -6,7 +6,7 @@
 //! changes here alone.
 //!
 //! The status, tier and posture are arguments rather than defaults because
-//! their spellings live above this crate, in `afd_state` and `afd_wire`. This
+//! their spellings live above this crate, in `afd_state` and `af_wire`. This
 //! crate owns the table's columns, not the values the product compares
 //! against.
 

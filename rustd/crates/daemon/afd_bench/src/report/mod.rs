@@ -19,7 +19,7 @@
 //!
 //! These numbers are synthetic, and the daemon's own instruments carry no
 //! attribute distinguishing a bench run from real traffic
-//! (`afd_observability::producers::fleet::lease_polled` records with an empty
+//! (`af_observability::producers::fleet::lease_polled` records with an empty
 //! attribute set). Publishing a lane's p95 as a series would therefore be
 //! indistinguishable from production latency on an operator's dashboard. A
 //! file cannot be mistaken for one.

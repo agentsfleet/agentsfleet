@@ -4,7 +4,7 @@
 #[path = "support/gate_fixture.rs"]
 mod fixture;
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_gate::gate::{Gates, Refused, Trigger, Verdict, Waiting};
 
 use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};

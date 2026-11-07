@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 
 use super::{Config, DEFAULT_STORAGE_HOME, ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
 

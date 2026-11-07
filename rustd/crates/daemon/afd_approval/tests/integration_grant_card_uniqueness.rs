@@ -2,8 +2,8 @@
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
 use crate::lane::{Lane, NOW, mint, sweeper_exclusive};
+use af_crypto::entropy::Entropy;
 use afd_approval::{Decision, IntegrationGrants, Origin, Requested, Wanted};
-use afd_crypto::entropy::Entropy;
 
 const SERVICE: &str = "github";
 const INDEX: &str = "uq_approval_gates_active_grant_id";

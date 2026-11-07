@@ -8,10 +8,10 @@
 //! holds nothing: a standing hold keeps the fleet from every other runner,
 //! while a hold cleared by mistake costs only a cold start.
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::timing::HEARTBEAT_INTERVAL;
-use afd_wire::runner::HeldFleets;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::timing::HEARTBEAT_INTERVAL;
+use af_wire::runner::HeldFleets;
 use garde::{Unvalidated, Valid};
 use sqlx::PgConnection;
 
@@ -86,9 +86,9 @@ pub(super) async fn reconcile(
 mod tests {
     use std::borrow::Cow;
 
-    use afd_core::id::TEXT_LEN;
-    use afd_core::limits::MAX_WORKERS;
-    use afd_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
+    use af_core::id::TEXT_LEN;
+    use af_core::limits::MAX_WORKERS;
+    use af_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
 
     use super::{fleets, prove};
 
@@ -127,7 +127,7 @@ mod tests {
         assert_eq!(read, Some(vec![OTHER_FLEET.to_owned(), FLEET.to_owned()]));
     }
 
-    /// The wire states its two bounds itself, since it carries no `afd_core`;
+    /// The wire states its two bounds itself, since it carries no `af_core`;
     /// this is where they are held to the numbers they copy.
     #[test]
     fn test_the_wires_hold_bounds_are_the_cores() {

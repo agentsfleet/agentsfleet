@@ -15,10 +15,10 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use afd_core::error_code::{
+use af_core::error_code::{
     self, ErrorCode, RUN_LEASE_LOST, RUN_LEASE_NOT_FOUND, RUN_STALE_FENCING_TOKEN,
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use bytes::Bytes;
 use reqwest::StatusCode;
 use tempfile::NamedTempFile;

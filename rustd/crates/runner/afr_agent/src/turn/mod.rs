@@ -1,8 +1,8 @@
 //! One model turn: the provider's stream read to its end, its text sent live,
 //! its calls, usage and end collected.
 
-use afd_wire::activity::StreamTextKind;
-use afr_providers::{Call, Chunk, Replay, Usage};
+use af_providers::{Call, Chunk, Replay, Usage};
+use af_wire::activity::StreamTextKind;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 
@@ -32,10 +32,10 @@ pub(crate) struct Turn {
 /// Reads `stream` to its end. An error ends the turn there; dropping the
 /// stream closes the provider's connection.
 pub(crate) async fn take(
-    mut stream: BoxStream<'_, afr_providers::Result<Chunk>>,
+    mut stream: BoxStream<'_, af_providers::Result<Chunk>>,
     live: &mut Live<'_>,
     meter: &Meter,
-) -> afr_providers::Result<Turn> {
+) -> af_providers::Result<Turn> {
     let mut turn = Turn::default();
     while let Some(chunk) = stream.next().await {
         match chunk? {

@@ -4,11 +4,11 @@
 //! last beat interval outlives the beat that raced it, unless that beat is a
 //! closing runner's final list.
 
-use afd_core::id::Uuid7;
-use afd_core::timing::SANDBOX_HOLD_IDLE;
+use af_core::id::Uuid7;
+use af_core::timing::SANDBOX_HOLD_IDLE;
+use af_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest};
 use afd_db::test_util::mint_id;
 use afd_runner::{Beat, NO_REPORT};
-use afd_wire::runner::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest};
 use jiff::Timestamp;
 
 use super::{beat, beats_at, hold, live, settle, slot};

@@ -15,7 +15,7 @@
 //! "the list performs zero decrypts" survives a future edit to the store — a
 //! decrypt added to the list path would not compile, rather than passing review.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_vault::{Deleted, Result as VaultResult, SecretBody, SecretName, SecretSummary};
 use jiff::Timestamp;
 

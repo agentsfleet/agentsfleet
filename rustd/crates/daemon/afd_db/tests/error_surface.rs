@@ -6,12 +6,12 @@
 //! shows up while something else is already going wrong.
 #![cfg(feature = "test-util")]
 
-use afd_core::test_util::error_surface::{Expect, grade};
+use af_core::test_util::error_surface::{Expect, grade};
 
 use afd_db::error::one_of_each_kind;
 
 /// Everything every error surface owes, graded once by
-/// `afd_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
 /// rendering, no kind repeating its cause, and these measured counts. The
 /// sample count is pinned exactly, so a kind added without a sample fails.
 #[test]

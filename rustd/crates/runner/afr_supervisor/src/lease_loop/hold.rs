@@ -10,9 +10,9 @@
 
 use std::time::{Duration, Instant};
 
-use afd_core::clock::saturating_millis;
-use afd_core::error_code::{Coded as _, ErrorCode, Logged};
-use afd_observability::semconv::ATTR_SANDBOX_REUSED;
+use af_core::clock::saturating_millis;
+use af_core::error_code::{Coded as _, ErrorCode, Logged};
+use af_observability::semconv::ATTR_SANDBOX_REUSED;
 use afr_sandbox::{Killed, Limits, Sandbox};
 use afr_telemetry::labels::{SandboxHold, SandboxRelease};
 use afr_telemetry::record;

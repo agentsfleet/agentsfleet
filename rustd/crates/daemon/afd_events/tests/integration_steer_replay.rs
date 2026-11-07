@@ -17,15 +17,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::error_code;
 use afd_admission::Budgets;
-use afd_core::error_code;
 use afd_db::test_util::mint_id;
 use afd_events::{ACTOR_MACHINE, Steer};
 use tracing::Level;
 
 use crate::integration_steer_retry::{REQUEST_JSON, admissions_for, append_with};
 use crate::support::EventsLane;
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 
 /// One operation id, used on two fleets and against a changed message.
 pub(crate) const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0a01";
@@ -310,7 +310,7 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
             fleet: &lane.fleet,
             workspace: &lane.workspace,
             actor: ACTOR_MACHINE,
-            event_type: afd_wire::event::EventType::Chat,
+            event_type: af_wire::event::EventType::Chat,
             request_json: REQUEST_JSON,
             reply: afd_admission::Reply::None,
         })

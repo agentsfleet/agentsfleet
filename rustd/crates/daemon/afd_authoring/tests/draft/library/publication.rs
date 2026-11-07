@@ -1,8 +1,8 @@
 //! Explicit publication leaves its source chat open and retries one snapshot.
 
 use super::{Case, mint, now};
+use af_core::id::Uuid7;
 use afd_authoring::types::{DraftState, PublishLibrary};
-use afd_core::id::Uuid7;
 
 /// The code a publication under an already-used `key` is refused with.
 async fn refusal(case: &Case, key: &Uuid7, request: PublishLibrary) -> String {
@@ -140,7 +140,7 @@ async fn a_candidate_under_retired_policy_semantics_publishes_nothing() {
         )
         .await
         .expect_err("stale policy needs a fresh review before it is shared");
-    assert_eq!(refused.code(), afd_core::error_code::AUTHORING_POLICY);
+    assert_eq!(refused.code(), af_core::error_code::AUTHORING_POLICY);
     assert_eq!(case.counts().await, (0, 0, 0));
     case.base.cleanup().await;
 }

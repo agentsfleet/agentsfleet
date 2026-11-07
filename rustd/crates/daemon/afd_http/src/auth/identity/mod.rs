@@ -29,8 +29,8 @@
 //!
 //! [`RouteMeta`]: crate::route::RouteMeta
 
+use af_core::error_code;
 use afd_auth::principal::{Principal, Runner};
-use afd_core::error_code;
 use axum::extract::FromRequestParts;
 use axum::response::{IntoResponse as _, Response};
 use http::request::Parts;

@@ -1,9 +1,9 @@
 //! Freeze the locked host's reviewed selection through the shared runner resolver.
 
 use crate::Result;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::decision::DecisionAssignment;
 use afd_runner::capacity::Capacity;
-use afd_wire::decision::DecisionAssignment;
 use sqlx::PgConnection;
 
 /// Caller keeps the host lock through writing both lease and snapshot.

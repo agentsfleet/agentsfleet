@@ -1,8 +1,8 @@
 //! Parse protocol selection and held fleet identities before any placement.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
+use af_wire::lease::{AcceptedKinds, LeaseRequest};
 use afd_http::handler::Refusal;
-use afd_wire::lease::{AcceptedKinds, LeaseRequest};
 use garde::Validate as _;
 
 pub(super) struct Request {

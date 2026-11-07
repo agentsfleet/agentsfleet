@@ -15,11 +15,11 @@ use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
-use afd_core::clock::{saturating_millis, saturating_millis_signed};
-use afd_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
-use afd_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, ToolCallRecord};
-use afd_wire::tool_trace::{ToolCallStatus, ToolTrace};
-use afr_providers::Call;
+use af_core::clock::{saturating_millis, saturating_millis_signed};
+use af_providers::Call;
+use af_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
+use af_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, ToolCallRecord};
+use af_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
 use afr_tools::sandbox::ImageAttachment;
@@ -31,7 +31,7 @@ use crate::engine::EventSink;
 use crate::records::record;
 use crate::spans;
 use crate::trace::{Outcome, Trace, bounded_arguments};
-use afr_secrets::{Clean, Scrub};
+use af_secrets::{Clean, Scrub};
 
 pub(crate) const EVENT_CALL_STARTED: &str = "tool_call_started";
 pub(crate) const EVENT_CALL_COMPLETED: &str = "tool_call_completed";

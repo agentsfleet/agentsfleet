@@ -10,7 +10,7 @@ use super::{ClaimUnavailable, Error, ErrorKind, MetadataUnwritten};
 // `map_err` appears on a path that adds nothing (`RUST_ERROR_STANDARD` rule 2).
 // Both finer types keep their own identity for the callers that DISCRIMINATE on
 // them; these lifts are for the callers that only propagate.
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     ClaimUnavailable => Claim,
     MetadataUnwritten => Metadata,
 );

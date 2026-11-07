@@ -1,7 +1,7 @@
 //! Shared admission fixtures for producer identity and reply destinations.
 use crate::support::Fixtures;
+use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer};
-use afd_wire::event::EventType;
 const ACTOR: &str = "webhook:fixture";
 const REQUEST_JSON: &str = r#"{"delivery":"fixture"}"#;
 

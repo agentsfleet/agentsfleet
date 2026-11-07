@@ -6,7 +6,7 @@
 
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use afd_wire::memory::MemoryDelta;
+use af_wire::memory::MemoryDelta;
 
 use crate::engine::Checkpoint;
 
@@ -48,16 +48,16 @@ impl Checkpoint for Recording {
 /// A per-test private working-context store, with real generation semantics.
 #[derive(Debug, Default)]
 pub struct ContextMemory(
-    std::sync::Mutex<std::collections::HashMap<String, afd_context::Checkpoint>>,
+    std::sync::Mutex<std::collections::HashMap<String, af_context::Checkpoint>>,
 );
 
 #[async_trait::async_trait]
 impl crate::ContextCheckpoints for ContextMemory {
-    async fn load(&self, branch: &str) -> afd_context::Result<Option<afd_context::Checkpoint>> {
+    async fn load(&self, branch: &str) -> af_context::Result<Option<af_context::Checkpoint>> {
         Ok(self
             .0
             .lock()
-            .map_err(|_poisoned| afd_context::Error::stale())?
+            .map_err(|_poisoned| af_context::Error::stale())?
             .get(branch)
             .cloned())
     }
@@ -65,14 +65,14 @@ impl crate::ContextCheckpoints for ContextMemory {
         &self,
         branch: &str,
         expected: u64,
-        checkpoint: afd_context::Checkpoint,
-    ) -> afd_context::Result<()> {
+        checkpoint: af_context::Checkpoint,
+    ) -> af_context::Result<()> {
         let mut entries = self
             .0
             .lock()
-            .map_err(|_poisoned| afd_context::Error::stale())?;
+            .map_err(|_poisoned| af_context::Error::stale())?;
         if entries.get(branch).map_or(0, |entry| entry.generation) != expected {
-            return Err(afd_context::Error::stale());
+            return Err(af_context::Error::stale());
         }
         entries.insert(branch.into(), checkpoint);
         Ok(())
@@ -94,7 +94,7 @@ mod tests {
     #[tokio::test]
     async fn a_poisoned_context_store_refuses_both_reads_and_publication() {
         let store = Arc::new(ContextMemory::default());
-        let checkpoint: afd_context::Checkpoint = serde_json::from_value(serde_json::json!({
+        let checkpoint: af_context::Checkpoint = serde_json::from_value(serde_json::json!({
             "format_version":1,
             "identity":{"scope":"private-run","model":"selected-model","pinned":"revision"},
             "generation":1,"covered_through":2,"source_digest":"a".repeat(64),

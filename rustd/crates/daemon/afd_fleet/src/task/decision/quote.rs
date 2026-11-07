@@ -1,10 +1,10 @@
 //! The exact price time survives funding delays, retries and late receipts.
 
+use af_wire::usage::UsageLine;
 use afd_billing::{
     Posture,
     price::{PriceBook, RatedLine, Rater, Window},
 };
-use afd_wire::usage::UsageLine;
 use serde::{Deserialize, Serialize};
 
 use crate::Result;

@@ -15,7 +15,7 @@ mod fixture;
 
 use std::time::Duration;
 
-use afd_crypto::entropy::Entropy;
+use af_crypto::entropy::Entropy;
 use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::hub::Received;
 use afd_gate::gate::{Gates, Verdict, Waiting};

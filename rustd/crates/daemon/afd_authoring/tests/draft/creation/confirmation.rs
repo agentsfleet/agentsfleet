@@ -3,13 +3,13 @@
 
 use super::super::{fixture::now, mint};
 use super::fixture::Case;
+use af_core::{id::Uuid7, test_util::trace::Capture};
+use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
 use afd_authoring::{
     Creations, SavedFleet,
     types::{SaveFleet, Start, StartOutcome, StartState},
 };
-use afd_core::{id::Uuid7, test_util::trace::Capture};
-use afd_crypto::entropy::Entropy;
 
 struct Retained {
     case: Case,
@@ -160,7 +160,7 @@ async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_adm
     );
     assert_eq!(
         fields.get("error_code").map(String::as_str),
-        Some(afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+        Some(af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str())
     );
     drop(log);
     retained

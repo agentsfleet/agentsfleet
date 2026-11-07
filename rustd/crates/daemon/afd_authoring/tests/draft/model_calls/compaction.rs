@@ -3,10 +3,10 @@ use super::{
     super::{attempt::Attempt, fixture::Fixture, mint},
     fixture,
 };
+use af_crypto::entropy::Entropy;
 use afd_authoring::{Drafts, ProviderRequest, ProviderResponse, Transport, types::Source};
 use afd_billing::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
 use afd_billing::ledger::LedgerBiller;
-use afd_crypto::entropy::Entropy;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
@@ -18,7 +18,7 @@ const CHECKPOINT_COUNT: &str =
 #[derive(Debug)]
 struct ChangedHistory {
     db: afd_db::Db,
-    draft: afd_core::id::Uuid7,
+    draft: af_core::id::Uuid7,
     ledger: LedgerBiller,
 }
 
@@ -63,7 +63,7 @@ async fn changed_history_after_funding_cannot_dispatch_the_previously_measured_b
         .call(&f.runner, &attempt.lease, fixture::request(&attempt))
         .await
         .expect_err("a funded body cannot authorize changed history");
-    assert_eq!(error.code(), afd_core::error_code::AUTHORING_FENCE);
+    assert_eq!(error.code(), af_core::error_code::AUTHORING_FENCE);
     assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
     assert!(provider.0.lock().expect("provider recording").is_empty());
     let checkpoints: i64 = sqlx::query_scalar(CHECKPOINT_COUNT)
@@ -84,7 +84,7 @@ impl Transport for Provider {
     async fn send(&self, request: ProviderRequest) -> afd_authoring::Result<ProviderResponse> {
         let body: Value = serde_json::from_slice(request.body()).expect("real provider wire");
         let summary = body.get("instructions").and_then(Value::as_str)
-            == Some(afd_context::SUMMARY_INSTRUCTIONS);
+            == Some(af_context::SUMMARY_INSTRUCTIONS);
         if summary {
             assert!(
                 body.get("tools")
@@ -122,8 +122,8 @@ const TRACE: &str = "trace=01a18bc1-d47c-7003-98b2-fba3847cc642 ";
 
 pub(in crate::draft) async fn history_for(
     f: &Fixture,
-    draft: &afd_core::id::Uuid7,
-    attempt: &afd_core::id::Uuid7,
+    draft: &af_core::id::Uuid7,
+    attempt: &af_core::id::Uuid7,
     prior: i64,
 ) {
     let mut connection = f.connection().await;
@@ -154,7 +154,7 @@ pub(in crate::draft) async fn history_for(
 }
 
 pub(super) async fn competing(f: &Fixture, attempt: &Attempt) -> Value {
-    use afd_context::{
+    use af_context::{
         CheckpointStore as _,
         repository::{Repository, Scope},
     };

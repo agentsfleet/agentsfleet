@@ -1,15 +1,15 @@
 //! Real S3 SDK requests authenticate ciphertext before restoring a manifest.
 
-use afd_core::etag::sha256_hex;
-use afd_crypto::checkpoint_digest;
-use afd_fleet::task::{TaskLifecycle as _, Tasks};
-use afd_wire::task::{
+use af_core::etag::sha256_hex;
+use af_crypto::checkpoint_digest;
+use af_wire::task::{
     CheckpointAuthorizationInput, CheckpointCommitInput, CheckpointEntry, CheckpointFile,
     CheckpointMode, CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput,
     CheckpointPage, CheckpointPageInput, CheckpointPlaintext, CheckpointPlan, CheckpointReadQuery,
     CheckpointTransfer, CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
     DecisionTaskVersion,
 };
+use afd_fleet::task::{TaskLifecycle as _, Tasks};
 
 use super::{
     super::fixture::{Case, exercise, id},
@@ -71,7 +71,7 @@ async fn allocate(
         None,
         &"0".repeat(40),
     );
-    request.upload_budget_bytes = (plaintext.len() + afd_crypto::TAG_LEN) as u64;
+    request.upload_budget_bytes = (plaintext.len() + af_crypto::TAG_LEN) as u64;
     request.logical_bytes = plaintext.len() as u64;
     request.entry_count = 1;
     let plan = tasks
@@ -109,7 +109,7 @@ async fn upload(
     server: &Server,
 ) {
     let checkpoint = id(&plan.checkpoint_id);
-    let captured = afd_core::test_util::trace::Capture::install_filtered(
+    let captured = af_core::test_util::trace::Capture::install_filtered(
         tracing_subscriber::filter::Targets::new()
             .with_default(tracing::level_filters::LevelFilter::OFF)
             .with_target("aws_sigv4", tracing::level_filters::LevelFilter::TRACE)

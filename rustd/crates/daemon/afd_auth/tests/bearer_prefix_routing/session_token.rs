@@ -4,6 +4,7 @@
 //! Split from the parent for length; the fixtures every class shares stay
 //! there.
 
+use af_core::id::Uuid7;
 use afd_auth::authenticate::Registry;
 use afd_auth::capability::NoCapabilitySource;
 use afd_auth::credential::{
@@ -16,7 +17,6 @@ use afd_auth::plane::Plane;
 use afd_auth::principal::PersonCredential;
 use afd_auth::scope::{Scope, parse_claim};
 use afd_auth::verifier::{NoVerifier, VerifiedClaims, VerifyError};
-use afd_core::id::Uuid7;
 
 use super::{BODY, TENANT, WORKSPACE, block_on, live_machine, live_person, present, subject, uuid};
 

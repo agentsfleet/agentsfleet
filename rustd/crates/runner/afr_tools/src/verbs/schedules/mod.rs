@@ -7,7 +7,7 @@
 //! lease minted before it leaves, as a line to the thread is; `agentsfleetd`
 //! masks the fleet's stored secrets.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use schemars::JsonSchema;
 use serde::Deserialize;
 

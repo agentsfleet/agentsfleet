@@ -4,7 +4,7 @@
     reason = "a failed fixture precondition fails the benchmark proof"
 )]
 
-use afd_core::env::EnvSource as _;
+use af_core::env::EnvSource as _;
 use std::time::Duration;
 
 use afd_bench::datastores::Datastores;
@@ -21,7 +21,7 @@ const RUNNERS: u64 = 8;
 #[ignore = "needs the exclusive benchmark rig; run after make bench-lease"]
 async fn test_ledger_claim_lane_reports_round_trips() {
     let lane = database().await;
-    let queue = afd_core::env::ProcessEnv
+    let queue = af_core::env::ProcessEnv
         .get("TEST_DRAGONFLY_URL")
         .expect("test cluster URL");
     let stores = Datastores::open(&lane.url(), &queue, None)

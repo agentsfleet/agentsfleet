@@ -11,13 +11,13 @@
 //! `fleet.fleets`, opens its secret out of `vault.secrets`, and lands its claim
 //! in the queue exactly as the daemon does it.
 
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::test_util::FixtureSetup;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FIXTURE_SETUP_MODEL_REF, FleetSeed, SetupRevision, TestDatabase, mint_id};
 use afd_dragonfly::Dragonfly;
-use afd_fleet_runtime::test_util::FixtureSetup;
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 

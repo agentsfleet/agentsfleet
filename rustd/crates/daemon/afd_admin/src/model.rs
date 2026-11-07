@@ -1,13 +1,13 @@
 //! Priced model catalogue CRUD, each edit bumping the catalogue version in the
 //! same transaction.
 
-use afd_core::catalogue::{Metadata, Price};
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::catalogue::{Metadata, Price};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::decision::DecisionConfiguration;
+use af_wire::inference::ModelInference;
 use afd_db::Db;
 use afd_db::constraint::violates_foreign_key;
-use afd_wire::decision::DecisionConfiguration;
-use afd_wire::inference::ModelInference;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::types::Json;

@@ -7,7 +7,7 @@ mod lock_wait;
 mod suppressed_write;
 
 use super::super::{attempt::Attempt, fixture::Fixture};
-use afd_wire::authoring::{Knowledge, Meter, Renew};
+use af_wire::authoring::{Knowledge, Meter, Renew};
 use jiff::Timestamp;
 
 /// Expires the attempt's lease at database time, the clock the guard reads.

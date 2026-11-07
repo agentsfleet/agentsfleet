@@ -20,25 +20,25 @@ jiff.workspace = true
 schemars.workspace = true
 garde.workspace = true
 zeroize.workspace = true
-afd_context.workspace = true
-afd_crypto.workspace = true
+af_context.workspace = true
+af_crypto.workspace = true
 sha2.workspace = true
 hex.workspace = true
 # The runner's own families: a turn's and a tool call's duration.
 afr_telemetry.workspace = true
-afd_core.workspace = true
+af_core.workspace = true
 # The span vocabulary the loop's turns and calls are traced in.
-afd_observability.workspace = true
-afd_wire.workspace = true
+af_observability.workspace = true
+af_wire.workspace = true
 # A lease's outbound guard, and the mint seam the supervisor implements.
-afr_egress.workspace = true
+af_egress.workspace = true
 afr_executor.workspace = true
 # The fleet's memory a run's calls share, and the deltas it pushes.
 afr_memory.workspace = true
 # The model a run drives, behind one trait.
-afr_providers.workspace = true
+af_providers.workspace = true
 # Every secret value masked in one pass over a frame, an output or a reply.
-afr_secrets.workspace = true
+af_secrets.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.
 afr_tools.workspace = true
 async-trait.workspace = true
@@ -66,9 +66,9 @@ memmap2.workspace = true
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the suites read a failure arm's log line through.
-afd_core = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
 afr_tools = { workspace = true, features = ["test-util"] }
 # A mint that mints nothing, and a transport that records, for the loop suites.
-afr_egress = { workspace = true, features = ["test-util"] }
+af_egress = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "sync", "time", "test-util"] }

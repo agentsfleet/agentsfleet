@@ -32,7 +32,7 @@ mod stream_ceiling_tests;
 
 pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
-pub use afd_otlp::{
+pub use af_otlp::{
     OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
 };
 
@@ -50,11 +50,11 @@ use self::knobs::{
 
 use self::read::{classify, identity, is_set, read_kek, required};
 
+use af_core::env::{EnvSource, optional};
+use af_core::id::Uuid7;
+use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
-use afd_core::env::{EnvSource, optional};
-use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
-use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
@@ -274,8 +274,8 @@ fn signing_keys<E: EnvSource + ?Sized>(source: &E) -> Option<SigningKeys> {
 fn optional_secret<E: EnvSource + ?Sized>(
     source: &E,
     knob: &str,
-) -> Option<afd_crypto::secret::SecretString> {
-    let value = afd_crypto::secret::SecretString::new(source.get(knob)?);
+) -> Option<af_crypto::secret::SecretString> {
+    let value = af_crypto::secret::SecretString::new(source.get(knob)?);
     let trimmed = value.expose().trim();
-    (!trimmed.is_empty()).then(|| afd_crypto::secret::SecretString::new(trimmed.to_owned()))
+    (!trimmed.is_empty()).then(|| af_crypto::secret::SecretString::new(trimmed.to_owned()))
 }

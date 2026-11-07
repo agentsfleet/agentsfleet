@@ -1,8 +1,8 @@
 //! Transport delay amplifies round trips without changing the pool's budget.
 
 use super::{Fixture, SendMessage, claim, fund, mint, now, queue, unknown};
+use af_crypto::entropy::Entropy;
 use afd_authoring::{Drafts, Result};
-use afd_crypto::entropy::Entropy;
 use afd_db::{Db, config::DbRole, test_util::TestDatabase};
 use reqwest::Url;
 use std::{sync::Arc, time::Duration};
@@ -129,7 +129,7 @@ async fn delayed_database_keeps_one_hundred_sends_within_the_existing_pool_budge
     drop(proxy);
 }
 
-async fn stored(f: &Fixture, draft: &afd_core::id::Uuid7) -> (i64, i64, i64) {
+async fn stored(f: &Fixture, draft: &af_core::id::Uuid7) -> (i64, i64, i64) {
     sqlx::query_as("SELECT (SELECT count(*) FROM authoring.messages WHERE draft_id=d.id), (SELECT count(*) FROM authoring.replay_receipts WHERE scope=$2), d.last_message_sequence FROM authoring.drafts d WHERE d.id=$1::uuid")
         .bind(draft.as_str())
         .bind(format!("{}:draft:{draft}:message", f.workspace))
@@ -137,7 +137,7 @@ async fn stored(f: &Fixture, draft: &afd_core::id::Uuid7) -> (i64, i64, i64) {
         .await.expect("committed message, receipt and sequence")
 }
 
-async fn version(f: &Fixture, draft: &afd_core::id::Uuid7, value: i64) {
+async fn version(f: &Fixture, draft: &af_core::id::Uuid7, value: i64) {
     sqlx::query("UPDATE authoring.drafts SET resource_version=$2 WHERE id=$1::uuid")
         .bind(draft.as_str())
         .bind(value)
@@ -164,7 +164,7 @@ async fn failed_sequence_update_rolls_back_message_and_receipt_then_allows_same_
         .send(f.access(), &draft.id, request(), now())
         .await
         .expect_err("version overflow");
-    assert_eq!(error.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_DB_QUERY);
     let cause = std::error::Error::source(&error)
         .and_then(|source| source.downcast_ref::<sqlx::Error>())
         .and_then(sqlx::Error::as_database_error)

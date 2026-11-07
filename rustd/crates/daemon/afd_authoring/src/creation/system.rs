@@ -15,8 +15,8 @@ use crate::{
     review,
     types::{Candidate, Start},
 };
-use afd_core::{error_code, id::Uuid7};
-use afd_fleet_runtime::{
+use af_core::{error_code, id::Uuid7};
+use af_fleet_runtime::{
     Definition,
     definition::{POLICY_SEMANTICS, canonical_digest},
 };

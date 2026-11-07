@@ -7,8 +7,8 @@ use crate::{
     halt::Halt,
     test_support::{self, Answer, Calls},
 };
-use afd_core::{error_code, id::Uuid7, test_util::trace::Capture};
-use afd_wire::authoring::{Outcome, Reported};
+use af_core::{error_code, id::Uuid7, test_util::trace::Capture};
+use af_wire::authoring::{Outcome, Reported};
 use std::{
     collections::HashSet,
     path::Path,

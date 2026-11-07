@@ -5,7 +5,7 @@ use crate::{
     Access, Conversation, Result,
     types::{ListQuery, Page},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use futures_util::future::try_join_all;
 
 impl Creations {

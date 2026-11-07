@@ -1,7 +1,7 @@
 //! Bounded admin model bodies share field-specific public refusal sentences.
 
+use af_validate::Sentences;
 use afd_api_wire::admin::{AdminModelCreate, AdminModelPatch};
-use afd_validate::Sentences;
 use garde::{Unvalidated, Valid};
 
 const DETAIL_BODY_REQUIRED: &str = "Request body required";
@@ -85,13 +85,13 @@ fn invalid(report: &garde::Report) -> &'static str {
 /// The sentence a body that would not parse earns.
 ///
 /// A rate is refused while parsing, because its spelling is the bound
-/// (`afd_wire::nanos`). Those two refusals are this daemon's own text and
+/// (`af_wire::nanos`). Those two refusals are this daemon's own text and
 /// carry no part of the value, so matching them is safe; every other parse
 /// failure stays the generic sentence, since `serde_json` may quote the value
 /// it rejected and these bodies are typed by an operator.
 fn unreadable(error: &serde_json::Error) -> &'static str {
     let text = error.to_string();
-    if [afd_wire::nanos::NOT_CANONICAL, afd_wire::nanos::TOO_LARGE]
+    if [af_wire::nanos::NOT_CANONICAL, af_wire::nanos::TOO_LARGE]
         .iter()
         .any(|refusal| text.contains(refusal))
     {

@@ -27,8 +27,8 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_core::id::Uuid7;
 use afd_dragonfly::streams::FleetStreams;
 use jiff::Timestamp;
 

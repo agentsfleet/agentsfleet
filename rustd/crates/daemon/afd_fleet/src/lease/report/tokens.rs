@@ -4,8 +4,8 @@
 //! run's metrics and delivery span only; the charge is computed per line and
 //! never reads them.
 
-use afd_core::error_code::{Coded as _, Logged};
-use afd_core::id::Uuid7;
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
 
 use crate::lease::store::Leases;
 

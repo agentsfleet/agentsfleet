@@ -4,16 +4,16 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use afd_core::event::status;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
-use afd_events::{Cursor, EventDetailRow};
-use afd_observability::metrics::label::fleet::HistoryCut;
-use afd_wire::event::EventType;
-use afd_wire::lease::{
+use af_core::event::status;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_observability::metrics::label::fleet::HistoryCut;
+use af_wire::event::EventType;
+use af_wire::lease::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
     TURN_TEXT_BYTES_MAX, Turn,
 };
+use afd_events::{Cursor, EventDetailRow};
 use jiff::Timestamp;
 
 use super::{EVENT_HISTORY_UNAVAILABLE, Thread, turns_before, within_caps};
@@ -25,7 +25,7 @@ const EVENT: &str = "01924f4e-0000-7000-8000-0000000000e9";
 
 /// One thread row: `message` asked, answered `answer`, ended in `status`.
 fn row(index: i64, status: &str, message: &str, answer: Option<&str>) -> EventDetailRow {
-    let at = afd_core::clock::after(
+    let at = af_core::clock::after(
         Timestamp::UNIX_EPOCH,
         std::time::Duration::from_millis(index.unsigned_abs()),
     );
@@ -89,7 +89,7 @@ impl Thread for Fake {
 /// Reads `thread` for a lease whose event is `event_type`.
 async fn turns_for(thread: &Fake, event_type: EventType) -> Vec<Turn<'static>> {
     let at = Cursor {
-        created_at: afd_core::clock::after(
+        created_at: af_core::clock::after(
             Timestamp::UNIX_EPOCH,
             std::time::Duration::from_millis(100),
         ),
@@ -275,7 +275,7 @@ async fn test_history_read_failure_fails_open() {
 /// without its turns.
 #[tokio::test]
 async fn test_history_metrics_recorded() {
-    use afd_observability::test_util::Capture as Metrics;
+    use af_observability::test_util::Capture as Metrics;
 
     const BYTES: &str = "agentsfleet_lease_history_bytes";
     const CUTS: &str = "agentsfleet_lease_history_cuts_total";

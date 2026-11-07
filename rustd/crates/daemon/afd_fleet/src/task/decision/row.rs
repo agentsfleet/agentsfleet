@@ -1,7 +1,7 @@
 //! Retained financial identity is independent of cascading private payloads.
 
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     decision::{DecisionAssignment, DecisionRequest, DecisionUsage},
     task::{DecisionCallState, DecisionReceipt, DecisionUnavailableCause},
 };

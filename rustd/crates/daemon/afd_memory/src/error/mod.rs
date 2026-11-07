@@ -5,7 +5,7 @@
 //! codes. Both are decided in one table,
 //! [`Error::answer`], so a new kind fails the build until it has both.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 pub mod detail;
 mod raise;
@@ -15,7 +15,7 @@ pub(crate) use self::raise::{entry_not_found, fleet_not_found, query, unavailabl
 /// The result every fallible function in this crate returns.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A memory failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -46,13 +46,13 @@ pub(crate) enum ErrorKind {
     #[error("an entry identifier could not be minted")]
     Identifier {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     #[error("a stored entry names a writer that is not an identifier")]
     Writer {
         #[source]
-        source: afd_core::error::Error,
+        source: af_core::error::Error,
     },
 
     #[error("the fleet a memory request names is not this workspace's")]

@@ -16,7 +16,7 @@ pub(crate) mod fixture;
 
 use std::time::Duration;
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_sse::KIND_ACCESS_REVOKED;
 use afd_tenant::workspace::access::{ROLE_MEMBER, ROLE_OWNER};
 use axum::Router;

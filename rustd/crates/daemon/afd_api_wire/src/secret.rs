@@ -90,7 +90,7 @@ pub struct SecretSummary<'a> {
     /// The name the secret is stored and interpolated under.
     pub name: Cow<'a, str>,
     /// When it was first stored.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// The server's classification. A client reads this and never re-derives it.
     pub kind: &'static str,

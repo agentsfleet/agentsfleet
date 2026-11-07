@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use super::{Error, ErrorKind};
 
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
 );
 

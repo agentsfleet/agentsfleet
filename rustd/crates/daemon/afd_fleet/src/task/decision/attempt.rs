@@ -1,7 +1,7 @@
 //! An eligible retry reuses the original request, quote and logical deadline.
 
-use afd_core::id::Uuid7;
-use afd_wire::{
+use af_core::id::Uuid7;
+use af_wire::{
     decision::DecisionRequest,
     task::{DecisionCallState, DecisionRetryDelay, DecisionUnavailableCause},
 };

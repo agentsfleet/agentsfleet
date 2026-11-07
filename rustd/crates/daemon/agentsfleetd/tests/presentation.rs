@@ -190,10 +190,10 @@ fn test_fatal_keeps_only_our_frames_from_their_crate() {
              at /rustc/aaaa/library/core/src/panicking.rs:75:14
    1: agentsfleetd::preflight::read_kek
              at /home/build/rustd/crates/daemon/agentsfleetd/src/preflight.rs:210:9
-   2: afd_crypto::secret::Kek::from_hex
-             at /home/build/rustd/crates/foundation/afd_crypto/src/secret.rs:50:9
-   3: afd_core::error_code::lookup
-             at /home/build/rustd/crates/foundation/afd_core/src/error_code/mod.rs:12:5
+   2: af_crypto::secret::Kek::from_hex
+             at /home/build/rustd/crates/foundation/af_crypto/src/secret.rs:50:9
+   3: af_core::error_code::lookup
+             at /home/build/rustd/crates/foundation/af_core/src/error_code/mod.rs:12:5
    4: afd_db::config::read
              at /home/build/rustd/crates/daemon/afd_db/src/config/mod.rs:40:7
    5: std::rt::lang_start_internal
@@ -207,8 +207,8 @@ fn test_fatal_keeps_only_our_frames_from_their_crate() {
 
     for frame in [
         "agentsfleetd/src/preflight.rs:210:9",
-        "afd_crypto/src/secret.rs:50:9",
-        "afd_core/src/error_code/mod.rs:12:5",
+        "af_crypto/src/secret.rs:50:9",
+        "af_core/src/error_code/mod.rs:12:5",
         "afd_db/src/config/mod.rs:40:7",
     ] {
         assert!(
@@ -217,7 +217,7 @@ fn test_fatal_keeps_only_our_frames_from_their_crate() {
         );
     }
     assert!(
-        rendered.contains("afd_core::error_code::lookup"),
+        rendered.contains("af_core::error_code::lookup"),
         "a function-symbol line is kept whole: {rendered}"
     );
     assert!(
@@ -232,6 +232,23 @@ fn test_fatal_keeps_only_our_frames_from_their_crate() {
         !rendered.contains("/home/build/"),
         "the build machine's path before the crate is dropped: {rendered}"
     );
+    assert!(
+        !rendered.contains("daemon/afd_db"),
+        "and so is the layer folder the crate sits in: {rendered}"
+    );
+}
+
+/// A word that merely contains a prefix is not one of our crates.
+#[test]
+fn test_fatal_does_not_take_a_word_containing_a_prefix_for_ours() {
+    let backtrace =
+        "   1: hashbrown::raw::leaf_node\n             at /cargo/registry/hashbrown/src/raw.rs:9:1";
+    let error = Layered {
+        message: "boot refused",
+        cause: None,
+    };
+    let rendered = fatal::render_with_trace(&error, Rendering::Plain, backtrace);
+    assert!(!rendered.contains("leaf_node"), "{rendered}");
 }
 
 /// A frame whose path names no crate directory falls back to its last segment.

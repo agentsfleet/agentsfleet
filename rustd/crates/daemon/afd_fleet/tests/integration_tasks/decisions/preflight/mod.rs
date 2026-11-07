@@ -7,15 +7,15 @@ use super::{
     interpretation::choose,
     reply::known_result,
 };
-use afd_core::{error_code, etag::sha256_hex};
-use afd_fleet::task::TaskLifecycle as _;
-use afd_wire::{
+use af_core::{error_code, etag::sha256_hex};
+use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome},
     task::{
         DecisionAssessment, DecisionReceipt, TaskBindingItem, TaskBindingsInput, TaskInputAction,
         TaskProposedItem, TaskRequestedTarget,
     },
 };
+use afd_fleet::task::TaskLifecycle as _;
 use serde_json::Value;
 mod remote;
 mod storage;
@@ -170,7 +170,7 @@ async fn accepted(
     case: &Case,
     tasks: &afd_fleet::task::Tasks,
     input: TaskBindingsInput,
-    accepted: afd_wire::task::TaskBindingsResponse<'_>,
+    accepted: af_wire::task::TaskBindingsResponse<'_>,
 ) {
     assert!(!accepted.replayed);
     assert_eq!(accepted.items.len(), 1);

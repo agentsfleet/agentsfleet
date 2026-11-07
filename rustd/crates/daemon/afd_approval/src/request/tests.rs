@@ -13,8 +13,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use af_core::id::Uuid7;
 use afd_api_wire::grant::status;
-use afd_core::id::Uuid7;
 
 use super::{KIND_INTEGRATION_GRANT, Origin, Requested, Wanted, settle};
 
@@ -116,7 +116,7 @@ fn the_two_origins_stay_distinguishable_on_the_row_and_in_the_metric() {
 #[test]
 fn the_gate_kind_matches_the_spelling_the_config_validator_reserves() {
     // The other half of a pin that cannot be an import.
-    // `afd_fleet_runtime::config::raw::predicate::DAEMON_OWNED_GATE_KIND` refuses
+    // `af_fleet_runtime::config::raw::predicate::DAEMON_OWNED_GATE_KIND` refuses
     // a fleet that authors this kind. That crate is a SIBLING — neither manifest
     // names the other — so it holds the literal rather than this constant.
     // Renaming either side without the other would retire the guard silently:

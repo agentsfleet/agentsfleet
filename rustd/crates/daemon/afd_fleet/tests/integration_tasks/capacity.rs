@@ -1,8 +1,8 @@
 //! A capacity failure rolls back every item, goal and queued continuation.
 
-use afd_core::error_code;
+use af_core::error_code;
+use af_wire::task::TaskLimits;
 use afd_fleet::task::{TaskBindings, TaskControl, TaskLifecycle as _};
-use afd_wire::task::TaskLimits;
 
 use super::fixture::{Case, exercise};
 

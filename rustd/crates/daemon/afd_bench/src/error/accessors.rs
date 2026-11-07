@@ -1,6 +1,6 @@
 //! The questions a caller may ask of a refusal, and the code each one answers.
 
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error_code::{self, ErrorCode};
 
 use super::{Error, ErrorKind};
 

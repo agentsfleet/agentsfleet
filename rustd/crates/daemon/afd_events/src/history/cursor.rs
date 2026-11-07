@@ -9,7 +9,7 @@
 //! character no RFC 3339 instant contains, so the first one ends the instant
 //! whatever the event id holds.
 //!
-//! # Why this is not [`afd_core::paging::Cursor`]
+//! # Why this is not [`af_core::paging::Cursor`]
 //!
 //! That type exists, it is keyset, and it carries the same two fields in the
 //! clear. The events endpoints wrap the pair, which keeps the token opaque to a
@@ -105,7 +105,7 @@ mod tests {
     ///
     /// A helper rather than an inline `expect` at each site because `Error`
     /// cannot derive `PartialEq` — it carries an `sqlx::Error` — so the
-    /// `assert_eq!(.., Ok(..))` shape `afd_core::paging` uses for its own
+    /// `assert_eq!(.., Ok(..))` shape `af_core::paging` uses for its own
     /// cursor is unavailable here.
     fn decoded(raw: &str) -> Cursor {
         Cursor::decode(raw).expect("a cursor this test built or spelled out")
@@ -155,7 +155,7 @@ mod tests {
             assert!(refused.is_err(), "accepted {raw:?}");
             assert_eq!(
                 refused.err().map(|error| error.code()),
-                Some(afd_core::error_code::INVALID_REQUEST),
+                Some(af_core::error_code::INVALID_REQUEST),
                 "{raw:?} was refused as something other than a bad cursor"
             );
         }

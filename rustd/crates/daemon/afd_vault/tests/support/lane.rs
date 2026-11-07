@@ -22,11 +22,11 @@
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::entropy::Entropy;
-use afd_crypto::envelope::Envelope;
-use afd_crypto::secret::Kek;
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::entropy::Entropy;
+use af_crypto::envelope::Envelope;
+use af_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_uuid7};

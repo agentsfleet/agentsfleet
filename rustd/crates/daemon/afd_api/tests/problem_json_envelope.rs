@@ -12,15 +12,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::error_code;
 use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
-use afd_core::error_code;
 
 /// A detail long enough that a truncating envelope would be caught.
 ///
 /// The number is arbitrary; that it is the SAME number in the input and the
 /// assertion is not, which is the whole reason it is bound to a name.
 const LONG_DETAIL_BYTES: usize = 1000;
-use afd_core::problem::Problem;
+use af_core::problem::Problem;
 use axum::body::to_bytes;
 use axum::response::IntoResponse;
 use http::header;
@@ -102,7 +102,7 @@ async fn test_the_docs_link_is_the_registry_entry_for_that_code() {
 /// the envelope does not carry it.
 #[tokio::test]
 async fn test_hint_never_reaches_the_client() {
-    for problem in afd_core::problem::entries() {
+    for problem in af_core::problem::entries() {
         let (_status, _ct, json) = render(ProblemResponse::new(problem.code(), "d", "r")).await;
         assert!(
             json.get("hint").is_none(),
@@ -188,7 +188,7 @@ async fn test_each_extension_rides_its_own_status_only() {
 #[tokio::test]
 async fn test_user_message_is_verbatim_or_absent() {
     let mut with_message = 0_usize;
-    for problem in afd_core::problem::entries() {
+    for problem in af_core::problem::entries() {
         let (_status, _ct, json) = render(ProblemResponse::new(problem.code(), "d", "r")).await;
         match problem.user_message() {
             Some(message) => {
@@ -238,7 +238,7 @@ async fn test_a_long_detail_is_not_truncated() {
 /// Every registered code answers the status its registry entry names.
 #[tokio::test]
 async fn test_every_code_answers_its_registered_status() {
-    for problem in afd_core::problem::entries() {
+    for problem in af_core::problem::entries() {
         let (status, content_type, json) =
             render(ProblemResponse::new(problem.code(), "d", "r")).await;
         assert_eq!(

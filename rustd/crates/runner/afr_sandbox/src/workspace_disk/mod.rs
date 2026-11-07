@@ -15,7 +15,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
-use afd_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{Coded as _, Logged};
 use rustix::fs::{Gid, Uid};
 
 use crate::error::Result;

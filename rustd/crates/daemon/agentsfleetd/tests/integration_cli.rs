@@ -24,7 +24,7 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
+use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use agentsfleetd::cli::{Cli, SUCCESS, run};
 use clap::Parser as _;
 

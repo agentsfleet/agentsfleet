@@ -1,6 +1,6 @@
 //! Schema-valid daemon decisions distinguish accounting facts from usable answers.
 use super::CALL;
-use afd_wire::{decision::*, task::*};
+use af_wire::{decision::*, task::*};
 use serde_json::{Value, json};
 
 pub(super) fn assignment() -> DecisionAssignment {
@@ -14,8 +14,7 @@ pub(super) fn assignment() -> DecisionAssignment {
 }
 
 pub(super) fn inputs() -> TaskInputsResponse<'static> {
-    let deadline =
-        afd_core::clock::after(afd_core::clock::now(), std::time::Duration::from_mins(5));
+    let deadline = af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(5));
     TaskInputsResponse {
         source_admission_id: CALL.into(),
         accepted_revision_id: Some(CALL.into()),
@@ -138,7 +137,7 @@ fn outcome(mode: &str) -> DecisionOutcome {
 
 /// The tiny transport fixture has one context token; real Loop execution needs
 /// room for its accepted goal, initial instructions and one model response.
-pub(super) fn lease() -> afd_wire::lease::LeasePayload<'static> {
+pub(super) fn lease() -> af_wire::lease::LeasePayload<'static> {
     let mut lease = crate::test_support::lease(super::LEASE_ID, CALL);
     lease.policy.tools.clear();
     lease.policy.context.context_cap_tokens = 64_000;

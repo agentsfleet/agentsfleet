@@ -7,7 +7,7 @@ use crate::{
     paging, replay,
     types::{LibraryQuery, Page, RevisionSummary},
 };
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;

@@ -6,7 +6,7 @@ use crate::repair_remote::{
     VALIDATION_JOB, VALIDATION_RUN, draft_url,
 };
 use crate::repair_walk::{self, BLOCKED};
-use afr_providers::Chunk;
+use af_providers::Chunk;
 use serde_json::{Value, json};
 
 pub(crate) fn script(repo: Repo, reads: Vec<Value>) -> impl Fn(&Asked) -> Vec<Chunk> + Send + Sync {

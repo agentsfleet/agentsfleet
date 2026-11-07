@@ -21,8 +21,8 @@
 use afd_api_wire::approval::GateStatus;
 use std::time::Duration;
 
+use af_core::clock::before;
 use afd_approval::{Cursor, Decision, Filter, Resolution};
-use afd_core::clock::before;
 use jiff::Timestamp;
 
 use crate::lane::{Lane, NOW, Window};

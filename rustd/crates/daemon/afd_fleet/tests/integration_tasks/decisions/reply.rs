@@ -4,7 +4,7 @@
     reason = "validated fixture questions have nonempty choices and bounded levels"
 )]
 
-use afd_wire::{
+use af_wire::{
     decision::{DecisionRequest, DecisionResult},
     task::DecisionReceipt,
 };
@@ -16,7 +16,7 @@ pub(crate) fn known(request: &DecisionRequest) -> DecisionReceipt {
 }
 
 pub(crate) fn known_result(request: &DecisionRequest) -> DecisionResult {
-    use afd_wire::decision::{DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionUsage};
+    use af_wire::decision::{DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionUsage};
     let answers = request
         .questions
         .iter()

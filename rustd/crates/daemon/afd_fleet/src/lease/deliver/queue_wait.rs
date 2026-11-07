@@ -20,14 +20,14 @@ use crate::lease::envelope::{Acquired, Kind};
 /// The instant the lease was written: the poll's wall-clock `now` plus the
 /// time the poll has taken since `began`.
 pub(super) fn issued_at(now: Timestamp, began: Instant) -> Timestamp {
-    afd_core::clock::after(now, began.elapsed())
+    af_core::clock::after(now, began.elapsed())
 }
 
 /// How many milliseconds `acquired` waited for a runner, if it was read new:
 /// the log field spells the span as a count.
 pub(super) fn of(acquired: &Acquired, issued_at: Timestamp) -> Option<u64> {
     (acquired.kind == Kind::Fresh && !acquired.redelivered).then(|| {
-        afd_core::clock::saturating_millis(afd_core::clock::elapsed(
+        af_core::clock::saturating_millis(af_core::clock::elapsed(
             acquired.event_created_at,
             issued_at,
         ))

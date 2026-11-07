@@ -8,8 +8,8 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_wire::activity::ActivityAccepted;
+use af_core::id::Uuid7;
+use af_wire::activity::ActivityAccepted;
 use afr_agent::EventSink as _;
 use afr_telemetry::labels::FrameDrop;
 use afr_telemetry::testing::{Recorded, Tally, scoped};

@@ -194,7 +194,7 @@ describe("ApiKeyList component", () => {
   it("delete race (key still active) surfaces must-revoke-first and re-fetches", async () => {
     // ApiError.message is user_message ?? detail (client.ts) —
     // UZ-APIKEY-008's friendly copy is its `user_message` in
-    // rustd/crates/foundation/afd_core/src/problem/auth.rs.
+    // rustd/crates/foundation/af_core/src/problem/auth.rs.
     deleteApiKeyActionMock.mockResolvedValue({
       ok: false,
       error: "Revoke this key before deleting it. Revoke it first, then delete the revoked key.",

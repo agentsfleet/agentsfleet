@@ -4,8 +4,8 @@
     reason = "a test asserts by panicking, and indexes the JSON it built"
 )]
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::tool_trace::{RawToolTrace, TRACE_MAX_CALLS};
+use af_core::test_util::trace::Capture;
+use af_wire::tool_trace::{RawToolTrace, TRACE_MAX_CALLS};
 use serde_json::{Value, json};
 
 use super::{EVENT_TRACE_DROPPED, TraceOwner, stored};

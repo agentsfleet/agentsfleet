@@ -49,8 +49,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_core::id::Uuid7;
 use moka::future::Cache;
 
 use crate::error::{self, Result};

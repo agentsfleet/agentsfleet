@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_events::{Cursor, EventRow, Filter, History, Since, next_cursor, prefix_to_like};
 use jiff::Timestamp;

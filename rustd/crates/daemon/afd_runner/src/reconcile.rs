@@ -39,7 +39,7 @@
 //! step in the runner bootstrap playbook. Change their bytes only on purpose:
 //! an operator greps for them.
 
-use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
+use af_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
 
 /// The host has never reported what it can enforce.
 pub const REASON_NO_CAPABILITY_REPORT: &str = "no capability report";

@@ -137,9 +137,9 @@ async fn one_of_one_hundred_conflicting_checkpoint_writers_publishes_exactly_one
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_private_notes() {
-    use afd_context::repository::{Repository, Scope};
-    use afd_core::id::Uuid7;
-    use afd_crypto::entropy::Entropy;
+    use af_context::repository::{Repository, Scope};
+    use af_core::id::Uuid7;
+    use af_crypto::entropy::Entropy;
 
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -155,13 +155,10 @@ async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_priv
         .context_commit(&held.run.runner_id, &lease, &lease, held.fence, 0, invalid)
         .await
         .expect_err("notes require a meaningful goal");
-    assert_eq!(
-        error.code(),
-        afd_core::error_code::INTERNAL_OPERATION_FAILED
-    );
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
     assert!(
         std::error::Error::source(&error)
-            .is_some_and(<dyn std::error::Error>::is::<afd_context::Error>)
+            .is_some_and(<dyn std::error::Error>::is::<af_context::Error>)
     );
     assert!(
         leases

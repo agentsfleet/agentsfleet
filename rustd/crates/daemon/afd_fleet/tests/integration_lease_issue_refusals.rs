@@ -14,7 +14,7 @@
 
 use crate::seed;
 use crate::support;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_fleet::lease::Billed;
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};

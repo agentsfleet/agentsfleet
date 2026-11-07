@@ -3,11 +3,11 @@
 
 use super::super::{fixture::now, mint};
 use super::fixture::Case;
+use af_core::{error_code, id::Uuid7};
 use afd_authoring::{
     SavedFleet,
     types::{ApplyRevision, DraftPatch, DraftState, SaveFleet, SaveSource, Source, Start},
 };
-use afd_core::{error_code, id::Uuid7};
 
 /// Saves a funded fleet under `name` and answers it active.
 async fn active(c: &Case, name: &str) -> SavedFleet {

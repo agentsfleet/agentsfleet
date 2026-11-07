@@ -28,13 +28,13 @@ const AUTHORING_MODEL_TIMEOUT: Duration = Duration::from_secs(310);
 // slow channel as a daemon that never answered, and the model would post the
 // line again.
 const _: () = assert!(
-    afd_wire::message_verb::MESSAGE_DELIVERY_DEADLINE.as_secs() < CALL_TIMEOUT.as_secs(),
+    af_wire::message_verb::MESSAGE_DELIVERY_DEADLINE.as_secs() < CALL_TIMEOUT.as_secs(),
     "the runner's call timeout must outlast the daemon's message deadline"
 );
 // A held heartbeat answers no later than `WAKE_HOLD_MAX`; a call timeout
 // shorter than that would read every hold as a daemon that never answered.
 const _: () = assert!(
-    afd_core::timing::WAKE_HOLD_MAX.as_secs() < CALL_TIMEOUT.as_secs(),
+    af_core::timing::WAKE_HOLD_MAX.as_secs() < CALL_TIMEOUT.as_secs(),
     "the runner's call timeout must outlast a held heartbeat"
 );
 /// Why a token was refused before any call.

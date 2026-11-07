@@ -167,7 +167,7 @@ pub const WORKSPACE_PARAMETER: &str = "{workspace_id}";
 /// Whether `haystack` contains `needle`, in a `const` context.
 ///
 /// Slice patterns and recursion rather than index arithmetic, which is the same
-/// device `afd_core::error_code`'s spelling check uses and for the same reason:
+/// device `af_core::error_code`'s spelling check uses and for the same reason:
 /// every bound is proven by the pattern, so there is no comparison a reader has
 /// to check and no index that could be out of range
 /// (`clippy::indexing_slicing`). The depth is the template's length — sixty-odd

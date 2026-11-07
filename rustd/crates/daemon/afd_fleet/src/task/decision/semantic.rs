@@ -1,6 +1,6 @@
 //! Advisory answer usability never prevents original-owner financial recording.
 
-use afd_wire::{
+use af_wire::{
     decision::{
         DecisionAssignment, DecisionOutcome, DecisionPurpose, DecisionRequest, DecisionResult,
         answer_matches,

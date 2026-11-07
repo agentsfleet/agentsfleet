@@ -5,7 +5,7 @@
 //! It opens one named row, or the set a fleet declared, and nothing more:
 //!
 //! - The envelope layout, the two AEAD opens and every fixed-width length check
-//!   are [`afd_crypto::envelope::Envelope`]'s, proven against published NIST
+//!   are [`af_crypto::envelope::Envelope`]'s, proven against published NIST
 //!   vectors.
 //! - Reading a whole workspace for the credential LIST endpoint is not this
 //!   store's job. Both callers in this crate abort on an unreadable row,
@@ -24,9 +24,9 @@
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
-use afd_crypto::aad::Aad;
-use afd_crypto::secret::{Kek, SecretBytes};
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_vault::StoredEnvelope;
 

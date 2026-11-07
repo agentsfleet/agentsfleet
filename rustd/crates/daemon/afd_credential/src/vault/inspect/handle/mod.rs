@@ -75,7 +75,7 @@ impl Handle<'_> {
         self.webhook_secret
             .and_then(|raw| serde_json::from_str::<String>(raw.get()).ok())
             .map(Zeroizing::new)
-            .is_some_and(|secret| afd_webhook::vendor::svix::SvixSecret::parse(&secret).is_some())
+            .is_some_and(|secret| af_webhook::vendor::svix::SvixSecret::parse(&secret).is_some())
     }
 
     fn has_refresh_token(&self) -> bool {
@@ -86,10 +86,7 @@ impl Handle<'_> {
         let mut fields = serde_json::Map::new();
         for (name, value) in [
             ("installation_id", self.installation_id),
-            (
-                afd_core::credential::FIELD_ACCOUNTS_BASE,
-                self.accounts_base,
-            ),
+            (af_core::credential::FIELD_ACCOUNTS_BASE, self.accounts_base),
         ] {
             if let Some(value) = value.and_then(|raw| serde_json::from_str(raw.get()).ok()) {
                 fields.insert(name.to_owned(), value);

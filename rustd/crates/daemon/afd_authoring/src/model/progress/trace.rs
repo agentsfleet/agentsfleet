@@ -1,6 +1,6 @@
 //! One content-free boundary pair, including cancellation and unwinding.
 
-use afd_core::{
+use af_core::{
     error_code::{self, ErrorCode},
     id::Uuid7,
 };
@@ -39,7 +39,7 @@ impl Trace {
         }
         self.ended = true;
         let dispatch_id = self.dispatch.as_str();
-        let duration_ms = afd_core::clock::saturating_millis(self.began.elapsed());
+        let duration_ms = af_core::clock::saturating_millis(self.began.elapsed());
         let frames = self.frames;
         tracing::debug!(event = COMPLETED, dispatch_id, duration_ms, frames);
     }
@@ -50,7 +50,7 @@ impl Trace {
         }
         self.ended = true;
         let dispatch_id = self.dispatch.as_str();
-        let duration_ms = afd_core::clock::saturating_millis(self.began.elapsed());
+        let duration_ms = af_core::clock::saturating_millis(self.began.elapsed());
         let frames = self.frames;
         let error_code = code.as_str();
         tracing::debug!(

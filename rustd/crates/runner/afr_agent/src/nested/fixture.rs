@@ -9,9 +9,9 @@
 
 use std::time::Duration;
 
-use afd_core::test_util::trace::{Capture, CapturedEvent};
-use afd_wire::activity::ActivityFrame;
-use afr_providers::{Chunk, Message};
+use af_core::test_util::trace::{Capture, CapturedEvent};
+use af_providers::{Chunk, Message};
+use af_wire::activity::ActivityFrame;
 use afr_tools::Tool;
 use afr_tools::catalog::{HTTP_REQUEST, MEMORY_RECALL, UPDATE_PLAN};
 use afr_tools::nested::NESTED;

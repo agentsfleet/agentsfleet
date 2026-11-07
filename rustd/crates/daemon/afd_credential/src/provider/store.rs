@@ -16,7 +16,7 @@
 //! Here it is a field. A [`Providers`] cannot be constructed without one, so
 //! there is no "not yet resolved" state to answer for and no arm to write: boot
 //! either produced a key and built this value, or it refused to start. That is
-//! the same move [`afd_crypto::secret::Kek`] makes about mutation — the
+//! the same move [`af_crypto::secret::Kek`] makes about mutation — the
 //! invariant becomes the type — applied one level up to availability.
 //!
 //! # `Arc`, not `Clone`
@@ -28,8 +28,8 @@
 
 use std::sync::Arc;
 
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::Kek;
 use afd_db::Db;
 
 use crate::vault::Vault;

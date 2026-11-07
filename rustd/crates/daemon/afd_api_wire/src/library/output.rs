@@ -16,7 +16,7 @@ pub struct Card<Q = Value> {
     /// platform or tenant.
     pub visibility: String,
     /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// Declarative needs of the head revision.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
@@ -40,7 +40,7 @@ pub struct Revision<D = Value, Q = Value> {
     /// Decimal entry-local revision.
     pub revision: String,
     /// Validated native setup.
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_fleet_runtime::definition::DefinitionSchema))]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_fleet_runtime::definition::DefinitionSchema))]
     pub definition: D,
     /// Canonical content identity.
     pub canonical_digest: String,
@@ -50,7 +50,7 @@ pub struct Revision<D = Value, Q = Value> {
     /// Pinned policy meaning.
     pub policy_semantics: String,
     /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
 
@@ -94,7 +94,7 @@ pub struct RevisionSummary {
     /// Content identity.
     pub canonical_digest: String,
     /// Creation timestamp, such as `2026-10-24T05:00:00.000Z`.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
 

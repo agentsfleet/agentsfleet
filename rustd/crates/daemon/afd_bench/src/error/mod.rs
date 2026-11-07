@@ -14,7 +14,7 @@
 //! Most kinds wrap the failure beneath them (`afd_db`, `sqlx`, the
 //! filesystem) or carry the numbers that refused a run, which is the property
 //! `docs/RUST_ERROR_STANDARD.md` §"The shared hull" uses to put a crate on the
-//! hull. So [`Error`] is the `afd_core::error_shell!` struct over a private
+//! hull. So [`Error`] is the `af_core::error_shell!` struct over a private
 //! `ErrorKind`, and callers ask `is_*` questions instead of
 //! matching variants.
 //!
@@ -37,12 +37,12 @@ pub(crate) use kind::ErrorKind;
 /// (`docs/RUST_ERROR_STANDARD.md` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A refusal to run a measurement, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
 
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => DatabaseUnavailable,
     afd_dragonfly::Error => QueueUnavailable,
     afd_events::Error => SteerPathFaulted,
@@ -52,15 +52,15 @@ afd_core::error_lifts!(Error, ErrorKind:
     afd_admission::Error => LedgerUnreadable,
     afd_runner::Error => RunnerUnenrollable,
     sqlx::Error => FixtureUnseedable,
-    afd_observability::Error => InstrumentUnavailable,
+    af_observability::Error => InstrumentUnavailable,
     opentelemetry_sdk::error::OTelSdkError => InstrumentUnflushable,
     serde_json::Error => ResultUnrenderable,
     hdrhistogram::CreationError => LatencyUnavailable,
     hdrhistogram::errors::AdditionError => LatencyUnmergeable,
     hdrhistogram::RecordError => LatencyUnrecordable,
-    afd_crypto::error::Error => CredentialUnsealable,
+    af_crypto::error::Error => CredentialUnsealable,
     afd_vault::Error => CredentialUnstorable,
-    afd_core::error::Error => IdentifierRefused,
+    af_core::error::Error => IdentifierRefused,
 );
 
 /// A shared seed's refusal, under its own kind: `afd_db`'s error lifts to

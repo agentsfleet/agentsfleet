@@ -5,9 +5,9 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_api_wire::operator::{LeaseDestination, LeaseKind, LeaseOutcome};
-use afd_core::error_code;
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_uuid7};

@@ -12,11 +12,11 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use afd_core::clock::FixedClock;
-use afd_wire::policy::ExecutionPolicy;
-use afr_egress::Egress;
-use afr_egress::fixture::{LEASE_ID, policy};
-use afr_egress::testing::{CountingMint, RecordingTransport, Sent};
+use af_core::clock::FixedClock;
+use af_egress::Egress;
+use af_egress::fixture::{LEASE_ID, policy};
+use af_egress::testing::{CountingMint, RecordingTransport, Sent};
+use af_wire::policy::ExecutionPolicy;
 use afr_executor::{Client, Executor};
 use afr_memory::Hydrated;
 use jiff::Timestamp;
@@ -317,7 +317,7 @@ impl crate::verbs::LeaseVerbs for RecordingVerbs {
 pub(crate) fn lease_with(verbs: &dyn crate::verbs::LeaseVerbs) -> Lease<'_> {
     Lease::new(
         Box::new(Hydrated::default()),
-        afr_egress::testing::closed(),
+        af_egress::testing::closed(),
         verbs,
     )
 }

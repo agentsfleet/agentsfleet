@@ -12,7 +12,7 @@
 //!
 //! The bodies are therefore selected LAST rather than in wire order. SQL column
 //! order and JSON field order are independent; only the second is a contract a
-//! client reads, and it is `afd_wire::event::EventDetail` that declares it.
+//! client reads, and it is `af_wire::event::EventDetail` that declares it.
 //!
 //! # Decoded by name
 //!
@@ -37,7 +37,7 @@ struct StoredDetail {
     request_json: String,
     response_text: Option<String>,
     tool_calls: Option<String>,
-    task_activity: sqlx::types::Json<Vec<afd_wire::activity::TaskActivityRecord>>,
+    task_activity: sqlx::types::Json<Vec<af_wire::activity::TaskActivityRecord>>,
     task_activity_truncated: bool,
 }
 
@@ -61,7 +61,7 @@ pub struct EventDetailRow {
     /// "no tools ran".
     pub tool_calls: Option<String>,
     /// Bounded public decision/recovery stages retained before live publication.
-    pub task_activity: afd_wire::activity::TaskActivityHistory,
+    pub task_activity: af_wire::activity::TaskActivityHistory,
 }
 
 impl EventDetailRow {
@@ -77,7 +77,7 @@ impl EventDetailRow {
             request_json: stored.request_json,
             response_text: stored.response_text,
             tool_calls: stored.tool_calls,
-            task_activity: afd_wire::activity::TaskActivityHistory {
+            task_activity: af_wire::activity::TaskActivityHistory {
                 items: stored.task_activity.0,
                 truncated: stored.task_activity_truncated,
             },
@@ -144,7 +144,7 @@ impl EventDetailRow {
             request_json: FIXTURE_REQUEST_JSON.to_owned(),
             response_text: Some(response_text),
             tool_calls: None,
-            task_activity: afd_wire::activity::TaskActivityHistory::default(),
+            task_activity: af_wire::activity::TaskActivityHistory::default(),
         }
     }
 

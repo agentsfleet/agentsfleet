@@ -9,7 +9,7 @@
     reason = "the loopback server and client are transport fixture preconditions"
 )]
 
-use afd_core::test_util::trace::{Capture, CapturedEvent};
+use af_core::test_util::trace::{Capture, CapturedEvent};
 use serde_json::json;
 use tracing::Level;
 

@@ -21,7 +21,7 @@ export const AGENTSFLEET_STATUS = {
 export type FleetStatus = typeof AGENTSFLEET_STATUS[keyof typeof AGENTSFLEET_STATUS];
 
 // The body of `POST /v1/workspaces/{ws}/fleets/{id}/messages`. Mirrors
-// `afd_wire::event::SteerRequest`. `operation_id` is required here although
+// `af_wire::event::SteerRequest`. `operation_id` is required here although
 // the daemon accepts its absence: the dashboard always has an operation to
 // name, and a send without one would run twice on a retried socket drop.
 export type SteerRequest = {
@@ -29,7 +29,7 @@ export type SteerRequest = {
   operation_id: string;
 };
 
-// The 202 a steer is answered with. Mirrors `afd_wire::event::SteerAccepted`:
+// The 202 a steer is answered with. Mirrors `af_wire::event::SteerAccepted`:
 // `replayed` is true when an earlier send of the same operation id already
 // admitted the message, so `event_id` is that send's event and may have run.
 export type SteerAccepted = {
@@ -42,7 +42,7 @@ export type SteerAccepted = {
   folded_into_event_id?: string;
 };
 
-/** Mirrors `afd_wire::event::SteerDisposition`. */
+/** Mirrors `af_wire::event::SteerDisposition`. */
 export const STEER_DISPOSITION = {
   STARTED: "started",
   FOLDED: "folded",
@@ -51,7 +51,7 @@ export const STEER_DISPOSITION = {
 export type SteerDisposition = (typeof STEER_DISPOSITION)[keyof typeof STEER_DISPOSITION];
 
 /** The longest message a steer may carry, in UTF-8 bytes. Mirrors
- * `afd_wire::event::STEER_MESSAGE_MAX_BYTES`; the daemon refuses one byte more. */
+ * `af_wire::event::STEER_MESSAGE_MAX_BYTES`; the daemon refuses one byte more. */
 export const STEER_MESSAGE_MAX_BYTES = 8192;
 
 const UTF8 = new TextEncoder();

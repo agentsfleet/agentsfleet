@@ -1,6 +1,6 @@
 //! Existing fleet/lease authority, held through the native task transaction.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_db::Db;
 use sqlx::PgConnection;
 
@@ -26,7 +26,7 @@ pub(super) struct LeaseRow {
     pub revision_id: Option<String>,
     pub fleet_status: String,
     pub fleet_name: String,
-    pub decision_snapshot: Option<sqlx::types::Json<afd_wire::decision::DecisionAssignment>>,
+    pub decision_snapshot: Option<sqlx::types::Json<af_wire::decision::DecisionAssignment>>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub checked_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -101,7 +101,7 @@ async fn locked_lease(
         .bind(presented.lease_id.as_str())
         .bind(presented.runner_id.as_str())
         .bind(LEASE_STATUS_ACTIVE)
-        .bind(afd_wire::task::CAPABILITY)
+        .bind(af_wire::task::CAPABILITY)
         .bind(afd_admission::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())
         .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
@@ -134,7 +134,7 @@ pub(super) async fn scope(connection: &mut PgConnection, scope: &TaskScope) -> R
 pub(super) async fn context(
     connection: &mut PgConnection,
     current: &LeaseRow,
-) -> Result<Option<afd_wire::task::TaskContext<'static>>> {
+) -> Result<Option<af_wire::task::TaskContext<'static>>> {
     let Some(task) = &current.task_id else {
         return Ok(None);
     };

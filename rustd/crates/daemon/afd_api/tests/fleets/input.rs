@@ -119,7 +119,7 @@ async fn a_status_patch_requires_the_resource_tag_before_reaching_the_store() {
     assert_eq!(response.status(), StatusCode::PRECONDITION_REQUIRED);
     assert_eq!(
         harness::json_body(response).await["error_code"],
-        afd_core::error_code::AUTHORING_PRECONDITION.as_str()
+        af_core::error_code::AUTHORING_PRECONDITION.as_str()
     );
 }
 

@@ -1,7 +1,7 @@
 //! The shared `application/problem+json` refusal, and the only way to write one.
 //!
 //! RFC 7807. The status, title, documentation link and end-user sentence all
-//! come from [`afd_core::problem`] rather than from the call site, so a code
+//! come from [`af_core::problem`] rather than from the call site, so a code
 //! answers the same status everywhere it is raised. A caller supplies only what
 //! it alone knows: the detail, and the request id.
 //!
@@ -21,8 +21,8 @@
 //! rebase rather than guess what it raced with. Both are omitted from the wire
 //! otherwise — absent, not null — so every other response's shape is untouched.
 
-use afd_core::error_code::ErrorCode;
-use afd_core::problem::Problem;
+use af_core::error_code::ErrorCode;
+use af_core::problem::Problem;
 use axum::response::{IntoResponse, Response};
 use http::{HeaderValue, StatusCode, header};
 use serde_json::{Map, Value};
@@ -40,7 +40,7 @@ pub struct ProblemResponse {
     etag: Option<String>,
     review_digest: Option<String>,
     resolution: Option<Resolution>,
-    effect: Option<afd_wire::task::TaskEffect>,
+    effect: Option<af_wire::task::TaskEffect>,
 }
 
 /// The standing answer a 409 on an approval gate reports.
@@ -90,7 +90,7 @@ impl ProblemResponse {
         code: ErrorCode,
         detail: &'static str,
         request_id: impl Into<String>,
-        effect: afd_wire::task::TaskEffect,
+        effect: af_wire::task::TaskEffect,
     ) -> Self {
         Self {
             effect: Some(effect),
@@ -160,7 +160,7 @@ impl ProblemResponse {
         Self {
             review_digest: Some(digest.into()),
             ..Self::conflict(
-                afd_core::error_code::AUTHORING_REVIEW,
+                af_core::error_code::AUTHORING_REVIEW,
                 detail,
                 request_id,
                 "review_required",

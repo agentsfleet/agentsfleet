@@ -7,7 +7,7 @@
 //! store would surface as a connection error rather than as these codes.
 #![cfg(feature = "test-util")]
 
-use afd_core::error_code;
+use af_core::error_code;
 use axum::body::Body;
 use http::{Response, StatusCode};
 use serde_json::{Value, json};

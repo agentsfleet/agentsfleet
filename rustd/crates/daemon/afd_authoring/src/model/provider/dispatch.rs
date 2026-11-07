@@ -3,12 +3,12 @@
 use super::{ProviderRequest, Transport};
 use crate::Result;
 use crate::model::progress::{FLUSH, Preview};
-use afd_crypto::secret::SecretString;
-use afd_inference::{
+use af_crypto::secret::SecretString;
+use af_inference::{
     stream::{StreamTurn, TurnControl},
     transport::{HttpTransport, SendRequest},
 };
-use afd_wire::inference::ModelInference;
+use af_wire::inference::ModelInference;
 use bytes::Bytes;
 use futures_util::future::BoxFuture;
 use rig_core::{
@@ -31,14 +31,14 @@ pub(in crate::model) struct Outbound {
     pub(in crate::model) context_tokens: u32,
     pub(in crate::model) timeout: Duration,
     pub(in crate::model) progress: Option<Preview>,
-    pub(in crate::model) measurement: Option<afd_inference::InputCount>,
+    pub(in crate::model) measurement: Option<af_inference::InputCount>,
 }
 
 pub(in crate::model) async fn complete(
     mut outbound: Outbound,
     physical: Arc<dyn Transport>,
 ) -> Result<Completed> {
-    let configured = afd_inference::Configured::new(&outbound.inference, outbound.context_tokens)?;
+    let configured = af_inference::Configured::new(&outbound.inference, outbound.context_tokens)?;
     let transport = HttpTransport::new(Arc::new(Once {
         physical,
         timeout: outbound.timeout,
@@ -48,22 +48,22 @@ pub(in crate::model) async fn complete(
     let observed_provider = outbound.provider.clone();
     let control = TurnControl {
         observer: Some(Arc::new(move |timing| {
-            use afd_inference::stream::FailureCause;
-            use afd_observability::metrics::label::models::CallOutcome;
+            use af_inference::stream::FailureCause;
+            use af_observability::metrics::label::models::CallOutcome;
             let outcome = match timing.cause {
                 None => CallOutcome::Completed,
                 Some(FailureCause::Provider) => CallOutcome::Provider,
                 Some(FailureCause::Deadline) => CallOutcome::Deadline,
                 Some(FailureCause::Cancelled) => CallOutcome::Cancelled,
             };
-            afd_observability::producers::models::call(
+            af_observability::producers::models::call(
                 &observed_model,
                 &observed_provider,
                 outcome,
                 timing.elapsed,
                 timing.first_text,
             );
-            afd_observability::producers::models::tokens(
+            af_observability::producers::models::tokens(
                 &observed_model,
                 &observed_provider,
                 timing.tokens,
@@ -113,10 +113,10 @@ async fn consume(turn: &mut StreamTurn, progress: &mut Option<Preview>) {
 }
 
 async fn received(
-    configured: &afd_inference::Configured<'_>,
+    configured: &af_inference::Configured<'_>,
     model: &str,
     status: u16,
-    result: afd_inference::stream::TurnResult,
+    result: af_inference::stream::TurnResult,
 ) -> Result<Completed> {
     if let Some(failure) = result.failure {
         if let Some(body) = failure.provider_response_body() {
@@ -126,7 +126,7 @@ async fn received(
             ) {
                 return Err(crate::error::ErrorKind::Model.into());
             }
-            if let Ok(response) = afd_inference::decode_failed_response(
+            if let Ok(response) = af_inference::decode_failed_response(
                 configured,
                 model,
                 http::StatusCode::from_u16(status).unwrap_or(http::StatusCode::BAD_GATEWAY),

@@ -9,8 +9,8 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use afd_core::test_util::trace::Capture;
-use afd_wire::runner::NetworkPolicy;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::NetworkPolicy;
 
 use super::tests::{Counted, NEXT_LEASE_ID, released, releases, resumed, settled};
 use crate::egress::Egress;

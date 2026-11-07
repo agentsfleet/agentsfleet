@@ -35,8 +35,8 @@ use self::fixture::{
 };
 use self::harness::webhook as signed;
 use self::harness::{json_body, send_with_headers};
-use afd_core::error_code;
-use afd_webhook::Scheme;
+use af_core::error_code;
+use af_webhook::Scheme;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -54,14 +54,14 @@ const REASON_FLEET_PAUSED: &str = "fleet_paused";
 const SCHEME: Scheme = Scheme::BodyHex;
 
 /// Where this fleet's deliveries arrive.
-fn path(fleet: &afd_core::id::Uuid7) -> String {
+fn path(fleet: &af_core::id::Uuid7) -> String {
     format!("/v1/webhooks/{fleet}/{SOURCE}")
 }
 
 /// One delivery of `RUN_FAILURE`, signed with `secret`.
 async fn deliver(
     router: &axum::Router,
-    fleet: &afd_core::id::Uuid7,
+    fleet: &af_core::id::Uuid7,
     secret: &[u8],
 ) -> axum::response::Response {
     let proof = signed::signature(SCHEME, secret, RUN_FAILURE.as_bytes());
@@ -93,7 +93,7 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
     fixture.seed(Runnable::Active, Secret::Stored).await;
     let router = fixture.router();
 
-    let capture = afd_core::test_util::trace::Capture::install();
+    let capture = af_core::test_util::trace::Capture::install();
     let woken = deliver(&router, &fixture.fleet, SIGNING_SECRET).await;
     let status = woken.status();
     let document = json_body(woken).await;
@@ -155,7 +155,7 @@ async fn the_same_delivery_arriving_twice_is_claimed_once() {
 /// `RUN_FAILURE`, signed for `source`'s scheme, to that source's own route.
 async fn deliver_to(
     router: &axum::Router,
-    fleet: &afd_core::id::Uuid7,
+    fleet: &af_core::id::Uuid7,
     source: &str,
 ) -> (StatusCode, Value) {
     let scheme = Scheme::for_source(source).expect("a source with a shipped scheme");
@@ -282,7 +282,7 @@ async fn a_fleet_this_deployment_does_not_serve_is_refused_without_naming_it() {
     fixture.seed(Runnable::Active, Secret::Stored).await;
     let router = fixture.router();
 
-    let unknown = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000ff")
+    let unknown = af_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000ff")
         .expect("the absent fleet id is canonical");
     let refused = deliver(&router, &unknown, SIGNING_SECRET).await;
     let status = refused.status();

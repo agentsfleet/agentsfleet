@@ -17,7 +17,7 @@ mod stub_scheduler;
 
 use std::time::{Duration, Instant};
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_cron::Attempts;
 use afd_cron::error::detail::UPSTREAM_UNAVAILABLE;
 use afd_cron::qstash::retry_schedule::FIRST_DELAY;

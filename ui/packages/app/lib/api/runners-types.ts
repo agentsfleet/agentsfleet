@@ -68,7 +68,7 @@ export const RUNNER_LAST_SEEN_NEVER = 0;
 
 // host_id is free-form but bounded by the backend; deriving HOST_ID_REGEX from
 // HOST_ID_MAX keeps the form in step with `HOST_ID_MAX_BYTES`
-// (rustd/crates/protocol/afd_wire/src/runner/rules.rs) as a
+// (rustd/crates/protocol/af_wire/src/runner/rules.rs) as a
 // single source — the bound lives in exactly one place.
 export const HOST_ID_MAX = 256;
 export const HOST_ID_REGEX = new RegExp(`^[A-Za-z0-9_.-]{1,${HOST_ID_MAX}}$`);
@@ -155,7 +155,7 @@ export const NETWORK_POLICY_DESCRIPTIONS: Record<NetworkPolicy, string> = {
 export const DEFAULT_ASSIGNED_NETWORK_POLICY: NetworkPolicy = "allow_all";
 
 export const DEFAULT_WORKER_COUNT = 1;
-// Mirrors afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED.
+// Mirrors af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED.
 export const DEFAULT_DURABLE_TASKS_ENABLED = true;
 
 export const MIN_WORKER_COUNT = 1;

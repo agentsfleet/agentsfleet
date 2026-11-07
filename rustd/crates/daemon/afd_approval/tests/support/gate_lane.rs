@@ -49,9 +49,9 @@
 
 use std::time::Duration;
 
+use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
 use afd_approval::Inbox;
-use afd_core::env::{EnvSource as _, ProcessEnv};
-use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, WorkspaceSeed};

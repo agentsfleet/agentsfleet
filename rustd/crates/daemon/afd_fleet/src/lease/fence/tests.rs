@@ -4,7 +4,7 @@
     reason = "a test fails loudly on a fixture it cannot build"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::Fence;
 

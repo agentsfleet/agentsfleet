@@ -1,7 +1,7 @@
 use super::*;
 use crate::recovery::Restore;
 use crate::test_support::drain;
-use afd_wire::task::CheckpointFile;
+use af_wire::task::CheckpointFile;
 use std::{
     fs,
     os::unix::fs::{MetadataExt as _, PermissionsExt as _},

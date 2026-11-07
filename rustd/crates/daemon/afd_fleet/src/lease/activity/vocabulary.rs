@@ -9,7 +9,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::activity::{
+use af_wire::activity::{
     ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress, ToolCallStarted,
 };
 use serde_json::Value;
@@ -70,12 +70,12 @@ const fn slot(frame: &ActivityFrame<'_>) -> usize {
 
 /// One frame of each kind, the smallest each can be.
 fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
-    let progress = afd_wire::activity::TaskActivity {
+    let progress = af_wire::activity::TaskActivity {
         activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
         task_id: None,
         source_admission_id: None,
-        operation: afd_wire::activity::TaskActivityOperation::Intent,
-        phase: afd_wire::activity::TaskActivityPhase::Starting,
+        operation: af_wire::activity::TaskActivityOperation::Intent,
+        phase: af_wire::activity::TaskActivityPhase::Starting,
         provider: Some("typesafe".to_owned()),
         model: Some("jev-latest".to_owned()),
         completed: 0,
@@ -94,7 +94,7 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
         }),
         ActivityFrame::FleetResponseChunk(FleetResponseChunk {
             text: TOOL,
-            text_kind: afd_wire::activity::StreamTextKind::Answer,
+            text_kind: af_wire::activity::StreamTextKind::Answer,
             first_chunk_after_ms: None,
             stream_start: false,
             stream_contiguous: false,
@@ -104,7 +104,7 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
             name: TOOL,
             ms: 0,
             call_id: CALL,
-            status: afd_wire::tool_trace::ToolCallStatus::Succeeded,
+            status: af_wire::tool_trace::ToolCallStatus::Succeeded,
             output_head: None,
             output_tail: None,
             output_line_count: None,
@@ -115,9 +115,9 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
             elapsed_ms: 0,
             call_id: CALL,
         }),
-        ActivityFrame::ContextProgress(afd_wire::context::ContextProgress {
+        ActivityFrame::ContextProgress(af_wire::context::ContextProgress {
             generation: 1,
-            state: afd_wire::context::ContextState::Summarizing,
+            state: af_wire::context::ContextState::Summarizing,
         }),
     ]
 }

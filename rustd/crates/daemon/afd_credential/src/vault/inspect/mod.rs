@@ -1,6 +1,6 @@
 //! Setup inspection extracts only connector identity; unrelated secret fields are skipped.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_vault::StoredEnvelope;
 use sqlx::PgConnection;
 
@@ -96,7 +96,7 @@ impl Vault {
                 name: &name,
             },
         )?;
-        let handle = afd_core::json::object_from_slice::<Handle<'_>>(plaintext.expose()).ok();
+        let handle = af_core::json::object_from_slice::<Handle<'_>>(plaintext.expose()).ok();
         let integration = handle.as_ref().and_then(Handle::integration);
         let connector = integration
             .as_deref()

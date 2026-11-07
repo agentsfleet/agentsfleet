@@ -7,7 +7,7 @@
     reason = "plain clients only manufacture reqwest errors (a refused loopback connect, an unbuildable user agent) for the error mapping under test"
 )]
 
-use afd_core::error_code;
+use af_core::error_code;
 
 use super::{Error, raise};
 use crate::client::{Method, Verb};
@@ -127,7 +127,7 @@ fn local_failures_log_as_internal() {
         raise::client(unbuildable),
         std::io::Error::other("disk").into(),
         persist.into(),
-        afd_core::id::Uuid7::parse("nope").unwrap_err().into(),
+        af_core::id::Uuid7::parse("nope").unwrap_err().into(),
         raise::git("acme/widget", "fetched")(Box::new(std::io::Error::other("refused"))),
     ];
 

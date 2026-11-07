@@ -7,9 +7,9 @@
 )]
 
 use crate::ResultOutcome;
-use afd_core::test_util::trace::Capture;
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_providers::Message;
+use af_core::test_util::trace::Capture;
+use af_providers::Message;
+use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::ToolErrorCode;
 use afr_tools::catalog::UPDATE_PLAN;
 use tokio_util::sync::CancellationToken;

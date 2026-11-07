@@ -413,7 +413,7 @@ Six invariants. All are tested explicitly.
 2. **Ciphertext is single-read per client fingerprint.** Item 1's mechanism: only the originating fingerprint can replay during the window; any other source gets 410. This narrows the replay surface to "captured-network-packet-within-60s-from-same-source", which is dominated by existing TLS + network-perimeter assumptions.
 3. **Verified sessions cannot revert.** The state machine is monotonic; no path from `consumed` / `expired` / `aborted` back to any active state.
 4. **PATCH /approve is single-write.** Calling it against a session already in `verification_pending` returns HTTP 409 `UZ-AUTH-015`. The dashboard MUST NOT retry PATCH /approve if it has previously succeeded for the same session.
-5. **`session_id` is high-entropy.** A UUIDv7: a millisecond timestamp plus random bits drawn from the operating system's random source (`Entropy::uuid7`, `rustd/crates/foundation/afd_crypto/src/entropy.rs`). Not enumerable.
+5. **`session_id` is high-entropy.** A UUIDv7: a millisecond timestamp plus random bits drawn from the operating system's random source (`Entropy::uuid7`, `rustd/crates/foundation/af_crypto/src/entropy.rs`). Not enumerable.
 6. **`session_id` is capability-bearing.** Combined with the verification code, it authorizes ciphertext release.
    Approved surfaces include the login URL, consuming API paths, the bound callback body and transient browser handoff storage.
    Logs, analytics, telemetry, metrics labels and diagnostic bundles must exclude the complete identifier and callback state.

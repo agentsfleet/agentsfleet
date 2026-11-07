@@ -1,7 +1,7 @@
 //! The creator precedes the draft lock, neither is waited for, and queue hints carry
 //! no authority.
 
-use afd_core::{error_code, id::Uuid7};
+use af_core::{error_code, id::Uuid7};
 use afd_db::Db;
 use sqlx::{Connection as _, PgConnection};
 

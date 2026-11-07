@@ -164,7 +164,7 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 **Boot and composition.** `afr_supervisor::boot` reads three variables and opens `<home>/{sandboxes,spool,git,toolbox}` (`afr_supervisor/src/config/mod.rs`, `afr_supervisor/src/storage_home/mod.rs`). The binary then builds the host's engine, refusing to start on a host that lacks a mechanism every sandbox needs, and runs `afr_supervisor::run` with it (`agentsfleet_runner/src/main.rs`). Building the engine sweeps what a crashed run left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
 
-**Heartbeat → assignment.** The heartbeat posts the capability report and the fleets the runner holds, and reads back the assigned policy. The worker count is clamped to `1..=64` (`afr_supervisor/src/heartbeat/mod.rs`, `afd_core/src/limits.rs`).
+**Heartbeat → assignment.** The heartbeat posts the capability report and the fleets the runner holds, and reads back the assigned policy. The worker count is clamped to `1..=64` (`afr_supervisor/src/heartbeat/mod.rs`, `af_core/src/limits.rs`).
 
 The daemon serves the 10 s cadence. It reconciles the report against the assignment into a `degraded` verdict ([Runner Fleet](./runner_fleet.md) §"Assigned policy and reconciliation (M148)"). The reply's `status` is always `ok`, so a running lease learns nothing of a kill from it ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause").
 
@@ -241,7 +241,7 @@ A stale fence, a lease not found or a lease lost settles the spooled entry for g
 
 **The prompt.** System prompt = `## Installed instructions` + the lease's `instructions` (`afr_agent/src/prompt/mod.rs`), then, because the binding is write, a `## Trusted repair context` block naming the repository, the locked repair branch and the base. The first user turn is the whole digest JSON, because the `PullRequestDigest` has no `message` field (fields at `afd_api_ingress/src/handler/webhook/github/mod.rs`). The instructions' first step reads `repo` and `number` from exactly that digest (`instructions_md` in `definition.json`).
 
-**Step 2, the diff read.** `http_request` drafts `GET https://api.github.com/repos/agentsfleet/linkwarden/pulls/{n}` with `Authorization: Bearer ${secrets.github.token}` (`afr_tools/src/http_request/mod.rs`). `Admission::admit` (`afr_egress/src/admission/mod.rs`): method listed, HTTPS and no placeholder in the URL, placeholder only in `Authorization`, host in `network_policy.allow`, credential bound to this host because the `api.github.com` origin names `github` in `credential_names` (`afd_gate/src/policy/egress/mod.rs`), and a read rule matches: `GET` with prefix `/repos/agentsfleet/linkwarden/` (`afd_gate/src/policy/egress/read.rs`; `admission.rs`). The vault then mints: `LeaseMint` → `POST /v1/runners/me/credentials/mint` → `Plane::mint` resolves the lease scope, checks the approved grant, opens the workspace's `github` handle and exchanges an installation token narrowed to the binding (`afd_fleet/src/lease/mint/mod.rs`; `docs/architecture/connectors.md`). The token is kept per lease until expiry and masked out of responses (`afr_egress/src/egress/mod.rs`; `afr_tools/src/egress/mod.rs`).
+**Step 2, the diff read.** `http_request` drafts `GET https://api.github.com/repos/agentsfleet/linkwarden/pulls/{n}` with `Authorization: Bearer ${secrets.github.token}` (`afr_tools/src/http_request/mod.rs`). `Admission::admit` (`af_egress/src/admission/mod.rs`): method listed, HTTPS and no placeholder in the URL, placeholder only in `Authorization`, host in `network_policy.allow`, credential bound to this host because the `api.github.com` origin names `github` in `credential_names` (`afd_gate/src/policy/egress/mod.rs`), and a read rule matches: `GET` with prefix `/repos/agentsfleet/linkwarden/` (`afd_gate/src/policy/egress/read.rs`; `admission.rs`). The vault then mints: `LeaseMint` → `POST /v1/runners/me/credentials/mint` → `Plane::mint` resolves the lease scope, checks the approved grant, opens the workspace's `github` handle and exchanges an installation token narrowed to the binding (`afd_fleet/src/lease/mint/mod.rs`; `docs/architecture/connectors.md`). The token is kept per lease until expiry and masked out of responses (`af_egress/src/egress/mod.rs`; `afr_tools/src/egress/mod.rs`).
 
 **Step 4, the review post.** `POST .../pulls/{n}/reviews` matches none of the rules for `api.github.com`.
 The write binding permits the exact paths below, prefixed by `/repos/{repo}`.
@@ -256,7 +256,7 @@ The write binding permits the exact paths below, prefixed by `/repos/{repo}`.
 
 Closed rules reject other fields, duplicate fields and query strings.
 The compiler lives in `rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`.
-The runner matches these rules in `rustd/crates/harness/afr_egress/src/origin/mod.rs`.
+The runner matches these rules in `rustd/crates/harness/af_egress/src/origin/mod.rs`.
 
 The PATCH supports bounded corrections within the same event's branch and existing draft.
 GitHub rejects non-fast-forward updates when `force:false`; this is not an expected-old-head comparison.
@@ -266,12 +266,12 @@ A later admission cannot select an earlier event's draft through these rules.
 
 Compatible runners must precede leases carrying the new `patch` method; older readers reject it.
 
-The reviews path remains denied by `origin_admits` in `rustd/crates/harness/afr_egress/src/admission/mod.rs`.
+The reviews path remains denied by `origin_admits` in `rustd/crates/harness/af_egress/src/admission/mod.rs`.
 The tool returns `ToolErrorCode::RequestPolicyNotAllowed`, with `[request_policy_not_allowed]` visible to the model.
 The lease loop can continue after a refusal; the CI fleet instructions require stopping.
 
 The error advises against trying another path, API or credential because one development run tried sixteen alternatives after a denied post.
-The same guidance accompanies `secret_not_found`; see `rustd/crates/harness/afr_egress/src/error/mod.rs`.
+The same guidance accompanies `secret_not_found`; see `rustd/crates/harness/af_egress/src/error/mod.rs`.
 The platform has no refusal-count ceiling; that remains open scope.
 
 `rustd/crates/daemon/agentsfleetd/tests/integration_rust_runner_reviews.rs` verifies zero review POSTs reach GitHub and preserves the final denial code.
@@ -283,7 +283,7 @@ The [reviewer scenario](scenarios/github-pr-reviewer.md) records the same bounda
 
 ## 4. How AGENT BOB 01 can reply
 
-**Instructions are prose and cannot widen anything.** The lease marks `instructions` as "soft reasoning input, hard tool and secret policy stays in `policy`" (`afd_wire/src/lease/payload.rs`). The egress rules are compiled by the daemon from the binding alone (`afd_gate/src/policy/build/mod.rs`; `afd_gate/src/policy/egress/mod.rs`) and evaluated by the runner as written (`afr_egress/src/admission/mod.rs`). So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the admission.
+**Instructions are prose and cannot widen anything.** The lease marks `instructions` as "soft reasoning input, hard tool and secret policy stays in `policy`" (`af_wire/src/lease/payload.rs`). The egress rules are compiled by the daemon from the binding alone (`afd_gate/src/policy/build/mod.rs`; `afd_gate/src/policy/egress/mod.rs`) and evaluated by the runner as written (`af_egress/src/admission/mod.rs`). So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the admission.
 
 **A chat steer uses the same admission path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` admission (`afd_events/src/steer/mod.rs`). It waits behind the fleet's running lease for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet/src/lease/sql/queue.rs`).
 
@@ -327,7 +327,7 @@ The affinity slot allows one active lease per fleet. On the runner, `FleetTurns`
 
 A runner with a held sandbox checks that fleet first. Other runners skip the fleet while the hold lasts ([Runner fleet holds](./runner_fleet.md#cold-and-warm-execution)).
 
-**What carries over.** Fleet memory: the hydrate window is `HYDRATE_WINDOW_BYTES = 256 KiB` with every `core` entry pinned first, plus up to `RECALL_LIMIT_MAX = 50` per recall past the window (`afd_wire/src/memory.rs`; [Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane"). Memory belongs to the fleet, not the PR, so the second review knows the first only if its instructions have it read the existing reviews or recall what it stored. A chat lease also carries the thread's last eight finished turns; a webhook lease like this one carries none (`afd_fleet/src/lease/answer/mod.rs`). A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches; this fleet has no sandbox, so it never holds one.
+**What carries over.** Fleet memory: the hydrate window is `HYDRATE_WINDOW_BYTES = 256 KiB` with every `core` entry pinned first, plus up to `RECALL_LIMIT_MAX = 50` per recall past the window (`af_wire/src/memory.rs`; [Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane"). Memory belongs to the fleet, not the PR, so the second review knows the first only if its instructions have it read the existing reviews or recall what it stored. A chat lease also carries the thread's last eight finished turns; a webhook lease like this one carries none (`afd_fleet/src/lease/answer/mod.rs`). A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches; this fleet has no sandbox, so it never holds one.
 
 **What does not carry over.** The session checkpoint is written to `fleet.sessions` and loaded with the fleet, and no lease carries it ([Runner execution](./runner_execution.md) §"Workspace between leases"). No workspace restore exists yet.
 
@@ -345,9 +345,9 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 
 **The numbers the code declares.**
 - `Limits::default()`: 2 GiB of memory, two cores, 512 processes and a 4 GiB disk (`afr_sandbox/src/engine/mod.rs`); 200 MiB/s of disk input and output each way; swap off (`afr_sandbox/src/cgroup/mod.rs`).
-- Workers per host: default 1, between 1 and 64 (`afd_core/src/limits.rs`).
-- Activity: 64 KiB batches, 4 held (`afr_supervisor/src/activity/mod.rs`). Memory: a 256 KiB hydrate window (`afd_wire/src/memory.rs`).
-- Timers: lease TTL 30 s, renew every 5 s, max runtime 12 h, runner offline after 90 s, heartbeat 10 s, empty-poll hint 1 s, sandbox hold 10 min (`afd_core/src/timing.rs`).
+- Workers per host: default 1, between 1 and 64 (`af_core/src/limits.rs`).
+- Activity: 64 KiB batches, 4 held (`afr_supervisor/src/activity/mod.rs`). Memory: a 256 KiB hydrate window (`af_wire/src/memory.rs`).
+- Timers: lease TTL 30 s, renew every 5 s, max runtime 12 h, runner offline after 90 s, heartbeat 10 s, empty-poll hint 1 s, sandbox hold 10 min (`af_core/src/timing.rs`).
 - Poll and admission: at most 64 candidate fleets per poll; no per-fleet admission cap. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
 
 ---

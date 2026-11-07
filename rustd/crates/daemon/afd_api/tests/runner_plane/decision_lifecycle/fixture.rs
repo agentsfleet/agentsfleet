@@ -4,10 +4,18 @@ mod storage;
 
 use std::borrow::Cow;
 
+use af_core::{clock, id::Uuid7};
+use af_crypto::entropy::Entropy;
+use af_wire::{
+    event::EventType,
+    runner::{
+        AssignedPolicy, CapabilityReport, HeartbeatRequest, NetworkPolicy, RegisterRequest,
+        SandboxTier,
+    },
+    task::{DecisionAssessment, DecisionReservationInput},
+};
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_auth::scope::ScopeSet;
-use afd_core::{clock, id::Uuid7};
-use afd_crypto::entropy::Entropy;
 use afd_db::{
     Db,
     config::DbRole,
@@ -19,14 +27,6 @@ use afd_fleet::{
 };
 use afd_runner::Runners;
 use afd_vault::{Deleted, SecretBody, SecretName};
-use afd_wire::{
-    event::EventType,
-    runner::{
-        AssignedPolicy, CapabilityReport, HeartbeatRequest, NetworkPolicy, RegisterRequest,
-        SandboxTier,
-    },
-    task::{DecisionAssessment, DecisionReservationInput},
-};
 use axum::Router;
 use serde_json::{json, value::RawValue};
 
@@ -187,7 +187,7 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
                 &RegisterRequest {
                     host_id: Cow::Owned(format!("{}-{suffix}", owner.tag)),
                     assigned_policy: AssignedPolicy {
-                        durable_tasks_enabled: afd_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+                        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
                         decision_model_id: Some(Cow::Owned(model.to_string())),
                         sandbox_tier: SandboxTier::DevNone,
                         network_policy: NetworkPolicy::AllowAll,

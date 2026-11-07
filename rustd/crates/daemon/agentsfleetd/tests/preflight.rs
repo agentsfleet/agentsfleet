@@ -10,7 +10,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use agentsfleetd::preflight::{
     ENCRYPTION_MASTER_KEY_KNOB, Fault, SESSION_CODE_PEPPER_KNOB, preflight,
 };
@@ -228,7 +228,7 @@ fn test_preflight_resolves_a_complete_environment() {
     );
     // The KEK is redacted by construction, so the assertion is that it EXISTS
     // and does not print itself — checking the bytes would be checking
-    // afd_crypto's job from the wrong crate.
+    // af_crypto's job from the wrong crate.
     assert!(
         !format!("{:?}", config.kek()).contains(GOOD_KEK),
         "a resolved master key must not render its own material"

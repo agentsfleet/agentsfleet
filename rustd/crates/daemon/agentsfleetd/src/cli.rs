@@ -17,7 +17,7 @@
 
 use std::time::Duration;
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 use clap::{Parser, Subcommand};
 
 use crate::daemon::Outcome;
@@ -107,7 +107,7 @@ pub type RuntimeSource = fn() -> std::io::Result<tokio::runtime::Runtime>;
 /// Runs `cli` against `env`, reporting the status the process should exit with.
 ///
 /// `signal` is taken rather than built so a suite can hand it one that has
-/// already resolved. In the binary it is [`afd_core::signal::shutdown`], and
+/// already resolved. In the binary it is [`af_core::signal::shutdown`], and
 /// building it costs nothing on the paths that never poll it.
 pub fn run<E, F>(cli: &Cli, env: &E, runtime: RuntimeSource, signal: F) -> u8
 where

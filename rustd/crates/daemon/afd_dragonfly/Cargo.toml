@@ -14,16 +14,16 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-test-util = ["afd_core/test-util"]
+test-util = ["af_core/test-util"]
 
 [dependencies]
 jiff.workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about Redis, and the one thing this crate can
 # say that nothing else can is that its pub/sub connection was re-established.
-afd_observability.workspace = true
-afd_core.workspace = true
-afd_validate.workspace = true
+af_observability.workspace = true
+af_core.workspace = true
+af_validate.workspace = true
 garde.workspace = true
 # The reconnect loop AND its schedule — see `hub::pump`, which used to carry a
 # hand-rolled `Backoff` beside a jitter source of its own.
@@ -46,11 +46,11 @@ tracing.workspace = true
 
 [dev-dependencies]
 # The `tracing` capture the suites read their log lines back through
-# (`afd_core::test_util::trace`). A dev-dependency feature only.
-afd_core = { workspace = true, features = ["test-util"] }
+# (`af_core::test_util::trace`). A dev-dependency feature only.
+af_core = { workspace = true, features = ["test-util"] }
 # The metric capture the doorbell's suites read their counters back through
-# (`afd_observability::test_util`). A dev-dependency feature only.
-afd_observability = { workspace = true, features = ["test-util"] }
+# (`af_observability::test_util`). A dev-dependency feature only.
+af_observability = { workspace = true, features = ["test-util"] }
 # The reconnect schedule the suites configure and assert on; the library half
 # is a regular dependency.
 backon.workspace = true

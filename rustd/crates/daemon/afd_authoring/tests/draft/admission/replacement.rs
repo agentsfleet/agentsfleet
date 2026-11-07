@@ -1,11 +1,11 @@
 //! A disabled model forces an idle replacement; a queued one cannot be swapped.
 
 use super::{claim, fixture, funded, mint, now, queue};
-use afd_authoring::types::{DraftPatch, MessageState, SendMessage};
-use afd_core::{
+use af_core::{
     error_code::{AUTHORING_MODEL, AUTHORING_STATE},
     id::Uuid7,
 };
+use afd_authoring::types::{DraftPatch, MessageState, SendMessage};
 use afd_credential::provider::PLATFORM_MODEL_REF;
 use serde_json::json;
 

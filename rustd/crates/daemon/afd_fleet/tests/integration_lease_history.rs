@@ -15,14 +15,14 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::event::status;
-use afd_core::id::Uuid7;
+use af_core::event::status;
+use af_core::id::Uuid7;
+use af_wire::event::EventType;
+use af_wire::lease::{ANSWER_FAILED, ANSWER_FAILED_END};
 use afd_db::Db;
 use afd_db::test_util::{EventKind, FleetEventSeed, FleetSeed, TenantSeed, WorkspaceSeed, mint_id};
 use afd_events::{Cursor, History};
 use afd_fleet::lease::history::turns_before;
-use afd_wire::event::EventType;
-use afd_wire::lease::{ANSWER_FAILED, ANSWER_FAILED_END};
 use jiff::Timestamp;
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ const SEED: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// `millis` past [`SEED`], the instant one seeded event is stamped with.
 fn seeded_at(millis: u64) -> Timestamp {
-    afd_core::clock::after(SEED, Duration::from_millis(millis))
+    af_core::clock::after(SEED, Duration::from_millis(millis))
 }
 
 /// A tenant and workspace with two fleets, each with its own thread.

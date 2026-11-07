@@ -3,7 +3,7 @@
 //!
 //! # A second cursor format, not a variant of the first
 //!
-//! The tenant plane already has a keyset cursor — [`afd_core::paging::Cursor`],
+//! The tenant plane already has a keyset cursor — [`af_core::paging::Cursor`],
 //! the `starting_after` value the api-key list exchanges. This one is DIFFERENT
 //! on the wire: the whole token is base64url-encoded, it travels under
 //! `?cursor=`, and there is no sort vocabulary beside it because the charges
@@ -30,7 +30,7 @@
 //! receipt handed back to it, and a parser that explained itself would be
 //! describing an internal format to whoever is probing it.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
 use jiff::{Timestamp, Unit};

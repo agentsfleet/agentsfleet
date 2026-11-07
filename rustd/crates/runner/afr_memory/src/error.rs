@@ -1,13 +1,13 @@
 //! Why a memory call was refused.
 //!
 //! A refused entry carries the bound it broke, so the error takes the
-//! `afd_core::error_shell!` hull. Both codes are the registry's request codes:
+//! `af_core::error_shell!` hull. Both codes are the registry's request codes:
 //! the model wrote the entry, and the daemon would have skipped it.
 
-use afd_core::error_code::{self, ErrorCode};
-use afd_wire::memory::MAX_PUSH_BYTES;
+use af_core::error_code::{self, ErrorCode};
+use af_wire::memory::MAX_PUSH_BYTES;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// A refused store, with the backtrace of where it was refused.
     pub struct Error(ErrorKind);
 );
@@ -56,7 +56,7 @@ pub(crate) enum ErrorKind {
 // Each source has one meaning in this crate, so `?` lifts it and no
 // `map_err` appears where the call site adds nothing
 // (`docs/RUST_ERROR_STANDARD.md` rule 2).
-afd_core::error_lifts!(Error, ErrorKind:
+af_core::error_lifts!(Error, ErrorKind:
     garde::Report => Malformed,
     aho_corasick::BuildError => Query,
 );

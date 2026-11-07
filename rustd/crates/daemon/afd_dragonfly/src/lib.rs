@@ -31,7 +31,7 @@ pub mod test_util;
 pub(crate) mod topology;
 pub(crate) mod transport;
 
-pub use afd_core::env::EnvSource;
+pub use af_core::env::EnvSource;
 
 pub use crate::capacity::Capacity;
 pub use crate::client::Dragonfly;

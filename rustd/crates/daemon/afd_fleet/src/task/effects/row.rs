@@ -4,7 +4,7 @@ use crate::{
     Result,
     task::{TaskRefusal, github::BoundPr, row::counter},
 };
-use afd_wire::task::{TaskEffect, TaskEffectState};
+use af_wire::task::{TaskEffect, TaskEffectState};
 use sqlx::types::Json;
 
 #[derive(sqlx::FromRow)]

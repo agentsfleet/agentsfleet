@@ -7,7 +7,7 @@
               indexes the calls it just sent"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afr_agent::ScheduleCall;
 
 use crate::client::{Method, Verb};

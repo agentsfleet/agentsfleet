@@ -7,12 +7,12 @@ use crate::{
     error::query,
     task::{TaskLease, TaskRefusal, Tasks, guard as task_guard, transaction},
 };
-use afd_core::{clock, id::Uuid7};
-use afd_crypto::{
+use af_core::{clock, id::Uuid7};
+use af_crypto::{
     checkpoint::{CheckpointScope, PreparedCheckpointKey},
     envelope::Sealer,
 };
-use afd_wire::task::{
+use af_wire::task::{
     CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPlaintext, CheckpointTransferPurpose,
 };
 use serde::Serialize;
@@ -43,7 +43,7 @@ struct NewObject {
 pub(in crate::task) async fn register(
     tasks: &Tasks,
     lease: TaskLease<'_>,
-    checkpoint: &afd_core::id::Uuid7,
+    checkpoint: &af_core::id::Uuid7,
     input: &garde::Valid<CheckpointObjectsInput>,
 ) -> Result<CheckpointObjectsPage> {
     let storage = guard::storage(tasks)?;
@@ -221,7 +221,7 @@ fn prepare(
             .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
         kind: descriptor.kind.clone(),
         format_version: plan.format_version,
-        accounted_bytes: i64::try_from(descriptor.size + afd_crypto::TAG_LEN as u64)
+        accounted_bytes: i64::try_from(descriptor.size + af_crypto::TAG_LEN as u64)
             .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
         dek_ciphertext: pg_bytes(envelope.wrapped_dek()),
         dek_nonce: pg_bytes(envelope.dek_nonce()),
@@ -243,11 +243,11 @@ pub(super) async fn attach(
         .bind(objects)
         .bind(&plan.workspace_id)
         .bind(
-            (plan.mode()? == afd_wire::task::CheckpointMode::Incremental)
+            (plan.mode()? == af_wire::task::CheckpointMode::Incremental)
                 .then_some(plan.id.as_str()),
         )
         .bind(
-            if plan.mode()? == afd_wire::task::CheckpointMode::RetainBase {
+            if plan.mode()? == af_wire::task::CheckpointMode::RetainBase {
                 plan.base_id.as_deref()
             } else {
                 None

@@ -11,8 +11,8 @@
 //! Two claims here are absent-tolerant and one is not, and the difference is
 //! not style. See [`Claims::ceiling`].
 
+use af_core::id::Uuid7;
 use afd_auth::verifier::VerifyError;
-use afd_core::id::Uuid7;
 
 /// The tenant claim's name, in both places it may appear.
 pub(crate) const CLAIM_TENANT_ID: &str = "tenant_id";

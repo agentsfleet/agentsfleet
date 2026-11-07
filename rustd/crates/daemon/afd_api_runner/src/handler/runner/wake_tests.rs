@@ -2,8 +2,8 @@
 
 use std::cell::Cell;
 
-use afd_core::limits::HELD_BEATS_MAX;
-use afd_core::test_util::trace::Capture;
+use af_core::limits::HELD_BEATS_MAX;
+use af_core::test_util::trace::Capture;
 use afd_fleet::lease::Waited;
 
 use super::{EVENT_WAKE_REFUSED, woken};
@@ -88,7 +88,7 @@ async fn test_held_beats_are_capped() {
 async fn test_held_beats_are_counted_by_how_they_ended() {
     const FAMILY: &str = "agentsfleet_runner_wake_answers_total";
     const REASONS: [&str; 3] = ["ring", "deadline", "capped"];
-    let metrics = afd_observability::test_util::Capture::install();
+    let metrics = af_observability::test_util::Capture::install();
     let read = || REASONS.map(|reason| metrics.sum(FAMILY, &[("reason", reason)]));
     let before = read();
 

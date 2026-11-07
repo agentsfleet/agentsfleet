@@ -3,7 +3,7 @@
 use super::seed::{seed_gate, seed_provider_resolution, seed_spend};
 use super::*;
 
-use afd_core::event::label;
+use af_core::event::label;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]

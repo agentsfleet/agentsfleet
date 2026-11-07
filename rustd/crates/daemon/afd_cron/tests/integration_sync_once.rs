@@ -25,8 +25,8 @@ mod live_qstash;
 
 use std::time::Duration;
 
-use afd_core::clock;
-use afd_core::id::Uuid7;
+use af_core::clock;
+use af_core::id::Uuid7;
 use afd_cron::{Change, DesiredStatus, NewSchedule, Reconciled, Schedule, Source};
 use jiff::tz::TimeZone;
 

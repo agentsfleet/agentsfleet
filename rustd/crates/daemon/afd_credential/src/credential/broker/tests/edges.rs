@@ -109,7 +109,7 @@ async fn a_configured_platform_dispatches_each_connector_to_its_own_vendor() {
 
     let github = registry.resolve("github").expect("GitHub resolves");
     let github_handle = json!({INTEGRATION: "github", "installation_id": 7});
-    let binding = super::binding(afd_fleet_runtime::config::Access::Read);
+    let binding = super::binding(af_fleet_runtime::config::Access::Read);
     assert!(matches!(
         vendors
             .exchange(github, ask(&workspace, &github_handle, Some(&binding)))

@@ -6,8 +6,8 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
+use af_wire::memory::{MAX_ENTRIES_PER_FLEET, PINNED_CATEGORY, Visibility};
 use afd_memory::window::DAILY_RETENTION;
-use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, PINNED_CATEGORY, Visibility};
 
 use crate::workspace::{Grants, Workspace, delta};
 
@@ -41,7 +41,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .capture(
             &fleet,
             &again,
-            afd_core::clock::after(START_AT, std::time::Duration::from_millis(1)),
+            af_core::clock::after(START_AT, std::time::Duration::from_millis(1)),
         )
         .await
         .expect("a re-capture");
@@ -68,7 +68,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
     );
 
     // Sweep: a capture past the retention removes the scratch note.
-    let later = afd_core::clock::after(
+    let later = af_core::clock::after(
         START_AT,
         DAILY_RETENTION + std::time::Duration::from_millis(2),
     );
@@ -86,7 +86,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .capture(
             &fleet,
             &filler,
-            afd_core::clock::after(
+            af_core::clock::after(
                 START_AT,
                 DAILY_RETENTION + std::time::Duration::from_millis(3),
             ),

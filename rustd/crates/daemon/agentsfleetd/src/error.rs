@@ -158,14 +158,14 @@ pub enum BootFailure {
     /// daemon that served on through it would export nothing and look exactly
     /// like a collector that is down.
     #[error("agentsfleetd cannot boot: the telemetry exporter would not build")]
-    Exporter(#[source] afd_otlp::Error),
+    Exporter(#[source] af_otlp::Error),
     /// The metric contract and the code disagree.
     ///
     /// A family a producer names and the census does not declare, a kind or a
     /// number they disagree about, or a series ceiling the SDK refuses. Every
     /// one is a defect in this build rather than a condition to serve through.
     #[error("agentsfleetd cannot boot: the metric contract was refused")]
-    Contract(#[from] afd_observability::Error),
+    Contract(#[from] af_observability::Error),
     /// An outbound HTTP client would not build.
     ///
     /// Refuses boot rather than serving through a default client: that one
@@ -176,12 +176,12 @@ pub enum BootFailure {
     HttpClient(#[from] reqwest::Error),
 }
 
-impl From<afd_otlp::Error> for BootFailure {
+impl From<af_otlp::Error> for BootFailure {
     /// A census refusal raised inside the transport's install is still the
     /// census's: it reports as [`BootFailure::Contract`], as it did before the
-    /// transport moved into `afd_otlp`, and every other failure as the
+    /// transport moved into `af_otlp`, and every other failure as the
     /// exporter's.
-    fn from(failure: afd_otlp::Error) -> Self {
+    fn from(failure: af_otlp::Error) -> Self {
         match failure.into_census() {
             Ok(census) => Self::Contract(census),
             Err(failure) => Self::Exporter(failure),
@@ -213,13 +213,13 @@ impl BootFailure {
     /// a dependency that would not answer, which is the same fact whichever
     /// dependency it was.
     #[must_use]
-    pub const fn code(&self) -> afd_core::error_code::ErrorCode {
+    pub const fn code(&self) -> af_core::error_code::ErrorCode {
         match *self {
-            Self::Environment(_) => afd_core::error_code::STARTUP_ENV_CHECK,
-            Self::Database(_) => afd_core::error_code::STARTUP_DB_CONNECT,
-            Self::Queue(_) => afd_core::error_code::STARTUP_DRAGONFLY_CONNECT,
+            Self::Environment(_) => af_core::error_code::STARTUP_ENV_CHECK,
+            Self::Database(_) => af_core::error_code::STARTUP_DB_CONNECT,
+            Self::Queue(_) => af_core::error_code::STARTUP_DRAGONFLY_CONNECT,
             Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) | Self::HttpClient(_) => {
-                afd_core::error_code::INTERNAL_OPERATION_FAILED
+                af_core::error_code::INTERNAL_OPERATION_FAILED
             }
         }
     }
@@ -247,7 +247,7 @@ pub enum MigrateFailure {
 
 #[cfg(test)]
 mod tests {
-    use afd_observability::metrics::registry::Registry;
+    use af_observability::metrics::registry::Registry;
 
     use super::BootFailure;
 
@@ -286,11 +286,11 @@ mod tests {
     /// any other transport failure stays the exporter's.
     #[tokio::test]
     async fn a_ceiling_refused_at_install_is_still_a_census_refusal() -> Result<(), &'static str> {
-        let config = afd_otlp::OtlpConfig::new("http://127.0.0.1:1", afd_otlp::OTEL_ENDPOINT_KNOB)
+        let config = af_otlp::OtlpConfig::new("http://127.0.0.1:1", af_otlp::OTEL_ENDPOINT_KNOB)
             .map_err(|_refused| "an absolute URL")?;
         let zero = Registry::read(ZERO_CEILING).map_err(|_refused| "a zero ceiling reads")?;
         let refused =
-            afd_otlp::Builder::new(&config, afd_otlp::Service::new("a-test", "0.0.0"), zero)
+            af_otlp::Builder::new(&config, af_otlp::Service::new("a-test", "0.0.0"), zero)
                 .install()
                 .err()
                 .ok_or("the SDK refuses a zero ceiling")?;
@@ -300,8 +300,8 @@ mod tests {
             BootFailure::Contract(_)
         ));
 
-        let knob = afd_otlp::Error::from(afd_otlp::Refused {
-            knob: afd_otlp::OTEL_ENDPOINT_KNOB,
+        let knob = af_otlp::Error::from(af_otlp::Refused {
+            knob: af_otlp::OTEL_ENDPOINT_KNOB,
             why: "a sentence",
         });
         let exporter = BootFailure::from(knob);

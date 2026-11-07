@@ -26,8 +26,8 @@
 //! cost of the worst one is bounded: one forced reconnect when the access token
 //! expires (RULE ECL).
 
-use afd_crypto::aad::Aad;
-use afd_crypto::envelope::{Envelope, Sealer};
+use af_crypto::aad::Aad;
+use af_crypto::envelope::{Envelope, Sealer};
 use afd_vault::StoredEnvelope;
 use serde_json::Value;
 use sqlx::Acquire as _;
@@ -35,7 +35,7 @@ use sqlx::Acquire as _;
 use crate::error::{Result, query, vault_data_invalid};
 use crate::vault::sql;
 use crate::vault::{KeyRef, Vault};
-use afd_core::credential::FIELD_REFRESH_TOKEN;
+use af_core::credential::FIELD_REFRESH_TOKEN;
 
 /// Statement name, for the context a query failure carries.
 pub(crate) const CONTEXT_ROTATE: &str = "vault credential rotation";
@@ -115,7 +115,7 @@ impl Vault {
         };
 
         let stored = self.decrypt(row, key)?;
-        let mut handle = afd_crypto::secret::SecretObject::parse(stored.expose())
+        let mut handle = af_crypto::secret::SecretObject::parse(stored.expose())
             .map_err(|_shape| vault_data_invalid())?;
         // Compares against what this exchange actually posted, which is the one
         // thing the lock cannot tell us: a reconnect that landed BEFORE this

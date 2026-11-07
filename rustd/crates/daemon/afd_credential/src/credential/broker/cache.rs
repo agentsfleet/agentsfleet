@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use afd_core::clock::before;
+use af_core::clock::before;
 use jiff::Timestamp;
 use moka::Expiry;
 use zeroize::Zeroizing;

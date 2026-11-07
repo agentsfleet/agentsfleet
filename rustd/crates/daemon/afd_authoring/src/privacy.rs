@@ -6,7 +6,7 @@
 //! its receipt and no draft, and answers Gone.
 
 use crate::{Access, Drafts, Result, access, draft::read, error::raise::query, sql};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::{Connection as _, PgConnection};
 
 const CONTEXT: &str = "purge private draft text";

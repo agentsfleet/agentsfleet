@@ -39,11 +39,11 @@
 //! healthy wallet including a spent-down balance is untouched and a missing one
 //! comes back.
 
-use afd_core::id::Uuid7;
-use afd_core::money::NANOS_PER_USD;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_crypto::entropy::Entropy;
+use af_observability::producers;
 use afd_db::Db;
-use afd_observability::producers;
 use jiff::Timestamp;
 
 use crate::sql::signup as sql;

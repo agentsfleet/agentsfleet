@@ -8,9 +8,9 @@
 //! spawned, so a run that ends takes every child with it.
 //! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
-use afd_wire::policy::ExecutionPolicy;
-use afr_providers::{Call, Connect, Hosted, Message, Replay, ToolSpec};
-use afr_secrets::Scrub;
+use af_providers::{Call, Connect, Hosted, Message, Replay, ToolSpec};
+use af_secrets::Scrub;
+use af_wire::policy::ExecutionPolicy;
 use afr_tools::{Catalog, Selection};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -59,7 +59,7 @@ impl Loop {
 impl AgentEngine for Loop {
     async fn prepare_task(
         &self,
-        lease: &afd_wire::lease::LeasePayload<'_>,
+        lease: &af_wire::lease::LeasePayload<'_>,
         verbs: &dyn afr_tools::LeaseVerbs,
         meter: &crate::Meter,
         stop: &CancellationToken,
@@ -162,7 +162,7 @@ impl AgentEngine for Loop {
 /// How a loop's turns ended.
 pub(crate) enum Ending {
     Answered(String),
-    Failed(afr_providers::Error),
+    Failed(af_providers::Error),
     Stopped,
 }
 
@@ -172,7 +172,7 @@ pub(crate) struct Harness<'s, 'run> {
     incorporated_input_sequence: u64,
     reconciled_effect_ordinal: u64,
     confirmed_effect_watermark: u64,
-    task_report: Option<afd_wire::task::TaskReport>,
+    task_report: Option<af_wire::task::TaskReport>,
     group_start: usize,
     pub(crate) shared: &'s Shared<'run>,
     /// How many loops this one is inside: zero for the root.
@@ -332,7 +332,7 @@ impl<'s, 'run> Harness<'s, 'run> {
                 if self.stop.is_cancelled() {
                     break Ending::Stopped;
                 }
-                break Ending::Failed(afr_providers::Error::lost(error));
+                break Ending::Failed(af_providers::Error::lost(error));
             }
             self.group_start = self.messages.len();
             let turn = match self.turn(turns, false).await {
@@ -346,13 +346,13 @@ impl<'s, 'run> Harness<'s, 'run> {
             if turn.calls.is_empty() {
                 // An empty first turn must not turn a silent failure into task success.
                 if turns == 1 && turn.text.trim().is_empty() {
-                    break Ending::Failed(afr_providers::Error::silent(turn.cut));
+                    break Ending::Failed(af_providers::Error::silent(turn.cut));
                 }
                 if let Some(ending) = self.assess_task(&turn.text).await {
                     break ending;
                 }
                 if self.task_report.as_ref().is_some_and(|report| {
-                    report.disposition == afd_wire::task::TaskDisposition::Continue
+                    report.disposition == af_wire::task::TaskDisposition::Continue
                 }) {
                     let said = self.remembered(turn.text, turn.calls, turn.replay);
                     self.messages.push(said);

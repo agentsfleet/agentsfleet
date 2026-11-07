@@ -19,7 +19,7 @@
 //! means stating a posture; changing a posture means editing one line that
 //! reads like the sentence it enforces.
 
-use afd_core::error_code::{self, Coded as _, Logged};
+use af_core::error_code::{self, Coded as _, Logged};
 
 use crate::lease::admit::{Declined, Transient};
 

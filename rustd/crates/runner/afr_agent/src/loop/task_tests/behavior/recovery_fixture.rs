@@ -183,7 +183,7 @@ pub(super) async fn execute(
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
             ),
-            mint: &afr_egress::testing::CountingMint::never(),
+            mint: &af_egress::testing::CountingMint::never(),
             verbs: native,
             checkpoint: &crate::testing::Discard,
             context_checkpoints: &crate::testing::ContextMemory::default(),

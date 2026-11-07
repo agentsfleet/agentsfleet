@@ -13,7 +13,7 @@
 //! it: its `Err` becomes the `sequence_corrupt` refusal rather than a token
 //! that wrapped to a huge positive value.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use sqlx::FromRow as _;
 
 use crate::error::{Result, query, sequence_corrupt};

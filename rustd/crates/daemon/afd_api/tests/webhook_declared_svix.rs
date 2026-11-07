@@ -2,7 +2,7 @@
 //!
 //! The third way a delivery reaches one fleet, and the only one whose signature
 //! this daemon does not check with its own canon: Svix publishes a scheme, and
-//! `afd_webhook::vendor::svix` implements exactly that so a sender configured
+//! `af_webhook::vendor::svix` implements exactly that so a sender configured
 //! against any Svix-fronted provider verifies here without per-provider code.
 //!
 //! # The delivery id comes from the SENDER, and that is the whole difference
@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, json_body, send_with_headers};
-use afd_core::error_code;
+use af_core::error_code;
 use afd_ingress::Surface;
 use http::{Method, StatusCode};
 use serde_json::Value;
@@ -178,11 +178,11 @@ async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
     let stamp = at.to_string();
     let headers = vec![
         (
-            signed::name(afd_webhook::vendor::svix::TIMESTAMP_HEADER),
+            signed::name(af_webhook::vendor::svix::TIMESTAMP_HEADER),
             stamp.as_str(),
         ),
         (
-            signed::name(afd_webhook::vendor::svix::SIGNATURE_HEADER),
+            signed::name(af_webhook::vendor::svix::SIGNATURE_HEADER),
             proof.as_str(),
         ),
     ];

@@ -5,11 +5,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_core::paging::DEFAULT_LIMIT;
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::paging::DEFAULT_LIMIT;
+use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_runner::RunnerEventFilter;
-use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use crate::requests::enrolment;
 use crate::support::Fixtures;

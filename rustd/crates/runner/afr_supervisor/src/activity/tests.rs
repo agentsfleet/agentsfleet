@@ -7,8 +7,8 @@
 use std::io::Write as _;
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_wire::activity::{
+use af_core::id::Uuid7;
+use af_wire::activity::{
     ActivityAccepted, ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress,
     ToolCallStarted,
 };
@@ -31,7 +31,7 @@ const FRAMES: &str = "frames";
 pub(super) fn chunk(text: String) -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: text.into(),
-        text_kind: afd_wire::activity::StreamTextKind::Answer,
+        text_kind: af_wire::activity::StreamTextKind::Answer,
         first_chunk_after_ms: None,
         stream_start: false,
         stream_contiguous: true,
@@ -73,7 +73,7 @@ pub(super) fn completed(call_id: &'static str, ms: i64) -> ActivityFrame<'static
         name: TOOL.into(),
         ms,
         call_id: call_id.into(),
-        status: afd_wire::tool_trace::ToolCallStatus::Succeeded,
+        status: af_wire::tool_trace::ToolCallStatus::Succeeded,
         output_head: None,
         output_tail: None,
         output_line_count: None,

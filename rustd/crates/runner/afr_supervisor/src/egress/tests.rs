@@ -10,10 +10,10 @@ use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
 
-use afd_core::error_code::INTERNAL_OPERATION_FAILED;
-use afd_wire::policy::{HttpEgress, NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
-use afd_wire::runner::NetworkPolicy;
-use afr_egress::SystemResolver;
+use af_core::error_code::INTERNAL_OPERATION_FAILED;
+use af_egress::SystemResolver;
+use af_wire::policy::{HttpEgress, NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
+use af_wire::runner::NetworkPolicy;
 use afr_sandbox::{ALLOWLIST_ADDRESSES_MAX, Allowlist, Network};
 
 use super::{Bound, Egress, Named};
@@ -313,9 +313,9 @@ async fn test_a_host_with_one_blocked_address_is_refused_on_both_egress_paths() 
     let resolver = blocking_resolver();
     #[expect(
         clippy::disallowed_methods,
-        reason = "the raw builder is what afr_egress::guarded_by wraps, and the guard is what this test proves; afd_identity::direct is a daemon crate the runner does not depend on"
+        reason = "the raw builder is what af_egress::guarded_by wraps, and the guard is what this test proves; afd_identity::direct is a daemon crate the runner does not depend on"
     )]
-    let client = afr_egress::guarded_by(reqwest::Client::builder(), Arc::new(resolver.clone()))
+    let client = af_egress::guarded_by(reqwest::Client::builder(), Arc::new(resolver.clone()))
         .build()
         .unwrap();
 
@@ -330,7 +330,7 @@ async fn test_a_host_with_one_blocked_address_is_refused_on_both_egress_paths() 
         .unwrap_err();
 
     assert!(bound.is_egress_blocked(), "{bound}");
-    assert!(afr_egress::blocked_address(&sent), "{sent}");
+    assert!(af_egress::blocked_address(&sent), "{sent}");
 }
 
 #[test]

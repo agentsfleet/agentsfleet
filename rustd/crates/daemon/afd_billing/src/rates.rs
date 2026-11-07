@@ -21,7 +21,7 @@
 //! IS the charge. That inversion is why pricing returns a value describing what
 //! happened rather than a bare `Option` that has already chosen for both.
 
-use afd_wire::usage::UsageLine;
+use af_wire::usage::UsageLine;
 use jiff::Timestamp;
 
 use crate::error::Result;

@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use afd_core::clock::FixedClock;
-use afd_core::test_util::trace::Capture;
+use af_core::clock::FixedClock;
+use af_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::testing::{Recorded, Tally};
 use futures_util::FutureExt as _;

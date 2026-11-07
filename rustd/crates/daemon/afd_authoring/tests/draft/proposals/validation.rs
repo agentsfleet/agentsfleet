@@ -1,8 +1,8 @@
 //! Invalid first-generation content makes no durable mutation.
 
 use super::{ActivityEvent, Attempt, Fixture, Proposal, Source, json};
-use afd_core::error_code::INVALID_REQUEST;
-use afd_fleet_runtime::definition::MAX_INITIAL_INSTRUCTIONS_CHARS;
+use af_core::error_code::INVALID_REQUEST;
+use af_fleet_runtime::definition::MAX_INITIAL_INSTRUCTIONS_CHARS;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

@@ -2,7 +2,7 @@
 
 use super::{PreparedTask, identity, routing, unavailable, version};
 use crate::Result;
-use afd_wire::{
+use af_wire::{
     decision::{DecisionAnswer, DecisionAssignment},
     task::{DecisionAssessment, DecisionReservationInput, TaskDisposition, TaskReport},
 };

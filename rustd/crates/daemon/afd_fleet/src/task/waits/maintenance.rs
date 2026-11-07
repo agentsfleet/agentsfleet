@@ -11,7 +11,7 @@ use crate::{
     error::{ErrorKind, query},
     task::Tasks,
 };
-use afd_wire::task::TaskState;
+use af_wire::task::TaskState;
 use futures_util::{StreamExt as _, stream};
 use tracing::Instrument as _;
 
@@ -55,9 +55,9 @@ pub(in crate::task) async fn maintain(tasks: &Tasks) -> Result<WaitMaintenance> 
         };
         let result = Box::pin(
             super::super::observe::measure(
-                afd_observability::metrics::label::task::TaskOperation::WaitRead,
+                af_observability::metrics::label::task::TaskOperation::WaitRead,
                 timed,
-                |_| afd_observability::metrics::label::task::TaskOutcome::Accepted,
+                |_| af_observability::metrics::label::task::TaskOutcome::Accepted,
             )
             .instrument(tracing::info_span!(
                 "task_dependency_read",

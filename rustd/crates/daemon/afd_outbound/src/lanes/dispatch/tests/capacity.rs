@@ -3,7 +3,7 @@
 use std::future::ready;
 use std::task::{Context, Poll, Waker};
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use afd_db::{
     Db,
     config::{DbRole, PoolConfig},

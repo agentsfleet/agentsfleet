@@ -1,8 +1,8 @@
 //! The webhook addresses Save hands back are ones the router serves.
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
-use afd_core::id::Uuid7;
-use afd_fleet_runtime::FleetConfig;
+use af_core::id::Uuid7;
+use af_fleet_runtime::FleetConfig;
 use serde_json::json;
 
 use super::webhook_urls;

@@ -4,7 +4,7 @@ use super::Fixture;
 use std::time::Duration;
 
 use super::fixture::{LAPSED_BY, LIVE_FOR};
-use afd_core::clock;
+use af_core::clock;
 use sqlx::Connection as _;
 
 /// How long the competing claimant holds the host lock.

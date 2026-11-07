@@ -2,8 +2,8 @@
 
 mod transaction;
 
+use af_core::id::Uuid7;
 use afd_api_wire::activity::{FleetActivity, ScheduleChange, ScheduleSnapshot};
-use afd_core::id::Uuid7;
 use afd_events::activity::Announcement;
 use sqlx::PgConnection;
 

@@ -7,17 +7,15 @@
 
 use std::borrow::Cow;
 
-use afd_core::error_code::INTERNAL_DB_QUERY;
-use afd_core::id::Uuid7;
-use afd_core::test_util::trace::Capture;
+use af_core::error_code::INTERNAL_DB_QUERY;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
 use afd_db::config::DbRole;
 use afd_db::test_util::mint_id;
 use afd_runner::heartbeat::holds::prove;
 use afd_runner::reconcile::REASON_LANDLOCK_UNAVAILABLE;
 use afd_runner::{Beat, NO_REPORT};
-use afd_wire::runner::{
-    CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier,
-};
 use jiff::Timestamp;
 
 use super::Verdict;
@@ -78,7 +76,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                 &HeartbeatRequest {
                     capability_report: Some(report),
                     selftest: None,
-                    holds: afd_wire::runner::HeldFleets::default(),
+                    holds: af_wire::runner::HeldFleets::default(),
                     closing: false,
                     wake: false,
                 },
@@ -162,7 +160,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
         )
         .await
         .expect("enrolment must succeed");
-    let phantom = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000ff")
+    let phantom = af_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000ff")
         .expect("the fixture identifier is canonical");
 
     let read = fixtures.runners().self_record(&phantom).await;

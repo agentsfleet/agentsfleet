@@ -2,9 +2,9 @@
 
 use std::error::Error as _;
 
+use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 
 use super::super::seed::{seed_gate, seed_provider_resolution};
@@ -83,7 +83,7 @@ async fn assert_failed_park_recovers(injection: &'static str) {
 }
 
 fn assert_original_park_error(failure: &afd_fleet::Error) {
-    assert_eq!(failure.code(), afd_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(failure.code(), af_core::error_code::INTERNAL_DB_QUERY);
     let cause = std::iter::successors(failure.source(), |cause| (*cause).source())
         .find_map(|cause| cause.downcast_ref::<sqlx::Error>())
         .and_then(sqlx::Error::as_database_error)

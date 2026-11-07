@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use axum::Router;
 use axum::body::BodyDataStream;

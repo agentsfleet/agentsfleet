@@ -6,7 +6,7 @@
 //! unit suite would flip `installed()` to `Some` for every other test in that
 //! binary, mid-run and in whatever order the harness chose. Here the process is
 //! this file's own, so the install is total and ordered — the same reason
-//! `afd_observability`'s own `producers_drive.rs` lives beside its unit tests
+//! `af_observability`'s own `producers_drive.rs` lives beside its unit tests
 //! rather than inside them.
 
 #![expect(
@@ -14,8 +14,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_observability::producers;
 use afd_bench::instrument::{LeaseInstrument, PollCounters};
-use afd_observability::producers;
 
 /// Candidates the fake poll claims to have examined.
 const CANDIDATES: u64 = 11;

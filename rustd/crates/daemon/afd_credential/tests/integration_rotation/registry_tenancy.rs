@@ -6,7 +6,7 @@
 //! hand one tenant's row to another the moment its id was guessed or leaked.
 //! Each verb is driven here with the OTHER tenant's id.
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use afd_credential::provider::{Removed, Retargeted};
 
 use super::Fixture;

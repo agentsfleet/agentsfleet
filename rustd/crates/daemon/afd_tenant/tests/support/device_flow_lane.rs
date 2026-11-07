@@ -6,8 +6,8 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::SecretBytes;
+use af_crypto::entropy::Entropy;
+use af_crypto::secret::SecretBytes;
 use afd_dragonfly::SessionStore;
 use afd_tenant::session::input::Approval;
 use afd_tenant::session::{Fingerprint, Sessions};

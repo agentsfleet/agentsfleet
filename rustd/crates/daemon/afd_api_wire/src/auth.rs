@@ -18,7 +18,7 @@
 //! A field this daemon does not know is a client believing something about the
 //! flow that is not true — a `scope`, an `expires_in`, a second key. Accepting
 //! it silently means that belief survives to production. Refusing it is the
-//! same rule [`afd_wire::memory`] holds the runner plane to.
+//! same rule [`af_wire::memory`] holds the runner plane to.
 
 use std::borrow::Cow;
 
@@ -65,7 +65,7 @@ pub struct PollSessionResponse<'a> {
     /// What the credential will be called.
     pub token_name: Cow<'a, str>,
     /// When the window closes.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub expires_at: jiff::Timestamp,
 }
 

@@ -9,8 +9,8 @@
 
 use std::time::Duration;
 
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_tenant::cli_credential::{CliCredentials, MachineName, MintRequest};
 use jiff::Timestamp;
 

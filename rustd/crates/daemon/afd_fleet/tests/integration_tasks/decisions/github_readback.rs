@@ -6,8 +6,8 @@ use super::{
     github_authority,
     github_server::Server,
 };
+use af_wire::task::TaskEffectState;
 use afd_fleet::task::{TaskLifecycle as _, TaskRefusal};
-use afd_wire::task::TaskEffectState;
 use serde_json::{Value, json};
 
 #[tokio::test]

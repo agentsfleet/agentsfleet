@@ -26,8 +26,8 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use afd_core::error_code;
-use afd_crypto::entropy::Entropy;
+use af_core::error_code;
+use af_crypto::entropy::Entropy;
 
 /// The prefix that makes an id recognisable in a log line or a ticket.
 const PREFIX: &str = "req_";
@@ -101,7 +101,7 @@ impl From<RequestId> for String {
 
 #[cfg(test)]
 mod tests {
-    use afd_crypto::entropy::Entropy;
+    use af_crypto::entropy::Entropy;
 
     use super::{RequestId, UNKNOWN_REQUEST_ID};
 

@@ -12,9 +12,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::error_code;
-use afd_core::timing::NO_WORK_RETRY_AFTER;
-use afd_wire::lease::{LeaseResponse, TaggedLease};
+use af_core::error_code;
+use af_core::timing::NO_WORK_RETRY_AFTER;
+use af_wire::lease::{LeaseResponse, TaggedLease};
 use backon::ExponentialBackoff;
 use futures_util::FutureExt as _;
 use tokio::sync::{Notify, watch};

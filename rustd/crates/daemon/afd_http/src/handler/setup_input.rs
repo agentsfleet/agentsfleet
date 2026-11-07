@@ -1,7 +1,7 @@
 //! Strict native mutation parsing keeps private input out of rejection logs.
 
 use super::Refusal;
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 use http::{HeaderMap, header};
 use serde::de::DeserializeOwned;
 
@@ -15,7 +15,7 @@ const REQUEST_FIELDS_ALLOWANCE_BYTES: usize = 16 * 1024;
 /// The largest setup request body: a Definition at its cap plus the fields
 /// around it, so the envelope never refuses what the Definition parser admits.
 pub const SETUP_BODY_BYTES_MAX: usize =
-    afd_fleet_runtime::definition::MAX_DEFINITION_BYTES + REQUEST_FIELDS_ALLOWANCE_BYTES;
+    af_fleet_runtime::definition::MAX_DEFINITION_BYTES + REQUEST_FIELDS_ALLOWANCE_BYTES;
 
 #[derive(garde::Validate)]
 struct Envelope<'a> {
@@ -32,14 +32,13 @@ pub fn body<T: DeserializeOwned>(body: &[u8]) -> Result<T, Refusal> {
         .validate()
         .map_err(|_invalid| {
             Refusal::coded(
-                afd_core::error_code::PAYLOAD_TOO_LARGE,
+                af_core::error_code::PAYLOAD_TOO_LARGE,
                 "Setup request exceeds the supported envelope size",
             )
         })?;
     // Definition keys are private authored content. The generic HTTP helper
     // logs rejected key names, so use its underlying object parser directly.
-    afd_core::json::object_from_slice(envelope.bytes)
-        .map_err(|_invalid| Refusal::malformed(INVALID))
+    af_core::json::object_from_slice(envelope.bytes).map_err(|_invalid| Refusal::malformed(INVALID))
 }
 
 /// Reads exactly one conditional resource tag.
@@ -88,7 +87,7 @@ pub fn uuid(value: &str) -> Result<Uuid7, Refusal> {
 
 #[cfg(test)]
 mod tests {
-    use afd_fleet_runtime::definition::{MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS};
+    use af_fleet_runtime::definition::{MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS};
     use serde_json::{Value, json};
 
     use super::{SETUP_BODY_BYTES_MAX, body};
@@ -114,7 +113,7 @@ mod tests {
     fn a_maximal_valid_definition_fits_the_setup_envelope() {
         let bytes = maximal_create_body();
         assert!(
-            bytes.len() > afd_wire::authoring::ENVELOPE_BYTES_MAX,
+            bytes.len() > af_wire::authoring::ENVELOPE_BYTES_MAX,
             "the old cap refused this"
         );
         assert!(bytes.len() <= SETUP_BODY_BYTES_MAX, "{} bytes", bytes.len());

@@ -14,7 +14,7 @@
 //! Demanding them would make a migration job carry credentials it has no use
 //! for, which is how a job container ends up holding the KEK.
 
-use afd_core::env::EnvSource;
+use af_core::env::EnvSource;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::{Applied, Db, Migrator};
 

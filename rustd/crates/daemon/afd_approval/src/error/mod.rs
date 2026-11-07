@@ -4,7 +4,7 @@
 //! (`M-ERRORS-CANONICAL-STRUCTS`, with the workspace's declared divergence): a
 //! struct carrying a captured backtrace over a private kind, with the code and
 //! the sentence decided together in one table rather than spelled at each
-//! raise site. The hull is `afd_core::error_shell!`, so nothing here repeats
+//! raise site. The hull is `af_core::error_shell!`, so nothing here repeats
 //! what its sibling crates already share.
 //!
 //! # A gate answered but not continued is its own incident
@@ -14,8 +14,8 @@
 //! not admit is a run a person unblocked and nothing restarted, which an
 //! operator resolves by retrying the decision.
 
-use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
-use afd_core::error_code::{self, ErrorCode};
+use af_core::error::DETAIL_DATABASE_UNAVAILABLE;
+use af_core::error_code::{self, ErrorCode};
 
 mod raise;
 
@@ -30,7 +30,7 @@ pub(crate) use self::raise::query;
 /// (`RUST_ERROR_STANDARD` rule 1).
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-afd_core::error_shell!(
+af_core::error_shell!(
     /// An approval failure, with the backtrace of where it was raised.
     pub struct Error(ErrorKind);
 );
@@ -69,7 +69,7 @@ pub(crate) enum ErrorKind {
     #[error("an identifier could not be minted")]
     Entropy {
         #[source]
-        source: afd_crypto::error::Error,
+        source: af_crypto::error::Error,
     },
 
     /// The continuation's acceptance could not be recorded — see the module
@@ -97,7 +97,7 @@ impl Error {
             ),
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
-            // constants in `afd_core::error` exist to prevent.
+            // constants in `af_core::error` exist to prevent.
             ErrorKind::Admission { source } => (source.code(), source.detail()),
         }
     }
@@ -134,7 +134,7 @@ impl Error {
 
 /// The sentence a statement that would not run earns.
 ///
-/// This crate's own rather than one of `afd_core::error`'s three: an approval
+/// This crate's own rather than one of `af_core::error`'s three: an approval
 /// is a thing a PERSON is waiting on, and "Database error" tells them nothing
 /// about the decision they just made.
 const DETAIL_OPERATION_FAILED: &str = "The approval could not be read or recorded";

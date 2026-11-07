@@ -1,7 +1,7 @@
 //! A purged fleet leaves a bounded, content-free Apply receipt.
 
 use super::{Fleet, Method, StatusCode, header, json_body, mint, send_with_headers};
-use afd_core::error_code;
+use af_core::error_code;
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]

@@ -188,7 +188,7 @@ pub(super) async fn a_disconnect_a_model_entry_still_names_is_a_conflict(
     assert_eq!(status, StatusCode::CONFLICT, "{document}");
     assert_eq!(
         document.get("error_code").and_then(Value::as_str),
-        Some(afd_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES.as_str()),
+        Some(af_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES.as_str()),
         "{document}"
     );
     assert_eq!(

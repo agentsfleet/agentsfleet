@@ -4,7 +4,7 @@
 
 use super::super::funnel::{FINISHED, about, only, property};
 use super::{claim, funded, queue};
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 /// The one finished step reported so far, and its state.
 fn finished_once(f: &super::Fixture, draft: &Uuid7) -> String {

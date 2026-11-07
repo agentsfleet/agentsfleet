@@ -12,8 +12,8 @@
 //! cannot disagree about a fleet's history — which two statements would
 //! eventually do.
 
+use af_core::id::Uuid7;
 use afd_api_wire::tail::TailFrame;
-use afd_core::id::Uuid7;
 use afd_events::{
     CallAddress, Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer,
     Steered, ToolCallRow,

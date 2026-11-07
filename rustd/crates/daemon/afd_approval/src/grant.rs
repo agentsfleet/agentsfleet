@@ -29,9 +29,9 @@
 //! statement re-answers it a second time in its join. See
 //! [`grant_sql::REVOKE_GRANT`] for why the redundancy stays.
 
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_api_wire::grant::status;
-use afd_core::id::Uuid7;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use jiff::Timestamp;
 

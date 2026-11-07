@@ -5,9 +5,9 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
-use afd_core::env::MapEnv;
-use afd_core::error_code;
-use afd_otlp::{
+use af_core::env::MapEnv;
+use af_core::error_code;
+use af_otlp::{
     COMPRESSION_KNOBS, HEADER_KNOBS, OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB,
 };
 

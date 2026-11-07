@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use afd_core::env::MapEnv;
-use afr_providers::Call;
+use af_core::env::MapEnv;
+use af_providers::Call;
 use afr_sandbox::{BubblewrapEngine, Engine, Sandbox, SandboxRequest, probe};
 use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
 use afr_supervisor::test_util::LEASE_ID;

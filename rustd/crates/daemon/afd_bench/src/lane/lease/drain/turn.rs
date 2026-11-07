@@ -8,7 +8,7 @@
 
 use core::time::Duration;
 
-use afd_core::timing::RENEWAL_TICK;
+use af_core::timing::RENEWAL_TICK;
 
 /// How often the runner's activity pump flushes a batch of frames: the
 /// supervisor's `FLUSH_EVERY`, restated because a bench must not depend on

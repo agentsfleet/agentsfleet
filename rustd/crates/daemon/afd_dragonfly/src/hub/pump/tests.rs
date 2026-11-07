@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use afd_core::test_util::trace::Capture;
+use af_core::test_util::trace::Capture;
 use backon::ExponentialBuilder;
 
 use super::redial;
@@ -41,7 +41,7 @@ async fn a_failed_redial_reason_carries_no_code_prefix() {
         record.assert_uncoded_reason();
         assert_eq!(
             record.fields.get("cause_error_code").map(String::as_str),
-            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+            Some(af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
             "the refused dial's own code rides `cause_error_code`"
         );
     }

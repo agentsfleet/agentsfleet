@@ -40,15 +40,15 @@ fn lifted_stores() -> Result<[Error; 7], &'static str> {
 
 /// An identifier, a config value and an entropy draw that failed, lifted.
 fn lifted_inputs() -> Result<[Error; 3], &'static str> {
-    let identifier = afd_core::id::Uuid7::parse("not-an-id")
+    let identifier = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("fixture id unexpectedly parsed")?;
-    let config = afd_fleet_runtime::FleetName::parse("")
+    let config = af_fleet_runtime::FleetName::parse("")
         .err()
         .ok_or("fixture fleet name unexpectedly parsed")?;
-    let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
-    let mut bytes = [0_u8; afd_core::id::ENTROPY_LEN];
+    let mut bytes = [0_u8; af_core::id::ENTROPY_LEN];
     let entropy = entropy
         .fill(&mut bytes)
         .err()
@@ -85,7 +85,7 @@ fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(),
         .find(|(kind, _error)| *kind == "datastore unavailable")
         .map(|(_kind, error)| error)
         .ok_or("database test utility has no outage kind")?;
-    let unreadable_writer = afd_core::id::Uuid7::parse("not-an-id")
+    let unreadable_writer = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("fixture id unexpectedly parsed")?;
 
@@ -153,15 +153,15 @@ fn runner_and_authoring_failures_keep_their_crates_classification() {
 /// log rather than reaching whoever asked.
 #[test]
 fn a_scrub_that_cannot_be_built_is_an_operation_failure() -> Result<(), &'static str> {
-    let (_label, scrub) = afr_secrets::error::one_of_each_kind()
+    let (_label, scrub) = af_secrets::error::one_of_each_kind()
         .into_iter()
         .find(|(label, _error)| *label == "matcher")
         .ok_or("the secrets sample has no matcher kind")?;
     let lifted = Error::from(scrub);
 
-    let code = afd_core::error_code::INTERNAL_OPERATION_FAILED;
+    let code = af_core::error_code::INTERNAL_OPERATION_FAILED;
     assert_eq!(lifted.code(), code);
-    assert_eq!(lifted.detail(), afd_core::error::DETAIL_OPERATION_FAILED);
+    assert_eq!(lifted.detail(), af_core::error::DETAIL_OPERATION_FAILED);
     assert!(!lifted.is_datastore_unavailable());
     assert_eq!(
         lifted.source().map(ToString::to_string),

@@ -61,13 +61,13 @@ pub struct View<'s> {
     pub run_state: RunState,
     /// When it next runs, computed by the server from the expression and its
     /// zone. Null unless `run_state` is `scheduled`.
-    #[serde(with = "afd_wire::instant::option")]
+    #[serde(with = "af_wire::instant::option")]
     pub next_run_at: Option<jiff::Timestamp>,
     /// When it was created.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// When it was last changed.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
 }
 

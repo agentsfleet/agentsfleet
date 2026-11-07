@@ -1,8 +1,8 @@
 //! Database-backed snapshots are sampled outside the SDK's collection lock.
+use af_crypto::entropy::Entropy;
+use af_observability::producers::{models, scheduler};
 use afd_admin::Models;
-use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_observability::producers::{models, scheduler};
 use std::time::Duration;
 
 const BUDGET: Duration = Duration::from_secs(2);
@@ -38,7 +38,7 @@ fn model_info(model: afd_admin::Model) -> Option<models::ModelInfo> {
         .ok()
         .filter(|value| *value > 0)?;
     let route = model.details.inference.as_ref().and_then(|settings| {
-        afd_inference::Configured::new(settings, u32::try_from(context_tokens).ok()?).ok()
+        af_inference::Configured::new(settings, u32::try_from(context_tokens).ok()?).ok()
     });
     Some(models::ModelInfo {
         tools: route
@@ -63,8 +63,8 @@ fn model_info(model: afd_admin::Model) -> Option<models::ModelInfo> {
 #[expect(clippy::expect_used, reason = "fixed valid catalogue fixtures")]
 mod tests {
     use super::*;
-    use afd_core::{catalogue::Metadata, id::Uuid7};
-    use afd_wire::inference::{InferenceApi, ModelInference};
+    use af_core::{catalogue::Metadata, id::Uuid7};
+    use af_wire::inference::{InferenceApi, ModelInference};
 
     fn model(context: i32, inference: Option<ModelInference>) -> afd_admin::Model {
         afd_admin::Model {

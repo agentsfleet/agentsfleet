@@ -1,7 +1,7 @@
 //! Every independent request survives the decomposition boundary intact.
 
 use super::{interpretation::validate, routing::Multiplicity};
-use afd_wire::task::{TaskInputAction, TaskProposedItem};
+use af_wire::task::{TaskInputAction, TaskProposedItem};
 
 fn item(start: i32, end: i32) -> TaskProposedItem {
     TaskProposedItem {

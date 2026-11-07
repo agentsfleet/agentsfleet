@@ -9,11 +9,11 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_http::handler::{Refusal, read_strict_body};
-use afd_wire::message_verb::{
+use af_core::error_code;
+use af_wire::message_verb::{
     MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MessagePosted, MessageRequest,
 };
+use afd_http::handler::{Refusal, read_strict_body};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -51,7 +51,7 @@ const EVENT_DEADLINE: &str = "runner_message_deadline";
 const DESCRIPTION: &str = const_format::concatcp!(
     "Posts to the event's original thread with secrets masked. The server holds the ",
     "channel credential. Limit: ",
-    afd_wire::message_verb::MESSAGES_PER_RUN_MAX,
+    af_wire::message_verb::MESSAGES_PER_RUN_MAX,
     " messages per run; excess returns 409 `UZ-RUN-020`. Events without a thread ",
     "return 409 `UZ-RUN-019`. Both errors include `current_state`. `delivered` is ",
     "false after rejection or failed retries within ",
@@ -62,7 +62,7 @@ const DESCRIPTION: &str = const_format::concatcp!(
 /// Posts one line to the event's thread.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = afd_wire::paths::LEASE_MESSAGES,
+    path = af_wire::paths::LEASE_MESSAGES,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_post_message",
     summary = "Post a message to the event's thread",

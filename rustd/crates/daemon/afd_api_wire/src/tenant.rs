@@ -37,7 +37,7 @@ pub struct MintedApiKeyResponse<'a> {
     /// The credential itself. Shown once and never stored in this shape.
     pub key: Cow<'a, str>,
     /// When it was minted.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
 
@@ -93,7 +93,7 @@ pub struct RevokedApiKeyResponse<'a> {
     /// straight into whatever it was holding.
     pub active: bool,
     /// When the row records it stopped working.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub revoked_at: jiff::Timestamp,
 }
 
@@ -108,10 +108,10 @@ pub struct ApiKeySummary<'a> {
     /// Whether it still authenticates.
     pub active: bool,
     /// When it was minted.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
     /// When the key was revoked, or null while active.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub revoked_at: Option<jiff::Timestamp>,
 }
 
@@ -128,17 +128,17 @@ pub struct BillingResponse {
     ///
     /// Negative while the tenant owes a debt. A settlement takes its whole charge, and the
     /// next grant repays the debt before any of it is spendable.
-    #[serde(with = "afd_wire::nanos::signed")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::signed::SignedDecimal))]
+    #[serde(with = "af_wire::nanos::signed")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::signed::SignedDecimal))]
     pub balance_nanos: i64,
     /// When the balance last moved.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub updated_at: jiff::Timestamp,
     /// Whether the balance has reached zero or gone below it.
     pub is_exhausted: bool,
     /// When it did, or `null` while money remains — emitted either way, for
     /// the module's null rule.
-    #[serde(with = "afd_wire::instant::option", default)]
+    #[serde(with = "af_wire::instant::option", default)]
     pub exhausted_at: Option<jiff::Timestamp>,
 }
 
@@ -176,8 +176,8 @@ pub struct ChargeSummary<'a> {
     /// The model used by the run or setup chat.
     pub model: Cow<'a, str>,
     /// What this row drained, in nanos.
-    #[serde(with = "afd_wire::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = afd_wire::nanos::Decimal))]
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
     pub credit_deducted_nanos: i64,
     /// Recorded input tokens for a run or settled setup chat.
     pub token_count_input: Option<i64>,
@@ -187,7 +187,7 @@ pub struct ChargeSummary<'a> {
     pub wall_ms: Option<i64>,
     /// When the row was written — the walk's sort key, and what its cursor
     /// half is rendered from.
-    #[serde(with = "afd_wire::instant")]
+    #[serde(with = "af_wire::instant")]
     pub recorded_at: jiff::Timestamp,
 }
 

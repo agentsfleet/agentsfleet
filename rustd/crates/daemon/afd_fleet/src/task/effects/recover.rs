@@ -26,7 +26,7 @@ pub(super) async fn abandon(tasks: &Tasks, lease: TaskLease<'_>, effect: &Effect
         .bind("refused")
         .bind("prepared")
         .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
-        .bind(afd_wire::task::TaskState::Running.as_str())
+        .bind(af_wire::task::TaskState::Running.as_str())
         .execute(&mut *tx)
         .await
         .map_err(query("fence and refuse abandoned unpublished effect"))?

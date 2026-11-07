@@ -36,8 +36,8 @@ mod types;
 pub(crate) mod usage;
 mod waits;
 
-use afd_core::id::Uuid7;
-use afd_observability::metrics::label::task::{TaskOperation, TaskOutcome};
+use af_core::id::Uuid7;
+use af_observability::metrics::label::task::{TaskOperation, TaskOutcome};
 use tracing::Instrument as _;
 
 use crate::{Result, lease::Leases};
@@ -154,8 +154,8 @@ impl TaskLifecycle for Tasks {
     fn plan_checkpoint<'a>(
         &'a self,
         lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::CheckpointPlanInput>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointPlan> {
+        input: &'a garde::Valid<af_wire::task::CheckpointPlanInput>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointPlan> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointPlan,
@@ -173,8 +173,8 @@ impl TaskLifecycle for Tasks {
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
         page: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointPageInput>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointPage> {
+        input: &'a garde::Valid<af_wire::task::CheckpointPageInput>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointPage> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointPage,
@@ -192,8 +192,8 @@ impl TaskLifecycle for Tasks {
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
         page: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointPage> {
+        input: &'a garde::Valid<af_wire::task::CheckpointReadQuery>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointPage> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointPage,
@@ -210,8 +210,8 @@ impl TaskLifecycle for Tasks {
         &'a self,
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointObjectsInput>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage> {
+        input: &'a garde::Valid<af_wire::task::CheckpointObjectsInput>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointObjectsPage> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointRegister,
@@ -228,8 +228,8 @@ impl TaskLifecycle for Tasks {
         &'a self,
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointUploadsInput>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage> {
+        input: &'a garde::Valid<af_wire::task::CheckpointUploadsInput>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointObjectsPage> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointTransfer,
@@ -246,8 +246,8 @@ impl TaskLifecycle for Tasks {
         &'a self,
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointAuthorizationInput>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointAuthorizations> {
+        input: &'a garde::Valid<af_wire::task::CheckpointAuthorizationInput>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointAuthorizations> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointTransfer,
@@ -264,8 +264,8 @@ impl TaskLifecycle for Tasks {
         &'a self,
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointReadQuery>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointObjectsPage> {
+        input: &'a garde::Valid<af_wire::task::CheckpointReadQuery>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointObjectsPage> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointTransfer,
@@ -283,8 +283,8 @@ impl TaskLifecycle for Tasks {
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
         pin: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointPinInput>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointPin> {
+        input: &'a garde::Valid<af_wire::task::CheckpointPinInput>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointPin> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointPin,
@@ -301,8 +301,8 @@ impl TaskLifecycle for Tasks {
         &'a self,
         lease: TaskLease<'a>,
         checkpoint: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::CheckpointCommitInput>,
-    ) -> TaskFuture<'a, afd_wire::task::CheckpointPlan> {
+        input: &'a garde::Valid<af_wire::task::CheckpointCommitInput>,
+    ) -> TaskFuture<'a, af_wire::task::CheckpointPlan> {
         Box::pin(
             observe::measure(
                 TaskOperation::CheckpointCommit,
@@ -325,8 +325,8 @@ impl TaskLifecycle for Tasks {
     fn accept_input<'a>(
         &'a self,
         lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::TaskInputReceiptInput>,
-    ) -> TaskFuture<'a, afd_wire::task::TaskInputReceiptResult> {
+        input: &'a garde::Valid<af_wire::task::TaskInputReceiptInput>,
+    ) -> TaskFuture<'a, af_wire::task::TaskInputReceiptResult> {
         Box::pin(observe::measure(
             TaskOperation::InputReceipt,
             input_receipt::accept(self, lease, input),
@@ -336,15 +336,15 @@ impl TaskLifecycle for Tasks {
     fn interpret<'a>(
         &'a self,
         lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::TaskBindingsInput>,
-    ) -> TaskFuture<'a, afd_wire::task::TaskBindingsResponse<'static>> {
+        input: &'a garde::Valid<af_wire::task::TaskBindingsInput>,
+    ) -> TaskFuture<'a, af_wire::task::TaskBindingsResponse<'static>> {
         Box::pin(bindings::accept(self, lease, input))
     }
     fn publish_effect<'a>(
         &'a self,
         lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::TaskEffectInput>,
-    ) -> TaskFuture<'a, (afd_wire::task::TaskEffect, bool)> {
+        input: &'a garde::Valid<af_wire::task::TaskEffectInput>,
+    ) -> TaskFuture<'a, (af_wire::task::TaskEffect, bool)> {
         Box::pin(observe::measure(
             TaskOperation::EffectPublish,
             effects::publish(self, lease, input),
@@ -356,7 +356,7 @@ impl TaskLifecycle for Tasks {
         &'a self,
         lease: TaskLease<'a>,
         id: &'a Uuid7,
-    ) -> TaskFuture<'a, afd_wire::task::TaskEffect> {
+    ) -> TaskFuture<'a, af_wire::task::TaskEffect> {
         Box::pin(observe::measure(
             TaskOperation::EffectRead,
             effects::one(self, lease, id),
@@ -367,8 +367,8 @@ impl TaskLifecycle for Tasks {
     fn effects<'a>(
         &'a self,
         lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::TaskEffectsQuery>,
-    ) -> TaskFuture<'a, afd_wire::task::TaskEffectsPage> {
+        input: &'a garde::Valid<af_wire::task::TaskEffectsQuery>,
+    ) -> TaskFuture<'a, af_wire::task::TaskEffectsPage> {
         Box::pin(observe::measure(
             TaskOperation::EffectRead,
             effects::list(self, lease, input),
@@ -378,8 +378,8 @@ impl TaskLifecycle for Tasks {
     fn inputs<'a>(
         &'a self,
         lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::TaskInputsQuery>,
-    ) -> TaskFuture<'a, afd_wire::task::TaskInputsResponse<'static>> {
+        input: &'a garde::Valid<af_wire::task::TaskInputsQuery>,
+    ) -> TaskFuture<'a, af_wire::task::TaskInputsResponse<'static>> {
         Box::pin(observe::measure(
             TaskOperation::Read,
             inputs::read(self, lease, input),
@@ -428,7 +428,7 @@ impl TaskLifecycle for Tasks {
     fn reserve_decision<'a>(
         &'a self,
         lease: TaskLease<'a>,
-        input: &'a garde::Valid<afd_wire::task::DecisionReservationInput>,
+        input: &'a garde::Valid<af_wire::task::DecisionReservationInput>,
     ) -> TaskFuture<'a, ReservedDecision> {
         let span = tracing::info_span!(
             "task_decision_reserve",
@@ -455,8 +455,8 @@ impl TaskLifecycle for Tasks {
         &'a self,
         lease: TaskLease<'a>,
         call: &'a Uuid7,
-        input: &'a garde::Valid<afd_wire::task::DecisionReceiptInput>,
-    ) -> TaskFuture<'a, afd_wire::task::DecisionReceiptResult> {
+        input: &'a garde::Valid<af_wire::task::DecisionReceiptInput>,
+    ) -> TaskFuture<'a, af_wire::task::DecisionReceiptResult> {
         let span = tracing::info_span!(
             "task_decision_record",
             lease_id = lease.lease_id.as_str(),

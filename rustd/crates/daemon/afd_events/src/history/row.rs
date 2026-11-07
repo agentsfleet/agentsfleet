@@ -6,12 +6,12 @@
 //! `failure_reason` — decoded by `sqlx::FromRow`, which binds by COLUMN NAME,
 //! so a `SELECT` list edited into another order cannot swap two same-typed
 //! columns the way a positional decoder could. [`EventRow`] is the row as the
-//! wire spells it (`afd_wire::event::EventSummary`), and the one `From` between
+//! wire spells it (`af_wire::event::EventSummary`), and the one `From` between
 //! them is the only place the two vocabularies meet.
 
 use std::borrow::Cow;
 
-use afd_wire::event::EventSummary;
+use af_wire::event::EventSummary;
 use jiff::Timestamp;
 use sqlx::FromRow as _;
 use sqlx::postgres::PgRow;

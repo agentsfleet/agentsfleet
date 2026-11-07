@@ -21,7 +21,7 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use afd_core::id::Uuid7;
+use af_core::id::Uuid7;
 
 use super::*;
 

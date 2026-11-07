@@ -29,7 +29,7 @@
 //! made.
 //!
 //! It also verifies no INBOUND signature. A Slack delivery is proven by
-//! `afd_webhook::Scheme::SlackV0` against the secret [`app::PlatformApp`] reads
+//! `af_webhook::Scheme::SlackV0` against the secret [`app::PlatformApp`] reads
 //! — the wall is one crate for every surface that has one, and folding a second
 //! copy in here is exactly the duplication RULE OWN exists to prevent.
 //!

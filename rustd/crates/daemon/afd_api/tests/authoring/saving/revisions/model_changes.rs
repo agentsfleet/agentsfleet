@@ -4,7 +4,7 @@ use super::super::super::fixture::Fixture;
 use super::{
     Fleet, Method, StatusCode, Value, header, json, json_body, mint, send, send_with_headers,
 };
-use afd_core::env::{EnvSource as _, ProcessEnv};
+use af_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::{
     Subscription, SubscriptionHub,
     config::{DragonflyConfig, DragonflyRole},

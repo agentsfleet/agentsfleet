@@ -82,7 +82,7 @@ impl Scene {
             source_workspace_id: &self.workspace,
             model: MODEL,
             context_cap_tokens: CAP,
-            created_at: afd_core::clock::now(),
+            created_at: af_core::clock::now(),
         }
     }
 
@@ -165,7 +165,7 @@ async fn a_default_a_failing_holder_created_is_removed_as_it_unwinds() {
                 source_workspace_id: &workspace,
                 model: MODEL,
                 context_cap_tokens: CAP,
-                created_at: afd_core::clock::now(),
+                created_at: af_core::clock::now(),
             },
         )
         .await;
@@ -211,7 +211,7 @@ async fn a_default_that_already_existed_survives_a_passing_and_a_failing_hold() 
                 source_workspace_id: &workspace,
                 model: MODEL,
                 context_cap_tokens: CAP,
-                created_at: afd_core::clock::now(),
+                created_at: af_core::clock::now(),
             },
         )
         .await;

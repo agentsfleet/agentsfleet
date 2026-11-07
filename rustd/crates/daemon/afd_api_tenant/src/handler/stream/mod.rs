@@ -49,7 +49,7 @@ mod transport_tests;
 
 use std::sync::Arc;
 
-use afd_core::error_code;
+use af_core::error_code;
 use afd_sse::{Live, Slot};
 use axum::extract::{Path, State};
 use axum::response::Response;
@@ -223,7 +223,7 @@ pub(crate) async fn workspace<D: Services>(
 /// A slot for one stream, or the refusal a full instance answers.
 fn admit(live: &Live) -> Result<Slot, Refusal> {
     live.admit().ok_or_else(|| {
-        afd_observability::producers::http::stream_shed();
+        af_observability::producers::http::stream_shed();
         Refusal::at_stream_ceiling(live.carrying(), live.capacity())
     })
 }

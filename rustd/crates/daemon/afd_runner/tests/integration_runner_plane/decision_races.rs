@@ -3,7 +3,7 @@
 use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
-use afd_core::{clock, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use afd_db::{Db, test_util::mint_id};
 use afd_runner::RunnerEdit;
 use sqlx::{Acquire as _, PgConnection};

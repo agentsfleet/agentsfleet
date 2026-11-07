@@ -5,8 +5,8 @@ use crate::{
     client::{ControlPlane, retrying},
     error,
 };
-use afd_core::id::Uuid7;
-use afd_wire::authoring::{
+use af_core::id::Uuid7;
+use af_wire::authoring::{
     ActivityEvent, ActivityRequest, Lease, ModelMessage, ProposalCall, ProposalRejection,
 };
 use serde_json::Value;
