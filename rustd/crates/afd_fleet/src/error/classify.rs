@@ -46,7 +46,7 @@ impl Error {
     }
 
     pub(crate) fn is_decision_lock_busy(&self) -> bool {
-        let ErrorKind::Query { source, .. } = &self.inner.kind else {
+        let ErrorKind::TaskStatementCancelled { source } = &self.inner.kind else {
             return false;
         };
         source

@@ -178,7 +178,6 @@ impl PlatformKeys {
 /// Model edits already lock this singleton before model rows. Default edits
 /// follow the same order, including when neither provider row exists yet.
 async fn lock_catalogue(connection: &mut sqlx::PgConnection, context: &'static str) -> Result<()> {
-    crate::bounds::apply(connection, context).await?;
     sqlx::query_scalar::<_, i16>(include_str!("sql/lock_catalogue.sql"))
         .fetch_one(connection)
         .await

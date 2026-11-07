@@ -264,7 +264,6 @@ impl Models {
 
 /// Advances the catalogue version, taking the row lock that serializes edits.
 async fn bump(connection: &mut PgConnection, context: &'static str) -> Result<()> {
-    crate::bounds::apply(connection, context).await?;
     sqlx::query(sql::BUMP_CATALOGUE_VERSION)
         .execute(connection)
         .await

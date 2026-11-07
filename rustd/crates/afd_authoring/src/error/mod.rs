@@ -266,6 +266,12 @@ impl Error {
         }
     }
 
+    /// Whether a server-side bound ended a statement (`afd_db::login`): the
+    /// datastore said "not now", which a retry may get past.
+    pub(crate) fn is_bound_reached(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Query { source, .. } if afd_db::error::is_bound_reached(source))
+    }
+
     /// Whether retrying after a datastore outage may succeed.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {

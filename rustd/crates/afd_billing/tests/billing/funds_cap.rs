@@ -1,5 +1,5 @@
-//! A funds read that cannot finish within its cap gives up and says so,
-//! rather than holding the renewal or admission that asked.
+//! A funds read that cannot finish within the API login's bounds gives up and
+//! says so, rather than holding the renewal or admission that asked.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -8,7 +8,6 @@
 use std::time::{Duration, Instant};
 
 use afd_billing::biller::{Account, Ask, Biller, Funds, OutagePolicy, WithOutagePolicy, WorkKey};
-use afd_billing::ledger::FUNDS_READ_TIMEOUT;
 use afd_db::test_util::mint_uuid7;
 use jiff::Timestamp;
 use sqlx::Connection as _;
@@ -22,12 +21,12 @@ const BOUND: Duration = Duration::from_secs(10);
 /// Takes the lock every read of the usage log waits behind.
 const LOCK_LINES: &str = "LOCK TABLE billing.usage_lines IN ACCESS EXCLUSIVE MODE";
 
-/// Postgres cancelled the statement at its timeout.
-const QUERY_CANCELED: &str = "57014";
+/// Postgres ended the lock wait at the login's `lock_timeout`.
+const LOCK_NOT_AVAILABLE: &str = "55P03";
 
-/// The funds read's cap, read from the biller's own setting.
+/// The login's lock bound, which ends a read waiting on the locked log.
 fn cap() -> Duration {
-    let millis = FUNDS_READ_TIMEOUT
+    let millis = afd_db::login::LOCK_TIMEOUT
         .strip_suffix("ms")
         .and_then(|millis| millis.parse().ok())
         .expect("the cap is set in milliseconds");
@@ -51,7 +50,7 @@ fn sqlstate(fault: &afd_billing::Error) -> Option<String> {
 }
 
 /// With the usage log locked, a funds check and a balance read each end at
-/// the cap, cancelled by Postgres, with an error the outage policy counts as
+/// the login's lock bound, with an error the outage policy counts as
 /// unanswered, and an open policy runs the work. Once the lock goes, the same check answers.
 ///
 /// A private database, because the table lock would stall every other test
@@ -88,7 +87,7 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         .expect_err("a check past its cap fails");
     assert_eq!(
         sqlstate(&refused).as_deref(),
-        Some(QUERY_CANCELED),
+        Some(LOCK_NOT_AVAILABLE),
         "{refused}"
     );
     assert!(refused.is_unanswered(), "{refused}");
@@ -99,7 +98,7 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         .expect_err("a balance read past its cap fails");
     assert_eq!(
         sqlstate(&unread).as_deref(),
-        Some(QUERY_CANCELED),
+        Some(LOCK_NOT_AVAILABLE),
         "{unread}"
     );
     let open = WithOutagePolicy::new(ledger(&lane), OutagePolicy::Open);

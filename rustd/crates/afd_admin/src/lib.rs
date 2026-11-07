@@ -6,7 +6,6 @@
 
 #![deny(clippy::self_named_module_files)]
 
-mod bounds;
 pub mod catalogue;
 mod decision_revision;
 mod error;

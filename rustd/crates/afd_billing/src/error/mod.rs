@@ -167,12 +167,7 @@ impl Error {
         let ErrorKind::Query { source, .. } = self.kind() else {
             return false;
         };
-        source
-            .as_database_error()
-            .and_then(sqlx::error::DatabaseError::code)
-            .is_some_and(|code| {
-                code == SQLSTATE_LOCK_NOT_AVAILABLE || code == SQLSTATE_QUERY_CANCELED
-            })
+        afd_db::error::is_bound_reached(source)
     }
 
     /// Whether the biller could not answer: an outage or contention. What the
@@ -192,12 +187,6 @@ impl Error {
         matches!(self.kind(), ErrorKind::WalletMissing)
     }
 }
-
-/// A row lock was not granted within the lock timeout.
-const SQLSTATE_LOCK_NOT_AVAILABLE: &str = "55P03";
-
-/// The statement ran past its timeout and was cancelled.
-const SQLSTATE_QUERY_CANCELED: &str = "57014";
 
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The billing operation could not be completed";

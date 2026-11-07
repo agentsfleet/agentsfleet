@@ -48,12 +48,7 @@ pub(crate) fn sequence_corrupt() -> Error {
 /// rule 3).
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| {
-        if source
-            .as_database_error()
-            .and_then(sqlx::error::DatabaseError::code)
-            .as_deref()
-            == Some("57014")
-        {
+        if afd_db::error::is_bound_reached(&source) {
             Error::new(ErrorKind::TaskStatementCancelled { source })
         } else {
             Error::new(ErrorKind::Query { context, source })

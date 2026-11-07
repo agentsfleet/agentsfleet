@@ -20,12 +20,6 @@ afd_core::error_lifts!(Error, ErrorKind:
 /// `53100` disk full, `53200` out of memory, `53300` too many connections.
 const SQLSTATE_INSUFFICIENT_RESOURCES: &str = "53";
 
-/// A lock waited past the login's `lock_timeout`.
-const SQLSTATE_LOCK_NOT_AVAILABLE: &str = "55P03";
-
-/// A statement ran past the login's `statement_timeout`.
-const SQLSTATE_QUERY_CANCELED: &str = "57014";
-
 /// Reports a statement that failed, naming what it was doing.
 ///
 /// The one `map_err` this crate keeps, and it earns its place by ADDING the
@@ -37,7 +31,7 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| {
         if is_exhausted(&source) {
             ErrorKind::Exhausted { context, source }.into()
-        } else if is_timed_out(&source) {
+        } else if afd_db::error::is_bound_reached(&source) {
             ErrorKind::TimedOut { context, source }.into()
         } else {
             ErrorKind::Query { context, source }.into()
@@ -51,14 +45,6 @@ fn is_exhausted(source: &sqlx::Error) -> bool {
         .as_database_error()
         .and_then(sqlx::error::DatabaseError::code)
         .is_some_and(|code| code.starts_with(SQLSTATE_INSUFFICIENT_RESOURCES))
-}
-
-/// Whether Postgres gave up waiting under the login's bounds.
-fn is_timed_out(source: &sqlx::Error) -> bool {
-    source
-        .as_database_error()
-        .and_then(sqlx::error::DatabaseError::code)
-        .is_some_and(|code| code == SQLSTATE_LOCK_NOT_AVAILABLE || code == SQLSTATE_QUERY_CANCELED)
 }
 
 /// A Postgres refusal for want of a resource, as the driver would hand it
@@ -127,7 +113,7 @@ impl sqlx::error::DatabaseError for LockWaitExpired {
     }
 
     fn code(&self) -> Option<std::borrow::Cow<'_, str>> {
-        Some(SQLSTATE_LOCK_NOT_AVAILABLE.into())
+        Some("55P03".into())
     }
 
     fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {

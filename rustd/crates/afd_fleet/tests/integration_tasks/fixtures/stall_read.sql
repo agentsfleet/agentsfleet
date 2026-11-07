@@ -2,6 +2,8 @@
 -- The advisory lock is held and released by this scenario's owned transaction.
 CREATE FUNCTION fleet.stall_task_read() RETURNS boolean AS $$
 BEGIN
+    -- A stuck server ignores the API login's lock bound too (afd_db::login).
+    PERFORM set_config('lock_timeout', '0', true);
     PERFORM pg_advisory_xact_lock(872365);
     RETURN true;
 EXCEPTION WHEN query_canceled THEN

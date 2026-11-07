@@ -32,32 +32,6 @@ const INSERT_LINES: &str = include_str!("sql/insert_lines.sql");
 const SETTLE_LINES: &str = include_str!("sql/settle_lines.sql");
 const DEBIT_WALLET: &str = include_str!("sql/debit_wallet.sql");
 const SELECT_BALANCE: &str = include_str!("sql/select_balance.sql");
-const BOUND_TRANSACTION: &str = include_str!("sql/bound_transaction.sql");
-
-/// How long a billing statement waits for a row lock.
-///
-/// The debit waits on the wallet row while another transaction holds it. Past
-/// this the statement gives up with SQLSTATE `55P03`, which [`crate::Error::is_contended`] names and the
-/// outage policy treats as a biller that could not answer.
-const LOCK_TIMEOUT: &str = "2000ms";
-
-/// How long any one billing statement may run.
-const STATEMENT_TIMEOUT: &str = "5000ms";
-
-/// How long a funds read's statement may run. The wait for a pool connection
-/// comes first and is not counted.
-///
-/// A funds check sits on the lease path: renewal, admission and every setup
-/// chat model call. A read past this ends with SQLSTATE `57014`, which
-/// [`crate::Error::is_unanswered`] names, and the outage policy decides what
-/// the work does. The read sums one tenant's unsettled lines over a partial
-/// index, so it takes milliseconds; the cap is for a relay that stopped and
-/// left those lines to pile up, or a database under load.
-const READ_TIMEOUT: &str = "1000ms";
-
-/// [`READ_TIMEOUT`], for a test that waits it out.
-#[cfg(feature = "test-util")]
-pub const FUNDS_READ_TIMEOUT: &str = READ_TIMEOUT;
 
 /// What each statement here was doing, for [`query`].
 const CONTEXT_SETTLE: &str = "settle usage lines";
@@ -93,26 +67,6 @@ impl LedgerBiller {
             Arc::new(afd_core::clock::SystemClock),
         )
     }
-}
-
-/// Bounds the lock wait, and each statement at `statement_timeout`, for the
-/// rest of the transaction.
-///
-/// Set per transaction with `set_config(.., true)` rather than as connection
-/// startup options: a transaction-pooling bouncer refuses those, and a local
-/// setting ends with the transaction it bounds.
-async fn bound(
-    connection: &mut sqlx::PgConnection,
-    statement_timeout: &'static str,
-    context: &'static str,
-) -> Result<()> {
-    sqlx::query(BOUND_TRANSACTION)
-        .bind(LOCK_TIMEOUT)
-        .bind(statement_timeout)
-        .execute(&mut *connection)
-        .await
-        .map_err(query(context))?;
-    Ok(())
 }
 
 /// The funds read, `wrap`ped: as written for production, under `EXPLAIN` for
@@ -159,7 +113,6 @@ impl Biller for LedgerBiller {
     async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_SETTLE))?;
-        bound(&mut transaction, STATEMENT_TIMEOUT, CONTEXT_SETTLE).await?;
         log_lines(
             &mut *transaction,
             &self.entropy,
@@ -178,15 +131,11 @@ impl Biller for LedgerBiller {
 }
 
 impl LedgerBiller {
-    /// `tenant`'s balance, read on a connection of its own under
-    /// [`READ_TIMEOUT`].
+    /// `tenant`'s balance, read on a connection of its own under the API
+    /// login's bounds (`afd_db::login`).
     async fn capped_balance(&self, tenant: &Uuid7) -> Result<Balance> {
         let mut connection = self.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_BALANCE))?;
-        bound(&mut transaction, READ_TIMEOUT, CONTEXT_BALANCE).await?;
-        let funds = balance(&mut *transaction, tenant).await?;
-        transaction.commit().await.map_err(query(CONTEXT_BALANCE))?;
-        Ok(funds)
+        balance(&mut *connection, tenant).await
     }
 }
 

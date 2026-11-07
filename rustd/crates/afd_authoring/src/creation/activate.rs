@@ -15,11 +15,6 @@ use jiff::Timestamp;
 use sqlx::Transaction;
 
 const SETUP_BUDGET: Duration = Duration::from_secs(15);
-/// Activation's server-side bound, one second past [`SETUP_BUDGET`]: the budget
-/// answers a long wallet wait first (the fleet stays installing), as it did
-/// before the API login carried 2 s and 5 s bounds, and the server still frees
-/// a wait whose client is gone.
-const SETUP_SERVER_BOUND: &str = "16000ms";
 
 impl Creations {
     pub(super) async fn advance(
@@ -28,15 +23,20 @@ impl Creations {
         fleet: &Uuid7,
         now: Timestamp,
     ) -> Result<()> {
-        match tokio::time::timeout(SETUP_BUDGET, self.advance_within(access, fleet, now)).await {
-            Ok(result) => result,
-            Err(_elapsed) => {
-                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(event = "fleet_setup_budget_elapsed", fleet_id = %fleet, error_code);
-                Ok(())
-            }
-        }
+        // A wait that outlives the budget, or that the API login's bounds end
+        // first (`afd_db::login`), leaves the fleet installing: the next Save
+        // or the installation key finishes it.
+        let reason =
+            match tokio::time::timeout(SETUP_BUDGET, self.advance_within(access, fleet, now)).await
+            {
+                Ok(Err(refused)) if refused.is_bound_reached() => "bound_reached",
+                Ok(result) => return result,
+                Err(_elapsed) => "budget_elapsed",
+            };
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::warn!(event = "fleet_setup_budget_elapsed", fleet_id = %fleet, error_code, reason);
+        Ok(())
     }
 
     async fn advance_within(
@@ -95,11 +95,6 @@ impl Creations {
             .prepare_initial(&snapshot, &key, payload.as_deref())
             .await?;
         let mut tx = Transaction::begin(self.setup.drafts.database.acquire().await?, None)
-            .await
-            .map_err(query(CONTEXT))?;
-        sqlx::query(sql::SETUP_LOCK_BOUND)
-            .bind(SETUP_SERVER_BOUND)
-            .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;

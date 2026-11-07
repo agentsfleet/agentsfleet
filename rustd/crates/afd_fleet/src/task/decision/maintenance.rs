@@ -135,12 +135,13 @@ fn failure(
     swept: &mut DecisionMaintenance,
     first_failure: &mut Option<afd_core::error_code::ErrorCode>,
 ) -> Result<Outcome> {
-    if fault.is_decision_recovery_outage() {
-        return Err(fault);
-    }
+    // A busy lock answers as unavailable too (55P03), so it is read first: it
+    // defers one candidate and never stops the sweep.
     let (outcome, reason) = if fault.is_decision_lock_busy() {
         swept.deferred += 1;
         (Outcome::Contended, "financial_lock_busy")
+    } else if fault.is_decision_recovery_outage() {
+        return Err(fault);
     } else {
         swept.failed += 1;
         let _first_error = first_failure.get_or_insert(fault.code());

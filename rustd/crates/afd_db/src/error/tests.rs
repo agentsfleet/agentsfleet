@@ -1,4 +1,4 @@
-use super::{database_answer, is_connection_lost};
+use super::{database_answer, is_bound_reached, is_connection_lost};
 
 #[test]
 fn a_connection_that_dies_mid_query_is_lost() {
@@ -28,4 +28,25 @@ fn a_statement_defect_is_not_an_outage() {
         );
     }
     assert!(!is_connection_lost(&sqlx::Error::RowNotFound));
+}
+
+#[test]
+fn a_lock_or_statement_bound_is_reached_and_nothing_else_is() {
+    for code in ["55P03", "57014"] {
+        assert!(
+            is_bound_reached(&database_answer(code)),
+            "{code} is a bound"
+        );
+        assert!(
+            !is_connection_lost(&database_answer(code)),
+            "{code} is no outage"
+        );
+    }
+    for code in ["57P01", "08006", "23505", "53300"] {
+        assert!(
+            !is_bound_reached(&database_answer(code)),
+            "{code} is no bound"
+        );
+    }
+    assert!(!is_bound_reached(&sqlx::Error::PoolTimedOut));
 }

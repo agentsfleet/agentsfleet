@@ -304,6 +304,24 @@ pub fn is_connection_lost(source: &sqlx::Error) -> bool {
     }
 }
 
+/// Whether a server-side bound ended the statement: the API login's
+/// `lock_timeout` (`55P03`) or `statement_timeout` (`57014`), set once in
+/// [`crate::login`].
+///
+/// The datastore answered "not now", so a caller answers it as retryable
+/// unavailability, never as a defect in the statement. A `NOWAIT` lock that
+/// found its row held answers `55P03` too, and reads the same: try later.
+#[must_use]
+pub fn is_bound_reached(source: &sqlx::Error) -> bool {
+    source
+        .as_database_error()
+        .and_then(sqlx::error::DatabaseError::code)
+        .is_some_and(|code| SQLSTATE_BOUND_REACHED.contains(&code.as_ref()))
+}
+
+/// Lock not available, and query cancelled.
+const SQLSTATE_BOUND_REACHED: [&str; 2] = ["55P03", "57014"];
+
 /// The SQLSTATE class every connection exception shares.
 const SQLSTATE_CONNECTION_EXCEPTION: &str = "08";
 

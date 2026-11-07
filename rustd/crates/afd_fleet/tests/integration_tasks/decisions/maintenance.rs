@@ -198,15 +198,20 @@ async fn blocked(case: &Case) {
         .execute(&mut *blocker)
         .await
         .expect("block the implicit table lock before NOWAIT rows");
-    let failure = timeout(
+    // The API login's lock bound ends the wait with `55P03`, which reads as
+    // a busy lock (`afd_db::login`): the candidate is deferred to the next
+    // pass, and the pass returns rather than stopping as an outage.
+    let deferred = timeout(
         Duration::from_secs(6),
         tasks.maintain_decisions(&mut DecisionMaintenanceCursor::default()),
     )
     .await
-    .expect("server statement deadline")
-    .expect_err("the parent relation remains blocked");
-    assert_eq!(failure.code(), error_code::INTERNAL_DB_UNAVAILABLE);
-    assert!(failure.is_datastore_unavailable());
+    .expect("the lock bound ends the wait")
+    .expect("a blocked candidate defers");
+    assert_eq!(
+        (deferred.scanned, deferred.deferred, deferred.expired),
+        (1, 1, 0)
+    );
     assert_eq!(
         state(&fixture, &call).await,
         ("reserved".into(), false, false, None)

@@ -75,7 +75,6 @@ impl Models {
             .begin_with(sql::BEGIN_MODEL_SNAPSHOT)
             .await
             .map_err(query(CONTEXT_LIST))?;
-        crate::bounds::apply(&mut transaction, CONTEXT_LIST).await?;
         let version: i64 = sqlx::query_scalar(include_str!("sql/read_catalogue_version.sql"))
             .fetch_one(&mut *transaction)
             .await

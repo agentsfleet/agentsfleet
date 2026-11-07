@@ -13,17 +13,10 @@ pub(super) async fn acquire(database: &Db) -> Result<Connection> {
 }
 
 pub(super) async fn begin(connection: &mut PgConnection) -> Result<Transaction<'_, Postgres>> {
-    let mut transaction = connection
+    connection
         .begin()
         .await
-        .map_err(query("begin bounded task transaction"))?;
-    sqlx::query(include_str!("sql/read_timeout.sql"))
-        .bind(super::fetch::STATEMENT_TIMEOUT)
-        .bind(super::fetch::NO_LOCK_TIMEOUT)
-        .execute(&mut *transaction)
-        .await
-        .map_err(query("bound task statements before taking lifecycle locks"))?;
-    Ok(transaction)
+        .map_err(query("begin bounded task transaction"))
 }
 
 pub(super) fn recycle(connection: Connection) {
