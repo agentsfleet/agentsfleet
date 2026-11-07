@@ -92,7 +92,7 @@ pub(super) fn is_branch_name(base: &String, (): &()) -> garde::Result {
         .any(|forbidden| base.contains(forbidden));
     let bytes_allowed = base
         .bytes()
-        .all(|byte| byte > 0x20 && byte != 0x7f && !FORBIDDEN_REF_BYTES.contains(byte as char));
+        .all(|byte| byte > 0x20 && byte != 0x7f && !FORBIDDEN_REF_BYTES.contains(char::from(byte)));
 
     if ends_cleanly && no_sequences && bytes_allowed {
         return Ok(());

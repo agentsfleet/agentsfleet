@@ -151,7 +151,7 @@ fn assert_prose_is_written_for_a_reader(entry: &Problem) {
 /// and there is nothing better to do than answer.
 #[test]
 fn test_an_unregistered_code_degrades_to_the_unknown_entry() {
-    let stranger = af_core::error_code::ErrorCode::declare("UZ-NOSUCH-001");
+    let stranger = error_code::ErrorCode::declare("UZ-NOSUCH-001");
     let problem = Problem::of(stranger);
 
     assert_eq!(problem, Problem::UNKNOWN);

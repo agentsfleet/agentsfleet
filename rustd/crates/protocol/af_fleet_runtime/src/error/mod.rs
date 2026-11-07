@@ -256,7 +256,7 @@ impl Error {
     /// whichever rule they broke, so a caller has no branch to write on a finer
     /// code, and the structure they need is in the message.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         error_code::AGENTSFLEET_INVALID_CONFIG
     }
 }

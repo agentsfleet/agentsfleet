@@ -46,7 +46,7 @@ pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024;
 ///
 /// A quarter of the fleet's own window, spent after it: what other fleets
 /// published informs a run and never crowds out what the fleet itself learned.
-pub const HYDRATE_SHARED_BYTES: usize = HYDRATE_WINDOW_BYTES / 4;
+pub const HYDRATE_SHARED_BYTES: usize = HYDRATE_WINDOW_BYTES.div_euclid(4);
 
 /// The most entries of each kind one recall answers with.
 pub const RECALL_LIMIT_MAX: usize = 50;
@@ -282,7 +282,7 @@ pub struct MemoryRecallResponse<'a> {
 // be spelled somewhere other than this crate, and two keys written by hand at a
 // call site are two keys nothing type-checks.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryCaptureResponse {
     /// Deltas written, after upsert.
     pub stored: usize,

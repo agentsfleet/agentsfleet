@@ -79,7 +79,7 @@ impl Error {
     /// A refused knob is the one that names something an operator can fix;
     /// the other two are defects in the build.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Knob { .. } => error_code::STARTUP_ENV_CHECK,
             ErrorKind::Exporter { .. } | ErrorKind::Census { .. } => {
@@ -90,10 +90,10 @@ impl Error {
 
     /// The knob this failure refused, when it refused one.
     #[must_use]
-    pub fn refused(&self) -> Option<Refused> {
+    pub const fn refused(&self) -> Option<Refused> {
         match self.kind() {
             ErrorKind::Knob { source } => Some(*source),
-            _built => None,
+            ErrorKind::Exporter { .. } | ErrorKind::Census { .. } => None,
         }
     }
 
@@ -111,7 +111,7 @@ impl Error {
         let inner = *self.inner;
         match inner.kind {
             ErrorKind::Census { source } => Ok(source),
-            kind => Err(Self {
+            kind @ (ErrorKind::Knob { .. } | ErrorKind::Exporter { .. }) => Err(Self {
                 inner: Box::new(ErrorShellInner {
                     kind,
                     backtrace: inner.backtrace,

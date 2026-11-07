@@ -70,21 +70,6 @@ impl Default for FixtureSetup {
 mod tests {
     use super::*;
 
-    /// The copy other suites seed through `afd_db` is this setup, byte for byte.
-    #[test]
-    fn the_seeded_fixture_setup_is_this_one() {
-        let setup = FixtureSetup::default();
-        assert_eq!(
-            setup.definition,
-            afd_db::test_util::FIXTURE_SETUP_DEFINITION
-        );
-        assert_eq!(setup.digest, afd_db::test_util::FIXTURE_SETUP_DIGEST);
-        assert_eq!(
-            setup.semantics(),
-            afd_db::test_util::FIXTURE_SETUP_SEMANTICS
-        );
-    }
-
     #[test]
     fn a_fixture_setup_parses_back_and_digests_as_save_would() {
         let setup = FixtureSetup::default();

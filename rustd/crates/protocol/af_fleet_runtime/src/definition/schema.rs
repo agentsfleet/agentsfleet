@@ -40,7 +40,7 @@ struct Shape {
 }
 
 /// The published schema of a native Definition.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum DefinitionSchema {}
 
 impl PartialSchema for DefinitionSchema {

@@ -125,13 +125,13 @@ mod task;
 /// what lets [`ENTRIES`] be flattened from the parts rather than written out
 /// a second time that could disagree with them.
 const FAMILIES: [&[Problem]; 7] = [
-    self::task::TASK,
-    self::request::REQUEST,
-    self::auth::AUTH,
-    self::fleet::FLEET,
-    self::integration::INTEGRATION,
-    self::invite::INVITE,
-    self::authoring::AUTHORING,
+    task::TASK,
+    request::REQUEST,
+    auth::AUTH,
+    fleet::FLEET,
+    integration::INTEGRATION,
+    invite::INVITE,
+    authoring::AUTHORING,
 ];
 
 /// How many entries the families hold between them.

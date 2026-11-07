@@ -30,7 +30,7 @@ const KEY_LENGTH_IS_UNCONSTRAINED: &str = "HMAC accepts a key of any length";
 /// `PartialEq` is deliberately NOT derived. Deriving it would give callers a
 /// `==` that short-circuits, which is the timing leak this type exists to
 /// prevent; [`HmacSha256Tag::verify`] is the only way to compare two of these.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct HmacSha256Tag([u8; HMAC_SHA256_TAG_LEN]);
 
 impl HmacSha256Tag {

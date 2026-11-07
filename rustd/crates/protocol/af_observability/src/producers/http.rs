@@ -100,16 +100,19 @@ pub fn hub_reconnected() {
 /// entries — spans, records, data points — rather than batches, because a
 /// batch count moves with load and says nothing about how much is missing.
 pub fn export_discarded(signal: Signal, reason: DiscardReason, count: u64) {
-    if let Some(producers) = installed() {
-        producers.http.entries_discarded.add(
+    match installed() {
+        Some(producers) => producers.http.entries_discarded.add(
             count,
             &[
                 KeyValue::new(semconv::LABEL_SIGNAL, signal.as_str()),
                 KeyValue::new(semconv::LABEL_REASON, reason.as_str()),
             ],
-        );
-    } else if let Some(route) = LOSS_ROUTE.get() {
-        route(signal, reason, count);
+        ),
+        None => {
+            if let Some(route) = LOSS_ROUTE.get() {
+                route(signal, reason, count);
+            }
+        }
     }
 }
 
@@ -168,7 +171,7 @@ impl Request {
         }
     }
     /// Records headers; a dropped request remains cancelled.
-    pub fn response(&mut self, status: u16) {
+    pub const fn response(&mut self, status: u16) {
         self.status = crate::metrics::label::http::ResponseClass::of(status);
     }
 }
@@ -180,7 +183,7 @@ impl Drop for Request {
                 &[
                     KeyValue::new(semconv::ATTR_HTTP_ROUTE, self.template.clone()),
                     KeyValue::new(semconv::ATTR_HTTP_REQUEST_METHOD, self.method.as_str()),
-                    KeyValue::new(crate::semconv::LABEL_STATUS_CLASS, self.status.as_str()),
+                    KeyValue::new(semconv::LABEL_STATUS_CLASS, self.status.as_str()),
                 ],
             );
         }

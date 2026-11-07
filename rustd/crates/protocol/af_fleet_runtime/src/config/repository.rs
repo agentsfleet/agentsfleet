@@ -58,7 +58,7 @@ pub struct ValidationWorkflow {
 }
 
 /// How far a fleet's repository credentials reach.
-pub type Access = raw::Access;
+pub use crate::config::raw::Access;
 
 /// How far a binding reaches, with a write's base carried by the write itself.
 ///

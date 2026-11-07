@@ -29,10 +29,7 @@ impl Handles {
                 .zip(&COUNTS)
                 .filter_map(|(state, count)| {
                     count.load().map(|value| Reading {
-                        attributes: vec![KeyValue::new(
-                            crate::semconv::LABEL_STATE,
-                            state.as_str(),
-                        )],
+                        attributes: vec![KeyValue::new(semconv::LABEL_STATE, state.as_str())],
                         value,
                     })
                 })
@@ -63,7 +60,7 @@ impl Callback {
         }
     }
     /// Classifies a completed answer without attaching callback identities.
-    pub fn answered(&mut self, outcome: FireOutcome) {
+    pub const fn answered(&mut self, outcome: FireOutcome) {
         self.outcome = outcome;
     }
 }

@@ -60,7 +60,7 @@ impl Window {
     /// Physical input ceiling with framing headroom, independent of billing.
     #[must_use]
     pub fn safe_tokens(self) -> u64 {
-        u64::from(self.tokens) * u64::from(SAFE_PERCENT) / PERCENT
+        (u64::from(self.tokens) * u64::from(SAFE_PERCENT)).div_euclid(PERCENT)
     }
 
     /// The host's finite remaining output allowance.
@@ -72,7 +72,7 @@ impl Window {
     /// Input fill at which the host requests compaction.
     #[must_use]
     pub fn trigger_tokens(self) -> u64 {
-        u64::from(self.operating) * u64::from(self.trigger) / PERCENT
+        (u64::from(self.operating) * u64::from(self.trigger)).div_euclid(PERCENT)
     }
 
     /// Whether the next complete input requires summarization first.

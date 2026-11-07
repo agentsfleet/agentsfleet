@@ -31,7 +31,7 @@ fn test_the_published_stage_chunk_threshold_is_a_unit_fraction() {
 }
 
 /// A blob write rule carrying `permitted_fields` as given.
-fn blob_rule(permitted_fields: Option<Vec<Cow<'static, str>>>) -> HttpRequestRule<'static> {
+const fn blob_rule(permitted_fields: Option<Vec<Cow<'static, str>>>) -> HttpRequestRule<'static> {
     HttpRequestRule {
         method: HttpMethod::Post,
         path: Cow::Borrowed("/repos/acme/widgets/git/blobs"),

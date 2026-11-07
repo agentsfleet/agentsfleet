@@ -9,14 +9,14 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct TaskInputsQuery {
     /// Current native lease fence.
-    #[garde(range(max = i64::MAX as u64))]
+    #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub fencing_token: u64,
     /// Opaque ascending boundary returned by the previous input page.
     #[garde(inner(length(bytes, max = 1024)))]
     pub starting_after: Option<String>,
     /// Task-local position already present in this worker's recovered/current history.
     #[serde(default)]
-    #[garde(inner(range(max = i64::MAX as u64)))]
+    #[garde(inner(range(max = i64::MAX.unsigned_abs())))]
     pub after_input_sequence: Option<u64>,
     /// At most four complete messages per safe boundary.
     #[serde(default = "input_page_size")]

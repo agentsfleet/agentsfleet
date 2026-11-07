@@ -43,6 +43,6 @@ fn sorted(value: Value) -> Value {
                 .and_then(|text| text.parse::<i64>().ok());
             integer.map_or(Value::Number(number), |value| Value::Number(value.into()))
         }
-        scalar => scalar,
+        scalar @ (Value::Null | Value::Bool(_) | Value::String(_)) => scalar,
     }
 }

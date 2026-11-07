@@ -52,16 +52,16 @@ use crate::metrics::instrument::Instruments;
 /// Everything this process records through, claimed once.
 #[derive(Debug)]
 pub struct Producers {
-    pub(crate) scheduler: self::scheduler::Handles,
-    pub(crate) models: self::models::Handles,
-    pub(crate) database: self::database::Handles,
-    pub(crate) http: self::http::Handles,
-    pub(crate) fleet: self::fleet::Handles,
-    pub(crate) library: self::library::Handles,
-    pub(crate) memory: self::memory::Handles,
-    pub(crate) cost: self::cost::Handles,
-    pub(crate) billing: self::billing::Handles,
-    pub(crate) task: self::task::Handles,
+    pub(crate) scheduler: scheduler::Handles,
+    pub(crate) models: models::Handles,
+    pub(crate) database: database::Handles,
+    pub(crate) http: http::Handles,
+    pub(crate) fleet: fleet::Handles,
+    pub(crate) library: library::Handles,
+    pub(crate) memory: memory::Handles,
+    pub(crate) cost: cost::Handles,
+    pub(crate) billing: billing::Handles,
+    pub(crate) task: task::Handles,
 }
 
 impl Producers {
@@ -76,16 +76,16 @@ impl Producers {
     /// Whatever [`Instruments`] refuses — see [`install`].
     pub fn claim(instruments: &Instruments, sources: &GaugeSources) -> Result<Self> {
         Ok(Self {
-            scheduler: self::scheduler::Handles::claim(instruments)?,
-            models: self::models::Handles::claim(instruments)?,
-            database: self::database::Handles::claim(instruments, sources)?,
-            http: self::http::Handles::claim(instruments, sources)?,
-            fleet: self::fleet::Handles::claim(instruments)?,
-            library: self::library::Handles::claim(instruments)?,
-            memory: self::memory::Handles::claim(instruments)?,
-            cost: self::cost::Handles::claim(instruments)?,
-            billing: self::billing::Handles::claim(instruments)?,
-            task: self::task::Handles::claim(instruments)?,
+            scheduler: scheduler::Handles::claim(instruments)?,
+            models: models::Handles::claim(instruments)?,
+            database: database::Handles::claim(instruments, sources)?,
+            http: http::Handles::claim(instruments, sources)?,
+            fleet: fleet::Handles::claim(instruments)?,
+            library: library::Handles::claim(instruments)?,
+            memory: memory::Handles::claim(instruments)?,
+            cost: cost::Handles::claim(instruments)?,
+            billing: billing::Handles::claim(instruments)?,
+            task: task::Handles::claim(instruments)?,
         })
     }
 }

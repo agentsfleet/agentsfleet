@@ -89,6 +89,6 @@ pub(super) fn normalize(value: &mut Value) {
         Value::Object(object) => object.values_mut().for_each(normalize),
         Value::Array(array) => array.iter_mut().for_each(normalize),
         Value::String(text) => *text = normalize_text(text),
-        _scalar => {}
+        Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
 }

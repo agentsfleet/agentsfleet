@@ -124,7 +124,7 @@ impl ResponseClass {
     /// Groups a status without allowing arbitrary status labels.
     #[must_use]
     pub const fn of(status: u16) -> Self {
-        match status / 100 {
+        match status.div_euclid(100) {
             1 => Self::Informational,
             2 => Self::Success,
             3 => Self::Redirect,

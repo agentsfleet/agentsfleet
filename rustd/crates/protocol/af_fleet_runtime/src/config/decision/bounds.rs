@@ -43,7 +43,7 @@ pub(super) fn nonblank<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
     }
 }
 
-pub(super) fn statement_char(value: char) -> bool {
+pub(super) const fn statement_char(value: char) -> bool {
     value.is_ascii_alphanumeric() || matches!(value, '_' | '.' | '-')
 }
 

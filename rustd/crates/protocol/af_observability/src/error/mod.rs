@@ -168,10 +168,15 @@ impl Error {
     /// contract does not declare is different: the census is fine and the
     /// daemon code is wrong, which is internal rather than configuration.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::UnknownFamily { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            _contract => error_code::STARTUP_ENV_CHECK,
+            ErrorKind::Census { .. }
+            | ErrorKind::Duplicate { .. }
+            | ErrorKind::BoundsMismatch { .. }
+            | ErrorKind::KindMismatch { .. }
+            | ErrorKind::NumberMismatch { .. }
+            | ErrorKind::StreamRejected { .. } => error_code::STARTUP_ENV_CHECK,
         }
     }
 
@@ -182,7 +187,7 @@ impl Error {
     /// in the file, where a contradiction is fixed in whichever of the file and
     /// the code is wrong.
     #[must_use]
-    pub fn is_unreadable(&self) -> bool {
+    pub const fn is_unreadable(&self) -> bool {
         matches!(self.kind(), ErrorKind::Census { .. })
     }
 }

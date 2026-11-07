@@ -47,7 +47,8 @@ impl Configured<'_> {
         let body = crate::json_request(encoded.request)?.into_body();
         let tokens =
             std::str::from_utf8(&body).map_or(body.len(), |text| input_tokens(model, text));
-        Ok(tokens.saturating_add(request.chat_history.len().saturating_mul(32)) as u64)
+        let tokens = tokens.saturating_add(request.chat_history.len().saturating_mul(32));
+        Ok(u64::try_from(tokens).unwrap_or(u64::MAX))
     }
 
     /// Reserves input space before setting the physical call's output allowance.

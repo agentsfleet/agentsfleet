@@ -92,7 +92,7 @@ fn native_publication_refuses_missing_or_ambiguous_workflow_authority() {
 fn goal_wording_changes_do_not_authorize_execution_policy_changes() {
     let input = super::decision_policy::document();
     let original = parse(&input);
-    let mut wording = input.clone();
+    let mut wording = input;
     super::set(&mut wording, "/config/name", json!("renamed-goal"));
     super::set(
         &mut wording,

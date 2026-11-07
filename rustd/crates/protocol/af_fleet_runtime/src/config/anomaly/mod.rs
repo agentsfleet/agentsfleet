@@ -28,7 +28,7 @@ const REASON_ZERO: &str = "zero would trip on the first action and never stop";
 const REASON_ABOVE_CAP: &str = "it is above the cap";
 
 /// A repetition shape a rule watches for.
-pub type Pattern = raw::Pattern;
+pub use crate::config::raw::Pattern;
 
 /// A repetition that ends the run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

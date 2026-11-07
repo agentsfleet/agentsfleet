@@ -15,12 +15,11 @@ use crate::error::ErrorKind;
 /// The reason `value` is refused for under `cap`, or `None` when it is kept
 /// (or refused as anything but a threshold, which every case here rules out).
 fn refused(value: u32, cap: u32) -> Option<&'static str> {
-    threshold(THRESHOLD_COUNT, Some(value), cap)
-        .err()
-        .and_then(|failure| match failure.kind() {
-            ErrorKind::InvalidThreshold { reason, .. } => Some(*reason),
-            _ => None,
-        })
+    let failure = threshold(THRESHOLD_COUNT, Some(value), cap).err()?;
+    match failure.kind() {
+        ErrorKind::InvalidThreshold { reason, .. } => Some(*reason),
+        _ => None,
+    }
 }
 
 #[test]

@@ -81,6 +81,10 @@ pub const SCHEDULE_RUNS_SUFFIX: &str = "runs";
 /// the event's thread before the answer. See [`LEASE_ACTIVITY_SUFFIX`].
 pub const LEASE_MESSAGES_SUFFIX: &str = "messages";
 
+/// Trailing segment of the per-lease folds sub-resource: the messages a
+/// person sent while the run works, claimed for it before each model call.
+pub const LEASE_FOLDS_SUFFIX: &str = "folds";
+
 /// One held lease, the root every per-lease route sits under. The router
 /// matches `{lease_id}`; the runner puts the lease's id in its place.
 const LEASE: &str = concatcp!(RUNNER_LEASES, "/{lease_id}/");
@@ -112,6 +116,9 @@ pub const LEASE_SCHEDULE_RUNS: &str = concatcp!(LEASE_SCHEDULE, "/", SCHEDULE_RU
 
 /// `POST` — a line said to the leased event's thread.
 pub const LEASE_MESSAGES: &str = concatcp!(LEASE, LEASE_MESSAGES_SUFFIX);
+
+/// `POST` — claim the messages a person sent the fleet while this run works.
+pub const LEASE_FOLDS: &str = concatcp!(LEASE, LEASE_FOLDS_SUFFIX);
 
 /// Private working notes for one branch of a live lease.
 pub const LEASE_CONTEXT: &str = concatcp!(LEASE, "context-checkpoints/{branch_id}");

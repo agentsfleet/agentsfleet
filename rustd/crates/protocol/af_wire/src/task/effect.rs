@@ -135,7 +135,7 @@ pub struct TaskEffectsPage {
 
 /// Current lease proof for an individual publication read.
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskEffectQuery {
     /// Current fleet-slot fence.

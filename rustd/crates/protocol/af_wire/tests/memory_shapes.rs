@@ -26,7 +26,7 @@ fn test_a_capture_reply_carries_stored_and_skipped() {
         skipped: 1,
     };
 
-    let json = serde_json::to_value(&reply).unwrap();
+    let json = serde_json::to_value(reply).unwrap();
 
     assert_eq!(json, serde_json::json!({"stored": 3, "skipped": 1}));
 }
@@ -94,7 +94,7 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
 
     let bare: MemoryHydrateResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
     assert!(!bare.publish);
-    assert_eq!(bare.shared, [] as [af_wire::memory::SharedMemory<'_>; 0]);
+    assert_eq!(bare.shared, [] as [SharedMemory<'_>; 0]);
 }
 
 /// The published recall `limit` is the range the request type proves, so a

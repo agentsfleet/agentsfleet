@@ -26,9 +26,9 @@ impl LastSeen {
     /// An instant at or before the epoch reads as never heard from too: a
     /// dashboard would draw it as the oldest host in the fleet.
     pub(super) fn get(&self) -> Option<Timestamp> {
-        Some(self.0.load(Ordering::Relaxed))
-            .filter(|count| *count > NEVER_HEARD_FROM)
-            .and_then(|count| Timestamp::from_millisecond(count).ok())
+        let count =
+            Some(self.0.load(Ordering::Relaxed)).filter(|count| *count > NEVER_HEARD_FROM)?;
+        Timestamp::from_millisecond(count).ok()
     }
 }
 

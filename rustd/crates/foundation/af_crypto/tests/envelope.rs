@@ -247,7 +247,7 @@ fn rebuild(source: &Envelope, mutate: impl FnOnce(&mut Parts)) -> Envelope {
 }
 
 /// Flips the low bit of the first byte, or appends one if there is no byte.
-fn flip(bytes: &mut [u8]) {
+const fn flip(bytes: &mut [u8]) {
     if let Some(first) = bytes.first_mut() {
         *first ^= 0x01;
     }

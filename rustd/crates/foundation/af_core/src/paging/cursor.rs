@@ -92,7 +92,8 @@ impl Cursor {
             return Self::of_text(value, id);
         }
         let end = raw.find(INSTANT_END).ok_or(InvalidCursor)?;
-        let (instant, id) = (&raw[..=end], &raw[end + INSTANT_END.len()..]);
+        let instant = raw.get(..=end).ok_or(InvalidCursor)?;
+        let id = raw.get(end + INSTANT_END.len()..).ok_or(InvalidCursor)?;
         let at: Timestamp = instant.parse().map_err(|_not_an_instant| InvalidCursor)?;
         if whole_millis(at) != at {
             return Err(InvalidCursor);

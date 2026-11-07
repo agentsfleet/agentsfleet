@@ -235,7 +235,7 @@ pub struct EventDetail<'a> {
     /// Recorded tool calls, including arguments and outcomes. Null means records are
     /// unavailable, not that no tools ran.
     #[serde(borrow)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace<'static>>))]
     pub tool_calls: Option<RawToolTrace<'a>>,
     /// Retained public task progress, separate from private conversation state.
     #[serde(default)]

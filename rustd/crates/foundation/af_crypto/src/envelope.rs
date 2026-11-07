@@ -66,7 +66,7 @@ pub struct Sealer {
 impl Sealer {
     /// Builds a sealer drawing nonces from the operating system.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             entropy: Source::Native,
         }

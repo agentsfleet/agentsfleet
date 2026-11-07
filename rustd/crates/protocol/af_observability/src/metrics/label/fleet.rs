@@ -192,3 +192,25 @@ closed_set! {
         Repeated => "repeated"
     }
 }
+
+closed_set! {
+    /// Where an accepted steer went.
+    SteerPlaced {
+        /// A run of its own.
+        Started => "started",
+        /// A live run took it before its next model call.
+        Folded => "folded",
+        /// It waits its turn.
+        Queued => "queued"
+    }
+}
+
+closed_set! {
+    /// What became of a message a live run took from its fleet.
+    FoldOutcome {
+        /// A claim took it for the run.
+        Claimed => "claimed",
+        /// The run's report answered it.
+        Settled => "settled"
+    }
+}

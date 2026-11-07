@@ -32,7 +32,7 @@ fn declared_labels() -> BTreeSet<String> {
     Registry::declared()
         .expect("the compiled-in census reads")
         .families()
-        .flat_map(|family| family.labels.iter().map(std::string::ToString::to_string))
+        .flat_map(|family| family.labels.iter().map(ToString::to_string))
         .collect()
 }
 
@@ -48,7 +48,7 @@ fn every_census_label_resolves_to_a_constant() {
     let declared = declared_labels();
     let vocabulary: BTreeSet<String> = CENSUS_LABEL_KEYS
         .iter()
-        .map(|key| (*key).to_string())
+        .map(|key| (*key).to_owned())
         .collect();
 
     let unspelled: Vec<&String> = declared.difference(&vocabulary).collect();

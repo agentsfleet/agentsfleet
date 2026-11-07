@@ -57,6 +57,7 @@ pub mod context;
 pub mod credentials;
 pub mod decision;
 pub mod event;
+pub mod fold;
 pub mod inference;
 pub mod instant;
 pub mod lease;

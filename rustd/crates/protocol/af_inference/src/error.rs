@@ -105,13 +105,13 @@ af_core::error_lifts!(Error, ErrorKind:
 impl Error {
     /// Whether the shared transport stopped an oversized response.
     #[must_use]
-    pub fn is_oversize(&self) -> bool {
+    pub const fn is_oversize(&self) -> bool {
         matches!(self.kind(), ErrorKind::ReplyTooLarge)
     }
 
     /// Invalid configuration is a caller error, independent of provider availability.
     #[must_use]
-    pub fn code(&self) -> af_core::error_code::ErrorCode {
+    pub const fn code(&self) -> af_core::error_code::ErrorCode {
         match self.kind() {
             ErrorKind::ReplyTooLarge
             | ErrorKind::StreamDeadline
@@ -120,7 +120,23 @@ impl Error {
             | ErrorKind::CountDocument { .. }
             | ErrorKind::CountStatus { .. }
             | ErrorKind::CountTransport { .. } => af_core::error_code::INTERNAL_OPERATION_FAILED,
-            _ => af_core::error_code::INVALID_REQUEST,
+            ErrorKind::Document { .. }
+            | ErrorKind::Encode { .. }
+            | ErrorKind::Request { .. }
+            | ErrorKind::Bounds { .. }
+            | ErrorKind::Url { .. }
+            | ErrorKind::Endpoint
+            | ErrorKind::DecisionCapabilities
+            | ErrorKind::Dialect
+            | ErrorKind::Body
+            | ErrorKind::OutputLimit
+            | ErrorKind::Multipart
+            | ErrorKind::ContextLimit
+            | ErrorKind::CountStale
+            | ErrorKind::CountUnsupported
+            | ErrorKind::KeyHeader { .. }
+            | ErrorKind::KeyPath { .. }
+            | ErrorKind::KeyUri { .. } => af_core::error_code::INVALID_REQUEST,
         }
     }
 }

@@ -66,7 +66,7 @@ pub enum LimitBreak {
 }
 
 /// A `?limit` its route's [`Ceiling`] has proved.
-#[derive(Debug, garde::Validate)]
+#[derive(Debug, Clone, Copy, garde::Validate)]
 #[garde(context(Ceiling as ceiling))]
 pub struct Limit {
     #[garde(range(min = MIN_ROWS, max = u64::from(ceiling.max)))]

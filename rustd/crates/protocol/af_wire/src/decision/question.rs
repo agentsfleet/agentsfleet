@@ -86,7 +86,7 @@ pub struct NamedQuestion {
 
 /// One physical request, reserved natively before any transport sends it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionRequest {
     /// Native physical call identity for accounting and reconciliation.

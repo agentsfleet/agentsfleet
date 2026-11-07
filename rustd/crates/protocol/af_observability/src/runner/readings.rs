@@ -22,10 +22,8 @@ impl RunnerMetrics {
         self.readings(|counters| {
             // The delivery span refuses a pre-epoch start for the same reason
             // `LastSeen` reads one as never heard from.
-            counters
-                .last_seen
-                .get()
-                .and_then(|at| u64::try_from(at.as_second()).ok())
+            let at = counters.last_seen.get()?;
+            u64::try_from(at.as_second()).ok()
         })
     }
 

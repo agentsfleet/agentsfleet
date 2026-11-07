@@ -62,7 +62,7 @@ impl FromStr for Encoding {
     /// the first export: a deployment that asked for gRPC and got a process
     /// exporting nothing would look like a collector fault for as long as
     /// nobody checked.
-    fn from_str(requested: &str) -> core::result::Result<Self, Refused> {
+    fn from_str(requested: &str) -> Result<Self, Refused> {
         match requested {
             PROTOCOL_PROTOBUF => Ok(Self::HttpProtobuf),
             PROTOCOL_JSON => Ok(Self::HttpJson),

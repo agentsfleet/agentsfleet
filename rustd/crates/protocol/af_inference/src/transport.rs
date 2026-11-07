@@ -70,7 +70,7 @@ impl HttpTransport {
             .store(response.status().as_u16(), Ordering::Relaxed);
         let (parts, body) = response.into_parts();
         let body =
-            futures_util::stream::try_unfold((body, 0_usize), |(mut body, read)| async move {
+            futures_util::stream::try_unfold((body, 0_usize), async move |(mut body, read)| {
                 let Some(chunk) = body.try_next().await? else {
                     return Ok(None);
                 };
@@ -104,7 +104,7 @@ impl HttpClientExt for HttpTransport {
                 .map_err(|source| *source)?;
             let (parts, body) = response.into_parts();
             let read: LazyBody<U> = Box::pin(async move {
-                body.try_fold(BytesMut::new(), |mut body, chunk| async move {
+                body.try_fold(BytesMut::new(), async move |mut body, chunk| {
                     body.extend_from_slice(&chunk);
                     Ok(body)
                 })

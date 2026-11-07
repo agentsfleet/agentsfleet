@@ -43,7 +43,7 @@ pub struct Checkpoint {
     #[garde(dive)]
     pub identity: Identity,
     /// Monotonic publication generation.
-    #[garde(range(min = 1, max = i64::MAX as u64))]
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub generation: u64,
     /// Inclusive source watermark; current requests are never part of this prefix.
     #[garde(range(min = 1))]
@@ -112,7 +112,11 @@ pub fn digest_groups(previous: &str, groups: &[Group]) -> String {
         let mut hash = Sha256::new();
         hash.update(digest.as_bytes());
         hash.update(group.sequence.to_be_bytes());
-        hash.update((group.text.len() as u64).to_be_bytes());
+        hash.update(
+            u64::try_from(group.text.len())
+                .unwrap_or(u64::MAX)
+                .to_be_bytes(),
+        );
         hash.update(group.text.as_bytes());
         hex::encode(hash.finalize())
     })

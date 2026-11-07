@@ -105,10 +105,10 @@ mod tests {
     const RECORDED: &str = r#"{"choices":[{"index":0,"message":{"content":"hi"},"finish_reason":null}],"usage":{"prompt_tokens":3,"completion_tokens":2}}"#;
 
     #[tokio::test]
-    async fn an_offline_document_preserves_usage_without_dispatching() -> crate::Result<()> {
+    async fn an_offline_document_preserves_usage_without_dispatching() -> Result<()> {
         let settings = settings();
-        let configured = crate::Configured::new(&settings, 128_000)?;
-        let response = super::decode_failed_response(
+        let configured = Configured::new(&settings, 128_000)?;
+        let response = decode_failed_response(
             &configured,
             "configured-model",
             http::StatusCode::OK,
@@ -120,8 +120,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recovered_counters_preserve_already_reported_cost_and_cache_usage() -> crate::Result<()>
-    {
+    async fn recovered_counters_preserve_already_reported_cost_and_cache_usage() -> Result<()> {
         let settings = settings();
         let configured = Configured::new(&settings, 128_000)?;
         let recovery = Recovery::new(&configured, "configured-model");
@@ -150,7 +149,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_folded_usage_is_not_replaced_by_the_raw_document() -> crate::Result<()> {
+    async fn complete_folded_usage_is_not_replaced_by_the_raw_document() -> Result<()> {
         let settings = settings();
         let configured = Configured::new(&settings, 128_000)?;
         let recovery = Recovery::new(&configured, "configured-model");

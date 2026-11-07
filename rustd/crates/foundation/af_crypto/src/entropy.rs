@@ -33,7 +33,7 @@ pub(crate) enum Source {
 
     #[cfg(feature = "test-util")]
     /// A caller-driven sequence, for tests that need a pinned nonce.
-    Mocked(mock::MockCtrl),
+    Mocked(MockCtrl),
 }
 
 impl Source {
@@ -74,7 +74,7 @@ pub struct Entropy {
 impl Entropy {
     /// Bytes from the operating system.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             source: Source::Native,
         }
@@ -210,6 +210,7 @@ pub(crate) mod mock {
                 return Ok(());
             }
             let next = inner.queued.remove(0);
+            drop(inner);
             if next.len() != buf.len() {
                 return Err(Error::from(ErrorKind::ComponentLength {
                     component: "mocked entropy",

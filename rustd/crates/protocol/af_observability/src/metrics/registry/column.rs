@@ -154,7 +154,7 @@ pub enum ParsePolicy {
 impl FromStr for Policy {
     type Err = ParsePolicy;
 
-    fn from_str(token: &str) -> core::result::Result<Self, Self::Err> {
+    fn from_str(token: &str) -> Result<Self, Self::Err> {
         let ceiling = |source| ParsePolicy::Count {
             token: token.into(),
             source,
@@ -178,7 +178,7 @@ impl FromStr for Policy {
 
 /// Deserializes any [`FromStr`] whose error renders, reporting through serde so
 /// the failure keeps the record and line `csv` attaches to it.
-pub(super) fn from_str<'de, D, T>(deserializer: D) -> core::result::Result<T, D::Error>
+pub(super) fn from_str<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: FromStr,
@@ -190,9 +190,7 @@ where
 
 /// The census spells an absent optional `-`, which serde would otherwise read
 /// as the string it is.
-pub(super) fn absent_as_none<'de, D, T>(
-    deserializer: D,
-) -> core::result::Result<Option<T>, D::Error>
+pub(super) fn absent_as_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -205,9 +203,7 @@ where
 }
 
 /// Splits a comma-joined column, answering empty for the absent spelling.
-pub(super) fn comma_separated<'de, D>(
-    deserializer: D,
-) -> core::result::Result<Vec<Box<str>>, D::Error>
+pub(super) fn comma_separated<'de, D>(deserializer: D) -> Result<Vec<Box<str>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -217,9 +213,7 @@ where
 
 /// The same split, parsed as numbers, so a bad bound reports through serde with
 /// its record and line rather than as a bare `invalid float literal`.
-pub(super) fn comma_separated_numbers<'de, D>(
-    deserializer: D,
-) -> core::result::Result<Vec<f64>, D::Error>
+pub(super) fn comma_separated_numbers<'de, D>(deserializer: D) -> Result<Vec<f64>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -230,7 +224,7 @@ where
 }
 
 /// The census spells a boolean `yes`/`no`, which is not what serde reads.
-pub(super) fn yes_no<'de, D>(deserializer: D) -> core::result::Result<bool, D::Error>
+pub(super) fn yes_no<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: Deserializer<'de>,
 {

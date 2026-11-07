@@ -1,5 +1,7 @@
 //! Model context is replaceable working state; the authoritative history is not.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
+
 mod checkpoint;
 mod compact;
 mod error;

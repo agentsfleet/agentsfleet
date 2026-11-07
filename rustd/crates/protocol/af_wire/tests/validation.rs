@@ -36,7 +36,7 @@ pub(crate) fn of_len(bytes: usize) -> String {
     "a".repeat(bytes)
 }
 
-fn check_named(name: String) -> SelftestCheck<'static> {
+const fn check_named(name: String) -> SelftestCheck<'static> {
     SelftestCheck {
         name: Cow::Owned(name),
         ok: true,
@@ -44,7 +44,7 @@ fn check_named(name: String) -> SelftestCheck<'static> {
     }
 }
 
-fn report_with(checks: Vec<SelftestCheck<'static>>) -> SelftestReport<'static> {
+const fn report_with(checks: Vec<SelftestCheck<'static>>) -> SelftestReport<'static> {
     SelftestReport {
         checks,
         all_ok: true,

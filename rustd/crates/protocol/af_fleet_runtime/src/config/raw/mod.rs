@@ -51,7 +51,7 @@ mod predicate;
 mod trigger;
 
 pub(crate) use self::document::{Document, Runtime};
-pub(crate) use self::gates::{Access, Behavior, Pattern};
+pub use self::gates::{Access, Behavior, Pattern};
 pub(crate) use self::gates::{AnomalyRule, GateRule, Gates};
 pub(crate) use self::policy::{Budget, Context, Knob, Network};
 pub(crate) use self::trigger::{Trigger, Verifier};

@@ -54,19 +54,19 @@ pub(crate) enum ErrorKind {
 impl Error {
     /// Whether an identifier failed the canonical version-7 UUID shape.
     #[must_use]
-    pub fn is_id_shape(&self) -> bool {
+    pub const fn is_id_shape(&self) -> bool {
         matches!(*self.kind(), ErrorKind::IdShape { .. })
     }
 
     /// Whether a bounded value fell outside the range its type permits.
     #[must_use]
-    pub fn is_out_of_range(&self) -> bool {
+    pub const fn is_out_of_range(&self) -> bool {
         matches!(*self.kind(), ErrorKind::OutOfRange { .. })
     }
 
     /// The registry code a handler would surface for this failure.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match *self.kind() {
             ErrorKind::IdShape { .. } => error_code::UUIDV7_INVALID_ID_SHAPE,
             ErrorKind::OutOfRange { .. } => error_code::INVALID_REQUEST,

@@ -189,7 +189,11 @@ impl ActivityFrame<'_> {
             Self::TaskTransferProgress(progress) => {
                 Some(TaskActivityRecord::TaskTransferProgress(progress.clone()))
             }
-            _ => None,
+            Self::ContextProgress(_)
+            | Self::ToolCallStarted(_)
+            | Self::FleetResponseChunk(_)
+            | Self::ToolCallCompleted(_)
+            | Self::ToolCallProgress(_) => None,
         }
     }
 

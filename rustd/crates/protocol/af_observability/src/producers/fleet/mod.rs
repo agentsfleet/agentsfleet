@@ -6,6 +6,7 @@
 
 pub mod admission;
 pub mod census;
+pub mod fold;
 pub mod history;
 pub mod hold;
 pub mod runner;
@@ -64,6 +65,8 @@ pub struct Handles {
     history_cuts: Counter<u64>,
     history_read_failures: Counter<u64>,
     held_claims: Counter<u64>,
+    steer_dispositions: Counter<u64>,
+    lease_folds: Counter<u64>,
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_wake_failures: Counter<u64>,
@@ -106,6 +109,8 @@ impl Handles {
             history_read_failures: instruments
                 .counter_u64(&declared::LEASE_HISTORY_READ_FAILURES_TOTAL)?,
             held_claims: instruments.counter_u64(&declared::LEASE_HELD_CLAIMS_TOTAL)?,
+            steer_dispositions: instruments.counter_u64(&declared::STEER_DISPOSITIONS_TOTAL)?,
+            lease_folds: instruments.counter_u64(&declared::LEASE_FOLDS_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_wake_failures: instruments
@@ -190,7 +195,7 @@ pub fn signup_failed(reason: SignupFailure) {
 /// Both counters move together, on every exit path, because candidates per
 /// poll is the number worth reading. Statement cost is not counted here: a
 /// poll's statements run in several crates, so the bench reads them from
-/// `pg_stat_statements` instead (`M241_001`).
+/// `pg_stat_statements` instead.
 pub fn lease_polled(candidates_scanned: u64) {
     if let Some(producers) = installed() {
         producers.fleet.lease_polls.add(1, &[]);

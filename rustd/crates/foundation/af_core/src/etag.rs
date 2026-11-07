@@ -44,7 +44,7 @@ pub fn compute(fields: &[Option<&[u8]>]) -> String {
             None => hasher.update(FIELD_NULL),
             Some(bytes) => {
                 hasher.update(FIELD_PRESENT);
-                hasher.update((bytes.len() as u64).to_be_bytes());
+                hasher.update(u64::try_from(bytes.len()).unwrap_or(u64::MAX).to_be_bytes());
                 hasher.update(bytes);
             }
         }

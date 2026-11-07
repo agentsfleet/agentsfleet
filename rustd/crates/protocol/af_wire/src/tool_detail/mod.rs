@@ -199,7 +199,7 @@ pub struct ToolCallRecordsRequest<'a> {
     pub fencing_token: u64,
     /// The finished calls to keep. A call posted again replaces its record.
     #[serde(borrow)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<ToolCallRecord>))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<ToolCallRecord<'static>>))]
     pub calls: Vec<RawToolCallRecord<'a>>,
 }
 

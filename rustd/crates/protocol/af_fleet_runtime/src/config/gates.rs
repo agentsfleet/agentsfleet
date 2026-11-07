@@ -43,7 +43,7 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_hours(1);
 const MAX_TIMEOUT: Duration = Duration::from_hours(24);
 
 /// What an approval rule does when it fires.
-pub type Behavior = raw::Behavior;
+pub use crate::config::raw::Behavior;
 
 /// One action that needs a human before it runs.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -183,8 +183,9 @@ pub fn catalogue(models: Option<(Vec<ModelInfo>, bool)>) {
         && let Ok(mut target) = producers.models.snapshot.lock()
     {
         *target = models.map(|(mut models, mut clipped)| {
-            clipped |= models.len() > MAX_MODELS as usize;
-            models.truncate(MAX_MODELS as usize);
+            let kept = usize::try_from(MAX_MODELS).unwrap_or(usize::MAX);
+            clipped |= models.len() > kept;
+            models.truncate(kept);
             Snapshot {
                 models,
                 clipped,

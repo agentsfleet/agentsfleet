@@ -76,7 +76,7 @@ impl Error {
     /// Either case decodes — operators paste the key from both — so this asks
     /// about length and alphabet, not about capitalisation.
     #[must_use]
-    pub fn is_key_hex(&self) -> bool {
+    pub const fn is_key_hex(&self) -> bool {
         matches!(
             *self.kind(),
             ErrorKind::KeyHexLength { .. } | ErrorKind::KeyHexDigit
@@ -85,7 +85,7 @@ impl Error {
 
     /// Whether a stored envelope component had the wrong length or version.
     #[must_use]
-    pub fn is_malformed_envelope(&self) -> bool {
+    pub const fn is_malformed_envelope(&self) -> bool {
         matches!(
             *self.kind(),
             ErrorKind::ComponentLength { .. } | ErrorKind::UnsupportedVersion { .. }
@@ -97,30 +97,35 @@ impl Error {
     /// Deliberately one question. See the module documentation: separating a
     /// wrong key from a tampered tag would be a decryption oracle.
     #[must_use]
-    pub fn is_open_failed(&self) -> bool {
+    pub const fn is_open_failed(&self) -> bool {
         matches!(*self.kind(), ErrorKind::OpenFailed)
     }
 
     /// Whether a message authentication code did not verify.
     #[must_use]
-    pub fn is_mac_mismatch(&self) -> bool {
+    pub const fn is_mac_mismatch(&self) -> bool {
         matches!(*self.kind(), ErrorKind::MacMismatch)
     }
 
     /// Whether the operating system's entropy source refused to produce bytes.
     #[must_use]
-    pub fn is_entropy(&self) -> bool {
+    pub const fn is_entropy(&self) -> bool {
         matches!(*self.kind(), ErrorKind::Entropy)
     }
 
     /// The registry code a handler would surface for this failure.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match *self.kind() {
             ErrorKind::ComponentLength { .. } | ErrorKind::UnsupportedVersion { .. } => {
                 error_code::VAULT_DATA_INVALID
             }
-            _ => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::KeyHexLength { .. }
+            | ErrorKind::KeyHexDigit
+            | ErrorKind::OpenFailed
+            | ErrorKind::MacMismatch
+            | ErrorKind::Entropy
+            | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

@@ -119,10 +119,10 @@ fn objects(schema: &mut RefOr<Schema>) -> Vec<&mut Object> {
             .iter_mut()
             .filter_map(|variant| match variant {
                 RefOr::T(Schema::Object(object)) => Some(object),
-                _other => None,
+                RefOr::Ref(_) | RefOr::T(_) => None,
             })
             .collect(),
-        _other => Vec::new(),
+        RefOr::Ref(_) | RefOr::T(_) => Vec::new(),
     }
 }
 

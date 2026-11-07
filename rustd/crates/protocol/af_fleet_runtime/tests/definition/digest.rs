@@ -79,7 +79,7 @@ fn test_definition_digest_changes_with_text_policy_or_array_order() {
             original
         );
     }
-    let mut reordered = input.clone();
+    let mut reordered = input;
     set(
         &mut reordered,
         "/config/x-agentsfleet/tools",

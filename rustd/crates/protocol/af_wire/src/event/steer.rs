@@ -91,18 +91,6 @@ pub enum SteerDisposition {
     Queued,
 }
 
-impl SteerDisposition {
-    /// The wire spelling.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Started => "started",
-            Self::Folded => "folded",
-            Self::Queued => "queued",
-        }
-    }
-}
-
 /// What a steer returns once agentsfleet accepts the request.
 ///
 /// The response carries the id the run is found under. Filter the live event

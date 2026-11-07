@@ -35,13 +35,13 @@ af_core::error_lifts!(Error, ErrorKind: serde_json::Error => Document);
 impl Error {
     /// Whether the complete pinned request cannot fit this model's usable window.
     #[must_use]
-    pub fn is_window(&self) -> bool {
+    pub const fn is_window(&self) -> bool {
         matches!(self.kind(), ErrorKind::Window)
     }
 
     /// Whether conditional publication lost its source or generation guard.
     #[must_use]
-    pub fn is_stale(&self) -> bool {
+    pub const fn is_stale(&self) -> bool {
         matches!(self.kind(), ErrorKind::Stale)
     }
     /// Preserve an adapter's cause without rendering private request values.
@@ -72,7 +72,7 @@ impl Error {
 
     /// Stable existing classification for an internal context operation.
     #[must_use]
-    pub fn code(&self) -> af_core::error_code::ErrorCode {
+    pub const fn code(&self) -> af_core::error_code::ErrorCode {
         af_core::error_code::INTERNAL_OPERATION_FAILED
     }
 }

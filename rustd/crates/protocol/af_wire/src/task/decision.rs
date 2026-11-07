@@ -24,7 +24,7 @@ pub struct DecisionTaskVersion {
 
 /// Reserve one physical attempt; native code supplies the accepted questions.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionReservationInput {
     /// Retry identity of this reservation request, not a second physical send.

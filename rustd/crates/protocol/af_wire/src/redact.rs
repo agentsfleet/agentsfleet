@@ -52,7 +52,11 @@ impl Debug for ExecutionPolicy<'_> {
                     serde_json::Value::Object(map) => {
                         format!("{REDACTED} ({} entries)", map.len())
                     }
-                    _ => REDACTED.to_owned(),
+                    serde_json::Value::Null
+                    | serde_json::Value::Bool(_)
+                    | serde_json::Value::Number(_)
+                    | serde_json::Value::String(_)
+                    | serde_json::Value::Array(_) => REDACTED.to_owned(),
                 }),
             )
             .field("mintable", &self.mintable)

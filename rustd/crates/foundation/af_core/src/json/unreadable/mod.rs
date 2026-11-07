@@ -100,10 +100,11 @@ impl Unreadable {
 impl From<serde_json::Error> for Unreadable {
     fn from(error: serde_json::Error) -> Self {
         let rendered = error.to_string();
-        let message = match rendered.rfind(POSITION) {
-            Some(at) if error.line() != 0 => &rendered[..at],
-            _ => rendered.as_str(),
-        };
+        let message = rendered
+            .rfind(POSITION)
+            .filter(|_at| error.line() != 0)
+            .and_then(|at| rendered.get(..at))
+            .unwrap_or(&rendered);
         let what = match error.classify() {
             Category::Io => IO_FAILURE.into(),
             Category::Syntax | Category::Eof => message.into(),

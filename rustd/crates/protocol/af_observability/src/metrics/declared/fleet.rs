@@ -38,6 +38,13 @@ pub const LEASE_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
 pub const LEASE_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_held_claims_total");
 
+/// Accepted steers, by where they went.
+pub const STEER_DISPOSITIONS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_steer_dispositions_total");
+
+/// Messages live runs took from their fleets, claimed and settled.
+pub const LEASE_FOLDS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_folds_total");
+
 /// Chat leases issued without their turns because the thread read failed.
 pub const LEASE_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_history_read_failures_total");

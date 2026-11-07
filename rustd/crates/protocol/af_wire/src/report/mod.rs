@@ -192,7 +192,7 @@ pub struct ReportRequest<'a> {
     /// runners that do not record one. A trace that is not one, or that
     /// breaks a bound, is dropped and the report still settles.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace<'static>>))]
     pub tool_calls: Option<RawToolTrace<'a>>,
     /// Until when this runner holds the run's sandbox, frozen, for the
     /// fleet's next event. Absent when it holds none.
@@ -202,6 +202,12 @@ pub struct ReportRequest<'a> {
         with = "crate::instant::option"
     )]
     pub held_until: Option<jiff::Timestamp>,
+    /// The last folded message a completed model call read, by sequence:
+    /// every message the run claimed up to it settles with this report's
+    /// answer. Absent when the run folded nothing, and ignored unless the run
+    /// succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folded_through_sequence: Option<i64>,
     /// What the run learned, for the fleet's next run. Written before the
     /// report settles, so the next lease's memory window holds it. Entries
     /// past 262144 bytes in total are dropped and counted, never refused.

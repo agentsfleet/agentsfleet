@@ -87,7 +87,7 @@ impl Exports {
     /// when a collector is unreachable, and the reason the export is allowed
     /// to fail quietly.
     #[must_use]
-    pub fn spans_lost(&self) -> &SpanDrops {
+    pub const fn spans_lost(&self) -> &SpanDrops {
         &self.spans_lost
     }
 
@@ -95,14 +95,14 @@ impl Exports {
     /// than data points: losing one loses a MOMENT, and the next cycle carries
     /// the running total again for every cumulative family.
     #[must_use]
-    pub fn cycles_lost(&self) -> &BatchDrops {
+    pub const fn cycles_lost(&self) -> &BatchDrops {
         &self.cycles_lost
     }
 
     /// Log records this process failed to deliver. Zero forever where no log
     /// pipeline was built.
     #[must_use]
-    pub fn records_lost(&self) -> &LogDrops {
+    pub const fn records_lost(&self) -> &LogDrops {
         &self.records_lost
     }
 }

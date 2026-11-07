@@ -18,7 +18,7 @@ pub struct Renew {
 
 /// Live extension and remaining bounded output allowance.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Renewed {
     /// The lease's extended expiry.
     #[serde(with = "crate::instant")]

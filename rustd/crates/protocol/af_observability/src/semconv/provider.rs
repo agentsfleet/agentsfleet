@@ -89,11 +89,11 @@ static NAMES: LazyLock<Names> = LazyLock::new(|| {
 /// Canonical public provider identity, or none for a private/unrecognized name.
 #[must_use]
 pub fn normalize(stored: &str) -> Option<&'static str> {
-    NAMES
+    let index = NAMES
         .inputs
         .binary_search_by(|(name, _)| compare_ignoring_ascii_case(name, stored))
-        .ok()
-        .and_then(|index| NAMES.inputs.get(index).map(|(_, output)| *output))
+        .ok()?;
+    NAMES.inputs.get(index).map(|(_, output)| *output)
 }
 
 /// Distinct emitted provider values; aliases consume no additional series.

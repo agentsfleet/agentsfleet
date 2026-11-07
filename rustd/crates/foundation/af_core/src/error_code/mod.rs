@@ -111,8 +111,7 @@ const fn is_registry_spelling(code: &str) -> bool {
     let mut rest = tail;
 
     let mut family_len = 0usize;
-    while let [head @ (b'A'..=b'Z' | b'0'..=b'9'), tail @ ..] = rest {
-        let _ = head;
+    while let [b'A'..=b'Z' | b'0'..=b'9', tail @ ..] = rest {
         family_len += 1;
         rest = tail;
     }

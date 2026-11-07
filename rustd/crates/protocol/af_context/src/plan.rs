@@ -117,7 +117,7 @@ struct Reading {
 }
 
 impl Reading {
-    fn new(checkpoint: Option<&Checkpoint>) -> Self {
+    const fn new(checkpoint: Option<&Checkpoint>) -> Self {
         Self {
             sequence: 0,
             digest: String::new(),
@@ -184,7 +184,7 @@ fn compact<E: TokenEstimator + ?Sized>(
             return Ok(Plan::Compact(task));
         }
         // Geometric reduction bounds total encoded source work by twice the page.
-        task.groups.truncate(task.groups.len() / 2);
+        task.groups.truncate(task.groups.len().div_euclid(2));
     }
     Err(ErrorKind::Window.into())
 }

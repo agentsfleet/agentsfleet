@@ -1,7 +1,8 @@
 //! What one provider request used, as the runner reports it, and the priced
 //! line the daemon makes of it.
 //!
-//! The daemon prices each request on its own (billing §11): a context tier
+//! The daemon prices each request on its own
+//! (`docs/architecture/billing_and_provider_keys.md`): a context tier
 //! prices the WHOLE request, so a run's cumulative totals cannot say which
 //! requests crossed a tier, and a price can change at a date mid-run. The
 //! runner reports one [`RequestUsage`] per provider request; the daemon turns
@@ -199,12 +200,12 @@ impl UsageLine {
     /// provider's tier threshold counts the prompt it received, however much of
     /// it was served from cache.
     #[must_use]
-    pub const fn whole_prompt(&self) -> u64 {
-        self.input_tokens as u64
-            + self.cached_input_tokens as u64
-            + self.cache_write_tokens as u64
-            + self.cache_write_5m_tokens as u64
-            + self.cache_write_1h_tokens as u64
+    pub fn whole_prompt(&self) -> u64 {
+        u64::from(self.input_tokens)
+            + u64::from(self.cached_input_tokens)
+            + u64::from(self.cache_write_tokens)
+            + u64::from(self.cache_write_5m_tokens)
+            + u64::from(self.cache_write_1h_tokens)
     }
 }
 

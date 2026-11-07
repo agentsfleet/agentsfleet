@@ -44,10 +44,6 @@
 // The schema-parity suite's pattern matcher, used by `tests/` only.
 #[cfg(test)]
 use regex as _;
-// The stored fixture setup `test_util`'s pin reads; a build without the
-// feature compiles that pin out.
-#[cfg(all(test, not(feature = "test-util")))]
-use afd_db as _;
 
 pub mod config;
 pub mod definition;

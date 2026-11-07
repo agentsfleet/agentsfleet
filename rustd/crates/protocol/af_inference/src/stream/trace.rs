@@ -47,7 +47,7 @@ impl TurnTrace {
         }
     }
 
-    pub(super) fn usage(&mut self, usage: &rig_core::completion::Usage) {
+    pub(super) const fn usage(&mut self, usage: &rig_core::completion::Usage) {
         self.tokens = af_wire::usage::ObservedTokens {
             input: usage.input_tokens,
             output: usage.output_tokens,

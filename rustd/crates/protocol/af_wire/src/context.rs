@@ -22,7 +22,7 @@ pub enum ContextState {
 #[serde(deny_unknown_fields)]
 pub struct ContextProgress {
     /// Monotonic checkpoint generation within this conversation branch.
-    #[garde(range(min = 1, max = i64::MAX as u64))]
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub generation: u64,
     /// Only confirmed publication may report resuming.
     #[garde(skip)]
@@ -43,7 +43,7 @@ pub struct ContextPath {
 /// The fence required even when reading private run notes.
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 #[cfg_attr(feature = "openapi", into_params(parameter_in = Query))]
-#[derive(Debug, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ContextQuery {
     /// The assignment's current token.
@@ -60,7 +60,7 @@ pub struct ContextPut {
     #[garde(range(min = 1))]
     pub fencing_token: u64,
     /// Generation observed before the summary call, zero on first publication.
-    #[garde(range(max = i64::MAX as u64))]
+    #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub expected_generation: u64,
     /// Closed, bounded checkpoint document validated by the shared engine.
     #[garde(skip)]

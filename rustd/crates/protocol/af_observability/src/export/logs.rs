@@ -103,7 +103,7 @@ impl<E: LogExporter> LogExporter for CountingLogExporter<E> {
             crate::producers::http::export_discarded(
                 Signal::Logs,
                 super::discard_reason(failure),
-                records as u64,
+                u64::try_from(records).unwrap_or(u64::MAX),
             );
         }
         outcome

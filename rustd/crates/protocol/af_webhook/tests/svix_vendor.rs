@@ -53,7 +53,7 @@ fn sign(id: &str, timestamp: &str, body: &[u8]) -> String {
     format!("v1,{}", STANDARD.encode(tag.as_bytes()))
 }
 
-fn headers<'a>(id: &'a str, timestamp: &'a str, signature: &'a str) -> SvixHeaders<'a> {
+const fn headers<'a>(id: &'a str, timestamp: &'a str, signature: &'a str) -> SvixHeaders<'a> {
     SvixHeaders {
         id,
         timestamp,

@@ -141,9 +141,12 @@ fn text_chars(value: &Value) -> usize {
             .values()
             .map(text_chars)
             .fold(0, usize::saturating_add),
-        _scalar => 0,
+        Value::Null | Value::Bool(_) | Value::Number(_) => 0,
     }
 }
+
+/// The refusal for an instruction range set that does not tile the text.
+const RANGES_INVALID: &str = "instruction ranges must be valid non-overlapping UTF-8 boundaries";
 
 fn instructions(base: &str, batch: &garde::Valid<EditBatch>) -> Result<String> {
     let mut ranges: Vec<_> = batch.instruction_edits.iter().collect();
@@ -158,16 +161,19 @@ fn instructions(base: &str, batch: &garde::Valid<EditBatch>) -> Result<String> {
             || !base.is_char_boundary(range.end_byte)
             || previous == Some(range.start_byte)
         {
-            return Err(invalid(
-                "instruction ranges must be valid non-overlapping UTF-8 boundaries",
-            ));
+            return Err(invalid(RANGES_INVALID));
         }
-        output.push_str(&base[end..range.start_byte]);
+        // Both ends are proved boundaries above, so this always answers.
+        let Some(kept) = base.get(end..range.start_byte) else {
+            return Err(invalid(RANGES_INVALID));
+        };
+        output.push_str(kept);
         output.push_str(&range.text);
         end = range.end_byte;
         previous = Some(range.start_byte);
     }
-    output.push_str(&base[end..]);
+    // `end` is zero or a range end proved a boundary in the loop.
+    output.push_str(base.get(end..).unwrap_or_default());
     document::bounded_chars(&output, MAX_INSTRUCTIONS_CHARS)?;
     Ok(output)
 }

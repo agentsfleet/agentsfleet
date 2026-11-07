@@ -30,7 +30,7 @@ impl Fixture {
         }
     }
 
-    fn scope(&self) -> CheckpointScope<'_> {
+    const fn scope(&self) -> CheckpointScope<'_> {
         CheckpointScope {
             workspace_id: &self.workspace,
             repository: "github:repo:123",

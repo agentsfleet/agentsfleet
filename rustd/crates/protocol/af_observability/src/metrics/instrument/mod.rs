@@ -106,7 +106,7 @@ pub struct Instruments {
 impl Instruments {
     /// Binds the declared contract to a meter.
     #[must_use]
-    pub fn new(registry: Registry, cumulative: Meter, delta: Meter) -> Self {
+    pub const fn new(registry: Registry, cumulative: Meter, delta: Meter) -> Self {
         Self {
             cumulative,
             delta,

@@ -125,7 +125,7 @@ impl Configured<'_> {
     pub fn needs_native_count(&self, input: u64, request: &CompletionRequest) -> bool {
         let output = request
             .max_tokens
-            .unwrap_or(u64::from(self.settings.max_output_tokens));
+            .unwrap_or_else(|| u64::from(self.settings.max_output_tokens));
         native::supported(self)
             && input.saturating_add(output).saturating_mul(100)
                 >= u64::from(self.context_tokens).saturating_mul(CONFIRM_PERCENT)

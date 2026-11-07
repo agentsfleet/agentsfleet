@@ -151,7 +151,7 @@ fn a_panicking_recorder_leaves_the_table_readable() {
 
     let panicking = Arc::clone(&metrics);
     let second = runner(1);
-    let recorded = second.clone();
+    let recorded = second;
     let panicked = std::thread::spawn(move || {
         panicking.admit(&recorded);
         panicking.leased(&recorded);

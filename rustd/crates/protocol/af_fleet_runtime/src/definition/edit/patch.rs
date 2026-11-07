@@ -73,7 +73,7 @@ fn parent<'a>(mut value: &'a mut Value, segments: &[String]) -> Result<&'a mut V
         value = match value {
             Value::Object(object) => object.get_mut(segment),
             Value::Array(array) => array.get_mut(index(segment)?),
-            _scalar => None,
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => None,
         }
         .ok_or_else(|| invalid("edit parent does not exist"))?;
     }
@@ -125,10 +125,14 @@ fn mutate(parent: &mut Value, member: &str, operation: &ConfigOp) -> Result<()> 
                 ConfigOp::Remove { .. } if at < array.len() => {
                     array.remove(at);
                 }
-                _out_of_bounds => return Err(invalid(REASON_ARRAY_BOUNDS)),
+                ConfigOp::Add { .. } | ConfigOp::Remove { .. } => {
+                    return Err(invalid(REASON_ARRAY_BOUNDS));
+                }
             }
         }
-        _scalar => return Err(invalid("edit parent must be an object or array")),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            return Err(invalid("edit parent must be an object or array"));
+        }
     }
     Ok(())
 }

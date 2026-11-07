@@ -68,7 +68,7 @@ async fn native_payload_preserves_tools_results_inline_media_and_selected_replay
         let route = Configured::new(&settings, 512).unwrap();
         let request = prepared();
         let encoded = route.encode_stream("model-next", request.clone()).unwrap();
-        let wire = crate::json_request(encoded.request).unwrap();
+        let wire = json_request(encoded.request).unwrap();
         let generated: Value = serde_json::from_slice(wire.body()).unwrap();
         let reply = json!({"input_tokens":123,"totalTokens":123}).to_string();
         let physical = physical(200, Some(&reply), false);
@@ -89,7 +89,7 @@ async fn native_payload_preserves_tools_results_inline_media_and_selected_replay
         let error = route
             .bound_counted_output("model-next", changed, &mut count)
             .unwrap_err();
-        assert!(matches!(error.kind(), crate::error::ErrorKind::CountStale));
+        assert!(matches!(error.kind(), ErrorKind::CountStale));
         assert_eq!(physical.requests.lock().unwrap().len(), 1);
     }
 }
@@ -148,7 +148,7 @@ fn changing_media_invalidates_a_previous_measurement() {
         let error = route
             .bound_counted_output("model-next", changed, &mut count)
             .unwrap_err();
-        assert!(matches!(error.kind(), crate::error::ErrorKind::CountStale));
+        assert!(matches!(error.kind(), ErrorKind::CountStale));
     }
 }
 

@@ -111,7 +111,7 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
             crate::producers::http::export_discarded(
                 Signal::Traces,
                 discard_reason(failure),
-                spans as u64,
+                u64::try_from(spans).unwrap_or(u64::MAX),
             );
             // Hoisted: the `log` bridge compiles a second copy of every field
             // expression, and llvm-cov scores the copy that never runs.
@@ -148,12 +148,14 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
 /// distinction is the one an operator acts on: a refused batch is definitely
 /// gone, and an uncertain one may have arrived and been counted twice
 /// downstream. Collapsing them would make both unactionable.
-pub(crate) fn discard_reason(failure: &OTelSdkError) -> DiscardReason {
+pub(crate) const fn discard_reason(failure: &OTelSdkError) -> DiscardReason {
     // Matched by reference: the error owns a string, so binding it by value in
     // a `const fn` would need a destructor the compiler will not run there.
     match failure {
         OTelSdkError::Timeout(_elapsed) => DiscardReason::ExportUncertain,
-        _refused => DiscardReason::ExportRejected,
+        OTelSdkError::AlreadyShutdown | OTelSdkError::InternalFailure(_) => {
+            DiscardReason::ExportRejected
+        }
     }
 }
 

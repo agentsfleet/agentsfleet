@@ -15,6 +15,20 @@ use crate::metrics::label::scheduler as scheduler_labels;
 use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
+/// Where a sent message went, and the folds a live run claimed and settled.
+fn fold_products() -> [(&'static str, usize); 2] {
+    [
+        (
+            fleet::STEER_DISPOSITIONS_TOTAL.wire_name(),
+            fleet_labels::SteerPlaced::ALL.len(),
+        ),
+        (
+            fleet::LEASE_FOLDS_TOTAL.wire_name(),
+            fleet_labels::FoldOutcome::ALL.len(),
+        ),
+    ]
+}
+
 /// Each labelled family and the number of series its closed sets can produce.
 ///
 /// Written out rather than derived, because the pairing IS the claim: which
@@ -23,6 +37,7 @@ use crate::metrics::registry::{Policy, Registry};
 /// itself.
 fn label_products() -> Vec<(&'static str, usize)> {
     let mut products = pool_schedule_products();
+    products.extend(fold_products());
     products.extend([
         (
             task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),

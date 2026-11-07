@@ -61,7 +61,7 @@ impl Trace {
 
     /// Instrument the future rather than retaining an entered span across await.
     #[must_use]
-    pub fn span(&self) -> &Span {
+    pub const fn span(&self) -> &Span {
         &self.span
     }
 

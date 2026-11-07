@@ -139,7 +139,7 @@ async fn dropping_an_unfinished_turn_emits_one_cancelled_terminal() {
 #[tokio::test(start_paused = true)]
 async fn empty_and_later_chunks_cannot_duplicate_the_first_text_measurement() {
     let captured = Capture::install_filtered(crate::logs::log_filter(LevelFilter::TRACE));
-    let mut trace = super::super::trace::TurnTrace::start(Arc::from(CORRELATION), None);
+    let mut trace = TurnTrace::start(Arc::from(CORRELATION), None);
     trace.text(0);
     assert!(
         !captured
@@ -175,7 +175,7 @@ fn observed() -> (Arc<Mutex<Vec<TurnObservation>>>, TurnObserver) {
 #[tokio::test(start_paused = true)]
 async fn observer_excludes_recovery_and_preserves_the_provider_terminal() {
     let (values, observer) = observed();
-    let mut trace = super::super::trace::TurnTrace::start(Arc::from(CORRELATION), Some(observer));
+    let mut trace = TurnTrace::start(Arc::from(CORRELATION), Some(observer));
     trace.text(0);
     tokio::time::advance(Duration::from_millis(25)).await;
     trace.text(1);

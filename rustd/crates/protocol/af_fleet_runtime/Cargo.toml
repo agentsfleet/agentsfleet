@@ -51,9 +51,6 @@ utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
-# The stored fixture setup other suites seed through `FleetSeed::native_setup`,
-# pinned here against the parser that owns its format.
-afd_db = { workspace = true, features = ["test-util"] }
 # The schema-parity suite matches a published `pattern` the way a client
 # would; the crate itself never compiles a regular expression.
 regex.workspace = true

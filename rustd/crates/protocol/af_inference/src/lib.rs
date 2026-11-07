@@ -1,5 +1,7 @@
 //! Rig codecs for explicit persisted settings; authorization and key resolution stay with callers.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
+
 mod budget;
 mod count;
 mod credential;

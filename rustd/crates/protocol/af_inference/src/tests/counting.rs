@@ -199,13 +199,13 @@ fn request_route_model_window_and_output_changes_invalidate_counts() {
     let error = other
         .bound_counted_output("model-next", body(), &mut count)
         .unwrap_err();
-    assert!(matches!(error.kind(), crate::error::ErrorKind::CountStale));
+    assert!(matches!(error.kind(), ErrorKind::CountStale));
     let other_settings = super::settings(InferenceApi::Responses);
     let other = Configured::new(&other_settings, LARGE_WINDOW).unwrap();
     let error = other
         .bound_counted_output("model-next", body(), &mut count)
         .unwrap_err();
-    assert!(matches!(error.kind(), crate::error::ErrorKind::CountStale));
+    assert!(matches!(error.kind(), ErrorKind::CountStale));
 }
 
 #[tokio::test]
