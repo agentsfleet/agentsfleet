@@ -317,7 +317,9 @@ Each frame is one shared allocation, however many viewers read it.
 
 ## The Postgres pool: a saturated pool and a dead datastore are different pages
 
-Every request-path Postgres read takes exactly one pooled connection and holds it for the life of the handler. A read acquiring a second while holding the first is how a pool deadlocks under load: two requests each hold one and wait for another. A handler therefore never holds two pool connections at once (CNX in `.orly/standards/domains/sql.md`).
+Every request-path Postgres read takes exactly one pooled connection and holds it for the life of the handler. A read acquiring a second while holding the first is how a pool deadlocks under load. Two requests each hold one and wait for another.
+
+A handler therefore never holds two pool connections at once (CNX in `.orly/standards/domains/sql.md`).
 
 An acquire can fail two ways, and they are **different operator problems**:
 
@@ -332,7 +334,7 @@ The handler that needed to tell them apart would then acquire from the pool dire
 
 **What the pool guarantees, and what it does not.** Releasing an occupied slot lets at least one queued waiter progress. Every waiter either acquires or receives the configured timeout, so no waiter blocks forever.
 
-There is **no ordering or fairness guarantee**: which waiter wins is scheduling. `afd_db`'s live-pool integration suite proves the two real guarantees against a live size-1 pool and deliberately declines to assert the third.
+There is **no ordering or fairness guarantee**: which waiter wins is scheduling. `afd_db`'s live-pool integration suite proves the two real guarantees against a live size-1 pool. It deliberately declines to assert the third.
 
 **Statement bounds belong to the login role.** `afd_db::login` declares a 2 s `lock_timeout` and a 5 s `statement_timeout`. The API login role carries them through `ALTER ROLE` at setup time, so every daemon statement runs under them.
 
@@ -759,9 +761,11 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
 Before the cutover, a single worker thread owned all events for a Fleet, and the concern was round-robin across worker replicas breaking per-fleet continuity. That model is gone. Ownership is now a **durable lease**, not a thread:
 
-- `runner.fleet_slots` holds one slot per fleet. `Leases::select` in `afd_fleet` claims it atomically and bumps a monotonic `fencing_token`; a runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many runners poll concurrently.
+- `runner.fleet_slots` holds one slot per fleet. `Leases::select` in `afd_fleet` claims it atomically and bumps a monotonic `fencing_token`.
+
+  A runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many runners poll concurrently.
 - The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
-- A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
+- A runner that loses the race for a Fleet simply gets no lease for it. It tries the next eligible fleet or backs off.
 - Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement stays a hint, never ownership.
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency and its bound: [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model".

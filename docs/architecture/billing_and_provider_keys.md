@@ -16,7 +16,7 @@ There are no plan tiers in the cost function and no "included events" tier ladde
 
 The **run** charge depends on the posture. The platform default subsidises inference; a self-managed run costs less because the user pays their own provider for tokens.
 
-> **Where the live values are.** The authenticated billing surface reports the current runtime rate; the public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately quote no dollar amounts, because they go stale when a rate moves.
+> **Where the live values are.** The authenticated billing surface reports the current runtime rate. The public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately quote no dollar amounts, because they go stale when a rate moves.
 
 Server-authoritative constants are declared once, in `afd_billing`'s `nanos` module; no client recomputes a fee it is served. Public documentation mirrors belong in `~/Projects/docs/snippets/rates.mdx` and require a coordinated docs Pull Request when used.
 
@@ -105,7 +105,7 @@ Resolve models and billing from `Owned.tenant`, the workspace owner's account, r
 
 Model disable, wallet absence, membership removal, and policy-marker drift fail closed. Queue acceptance can precede admission; refusal records the durable bounded Message failure/action from the resource reference.
 
-**Admission.** Bound the attempt by the selected model's total output allowance, upward rounding for eight physical calls, and 300 seconds of runtime fees. `authoring.attempts.reserved_nanos` records that initial ceiling (`afd_authoring`'s budget `bound`); it is a bound each check asks for, not money set aside.
+**Admission**. Bound the attempt by the selected model's total output allowance, upward rounding for eight physical calls, and 300 seconds of runtime fees. `authoring.attempts.reserved_nanos` records that initial ceiling (`afd_authoring`'s budget `bound`); it is a bound each check asks for, not money set aside.
 
 **Measured input.** Before each physical send, add its measured input cost and all known prior dispatch costs to the admission bound. Check that the payer can still fund that bound before sending, with checked arithmetic and no independent 32,768-token input allowance. Summaries use this same funding path; [conversation compaction](context_lifecycle.md) owns window selection.
 
@@ -176,7 +176,9 @@ The default is a **pointer, not a constant**.
 Changing the default is an admin write, not a deployment.
 Both postures dial their selected model's saved endpoint (§9); platform uses the admin's key, and self-managed uses the owner's key.
 
-`model.tenant_selections` holds the separate account default. The tenant provider commands update that default; a missing row means `platform`. Runtime resolution in `afd_credential` uses the fleet's saved reference without consulting this default, so changing the account default does not rewrite saved fleets.
+`model.tenant_selections` holds the separate account default. The tenant provider commands update that default; a missing row means `platform`.
+
+Runtime resolution in `afd_credential` uses the fleet's saved reference and never consults this default. Changing the account default therefore does not rewrite saved fleets.
 
 ---
 
@@ -196,7 +198,9 @@ Each new tenant receives a **one-time starter credit** at tenant-create time: `S
 
 Read the source for the current dollar amount.
 
-The grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed, and at the run fee plus the per-token rates under platform. A quiet long run therefore stretches the grant further than a token-heavy one, and platform spend depends on the model (see §4.2).
+The grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed. Under platform it drains at the run fee plus the per-token rates.
+
+A quiet long run therefore stretches the grant further than a token-heavy one. Platform spend depends on the model (see §4.2).
 
 ### 2.2 What happens when the starter grant runs out
 
@@ -206,7 +210,7 @@ When `balance_nanos` cannot cover the next event's estimated cost, the gate trip
 
 ### 2.3 Free usage is a balance, never a window
 
-**There is no promotional window, and there is no mechanism for one.** A tenant's free usage is the starter grant and nothing else.
+**There is no promotional window, and no mechanism for one.** A tenant's free usage is the starter grant and nothing else.
 
 The grant drains, and `exhausted_at` marks when it reaches zero. Pricing consults the model catalogue and the posture.
 
@@ -214,11 +218,13 @@ The clock enters pricing in one way only. The price row is chosen by the instant
 
 This replaced a timestamp-gated window, and the reason is worth keeping. The cutoff was a per-tenant wallet column (`free_trial_ends_at`) that was nullable with no default, and null read as "open". Its only writer in the repository was a test fixture.
 
-**So every tenant held null, and stage billing never charged anyone.** The gate sat ahead of the catalogue lookup and masked an uncatalogued model too. A pair with no rate row resolved to zero instead of refusing.
+**So every tenant held null.** Stage billing never charged anyone. The gate sat ahead of the catalogue lookup and masked an uncatalogued model too. A pair with no rate row resolved to zero instead of refusing.
 
 Three properties fall out of the removal, all load-bearing:
 
-- **The balance gate can refuse.** While the window was open, run charge was `0` for every posture, so the balance gate could never refuse anyone. Both money checkpoints were effectively open for all tenants. They now bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended).
+- **The balance gate can refuse.** While the window was open, run charge was `0` for every posture. The balance gate could never refuse anyone, so both money checkpoints were effectively open for all tenants.
+
+  They now bite. Lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended).
 - **An unpriceable model is charged its runtime only.** Platform posture with no price covering the request charges the run fee. The line counts its tokens in `unpriced_token_count`, so nothing reads as free by accident. The lease-estimate gate admits, because an estimate is not a charge.
 - **A catalogue fault logs tokens unpriced.** A renewal or report that cannot read the catalogue still charges the run fee. It logs each request's tokens as unpriced, visible on the line and never charged (`lease_tokens_unpriced` in `afd_fleet`'s lease usage module). Each request is its own line, so no later slice can charge them.
 
@@ -345,7 +351,7 @@ let rated: RatedLine = Rater::new(&book, posture, window).rate(&line)?;
 - **Runtime** is charged under both postures at `RUN_NANOS_PER_SEC` (`afd_billing`'s `nanos` module), from the line's `runtime_ms`.
 - **Tokens** are charged under platform only, each category (input, cache read, the three cache-write classes, output) at its rate per million. Each category is **rounded up on its own** (Indy, 2026-10-19). The platform therefore never under-bills, and over-bills by at most one nano per category per line.
 - **The price row** is chosen by the line's instant and, for context tiers, by the request's whole prompt. The instant is clamped to the work's window, so a runner cannot backdate a request into a cheaper range. Every request is its own line, so each is priced at its own tier.
-- **Nothing is ever free by accident.** A category whose rate is unpublished, or a request no range covers, counts in `unpriced_tokens` and charges nothing, visibly.
+- **Nothing is ever free by accident**. A category with an unpublished rate, or a request no range covers, counts in `unpriced_tokens` and charges nothing, visibly.
 
 The issue-time floor (`Accounts::estimate`) prices `ESTIMATE_FLOOR_INPUT_TOKENS` and `ESTIMATE_FLOOR_OUTPUT_TOKENS` through the same Rater at the issue instant, with no runtime. A self-managed run costs nothing at issue and reads no catalogue.
 
@@ -437,7 +443,7 @@ Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup r
 
 **Windows.** `daily_nanos` is a **rolling 24 hours** and `monthly_nanos` the **UTC calendar month**. Both open from one `now()` in the same statement (`select_fleet_spend.sql` in `afd_billing`), so the two windows can never straddle a tick.
 
-A line counts in a window when it was written inside it. Each line is one slice of at most one renewal interval, so a long run's spend lands in the window it was used in.
+A line counts in a window when it was written inside it. Each line is one slice of at most one renewal interval. A long run's spend therefore lands in the window it was used in.
 
 The read is served by `idx_usage_lines_fleet_id_created_at`, and a planner probe in `afd_fleet`'s ledger-reads suite pins that. `monthly_nanos` is optional; absent means no monthly ceiling.
 
@@ -516,7 +522,7 @@ The `model.tenant_selections` row points at a `model.tenant_models` row, which n
 
 Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace. Per-workspace credential isolation, and a fully tenant-keyed vault, are post-v2.0 work; until then, the bridge is the rule.
 
-**`context_cap_tokens` is not in the credential body.** Each model resolution reads the cap from the catalogue (`model.platform_models`, §10), matched by provider and model name. Splitting the two lets a catalogue edit change the cap without touching the vault.
+**`context_cap_tokens` is not in the credential body.** Each model resolution reads the cap from the catalogue (`model.platform_models`, §10). It matches by provider and model name. Splitting the two lets a catalogue edit change the cap without touching the vault.
 
 ### 8.2 The api_key visibility boundary
 
@@ -533,7 +539,9 @@ The api_key, platform OR self-managed, crosses one boundary cleanly. It exists o
 
 - User-facing HTTP response bodies: `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, the `GET /v1/workspaces/{ws}/secrets` metadata list (§8.3), and any other JSON a user sees. The authenticated runner lease is the machine-plane exception described above.
 - Logs: `agentsfleetd`, runner, structured logs, request logs.
-- The fleet's tool context. The runner's egress guard substitutes placeholders at send time, outside the sandbox. The provider key is on a different path entirely: the runner's provider client uses it for the inference call only, never via `secrets_map`.
+- The fleet's tool context. The runner's egress guard substitutes placeholders at send time, outside the sandbox.
+
+  The provider key takes a different path entirely. The runner's provider client uses it for the inference call only, never via `secrets_map`.
 - Saved event rows: `fleet.events`, `billing.usage_lines`, anything else under `core.*` or `billing.*`.
 - User-facing surfaces: fleet setup and reviews, the dashboard, CLI table output, status-page bodies.
 
@@ -553,7 +561,7 @@ The list sits behind the workspace ownership layer (`afd_http::auth::ownership`)
 
 A replace swaps the whole body and never claims a name. The envelope and its `meta_*` projection are rewritten in one statement (API reference › Secrets).
 
-Both endpoints honour §8.2: the metadata lives in non-secret `meta_*` columns beside the envelope, so the opaque body (§8.1) is unchanged. `api_key` is structurally absent from the list response, and the replace body is never returned or logged.
+Both endpoints honour §8.2. The metadata lives in non-secret `meta_*` columns beside the envelope, so the opaque body (§8.1) is unchanged. `api_key` is structurally absent from the list response, and the replace body is never returned or logged.
 
 **Nav placement history:** M87 (`docs/v2/done/M87_001_P1_UI_MODELS_CREDENTIALS_REDESIGN.md`) deliberately collapsed Models and Credentials into one dashboard nav entry. M113 reverses that: Secrets & ENVs gets its own nav entry and route again.
 
@@ -570,7 +578,7 @@ model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_
   UNIQUE (tenant_id, model_name, secret_ref)
 ```
 
-**Entries reference keys; they never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns.
+**Entries reference keys. They never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns.
 
 `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time. That projection is the one §8.3's credential list already uses. `api_key` is structurally absent from the join, not filtered out.
 
@@ -621,7 +629,9 @@ The fleet's operating context cap can trigger earlier [conversation compaction](
 The selected model still supplies the physical window. Each request bounds output by the saved maximum and remaining physical headroom after complete encoded input.
 Pinned input that cannot fit refuses dispatch.
 
-`rig-core` is pinned to 0.46.0. The shared `af_inference::log_filter` filters rig's request/reply traces and the warning containing a provider's private error text in both daemon and runner logging. Model keys and private prompts never become log fields.
+`rig-core` is pinned to 0.46.0. The shared `af_inference::log_filter` filters rig's request/reply traces in both daemon and runner logging.
+
+It also filters the warning containing a provider's private error text. Model keys and private prompts never become log fields.
 
 ---
 
@@ -704,7 +714,7 @@ A `Settlement` carries each line's raw usage and the daemon's price. A biller th
 
 **Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`.
 
-The tier comes from the request's whole prompt (uncached input, cache reads and cache writes together). The date range comes from the request's `at`, clamped by the daemon to the work's own window so a runner cannot backdate.
+The tier comes from the request's whole prompt (uncached input, cache reads and cache writes together). The date range comes from the request's `at`. The daemon clamps it to the work's own window so a runner cannot backdate.
 
 Self-managed work charges runtime only.
 
@@ -760,7 +770,7 @@ Each pass resumes after the last line the previous one read, across ticks, so a 
 
 Fleet runs write only usage lines. The event-history reads sum an event's cost from its usage lines through `idx_usage_lines_fleet_id_event_id`. That covering index took the read from 183 ms to 5 ms in the design audit.
 
-The lease `metered_*` token cursors and the slot's runtime cursor are gone: runners report each request, and each lease meters its own run time. The fleet charges table, its trigger and schema slot 2010 are gone.
+The lease `metered_*` token cursors and the slot's runtime cursor are gone. Runners report each request, and each lease meters its own run time. The fleet charges table, its trigger and schema slot 2010 are gone.
 
 **Removed from setup chat:** the coverage rule (`balance >= (running + 1) * worst_case_turn_cost`), the report's own wallet debit and the per-attempt settlement table (slot 2020). Every authoring-side wallet row lock and the two-source union behind the charges page went with them.
 
@@ -773,4 +783,4 @@ The lease `metered_*` token cursors and the slot's runtime cursor are gone: runn
 - **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). This is v3 and needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.
 - **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.
-- **Auto-fallback from self-managed to platform on provider error.** Errors surface to the user; no silent fallback (it would charge them without consent).
+- **Auto-fallback from self-managed to platform on provider error.** Errors surface to the user. There is no silent fallback, because it would charge them without consent.

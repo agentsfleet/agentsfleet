@@ -90,7 +90,9 @@ alert fires
  → a follow-up ("also fix the retry") within the window thaws that same sandbox on the same runner
 ```
 
-A lease's inputs are the trigger payload, input files (logs, traces, exports) and the repository to fix. Its other inputs are reference repositories (read-only), the toolbox's command-line tools and the fleet's durable memory. Its outputs are the answer, a proposed change, files the user can download, memory updates, and the workspace snapshot the next lease starts from.
+A lease's inputs are the trigger payload, input files (logs, traces, exports) and the repository to fix. Its other inputs are reference repositories (read-only), the toolbox's command-line tools and the fleet's durable memory.
+
+Its outputs are the answer, a proposed change, files the user can download and memory updates. They also include the workspace snapshot the next lease starts from.
 
 ## Process model
 
@@ -117,9 +119,9 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
 
 **The agent loop runs outside the sandbox.** No model key ever enters a sandbox, so a prompt-injected command cannot read one.
 
-The sandbox is a plain executor, so bubblewrap and a microVM sit behind one interface. A model call needs nothing from the sandbox, so once workspace restore exists (not built yet), a call will start during the restore.
+The sandbox is a plain in-sandbox server, so bubblewrap and a microVM sit behind one interface. A model call needs nothing from the sandbox, so once workspace restore exists (not built yet), a call will start during the restore.
 
-**The executor is small and ours.** One process per lease inside the sandbox serves spawn, write, read and kill for processes on pseudo-terminals. It also serves the file calls (read, write, append, delete and list) that the supervisor's file tools and `apply_patch` edit through.
+**The in-sandbox server is small and ours.** One process per lease serves spawn, write, read and kill for processes on pseudo-terminals. It also serves the file calls (read, write, append, delete and list) that the supervisor's file tools and `apply_patch` edit through.
 
 Its methods mirror Codex's `exec-server` (`~/Projects/oss/rs/codex/codex-rs/exec-server/README.md`), so the Codex engine and our loop drive the same shapes.
 
@@ -153,7 +155,7 @@ Each worker polls for a lease while the last assignment says to take work. It ru
 
 **One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy (`afr_supervisor/src/turns/mod.rs`).
 
-A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's affinity slot already admits one live lease per fleet across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity: durable fleet memory rides the trusted plane").
+A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's affinity slot already admits one live lease per fleet. It does so across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity: durable fleet memory rides the trusted plane").
 
 **A refusal ends the lease with a report.** It ends as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Refusals cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and a binding no checkout serves.
 
@@ -211,7 +213,9 @@ A lease carries the selected model's saved inference settings: API format, base 
 
 A bounded retry honours `Retry-After`. A turn that fails before anything visible went out is opened again under the same bound.
 
-The reasoning a provider signs goes back with the turn that made it. A call from a turn cut at the output limit is answered `output_limit_reached` and never runs. A call whose arguments are not JSON reaches its tool as the text the model wrote, and the tool refuses it with a reason.
+The reasoning a provider signs goes back with the turn that made it. A call from a turn cut at the output limit is answered `output_limit_reached` and never runs.
+
+A call whose arguments are not JSON reaches its tool as the text the model wrote. The tool refuses it with a reason.
 
 rig traces every request and reply whole, before the scrub. So the shared log filter (`af_inference::log_filter`), installed by daemon and runner, holds rig to its warnings at any level. It also turns off the one warning that repeats a provider's error message.
 
@@ -315,7 +319,9 @@ Chromium does not start inside a bubblewrap lease. Its own sandbox needs a neste
 
 `--disable-userns` and the seccomp `unshare` refusal deny the first, and `nosuid` with no capabilities denies the second. `--no-sandbox` is never passed, so the browser tools run only under the Firecracker engine.
 
-**The remaining risk is the shared kernel**, and Firecracker removes it. A kernel privilege-escalation bug escapes every namespace sandbox on the host at once, while a microVM gives each lease its own kernel. Firecracker does not remove the host: host root, the host kernel and the virtual machine monitor stay inside the trust boundary under either engine.
+**The remaining risk is the shared kernel**, and Firecracker removes it. A kernel privilege-escalation bug escapes every namespace sandbox on the host at once, while a microVM gives each lease its own kernel.
+
+Firecracker does not remove the host. Host root, the host kernel and the virtual machine monitor stay inside the trust boundary under either engine.
 
 Firecracker needs read and write access to `/dev/kvm`. Bare metal has it, and cloud VMs expose it only where the provider offers nested virtualization.
 
@@ -323,7 +329,7 @@ Both engines sit behind one interface and share everything outside the boundary 
 
 - the supervisor;
 
-- the executor, which a microVM's vsock surfaces on the host as a Unix socket;
+- the in-sandbox server, which a microVM's vsock surfaces on the host as a Unix socket;
 
 - the toolbox image, a microVM's read-only root disk;
 
@@ -389,7 +395,9 @@ A 1 GiB image at 100 Mbit/s is about 86 seconds of transfer. That cost lands at 
 
 The toolbox device stays buffered, though direct I/O kept the host from caching the image twice: one image of at most 160 MB a host. Over 360 cold first uses a mode, direct I/O was 3 to 12% faster at p50 and 1.12 to 2.98 times slower at p99. Every first-use step regressed ([M237_002](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md) Discovery).
 
-Nothing reopens the image by path after its hash is taken, so a file substituted at that path never reaches the kernel's filesystem parser. A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the admitted file. A directory named after a digest proves nothing.
+Nothing reopens the image by path after its hash is taken. A file substituted at that path therefore never reaches the kernel's filesystem parser.
+
+A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the admitted file. A directory named after a digest proves nothing.
 
 Each lease holds the image it runs on. Past the current and previous releases, an image nothing holds is unmounted at the next admission or retention pass. The startup sweep removes whatever an interrupted stage left.
 
@@ -427,7 +435,7 @@ A guest keeps its own page cache and decompressed pages. So bubblewrap's page-ca
 
 A delta service waits until three consecutive releases show deltas cut transferred bytes by half. The apko, Nix, BuildKit, Guix, Buildroot and Yocto builders produce the same image and shorten no lease start.
 
-The lease path is fast because it pulls no image and unpacks no layer. Warm slots are sandboxes started ahead of a lease, with an empty workspace disk mounted and the executor idle. They are built but unwired (§"A lease's sandbox today").
+The lease path is fast because it pulls no image and unpacks no layer. Warm slots are sandboxes started ahead of a lease, with an empty workspace disk mounted and the in-sandbox server idle. They are built but unwired (§"A lease's sandbox today").
 
 A lease that ends processed leaves its sandbox held for the fleet's next lease, and every other lease's sandbox is destroyed. The workspace restore stays on the lease path and costs what the snapshot weighs, so the snapshot is kept small. Both are in §"Workspace between leases".
 
@@ -772,11 +780,13 @@ The [durable repair scenario](scenarios/durable-repair.md) separates trusted tas
 
 The workspace is the fleet's, not the lease's. Holding a sandbox between messages is built. Workspace snapshots are the target: nothing saves or restores one yet, and the bullets that describe them are marked *Target, not built*.
 
-- **Bytes in R2, the record in Postgres.** *Target, not built.* Snapshots live in an R2 bucket under their own prefix, named by content hash. A Postgres row points at the latest. Any S3-compatible store would work through one `object_store` client with a different endpoint.
+- **Bytes in R2, the record in Postgres**. *Target, not built.* Snapshots live in an R2 bucket under their own prefix, named by content hash.
+
+  A Postgres row points at the latest. Any S3-compatible store would work through one `object_store` client with a different endpoint.
 
 - **Only the supervisor moves bytes.** *Target, not built.* `agentsfleetd` mints short-lived presigned URLs per lease, fenced the way the memory push is. The `object_store` crate already implements presigning for S3, and the sandbox never sees a URL.
 
-- **Small snapshots.** *Target, not built.* A snapshot holds local commits as a git bundle, uncommitted edits, untracked files, output files and the lease transcript. Objects re-fetchable from the origin stay out.
+- **Small snapshots.** *Target, not built.* A snapshot holds local commits as a git bundle. It also holds uncommitted edits, untracked files, output files and the lease transcript. Objects re-fetchable from the origin stay out.
 
 - **Never saved.** No credential enters a sandbox. *Target, not built:* every snapshot is leak-scanned before upload.
 
@@ -792,7 +802,7 @@ The workspace is the fleet's, not the lease's. Holding a sandbox between message
 
   The host never writes into the held clone, because a tenant-written `.git` under a privileged copy is a symbolic-link escape.
 
-  Processes are not promised. The executor kills a command's process group when the command ends. The run's end closes every exec session, so only a process that left the group with `setsid` resumes.
+  Processes are not promised. The in-sandbox server kills a command's process group when the command ends. The run's end closes every exec session, so only a process that left the group with `setsid` resumes.
 
   Any of these destroys the hold:
 
@@ -842,7 +852,9 @@ Files a fleet saves for the user live beside the snapshots. The user downloads t
 
   Each token is bound to the hosts it is for, and the lease's allowlist admits only those hosts.
 
-- **Thread lines and schedule messages are masked twice.** The `message`, `cron_add`, `cron_update` and `schedule` tools mask lease-minted tokens before text leaves the runner. `agentsfleetd` then masks the fleet's declared static secrets with the same `af_secrets::Scrub`. It does so before it posts a line through the outbound worker's Slack poster, or stores a schedule.
+- **Thread lines and schedule messages are masked twice**. The `message`, `cron_add`, `cron_update` and `schedule` tools mask lease-minted tokens before text leaves the runner.
+
+  `agentsfleetd` then masks the fleet's declared static secrets with the same `af_secrets::Scrub`. It does so before it posts a line through the outbound worker's Slack poster, or stores a schedule.
 
   The runner never holds the channel credential.
 

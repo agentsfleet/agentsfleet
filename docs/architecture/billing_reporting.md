@@ -79,7 +79,7 @@ Report reads use a fixed number of queries, independent of page size. Concurrent
 
 ## Implementation scope
 
-`afd_billing`'s report module owns the report types, period selection, aggregates, grouped paging and detail reads, with static SQL beside each use case. `afd_api_tenant` holds the bounded input parsing and thin handlers, `afd_api_wire` the response types, and `afd_http` registers both routes behind the bearer and `BillingRead` guards.
+`afd_billing`'s report module owns the report types, period selection, aggregates, grouped paging and detail reads, with static SQL beside each use case. `afd_api_tenant` holds the bounded input parsing and thin handlers, and `afd_api_wire` the response types. `afd_http` registers both routes behind the bearer and `BillingRead` guards.
 
 The dashboard page under `ui/packages/app` validates the responses, keeps the captured report cutoff across page moves, and loads grouped activity and detail rows. Shared table, disclosure and UTC date helpers live in the design system.
 

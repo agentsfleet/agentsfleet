@@ -477,7 +477,7 @@ sequenceDiagram
 
 The credential does not expire, so a 401 here means the row was revoked (`UZ-AUTH-023`) or never existed. Capabilities are resolved per request rather than frozen at mint: [`AUTH.md`](./AUTH.md#cli-credential-resolved-not-granted) carries the model and its failure modes.
 
-`agentsfleet logout` revokes the credential server-side with `DELETE /v1/cli-credentials/{id}` and clears local state (`cli/src/commands/auth-logout.ts`). A new login from the same machine revokes that machine's previous credential in the mint transaction, so a machine holds one live credential (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`).
+`agentsfleet logout` revokes the credential server-side with `DELETE /v1/cli-credentials/{id}` and clears local state (`cli/src/commands/auth-logout.ts`). A new login from the same machine revokes that machine's previous credential in the mint transaction. So a machine holds one live credential (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`).
 
 ---
 

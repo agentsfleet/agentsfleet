@@ -53,8 +53,7 @@ declared schedule: a 20 s deadline, a 10 s `Retry-After` cap and full jitter.
 A replay gate is read from where the failure happened.
 
 A write the server may hold is never sent twice on a gateway error or a client
-timeout. A socket the transport reported dropping is sent again whatever the
-method, because a reply nobody saw is usually a request that never ran.
+timeout. A socket the transport reported dropping is sent again whatever the method. A reply nobody saw is usually a request that never ran.
 
 The price is named rather than hidden. A reset arriving after the server
 accepted a write can double it, and an idempotency key is what would retire
@@ -164,9 +163,9 @@ The first two keep moving away from target as the app grows. `useOptimistic`
 lives in three surfaces today: secrets delete, runner state and the fleet kill
 switch, each reconciling inside the transition that set it.
 
-The chat's summary strip owns one `useEffect`, and it is statement 5 as
-written: a subscription to the fleet stream (`useFleetRunSummary`), never a
-load. It selects the two identity-stable slices the strip reads, so a streaming
+The chat's summary strip owns one `useEffect`, and it is statement 5 as written. It is a subscription to the fleet stream (`useFleetRunSummary`), never a load.
+
+It selects the two identity-stable slices the strip reads, so a streaming
 reply's chunks re-render nothing. A completion frame carries the row and the
 fleet facts, so the strip moves with no request behind it.
 
@@ -184,9 +183,9 @@ painting a pixel. It now renders its header immediately and streams an
 exported async data region under `Suspense`, matching `ApprovalsData`.
 
 One boundary worth recording, because it is easy to get backwards: those
-regions never REJECT. Suspense there buys latency, not error handling. A
-rejected promise throws in render and needs an ErrorBoundary, which would
-collapse "this read failed" and "this library is empty" into one
+regions never REJECT. Suspense there buys latency, not error handling.
+
+A rejected promise throws in render and needs an ErrorBoundary. That would collapse "this read failed" and "this library is empty" into one
 undifferentiated fallback.
 
 Keeping them distinct is what lets a user whose read failed see a retry

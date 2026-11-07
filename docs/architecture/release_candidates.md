@@ -23,9 +23,7 @@ No existing YAML file is deleted. One workflow and three composite actions are
 added; seven existing workflows and one existing action are updated.
 
 Across these workflow graphs, 7 job definitions are added, 9 are removed and 32
-are retained, for a net reduction of 2 definitions. Matrix executions are
-counted separately below; a reusable workflow call does not allocate another
-runner.
+are retained, for a net reduction of 2 definitions. Matrix runs are counted separately below. A reusable workflow call does not allocate another runner.
 
 | YAML file | Definitions before → after | Resulting behavior |
 | --- | --- | --- |

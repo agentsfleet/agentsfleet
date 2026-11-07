@@ -91,7 +91,7 @@ The fleet runs the instructions and policy of its selected setup revision in `fl
 
    There is no per-event approval. A repository-write gate was raised on every first-encounter event until M202: a continuation carries a fresh event identifier, so each model turn re-parked, and one steer produced three cards and zero review comments. The grant replaced it because the grant already carried everything the card asked about.
 
-The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It verifies with the `webhook_secret` field of the workspace's `github` secret, does not require `repositories`, and is not the default App path (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/github_route.rs`).
+The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It verifies with the `webhook_secret` field of the workspace's `github` secret and does not require `repositories`. It is not the default App path (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/github_route.rs`).
 
 ## 4. The run: the reviewed instructions drive the review
 

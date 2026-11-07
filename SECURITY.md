@@ -16,7 +16,7 @@ This is the short policy entrypoint for agentsfleet.
 3. Queue boundary
 4. Identity boundary
 5. GitHub automation boundary
-6. Run boundary. `agentsfleetd` assigns work via leases. `agentsfleet-runner` runs each lease's tool calls in a bubblewrap sandbox of its own (`rustd/crates/runner/afr_sandbox`), with the agent loop in its trusted supervisor (`rustd/crates/runner/afr_agent`)
+6. Run boundary: `agentsfleetd` assigns work via leases. `agentsfleet-runner` runs each lease's tool calls in a bubblewrap sandbox of its own (`rustd/crates/runner/afr_sandbox`). The agent loop runs in its trusted supervisor (`rustd/crates/runner/afr_agent`)
 
 ## Sandbox Rules
 

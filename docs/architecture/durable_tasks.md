@@ -85,7 +85,7 @@ A short system envelope carries current candidate/save state and the distinction
 Before returning an edit proposal, the daemon evaluates the newest saved user message with the runner's configured decision model. It asks one question only.
 
 “Does this message ask to change the fleet's setup (instructions, configuration, name, schedule or access)?”
-A no answer uses `ProposalRejection::EditNotRequested`; yes permits ordinary validation. Unavailable, stale or malformed decisions record a bounded fallback and retain current chat behavior.
+A no answer uses `ProposalRejection::EditNotRequested`. Yes permits ordinary validation. Unavailable, stale or malformed decisions record a bounded fallback and retain current chat behavior.
 
 The existing `DecisionEvaluator`/`DecisionClient` handles the physical request; the runner catalogue resolver supplies its reviewed profile, and platform-admin Secrets supply fresh credentials.
 A native `authoring.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text.
@@ -152,7 +152,7 @@ The root prepares intent before sandbox creation and reads the oldest unsettled 
 
 It incorporates accepted inputs by their separate task sequence, reconciles original publication receipts and assesses complete action groups.
 Unanswered items in a mixed request cannot be skipped by advancing the source-page cursor.
-Native decision reservation and receipt handlers use the same task owner; [goal evaluation](goal_evaluation.md) records physical execution and accounting.
+Native decision reservation and receipt handlers use the same task owner; [goal evaluation](goal_evaluation.md) records the physical run and accounting.
 
 List reads return unfinished work, while detail retains terminal outcomes.
 
@@ -232,9 +232,9 @@ The publisher owns credentials, branch, expected old head and allowed file chang
 An ordinary ref update with `force:false` does not provide this expected-head guarantee.
 
 Before publication, reproduce the candidate tree from its base and supported file changes.
-Compare that tree with the locally tested tree. Changes and deletions support only ordinary `100644` files; unchanged base executable files retain their modes.
+Compare that tree with the locally tested tree. Changes and deletions support only ordinary `100644` files; unchanged base files marked runnable retain their modes.
 
-An unchanged base gitlink is preserved only when its staged identity matches the base and its workspace directory is empty and opened without following symlinks. Populated, changed, deleted or traversed submodules remain unsupported.
+An unchanged base gitlink is preserved only when its staged identity matches the base. Its workspace directory must also be empty and opened without following symlinks. Populated, changed, deleted or traversed submodules remain unsupported.
 
 Unsupported changed-path modes, symlinks or size limits block publication until explicitly supported.
 After publication, bind remote CI evidence to the returned commit and verified candidate tree.
@@ -345,7 +345,8 @@ Workspace deletion records durable storage-purge receipts before deleting owners
 Receipts contain only random object identities, bucket references and wrapped-key deletion state, and survive owner-row removal until cleanup completes.
 `fleet.task_storage_purges` rows track independent cleanup; deleting ownership cannot strand an untracked private object.
 
-Task mutations lock workspace and fleet parents against deletion, then the slot, admissions by sequence, lease, tasks by identity and subordinate rows by identity.
+Task mutations lock workspace and fleet parents against deletion. They then lock the slot, admissions by sequence, lease, tasks by identity and subordinate rows by identity.
+
 Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public `EXECUTE` grant.
 
 Callers still prove fleet and lease authority.
@@ -587,7 +588,9 @@ Kernel-only proof remains explicitly separate when its required host capability 
 
 ### Durable performance investigations
 
-New task reads pair their actual scope and keyset ordering with indexes. Pending input seeks the existing unsettled fleet/sequence index, and unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history. Setup edit checks use their existing unique attempt/usage-sequence index; a duplicate attempt-only index is unnecessary.
+New task reads pair their actual scope and keyset ordering with indexes. Pending input seeks the existing unsettled fleet/sequence index.
+
+Unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history. Setup edit checks use their existing unique attempt/usage-sequence index; a duplicate attempt-only index is unnecessary.
 
 Account and replay lookups stay point or bounded per-attempt reads. Query-plan measurements, queue-depth cases and hostile-history cases remain part of final verification; adding LIMIT does not prove a bounded scan.
 

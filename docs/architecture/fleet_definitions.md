@@ -129,7 +129,7 @@ Digest v1 uses recursively sorted object keys, preserved array order and normali
 
 Pin key ordering and numeric rendering through fixtures. Money is already a decimal string and never rounded through a float.
 
-Unsupported versions or executable setup stop before Save.
+Unsupported versions or setup that carries runnable code stop before Save.
 
 Review binds candidate content, instance name, runtime model, source/target revisions, policy marker, and relevant resolution versions. Exclude `readiness[].observed_at`: ordinary time passage must not invalidate every review. Changed effective permissions or model resolution invalidates the digest.
 
@@ -137,7 +137,7 @@ Missing connections change live readiness without rewriting reusable requirement
 
 In browser authoring, ordinary questions and changes continue the conversation without a review reminder. A standalone command such as “save this” or “save changes” starts one finalization-and-save operation.
 
-The selected model receives the working conversation context and current setup; it incorporates the person's latest decisions through validated native edits when needed. Exploratory questions do not become requirements.
+The selected model receives the working conversation context and current setup. It incorporates the person's latest decisions through validated native edits when needed. Exploratory questions do not become requirements.
 
 The browser shows “Saving setup...” while finalization and the checked Save or Apply write are pending. It shows “Save done vN” after the database acknowledges the write. Readiness is displayed separately, so saving does not claim connected access or start a run.
 

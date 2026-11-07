@@ -48,7 +48,9 @@ The rest of `lint-all` is the model allowlist check and the TypeScript lints. It
 
 `make check-version` is the version claim: `cli/package.json` and `rustd/Cargo.toml` must match `VERSION`.
 
-`lint-rustd` and `test-unit-rustd` both `cd` into `rustd/` instead of passing `--manifest-path`. Cargo resolves `rust-toolchain.toml` from the working directory. From the repository root, cargo would compile with whatever toolchain the shell has active, and the lane would pass on a compiler nobody agreed to.
+`lint-rustd` and `test-unit-rustd` both `cd` into `rustd/` instead of passing `--manifest-path`. Cargo resolves `rust-toolchain.toml` from the working directory.
+
+From the repository root, cargo would compile with whatever toolchain the shell has active. The lane would then pass on a compiler nobody agreed to.
 
 The pre-push hook runs `lint-rustd` when a pushed file matches `*.rs` or `rustd/*`. Manifests and the toolchain pin change what the lane compiles and which compiler compiles it, so they trigger it too. The pre-commit hook runs no cargo lane; it routes `*.rs` to `lint-source` only.
 
@@ -86,7 +88,7 @@ A live test without its `#[ignore]` runs in the unit lane and fails the moment D
 
 **The naming rule is not a safety property.** `#[ignore]` alone decides which lane runs a test; the filename decides nothing. An `#[ignore]`d test in a file with no `integration_` prefix still runs under `-- --ignored`.
 
-So a misfiled test is a readability defect, and it still runs. The naming rule's value is that a directory listing answers "what does this crate prove without a database" before anyone opens a file.
+So a misfiled test is a readability defect, and it still runs. The naming rule's value is that a directory listing answers "what does this crate prove without a database" before opening any file.
 
 **Reachability is what actually loses a test.** A crate with `autotests = false` compiles only the files a `[[test]]` target names. It also compiles whatever those files pull in with `#[path]`.
 
@@ -104,11 +106,11 @@ The filename rule above decides the tier, and this rule decides the function nam
 
 `#[test]` performs discovery here, and cargo already prints the module path ahead of the function. So `test_` buys nothing and costs the first five characters of every line of failure output.
 
-**The measurement, so a later reader can re-run it rather than trust it.** Group test functions by the day their file was introduced (`git log --diff-filter=A --follow`). Files from 2026-08-24 through 08-26 are 100% prefixed across 378 tests.
+**The measurement, so a later reader can re-run it rather than trust it**. Group test functions by the day their file was introduced (`git log --diff-filter=A --follow`). Files from 2026-08-24 through 08-26 are 100% prefixed across 378 tests.
 
 From 08-27 onward the practice inverts, at 14%, 0%, 31% and 9% across 411 tests. The split is the same per crate. Every 100% crate (`afd_auth`, `afd_db`, `afd_identity`, `afd_dragonfly`, `afd_state`) predates the 27th, while `afd_api` sits at 20% and `afd_cron` and `af_webhook` at 0%.
 
-**This rule is no licence to rename.** The prefixed crates are internally consistent, and their names are not wrong, only older. Touching one test in `af_crypto` does not oblige renaming its neighbours, and a crate converts, if ever, in one deliberate commit of its own.
+**This rule is no licence to rename.** The prefixed crates are internally consistent, and their names are not wrong, only older. Touching one test in `af_crypto` does not oblige renaming its neighbours. A crate converts, if ever, in one deliberate commit of its own.
 
 **A new test in an existing file follows that file.** A mixed file is worse than either convention held whole.
 
@@ -116,7 +118,7 @@ So the rule binds new files and new crates. Adding `the_thing_it_proves` beside 
 
 M180 added `test_the_tag_type_offers_no_short_circuiting_comparison` to `af_crypto` for exactly this reason. That name follows the rule's second clause, and is no exception to it.
 
-**Where a spec and this rule disagree, the spec is amended.** A spec names a Dimension's proving test so readers can find it.
+**Where a spec and this rule disagree, the spec is amended**. A spec names a Dimension's proving test so readers can find it.
 
 A name the codebase does not use fails at exactly that job. M180 amended seventeen Dimensions rather than rename fourteen tests into a convention the repository had already left.
 
@@ -151,7 +153,7 @@ Hold the lock for the entire test body. Prefer a fixture-owned guard; `Scenario`
 
 **Which tier applies.** Ask what the assertion reads. One row by its own minted id is ISO-1.
 
-A set (a count, a listing, a queue depth) is ISO-1, and ISO-2 as well if the set lives behind a global key. An assertion whose premise a system-wide writer can invalidate is ISO-3, whatever else is true of it.
+A set (a count, a listing, a queue depth) is ISO-1. It is ISO-2 as well if the set lives behind a global key. An assertion whose premise a system-wide writer can invalidate is ISO-3, whatever else is true of it.
 
 **ISO-3 costs wall time.** Prefer private databases or scoped placement labels when a test needs a deployment-wide premise.
 Keep the shared guard until both the reader and writer have an isolated replacement.
@@ -160,7 +162,7 @@ Keep the shared guard until both the reader and writer have an isolated replacem
 
 `af_wire` defines the `/v1/runners` protocol. `agentsfleetd` serves it and publishes the shapes through `public/openapi.json`. `openapi_contract.rs`, `openapi_coverage.rs` and their siblings in `afd_api/tests/` grade that document against the routes.
 
-`agentsfleet-runner` is a client of the same crate. It speaks `af_wire`'s types and nothing else, so a shape the two sides disagree on fails to compile ([Runner execution](./runner_execution.md#why-rust)).
+`agentsfleet-runner` is a client of the same crate. It speaks `af_wire`'s types and nothing else, so a shape the two sides disagree on fails to compile ([`runner_execution.md`](./runner_execution.md#why-rust)).
 
 ## Coverage
 

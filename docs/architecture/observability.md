@@ -54,9 +54,7 @@ grades the two against each other both ways. The prefix rule covers exported
 metric families only. It does not rename `fleet_id`, log event names,
 `EventKind` tags, or the Dragonfly consumer group.
 
-**One registry row is the whole family.** A census row declares wire name,
-kind, number type, unit, temporality, labels, histogram bounds and series
-ceiling once. Producer code names the family through a `Declared<Kind>`
+**One registry row is the whole family**. A census row declares wire name, kind, number type, unit, temporality, labels, histogram bounds and series ceiling once. Producer code names the family through a `Declared<Kind>`
 constant and claims an OpenTelemetry instrument from `Instruments`, both in
 `af_observability`.
 
@@ -88,8 +86,8 @@ that returned identifier for read-only log evidence.
 ## Metric family census (what to watch, and what it means)
 
 The complete export lives in ONE file: [`docs/metrics.census.tsv`](../metrics.census.tsv).
-It lists every family the daemon pushes over OTLP, exactly once, with its kind,
-number type, unit, temporality, label keys, histogram bounds and series policy.
+It lists every family the daemon pushes over OTLP exactly once. Each carries its kind, number type, unit, temporality, label keys, histogram bounds and series policy.
+
 Each row also carries the operator guidance (`category`, `watch_for`) that used to be a table here.
 
 The registry test grades the declared registry against that file in both
@@ -137,7 +135,7 @@ members and only five of them are ours: `startup_posture`, `runner_crash`, `tran
 platform delivered correctly.
 
 The daemon classifies them at the point of record. `fault_of`, in `af_observability`'s runner
-producer, maps the class to a two-member `Fault` set. The executions counter carries it as
+producer, maps the class to a two-member `Fault` set. The `agentsfleet_runner_executions_total` counter carries it as
 `fault` on the failing half only.
 
 A success has no `fault` label at all. That absence is what makes `{fault!="workload"}` read as
@@ -150,8 +148,7 @@ would let one tenant's broken code spend everybody's budget.
 Neither is a measurement, so they are not measured. An unclassified failure (`None`) is charged to
 the platform: a cause nobody could name is not evidence against the tenant.
 
-`fault_of` is an exhaustive match with no default arm, so a twelfth `FailureClass` fails the build
-until somebody decides which side it belongs on.
+`fault_of` is an exhaustive match with no default arm. A twelfth `FailureClass` therefore fails the build until somebody decides which side it belongs on.
 `every_failure_class_is_assigned_the_side_we_decided` records the decision where a reviewer can argue
 with it one line at a time.
 
@@ -162,9 +159,9 @@ A `replayed` admission counts as good for the same reason: the first
 admission's identifier stands, so the producer got the answer it asked for.
 
 `reclaimed` lease grants are excluded from the fleet-start numerator on the
-mirror of that logic. A reclaim restarts work that was admitted and counted
-once, so counting the restart would let a flapping runner push the ratio
-above 1. An availability figure that improves as the fleet gets less
+mirror of that logic. A reclaim restarts work that was admitted and counted once. Counting the restart would let a flapping runner push the ratio above 1.
+
+An availability figure that improves as the fleet gets less
 stable is not measuring availability.
 
 ### Error budget burn
@@ -173,15 +170,15 @@ Burn rate is the error ratio divided by the error budget. A burn of 1 spends
 the budget exactly over the window. A burn of 14.4 spends 2% of a 30-day
 budget in an hour.
 
-The dashboard draws two windows per severity. The long one makes the budget
-claim and the short one resets it, so a burn that has already stopped does not
-keep paging. Page at 14.4 over 1h and 5m; open a ticket at 6 over 6h and 30m.
+The dashboard draws two windows per severity. The long one makes the budget claim and the short one resets it.
+
+A burn that has already stopped therefore does not keep paging. Page at 14.4 over 1h and 5m; open a ticket at 6 over 6h and 30m.
 
 None of it is enabled. The windows are drawn and the expressions are reviewed.
 Every burn panel carries an unproven marker until the deployment has served
 enough events to set a target against.
 
-Ten runner executions produce a burn rate; they do not produce an objective.
+Ten runner runs produce a burn rate. They do not produce an objective.
 
 ### What has no indicator, and what would have to exist
 
@@ -190,14 +187,11 @@ Every family the census declares has a producer
 has no census row. What follows is what no family measures yet.
 
 **End-to-end fleet availability has both halves.**
-`agentsfleet_fleet_runs_started_total{kind}` is incremented at the one lease
-grant point, and `agentsfleet_admissions_total{outcome="accepted"}` is the
-ledger queue's denominator. The retired stream queue labelled the same outcome
+`agentsfleet_fleet_runs_started_total{kind}` is incremented at the one lease grant point. `agentsfleet_admissions_total{outcome="accepted"}` is the ledger queue's denominator. The retired stream queue labelled the same outcome
 `appended`, which the table above still records.
 
 **API latency is measured.** `agentsfleet_api_request_duration_seconds`
-carries `http.route`, `http.request.method` and `status_class`, so requests per
-second, the 500 rate and a latency percentile come from one family.
+carries `http.route`, `http.request.method` and `status_class`. Requests per second, the 500 rate and a latency percentile therefore come from one family.
 
 No family measures the collector, the host or the datastore; the section below
 covers that gap. Each new family is a new census row, which makes it a
@@ -216,17 +210,16 @@ identifier, and stops there.
 
 Today every series in the store is development, because the production Fly
 application runs no machines. That makes the development dashboard correct by
-accident rather than by construction. It stops being correct on the day
-production first deploys, because every panel would sum both environments with
-no query able to separate them.
+accident rather than by construction.
+
+It stops being correct on the day production first deploys. Every panel would then sum both environments, with no query able to separate them.
 
 Emitting `deployment.environment` is the blocker on that deploy. It is daemon
 and deployment work rather than a dashboard change.
 
 ### Nothing watches the infrastructure
 
-The census declares no collector, host, container or datastore family, so the
-dashboards answer questions about the daemon's own work and nothing else.
+The census declares no collector, host, container or datastore family. The dashboards therefore answer questions about the daemon's own work and nothing else.
 
 The collector does not report on itself. `deploy/fly/otelcol-{dev,prod}/config.yml`
 configures `service.telemetry` for logs only, so `otelcol_exporter_send_failed_*`
@@ -250,7 +243,7 @@ Closing that gap is collector configuration rather than a census change.
 
 ## `agentsfleet-runner` has a collector of its own
 
-**Built: the runner exports spans and metric families when configured.** The dedicated dev collector was installed on Nov 04, 2026; production installation is not claimed. `afr_telemetry` uses the shared `af_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
+**Built: the runner exports spans and metric families when configured.** The dedicated dev collector was installed on Nov 04, 2026. Production installation is not claimed. `afr_telemetry` uses the shared `af_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
 
 Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
@@ -288,9 +281,7 @@ no telemetry knob, so hardening still sees a single thread.
   an event.
 
   Each lease is its own root trace carrying `agentsfleet.lease.id`
-  and `agentsfleet.event.id`. The tool span names its tool by the published
-  catalog, `_other` for anything else, so a name the model made up never
-  leaves the host.
+  and `agentsfleet.event.id`. The tool span names its tool by the published catalog, or `_other` for anything else. A name the model made up therefore never leaves the host.
 
 - **A fixed span budget** (`afr_telemetry`'s `budget` module): at most
   `MAX_LEASE_SPANS` (256) spans per lease, its root included. The runner-wide cap is `RUNNER_SPANS_PER_SECOND` (128) per monotonic second. A
@@ -451,9 +442,7 @@ report handler's `meter` in `afd_api_runner`. They are one duration, an input
 and an output token count, one cache-read token count, and one settle-class
 credit amount.
 
-Do not turn scheduler arms, activity frames, log lines, lease or event
-identifiers, model text, error text, or raw runner identifiers into metric
-labels. A scheduler metric is justified only as a fixed aggregate (queue depth,
+Never turn scheduler arms, activity frames, log lines, lease or event identifiers, model text, error text or raw runner identifiers into metric labels. A scheduler metric is justified only as a fixed aggregate (queue depth,
 fired total, stale-target total).
 
 The runner's own series carry only the facts no verb carries
@@ -537,7 +526,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 Gaps left by M238, each named in M233_001:
 
 - The steer and lease handlers carry no stage attributes on their request spans (§1).
-- The runner's own families and spans reach a backend only where a runner collector is installed; dev has one since Nov 04, 2026 (§2).
+- The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026 (§2).
 - The edge reports nothing of its own (§3).
 
 ## Library read stages are metrics, not spans
@@ -588,9 +577,10 @@ Design points, each load-bearing:
   stage that suddenly costs more, never as one that silently reappears.
 
 - One outcome per request on every exit path. Each read handler calls
-  `library::read_finished` once. `library_outcome` in `afd_http`'s handler
-  module maps an unknown refusal status to `internal_error`, so an
-  unclassified path surfaces as something to investigate, never as `ok`.
+  `library::read_finished` once.
+
+  `library_outcome` in `afd_http`'s handler
+  module maps an unknown refusal status to `internal_error`. An unclassified path therefore surfaces as something to investigate, never as `ok`.
 
 **The exported series are the evidence, and nothing gates on a percentile.**
 
@@ -629,8 +619,7 @@ A declared event nobody captures is a dashboard panel that stays empty for a
 reason no operator can see from the outside. Either the capture lands or the
 variant goes.
 
-`FleetCompleted` fires only when a report settles for the first time; a
-repeated report returns early, so replays emit nothing (the report handler in
+`FleetCompleted` fires only when a report settles for the first time. A repeated report returns early, so replays emit nothing (the report handler in
 `afd_api_runner`). Its `$insert_id` is the SHA-256 hex digest of
 `fleet_id || 0x00 || event_id`.
 
@@ -667,9 +656,7 @@ Posting direct to a vendor, gated on vendor-named variables, spells vendor
 identity into the daemon's own configuration. That works while there is one
 backend.
 
-Moving to a second one becomes a daemon change: new credentials, new
-configuration, a redeploy, and a window in which both paths are
-half-configured. Fan-out to two backends at once is not expressible at all
+Moving to a second one becomes a daemon change. It needs new credentials, new configuration, a redeploy and a window in which both paths are half-configured. Fan-out to two backends at once is not expressible at all
 without teaching the daemon about both.
 
 **The collector is a Fly app per environment, reached only on the private
@@ -684,14 +671,12 @@ network spans the whole organisation rather than this app pair.
 
 An
 unauthenticated receiver in front of the vendor key would be a relay any
-workload on that network can post through. The daemon already sends a Basic
-pair on every export; the collector checks it, which keeps the boundary where
-it was before the hop existed.
+workload on that network can post through. The daemon already sends a Basic pair on every export, and the collector checks it. That keeps the boundary where it was before the hop existed.
 
 Pointing the daemon at a collector moves that decision out of the binary.
-Adding a backend, splitting one signal to two destinations, or moving a vendor
-becomes collector configuration, applied without redeploying the thing that
-serves requests. The daemon keeps one endpoint, one credential and one failure
+Adding a backend, splitting one signal to two destinations or moving a vendor becomes collector configuration. It applies without redeploying the thing that serves requests.
+
+The daemon keeps one endpoint, one credential and one failure
 mode no matter how many backends exist downstream.
 
 An infrastructure change stays separately attributable from a binary change,
@@ -705,9 +690,7 @@ A full queue drops rather than blocking a request, the same behaviour it
 has when a vendor endpoint is unreachable. The gap was never zero, and the
 collector does not widen it.
 
-**No pull endpoint exists, and none will.** Nothing scrapes this daemon: no
-`/metrics` route is served, and no scrape is configured in either
-environment. A pull endpoint would be a second export path for the same
+**No pull endpoint exists, and none will.** Nothing scrapes this daemon. No `/metrics` route is served, and no scrape is configured in either environment. A pull endpoint would be a second export path for the same
 measurements, with a different mechanism and a different failure mode.
 
 Only the standard environment names below configure daemon export
@@ -722,19 +705,18 @@ OpenTelemetry specification spells them. They are `OTEL_EXPORTER_OTLP_ENDPOINT`,
 accepted) and `OTEL_EXPORTER_OTLP_TIMEOUT` (whole milliseconds, 10 000 by
 default). A vendor's own variable names configure nothing.
 
-A protocol this build does not carry (`grpc` included), a zero or unreadable
-timeout, or a header pair with no `=` refuses boot at preflight. That refusal
+A protocol this build does not carry (`grpc` included), a zero or unreadable timeout, or a header pair with no `=` refuses boot. The check runs at preflight.
+
+That refusal
 lands before anything opens. A daemon that silently exported nothing would
 present as a collector fault for as long as nobody checked.
 
 No endpoint is the ordinary case and not a fault. The daemon boots, serves,
 logs `startup_otel_disabled`, and supervises no export task.
 
-With one, boot (`agentsfleetd`'s `telemetry` module, through the builder both
-binaries share in `af_otlp`) builds four pipelines on the published
-`opentelemetry-otlp` exporter over HTTP. Each posts under its signal path
-(`/v1/traces`, `/v1/metrics`, `/v1/logs`) appended to the one endpoint, on the
-SDK's own batch threads with a blocking client. The periodic metric reader
+With one, boot builds four pipelines on the published `opentelemetry-otlp` exporter over HTTP. Boot is `agentsfleetd`'s `telemetry` module, through the builder both binaries share in `af_otlp`.
+
+Each posts under its signal path (`/v1/traces`, `/v1/metrics`, `/v1/logs`) appended to the one endpoint. It runs on the SDK's own batch threads with a blocking client. The periodic metric reader
 collects on a plain thread with no async reactor, so an async client awaited
 there would have no driver.
 
@@ -840,10 +822,11 @@ All three OTLP signals share one resource (`service.name`,
 `service.namespace=agentsfleet`, `service.version`, `service.instance.id` only
 when a trusted id exists; `af_otlp`'s `resource` module). No schema URL is set.
 
-The cost families emit in the service layer, strictly after the money
-transaction commits, so the exporter can never block or fail a debit. Their
+The cost families emit in the service layer, strictly after the money transaction commits. The exporter can therefore never block or fail a debit. Their
 kinds, units and bounds live in [`docs/metrics.census.tsv`](../metrics.census.tsv)
-with every other family. What belongs HERE is why their names diverge from
+with every other family.
+
+What belongs HERE is why their names diverge from
 the GenAI conventions, because each divergence was chosen:
 
 - `gen_ai.invoke_agent.duration` keeps the standard name because runner wall

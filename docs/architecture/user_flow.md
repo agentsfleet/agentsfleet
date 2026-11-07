@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart) walks the same path in five minutes; [docs.agentsfleet.net/fleets/overview](https://docs.agentsfleet.net/fleets/overview) is its reference.
 
-Read this when you want to know how a real human gets from "I want a Fleet" to a Fleet running on their repo. The §-numbered subsections are stable anchors that other specs reference; do not rename them without sweeping cross-references.
+Read this to learn how a real human gets from "I want a Fleet" to a Fleet running on their repo. The §-numbered subsections are stable anchors that other specs reference. Do not rename them without sweeping cross-references.
 
 The initial user assumption is simple:
 
@@ -100,13 +100,15 @@ v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice p
 
 This is a deliberate scope cut. The auth substrate (Clerk OAuth), the key management service (KMS) adapter, and process control (Fly.io machines) are the only deployment-specific layers. The worker, runner, sandbox, event stream, and reasoning loop are all posture-agnostic.
 
-Validating that on a clean non-Fly Linux host is a v3 workstream, once v2 has earned the trust to justify the integration burden. That validation covers a Clerk shim or local-token auth, a portable KMS adapter and systemd process control. The validation also covers the runner's Landlock+cgroups+bwrap on a vanilla VM.
+Validating that on a clean non-Fly Linux host is a v3 workstream. It waits until v2 has earned the trust to justify the integration burden.
+
+That validation covers a Clerk shim or local-token auth, a portable KMS adapter and systemd process control. The validation also covers the runner's Landlock+cgroups+bwrap on a vanilla VM.
 
 Practically, this means:
 
 - v2 launch claim is **OSS + self-managed + chat-authored**. Not "self-hostable."
 - The `/self-host` runbook page does not exist on `docs.agentsfleet.net` for v2.
-- Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market P1 personas are v3 customers, not v2.
+- Users who need self-host today are out of scope. The AI-infra / GPU-cloud / regulated mid-market P1 personas are v3 customers, not v2.
 - self-managed still ships in v2. It sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1.
 
 ## §8.1 Authoring the Fleet
@@ -235,7 +237,7 @@ The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 - The **Trigger panel** renders one card per declared trigger. A GitHub App card shows connector state plus repository/event subscriptions and routes a disconnected workspace to Connect GitHub. Custom providers keep registration guidance and copyable per-fleet URLs; the dashboard never asks for or stores a user's provider PAT.
 - The **chat surface** shows trigger events as system chips and each reply as its thinking, its tool calls and its answer. It reads the live frames while the fleet works and the event's saved trace after a reload. A send the server refuses leaves the thread, and its text returns to the composer with Resend.
 - The **workspace switcher** requires a name while the server owns workspace identity. The browser never repeats a failed POST on its own. It reports the failure and walks the tenant workspace endpoint's stable cursor pages to refresh the complete list.
-- The CLI handles an uncertain response or registered name conflict with one encoded exact-name GET, then selects the authoritative match without replaying the POST. A deliberate same-name retry cannot create another row because the tenant/name unique index returns a registered `409 Conflict`.
+- The CLI handles an uncertain response or registered name conflict with one encoded exact-name GET. It then selects the authoritative match without replaying the POST. A deliberate same-name retry cannot create another row because the tenant/name unique index returns a registered `409 Conflict`.
 - For login tokens, both create and list resolve the database subject mapping before a stale signed tenant claim and return that tenant identifier. Tenant API keys instead stay bound to the tenant recorded on the key, even if the creator's user mapping later changes. These rules keep local state from mixing tenants without letting an API key cross its issuing boundary.
 - The **authenticated frame** is shell-first ([`web_app.md`](./web_app.md) §"The five statements").
 

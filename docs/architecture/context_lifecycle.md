@@ -70,7 +70,7 @@ Validation proves the document's shape and source identity; it cannot prove that
 Token measurement uses `tiktoken-rs` through `af_inference`'s budget module for recognized model encodings.
 Other models get the `o200k_base` count plus a quarter, rounded up (`PROXY_HEADROOM_PERCENT`).
 
-That headroom is temporary. The `model_input_calibration` trace records each call's estimate beside the provider's reported input, and per-model ratios read from it replace the single number.
+That headroom is temporary. The `model_input_calibration` trace records each call's estimate beside the provider's reported input. Per-model ratios read from it replace the single number.
 
 Measurement covers the serialized provider request, including tools and replay data, plus 32 tokens per history message.
 
@@ -171,14 +171,14 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 
 ## Implementation scope
 
-The shared engine is the `af_context` crate: its window, planner, compaction, checkpoint, summary and trace modules, with adapters in the daemon's repository modules.
+The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
 The checkpoint table is `schema/2160_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
 
 Authoring admission and accounting live in `afd_authoring` (lease claim, model budget, dispatch, progress and receipt).
 The runner protocol lives in `af_wire` (authoring model, meter and lease payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
 
 Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
-Trusted transport lives in `afd_http`'s leasing services, `afd_api_runner`'s context handlers, `afd_fleet`'s fenced context methods and `afr_supervisor`'s authoring turn and context adapters.
+Trusted transport lives in `afd_http`'s leasing services and `afd_api_runner`'s context handlers. It also lives in `afd_fleet`'s fenced context methods and `afr_supervisor`'s authoring turn and context adapters.
 
 Status and traces reach the browser through tenant private-stream forwarding and shared activity payloads.
 The app's draft and fleet stream reducers, projections and accessible status components render them.
@@ -238,7 +238,9 @@ Database writes retain generation checks and live-lease fencing. Cancellation an
 
 **Quality ceiling:** Measure work with deterministic counters before claiming throughput improvements. The full browser scenario and real storage races remain required. A native guest engine informed by SPACE needs its own implementation and real-backend evidence.
 
-**Files:** the `af_context` planner, ports and tests; authoring preparation and funding adapters; the runtime context index and estimator; affected workspace manifests; and this page. Existing executor and sandbox interfaces provide part of the backend boundary; repository preparation still requires a host-visible path.
+**Files**: the `af_context` planner, ports and tests; authoring preparation and funding adapters. The files also include the runtime context index and estimator, affected workspace manifests and this page. Existing in-sandbox server and sandbox interfaces provide part of the backend boundary.
+
+Repository preparation still requires a host-visible path.
 
 A new checkpoint-storage crate is conditional on a demonstrated dependency benefit. No acceptance limits or gate implementation changes.
 
@@ -248,8 +250,8 @@ M236 adds an authorized cross-lease handoff through [Durable Task (DT) manifests
 The manifest binds conversation coverage, source digest, file/Git generation and confirmed effects together.
 Keep current lease-scoped validation until that explicit handoff succeeds.
 
-A new chat lease currently carries up to eight finished question/answer turns, bounded by 65,536 bytes overall and 16,384 bytes per text.
-See `afd_fleet`'s lease history and `af_wire`'s lease payload.
+A new chat lease currently carries up to eight finished question/answer turns. They are bounded by 65,536 bytes overall and 16,384 bytes per text. See `afd_fleet`'s lease history and `af_wire`'s lease payload.
+
 That window does not replay every previous tool record or inherit another lease's summary.
 
 ```text

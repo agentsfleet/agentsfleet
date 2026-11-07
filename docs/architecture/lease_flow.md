@@ -181,7 +181,7 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 The runner binary (`rustd/crates/runner/main`) then builds the host's engine and runs `afr_supervisor::run` with it. It refuses to start on a host that lacks a mechanism every sandbox needs.
 
-Building the engine sweeps what a crashed run left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
+Building the engine sweeps what a crashed run left ([`runner_execution.md`](./runner_execution.md) §"A lease's sandbox today").
 
 **Heartbeat → assignment.** The heartbeat posts the capability report and the fleets the runner holds, and reads back the assigned policy. The worker count is clamped to `1..=64` (`afr_supervisor`'s heartbeat, `af_core`'s limits).
 
@@ -195,7 +195,7 @@ A worker polls while the assignment says to take work, and runs a lease to its r
 
 A woken beat ends one idle worker's sleep, so fresh work waits one round trip, not a hint. The other workers keep their staggered pauses.
 
-**One lease.** The steps and their refusals are in [Runner execution](./runner_execution.md) §"One lease, end to end".
+**One lease.** The steps and their refusals are in [`runner_execution.md`](./runner_execution.md) §"One lease, end to end".
 
 The renewal ticks every 5 s with the provider requests the daemon has not recorded, one line each. It moves the runner's own deadline to the reply's `lease_expires_at` less 2 s.
 
@@ -274,7 +274,7 @@ A stale fence, a lease not found or a lease lost settles the spooled entry for g
 
 The fleet's write binding is on `agentsfleet/linkwarden` with base `main`. Its daily budget is `2000000000` nanos, two dollars (`tests/fixtures/fleets/github-pr-reviewer/definition.json`).
 
-All three tools are `Runtime::Supervisor` (`afr_tools`' catalog), so `needs_sandbox` is false. The lease therefore starts no sandbox at all ([Runner execution](./runner_execution.md) §"A lease's sandbox today"). No repository is cloned either: only a lease offered a sandbox tool gets its bound repositories checked out (`afr_supervisor`'s checkout).
+All three tools are `Runtime::Supervisor` (`afr_tools`' catalog), so `needs_sandbox` is false. The lease therefore starts no sandbox at all ([`runner_execution.md`](./runner_execution.md) §"A lease's sandbox today"). No repository is cloned either: only a lease offered a sandbox tool gets its bound repositories checked out (`afr_supervisor`'s checkout).
 
 **The prompt.** The system prompt is `## Installed instructions` plus the lease's `instructions` (`afr_agent`'s prompt).
 
@@ -344,7 +344,7 @@ So writing "post the review" in the instructions (which the fixture already does
 
 **A chat message uses the same admission path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` admission (`afd_events`'s steer module).
 
-The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet`'s lease queue) and starts a run of its own.
+The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet`'s lease queue). It then starts a run of its own.
 
 With a run live, the message folds into it, and the 202 also carries `folded_into_event_id`. The running lease claims it at its next model call through `POST /v1/runners/me/leases/{lease_id}/folds`, and the run's answer becomes its reply. A parked or task-bound message ahead of it is a barrier, so it queues instead.
 
@@ -354,7 +354,7 @@ The message runs with the same policy. The instructions tell the fleet to treat 
 
 A chat message cannot add an egress rule.
 
-**What the code admits today for this fleet (write binding on one repository):** reads under `/repos/agentsfleet/linkwarden/` (the read rules), and the five writes above. In principle the fleet could create blobs, trees and commits, create one ref `refs/heads/agentsfleet-repair/<event>`, and open one draft PR from it against `main`. What is refused: a review (`/pulls/{n}/reviews`), an issue comment, a PR comment, approve, request changes, any other ref, a non-draft PR.
+**What the code admits today for this fleet (one-repository write binding):** reads under `/repos/agentsfleet/linkwarden/` (the read rules), and the five writes above. In principle the fleet could create blobs, trees and commits, create one ref `refs/heads/agentsfleet-repair/<event>`, and open one draft PR from it against `main`. What is refused: a review (`/pulls/{n}/reviews`), an issue comment, a PR comment, approve, request changes, any other ref, a non-draft PR.
 
 The write rules admit a fix on the repair branch and one draft PR, and no comment (`afd_gate`'s egress write rules).
 
@@ -368,7 +368,7 @@ The write rules admit a fix on the repair branch and one draft PR, and no commen
 
 The App webhook admits with `Reply::None` (`afd_ingress`'s deliver). Only Slack posters exist (`afd_outbound`'s posters), so there is no daemon-side "answer back to the PR" either.
 
-**The sandbox does not change this.** The sandbox `git` tool refuses `push`, `fetch`, `pull`, `remote` and `clone`. A change is meant to leave through `propose_change`, which is not written (`afr_tools`' sandbox git; [Runner execution](./runner_execution.md) §"Repository writes").
+**The sandbox does not change this.** The sandbox `git` tool refuses `push`, `fetch`, `pull`, `remote` and `clone`. A change is meant to leave through `propose_change`, which is not written (`afr_tools`' sandbox git; [`runner_execution.md`](./runner_execution.md) §"Repository writes").
 
 Unblocking the review is a one-rule change in `afd_gate`'s egress write rules: an exact `POST /repos/{repo}/pulls/{n}/reviews` with `event` locked to `COMMENT`. Indy parked it until he runs the test.
 
@@ -406,11 +406,13 @@ A recall reads up to `RECALL_LIMIT_MAX = 50` entries past the window (`af_wire`'
 
 The second review knows the first only if its instructions have it read the existing reviews or recall what it stored.
 
-A chat lease also carries the thread's last eight finished turns; a webhook lease like this one carries none (`afd_fleet`'s lease answer). A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches. This fleet has no sandbox, so it never holds one.
+A chat lease also carries the thread's last eight finished turns. A webhook lease like this one carries none (`afd_fleet`'s lease answer).
+
+A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches. This fleet has no sandbox, so it never holds one.
 
 **What does not carry over.** The session checkpoint is written to `fleet.sessions` and loaded with the fleet.
 
-No lease carries it ([Runner execution](./runner_execution.md) §"Workspace between leases"). No workspace restore exists yet.
+No lease carries it ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). No workspace restore exists yet.
 
 ---
 
@@ -444,11 +446,11 @@ Each gap names what would close it.
 
 1. **The review post is refused.** No write rule admits `/pulls/{n}/reviews`, and Indy parked it until he runs the test. A one-rule change in `afd_gate`'s egress write rules, an exact path with `event` locked to `COMMENT`, closes it.
 2. **No daemon path answers a PR**. The App webhook admits with `Reply::None` (`afd_ingress`'s deliver), and only Slack posters exist (`afd_outbound`'s posters). A GitHub poster in the outbound worker closes it.
-3. **No workspace restore or save.** Snapshots in R2 are design only ([Runner execution](./runner_execution.md) §"Workspace between leases"). The snapshot workstream closes it.
+3. **No workspace restore or save.** Snapshots in R2 are design only ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). The snapshot workstream closes it.
 4. **The session checkpoint reaches no lease**. It is written and loaded, and `render` never puts it on the lease (`afd_fleet`'s lease answer). A lease field the agent loop reads closes it.
-5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [Runner execution](./runner_execution.md) §"Repository writes" closes it.
+5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [`runner_execution.md`](./runner_execution.md) §"Repository writes" closes it.
 6. **Kill and pause never reach a running lease**: renewal ignores the fleet's status but still enforces its stored budget ceiling. The heartbeat names no lease ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause"). A revocation on the heartbeat or a refused renewal closes it.
-7. **Browser tools are refused** under the bubblewrap engine ([Runner execution](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
+7. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
 8. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
 9. **Limits are not per fleet.** The daemon sends `limits: null` (`afd_fleet`'s lease answer). A size on the fleet's config closes it.
 10. **Nothing checks memory or disk against the host.** 2 GiB × workers and 4 GiB × live and held leases go unchecked. A reserve the worker checks before it leases closes it.

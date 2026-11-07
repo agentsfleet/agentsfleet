@@ -67,7 +67,7 @@ Existing executor -> commands, file edits, test results
 ```
 
 Start on one qualified Linux host with Kernel-based Virtual Machine (KVM) access and a pinned guest image.
-Use the existing engine boundary (`afr_sandbox`) for sandbox ownership and the executor (`afr_executor`) for commands.
+Use the existing engine boundary (`afr_sandbox`) for sandbox ownership and the in-sandbox server (`afr_executor`) for commands.
 The planned guest entry and separate writable disk already belong to [runner behavior](runner_execution.md#crates).
 
 ### Reuse before adding another subsystem
@@ -162,7 +162,7 @@ Keep the fleet as the durable runtime. A workspace handle is a runtime resource,
 
 Independent coding tasks need independent writable checkouts; sharing an authorized read cache must not share mutable working trees.
 
-The existing engine interfaces (`afr_sandbox`) and executor (`afr_executor`) already separate runtime effects. However, checkout (`afr_supervisor`) requires a host-visible workspace. A remote engine therefore needs a repository preparation path; implementing `Executor` alone is insufficient.
+The existing engine interfaces (`afr_sandbox`) and in-sandbox server (`afr_executor`) already separate runtime effects. However, checkout (`afr_supervisor`) requires a host-visible workspace. A remote engine therefore needs a repository preparation path; implementing `Executor` alone is insufficient.
 
 Use traits for effects with distinct implementations. Use generics for known adapters and trait objects where the backend is selected at runtime. Use `Fn` for a repeatable cancellation observation, `FnMut` for progress accumulation and `FnOnce` for consuming prepared publication. 
 

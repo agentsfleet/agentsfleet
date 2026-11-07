@@ -2,7 +2,9 @@
 
 > Parent: [`README.md`](./README.md) · Transport mechanics: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity" · In-run tools + lifecycle: [`capabilities.md`](./capabilities.md) §4 · User-facing: [docs.agentsfleet.net/memory](https://docs.agentsfleet.net/memory).
 
-What a fleet *learned* from prior events, so it behaves like a teammate who's been here before. This file is the canonical answer to **"what is memory keyed by, what's isolated, and what survives"**, the facts other docs and specs cite. The deep load/capture transport lives in `runner_fleet.md`; the categories, selection and tools live in `capabilities.md` and the user docs.
+What a fleet *learned* from prior events, so it behaves like a teammate who's been here before. This file is the canonical answer to **"what is memory keyed by, what's isolated, and what survives"**. Other docs and specs cite these facts.
+
+The deep load/capture transport lives in `runner_fleet.md`; the categories, selection and tools live in `capabilities.md` and the user docs.
 
 ---
 
@@ -42,11 +44,11 @@ Two layers, deliberately split:
 
 - **Durable** — the `fleet_id`-keyed rows in `memory.entries` (Postgres), the default backend. This is what survives, and Postgres is the only store. A second store, and the flip that migrates a workspace onto it, come with the first vendor store ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 
-- **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at lease start and pushed, fenced, before the report. It is gone when the run ends ([Runner execution](./runner_execution.md#crates)).
+- **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at lease start and pushed, fenced, before the report. It is gone when the run ends ([`runner_execution.md`](./runner_execution.md#crates)).
 
 Continuity is the load/capture loop bridging the two. `GET /v1/runners/me/memory/{fleet_id}` seeds the run at its start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
 
-**The load-bearing consequence.** Because the writer is in the key, a new fleet is a new `fleet_id`, an empty namespace of its own. Spinning a *new ephemeral fleet per event* gives each one nothing of its own to load.
+**The load-bearing consequence**. The writer is in the key, so a new fleet is a new `fleet_id` with an empty namespace of its own. Spinning a *new ephemeral fleet per event* gives each one nothing of its own to load.
 
 Memory continuity **requires reusing the same `fleet_id`** across events. The alternative is granting the new fleet read on the workspace's shared memory, which seeds it with what publishing fleets learned.
 
@@ -64,7 +66,7 @@ Historical stored fleets and their memory remain unchanged.
 
 The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forget`) and the categories live in [`capabilities.md`](./capabilities.md) §4 and the user-facing memory doc. The categories are `core` pinned, `daily` 72h auto-prune and `conversation` windowed. The byte-budget category-pinned loading window and cap eviction live there too.
 
-No vector search, no scoring. Recall is a case-insensitive substring match on `key` and content, key matches first (`afr_memory`'s in-run store and `afd_memory`'s search statements).
+No vector search, no scoring. Recall is a case-insensitive substring match on `key` and content. Key matches come first (`afr_memory`'s in-run store and `afd_memory`'s search statements).
 
 ## 6. What reaches the model
 

@@ -1,10 +1,10 @@
 # Concurrency architecture — threads, channels, locks, shutdown
 
 Canonical concurrency model for `agentsfleetd` (control plane) and
-`agentsfleet-runner` (execution plane). Consult this page before naming a
+`agentsfleet-runner` (runner plane). Consult this page before naming a
 thread, channel, or lock, or asserting a shutdown ordering. It is a sibling of
 [`data_flow.md`](./data_flow.md) (the same runtime traced per event) and
-[`runner_fleet.md`](./runner_fleet.md) (the control/execution split).
+[`runner_fleet.md`](./runner_fleet.md) (the control/runner split).
 
 Channel and stream **names** are canonical in `data_flow.md`; this page
 owns the thread/lock/shutdown layer on top of them.
@@ -42,7 +42,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - Never await a round trip on the hub's dispatch task; a subscribe that waits there holds every frame behind it (§Thread map).
 
-- Never do a blocking wire send while holding the map lock; that is the C3 fix that ended the hub hazard (§Lock-invariant registry).
+- Never do a blocking wire send while holding the map lock. That is the C3 fix that ended the hub hazard (§Lock-invariant registry).
 
 - Never free shared state before its tasks and threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
 
@@ -117,13 +117,11 @@ a name, or a sweeper that quietly went back to a bare spawn, is a failing test.
 | telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises twelve tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
-A sweep that fails is reported and retried on the next pass. Every pass here is
-idempotent and bounded, and a sweeper that exited on a datastore blip would need
-a daemon restart to get liveness back.
+A sweep that fails is reported and retried on the next pass. Every pass here is idempotent and bounded. A sweeper that exited on a datastore blip would need a daemon restart to get liveness back.
 
 New process-lifetime background work belongs to the supervisor. Request-owned work must retain an abortable handle and a bounded completion path.
 
-### `agentsfleet-runner` (execution plane)
+### `agentsfleet-runner` (runner plane)
 
 Rooted at the runner binary (`rustd/crates/runner/main`); no runner crate links a
 datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
@@ -284,8 +282,7 @@ window. A SIGTERM arriving during boot must not kill the background stack while
 the server may still come up and briefly serve. That is the half-dead-node
 window.
 
-It needs two flags only where a watcher thread polls, because there
-"the signal arrived" and "the server stopped" are events that genuinely race.
+It needs two flags only where a watcher thread polls. There "the signal arrived" and "the server stopped" are events that genuinely race.
 
 They cannot race in `Daemon::run`, because they are statements in order. The
 daemon awaits whichever of server-or-signal finishes first, then cancels the
@@ -327,7 +324,9 @@ All claims hold the runner row while counting live capacity and writing a lease.
 
 A setup chat renewal takes draft → attempt → runner instead (`afd_authoring`'s lease renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 
-The claim is the one path that holds a host and then asks for a draft, and it never waits for the draft (below). Retiring a revoked runner (`afd_runner`'s `delete_revoked`) is the one opposite order left. Its delete holds the runner row while `authoring.attempts.runner_id`'s `ON DELETE SET NULL` locks that runner's attempts.
+The claim is the one path that holds a host and then asks for a draft. It never waits for the draft (below).
+
+Retiring a revoked runner (`afd_runner`'s `delete_revoked`) is the one opposite order left. Its delete holds the runner row while `authoring.attempts.runner_id`'s `ON DELETE SET NULL` locks that runner's attempts.
 
 So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
 
@@ -381,4 +380,4 @@ The skip logs `authoring_claim_draft_skipped` at `debug`, because under contenti
 
 No lease was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-The proofs are `afd_authoring`'s `skipping` admission tests. A claim can still be a deadlock victim on a lock it does wait for, the catalogue its model read shares (the `revalidation` admission tests).
+The proofs are `afd_authoring`'s `skipping` admission tests. A claim can still be a deadlock victim on a lock it does wait for. That lock is the catalogue its model read shares (the `revalidation` admission tests).

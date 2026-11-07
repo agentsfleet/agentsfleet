@@ -62,7 +62,7 @@ agentsfleet v2 is not:
 
 - just a chat UI over tools.
 
-If a user gets the same value by opening Claude locally and asking "what should I do next?", v2 has not earned its existence.
+If a user gets the same value by opening Claude locally and asking "what should I do next?", v2 has not earned existence.
 
 ### How we differentiate
 
@@ -70,7 +70,9 @@ Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
 
-- **Self-managed provider keys.** Operators can bring their own large-language-model provider key; new tenants start on the platform-managed default ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1). The control plane resolves it and the runner's supervisor uses it for the inference call only; it never enters a sandbox. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9, the single source of truth, and there is no vendor lock-in on inference cost.
+- **Self-managed provider keys.** Operators can bring their own large-language-model provider key. New tenants start on the platform-managed default ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1). The control plane resolves it and the runner's supervisor uses it for the inference call only, and it never enters a sandbox.
+
+  Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9, the single source of truth, and there is no vendor lock-in on inference cost.
 
 - **Chat-authored.** Browser or terminal chat produces one validated Definition containing instructions and policy. Save creates an independent fleet; explicit Library publication makes a revision reusable.
 
@@ -80,7 +82,9 @@ The `agentsfleet` command-line interface (CLI) and dashboard, both over workspac
 
 ### The first problem we solve
 
-The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to bounce between tools by hand. Those tools are continuous integration (CI), logs, infra dashboards, chat, and shell history, and the operator also has to remember what they already tried.
+The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to bounce between tools by hand.
+
+Those tools are continuous integration (CI), logs, infra dashboards, chat and shell history. The operator also has to remember what they already tried.
 
 The fleet should take ownership of that outcome. It gathers evidence, explains what is wrong, preserves the timeline, requests approval when necessary, and continues until resolved or blocked.
 
@@ -94,7 +98,7 @@ One fleet wakes on a failed deploy webhook (continuous-deployment failure), gath
 
 Operational work falls into limbo.
 
-When a deploy fails, production looks unhealthy, or a risky recovery like a database teardown is needed, the operator does it all by hand. They gather logs, inspect dashboards, remember prior attempts and decide the next step. The audit trail smears across terminals, chat, CI, and infrastructure consoles.
+When a deploy fails, production looks unhealthy or a risky recovery like a database teardown is needed, the operator does everything by hand. They gather logs, inspect dashboards, remember prior attempts and decide the next step. The audit trail smears across terminals, chat, CI and infrastructure consoles.
 
 The work is fragmented, state is lost between attempts, and dangerous actions are performed ad hoc.
 
@@ -110,7 +114,9 @@ Existing tooling captures pieces of the workflow but not the whole outcome:
 
 What is missing is a long-lived runtime that owns the outcome end-to-end.
 
-The v2 MVP solves that gap. A Fleet receives an operational trigger, reasons over it in natural language, and gathers evidence with the right tools. It saves the full attempt history, resumes if interrupted, asks for approval when needed, and continues until the outcome is resolved or clearly blocked.
+The v2 MVP solves that gap. A Fleet receives an operational trigger, reasons over it in natural language, and gathers evidence with the right tools.
+
+It saves the full attempt history and resumes if interrupted. It asks for approval when needed, and continues until the outcome is resolved or clearly blocked.
 
 The MVP wedge is:
 
@@ -126,7 +132,9 @@ The MVP wedge is:
 
 - one flagship workflow.
 
-The flagship workflow is `platform-ops`. When a GitHub Actions continuous-deployment (CD) pipeline fails, the fleet wakes from the webhook. It gathers the right evidence from Fly.io, Dragonfly, Postgres, and adjacent sources, explains what is wrong, and posts a remediation suggestion to Slack.
+The flagship workflow is `platform-ops`. When a GitHub Actions continuous-deployment (CD) pipeline fails, the fleet wakes from the webhook.
+
+It gathers the right evidence from Fly.io, Dragonfly, Postgres and adjacent sources. It explains what is wrong and posts a remediation suggestion to Slack.
 
 The same fleet can also be steered by hand for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
 
@@ -138,9 +146,9 @@ The same fleet can also be steered by hand for "morning health check" investigat
 
 Three shifts make this MVP plausible now:
 
-1. Large language models (LLMs) can reason over messy operational evidence well enough to choose the next step when paired with constrained tools and clear instructions.
+1. Large language models (LLMs) can reason over messy operational evidence. Paired with constrained tools and clear instructions, they choose the next step well enough.
 2. Operators already maintain personal assistants and prompt files locally, but those assistants are ephemeral and session-bound. They do not own outcomes across time, triggers, retries, approvals, and failures.
-3. The integration surface already exists in the real workflow: deploy webhooks, cron checks, logs APIs, secret stores, approval policies, and shell-accessible recovery tasks. The missing piece is a durable runtime around them.
+3. The integration surface already exists in the real workflow. It spans deploy webhooks, cron checks, logs APIs, secret stores, approval policies and shell-accessible recovery tasks. The missing piece is a durable runtime around them.
 
 Stated plainly, many people now run a personal assistant in a terminal. The v2 runtime moves the useful part of that behaviour into a cloud-resident, durable, auditable runtime. That runtime can wait for events, wake itself up, keep state, and continue working after the original human session is gone.
 
@@ -274,13 +282,17 @@ The bastion is an instructions authoring pattern plus a few tool primitives plus
 
 ### 6.2 Slack Rung 1 — hired durable agents
 
-Where the human front door points after the CLI/dashboard wedge. M206 built the first hired-agent slice: a fleet attached to one channel whose writes are bounded to one draft Pull Request per request. Its live drill is pending.
+Where the human front door points after the CLI/dashboard wedge.
+
+M206 built the first hired-agent slice. It is a fleet attached to one channel whose writes are bounded to one draft Pull Request per request. Its live drill is pending.
 
 **The follow-on is direction, not a commitment.**
 
 [Configured Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) supplies the human request surface. A channel mention creates no separate runtime or default agent.
 
-- **Rung 1, follow-on.** From the same Slack surface, a recurring need becomes a durable agent subscribed to a real source such as Zoho Desk. It wakes unattended and takes **gated** write actions with approval; that is the existing event-driven runtime.
+- **Rung 1, follow-on**. From the same Slack surface, a recurring need becomes a durable agent subscribed to a real source such as Zoho Desk.
+
+  It wakes unattended and takes **gated** write actions with approval. That is the existing event-driven runtime.
 
   The Slack surface adds Save from a pinned Library revision, per-integration OAuth connectors and the Slack-user → `approval:resolve` allowlist. It depends on M103 (Fleet library) and M105 (schedules).
 
@@ -288,7 +300,9 @@ Where the human front door points after the CLI/dashboard wedge. M206 built the 
 
 A customer-facing prebuilt fleet whose job is **security testing on the customer's own code and infrastructure**. It is authorized and defensive, not red-teaming the fleet runtime itself, which is the platform's internal sandbox concern. It fits the existing evidence-plus-approval loop.
 
-It wakes on a pull request or a schedule, and scans the diff and dependencies for vulnerabilities and exposed secrets. It reproduces the finding as a scenario. Then it opens a remediation pull request with the evidence attached and **holds the fix at human approval** while flagging the team in Slack.
+It wakes on a pull request or a schedule, and scans the diff and dependencies for vulnerabilities and exposed secrets. It reproduces the finding as a scenario.
+
+It then opens a remediation pull request with the evidence attached. It **holds the fix at human approval** while flagging the team in Slack.
 
 Integrations: GitHub (code / pull requests) + Slack (alerts); no new credential class beyond what the review and incident fleets already use.
 
@@ -302,7 +316,9 @@ Captured here because it surfaced as product direction (marketing showcase + cus
 
 - **Open fleet (mode C).** Self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 
-- **Trust-scoped sticky affinity.** Still deferred. Once runners can be local or low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility. Those come before the sticky preference: "prefer the last runner *among the eligible set*", never an override of eligibility.
+- **Trust-scoped sticky affinity.** Still deferred. Once runners can be local or low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces). It must also add sandbox-tier eligibility.
+
+  Those come before the sticky preference: "prefer the last runner *among the eligible set*", never an override of eligibility.
 
   M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
 

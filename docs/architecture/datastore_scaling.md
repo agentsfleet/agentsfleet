@@ -160,8 +160,7 @@ Redis answers `WRONGTYPE` here, which is why the test is correct and this server
 cannot honour it. That is a server assertion reachable from ordinary client
 input, on the newest release; there is no version to upgrade into.
 
-How it was found, recorded so the path is not re-walked: `datastore_suite` run
-serially (`--test-threads=1`) against a freshly recreated container names the
+How it was found is recorded so the path is not re-walked. `datastore_suite` run serially (`--test-threads=1`) against a freshly recreated container names the
 offender directly.
 `integration_streams::test_a_group_create_that_is_not_a_race_is_reported` was the
 last test to start, and every test after it failed `Connection refused`.
@@ -285,7 +284,9 @@ Deploy implementation increments to the same application services while retainin
 
 The cutover to the cluster is a fresh start: PostgreSQL is rebuilt and Dragonfly started empty, and nothing is carried across. There is therefore no import tool and no import receipt. A daemon boots against a datastore that passes the three suitability refusals and nothing more.
 
-What the design owes instead is everything accepted after that point, through every ordinary restart and deployment. PostgreSQL records what was accepted, what completed and what delivery is still owed. Dragonfly is rebuildable from it, so losing Dragonfly's contents erases no obligation, and a snapshot restoring stale entries re-runs nothing already terminal.
+What the design owes instead is everything accepted after that point, through every ordinary restart and deployment. PostgreSQL records what was accepted, what completed and what delivery is still owed.
+
+Dragonfly is rebuildable from it, so losing Dragonfly's contents erases no obligation. A snapshot restoring stale entries re-runs nothing already terminal.
 
 A deployment replaces application processes and neither datastore. A retry reuses the operation's identity, because a timeout does not prove an operation failed. A failed connection must not silently fall back to a standalone path or an empty queue.
 

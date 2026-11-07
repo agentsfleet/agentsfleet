@@ -71,7 +71,9 @@ Every current number is in the Facts table at the top of this page.
 
 ## The infra reality first
 
-v2 ships hosted on Fly.io, and the canonical datastore is **self-hosted Dragonfly**: four processes, two primaries and two replicas, in one Fly machine. The machine sits in the same region as the daemon, reached over Fly's private network (6PN). M196 moved development onto that shape; `datastore_scaling.md` is canonical for the target and wins over this page where the two disagree.
+v2 ships hosted on Fly.io. The canonical datastore is **self-hosted Dragonfly**: four processes, two primaries and two replicas, in one Fly machine.
+
+The machine sits in the same region as the daemon, reached over Fly's private network (6PN). M196 moved development onto that shape; `datastore_scaling.md` is canonical for the target and wins over this page where the two disagree.
 
 **Three properties of the hosted service are gone.** They were three of the five things this page used to size against. A reader who sized a deployment last quarter sized it against them, so they are recorded here:
 
@@ -81,7 +83,7 @@ v2 ships hosted on Fly.io, and the canonical datastore is **self-hosted Dragonfl
 
    The local rig therefore keeps a TLS node for one suite and runs everything else plaintext.
 
-**A fixed machine replaces them, with a different failure shape.** A hosted plan degrades by refusing a dial or sending a bill. A machine degrades by running out of memory or CPU, and a Dragonfly node that hits `maxmemory` while retaining rather than evicting refuses writes.
+**A fixed machine replaces them, with a different failure shape.** A hosted plan degrades by refusing a dial or sending a bill. A machine degrades by running out of memory or CPU. A Dragonfly node that hits `maxmemory` while retaining rather than evicting refuses writes.
 
 The dev cluster is `shared-cpu-1x` (1 shared vCPU, 1GB) against a 2.25GB configured ceiling. Dev's data never approaches it (154 MB resident when it moved, Oct 26, 2026). Production stays `performance-2x`.
 
@@ -91,7 +93,7 @@ Postgres is **PlanetScale**, and two of its properties bind the same way:
 
    A connection asked for past the ceiling is refused with `53300`, which sqlx retries silently until the acquire budget runs out. The daemon can therefore only report it as a **stall** ("the pool held N of M and could not open another"). It retries the acquire once, then answers `UZ-INTERNAL-001`; it is not an outage and must not be paged as one.
 
-   The request path is therefore meant to run through PlanetScale's PgBouncer (port `6432`, transaction pooling), which multiplexes replicas' connections onto one bounded server pool. The deployment preflight refuses an `api-connection-string` on any other port, and the migrator stays on `5432` for its session advisory lock.
+   The request path is therefore meant to run through PlanetScale's PgBouncer (port `6432`, transaction pooling). It multiplexes replicas' connections onto one bounded server pool. The deployment preflight refuses an `api-connection-string` on any other port, and the migrator stays on `5432` for its session advisory lock.
 
    PgBouncer's own `default_pool_size` (20) counts against that same ceiling once, beside PlanetScale's admin and exporter backends and the migrator at release. Set it low enough in the console that all four fit.
 2. **Region**: production's database sits in `us-east` beside Fly `iad`. Development's sits in `aws-us-east-2` (Ohio), a round trip away on every handshake and every query. A region cannot be changed in place; `playbooks/operations/database_region_move/` moves it.
@@ -164,7 +166,8 @@ The partial `(fleet_id, sequence)` admission index serves each head lookup; the 
 It does not bound the number of active fleets examined inside Postgres.
 
 An isolated plan probe with 20,001 active fleets and no admissions performed zero fleet scans after the empty-ledger check.
-The single local samples took 19.702 ms before and 0.079 ms after; these are query-plan observations, not throughput or chat-latency measurements.
+The single local samples took 19.702 ms before and 0.079 ms after. These are query-plan observations, not throughput or chat-latency measurements.
+
 The real-database test in `afd_fleet`'s lease-plan suite asserts that every fleet scan has zero actual loops.
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.

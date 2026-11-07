@@ -50,10 +50,7 @@ verification. A keyword hit or repeated test fixture is not itself a defect.
 | Svix | Keep the documented vendored verification fork and its compatibility tests. The audit found no basis for an unreviewed dependency switch. |
 
 The principal regression proofs cover repeated provider failures, 100 concurrent
-capability callers, independent subjects, narrowing and cancellation. They also
-cover same-cache key removal/republication, ambiguous JWK fields, redacted
-scheduler diagnostics, malformed percent escapes, import/install version
-agreement and paused webhooks.
+capability callers, independent subjects, narrowing and cancellation. They also cover same-cache key removal/republication, ambiguous JWK fields and redacted scheduler diagnostics. They further cover malformed percent escapes, import/install version agreement and paused webhooks.
 
 The live migration regression fails after successful schema changes (DDL, data
 definition language). It checks rollback and failure recording, then a corrected

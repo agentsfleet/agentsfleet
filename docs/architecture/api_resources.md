@@ -178,7 +178,7 @@ GET reports current prerequisites in `setup.checks`; changes to a saved review d
 
 `Fleet.name` and creation `name` retain the existing validated fleet slug. `Draft.title` is a separate human display title, 1..100 characters; it does not change authored slugs. Review exposes both without substituting a display title into definition metadata or runtime config.
 
-An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe; it changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.
+An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe. It changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.
 
 `LibraryCard = {id,name,description,visibility:"platform"|"tenant",created_at,requirements,required_credentials_reasons,head_revision_id,etag}` keeps the gallery meaning of `afd_api_wire`'s library `Card`. `Library = {card,head:LibraryRevision,review,etag}`. `LibraryRevision = {id,library_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`.
 
@@ -265,7 +265,7 @@ C6 publishes only a draft candidate. Native JSON can initialize that draft; GitH
 
 Source-repository fields, upload/import/re-import routes, bundle delivery and retired bundle flags are removed with their dedicated implementations. GitHub runtime triggers and repository tools remain independent capabilities.
 
-The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10, reviews N4, and explicitly invokes C1 to Save. It can publish through C6/N15 or install a pinned Library revision through C1.
+The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10 and reviews N4. It explicitly invokes C1 to Save. It can publish through C6/N15 or install a pinned Library revision through C1.
 
 Browser and terminal use the same authorization, replay, validation, billing and readiness rules. Terminal conversation text is the authoring input; scripts may submit text but cannot skip review or grant checks.
 
@@ -323,7 +323,7 @@ Runner route identities live in `afd_http`'s runner routes; path constants live 
 
 The claim returns 200 `{lease: TaggedLease|null,retry_after_ms?:integer}`; no-work uses `lease:null` plus the backoff hint. This keeps the existing poll envelope from `af_wire`'s lease module. A host may opt into fleet-only work; both kinds still count against daemon-enforced worker_count.
 
-A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{lease_id}/renew` and `POST /v1/runners/me/reports`, one line per provider request, at most 512 lines (`af_wire::usage::LINES_MAX`) in each body. A renewal past the cap still extends and records nothing; a report past it is refused 400 `UZ-REQ-001`.
+A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{lease_id}/renew` and `POST /v1/runners/me/reports`, one line per provider request. Each body carries at most 512 lines (`af_wire::usage::LINES_MAX`). A renewal past the cap still extends and records nothing; a report past it is refused 400 `UZ-REQ-001`.
 
 A body carrying the retired cumulative totals (`input_tokens`, `cached_input_tokens`, `output_tokens`) is refused on both, naming the field. A renewal answers 400 `UZ-RUN-013` and does not extend; a report answers 400 `UZ-REQ-001`. Authoring leases carry a `Meter` instead (below), and the cap does not apply to them.
 
@@ -363,7 +363,9 @@ Reports also accept `{kind:"accounting",fence,report_id,outcome,failure_reason?,
 
 Exact accounting replay returns that acknowledgement whether the original terminal report committed, was never received, or the draft was deleted. Changed accounting under the same identity conflicts; a caller-supplied digest never substitutes for validated usage. First accounting-only settlement records terminal accounting once and cannot create a message, candidate or answer.
 
-A deleted/expired generation may confirm or settle authenticated attempt accounting but cannot restore private state. Terminal answer submission has a separate content digest; exact terminal replay may acknowledge it while retained, but accounting replay never opens or reconstructs it. Known daemon receipts override runner estimates; unknown liability remains until authoritative settlement.
+A deleted/expired generation may confirm or settle authenticated attempt accounting but cannot restore private state. Terminal answer submission has a separate content digest.
+
+Exact terminal replay may acknowledge it while retained, but accounting replay never opens or reconstructs it. Known daemon receipts override runner estimates; unknown liability remains until authoritative settlement.
 
 `failure_reason` is required for failed/timed_out reports and absent otherwise. It uses the Message reason enum above. The daemon validates the reason against dispatch facts and controls the final code/action.
 
@@ -401,7 +403,7 @@ A proposal result is untrusted until `/activity` commits it. No separate model-c
 
 5. Save bounded result and authoritative usage before returning 200. Exact completed replay rechecks live authorization and returns the same result without dispatch/debit. Changed-body reuse returns REPLAY.
 
-   A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls; never redispatch that intent.
+   A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls. Never redispatch that intent.
 
 6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
 

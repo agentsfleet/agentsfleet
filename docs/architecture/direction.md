@@ -14,11 +14,15 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
 - **All trigger sources enter the same event-processing path.** Webhook, cron, steer, and continuation all commit to `fleet.admissions`; the lease/run path treats every actor alike. See the [admission and run flows](./data_flow.md).
 
-- **Behaviour is primarily defined in natural language, through chat, into one reviewed Definition.** It holds a one-line `description`, `instructions_md` and a `config` policy document. `af_fleet_runtime` owns the Definition type and the one parser that turns `config` into `FleetConfig`: triggers, tools, credentials, network, budget, gates, repository binding, model, and context. The instructions are advisory prose the fleet reads at run open.
+- **Behaviour is defined mainly in natural language, through chat, into one reviewed Definition**. It holds a one-line `description`, `instructions_md` and a `config` policy document.
+
+  `af_fleet_runtime` owns the Definition type and the one parser that turns `config` into `FleetConfig`. That covers triggers, tools, credentials, network, budget, gates, repository binding, model and context. The instructions are advisory prose the fleet reads at run open.
 
   See [`capabilities.md`](./capabilities.md) §1.
 
-- **Secrets are injected at run time, never embedded in prompt text or fleet context.** The supervisor substitutes `${secrets.NAME.FIELD}` at send time, outside the sandbox. The activity frame carries `args_redacted`, never the bytes ([`runner_execution.md`](./runner_execution.md#credentials)). See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`, [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
+- **Secrets are injected at run time, never embedded in prompt text or fleet context**. The supervisor substitutes `${secrets.NAME.FIELD}` at send time, outside the sandbox. The activity frame carries `args_redacted`, never the bytes ([`runner_execution.md`](./runner_execution.md#credentials)).
+
+  See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`, [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
 
 - **History is durable with actor provenance.** Every event lands in the Fleet event store (`fleet.events`) with its actor. Actors read `steer:<user>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
 

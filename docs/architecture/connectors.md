@@ -65,7 +65,7 @@ The per-provider deltas are each provider's `complete::read` arm and GitHub's pr
 
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs. Handlers match exhaustively on it, so a new archetype cannot land half-wired. No `if provider == "slack"` exists anywhere in the flow.
 
-- **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name and a variant with a missing arm does not compile.
+- **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name. A variant with a missing arm does not compile.
 
   Unit tests pin the rest. Every id parses back to its variant, no two display names match, and every OAuth connector asks for at least one scope. No two providers share a signed-state domain or nonce namespace.
 
@@ -146,7 +146,9 @@ Those three providers are plain `agentsfleet secret create` entries, never regis
 
    With no claim, exactly one accessible installation repairs internal state loss. Zero returns 403 `UZ-CONN-008` (install the App, then connect again), and more than one returns 403 `UZ-CONN-008` too. The datastore also refuses to move an installation already bound to another workspace.
 
-3. **Platform app secrets live in the admin-workspace vault** as per-provider `<provider>-app` bags (`slack-app`, `github-app`, …). One app per provider is shared across all tenants, catastrophic if leaked, never on a per-tenant surface. GitHub's bag carries its App identity, user-authorization client credentials, and App-level webhook secret; a missing bag fails loud with 503 `UZ-CONN-001`.
+3. **Platform app secrets live in the admin-workspace vault** as per-provider `<provider>-app` bags (`slack-app`, `github-app`, …). One app per provider is shared across all tenants, catastrophic if leaked, never on a per-tenant surface.
+
+   GitHub's bag carries its App identity, user-authorization client credentials and App-level webhook secret. A missing bag fails loud with 503 `UZ-CONN-001`.
 
 4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
 
@@ -285,13 +287,15 @@ A grant is **requested at Save**. When a saved fleet's readiness review finds a 
 
 The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_authoring`'s creation progress). The lease path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s lease deliver).
 
-Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox, a detail page with an evidence tree, resolve buttons, a webhook, a timeout sweeper, and an append-only audit.
+Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook, a timeout sweeper and an append-only audit.
 
 **A gate is a per-event decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
 
 Resolving the gate as approved flips the grant and the gate in one statement, so the two cannot disagree. Any non-approval outcome drives the grant to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`, so a fleet that cannot obtain a grant writes no event, takes no lease, and reports nothing. It goes silently inert rather than failing visibly.
+Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no event, takes no lease and reports nothing.
+
+It goes silently inert rather than failing visibly.
 
 An origination path reachable only with a credential the fleet does not hold produces exactly that silence.
 

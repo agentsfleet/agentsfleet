@@ -254,8 +254,7 @@ omit its model and review then resolves the tenant default.
 | `events` | Append-only runner history | unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
 | `lifetime_counters` | Per-runner tallies |  |
 
-`sandbox_config` holds tier-specific knobs as JSON validated in the application:
-`{"extra_binds": [...]}` for namespace tiers today; microVM keys arrive with the tier that reads them.
+`sandbox_config` holds tier-specific knobs as JSON validated in the application. Namespace tiers use `{"extra_binds": [...]}` today, and microVM keys arrive with the tier that reads them.
 Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, every check passed),
 keeping "no self-test yet" distinct from "self-test failed".
 
@@ -347,8 +346,7 @@ A column kept with no reader still owes a drop under rule 7.
   `id, name, created_at, revoked_at`, and `ApiKeySummary` has no description field.
 - **`identity.cli_credentials.credential_prefix`, `deployment`, `created_from_address`: kept,
   no reader.** Slot 1160 declares them and only `afd_tenant`'s `insert_cli_credential.sql` writes
-  them. The table's one read, `afd_state`'s `select_cli_credential.sql`, selects none of them, and
-  the mint response echoes the request's deployment, not the stored one.
+  them. The table's one read, `afd_state`'s `select_cli_credential.sql`, selects none of them. The mint response echoes the request's deployment, not the stored one.
 - **`identity.cli_credentials.tenant_id`: kept.** Slot 1160 declares it and
   `select_cli_credential.sql` reads it during authentication. The mint copies the user's tenant,
   and the reading statement already joins `identity.users`. The column therefore restates
@@ -364,7 +362,7 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`model.platform_defaults.base_url`: kept.** Slot 1320 declares it; `afd_credential`'s
   `select_active_platform_default.sql` reads it.
 - **`runner.leases.last_metered_at`: kept.** Slot 1810 declares it as the lease's runtime cursor
-  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `meter_lease.sql`); the expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
+  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `meter_lease.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
   `bill_expired_slice.sql`).
 
   The review listed it as dropped. Per-request billing kept this one
