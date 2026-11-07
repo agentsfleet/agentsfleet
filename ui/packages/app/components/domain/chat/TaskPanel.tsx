@@ -5,7 +5,7 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { TaskResource } from "./use-task-read";
 import type { TaskDetails } from "./use-task-details";
 import type { FleetTaskProps } from "./FleetTaskProvider";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Section, SignalSpinner } from "@agentsfleet/design-system";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Section } from "@agentsfleet/design-system";
 import { CircleDot, Clock3, TriangleAlert } from "lucide-react";
 import { taskActivityLabel } from "@/lib/task-activity";
 import { TaskDetailView } from "./TaskDetail";
@@ -42,7 +42,7 @@ function CurrentWork() {
 }
 
 function WorkLoading() {
-  return <output className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground"><SignalSpinner aria-hidden="true" />Reading current work…</output>;
+  return <output data-chat-loading="true" className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground">Reading current work…</output>;
 }
 
 function WorkReadStatus({resource, retry}: {resource: TaskResource<TaskPage>; retry: () => void}) {
