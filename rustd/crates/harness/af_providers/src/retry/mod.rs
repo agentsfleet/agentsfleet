@@ -103,15 +103,15 @@ impl Unanswered {
 /// # Errors
 /// The last transport failure, for a send that never got a status.
 pub(crate) async fn send(
-    build: impl Fn() -> RequestBuilder,
-    mut retrying: impl FnMut(Retrying),
+    build: impl Fn() -> RequestBuilder + Sync,
+    mut retrying: impl FnMut(Retrying) + Send,
 ) -> reqwest::Result<Response> {
     let policy = ExponentialBuilder::default()
         .with_min_delay(BACKOFF)
         .with_max_times(ATTEMPTS - 1)
         .with_jitter();
     let mut attempt = 0;
-    let sent = (|| async { answered(build().send().await) })
+    let sent = (async || answered(build().send().await))
         .retry(policy)
         .when(Unanswered::retryable)
         .adjust(Unanswered::wait)
@@ -129,7 +129,7 @@ pub(crate) async fn send(
 }
 
 /// One send's result as an answer, or why it was not one.
-fn answered(sent: reqwest::Result<Response>) -> std::result::Result<Response, Unanswered> {
+fn answered(sent: reqwest::Result<Response>) -> Result<Response, Unanswered> {
     let response = sent.map_err(Unanswered::Transport)?;
     if response.status().is_success() {
         return Ok(response);

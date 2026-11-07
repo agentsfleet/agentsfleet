@@ -7,10 +7,14 @@
 //! retry) and the turn's chunks. The model key lives only here, in the
 //! supervisor: no provider runs inside a sandbox.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod decision;
 pub mod error;
+pub mod observe;
+#[cfg(any(test, feature = "test-util"))]
+pub mod testing;
 
 mod connect;
 mod image_input;

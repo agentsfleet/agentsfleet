@@ -11,6 +11,7 @@
 //! reads it (`docs/architecture/runner_fleet.md` §"Egress model — outbound is
 //! the only network surface").
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;

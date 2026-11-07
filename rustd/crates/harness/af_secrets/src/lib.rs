@@ -7,6 +7,7 @@
 //! guard masks the tokens it mints with the same type, so there is one masker
 //! (`docs/architecture/runner_execution.md` §Credentials).
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;

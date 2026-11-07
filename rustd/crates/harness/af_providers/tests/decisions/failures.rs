@@ -4,11 +4,11 @@ use std::error::Error as _;
 use std::time::Duration;
 
 use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
-use af_wire::decision::{DecisionApi, DecisionInvalid, DecisionOutcome};
-use afr_telemetry::{
-    labels::decision::{DecisionOutcome as MeasuredOutcome, DecisionPurpose},
-    testing::{Recorded, Tally, scoped},
+use af_providers::{
+    observe::labels::{DecisionOutcome as MeasuredOutcome, DecisionPurpose},
+    testing::{Observed, Tally, scoped},
 };
+use af_wire::decision::{DecisionApi, DecisionInvalid, DecisionOutcome};
 use serde_json::json;
 
 use super::fixture::{self, Reply, Server};
@@ -56,7 +56,7 @@ async fn physical_failures_are_bounded_and_never_retried_implicitly() {
         );
         let measured: Vec<_> = measurements.try_iter().collect();
         assert!(
-            matches!(measured.as_slice(), [Recorded::Decision(_, DecisionPurpose::Goal, actual, _)] if *actual == expected)
+            matches!(measured.as_slice(), [Observed::Decision(_, DecisionPurpose::Goal, actual, _)] if *actual == expected)
         );
         assert_failure_details(&error, expected);
         server.shutdown().await;
@@ -101,7 +101,7 @@ async fn a_missing_result_times_out_and_preserves_unknown_delivery() {
     );
     assert!(matches!(
         measurements.try_iter().collect::<Vec<_>>().as_slice(),
-        [Recorded::Decision(_, _, MeasuredOutcome::Timeout, _)]
+        [Observed::Decision(_, _, MeasuredOutcome::Timeout, _)]
     ));
     assert_eq!(
         server.unconsumed(),

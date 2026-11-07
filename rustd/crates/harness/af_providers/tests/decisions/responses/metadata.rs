@@ -80,7 +80,7 @@ fn metadata_faults() -> [MetadataFault; 6] {
     ]
 }
 
-fn usage_fault(name: &'static str, path: &'static str, value: Value) -> MetadataFault {
+const fn usage_fault(name: &'static str, path: &'static str, value: Value) -> MetadataFault {
     (
         name,
         path,

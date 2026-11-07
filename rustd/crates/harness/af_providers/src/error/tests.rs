@@ -228,7 +228,7 @@ fn should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhos
 // seam=the real reqwest builder; no_claim=provider network failure.
 #[test]
 fn should_preserve_a_client_builder_refusal_without_calling_it_transport_loss() {
-    let source = afd_identity::direct(std::time::Duration::from_secs(1))
+    let source = reqwest::ClientBuilder::new()
         .user_agent("\n")
         .build()
         .unwrap_err();

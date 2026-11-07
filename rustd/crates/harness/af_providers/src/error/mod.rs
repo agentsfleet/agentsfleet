@@ -171,29 +171,62 @@ impl Error {
     /// HTTP status from a physical decision refusal; the logical caller owns
     /// retry eligibility and reserves every permitted attempt independently.
     #[must_use]
-    pub fn decision_status(&self) -> Option<u16> {
+    pub const fn decision_status(&self) -> Option<u16> {
         match self.kind() {
             ErrorKind::DecisionStatus { status, .. } => Some(*status),
-            _ => None,
+            ErrorKind::DecisionEndpoint { .. }
+            | ErrorKind::DecisionPreflight { .. }
+            | ErrorKind::DecisionBuild { .. }
+            | ErrorKind::DecisionOversize
+            | ErrorKind::Refused { .. }
+            | ErrorKind::Lost { .. }
+            | ErrorKind::Ended { .. }
+            | ErrorKind::Silent { .. }
+            | ErrorKind::Oversize { .. }
+            | ErrorKind::Unreadable { .. }
+            | ErrorKind::Wire { .. }
+            | ErrorKind::Unhosted { .. }
+            | ErrorKind::BlockedEndpoint { .. }
+            | ErrorKind::Unsendable { .. }
+            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Configuration { .. }
+            | ErrorKind::Client { .. } => None,
         }
     }
 
     /// Provider-requested wait for a decision refusal. The logical caller still
     /// enforces its retry count, remaining time and fresh physical reservation.
     #[must_use]
-    pub fn decision_retry_after(&self) -> Option<std::time::Duration> {
+    pub const fn decision_retry_after(&self) -> Option<std::time::Duration> {
         match self.kind() {
             ErrorKind::DecisionStatus {
                 status: 429 | 529,
                 retry_after,
             } => *retry_after,
-            _ => None,
+            ErrorKind::DecisionEndpoint { .. }
+            | ErrorKind::DecisionPreflight { .. }
+            | ErrorKind::DecisionBuild { .. }
+            | ErrorKind::DecisionOversize
+            | ErrorKind::DecisionStatus { .. }
+            | ErrorKind::Refused { .. }
+            | ErrorKind::Lost { .. }
+            | ErrorKind::Ended { .. }
+            | ErrorKind::Silent { .. }
+            | ErrorKind::Oversize { .. }
+            | ErrorKind::Unreadable { .. }
+            | ErrorKind::Wire { .. }
+            | ErrorKind::Unhosted { .. }
+            | ErrorKind::BlockedEndpoint { .. }
+            | ErrorKind::Unsendable { .. }
+            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Configuration { .. }
+            | ErrorKind::Client { .. } => None,
         }
     }
 
     /// Whether this decision failed before a physical request could be sent.
     #[must_use]
-    pub fn decision_not_sent(&self) -> bool {
+    pub const fn decision_not_sent(&self) -> bool {
         matches!(
             self.kind(),
             ErrorKind::DecisionEndpoint { .. }
@@ -237,7 +270,7 @@ impl Error {
 
     /// The registry code this failure is logged under.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::DecisionEndpoint { .. }
             | ErrorKind::DecisionBuild { .. }
@@ -264,7 +297,7 @@ impl Error {
     /// unreadable or oversized turn and a provider this runner does not speak
     /// are the fleet's error and carry none.
     #[must_use]
-    pub fn failure_class(&self) -> Option<FailureClass> {
+    pub const fn failure_class(&self) -> Option<FailureClass> {
         match self.kind() {
             ErrorKind::Lost { .. } | ErrorKind::Ended { .. } => Some(FailureClass::TransportLoss),
             ErrorKind::DecisionEndpoint { .. }

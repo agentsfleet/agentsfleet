@@ -196,8 +196,8 @@ async fn refused_native_counts_never_open_a_paid_runtime_attempt()
 )]
 async fn a_silent_runtime_call_records_deadline_and_cancellation_once()
 -> Result<(), Box<dyn std::error::Error>> {
-    use afr_telemetry::labels::CallOutcome;
-    use afr_telemetry::testing::{Recorded, Tally, scoped};
+    use crate::observe::labels::CallOutcome;
+    use crate::testing::{Observed, Tally, scoped};
     let (recorder, received) = Tally::new();
     scoped(recorder, async {
         let (turns, _physical) = turns_with_stream(200, true)?;
@@ -216,7 +216,7 @@ async fn a_silent_runtime_call_records_deadline_and_cancellation_once()
     let outcomes: Vec<_> = received
         .try_iter()
         .filter_map(|record| match record {
-            Recorded::ModelCall(_, _, outcome, _, _) => Some(outcome),
+            Observed::ModelCall(_, _, outcome, _, _) => Some(outcome),
             _ => None,
         })
         .collect();

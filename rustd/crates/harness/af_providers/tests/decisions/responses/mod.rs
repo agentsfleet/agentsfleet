@@ -1,14 +1,14 @@
 //! Complete HTTP exchanges reject semantic faults while retaining paid usage.
 
 use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
-use af_wire::decision::{
-    DecisionApi, DecisionInvalid, DecisionOutcome, DecisionPurpose, DecisionResult, DecisionUsage,
-};
-use afr_telemetry::{
-    labels::decision::{
+use af_providers::{
+    observe::labels::{
         DecisionOutcome as MeasuredOutcome, DecisionProvider, DecisionPurpose as MeasuredPurpose,
     },
-    testing::{Recorded, Tally, scoped},
+    testing::{Observed, Tally, scoped},
+};
+use af_wire::decision::{
+    DecisionApi, DecisionInvalid, DecisionOutcome, DecisionPurpose, DecisionResult, DecisionUsage,
 };
 use serde_json::Value;
 
@@ -79,7 +79,7 @@ fn usage(api: DecisionApi) -> DecisionUsage {
     }
 }
 
-fn measured_provider(api: DecisionApi) -> DecisionProvider {
+const fn measured_provider(api: DecisionApi) -> DecisionProvider {
     match api {
         DecisionApi::Typesafe => DecisionProvider::Typesafe,
         DecisionApi::Perplexity => DecisionProvider::Perplexity,
@@ -88,7 +88,7 @@ fn measured_provider(api: DecisionApi) -> DecisionProvider {
     }
 }
 
-fn measured_outcome(outcome: &DecisionOutcome) -> MeasuredOutcome {
+const fn measured_outcome(outcome: &DecisionOutcome) -> MeasuredOutcome {
     match outcome {
         DecisionOutcome::Refused => MeasuredOutcome::Refused,
         DecisionOutcome::Invalid {
@@ -105,7 +105,7 @@ fn measured_outcome(outcome: &DecisionOutcome) -> MeasuredOutcome {
 }
 
 fn measurements_match(
-    measured: &[Recorded],
+    measured: &[Observed],
     api: DecisionApi,
     purpose: DecisionPurpose,
     expected: &DecisionOutcome,
@@ -116,12 +116,12 @@ fn measurements_match(
         MeasuredPurpose::Goal
     };
     assert!(
-        matches!(measured, [Recorded::Decision(provider, actual_purpose, outcome, _)]
+        matches!(measured, [Observed::Decision(provider, actual_purpose, outcome, _)]
         if *provider == measured_provider(api) && *actual_purpose == measured_purpose && *outcome == measured_outcome(expected))
     );
 }
 
-fn invalid() -> DecisionOutcome {
+const fn invalid() -> DecisionOutcome {
     DecisionOutcome::Invalid {
         reason: DecisionInvalid::Answers,
     }

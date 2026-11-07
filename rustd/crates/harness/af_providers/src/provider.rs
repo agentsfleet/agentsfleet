@@ -19,7 +19,7 @@ use crate::image_input::ImageInput;
 const WEB_SEARCH: &str = "web_search";
 
 /// One tool call the model asked for.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Call {
     /// The provider's id for the call, echoed with its result.
     pub id: String,
@@ -85,7 +85,7 @@ pub enum Message {
 }
 
 /// One tool as the model is offered it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ToolSpec<'a> {
     /// The name the model calls it by.
     pub name: &'a str,
@@ -139,8 +139,9 @@ pub struct Request<'a> {
 ///
 /// Each prompt token is counted once, in exactly one of five places: read
 /// fresh, read from the provider's cache, or written to it under one of three
-/// lifetimes. The daemon bills each at its own rate (billing §11). Reasoning is
-/// inside `output`, once.
+/// lifetimes. The daemon bills each at its own rate
+/// (`docs/architecture/billing_and_provider_keys.md`). Reasoning is inside
+/// `output`, once.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
     /// Prompt tokens the provider read fresh, neither from its cache nor
@@ -223,8 +224,9 @@ pub trait Provider: Send + Sync + fmt::Debug {
     fn measure(&self, request: Request<'_>) -> Result<u64> {
         let body = crate::request::request(af_wire::inference::InferenceApi::Chat, &request)?;
         let text = serde_json::to_string(&body)?;
-        Ok(af_inference::input_tokens(request.model, &text)
-            .saturating_add(body.chat_history.len().saturating_mul(32)) as u64)
+        let tokens = af_inference::input_tokens(request.model, &text)
+            .saturating_add(body.chat_history.len().saturating_mul(32));
+        Ok(u64::try_from(tokens).unwrap_or(u64::MAX))
     }
 
     /// Streams one turn. The stream ends when the turn does; an error ends it

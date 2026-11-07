@@ -18,10 +18,10 @@
 use std::fmt;
 use std::ops::ControlFlow;
 
+use crate::observe;
+use crate::observe::labels::{CallOutcome, Provider as ProviderLabel, RetryReason};
 use af_inference::stream::{StreamTurn, TurnControl};
 use af_wire::activity::StreamTextKind;
-use afr_telemetry::labels::{Provider as ProviderLabel, RetryReason};
-use afr_telemetry::record;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 use rig_core::DynModel;
@@ -118,21 +118,20 @@ impl Turns {
         let control = TurnControl {
             observer: Some(std::sync::Arc::new(move |timing| {
                 use af_inference::stream::FailureCause;
-                use afr_telemetry::labels::CallOutcome;
                 let outcome = match timing.cause {
                     None => CallOutcome::Completed,
                     Some(FailureCause::Provider) => CallOutcome::Provider,
                     Some(FailureCause::Deadline) => CallOutcome::Deadline,
                     Some(FailureCause::Cancelled) => CallOutcome::Cancelled,
                 };
-                record::model_call(
+                observe::model_call(
                     &observed_model,
                     observed_provider,
                     outcome,
                     timing.elapsed,
                     timing.first_text,
                 );
-                record::model_tokens(&observed_model, observed_provider, timing.tokens);
+                observe::model_tokens(&observed_model, observed_provider, timing.tokens);
             })),
             correlation_id: self.lease_id.clone().into(),
             ..Default::default()
@@ -156,7 +155,7 @@ impl Turns {
 
     /// Logs and counts a turn opened again after `failure`.
     fn reopened(&self, attempt: usize, failure: &ProviderError) {
-        record::retry(
+        observe::retry(
             ProviderLabel::of(&self.provider),
             RetryReason::StreamReopened,
         );

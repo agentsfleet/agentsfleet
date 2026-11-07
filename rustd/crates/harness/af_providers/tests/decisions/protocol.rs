@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 
 use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
-use af_wire::decision::{DecisionAnswer, DecisionApi, DecisionOutcome, DecisionUsage};
-use afr_telemetry::{
-    labels::decision::{DecisionOutcome as MeasuredOutcome, DecisionProvider, DecisionPurpose},
-    testing::{Recorded, Tally, scoped},
+use af_providers::{
+    observe::labels::{DecisionOutcome as MeasuredOutcome, DecisionProvider, DecisionPurpose},
+    testing::{Observed, Tally, scoped},
 };
+use af_wire::decision::{DecisionAnswer, DecisionApi, DecisionOutcome, DecisionUsage};
 use serde_json::json;
 
 use super::fixture::{self, Reply, Server};
@@ -107,7 +107,7 @@ async fn openai_text_uses_direct_input(
     server.shutdown().await;
 }
 
-fn assert_native_exchange(seen: &super::fixture::Seen, result: &af_wire::decision::DecisionResult) {
+fn assert_native_exchange(seen: &fixture::Seen, result: &af_wire::decision::DecisionResult) {
     assert_eq!(
         seen.body,
         json!({"model":"requested-model", "state":{"accepted_request":"Repair the importer", "head":"head-b", "checks":{"unit":"passed", "integration":"pending"}}, "questions":{
@@ -170,11 +170,11 @@ fn assert_assessment(result: &DecisionOutcome) {
 }
 
 fn assert_measurement(
-    measurements: &std::sync::mpsc::Receiver<Recorded>,
+    measurements: &std::sync::mpsc::Receiver<Observed>,
     expected: DecisionProvider,
 ) {
     let measured: Vec<_> = measurements.try_iter().collect();
     assert!(
-        matches!(measured.as_slice(), [Recorded::Decision(provider, DecisionPurpose::Goal, MeasuredOutcome::Completed, _)] if *provider == expected)
+        matches!(measured.as_slice(), [Observed::Decision(provider, DecisionPurpose::Goal, MeasuredOutcome::Completed, _)] if *provider == expected)
     );
 }

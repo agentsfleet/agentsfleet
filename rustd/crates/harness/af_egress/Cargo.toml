@@ -45,11 +45,35 @@ tokio = { workspace = true, features = ["net"] }
 tracing.workspace = true
 # A URL's host, read as an address when the model wrote an IP literal.
 url.workspace = true
+# `testing::upstream`: an HTTPS fake a routed `Network` trusts.
+axum = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
+rcgen = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 
 [features]
 # M-TEST-UTIL. A counting mint and a recording transport, so the tool suites
-# prove what reaches the wire without a socket.
-test-util = ["af_core/test-util", "tokio/sync"]
+# prove what reaches the wire without a socket; and an HTTPS upstream, so a
+# suite proves it with one.
+test-util = [
+    "af_core/test-util",
+    "tokio/sync",
+    "tokio/macros",
+    "tokio/rt",
+    "tokio/time",
+    "dep:axum",
+    "dep:futures-util",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:rcgen",
+    "dep:rustls",
+    "dep:tokio-rustls",
+    "dep:tokio-util",
+]
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }

@@ -135,7 +135,7 @@ impl DecisionEvaluator for DecisionClient {
 async fn read(response: reqwest::Response) -> Result<Vec<u8>> {
     if response
         .content_length()
-        .is_some_and(|size| size > REPLY_MAX_BYTES as u64)
+        .is_some_and(|size| size > u64::try_from(REPLY_MAX_BYTES).unwrap_or(u64::MAX))
     {
         return Err(ErrorKind::DecisionOversize.into());
     }

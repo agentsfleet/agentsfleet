@@ -154,7 +154,7 @@ fn normalize(raw: RawAnswer) -> Option<DecisionAnswer> {
     }
 }
 
-fn invalid() -> DecisionOutcome {
+const fn invalid() -> DecisionOutcome {
     DecisionOutcome::Invalid {
         reason: DecisionInvalid::Answers,
     }

@@ -44,7 +44,7 @@ impl Resolve for SystemResolver {
 
 /// A name refused because one of its addresses is blocked; the guarded client
 /// hands it to reqwest, and [`crate::blocked_address`] reads it back out.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Copy, thiserror::Error)]
 #[error("the name resolves to an address this runner never reaches")]
 pub struct BlockedAddress;
 

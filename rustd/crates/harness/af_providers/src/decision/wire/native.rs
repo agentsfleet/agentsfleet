@@ -153,7 +153,7 @@ fn legend_matches(levels: &[String], legend: &BTreeMap<u32, Value>) -> bool {
         })
 }
 
-fn invalid() -> DecisionOutcome {
+const fn invalid() -> DecisionOutcome {
     DecisionOutcome::Invalid {
         reason: DecisionInvalid::Answers,
     }

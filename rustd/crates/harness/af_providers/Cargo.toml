@@ -11,20 +11,15 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[package.metadata.cargo-shear]
-# Used by `tests/support/`, which the provider suite includes through
-# `#[path = "../support/mod.rs"]`, a module path the source scan does not follow.
-ignored = ["afr_memory", "rcgen", "rustls"]
-
 [lints]
 workspace = true
 
 [dependencies]
-# The runner's own families: a provider send retried.
-afr_telemetry.workspace = true
 # `error_shell!` and the registry code a provider failure is logged under.
 af_core.workspace = true
 af_inference.workspace = true
+# The label vocabulary and closed-set macro a provider measurement is declared in.
+af_observability.workspace = true
 af_crypto.workspace = true
 # The stream text kinds the live tail carries, and the failure classes a
 # report names.
@@ -62,30 +57,23 @@ url.workspace = true
 # The retry log line, and the level rig's own lines are held to.
 tracing.workspace = true
 
+# The TLS listener `testing::tls` serves a fake provider on.
+rcgen = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+
+[features]
+# M-TEST-UTIL: an observer a suite reads back, and the fake provider's TLS
+# listener, for this crate's suites and the runner's.
+test-util = ["dep:rcgen", "dep:rustls", "dep:tokio-rustls"]
+
 [dev-dependencies]
 # Scoped channel-based logging proof avoids process-wide capture locks.
 tracing-subscriber.workspace = true
-afd_identity.workspace = true
 # Rig's scripted stream exercises unmodeled items and retained terminal failures.
 rig-core = { workspace = true, features = ["test-utils"] }
-# The recorder a suite reads its own measurements back through.
-afr_telemetry = { workspace = true, features = ["test-util"] }
 # The log capture the retry and key suites read their lines through.
 af_core = { workspace = true, features = ["test-util"] }
-# The real loop drives each wire in `tests/`, so a turn is proven end to end:
-# frames, trace, records and report included. A dev-dependency on a crate that
-# depends on this one links the same library into the integration tests.
-afr_agent = { workspace = true, features = ["test-util"] }
-# The empty memory seed every driven run starts from.
-afr_memory.workspace = true
-# The stub plan tool the loop's catalog hosts.
-afr_tools = { workspace = true, features = ["test-util"] }
-# The mint a suite's run carries, which mints nothing.
-af_egress = { workspace = true, features = ["test-util"] }
-# The real executor the image suite reads a workspace through, served on a
-# scratch socket.
-afr_executor.workspace = true
-tempfile.workspace = true
 # The fake provider: a real listener, so a status, a header and a streamed
 # body are proven on the socket rather than assumed by a mock.
 axum.workspace = true
@@ -97,3 +85,9 @@ tokio-rustls.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync", "test-util"] }
 # The stop every driven run is given.
 tokio-util.workspace = true
+
+[[test]]
+name = "decisions"
+path = "tests/decisions/main.rs"
+# The suite reads its measurements and serves its TLS through `testing`.
+required-features = ["test-util"]

@@ -24,7 +24,7 @@ pub(super) fn encode(
         }
     };
     let body = serde_json::to_vec(&document)?;
-    if body.len() > profile.input_max_bytes as usize {
+    if body.len() > usize::try_from(profile.input_max_bytes).unwrap_or(usize::MAX) {
         return Err(ErrorKind::DecisionPreflight {
             reason: "the complete encoded decision input exceeds the reviewed profile capacity",
         }

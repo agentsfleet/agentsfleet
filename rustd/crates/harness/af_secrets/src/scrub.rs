@@ -71,7 +71,7 @@ impl Scrub {
     pub fn new(policy: &ExecutionPolicy<'_>) -> Result<Self> {
         let api_key = (API_KEY_NAME.to_owned(), policy.api_key.as_ref());
         let statics = StaticSecrets::new(policy.secrets_map.as_ref()).values();
-        Self::of([api_key].into_iter().chain(statics))
+        Self::of(std::iter::once(api_key).chain(statics))
     }
 
     /// A scrub masking each `(name, value)`; an empty value masks nothing.

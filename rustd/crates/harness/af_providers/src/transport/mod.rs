@@ -3,11 +3,11 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::observe;
+use crate::observe::labels::{Provider, RetryReason};
 use af_core::clock::saturating_millis;
 use af_inference::transport::{HttpTransport, SendRequest};
 use af_wire::policy::CUSTOM_PROVIDER_PREFIX;
-use afr_telemetry::labels::{Provider, RetryReason};
-use afr_telemetry::record;
 use bytes::Bytes;
 use futures_util::{TryStreamExt as _, future::BoxFuture};
 use reqwest::Url;
@@ -76,7 +76,7 @@ impl Transport {
         HttpTransport::new(Arc::new(self))
     }
 
-    pub(crate) fn once(mut self) -> Self {
+    pub(crate) const fn once(mut self) -> Self {
         self.retry = false;
         self
     }
@@ -103,7 +103,7 @@ impl Transport {
 
     /// Logs and counts a send about to be retried.
     fn retrying(&self, retry: Retrying) {
-        record::retry(self.whose.label, RetryReason::of_status(retry.status));
+        observe::retry(self.whose.label, RetryReason::of_status(retry.status));
         let lease_id = &*self.whose.lease_id;
         let provider = &*self.whose.provider;
         let status = retry.status;
@@ -132,7 +132,8 @@ impl SendRequest for Transport {
             let status = response.status();
             let headers = response.headers().clone();
             let stream = response.bytes_stream().map_err(rig_http::Error::instance);
-            let mut response = http::Response::new(Box::pin(stream) as rig_http::BoxedStream);
+            let stream: rig_http::BoxedStream = Box::pin(stream);
+            let mut response = http::Response::new(stream);
             *response.status_mut() = status;
             *response.headers_mut() = headers;
             Ok(response)

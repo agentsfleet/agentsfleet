@@ -3,11 +3,11 @@
 use std::time::Duration;
 
 use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
-use af_wire::decision::DecisionApi;
-use afr_telemetry::{
-    labels::decision::DecisionOutcome,
-    testing::{Recorded, Tally, scoped},
+use af_providers::{
+    observe::labels::DecisionOutcome,
+    testing::{Observed, Tally, scoped},
 };
+use af_wire::decision::DecisionApi;
 use tracing::instrument::WithSubscriber as _;
 
 use super::{
@@ -43,7 +43,7 @@ async fn failed_and_cancelled_calls_have_correlated_private_diagnostics() {
     );
     assert!(matches!(
         measured.try_iter().collect::<Vec<_>>().as_slice(),
-        [Recorded::Decision(
+        [Observed::Decision(
             _,
             _,
             DecisionOutcome::ProviderFailure,
@@ -129,7 +129,7 @@ async fn assert_cancelled(
     }).with_subscriber(subscriber).await;
     assert!(matches!(
         cancelled.try_iter().collect::<Vec<_>>().as_slice(),
-        [Recorded::Decision(_, _, DecisionOutcome::Cancelled, _)]
+        [Observed::Decision(_, _, DecisionOutcome::Cancelled, _)]
     ));
     let rows: Vec<_> = logs.try_iter().collect();
     let events: Vec<_> = rows

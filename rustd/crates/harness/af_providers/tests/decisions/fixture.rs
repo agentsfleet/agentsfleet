@@ -110,7 +110,8 @@ impl Server {
                 )
             }
         });
-        let (root, tls) = super::tls::server();
+        let (root, tls) =
+            af_providers::testing::tls::server().expect("fixture certificate authority");
         let socket = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("isolated fixture port");
@@ -129,8 +130,13 @@ impl Server {
                 .expect("fixture server");
         });
         Self {
-            base: format!("https://{}:{}", super::tls::HOST, address.port()),
-            client: super::tls::client(root, address),
+            base: format!(
+                "https://{}:{}",
+                af_providers::testing::tls::HOST,
+                address.port()
+            ),
+            client: af_providers::testing::tls::client(root, address)
+                .expect("fixture client pins its generated hostname"),
             seen,
             connections,
             stop,

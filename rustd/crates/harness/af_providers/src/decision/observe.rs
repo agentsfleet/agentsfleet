@@ -6,14 +6,12 @@ use af_wire::decision::{
     DecisionApi, DecisionInvalid, DecisionOutcome as AnswerOutcome, DecisionProfile,
     DecisionPurpose as Purpose, DecisionRequest, DecisionResult,
 };
-use afr_telemetry::{
-    labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose},
-    record,
-};
 use garde::Valid;
 use tracing::Instrument as _;
 
 use super::DecisionClient;
+use crate::observe::labels::{DecisionOutcome, DecisionProvider, DecisionPurpose};
+use crate::observe::{self, decision_span};
 use crate::{Result, error::ErrorKind};
 
 struct Observation<'a> {
@@ -29,7 +27,7 @@ impl Observation<'_> {
         self.finished = true;
         let outcome = outcome(result);
         let elapsed = self.started.elapsed();
-        record::decision(self.provider, self.purpose, outcome, elapsed);
+        observe::decision(self.provider, self.purpose, outcome, elapsed);
         let outcome = outcome.as_str();
         let elapsed_seconds = elapsed.as_secs_f64();
         let decision_call_id = self.call_id;
@@ -58,7 +56,7 @@ impl Drop for Observation<'_> {
     fn drop(&mut self) {
         if !self.finished {
             let elapsed = self.started.elapsed();
-            record::decision(
+            observe::decision(
                 self.provider,
                 self.purpose,
                 DecisionOutcome::Cancelled,
@@ -94,7 +92,7 @@ pub(super) async fn evaluate(
         Purpose::Intent => DecisionPurpose::Intent,
         Purpose::Goal => DecisionPurpose::Goal,
     };
-    let span = afr_telemetry::decision::span(
+    let span = decision_span(
         &request.call_id,
         &profile.model_id,
         &profile.revision,
@@ -152,7 +150,17 @@ fn outcome(result: &Result<DecisionResult>) -> DecisionOutcome {
             {
                 DecisionOutcome::Timeout
             }
-            _ => DecisionOutcome::Unknown,
+            ErrorKind::Refused { .. }
+            | ErrorKind::Lost { .. }
+            | ErrorKind::Ended { .. }
+            | ErrorKind::Silent { .. }
+            | ErrorKind::Oversize { .. }
+            | ErrorKind::Wire { .. }
+            | ErrorKind::Unhosted { .. }
+            | ErrorKind::BlockedEndpoint { .. }
+            | ErrorKind::Unsendable { .. }
+            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Client { .. } => DecisionOutcome::Unknown,
         },
     }
 }

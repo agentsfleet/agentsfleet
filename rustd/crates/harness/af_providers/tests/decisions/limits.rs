@@ -50,9 +50,9 @@ pub(super) async fn escaped_state_and_complete_questions_keep_their_bounds() {
 }
 
 async fn encoded_question_refuses_before_connect() {
-    use afr_telemetry::{
-        labels::decision::DecisionOutcome as MeasuredOutcome,
-        testing::{Recorded, Tally, scoped},
+    use af_providers::{
+        observe::labels::DecisionOutcome as MeasuredOutcome,
+        testing::{Observed, Tally, scoped},
     };
     let mut server = Server::start(vec![]).await;
     let request = expanded_score_request();
@@ -79,7 +79,7 @@ async fn encoded_question_refuses_before_connect() {
     );
     assert!(matches!(
         received.try_iter().collect::<Vec<_>>().as_slice(),
-        [Recorded::Decision(_, _, MeasuredOutcome::NotSent, _)]
+        [Observed::Decision(_, _, MeasuredOutcome::NotSent, _)]
     ));
     assert_eq!((server.connections(), server.unconsumed()), (0, 0));
     server.shutdown().await;

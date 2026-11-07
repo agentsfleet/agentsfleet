@@ -28,6 +28,10 @@ use crate::transport::{Inbound, Outbound, Transport};
 mod resolver;
 #[cfg(test)]
 mod tests;
+// An HTTPS upstream a routed `Network` trusts, for suites that drive a
+// tool's real request through the guard and real TLS.
+#[cfg(feature = "test-util")]
+pub mod upstream;
 
 pub use self::resolver::FakeResolver;
 

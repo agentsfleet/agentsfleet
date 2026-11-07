@@ -144,15 +144,19 @@ fn encoded_pattern(value: &str) -> String {
     let mut chars = value.chars().peekable();
     while let Some(c) = chars.next() {
         result.push_str(&regex::escape(&c.to_string()));
-        if c == '%' {
-            let digits = hex_digits(&mut chars, &mut result, 2);
-            if digits == "25" {
-                hex_digits(&mut chars, &mut result, 2);
+        match c {
+            '%' => {
+                let digits = hex_digits(&mut chars, &mut result, 2);
+                if digits == "25" {
+                    hex_digits(&mut chars, &mut result, 2);
+                }
             }
-        } else if c == '\\' && chars.peek() == Some(&'u') {
-            chars.next();
-            result.push('u');
-            hex_digits(&mut chars, &mut result, 4);
+            '\\' if chars.peek() == Some(&'u') => {
+                chars.next();
+                result.push('u');
+                hex_digits(&mut chars, &mut result, 4);
+            }
+            _literal => {}
         }
     }
     result

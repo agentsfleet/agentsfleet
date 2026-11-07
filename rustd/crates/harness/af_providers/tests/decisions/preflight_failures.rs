@@ -2,11 +2,11 @@
 
 use af_crypto::secret::SecretString;
 use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
-use af_wire::decision::{DecisionApi, DecisionInvalid, DecisionOutcome};
-use afr_telemetry::{
-    labels::decision::{DecisionOutcome as MeasuredOutcome, DecisionPurpose},
-    testing::{Recorded, Tally, scoped},
+use af_providers::{
+    observe::labels::{DecisionOutcome as MeasuredOutcome, DecisionPurpose},
+    testing::{Observed, Tally, scoped},
 };
+use af_wire::decision::{DecisionApi, DecisionInvalid, DecisionOutcome};
 use garde::Unvalidated;
 use serde_json::{Value, json};
 
@@ -64,7 +64,7 @@ async fn profile_refusals_cost_no_physical_send() {
                 .try_iter()
                 .filter(|record| matches!(
                     record,
-                    Recorded::Decision(_, DecisionPurpose::Goal, MeasuredOutcome::NotSent, _)
+                    Observed::Decision(_, DecisionPurpose::Goal, MeasuredOutcome::NotSent, _)
                 ))
                 .count(),
             1
