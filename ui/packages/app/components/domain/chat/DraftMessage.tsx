@@ -2,7 +2,6 @@
 
 import { createContext, memo, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
-import { SignalSpinner } from "@agentsfleet/design-system";
 import { CircleCheckIcon, ClockIcon } from "lucide-react";
 import type { DraftClient } from "@/lib/api/drafts";
 import { MessageSchema, MESSAGE_ROLE } from "@/lib/api/draft-types";
@@ -46,7 +45,7 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
       {saving ? null : text ? user ? <FleetMarkdown expandable>{text}</FleetMarkdown> : <MessagePrimitive.Parts components={PART_COMPONENTS} /> : null}
       {saving ? null : running && context ? <ContextProgressStatus value={context} /> :
         queued && !text ? <output aria-label="Queued" aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><ClockIcon className="size-3.5 text-warning" aria-hidden="true" />Queued…</output>
-        : running && !text ? <output aria-label="Refining setup" aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><SignalSpinner className="text-info" aria-hidden="true" /><span data-chat-loading="true">Refining setup…</span></output>
+        : running && !text ? <output aria-label="Refining setup" aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><span data-chat-loading="true">Refining setup…</span></output>
         : null}
       {!user && message.metadata.custom.failure ? <DraftFailure message={message} /> : null}
     </ChatMessageRow>

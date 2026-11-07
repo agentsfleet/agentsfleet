@@ -125,7 +125,7 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
         variant="default"
         size="icon"
         aria-label={SEND_LABEL}
-        className="shrink-0 self-end rounded-lg"
+        className="shrink-0 self-end rounded-full"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
         {...(tooLong || modelChanging ? { disabled: true } : {})}
       >

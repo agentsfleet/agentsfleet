@@ -4,7 +4,7 @@ import type { DraftView } from "@/lib/api/draft-state";
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { ArrowRightIcon, BookOpenIcon, CircleCheckIcon, CircleAlertIcon, CircleHelpIcon, ClockIcon, PencilIcon, SaveIcon, SparklesIcon, UploadIcon } from "lucide-react";
-import { Button, SignalSpinner } from "@agentsfleet/design-system";
+import { Button } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { MESSAGE_STATE } from "@/lib/api/draft-types";
@@ -26,9 +26,8 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet}: {
   return <div className="mb-sm flex justify-center">
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
       className="flex max-w-full flex-wrap items-center justify-center gap-x-sm gap-y-xs rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-stream">
-      {status.busy ? <SignalSpinner className="text-pulse" aria-hidden="true" /> : null}
       <Icon className={`size-3.5 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" />
-      <span>{status.label}</span>
+      <span data-chat-loading={status.busy}>{status.label}</span>
       {status.confirmed && view.fleet ? onOpenFleet
         ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Button>
         : <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}

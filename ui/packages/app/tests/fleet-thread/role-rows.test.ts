@@ -150,8 +150,9 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
     const working = screen.getByRole("status", { name: "Queued" });
-    // The glyph beside it is decorative; the visible words say queued.
-    expect(working.querySelector("[data-signal-spinner]")?.getAttribute("aria-hidden")).toBe("true");
+    // Queued is static; only work that has started receives the loading sheen.
+    expect(working.querySelector("[data-signal-spinner]")).toBeNull();
+    expect(working.querySelector('[data-chat-loading="true"]')).toBeNull();
     expect(working.querySelector("[data-waiting-verb]")?.textContent).toBe("Queued…");
     expect(working.closest('[data-role="assistant"]')).toBeTruthy();
     expect(screen.queryByText(/^sending$/i)).toBeNull();

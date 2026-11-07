@@ -341,6 +341,7 @@ Inspect third-party pseudo-elements for gradients after dependency upgrades.
 
 Fleet chat and setup chat compose the same controls from `components/domain/chat/ChatComposerFrame.tsx` in the app package.
 `ChatComposerFrame` owns the input, boundary, spacing, height limits, and focus behavior.
+Place the model immediately before the circular Send action in both chat purposes.
 
 `ChatComposerModel` owns model display and selection. `ChatComposerHint` owns supporting copy below the input.
 
@@ -362,6 +363,12 @@ Reuse the reviewed draft's save action, including validation, pending state, and
 
 Explain when changes affect the fleet in plain language. Show confirmed saved versions in the compact status above the composer.
 Keep full revision and access details in setup inspection.
+
+Use a labelled pencil action for editing and a neighboring summary toggle.
+`ChatSummaryProvider` owns only disclosure state; existing task providers retain request ownership.
+The summary starts closed and opens directly as a desktop sidebar or mobile drawer.
+Keep durable tasks visible; omit empty Outputs and Changes sections.
+The saved setup editor returns to its fleet conversation; the conversation returns to Your fleets.
 
 ### Chat state and activity
 
@@ -438,6 +445,7 @@ cannot determine whether arbitrary prose is a technical value; that remains a re
 Fleet setup and Fleet conversation share a moving text highlight for active progress labels.
 Use the existing `tool-shimmer` timing and `data-chat-loading` selector in `interactions.css`.
 Animate paint without changing text geometry, and remove the loading state when work settles.
+Do not add the older braille spinner beside these progress labels. Queued text stays static.
 Reduced-motion and forced-color preferences show static, readable text.
 
 Make movement explain arrival, focus, selection, and disclosure. A finished interface should feel fluid when the person moves through it.

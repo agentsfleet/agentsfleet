@@ -129,7 +129,8 @@ describe("FleetThread — reply parts", () => {
     mockStream([ev({ id: "evt_working", role: "user", actor: "operator", text: "Run it", status: "received" })]);
     renderThread();
     const working = within(replyRow()).getByRole("status", { name: "Working" });
-    expect(working.querySelector("[data-signal-spinner]")).toBeTruthy();
+    expect(working.querySelector('[data-chat-loading="true"]')).toBeTruthy();
+    expect(working.querySelector("[data-signal-spinner]")).toBeNull();
     expect(working.textContent).toContain("Working…");
   });
 });

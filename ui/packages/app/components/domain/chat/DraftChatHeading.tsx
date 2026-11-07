@@ -5,7 +5,9 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label } from "@agentsfleet/design-system";
-import { EllipsisIcon } from "lucide-react";
+import { ChatSummaryToggle } from "./ChatSummary";
+import Link from "next/link";
+import { ArrowLeftIcon, EllipsisIcon, PencilIcon } from "lucide-react";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -16,7 +18,7 @@ import { DraftSaveButton } from "./DraftSaveBar";
 import { EditSetupButton } from "./FleetSetupWorkspace";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 
-type Props = {client: DraftClient; view: DraftView; workspace: string; fleetPage?: boolean; menuItems?: ReactNode; onDirtyChange: (dirty: boolean) => void};
+type Props = {client: DraftClient; view: DraftView; workspace: string; fleetPage?: boolean; returnToFleet?: string; menuItems?: ReactNode; onDirtyChange: (dirty: boolean) => void};
 // The instructions editor is only needed after its dialog opens.
 const DefinitionEditor = nextDynamic(() => import("./DefinitionEditor").then(module => module.DefinitionEditor));
 const INSTRUCTIONS = "Instructions";
@@ -28,19 +30,23 @@ export function DraftChatHeading(props: Props) {
   return <HeadingContent {...props} />;
 }
 
-function HeadingContent({client, view, workspace, fleetPage, menuItems, onDirtyChange}: Props) {
+function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menuItems, onDirtyChange}: Props) {
   const state = useHeadingState(client, view, onDirtyChange);
   const draft = view.draft;
   const recovery = chatRecovery(view);
   const locked = view.busy || view.pending || recovery.pending
     || Boolean(draft && draft.state !== DRAFT_STATE.editing && !savedDraft(view));
   const label = view.fleet?.name ?? view.preview?.instanceName ?? (draft ? chatTitle(draft.title, draft.id, firstChatRequest(view.messages) || draft.candidate?.definition.description) : "New fleet");
+  const returnFleet = fleetPage ? undefined : view.fleet?.id ?? returnToFleet;
   const canEdit = Boolean(draft?.candidate || view.preview || view.fleet?.definition);
   return <>
     <div className="fleet-chat-heading flex w-full shrink-0 flex-wrap items-center gap-md border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
+      <Button asChild variant="ghost" size="icon" aria-label={returnFleet ? "Back to fleet conversation" : "Back to your fleets"}><Link href={returnFleet ? `/w/${workspace}/fleets/${returnFleet}` : `/w/${workspace}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button>
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
       {view.fleet && fleetPage && view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
         ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} /> : null}
+      {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false);}}><PencilIcon size={16} aria-hidden="true" /></Button> : null}
+      <ChatSummaryToggle />
       <DraftSaveButton client={client} view={view} dirty={state.dirty} />
       {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}
     </div>
