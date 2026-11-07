@@ -5,7 +5,7 @@
     reason = "test setup fails loudly on an invalid fixture"
 )]
 
-use afd_core::env::MapEnv;
+use af_core::env::MapEnv;
 use afd_identity::Transport;
 
 use super::{Fault, IDENTITY_HTTP_PROXY_URL_KNOB, read};
