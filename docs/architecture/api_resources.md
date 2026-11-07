@@ -1,8 +1,8 @@
 ---
 type: reference
 audience: contributor
-verified: 2026-11-01
-product_version: 0.71.0
+verified: 2026-11-07
+product_version: 0.75.0
 executable: false
 ---
 
@@ -10,13 +10,17 @@ executable: false
 
 ## Synopsis
 
-This reference describes the implemented private setup and shared fleet APIs. The [verification ledger](shared_chat_verification.md#verification-evidence) records observed checks and remaining live proof; implementation alone does not establish deployment success.
+This reference describes the implemented private setup and shared fleet APIs. The [verification ledger](shared_chat_verification.md#historical-verification-evidence) records observed checks and remaining live proof; implementation alone does not establish deployment success.
 
 Prefixes: `W=/v1/workspaces/{workspace_id}`, `D=W/drafts/{draft_id}`, `F=W/fleets/{fleet_id}`, `G=W/fleet-libraries/{library_id}`. Workspace, draft, candidate, fleet, revision and lease identifiers are UUIDv7.
 
 Authoring operation identifiers are UUIDv7; fleet-message keys follow C4. Library identifiers are opaque: platform slugs and owned UUIDs are both valid; literal `owned` is mounted before a member path.
 
-Person authorization uses workspace ownership resolved by the existing layer. Draft reads and writes additionally require the authenticated creator; workspace membership alone does not expose another person's draft. Draft access requires `fleet:write`; Library reads require `fleet:read`, writes/deletes require `library:write`; fleet reads and writes retain `fleet:read`/`fleet:write`. Fleet deletion retains `fleet:admin` and the killed-state rule. Revalidate current access on every read, write, stream reconnect, and setup step.
+Person authorization uses workspace ownership resolved by the existing layer. Draft reads and writes additionally require the authenticated creator; workspace membership alone does not expose another person's draft.
+
+Draft access requires `fleet:write`. Library reads require `fleet:read`, writes and deletes require `library:write`; fleet reads and writes retain `fleet:read` and `fleet:write`. Fleet deletion retains `fleet:admin` and the killed-state rule.
+
+Revalidate current access on every read, write, stream reconnect, and setup step.
 
 ## Example with output
 
@@ -46,19 +50,34 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 ### Shared wire rules
 
 - JSON requests reject unknown fields. Omit absent optional success fields. Page envelopes always include `items`, `total:null`, and `next_cursor` (null on the last page).
-- Money, message sequences, candidate revisions, setup revisions, and fences use decimal strings. Charges, costs, rates, and budgets use unsigned `Nanos` decimal strings (`rustd/crates/protocol/af_wire/src/nanos/mod.rs`). Wallet balances use `SignedNanos`, allowing negative debt (`rustd/crates/protocol/af_wire/src/nanos/signed/mod.rs`).
 
-  Times are RFC 3339 instants in UTC at millisecond precision under REST guide §4 (`rustd/crates/protocol/af_wire/src/instant.rs`). Narrow caps/limits use safe JSON integers.
-- Lists accept `limit` and `starting_after` using `af_core::paging::Cursor` (`rustd/crates/foundation/af_core/src/paging/mod.rs:30`, `paging/cursor.rs:26`). General lists default 50/max 100; draft messages default 20/max 25. Private draft cursors bind resource, creator, ordering, filters, and limit. Fleet-message cursors carry position; the authorized workspace, fleet, and event filter are reapplied on every read.
-- An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag. Fleet and platform Library clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag. GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
+- Money, message sequences, candidate revisions, setup revisions, and fences use decimal strings. Charges, costs, rates, and budgets use unsigned `Nanos` decimal strings; wallet balances use `SignedNanos`, allowing negative debt (`af_wire`'s nanos module).
+
+- Times are RFC 3339 instants in UTC at millisecond precision under REST guide §4 (`af_wire`'s instant type). Narrow caps and limits use safe JSON integers.
+
+- Lists accept `limit` and `starting_after` using `af_core::paging::Cursor`. General lists default 50/max 100; draft messages default 20/max 25.
+
+- Private draft cursors bind resource, creator, ordering, filters, and limit. Fleet-message cursors carry position; the authorized workspace, fleet, and event filter are reapplied on every read.
+
+- An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag.
+
+- Fleet and platform Library clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag.
+
+- GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
+
 - Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation, fleet revision application, and Library create/revision use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
+
 - Authoring creation keys bind actor, workspace, operation type and parent collection. Member keys bind workspace, operation type and resource, with the accepting actor recorded. Authorization runs before replay.
+
 - The same authoring key, normalized body and actor recover the accepted result. Changed body or member-resource actor conflicts. Protection lasts 24 hours from receipt creation; deletion within that window returns 410.
+
 - After expiry, inspect the draft, fleet or Library before another write. The old authoring key no longer prevents duplication.
 
 ### Definition, candidate, review, and common types
 
-`Definition` is exactly `{schema_version:1,description:string,instructions_md:string,config:ConfigDocument}` from [the definition page](fleet_definitions.md#validated-definition). `ConfigDocument` preserves the existing typed `name`/`x-agentsfleet` shape, changing budget fields to decimal-string `daily_nanos`/`monthly_nanos`. Runtime model is `config["x-agentsfleet"].model`. Required daily ceiling is `1..1000000000000` nanos; optional monthly ceiling is `1..10000000000000`; omit monthly for no monthly ceiling. Zero, fractions, signs, exponent notation, and overflow are rejected. These preserve the inspected positive ceiling and cap semantics at `rustd/crates/protocol/af_fleet_runtime/src/config/policy/mod.rs:19–35`.
+`Definition` is exactly `{schema_version:1,description:string,instructions_md:string,config:ConfigDocument}` from [the definition page](fleet_definitions.md#validated-definition). `ConfigDocument` preserves the existing typed `name`/`x-agentsfleet` shape, changing budget fields to decimal-string `daily_nanos`/`monthly_nanos`. Runtime model is `config["x-agentsfleet"].model`.
+
+Required daily ceiling is `1..1000000000000` nanos; optional monthly ceiling is `1..10000000000000`; omit monthly for no monthly ceiling. Zero, fractions, signs, exponent notation, and overflow are rejected. These preserve the positive ceiling and cap semantics in `af_fleet_runtime`'s config policy.
 
 `Source` is a tagged union:
 
@@ -71,9 +90,11 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 
 Resolve and authorize the source before allocating a row. Library and fleet sources pin immutable Definitions.
 
-The typed definition source accepts native JSON, including the CLI’s `--definition <PATH>` input and the browser drawer. Repository and template-bundle imports remain unsupported.
+The typed definition source accepts native JSON, including the CLI's `--definition <PATH>` input and the browser drawer. Repository and template-bundle imports remain unsupported.
 
-`Candidate = {id,revision,definition,canonical_digest,policy_semantics}`. Every accepted definition change gets a fresh immutable candidate ID and the next draft-local decimal revision. Initialization starts at `"1"`; unchanged metadata or model selection creates no candidate revision. Before the first proposal, a blank draft has no candidate. First drawer mutation creates a draft from an inline typed definition using shared explicit defaults displayed in the drawer. Empty instructions are allowed while editing but block Save/publication; review readiness includes a definition check.
+`Candidate = {id,revision,definition,canonical_digest,policy_semantics}`. Every accepted definition change gets a fresh immutable candidate ID and the next draft-local decimal revision. Initialization starts at `"1"`; unchanged metadata or model selection creates no candidate revision.
+
+Before the first proposal, a blank draft has no candidate. First drawer mutation creates a draft from an inline typed definition using shared explicit defaults displayed in the drawer. Empty instructions are allowed while editing but block Save/publication; review readiness includes a definition check.
 
 `Review = {effective,requirements,readiness[],review_digest,policy_semantics,observed_at}`:
 
@@ -86,15 +107,21 @@ next_action = {kind:"account_models"|"billing"|"workspace_connections"|"approval
                label,href}
 ```
 
-Requirements are derived immutable setup, not readiness results. Review digest excludes observation timestamps and includes candidate, selections, source/target revisions, policy marker, and effective access/model resolution versions. Effective setup changes →409 plus fresh `review_digest`; missing live checks instead appear in `installing` setup progress. GET library Inspect computes equivalent review context without pretending the Library's requirements changed.
+Requirements are derived immutable setup, not readiness results. Review digest excludes observation timestamps and includes candidate, selections, source/target revisions, policy marker, and effective access/model resolution versions.
+
+Effective setup changes →409 plus fresh `review_digest`; missing live checks instead appear in `installing` setup progress. GET library Inspect computes equivalent review context without pretending the Library's requirements changed.
 
 Save and Apply accept optional `origin` display metadata, with values `cli`, `dashboard` or `chat`. The field grants no access. The first accepted revision records the origin in its immutable `setup_saved` activity.
 
 Retries exclude `origin` when comparing request bodies and retain the original receipt. Changing only the origin with the same operation key creates no additional fleet, revision or receipt. Older clients may omit the field; older receipts retain their generic saved-version label.
 
-`Draft = {id,state,title,etag,authoring_model_ref,cancelled_through,candidate?,review?,linked_fleet_id?,publication?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate. `publication={library_id,revision_id,canonical_digest}` is a verified explicit publication receipt. Closing sets expiry 30 days later; linked active authoring/setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. Active authoring blocks PATCH and Save.
+`Draft = {id,state,title,etag,authoring_model_ref,cancelled_through,candidate?,review?,linked_fleet_id?,publication?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate. `publication={library_id,revision_id,canonical_digest}` is a verified explicit publication receipt.
 
-`Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,save_requested,save_error_code?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`. Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
+Closing sets expiry 30 days later; linked active authoring/setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. Active authoring blocks PATCH and Save.
+
+`Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,save_requested,save_error_code?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`.
+
+Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
 
 Create and Send accept an optional `save` boolean, defaulting to false. The accepted message records `save_requested`; replay includes this choice. Text alone grants no save authority.
 
@@ -125,25 +152,37 @@ Stop/delete/revocation fences text writes; revoked callers receive no private fa
 
 Exact accepted replay is checked first. Retrying uses an explicit new message and key.
 
-`Setup = {state:"checking"|"waiting"|"ready"|"cancelled",checks[]}`. Check = `{kind,subject,state:"pending"|"ready"|"blocked",next_action?}`. Check kinds: `source|policy|model|wallet|credentials|connections|grants|stream|activation`. Grant checks record actual approved access; missing approval cannot be logged as ready.
+`Setup = {state:"checking"|"waiting"|"ready"|"cancelled",checks[]}`. Check = `{kind,subject,state:"pending"|"ready"|"blocked",next_action?}`. Check kinds: `source|policy|model|wallet|credentials|connections|grants|stream|activation`.
+
+Grant checks record actual approved access; missing approval cannot be logged as ready.
 
 `Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..32,768 UTF-8 bytes). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",event_id?,error_code?}`. Derive the initial admission's one identity from creation, not another client key.
 
-`start.accepted` requires confirmation of the committed initial admission with the expected event identity (`rustd/crates/daemon/afd_authoring/src/creation/start/confirm.rs`). Ordinary fleet-message acceptance also requires a committed admission. Wake notifications are best effort.
+`start.accepted` requires confirmation of the committed initial admission with the expected event identity (`afd_authoring`'s start confirm). Ordinary fleet-message acceptance also requires a committed admission. Wake notifications are best effort.
 
 Neither acceptance nor a wake notification means completed work.
 
-`Schedule = {schedule_id,fleet_id,cron,timezone,message,source,once,status,sync,etag,override?,description,run_state,next_run_at}`. The last three are the server's reading at the request's instant (`rustd/crates/daemon/afd_cron/src/run/mod.rs`): `description` is the expression in words from the scheduler's own cron parser, with its zone; `run_state` is `scheduled|paused|activation_pending|next_run_unavailable`; `next_run_at` is set only when `run_state` is `scheduled`. Paused wins over sync state, `deleting` or a `failed` sync never runs, `syncing` is activation pending, and a one-off runs at its stored instant or not at all. A fleet with no schedule has an empty `schedules[]`. Preserve existing schedule meanings from `rustd/crates/daemon/afd_api_wire/src/schedule/mod.rs:14`; sync is `syncing|synced|failed`, retaining the inspected enum at `rustd/crates/daemon/afd_cron/src/model.rs:147`, status is `active|paused|deleting`. Override is `{cron?,timezone?,message?,status?}`. Omitted override means inherited recipe. A null override is request-only Restore.
+`Schedule = {schedule_id,fleet_id,cron,timezone,message,source,once,status,sync,etag,override?,description,run_state,next_run_at}`. The last three are the server's reading at the request's instant (`afd_cron`'s run module). `description` is the expression in words from the scheduler's own cron parser, with its zone.
+
+`run_state` is `scheduled|paused|activation_pending|next_run_unavailable`; `next_run_at` is set only when `run_state` is `scheduled`. Paused wins over sync state, and `deleting` or a `failed` sync never runs. `syncing` is activation pending, and a one-off runs at its stored instant or not at all.
+
+A fleet with no schedule has an empty `schedules[]`.
+
+Sync is `syncing|synced|failed` (`afd_cron`'s model); status is `active|paused|deleting`. Override is `{cron?,timezone?,message?,status?}`. Omitted override means inherited recipe; a null override is request-only Restore.
 
 `Fleet = {id,name,status,etag,setup_etag,setup_revision,policy_semantics,definition,setup,start,schedules[],webhook_urls[],created_at,updated_at,events_processed,budget_used_nanos}`; event count and nanos are strings. Status remains the existing lifecycle vocabulary, including `installing|active|paused|stopped|killed`.
 
 GET reports current prerequisites in `setup.checks`; changes to a saved review digest do not require another approval. Private transcripts stay with their creator.
 
-`FleetSummary = {id,name,status,description,triggers?,created_at,updated_at,events_processed,budget_used_nanos}` is one row of `GET /v1/workspaces/{workspace_id}/fleets`. `description` is the head revision's definition `description`, the saved purpose; it is `null` while the fleet has no saved setup. The page reads it in the same statement as the counters (`rustd/crates/daemon/afd_fleet_lifecycle/src/sql/select_fleet_page.sql`).
+`FleetSummary = {id,name,status,description,triggers?,created_at,updated_at,events_processed,budget_used_nanos}` is one row of `GET /v1/workspaces/{workspace_id}/fleets`. `description` is the head revision's definition `description`, the saved purpose; it is `null` while the fleet has no saved setup. The page reads it in the same statement as the counters (`afd_fleet_lifecycle`'s `select_fleet_page.sql`).
 
-`Fleet.name` and creation `name` retain the existing validated fleet slug. `Draft.title` is a separate human display title, 1..100 characters; it does not change authored slugs. Review exposes both without substituting a display title into definition metadata or runtime config. An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe; it changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.
+`Fleet.name` and creation `name` retain the existing validated fleet slug. `Draft.title` is a separate human display title, 1..100 characters; it does not change authored slugs. Review exposes both without substituting a display title into definition metadata or runtime config.
 
-`LibraryCard = {id,name,description,visibility:"platform"|"tenant",created_at,requirements,required_credentials_reasons,head_revision_id,etag}`. Retain gallery meaning from `rustd/crates/daemon/afd_api_wire/src/library/output.rs:9` (`Card`). `Library = {card,head:LibraryRevision,review,etag}`. `LibraryRevision = {id,library_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`. Revision list items omit instructions, returning `{id,revision,canonical_digest,created_at}`. Member reads include definition and context review; no secret values.
+An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe; it changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.
+
+`LibraryCard = {id,name,description,visibility:"platform"|"tenant",created_at,requirements,required_credentials_reasons,head_revision_id,etag}` keeps the gallery meaning of `afd_api_wire`'s library `Card`. `Library = {card,head:LibraryRevision,review,etag}`. `LibraryRevision = {id,library_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`.
+
+Revision list items omit instructions, returning `{id,revision,canonical_digest,created_at}`. Member reads include definition and context review; no secret values.
 
 `ConfigOp = {op:"add"|"replace",path,value} | {op:"remove",path}` permits `/config` descendants and replacement of `/description`. Identity, manifest and receipt fields are unwritable.
 
@@ -177,7 +216,9 @@ The next two tables preserve the workspace-chat cutover's 17 new and seven chang
 
 GET D has a complete review only when a candidate exists. Queue acceptance can succeed before wallet admission: balance/model failure becomes a visible failed message rather than silent queued work. Draft creation with a first message atomically records both or neither.
 
-Send atomically captures the draft's selected authoring model reference; admission pins its resolved provider, inference settings, context window, and prices. Earlier admitted turns keep their pins. Idle PATCH can replace a disabled model and survives reload. Title is a human display name, independent of validated definition slugs. Runtime/config changes invalidate setup review; an authoring-model-only change leaves its definition/digest unchanged.
+Send atomically captures the draft's selected authoring model reference; admission pins its resolved provider, inference settings, context window, and prices. Earlier admitted turns keep their pins. Idle PATCH can replace a disabled model and survives reload.
+
+Title is a human display name, independent of validated definition slugs. Runtime/config changes invalidate setup review; an authoring-model-only change leaves its definition/digest unchanged.
 
 ### Changed person routes: 7
 
@@ -186,7 +227,7 @@ Send atomically captures the draft's selected authoring model reference; admissi
 | C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"library",library_id,revision_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle, Library install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
 | C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `killed` cancels setup, otherwise existing allowed transitions | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; a killed fleet returns 404 `UZ-AGT-009` after write preconditions pass |
-| C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 existing `{status:"accepted",event_id,replayed}`; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
+| C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",event_id,replayed,disposition,folded_into_event_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_event_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
 | C6 | POST W/fleet-libraries | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; library:write | 201 `{library_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
 | C7 | GET W/fleet-libraries | Existing gallery filters/paging; no body | 200 Page of LibraryCard (platform + owned), now head_revision_id and etag | existing library input/cursor errors, AUTH, DEPENDENCY |
@@ -206,19 +247,27 @@ Conversation cursors bind creator, workspace, fleet, and ordering. Each conversa
 
 The fleet, conversations, and receipts are bounded independent reads, rather than one database snapshot. Every private conversation checks current membership and creator ownership.
 
-The existing GET F/messages includes undelivered, unsettled steer admissions alongside delivered history in one statement snapshot (`rustd/crates/daemon/afd_events/src/history/statement/select_thread_page.sql` and `select_thread_page_after.sql`). It preserves the queued-message shape, logical event ID, ordering, cursor, and authorization across delivery and settlement.
+The existing GET F/messages includes undelivered, unsettled steer admissions alongside delivered history in one statement snapshot (`afd_events`'s thread-page statements). It preserves the queued-message shape, logical event ID, ordering, cursor, and authorization across delivery and settlement.
+
+A message that folded into a live run keeps its own event. Once the run's report succeeds, that event carries `resumes_event_id`, naming the run, and the run's answer as its reply.
 
 This is an internal read change, not another route. Retry after an uncertain acceptance reuses the original operation ID.
 
-C1 accepts a reviewed private candidate or a pinned Library revision. A selected Slack trigger must be part of the reviewed setup. Changed install name/model choices open a private draft before Save. No hidden trigger mutation or preview route is retained.
+C1 accepts a reviewed private candidate or a pinned Library revision. A selected Slack trigger must be part of the reviewed setup. Changed install name/model choices open a private draft before Save.
+
+No hidden trigger mutation or preview route is retained.
 
 C4 uses the fleet admission ledger, separately from authoring replay receipts. Reuse its key with the same message and sender; omission creates new work on every request.
+
+A message sent while the fleet's run is live folds into that run (`disposition: folded`). The running lease claims it at its next model call, and the run's answer is its reply. A parked (approval-gated) or task-bound message ahead of it is a barrier, so the message queues instead.
 
 C6 publishes only a draft candidate. Native JSON can initialize that draft; GitHub/template-bundle import and Markdown/bundle export remain unsupported. Operator Library source writes also resolve an authorized creator-owned draft candidate; operator publication retains its separate platform scope.
 
 Source-repository fields, upload/import/re-import routes, bundle delivery and retired bundle flags are removed with their dedicated implementations. GitHub runtime triggers and repository tools remain independent capabilities.
 
-The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10, reviews N4, and explicitly invokes C1 to Save. It can publish through C6/N15 or install a pinned Library revision through C1. Browser and terminal use the same authorization, replay, validation, billing and readiness rules. Terminal conversation text is the authoring input; scripts may submit text but cannot skip review or grant checks.
+The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10, reviews N4, and explicitly invokes C1 to Save. It can publish through C6/N15 or install a pinned Library revision through C1.
+
+Browser and terminal use the same authorization, replay, validation, billing and readiness rules. Terminal conversation text is the authoring input; scripts may submit text but cannot skip review or grant checks.
 
 ### Removed person routes: 2
 
@@ -227,7 +276,17 @@ The terminal client starts or resumes a private draft, sends text through N7, fo
 | R1 | GET W/library-entries | GET W/fleet-libraries/owned |
 | R2 | DELETE W/library-entries/{entry_id} | DELETE G |
 
-Removal is immediate; there is no alias. `/v1/operations`, public turn-status, fleet creation/attempt resources, draft revisions/events collections, preview POST, publication/deletion resources, definition-update resources, schedule-overrides resources, fleet revision reads, and a second Library collection are absent.
+Removal is immediate; there is no alias. The following are absent:
+
+- `/v1/operations` and public turn-status.
+
+- Fleet creation/attempt resources.
+
+- Draft revisions/events collections and preview POST.
+
+- Publication/deletion resources and definition-update resources.
+
+- Schedule-overrides resources, fleet revision reads, and a second Library collection.
 
 ### Private Server-Sent Events (SSE)
 
@@ -235,7 +294,7 @@ Durable notices contain `{draft_id,sequence?,candidate_id?,state?,usage?,failure
 Their event names are `message.accepted|message.running|message.completed|message.cancelled|message.failed|message.timed_out|candidate.changed|draft.closed|draft.deleted`.
 No private content enters workspace or operator streams.
 
-Provisional `message.delta` contains `{draft_id,sequence,stream_id,stream_seq,stream_start,text_kind:"answer",text}`.
+Preview `message.delta` frames contain `{draft_id,sequence,stream_id,stream_seq,stream_start,text_kind:"answer",text}`.
 `sequence` is a decimal string; `stream_seq` starts at one per physical dispatch.
 Answer text is at most 4,096 UTF-8 bytes; the serialized payload is bounded at 8,192 bytes.
 
@@ -260,9 +319,15 @@ The [shared context lifecycle](context_lifecycle.md) owns checkpoint format, ret
 | GET | Query `fencing_token` | 200 `{checkpoint?:Checkpoint}`; absent when no notes exist | Malformed input 400; authentication 401/403; absent assignment 404; superseded assignment 409; capacity 429; dependency 500/503 |
 | PUT | `{fencing_token,expected_generation,checkpoint}` | 204; an identical retry acknowledges the saved document | GET refusals, oversized body 413; changed scope or generation 409 with `current_state:superseded` |
 
-Existing route identities are at `rustd/crates/daemon/afd_http/src/route/runner.rs:36–42`; path constants are at `rustd/crates/protocol/af_wire/src/paths.rs:27–30` and `:92–95`. There is one claim: `POST /v1/runners/me/leases`. Claim input is `{holds?:UUIDv7[<=64],accepted_kinds}` and adds `accepted_kinds:["fleet","authoring"]`; absence is invalid in the cutover. It returns 200 `{lease: TaggedLease|null,retry_after_ms?:integer}`; no-work uses `lease:null` plus the backoff hint. This keeps the existing poll envelope from `rustd/crates/protocol/af_wire/src/lease/mod.rs:178`. A host may opt into fleet-only work; both kinds still count against daemon-enforced worker_count.
+Runner route identities live in `afd_http`'s runner routes; path constants live in `af_wire`'s paths module. There is one claim: `POST /v1/runners/me/leases`. Claim input is `{holds?:UUIDv7[<=64],accepted_kinds}` with `accepted_kinds:["fleet","authoring"]`; absence is invalid in the cutover.
 
-A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{lease_id}/renew` and `POST /v1/runners/me/reports`, one line per provider request, at most 512 lines (`af_wire::usage::LINES_MAX`) in each body. A renewal past the cap still extends and records nothing; a report past it is refused 400 `UZ-REQ-001`. A body carrying the retired cumulative totals (`input_tokens`, `cached_input_tokens`, `output_tokens`) is refused on both, naming the field: 400 `UZ-RUN-013` on a renewal, which then does not extend, and 400 `UZ-REQ-001` on a report. Authoring leases carry a `Meter` instead (below), and the cap does not apply to them.
+The claim returns 200 `{lease: TaggedLease|null,retry_after_ms?:integer}`; no-work uses `lease:null` plus the backoff hint. This keeps the existing poll envelope from `af_wire`'s lease module. A host may opt into fleet-only work; both kinds still count against daemon-enforced worker_count.
+
+A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{lease_id}/renew` and `POST /v1/runners/me/reports`, one line per provider request, at most 512 lines (`af_wire::usage::LINES_MAX`) in each body. A renewal past the cap still extends and records nothing; a report past it is refused 400 `UZ-REQ-001`.
+
+A body carrying the retired cumulative totals (`input_tokens`, `cached_input_tokens`, `output_tokens`) is refused on both, naming the field. A renewal answers 400 `UZ-RUN-013` and does not extend; a report answers 400 `UZ-REQ-001`. Authoring leases carry a `Meter` instead (below), and the cap does not apply to them.
+
+A fleet lease claims the messages that folded into its run through `POST /v1/runners/me/leases/{lease_id}/folds` with `{fencing_token,after_sequence}`. One claim returns at most 32 inputs (`FOLDS_PER_CLAIM_MAX`). The report's `folded_through_sequence` names the last one the run answered; only a succeeded report settles them.
 
 ```text
 {kind:"fleet", ...existing fleet lease payload}
@@ -273,7 +338,9 @@ A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{leas
  output_per_turn:<saved model maximum>,max_calls:8,wall_seconds:300,provider_timeout_seconds:300}}
 ```
 
-Authoring model access is a daemon-issued opaque capability plus the runner's existing bearer authentication. Fence, generation, and sequence are decimal strings. Internal attempt ID and capability are machine-only. The lease includes the current candidate identity/revision/definition when present, so a runner can address its first edit.
+Authoring model access is a daemon-issued opaque capability plus the runner's existing bearer authentication. Fence, generation, and sequence are decimal strings. Internal attempt ID and capability are machine-only.
+
+The lease includes the current candidate identity/revision/definition when present, so a runner can address its first edit.
 
 Four new machine routes under `/v1/runners/me/authoring-leases/{lease_id}`:
 
@@ -292,9 +359,15 @@ Changed-body reuse, gaps, stale bases, or reordered new proposals change nothing
 
 Empty editing instructions block Save/publication.
 
-Reports also accept `{kind:"accounting",fence,report_id,outcome,failure_reason?,usage:Meter}` with no private text or content digest. The immutable accounting identity is attempt + report_id + normalized fence/generation/outcome/failure_reason/usage, validated against daemon dispatch receipts. Store its digest and accounting acknowledgement independently from optional answer submission. Exact accounting replay returns that acknowledgement whether the original terminal report committed, was never received, or the draft was deleted. Changed accounting under the same identity conflicts; a caller-supplied digest never substitutes for validated usage. First accounting-only settlement records terminal accounting once and cannot create a message, candidate or answer. A deleted/expired generation may confirm or settle authenticated attempt accounting but cannot restore private state. Terminal answer submission has a separate content digest; exact terminal replay may acknowledge it while retained, but accounting replay never opens or reconstructs it. Known daemon receipts override runner estimates; unknown liability remains until authoritative settlement.
+Reports also accept `{kind:"accounting",fence,report_id,outcome,failure_reason?,usage:Meter}` with no private text or content digest. The immutable accounting identity is attempt + report_id + normalized fence/generation/outcome/failure_reason/usage, validated against daemon dispatch receipts. Store its digest and accounting acknowledgement independently from optional answer submission.
 
-`failure_reason` is required for failed/timed_out reports and absent otherwise. It uses the Message reason enum above. The daemon validates the reason against dispatch facts and controls the final code/action. A runner cannot downgrade unknown usage to an ordinary retryable failure.
+Exact accounting replay returns that acknowledgement whether the original terminal report committed, was never received, or the draft was deleted. Changed accounting under the same identity conflicts; a caller-supplied digest never substitutes for validated usage. First accounting-only settlement records terminal accounting once and cannot create a message, candidate or answer.
+
+A deleted/expired generation may confirm or settle authenticated attempt accounting but cannot restore private state. Terminal answer submission has a separate content digest; exact terminal replay may acknowledge it while retained, but accounting replay never opens or reconstructs it. Known daemon receipts override runner estimates; unknown liability remains until authoritative settlement.
+
+`failure_reason` is required for failed/timed_out reports and absent otherwise. It uses the Message reason enum above. The daemon validates the reason against dispatch facts and controls the final code/action.
+
+A runner cannot downgrade unknown usage to an ordinary retryable failure.
 
 ### Scoped model invocation
 
@@ -304,7 +377,9 @@ Text is untrusted context; only the fixed proposal tool is callable. The daemon 
 
 Reject provider/model/host/key/header/system/tool-schema override fields.
 
-Native provider replies stay in `authoring.dispatches.native_reply`; the runner receives only text, validated proposals and usage. A saved reply binds its assistant position and the complete normalized conversation prefix through a digest. Later calls must retain that exact prefix before the daemon restores the SDK message, including signed or encrypted reasoning and provider tool identifiers. Current membership, model and capability checks precede private reads. Expired or malformed state refuses dispatch. Deletion and private-result expiry clear both the public result and native reply; a fenced late response records usage without either private copy.
+Native provider replies stay in `authoring.dispatches.native_reply`; the runner receives only text, validated proposals and usage. A saved reply binds its assistant position and the complete normalized conversation prefix through a digest. Later calls must retain that exact prefix before the daemon restores the SDK message, including signed or encrypted reasoning and provider tool identifiers.
+
+Current membership, model and capability checks precede private reads. Expired or malformed state refuses dispatch. Deletion and private-result expiry clear both the public result and native reply; a fenced late response records usage without either private copy.
 
 `ProposalCall={id,proposal:Proposal}|{id,reason}`. Refusal reasons are `invalid_arguments`, `instructions_missing`, `instructions_ambiguous`, or `stale_candidate`; no raw rejected arguments cross this boundary. The [edit correction loop](fleet_definitions.md#small-atomic-edits) handles these results within the admitted turn.
 
@@ -319,10 +394,15 @@ A proposal result is untrusted until `/activity` commits it. No separate model-c
 3. Measure the complete request under subject → attempt locks, release the transaction, and confirm its billed hold. Recheck authority, exact request digest and output allowance under a second transaction. Commit dispatch identity before provider access; no provider request holds these locks.
 
    Concurrent dispatches and unfinished replays return STATE without another provider call. [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) describes the separate billing transactions.
+
 4. The daemon alone resolves the pinned owner's provider key and approved destination. Eligibility requires configured credentials, an approved transport, valid saved context/output bounds, and pinned prices. Known tokenizers count assembled input; unknown model names are estimated as their `o200k_base` count plus a quarter.
 
    Apply the outbound address guard and reject unsafe private/custom destinations. Authoring transport disables redirects and every provider retry. Each physical dispatch consumes one index and the shared output/time budget; ordinary runtime transport stays separate.
-5. Save bounded result and authoritative usage before returning 200. Exact completed replay rechecks live authorization and returns the same result without dispatch/debit. Changed-body reuse returns REPLAY. A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls; never redispatch that intent.
+
+5. Save bounded result and authoritative usage before returning 200. Exact completed replay rechecks live authorization and returns the same result without dispatch/debit. Changed-body reuse returns REPLAY.
+
+   A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls; never redispatch that intent.
+
 6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
 
 Input reservation uses the shared tokenizer library, with no bundled model-specific tokenizer assets.
@@ -337,9 +417,11 @@ Replay uses that recorded deadline; an unfinished intent never sends the request
 The runner allows 310 seconds for the HTTP response and receipt settlement.
 The [shared chat explanation](shared_chat_verification.md#backend-ownership) describes the methods and failure behavior.
 
-The capability grants no runtime tools, memory, schedules, fleet messages, or credential minting. Existing raw-key runtime delivery remains source evidence, not this implementation: `rustd/crates/daemon/afd_fleet/src/lease/answer/mod.rs:76–86` and `rustd/crates/harness/af_providers/src/connect/mod.rs:90–94`. The new machine route and daemon provider adapter are explicit additions in the file inventory; person-route counts remain 17/7/2.
+The capability grants no runtime tools, memory, schedules, fleet messages, or credential minting. Existing raw-key runtime delivery remains source evidence, not this implementation: `afd_fleet`'s lease answer and `af_providers`' connect module. The new machine route and daemon provider adapter are explicit additions in the file inventory; person-route counts remain 17/7/2.
 
-`Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown obligation. Unknown usage is never relabeled known by local estimates. Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon claim and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-leases).
+`Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown obligation. Unknown usage is never relabeled known by local estimates.
+
+Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon claim and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-leases).
 
 ### Current task reads
 
@@ -353,13 +435,15 @@ The [DT API target](durable_tasks.md#proposed-native-api) describes the remainin
 
 Collection responses use `private, no-store`; detail responses use `private, no-cache` with revalidation.
 Dashboard proxies retain the resource tag and apply `no-store` without exposing bearer credentials to browser code.
-Native reads use one five-second deadline, including acquisition and commit, plus transaction-local three-second SQL cancellation.
+Native reads run under one five-second client deadline that covers acquisition and commit (`afd_fleet`'s task fetch); the API login's statement bound applies beneath it ([concurrency](concurrency.md#every-daemon-statement-runs-under-the-api-logins-bounds)).
 
 ## Errors
 
-Routine dependency/auth failures and the named specific failure symbols apply to each table row. All failures use existing `application/problem+json`: `{docs_uri,title,detail,error_code,request_id,user_message?}`. Existing extensions `current_state` on409 and `etag` on412 come from `rustd/crates/daemon/afd_http/src/envelope.rs:192–213`. Add `review_digest` only on a stale-review409. Do not invent nested errors or expose operator hints.
+Routine dependency/auth failures and the named specific failure symbols apply to each table row. All failures use existing `application/problem+json`: `{docs_uri,title,detail,error_code,request_id,user_message?}`. Existing extensions `current_state` on409 and `etag` on412 come from `afd_http`'s envelope.
 
-The following codes name the route tables’ error categories. Read the operation’s response description for its precise refusal conditions; registration alone does not prove a live outcome.
+Add `review_digest` only on a stale-review409. Do not invent nested errors or expose operator hints.
+
+The following codes name the route tables' error categories. Read the operation's response description for its precise refusal conditions; registration alone does not prove a live outcome.
 
 | Symbol | Code | HTTP | Meaning / action |
 |---|---|---|---|

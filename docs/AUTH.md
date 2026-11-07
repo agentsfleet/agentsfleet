@@ -813,7 +813,7 @@ flowchart TD
     Gate --> Handler["route handler"]
 ```
 
-### Configuration knobs (from `rustd/crates/daemon/agentsfleetd/src/preflight/mod.rs`)
+### Configuration knobs (from `rustd/crates/daemon/main/src/preflight/mod.rs`)
 
 | Knob              | Source                | Purpose                                                                         |
 | ----------------- | --------------------- | ------------------------------------------------------------------------------- |
@@ -821,7 +821,7 @@ flowchart TD
 | `OIDC_JWKS_URL`   | environment           | **Optional override.** Where to fetch the signing keys; defaults to the value derived from `OIDC_ISSUER`. Set only for a non-standard JWKS path (e.g. a `custom` provider). Cached for 6 h, refreshed on `kid` miss (fetch attempts are limited to one per 30 s). If refresh fails, the last confirmed set remains usable for at most 15 additional minutes. Once it is older than 6 h 15 min, verification returns authentication unavailable until a successful refresh. Failed attempts never renew the age. RSA keys must declare `kty: RSA`; any `use`, `key_ops`, and `alg` restrictions must permit RS256 signature verification. Duplicate usable key IDs invalidate the fetched set.   |
 | `OIDC_AUDIENCE`   | environment           | **Required.** The value the `aud` claim must equal. **Strict** — see audience-mismatch note below.   |
 
-The knob names live in `rustd/crates/daemon/agentsfleetd/src/preflight/knobs.rs`. `CLERK_API_BASE` and `CLERK_SECRET_KEY` are required as well; see §Where the secret is sent — `CLERK_API_BASE`.
+The knob names live in `rustd/crates/daemon/main/src/preflight/knobs.rs`. `CLERK_API_BASE` and `CLERK_SECRET_KEY` are required as well; see §Where the secret is sent — `CLERK_API_BASE`.
 
 #### How the key set is fetched (`rustd/crates/daemon/afd_identity/src/jwks/http.rs`)
 
@@ -896,9 +896,9 @@ Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint a token fo
 
 ### Where the secret is sent — `CLERK_API_BASE`
 
-`agentsfleetd` reads the Clerk Backend API root **once at boot** from `CLERK_API_BASE` and hands the same value to every backend call. The knob is **required**: boot refuses without it, `UZ-STARTUP-001` (`rustd/crates/daemon/agentsfleetd/src/preflight/read.rs`). There is no compiled-in default; each Fly deployment sets `https://api.clerk.com/v1` in its `fly.toml` (`deploy/fly/agentsfleetd-{dev,prod}/fly.toml`).
+`agentsfleetd` reads the Clerk Backend API root **once at boot** from `CLERK_API_BASE` and hands the same value to every backend call. The knob is **required**: boot refuses without it, `UZ-STARTUP-001` (`rustd/crates/daemon/main/src/preflight/read.rs`). There is no compiled-in default; each Fly deployment sets `https://api.clerk.com/v1` in its `fly.toml` (`deploy/fly/agentsfleetd-{dev,prod}/fly.toml`).
 
-The daemon builds `{CLERK_API_BASE}/users/{subject}` and sends `CLERK_SECRET_KEY` there on every scope-cache miss and every signup writeback (`rustd/crates/daemon/afd_identity/src/users/mod.rs`). Because the secret travels to it, boot refuses the knob with `UZ-STARTUP-001` unless it parses as a URL and is `https`, or plain `http` on a loopback host (`127.0.0.1`, `::1` or `localhost`) for a local stand-in (`provider_api_base`, `rustd/crates/daemon/agentsfleetd/src/preflight/read.rs`). The rule is the one `SLACK_API_URL` follows, and the refusal never echoes the value. The host is otherwise not restricted, because Clerk supports custom domains, so review a change to this knob as a change to where the secret is sent.
+The daemon builds `{CLERK_API_BASE}/users/{subject}` and sends `CLERK_SECRET_KEY` there on every scope-cache miss and every signup writeback (`rustd/crates/daemon/afd_identity/src/users/mod.rs`). Because the secret travels to it, boot refuses the knob with `UZ-STARTUP-001` unless it parses as a URL and is `https`, or plain `http` on a loopback host (`127.0.0.1`, `::1` or `localhost`) for a local stand-in (`provider_api_base`, `rustd/crates/daemon/main/src/preflight/read.rs`). The rule is the one `SLACK_API_URL` follows, and the refusal never echoes the value. The host is otherwise not restricted, because Clerk supports custom domains, so review a change to this knob as a change to where the secret is sent.
 
 ### Rotation procedure
 
@@ -1148,7 +1148,7 @@ Disconnect changes only `agentsfleet`. It does not revoke provider authorization
 
 ### Platform app secrets (`<provider>-app`, admin workspace)
 
-The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`rustd/crates/daemon/afd_credential/src/credential/platform/mod.rs`, `APP_KEY_STEM = "-app"`), in the workspace the `PLATFORM_ADMIN_WORKSPACE_ID` knob names (`rustd/crates/daemon/agentsfleetd/src/preflight/knobs.rs`).
+The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`rustd/crates/daemon/afd_credential/src/credential/platform/mod.rs`, `APP_KEY_STEM = "-app"`), in the workspace the `PLATFORM_ADMIN_WORKSPACE_ID` knob names (`rustd/crates/daemon/main/src/preflight/knobs.rs`).
 
 The bag is per-provider. `slack-app` holds `{client_id, client_secret, signing_secret}`. `github-app` holds `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}`: the private key signs outbound App identity, the webhook secret verifies inbound deliveries, and the client credentials exchange the one-time user-authorization code. The Open Authorization 2.0 (OAuth 2.0) refresh connectors `zoho-app`, `jira-app` and `linear-app` hold `{client_id, client_secret}`.
 

@@ -63,8 +63,9 @@ Unconfigured hosts skip the catalogue read.
 Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::task::decision`.
 The November 5 source continuation connects `afr_supervisor::verbs::decision` to the
 physical client. It fsyncs encrypted uncertainty before dispatch, retains the actual
-receipt and requires native acknowledgement before returning usable answers. The
-existing report drainer replays original-owner receipts without provider redispatch.
+receipt and requires native acknowledgement before returning usable answers.
+
+The existing report drainer replays original-owner receipts without provider redispatch.
 One native-approved 429/529 retry retains the original logical deadline and quote.
 These changes are uncompiled and unverified; live provider proof and runtime acceptance remain pending.
 
@@ -132,7 +133,7 @@ These are community clients; publication and matching request types do not estab
 Inspected metadata shows `typesafe-client` 0.2.0 uses reqwest 0.13; `typesafe-ai-sdk` 0.6.0 uses reqwest 0.13.5.
 The inspected `typesafe-client` source accepts an injected client and can disable retries, making it a credible candidate rather than inherently incompatible.
 
-Its 0.2.0 `client/mod.rs:227` collects `response.bytes()` before decoding without this design's 64-KiB streaming cap.
+Its 0.2.0 client collects `response.bytes()` before decoding, without this design's 64-KiB streaming cap.
 Keep the shared bounded reader unless adopting that client also proves bounded response reads and redacted error bodies.
 Compatibility still requires injected guarded transport, disabled hidden retries, redacted errors and exact physical usage.
 
@@ -206,7 +207,7 @@ New DTs adopt the current accepted policy and their specific objectives automati
 An active DT keeps its accepted version until explicit revision adoption invalidates older assessments.
 
 Native code owns typed request construction, allowed answer/action shapes, trusted state and mandatory authority/evidence checks.
-The proposed `afr_agent/src/decision/{questions,routing,goal}.rs` renders the accepted configuration without changing its meaning.
+`afr_agent`'s decision module renders the accepted configuration without changing its meaning.
 Provider documentation and adapter verification establish which question types the selected model supports.
 
 ```text
@@ -231,11 +232,12 @@ The model catalogue supplies supported types and evaluated model thresholds; fle
 
 The native policy parser, proposal-tool schema and UI/CLI question review are written; full runtime acceptance remains pending.
 Native decision requests compile the accepted policy and complete task/source state.
-Task adoption and the root decision loop have source implementations. Restored history
-is authenticated task data; current native adopted criteria control the next assessment.
+Task adoption and the root decision loop have source implementations.
+
+Restored history is authenticated task data; current native adopted criteria control the next assessment.
 Large complete groups use the existing context owner and a bounded semantic summary,
 with the complete-group digest retained. Summaries cannot satisfy native publication
-or exact-head validation checks. Runtime acceptance remains pending.
+or exact-head validation checks.
 
 `DecisionPolicy` resolves `RoutingQuestions` and `CompletionQuestions` through the existing serde/garde parser.
 Each role requires its exact native criterion keys; all wording and criterion text are owner-editable.

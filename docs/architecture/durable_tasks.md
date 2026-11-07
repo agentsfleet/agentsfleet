@@ -5,8 +5,10 @@
 This page defines the approved M236 Durable Task (DT) lifecycle.
 Indy approved implementation on November 3, 2026, and default-on runner support on November 6.
 Supported runners advertise `durable_tasks_v1` on every heartbeat.
+
 The saved runner assignment includes **Durable tasks**, On by default, as `durable_tasks_enabled`.
 The daemon checks both configuration and software capability before issuing a new durable lease.
+
 Turning the setting Off preserves the authority and accounting duties of existing leases.
 Older workers cannot claim unsupported task work.
 
@@ -76,12 +78,21 @@ The proposed limits and performance still need workload measurements before any 
 ## Setup and request interpretation
 
 Setup wording is user-authored through chat. Selecting a starter inserts editable text into the composer; daemon-owned Markdown templates do not supply fleet instructions or decision criteria.
-The setup tool schema describes native fields and supported values. A short system envelope carries current candidate/save state and the distinction between conversation and a requested edit.
-Before returning an edit proposal, the daemon evaluates the newest persisted user message with the runner's configured decision model. It asks only: “Does this message ask to change the fleet's setup (instructions, configuration, name, schedule or access)?”
+The setup tool schema describes native fields and supported values.
+
+A short system envelope carries current candidate/save state and the distinction between conversation and a requested edit.
+Before returning an edit proposal, the daemon evaluates the newest saved user message with the runner's configured decision model. It asks one question only.
+
+“Does this message ask to change the fleet's setup (instructions, configuration, name, schedule or access)?”
 A no answer uses `ProposalRejection::EditNotRequested`; yes permits ordinary validation. Unavailable, stale or malformed decisions record a bounded fallback and retain current chat behavior.
+
 The existing `DecisionEvaluator`/`DecisionClient` handles the physical request; the runner catalogue resolver supplies its reviewed profile, and platform-admin Secrets supply fresh credentials.
-A native `authoring.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text. It commits physical intent before sending and preserves frozen decision pricing and usage independently of private chat deletion.
-The per-call reservation is provisional, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum; actual provider usage remains authoritative. Further decision checks stop on unresolved usage or overage. Decision charges use the existing biller, `AuthoringAttempt` work key and `SetupChat` attribution, with a distinct usage-line sequence. An unresolved physical check retains its reservation without blocking the conversational reply.
+A native `authoring.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text.
+
+It commits physical intent before sending and preserves frozen decision pricing and usage independently of private chat deletion.
+The per-call reservation is tentative, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum; actual provider usage remains authoritative. Further decision checks stop on unresolved usage or overage.
+
+Decision charges use the existing biller, `AuthoringAttempt` work key and `SetupChat` attribution, with a distinct usage-line sequence. An unresolved physical check retains its reservation without blocking the conversational reply.
 No new task scheduler, setup-chat admission SQL or question-authoring decision path is introduced.
 
 Setup chat or CLI authoring drafts `instructions_md` and the fleet owner's editable `decision_policy` through the existing private flow.
@@ -134,14 +145,13 @@ R2 holds encrypted immutable checkpoint bytes and does not decide current owners
 
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
 
-The branch defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; authenticated list/detail reads share the daemon task owner.
+The fleet schema defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; authenticated list/detail reads share the daemon task owner.
 Native bind/control, authenticated reads and public control routes have source implementations.
-The root prepares intent before sandbox creation, reads the oldest unsettled human
-source page, incorporates accepted inputs by their separate task sequence, reconciles
-original publication receipts and assesses complete action groups. Unanswered items
-in a mixed request cannot be skipped by advancing the source-page cursor.
-Native decision reservation and receipt handlers use the same task owner;
-[goal evaluation](goal_evaluation.md) records physical execution and accounting.
+The root prepares intent before sandbox creation and reads the oldest unsettled human source page.
+
+It incorporates accepted inputs by their separate task sequence, reconciles original publication receipts and assesses complete action groups.
+Unanswered items in a mixed request cannot be skipped by advancing the source-page cursor.
+Native decision reservation and receipt handlers use the same task owner; [goal evaluation](goal_evaluation.md) records physical execution and accounting.
 
 List reads return unfinished work, while detail retains terminal outcomes.
 
@@ -153,7 +163,7 @@ Wait, effect, decision and checkpoint storage below describe the approved design
 with exact scope and parked acceptance in the [milestone spec](../v2/done/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
 
 The daemon binds admissions and leases to a nullable task identity; ordinary exchanges retain the existing path.
-Registered schema slots currently extend through 2640; merge-time inventory checks remain required.
+Merge-time schema inventory checks remain required.
 
 Each DT binds its workspace, fleet, accepted instruction revision, objective, approved target and cumulative limits.
 One current generation guards changes; input sequence, checkpoint generation and lease fencing remain distinct counters.
@@ -210,7 +220,9 @@ Fleet deletion fences access immediately; checkpoint cleanup follows the authori
 
 ## Existing pull request publication
 
-The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base. The reviewed setup explicitly selects `repository_publication: existing_pr`; omission retains event-owned draft publication. Model-visible GitHub egress remains read-only in existing-PR mode; the native publisher alone may advance its bound branch. Native target preparation reuses the current lease-plane credential mint, standing grants and repository binding.
+The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base. The reviewed setup explicitly selects `repository_publication: existing_pr`; omission retains event-owned draft publication. Model-visible GitHub egress remains read-only in existing-PR mode; the native publisher alone may advance its bound branch.
+
+Native target preparation reuses the current lease-plane credential mint, standing grants and repository binding.
 It refuses fork heads, default/protected target branches and workflow edits.
 Repository workflow review must establish validation-only push effects for the controlled demonstration.
 
@@ -219,7 +231,11 @@ The publisher owns credentials, branch, expected old head and allowed file chang
 An ordinary ref update with `force:false` does not provide this expected-head guarantee.
 
 Before publication, reproduce the candidate tree from its base and supported file changes.
-Compare that tree with the locally tested tree. Changes and deletions support only ordinary `100644` files; unchanged base executable files retain their modes. An unchanged base gitlink is preserved only when its staged identity matches the base and its workspace directory is empty and opened without following symlinks. Populated, changed, deleted or traversed submodules remain unsupported. Unsupported changed-path modes, symlinks or size limits block publication until explicitly supported.
+Compare that tree with the locally tested tree. Changes and deletions support only ordinary `100644` files; unchanged base executable files retain their modes.
+
+An unchanged base gitlink is preserved only when its staged identity matches the base and its workspace directory is empty and opened without following symlinks. Populated, changed, deleted or traversed submodules remain unsupported.
+
+Unsupported changed-path modes, symlinks or size limits block publication until explicitly supported.
 After publication, bind remote CI evidence to the returned commit and verified candidate tree.
 
 Record validation expectations before the remote request.
@@ -266,8 +282,10 @@ Default rows show title, state, next dependency and confirmed result links.
 The existing task detail read joins its latest native wait through the
 task/generation index. A typed dependency snapshot carries the exact head,
 recorded check results and wait-update time; it is included in the resource tag.
+
 This adds no endpoint or second polling owner. Clients label those checks as
 saved observations, never as a fresh GitHub query.
+
 Attempts, subagents and tool evidence stay expandable; subagents are helpers within work, not DTs themselves.
 Local saved edits and published changes have different labels.
 
@@ -303,16 +321,16 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 | `fleet.tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
 | `fleet.task_items` | Source admission, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique admission/ordinal; conflicting replay returns 409. |
 | `fleet.task_inputs` | Task/item/sequence, accepted text and interpretation, accepting lease/fence, answer state, applied-effect references. Unique task/item and task/sequence. |
-| Proposed `task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumed admission. One current wait per task through a partial unique index. |
-| Proposed `task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
+| `fleet.task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumed admission. One current wait per task through a partial unique index. |
+| `fleet.task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
 | Proposed `task_decisions` | Physical call identity, lease/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
-| Proposed `task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
-| Proposed `task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
-| Proposed `task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
-| Proposed `task_objects` | Scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
-| Proposed `task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
-| Proposed `task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
-| Proposed `task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
+| `fleet.task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
+| `fleet.task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
+| `fleet.task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
+| `fleet.task_objects` | Scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
+| `fleet.task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
+| `fleet.task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
+| `fleet.task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
 | Existing admissions and leases | Nullable task/item identities; input claim lease/fence on admissions; capability-selected task context on leases. Existing one-shot rows retain null bindings. |
 
 Task targets include repository installation identity, PR identity, head repository/ref, approved base and last independently verified head.
@@ -324,11 +342,14 @@ Deleting a task removes its references after retention rules permit; shared base
 
 Workspace deletion records durable storage-purge receipts before deleting ownership rows.
 Receipts contain only random object identities, bucket references and wrapped-key deletion state, and survive owner-row removal until cleanup completes.
-Proposed `task_storage_purges` rows in the fleet schema track independent cleanup; deleting ownership cannot strand an untracked private object.
+`fleet.task_storage_purges` rows track independent cleanup; deleting ownership cannot strand an untracked private object.
 
 Task mutations lock workspace and fleet parents against deletion, then the slot, admissions by sequence, lease, tasks by identity and subordinate rows by identity.
-Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public execute grant; callers still prove fleet and lease authority.
+Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public `EXECUTE` grant.
+
+Callers still prove fleet and lease authority.
 Completion collection uses a similarly restricted helper to lock expired, finished parent receipts before their fanout children, retaining `SKIP LOCKED`. Its intrinsic minimum retention is 72 hours and its maximum batch is 256; no update privilege is granted on immutable completion rows.
+
 Checkpoint commit locks task before objects; collection locks candidate tasks before objects in the same order.
 Network calls, encryption, scanning and object transfer happen outside database transactions.
 
@@ -374,8 +395,10 @@ Claimed source admissions remain excluded from ordinary leasing until their nati
 After a claim owner expires, accepted items resume from task history; unaccepted items return to FIFO delivery without a fabricated applied receipt.
 
 FIFO order remains authoritative at task yield boundaries.
-The daemon records a slice ceiling of at most ten minutes, further limited by the task and existing lease budgets. Lease delivery, binding acknowledgements and recovery reads expose that same persisted ceiling; checkout and restore do not restart it.
+The daemon records a slice ceiling of at most ten minutes, further limited by the task and existing lease budgets. Lease delivery, binding acknowledgements and recovery reads expose that same saved ceiling; checkout and restore do not restart it.
+
 The runner stops starting action groups with three minutes remaining, allowing one minute for the native assessment and two minutes for checkpoint capture and reporting. The agent drive is bounded by the ceiling minus the two-minute handoff reserve. A missing or exhausted ceiling refuses task actions.
+
 If a group overruns that bound, its earlier completion assessment is cleared. The supervisor retains custody for capture and reports the interrupted outcome; uncertain effects remain subject to native reconciliation and cannot be blindly repeated. The reserve does not guarantee a large checkpoint will finish; failed capture remains a blocked handoff.
 
 Checkpoint-capable tasks save before yielding; failed capture keeps the prior recoverable generation and reports the blocked handoff.
@@ -450,7 +473,9 @@ Generate OpenAPI from wire/source definitions after route inventory and route-co
 
 Use new public error family `UZ-DT`: 001 not found, 002 stale state, 003 replay conflict, 004 invalid target and 005 exhausted limits.
 Use 006 decision unavailable, 007 ambiguous input, 008 incompatible checkpoint, 009 storage unavailable and 010 publication uncertain.
-Use 011 busy control boundary and 012 protocol incompatible; register codes and problem types only with their implementation. Task controls use 013 for a stale resource tag (412) and the existing shared `UZ-AUTHOR-004` precondition code for a missing tag (428).
+Use 011 busy control boundary and 012 protocol incompatible; register codes and problem types only with their implementation.
+
+Task controls use 013 for a stale resource tag (412) and the existing shared `UZ-AUTHOR-004` precondition code for a missing tag (428).
 
 Map missing children to 404, stale/replay/target/checkpoint/protocol conflicts to 409, limits to 429 and unavailable decision/storage to 503.
 Ambiguous input is a normal clarification response; code 007 is reserved for malformed explicit association requests with HTTP 409.
@@ -474,10 +499,10 @@ The user continues messaging the fleet without typing task identities.
 ### Existing mechanisms to reuse
 
 Reuse current runner authentication, lease fencing and vault/credential resolution for storage requests.
-`afd_fleet/src/lease/fence/` already proves the live holder; `afd_credential` already scopes credential requests to native workspace identity.
+`afd_fleet`'s lease fence module already proves the live holder; `afd_credential` already scopes credential requests to native workspace identity.
 Storage authorization applies those checks before issuing exact-object transfer URLs; it is not another permission service.
 
-Local toolbox retention already protects mounted images through `Arc` ownership in `afr_sandbox/src/toolbox/holds/`.
+Local toolbox retention already protects mounted images through `Arc` ownership in `afr_sandbox`'s toolbox holds module.
 Those local references cannot protect R2 objects from a collector on another daemon or survive host replacement.
 M236 adds durable object references and transfer pins for that storage boundary.
 
@@ -490,14 +515,14 @@ Indy requested this boundary review before new DT abstractions are written.
 Structs own data and dependencies; behavior lives on the narrow traits below.
 Wire records remain validated data rather than gaining a trait for each field.
 
-| Owner and planned files | Data structs and behavior |
+| Owner | Data structs and behavior |
 |---|---|
-| `afd_fleet/src/task/{mod,admit,input,wait,effect,limits}.rs` | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native admission staging and lease fences with real database tests. |
-| `af_providers/src/decision/{mod,client,wire,types}.rs` | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
-| `afr_tools/src/verbs/`; `afr_supervisor/src/{verbs/,client/task/}` | Extend the existing `LeaseVerbs` with bounded native input/binding/receipt/decision/effect calls. `FencedVerbs` supplies its own lease fence. The root receives an accounted `DecisionEvaluation`, never dispatch keys. Native checkpoint calls stay with supervisor recovery. The existing closed `Verb` vocabulary owns methods and diagnostic names; calls reuse `ControlPlane` and `RunnerApi`. |
-| `afr_supervisor/src/recovery/{mod,capture,restore,manifest}.rs` | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
-| Planned `storage` module under `afd_fleet/src/task/` | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
-| `af_wire/src/task/`, `af_wire/src/decision/` | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
+| `afd_fleet`'s task module | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native admission staging and lease fences with real database tests. |
+| `af_providers`' decision module | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
+| `afr_tools`' verbs; `afr_supervisor`'s verbs and task client | Extend the existing `LeaseVerbs` with bounded native input/binding/receipt/decision/effect calls. `FencedVerbs` supplies its own lease fence. The root receives an accounted `DecisionEvaluation`, never dispatch keys. Native checkpoint calls stay with supervisor recovery. The existing closed `Verb` vocabulary owns methods and diagnostic names; calls reuse `ControlPlane` and `RunnerApi`. |
+| `afr_supervisor`'s recovery module | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
+| `afd_fleet`'s task storage module | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
+| `af_wire`'s task and decision modules | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
 
 Use trait objects at existing runtime composition boundaries, following `AgentRun` and its `Executor`, `LeaseVerbs`, `EventSink` and `Clock` dependencies.
 An `Arc<dyn DecisionEvaluator>` can share the configured client; the loop borrows it through the current run context.
@@ -561,7 +586,9 @@ Kernel-only proof remains explicitly separate when its required host capability 
 
 ### Durable performance investigations
 
-New task reads pair their actual scope and keyset ordering with indexes: pending input seeks the existing unsettled fleet/sequence index, and unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history. Setup edit checks use their existing unique attempt/usage-sequence index; a duplicate attempt-only index is unnecessary. Account and replay lookups stay point or bounded per-attempt reads. Query-plan measurements, queue-depth cases and hostile-history cases remain part of final verification; adding LIMIT does not prove a bounded scan.
+New task reads pair their actual scope and keyset ordering with indexes. Pending input seeks the existing unsettled fleet/sequence index, and unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history. Setup edit checks use their existing unique attempt/usage-sequence index; a duplicate attempt-only index is unnecessary.
+
+Account and replay lookups stay point or bounded per-attempt reads. Query-plan measurements, queue-depth cases and hostile-history cases remain part of final verification; adding LIMIT does not prove a bounded scan.
 
 A later DT can investigate an `agentsfleet` performance regression through bounded Grafana reads and authorized repository work.
 Keep this evidence available while implementing M236; a duration total alone cannot explain where work slowed.
@@ -655,7 +682,7 @@ Save confirmed, refused or unknown outcome even if stop or lease expiry occurs d
 A repeated confirmed request returns its receipt; an unknown result blocks another send until authoritative reconciliation.
 Reconciliation may read remote evidence through supervised maintenance; it cannot autonomously dispatch a queued write.
 
-This follows the existing synchronous authoring model-call pattern in `afd_authoring/src/model/dispatch/`.
+This follows the existing synchronous authoring model-call pattern in `afd_authoring`'s model dispatch module.
 No client `/dispatch` request, background publisher queue or generic operations service is proposed.
 The POST finishes with a confirmed result or named failure; it does not return early and publish later.
 
@@ -708,7 +735,7 @@ The supervised worker also advances abandoned input claims, uncertain effects an
 
 Provider/model reservations and unknown physical call outcomes are tracked separately from task ready/wait state.
 
-Add task maintenance under `agentsfleetd/src/sweepers/`, following its current supervision and shutdown pattern.
+Task maintenance runs under the daemon binary's sweepers, following their supervision and shutdown pattern.
 Do not spawn detached recovery loops or a recurring user-visible cron for each DT.
 Workspace authorization and repository grants are checked again on every continuation, even when stored files remain available.
 
@@ -738,9 +765,11 @@ It is a proposed initial product limit and needs workload evidence before any cl
 Indy requires chat and CLI activity comparable to the Codex app's readable work timeline.
 Show concise progress explanations and distinct action/result rows, with expandable command output, file diffs and supporting evidence.
 Keep local edits separate from confirmed publication, and show the exact commit whose checks are pending.
+
 Capture progresses through scanning, encryption, upload and verification; only a committed manifest permits a saved label.
 Restore names the selected checkpoint and verifies compatibility before reporting readiness.
 Retries preserve native activity identity and do not inflate transfer counters; reconnects recover confirmed history.
+
 Keep unchanged waits quiet, surface meaningful state changes and name the next recovery action after failure or uncertainty.
 Credentials and private internal reasoning stay outside this presentation; bounded explanations describe decisions and observable work.
 
@@ -756,13 +785,16 @@ Repository preparation, change scanning, encryption/upload, manifest verificatio
 Upload progress counts acknowledged unique bytes against known missing bytes; retries cannot count the same content twice.
 The existing recovery session owns a concrete transfer counter, with an object-ID
 map that records missing, acknowledged and reused ciphertext once per operation.
+
 No shared lock, worker or callback is needed. Native upload readback establishes
 acknowledgement; authenticated download establishes restore acknowledgement.
 Known missing bytes are a remaining count, not a prediction of unscanned files.
+
 Repeated object references do not increase counters. Updates are coalesced to
 one per second within a stage; stage changes and terminal outcomes are immediate.
-The optional typed byte record keeps historical activity readable. This is source
-design; runtime and performance verification remain pending.
+The optional typed byte record keeps historical activity readable.
+
+This is source design; runtime and performance verification remain pending.
 State reused content separately and use counts or an indeterminate state when the total is unknown.
 
 ```text
@@ -808,14 +840,18 @@ Task progress uses an event-local daemon sequence, not UUID timestamps from diff
 workers. The existing event row retains at most 128 facts within a 120 KB item
 budget. The write rechecks slot and lease ownership under nonblocking locks; stale
 or contended cosmetic frames are dropped rather than publishing unsequenced task
-facts. The live tail receives the canonical saved counters and sequence. Clients
+facts.
+
+The live tail receives the canonical saved counters and sequence. Clients
 merge by that sequence and preserve monotonic acknowledged/reused counters.
 Historical unsequenced windows require a shared observation to establish a newer
 tail; disjoint old windows cannot evict the durable window.
 
 Task reads include the latest publication receipt and latest wait observation,
 including consumed waits. Only a confirmed receipt labels a commit as published;
-local diffs and saved files do not. Observation content participates in the task
+local diffs and saved files do not.
+
+Observation content participates in the task
 read ETag, so unchanged task versions cannot mask changed check/publication facts.
 The wait update timestamp is the saved observation timestamp, not a claim that a
 provider was just queried.

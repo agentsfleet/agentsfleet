@@ -1,14 +1,15 @@
 # Concurrency architecture — threads, channels, locks, shutdown
 
 Canonical concurrency model for `agentsfleetd` (control plane) and
-`agentsfleet-runner` (execution plane). This is the file the `name_architecture`
-dispatch consults before naming a thread, channel, or lock, or asserting a
-shutdown ordering. Sibling of [`data_flow.md`](./data_flow.md) (the same runtime
-traced per event) and [`runner_fleet.md`](./runner_fleet.md) (the control/execution
-split). Channel and stream **names** are canonical in `data_flow.md`; this file
+`agentsfleet-runner` (execution plane). Consult this page before naming a
+thread, channel, or lock, or asserting a shutdown ordering. It is a sibling of
+[`data_flow.md`](./data_flow.md) (the same runtime traced per event) and
+[`runner_fleet.md`](./runner_fleet.md) (the control/execution split).
+
+Channel and stream **names** are canonical in `data_flow.md`; this page
 owns the thread/lock/shutdown layer on top of them.
 
-The concurrency rules `C1–C5` are the system's concrete invariants and bind both
+The concurrency rules `C1–C5` are the product's concrete invariants and bind both
 planes. Both planes are Rust on tokio, where the compiler carries three of the
 five.
 
@@ -23,7 +24,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
 | Long-lived work | supervised control-plane tasks, async connections, and runner tasks | each with a declared spawn point, protection, and stop path | §Thread map |
 | Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
-| Shared-state locks | inventoried below | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
+| Shared-state locks | inventoried below | the pub/sub socket is behind none of them: one task owns it and it is reached by command | §Lock-invariant registry |
 | Deadline ownership | one deadline per call site, on both planes | `tokio::time::timeout` or the HTTP client's own timeout; no shared registration map | §The deadline-ownership invariant |
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
@@ -36,41 +37,51 @@ Every row is extracted from the sections below; the owner column names the secti
 Each trap is enforced in its owner section; this list is the index.
 
 - Every spawned task needs a lifetime owner and stop path, including request-owned private preview publishers (§Thread map).
-- Never issue an `SSUBSCRIBE`/`SUNSUBSCRIBE` from anywhere but the hub's control task; a subscriber enqueues a command and the dispatch task sends a signal instead, and the enqueue is what may happen under the channel map's lock because it cannot block (§Lock-invariant registry).
+
+- Never issue an `SSUBSCRIBE`/`SUNSUBSCRIBE` from anywhere but the hub's control task. A subscriber enqueues a command and the dispatch task sends a signal instead. The enqueue is what may happen under the channel map's lock, because it cannot block (§Lock-invariant registry).
+
 - Never await a round trip on the hub's dispatch task; a subscribe that waits there holds every frame behind it (§Thread map).
-- Never do a blocking wire send while holding the map lock — the C3 fix that ended the hub hazard (§Lock-invariant registry).
+
+- Never do a blocking wire send while holding the map lock; that is the C3 fix that ended the hub hazard (§Lock-invariant registry).
+
 - Never free shared state before its tasks and threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
-- New cross-boundary channels declare one producer and one consumer, and the payload's ownership at the boundary; reshaping existing ones is a separate judgment with this doc as input (§Channel inventory).
+
+- New cross-boundary channels declare one producer and one consumer, and the payload's ownership at the boundary. Reshaping existing ones is a separate judgment with this page as input (§Channel inventory).
+
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
-- Never let a setup chat claim wait on a row while it holds the host row: every other tenant on that poll waits behind it. Take the row `NOWAIT` and skip (§Runner capacity and authoring lock order).
+
+- Never let a setup chat claim wait on a row while it holds the host row. Every other tenant on that poll would wait behind it. Take the row `NOWAIT` and skip (§Runner capacity and authoring lock order).
 
 ## The five invariants (rules C1–C5)
 
-1. **C1 — declared producer and consumer, receiver owns the payload.** Every
+1. **C1: declared producer and consumer, receiver owns the payload.** Every
    channel that crosses a task or thread boundary has a single declared producer
-   and a declared consumer, and ownership at the boundary is unambiguous: on both
+   and a declared consumer, and ownership at the boundary is unambiguous. On both
    planes the value moves to the receiver and the compiler is the proof. A
    channel read by several consumers
    hands each of them its own copy and tells a slow one what it missed.
-2. **C2 — stop → join → drop.** Shutdown signals stop, joins the worker, and
+2. **C2: stop → join → drop.** Shutdown signals stop, joins the worker, and
    only then releases shared state. A bounded drain that times out never frees
    state a straggler can still touch.
-3. **C3 — no blocking work under a lock the consumer needs.** A blocking socket
+3. **C3: no blocking work under a lock the consumer needs.** A blocking socket
    write or push is never done while holding a lock the consumer must acquire to
    make progress. Lock state is an explicit parameter, not an ambient assumption.
-4. **C4 — one documented lock per shared aggregate.** Each shared aggregate has
+4. **C4: one documented lock per shared aggregate.** Each shared aggregate has
    exactly one lock whose doc comment states precisely what it protects and any
    ordering constraint, and the guard's scope is visible where it is taken.
-5. **C5 — confined by default.** State touched by one task or thread carries no
+5. **C5: confined by default.** State touched by one task or thread carries no
    lock but says so; on both planes an exclusive borrow is the statement.
 
-The control plane's primitives are tokio's: `CancellationToken` for stop,
-`tokio::select!` to race I/O against it, `tokio::time::timeout` for a deadline,
-`broadcast` and `mpsc` for fan-out and commands, `tokio::sync::Mutex` where a
-guard is held across an await and `std::sync::Mutex` where a leaf map is not.
+The control plane's primitives are tokio's. `CancellationToken` stops,
+`tokio::select!` races I/O against it, and `tokio::time::timeout` bounds a
+deadline. `broadcast` and `mpsc` carry fan-out and commands.
+
+`tokio::sync::Mutex` guards state held across an await and `std::sync::Mutex`
+a leaf map that is not.
+
 The runner uses the same primitives: `CancellationToken` for stop, a `watch`
 channel for the heartbeat's assignment, and a `JoinSet` for its workers
-(`rustd/crates/runner/afr_supervisor/src/worker_pool/mod.rs`).
+(`afr_supervisor`'s worker pool).
 
 ---
 
@@ -81,16 +92,16 @@ how that state is protected, and how it is stopped and joined.
 
 ### `agentsfleetd` (control plane)
 
-The supervisor owns process-lifetime daemon tasks (`agentsfleetd/src/supervisor/mod.rs`). Connection handlers, hub workers and bounded request-owned work have their own owners.
+The supervisor in the daemon binary (`rustd/crates/daemon/main`) owns process-lifetime daemon tasks. Connection handlers, hub workers and bounded request-owned work have their own owners.
 
 `Supervisor::spawn` supplies a cancellation token and retains each handle. Shutdown waits for each handle and reports tasks exceeding the ten-second join deadline. The supervised `hub_pump` shuts down the hub and its listeners.
 
-Private answer previews use a request-owned publisher (`afd_authoring/src/model/progress/publish.rs`). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
+Private answer previews use a request-owned publisher (`afd_authoring`'s preview publisher). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
 
-The inventory is asserted, not described: `test_boot_to_ready_on_compose`
-(`rustd/crates/daemon/agentsfleetd/tests/integration_serve.rs`) compares a booted
-daemon's whole inventory against the names below, so a task added to boot without
-a name — or a sweeper that quietly went back to a bare spawn — is a failing test.
+The inventory is asserted, not described. `test_boot_to_ready_on_compose`
+(the daemon's `integration_serve` test) compares a booted
+daemon's whole inventory against the names below. A task added to boot without
+a name, or a sweeper that quietly went back to a bare spawn, is a failing test.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
@@ -99,16 +110,17 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | Server-Sent Events (SSE) response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
 | outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Dragonfly connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
 | owed-answer producer (`connector:outbound-producer`) | `agentsfleetd::outbound::spawn`, beside the worker | `fleet.obligations` through its own pool handle; re-appends owed answers on the shared Dragonfly handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
-| SSE hub control task (`hub/pump/mod.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `hub_pump`, which `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
-| SSE hub dispatch task (`hub/dispatch.rs`) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
-| admission doorbell listeners (sixteen, `doorbell/mod.rs`) | `Doorbell::listen`, from `ServingPlane::new` | one hub subscription each; shared buffer of at most 64 fleet hints | leaf mutex; never held across an await | hub shutdown closes the subscriptions; listeners return and release their buffer |
+| SSE hub control task (`afd_dragonfly`'s hub pump) | `SubscriptionHub::start`; stopped by the supervised task `hub_pump`, which `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright, no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
+| SSE hub dispatch task (`afd_dragonfly`'s hub dispatch) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
+| admission doorbell listeners (sixteen, `afd_dragonfly`'s doorbell) | `Doorbell::listen`, from `ServingPlane::new` | one hub subscription each; shared buffer of at most 64 fleet hints | leaf mutex; never held across an await | hub shutdown closes the subscriptions; listeners return and release their buffer |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
 | fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through its own pool handle, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
-| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured — a normal boot without one supervises ten tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
+| authoring, billing, task and task-storage sweepers (`sweeper:authoring`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`) | the daemon's sweepers module | Postgres through its own pool handle | none shared | as above |
+| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises twelve tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
 
-A sweep that fails is reported and retried on the next pass: every pass here is
+A sweep that fails is reported and retried on the next pass. Every pass here is
 idempotent and bounded, and a sweeper that exited on a datastore blip would need
 a daemon restart to get liveness back.
 
@@ -116,9 +128,9 @@ New process-lifetime background work belongs to the supervisor. Request-owned wo
 
 ### `agentsfleet-runner` (execution plane)
 
-Rooted at `rustd/crates/runner/agentsfleet_runner/src/main.rs`; no runner crate links a
+Rooted at the runner binary (`rustd/crates/runner/main`); no runner crate links a
 datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
-`afr_supervisor::run` composes the long-lived work (`rustd/crates/runner/afr_supervisor/src/lib.rs`). The private report spool protects shared clock and deadline state with its own mutex.
+`afr_supervisor::run` composes the long-lived work. The private report spool protects shared clock and deadline state with its own mutex.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
@@ -148,18 +160,18 @@ below are the concurrency view.
 | `connector:outbound` | Dragonfly stream + consumer group `connector_workers` | the report path after its commit, and the owed-answer producer → dedicated blocking outbound reader | durable queue; the worker acknowledges each job it finishes, delivered or exhausted |
 | `fleet:{id}:activity` | Dragonfly sharded pub/sub (ephemeral) | `agentsfleetd` `SPUBLISH` (+ runner-forwarded frames) → the hub's one shared connection, one `SSUBSCRIBE` per channel, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
 | `fleet:wake:{shard}` (sixteen) | Dragonfly sharded pub/sub | admission and gate-answer commits publish hints to each replica | ephemeral; every poll still probes PostgreSQL |
-| `fleet:control` | **removed at the M80 cutover** | — | — |
 
 The hub holds exactly **one** pub/sub connection for all viewers, refcounting
-`SSUBSCRIBE` per channel-with-viewers — the per-stream connections are gone
-(`data_flow.md`), and `test_hub_refcount_single_connection` is what holds it. New
-cross-boundary channels declare one producer and one consumer and say who owns
-the payload (C1); reshaping the existing ones is a separate judgment with this
-doc as input.
+`SSUBSCRIBE` per channel-with-viewers. The per-stream connections are gone
+(`data_flow.md`), and `test_hub_refcount_single_connection` is what holds it.
+
+New cross-boundary channels declare one producer and one consumer and say who owns
+the payload (C1). Reshaping the existing ones is a separate judgment with this
+page as input.
 
 SSE response bodies share the hub; they do not each open a Dragonfly connection or reserve a thread.
 The daemon listener supports HTTP/1.1 and h2c independently of the browser-facing connection.
-[Data Flow, D. WATCH](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns the Next.js proxy and per-hop protocol description.
+[Data Flow, section D (WATCH)](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns the Next.js proxy and per-hop protocol description.
 
 ---
 
@@ -170,111 +182,128 @@ constraint. Each is documented at its declaration (C4).
 
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
-| hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await — the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
+| hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await; the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
 | outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
 | runner series table | `af_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
 | doorbell hint buffer | `afd_dragonfly::Doorbell` | at most 64 distinct recent fleet IDs | leaf mutex; no database or network calls while held |
-| metric instruments | `af_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf — held alone |
+| metric instruments | `af_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf, held alone |
 | Capability caches | `afd_identity`'s `ProviderCapabilities` | separate Moka stores for fresh claims and last confirmed claims; each is bounded to 4096 subjects | conditional per-key invalidation precedes `try_get_with`, which coalesces concurrent fetches; failed refreshes retain the original stale timestamp, and unknown subjects clear the fallback |
 | JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
 | run ledger | `afr_agent`'s `Ledger` | one run's open calls and the counter they share | taken to open a call and again to end it, never across its handler, so a child's call can open and end inside its parent's `delegate` |
-| child registry | `afr_agent`'s nested `Registry` | one run's children, and the running and started counts that bound them | leaf — held alone |
-| process events | `afr_executor`'s events `Shared` | one process's output state, shared by its two ends | leaf — held alone |
-| admitted toolboxes | `afr_sandbox`'s `Toolboxes` | the images one host has admitted, oldest first | leaf — held alone |
+| child registry | `afr_agent`'s nested `Registry` | one run's children, and the running and started counts that bound them | leaf, held alone |
+| process events | `afr_executor`'s events `Shared` | one process's output state, shared by its two ends | leaf, held alone |
+| admitted toolboxes | `afr_sandbox`'s `Toolboxes` | the images one host has admitted, oldest first | leaf, held alone |
 | lease memory | `afr_tools`'s `Lease::memory` (tokio) | the fleet's memory backend for one lease | held for one read or write, never across a call |
 | lease egress | `afr_tools`'s `Lease::egress` (tokio) | the lease's policy and the credentials it has minted | held to admit or mask, never across a send |
 | exec sessions | `afr_tools`'s `Sessions` | one lease's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
 | mirror locks | `afr_supervisor`'s `Mirrors` | the map of one lock per repository mirror | held only to fetch that mirror's tokio lock, which is held across the mirror's fetch and checkout |
-| run clock and lease timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one lease's segment timings | each a leaf — held alone |
+| run clock and lease timeline | `afr_supervisor`'s `RunClock` and `Timeline` | the clock one run's frames are read against, and one lease's segment timings | each a leaf, held alone |
 | private report state | `afr_supervisor`'s authoring spool | clock high-water mark, uncertainty flag and monotonic report deadlines | shared by writes and cleanup; filesystem work runs on the blocking pool |
-| egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf — held alone |
+| egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf, held alone |
 
-The load-bearing ordering rule (the C3 fix that ended the hub's
-blocking-write-under-the-map-mutex hazard): the pub/sub socket is behind no lock
+The load-bearing ordering rule is the C3 fix that ended the hub's
+blocking-write-under-the-map-mutex hazard: the pub/sub socket is behind no lock
 at all. The control task owns it, and a subscriber that wants an `SSUBSCRIBE`
-or an `SUNSUBSCRIBE` enqueues a command. The enqueue happens while the channel map is
-still locked, deliberately — that ordering is what stops an `Unsubscribe`
-overtaking the `Subscribe` of a reader arriving on the same channel — and it is
-safe only because the queue is unbounded and the send therefore cannot block.
+or an `SUNSUBSCRIBE` enqueues a command.
+
+The enqueue happens while the channel map is still locked, deliberately. That
+ordering is what stops an `Unsubscribe` overtaking the `Subscribe` of a reader
+arriving on the same channel. It is safe only because the queue is unbounded
+and the send therefore cannot block.
 
 ### The deadline-ownership invariant
 
 Every network call is bounded, and both planes bound it at the call site. On the
 control plane that is a `tokio::time::timeout` around the operation, and a
-`select!` against the cancellation token for anything long-lived, so there is no
+`select!` against the cancellation token for anything long-lived. So there is no
 shared registration map to keep consistent and no generation check to get wrong.
-Postgres stays outside any scheduler on purpose: the pool's acquire and connect
-timeouts already bound it.
 
-The runner bounds each call in the HTTP client that makes it: the control-plane
-client's `CALL_TIMEOUT` (`rustd/crates/runner/afr_supervisor/src/client/http.rs`), the
-egress transport's request and connect timeouts
-(`rustd/crates/harness/af_egress/src/network/mod.rs`), and the model providers' connect and
-read timeouts (`rustd/crates/harness/af_providers/src/connect/mod.rs`).
+Postgres stays outside any scheduler on purpose. The pool's acquire and connect
+timeouts bound the connection. The API login's lock and statement bounds cover
+every statement (§"Every daemon statement runs under the API login's bounds").
+
+The runner bounds each call in the HTTP client that makes it:
+
+- the control-plane client's `CALL_TIMEOUT` (`afr_supervisor`);
+- the egress transport's request and connect timeouts (`af_egress`);
+- the model providers' connect and read timeouts (`af_providers`).
 
 ---
 
 ## Shutdown choreography
 
 The stop → join → drop sequence (C2). Three steps on the control plane, and the
-reduction is the result rather than the goal: most of a longer list is orderings
+reduction is the result rather than the goal. Most of a longer list is orderings
 that a teardown had to hold by hand.
 
 1. **Decide why.** `Daemon::run` awaits whichever of the server or the signal
-   finishes first, and names it — `Signalled` or `ServerStopped`. Both are
+   finishes first, and names it `Signalled` or `ServerStopped`. Both are
    modelled because a daemon that waits solely for a signal hangs when its
    listener dies of something else: a lost bind, an accept loop that returned,
-   a runtime that shut its I/O driver. That process is unkillable except by
-   SIGKILL and reports nothing on its way out. The `select!` is `biased`, so the
-   answer is a fact about the futures rather than about tokio's branch order.
+   a runtime that shut its I/O driver.
+
+   That process is unkillable except by SIGKILL and reports nothing on its way
+   out. The `select!` is `biased`, so the answer is a fact about the futures
+   rather than about tokio's branch order.
+
 2. **Cancel and join, unconditionally.** The teardown is in the outer `run`, not
-   inside the loop — exonum's `ApiManager::run`/`run_inner` split, taken for its
-   one property: every early return still tears down. `Supervisor::shutdown`
-   cancels the token, then joins every handle with a `JOIN_TIMEOUT` deadline,
-   reporting any task that would not stop by name instead of hanging the process.
-   Cancellation is edge-triggered and reaches into a blocked read, so a task is
-   interrupted where it is waiting rather than at the next poll interval —
-   proven for a real blocked `accept()` by `test_task_inventory_and_cancellation`,
-   which carries a control so the negative is not vacuous. Streaming stops here
-   too: `hub.shutdown()` clears the channel map, so a reader parked on the hub
-   gets a hub-closed error it can act on rather than waiting on a socket nobody
-   is pumping.
+   inside the loop. That is exonum's `ApiManager::run`/`run_inner` split, taken
+   for its one property: every early return still tears down.
+
+   `Supervisor::shutdown` cancels the token, then joins every handle with a
+   `JOIN_TIMEOUT` deadline. It reports any task that would not stop by name
+   instead of hanging the process. Cancellation is edge-triggered and reaches
+   into a blocked read, so a task is interrupted where it is waiting rather
+   than at the next poll interval.
+
+   `test_task_inventory_and_cancellation` proves that for a real blocked
+   `accept()`, and carries a control so the negative is not vacuous.
+
+   Streaming stops here too. `hub.shutdown()` clears the channel map, so a
+   reader parked on the hub gets a hub-closed error it can act on. It no longer
+   waits on a socket nobody is pumping.
+
 3. **Drop after shutdown returns.** The caller drops its pools after `Supervisor::shutdown` finishes.
-   Successful joins establish stopped tasks; timeout records an abandoned task and drops its join handle (`agentsfleetd/src/supervisor/mod.rs`).
+   Successful joins establish stopped tasks; timeout records an abandoned task and drops its join handle (the daemon binary's supervisor).
    Dropping that handle detaches the task, so timeout does not prove every task stopped.
 
 A detached task retains its owned references until it ends. The intended C2 discipline therefore requires tasks to observe cancellation before the join deadline. Treat an abandoned-task report as incomplete shutdown, even though the supervisor returns.
 
-The runner joins its heartbeat, runtime report drain, private report drain and worker pool (`afr_supervisor/src/lib.rs`). Private spool cleanup completes before those components start. After they return, shutdown destroys every held sandbox.
+The runner joins its heartbeat, runtime report drain, private report drain and worker pool (`afr_supervisor::run`). Private spool cleanup completes before those components start. After they return, shutdown destroys every held sandbox.
 
 Workers finish their current lease before leaving the pool. Lease deadlines, renewal refusals and the running halt token can interrupt that work.
 
 Handshakes, not sleeps, in every one of these tests: channels, `Notify` and
-`CancellationToken` on both planes. The abandoned-task assertions run under `#[tokio::test(start_paused)]`, so a
-ten-second join timeout costs no wall clock: with every task parked the runtime
-advances to the next deadline itself.
+`CancellationToken` on both planes. The abandoned-task assertions run under
+`#[tokio::test(start_paused)]`, so a ten-second join timeout costs no wall
+clock. With every task parked the runtime advances to the next deadline itself.
 
 ### Why there is no signal watcher and no shutdown flags
 
-Two flags kept apart — a raw signal flag and a background-stop flag — protect one
-window: a SIGTERM arriving during boot must not kill the background stack while
+Two flags kept apart, a raw signal flag and a background-stop flag, protect one
+window. A SIGTERM arriving during boot must not kill the background stack while
 the server may still come up and briefly serve. That is the half-dead-node
-window, and it needs two flags only where a watcher thread polls, because there
+window.
+
+It needs two flags only where a watcher thread polls, because there
 "the signal arrived" and "the server stopped" are events that genuinely race.
 
-They cannot race in `Daemon::run`, because they are statements in order: await
-whichever of server-or-signal finishes first, then cancel the supervisor, then
-let the caller drop the pools. A signal during boot leaves an already-resolved
-future; the server comes up, sees it resolved, and stops. Same property, one less
-piece of shared mutable state, and no 100 ms of shutdown latency paid on every
-task. `test_boot_window_sigterm` fails if the `select!` arms are swapped.
+They cannot race in `Daemon::run`, because they are statements in order. The
+daemon awaits whichever of server-or-signal finishes first, then cancels the
+supervisor, then lets the caller drop the pools. A signal during boot leaves an
+already-resolved future; the server comes up, sees it resolved, and stops.
+
+Same property, one less piece of shared mutable state, and no 100 ms of shutdown
+latency paid on every task. `test_boot_window_sigterm` fails if the `select!`
+arms are swapped.
 
 ### Why neither plane has a central deadline scheduler
 
 A treap-backed registration map and a worker thread exist so one thread can
 interrupt another's blocked socket. On tokio, `tokio::time::timeout` or a
-client's own timeout at the call site is the same guarantee with no shared map
-to keep consistent and no generation check to get wrong, and
+client's own timeout at the call site is the same guarantee. There is no shared
+map to keep consistent and no generation check to get wrong.
+
 `CancellationToken` is edge-triggered, so a task selecting over its own I/O and
 `cancelled()` is interrupted mid-read.
 
@@ -286,20 +315,20 @@ to keep consistent and no generation check to get wrong, and
 of the five on both planes; the other two hold at review.
 
 **There is no roster to append to.** Every folder under `rustd/` is in scope and
-none is checked by a roster, and RULE NLR (touch-it-fix-it) owns cleanup of the
+none is checked by a roster. RULE NLR (touch-it-fix-it) owns cleanup of the
 individual files a change touches.
 
-**A mechanical half is a real piece of work, not a line of data.** It means a
-checker that reads `rustd/`, a make target that invokes it, and a Continuous
-Integration (CI) job that runs the target.
+**A mechanical half is real work, not a line of data.** It needs three things.
+A checker reads `rustd/`, a make target invokes it, and a Continuous
+Integration (CI) job runs the target.
 
 ## Runner capacity and authoring lock order
 
 All claims hold the runner row while counting live capacity and writing a lease. Both renewal kinds hold it before extending deadlines and sample database time after acquiring it. Runtime renewal takes runner → lease/affinity; its funds check reads the wallet without a lock.
 
-A setup chat renewal takes draft → attempt → runner instead (`afd_authoring/src/lease/renew.rs`). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
+A setup chat renewal takes draft → attempt → runner instead (`afd_authoring`'s lease renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 
-The claim is the one path that holds a host and then asks for a draft, and it never waits for the draft (below). Retiring a revoked runner (`afd_runner` `delete_revoked`) is the one opposite order left. Its delete holds the runner row while `authoring.attempts.runner_id`'s `ON DELETE SET NULL` locks that runner's attempts.
+The claim is the one path that holds a host and then asks for a draft, and it never waits for the draft (below). Retiring a revoked runner (`afd_runner`'s `delete_revoked`) is the one opposite order left. Its delete holds the runner row while `authoring.attempts.runner_id`'s `ON DELETE SET NULL` locks that runner's attempts.
 
 So a renewal in flight can deadlock with that delete. Postgres aborts one side within `deadlock_timeout`. A revoked runner's renewal is refused by `can_renew` either way, and an aborted delete is retried.
 
@@ -309,15 +338,25 @@ Commit dispatch intent before network I/O, and release every database lock befor
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
-No setup chat path locks the wallet row. The claim gate reads the balance less every unsettled line, without a lock (`afd_authoring/src/model/budget.rs`, `afd_billing/src/ledger/sql/select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring/src/creation/sql/wallet.sql`).
+No setup chat path locks the wallet row. The claim gate reads the balance less every unsettled line, without a lock (`afd_authoring`'s model budget, `afd_billing`'s `select_balance.sql`). The only authoring wallet lock left is fleet creation's at Save (`afd_authoring`'s creation `wallet.sql`).
 
 Stop and delete take draft → attempt and never later take the runner guard.
 
+### Every daemon statement runs under the API login's bounds
+
+The API login carries two bounds through `ALTER ROLE` (`afd_db::login`). A lock wait ends after 2 s with `55P03`, and a statement after 5 s with `57014`. They reach every statement `agentsfleetd` sends, because the daemon opens one pool as that login.
+
+No product transaction sets its own with `set_config`. The four that did were removed on Nov 07, 2026; each repeated or loosened the login's bounds.
+
+Both codes mean "not now", so one predicate reads them (`afd_db::error::is_bound_reached`). A caller answers a reached bound as retryable unavailability. The fleet task paths answer 503, billing counts it as an unanswered read, and setup activation reads it as still installing.
+
+The decision sweep defers a candidate whose fleet row is locked to its next pass, which `PASS_TIMEOUT` still caps.
+
 ### The setup chat claim never waits on a row
 
-A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_authoring/src/lease/claim/mod.rs`). Each locks the host row, then the creator's user row, then the draft.
+A claim walks up to 64 queued drafts, oldest first, one transaction per draft (`afd_authoring`'s lease claim). Each locks the host row, then the creator's user row, then the draft.
 
-Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. The claim sets no `lock_timeout`. A claim that waited on a busy draft therefore held its host row throughout, and every tenant behind that draft waited with it:
+Every draft writer takes that draft lock too: a sent message, an edit, an applied revision, a review. A claim that waited on a busy draft held its host row throughout, and every tenant behind that draft waited with it:
 
 ```
 BEFORE — the claim waits                      AFTER — the claim skips
@@ -333,7 +372,7 @@ BEFORE — the claim waits                      AFTER — the claim skips
 ```
 
 
-`authorize` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_authoring/src/lease/claim/selection.rs`). That is the order the reads after it lock them. The statements are `sql/hold_user.sql` and `sql/hold_draft.sql`.
+`authorize` takes the creator's row `FOR SHARE NOWAIT`, then the draft's `FOR UPDATE NOWAIT`, inside a savepoint (`afd_authoring`'s claim selection). That is the order the reads after it lock them. The statements are `hold_user.sql` and `hold_draft.sql`.
 
 A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the claim's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads after it never wait.
 
@@ -343,4 +382,4 @@ The skip logs `authoring_claim_draft_skipped` at `debug`, because under contenti
 
 No lease was doubled and no host exceeded its workers either way. The full row is in [Measured ceilings](./scaling.md#measured-ceilings).
 
-The proofs are `tests/draft/admission/skipping.rs`. A claim can still be a deadlock victim on a lock it does wait for, the catalogue its model read shares (`tests/draft/admission/revalidation.rs`).
+The proofs are `afd_authoring`'s `skipping` admission tests. A claim can still be a deadlock victim on a lock it does wait for, the catalogue its model read shares (the `revalidation` admission tests).

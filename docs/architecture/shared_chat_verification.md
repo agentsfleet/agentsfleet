@@ -1,8 +1,8 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-10-27
-product_version: 0.70.0
+verified: 2026-11-07
+product_version: 0.75.0
 executable: false
 ---
 
@@ -10,12 +10,12 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| Where is provider streaming implemented? | `af_inference::stream::StreamTurn`, used by setup and fleet execution |
+| Where is provider streaming implemented? | `af_inference::stream::StreamTurn`, used by setup and fleet runs |
 | Who parses provider events? | Rig, through its native HTTP adapter and provider codecs |
 | Where is browser connection recovery implemented? | `ChatConnection`, used by both chat adapters |
 | Where are reply ordering and rendering shared? | `ReplyStream`, `ReplyStreamDecoder`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame` |
 | What still differs by purpose? | Authorization, tools, durable records, admission and explicit setup saves |
-| What is provisional? | Live answer text; durable receipts and message reads decide completion |
+| What is preview-only? | Live answer text; durable receipts and message reads decide completion |
 
 Read this page to review the shared code and its evidence.
 The [API reference](api_resources.md) owns endpoint behavior.
@@ -36,7 +36,7 @@ flowchart TD
     I --> J[Guarded physical HTTP sender]
 ```
 
-[`StreamTurn`](../../rustd/crates/protocol/af_inference/src/stream.rs) owns one Rig stream.
+`af_inference`'s `StreamTurn` owns one Rig stream.
 It handles cancellation, inactivity, finalization and partial usage.
 Neither caller owns another provider event parser.
 
@@ -93,7 +93,7 @@ The pool's existing five-second acquisition deadline remains unchanged.
 
 ### Private setup delivery
 
-[`Publisher`](../../rustd/crates/daemon/afd_authoring/src/model/progress/publish.rs) consumes a bounded preview queue.
+`afd_authoring`'s preview `Publisher` consumes a bounded preview queue.
 The first answer text is flushed immediately.
 Later text is coalesced on a 50-millisecond interval.
 
@@ -121,7 +121,7 @@ The private subject is `draft:<draft_id>:events`; fleet activity never receives 
 ### API changes
 
 Existing paths and explicit save operations remain.
-The draft event stream adds provisional `message.delta` events and `draft.resync` recovery hints.
+The draft event stream adds preview `message.delta` events and `draft.resync` recovery hints.
 
 | Delta field | Meaning |
 |---|---|
@@ -183,12 +183,13 @@ flowchart TD
 
 The app pins `@assistant-ui/react` exactly; the root override pins `@assistant-ui/store` exactly. Root `package.json` registers both Bun patches.
 They restore reserved scroll space before a fold paints and retain bottom-following when a shorter viewport also shrinks the composer.
+
 Streaming mutations share one scheduled animation-frame update. Container resizes apply immediately; unmount cancels queued work and disconnects observers.
 The browser acceptance checks measure folding, viewport resizing, and manual history reading; keep those checks when updating either dependency.
 
 The setup adapter normalizes its one-based preview sequence before calling `ReplyStream`.
 Runtime frames already use the shared zero-based sequence.
-A gap stops provisional concatenation instead of displaying a corrupted answer.
+A gap stops preview concatenation instead of displaying a corrupted answer.
 
 Each adapter repairs from its own durable reader.
 
@@ -207,6 +208,7 @@ The private transcript stays out of browser storage.
 
 The fleet editor reads current setup, creator-private conversations, and filtered receipts through `GET F/authoring-context`, as defined in the API reference.
 Conversation and receipt pages stay bounded. Older conversations load on request; truncated messages retain a link to their full private chat.
+
 The server measures complete serialized context bytes before trimming older turns or deferring conversations. Message and conversation boundaries advance together with those cuts.
 
 The sidebar reads saved fleets only. Creator-private drafts remain in **Unfinished setups** on **New fleet**.
@@ -215,6 +217,7 @@ Both lists remain scoped to the account, workspace, and signed-in person.
 Draft projection indexes original requests by sequence once per snapshot.
 A conversation-owned weak cache preserves unchanged message objects while the latest reply streams.
 Settled rows receive message data without scanning the transcript again.
+
 Earlier conversation rows and decoded receipts retain their object identities. A stable fleet message renderer avoids rebuilding unchanged rows when surrounding controls change.
 
 Setup retry reads current client state, stops uncertain work when required, then submits the original request.
@@ -237,7 +240,9 @@ Model edits follow the separate [exact-text correction path](fleet_definitions.m
 
 `DraftClient.apply` sends the reviewed candidate with its setup ETag and idempotency key.
 A conflict retains the proposed changes for review.
+
 A successful setup save keeps authoring open. Saving manual instructions closes only the instruction editor.
+
 Saving also replaces the URL's setup revision. Start over reads the fleet's current revision before creating another draft.
 
 Optional receipt-read failures keep the confirmed save and previous receipts available. Lost access still clears private state.
@@ -250,27 +255,12 @@ Setup constants and schedule-status checks do not initialize setup schemas.
 
 ### Retaining long acceptance evidence
 
-The final continuity checks send 181 messages through one fleet and repeat those steps across ten concurrent fleets.
+The soak acceptance spec sends 181 messages through one fleet across four saved setups, and repeats the lifecycle across ten concurrent fleets.
 A failed check or evidence read preserves every related fleet and private draft.
-The shared teardown also preserves the `continuity-` fleet prefix.
 
-Identifier attachments record the workspace, fleet, and private draft identifiers before history reads.
+Each run attaches its workspace, fleet and private draft identifiers, its history snapshot and its pending requests before it ends.
 Successful runs clean up only after every history and isolation check and every evidence capture succeeds.
 These retention tests do not establish that the full live acceptance checks passed.
-
-Cleanup deletes the supplied fleet and drafts, including their saved messages.
-Use the identifier attachment against the same development backend with a current fixture session:
-
-```sh
-cd ui/packages/app
-bun tests/e2e/acceptance/fixtures/continuity-cleanup.ts /path/to/single-identifiers.json
-```
-
-Successful cleanup exits with status 0 and no output.
-The command refuses production hosts and invalid attachments.
-
-It checks the live fleet name and deletes only the supplied fleet and drafts.
-Failed deletions remain errors; they never count as successful cleanup.
 
 ## Tracing and memory
 
@@ -306,8 +296,8 @@ Those libraries provide no complete erasure guarantee through these interfaces.
 
 ## Runner dependency audit
 
-The workspace has ten crates named `afr_*`.
-The audit covers all ten, the runner binary and five shared dependencies: sixteen crates total.
+The runner has seven `afr_*` crates and shares `af_egress`, `af_providers` and `af_secrets` from the harness layer.
+The audit covers those ten, the runner binary and five more crates: sixteen in all.
 The table records the inspected boundary and reused implementation.
 
 It does not claim that every unchanged operation has a new tracing span.
@@ -323,7 +313,7 @@ It does not claim that every unchanged operation has a new tracing span.
 | `af_secrets` | `Secret`, `Scrub` and `Carry`; zeroize and Aho-Corasick | Retained secret copies and unprocessed stream tails now erase their owned strings |
 | `afr_supervisor` | Central daemon client and bounded HTTP waits; reqwest and backon | Existing paired debug events retained; verb fields hoisted once |
 | `afr_telemetry` | OTLP installation, filtering, sampling and bounded shutdown | Shutdown timeout now names its registry code |
-| `afr_tools` | `Handler` and `Typed<H>`; serde and schemars | Shared argument parsing and cached schema; execution logs remain with the agent boundary |
+| `afr_tools` | `Handler` and `Typed<H>`; serde and schemars | Shared argument parsing and cached schema; tool-run logs remain with the agent boundary |
 | `agentsfleet_runner` | Boot, shutdown and failure rendering | Existing terminal errors carry registry codes |
 | `af_inference` | Shared provider stream, transport, failure recovery and log filtering | Paired content-free lifecycle and timing records |
 | `afd_authoring` | Dispatch, receipt, private publisher and lease guards | Paired private preview traces; no connection held during provider or bus waits |
@@ -376,8 +366,7 @@ The private-stream survivor replaces one cancellation-or-closure check with an A
 Its changed behavior requires a running message at or below the cancellation cutoff, or a running message in a closed draft.
 Production operations prevent both states under the same draft lock used by observation.
 
-See [`cancel`](../../rustd/crates/daemon/afd_authoring/src/message/cancel.rs), [`claim`](../../rustd/crates/daemon/afd_authoring/src/lease/claim/selection.rs),
-[`idle`](../../rustd/crates/daemon/afd_authoring/src/draft/patch.rs) and [`observe`](../../rustd/crates/daemon/afd_authoring/src/observe/mod.rs).
+Those operations are `afd_authoring`'s message cancel, lease claim selection, draft patch and observe modules.
 The original defensive checks remain.
 
 The Miri run used nightly commit `1a2c4797ef2570bd76ca5dee34449169bc7dc457`, matching the workflow's dated pin.

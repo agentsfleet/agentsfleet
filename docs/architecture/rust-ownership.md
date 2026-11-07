@@ -2,9 +2,11 @@
 
 This decision record follows the September 2026 audit of `rustd/` at
 `685725d7f95b0bb3bf2d98ccdb59f3df75616b4b`. The inventory contained 1,139 Rust
-source files across 36 crates. Every file was read for inventory, declaration,
-pattern and clone analysis; detailed manual review concentrated on security
-boundaries and the resulting findings. Generated build output was excluded.
+source files across 36 crates.
+
+Every file was read for inventory, declaration, pattern and clone analysis;
+detailed manual review concentrated on security boundaries and the resulting
+findings. Generated build output was excluded.
 
 ## Review rubric
 
@@ -19,8 +21,10 @@ Score a function, type or cohesive module on three ordinal axes. The resulting
 
 Consequence 3 with burden 3 is first priority. Other demonstrated defects and
 duplicated mechanisms covered by an existing owner follow. Keep domain policy
-whose replacement has no demonstrated benefit. Record confidence and migration
-effort separately; multiplying ordinal scores would imply precision they lack.
+whose replacement has no demonstrated benefit.
+
+Record confidence and migration effort separately; multiplying ordinal scores
+would imply precision they lack.
 
 Each assessment needs a trust boundary, invariant, source evidence, other
 implementations, a specific replacement API, preserved behavior, and meaningful
@@ -46,11 +50,14 @@ verification. A keyword hit or repeated test fixture is not itself a defect.
 | Svix | Keep the documented vendored verification fork and its compatibility tests. The audit found no basis for an unreviewed dependency switch. |
 
 The principal regression proofs cover repeated provider failures, 100 concurrent
-capability callers, independent subjects, narrowing, cancellation, same-cache key
-removal/republication, ambiguous JWK fields, redacted scheduler diagnostics,
-malformed percent escapes, import/install version agreement and paused webhooks.
-The live migration regression fails after successful schema changes (DDL, data definition language), checks rollback and
-failure recording, then checks a corrected retry and subsequent idempotence.
+capability callers, independent subjects, narrowing and cancellation. They also
+cover same-cache key removal/republication, ambiguous JWK fields, redacted
+scheduler diagnostics, malformed percent escapes, import/install version
+agreement and paused webhooks.
+
+The live migration regression fails after successful schema changes (DDL, data
+definition language). It checks rollback and failure recording, then a corrected
+retry and subsequent idempotence.
 
 Secret guards cover the allocations they own. They do not claim to erase Serde
 scratch storage, parser error-path allocations, borrowed input, or copies held by
@@ -58,8 +65,8 @@ transport libraries. Tests must not read freed memory to infer zeroization.
 
 ## October 2026 audit: owners added and replacements refused
 
-The second audit covered all 54 crates, 18 more than September's, with a finder and an independent
-verifier per crate group; the per-site record is
+The second audit covered all 54 crates, 18 more than September's, with a finder
+and an independent verifier per crate group. The per-site record is
 `docs/v2/reviews/m218-rust-duplication-ledger.md`. It added these owners:
 
 | Area | Owner and decision |
@@ -67,7 +74,7 @@ verifier per crate group; the per-site record is
 | Configuration knobs | `af_core::env::optional` reads a knob trimmed, and blank as unset. Every daemon-side reader of a string-valued knob calls it; the numeric readers (pool sizes, timeouts, the log level) trim and parse in place. The daemon's terminal sensing (`NO_COLOR`, `TERM`, the service-manager marker) stays a direct presence check, where a set-but-blank value still counts as set. The runner supervisor keeps its own untrimmed reader on purpose: it refuses a padded runner token today, and a trimming reader would accept one. |
 | Direct HTTP clients | `afd_identity::direct(timeout)` is the one builder for a client that must ignore an environment proxy: the key-set fetch, the claim read, the metadata write and the vendor token exchange. The scheduler's client and the GitHub library fetch keep honouring an environment proxy, as they did before. It returns a builder, so a caller that also bounds redirects says so before building, and maps a build failure into its own error. A vendor client that cannot build refuses boot rather than falling back to a proxy-honouring default. |
 | Egress slots | `afr_sandbox`'s slot pool is reached through `Kernel::slots()`: the running kernel's pool is one static, because every engine in a process names its links in the same host namespace; a fake kernel holds its own, so tests need no process-wide lock. |
-| Log lines of a coded failure | `Coded::logged()` binds `error_code` and `reason`; `reason` is `Coded::told()` — the sentence and its causes, without the code a second time or a captured backtrace. A line that logs a fixed code keeps it and takes only `told()`. |
+| Log lines of a coded failure | `Coded::logged()` binds `error_code` and `reason`; `reason` is `Coded::told()`, the sentence and its causes, without the code a second time or a captured backtrace. A line that logs a fixed code keeps it and takes only `told()`. |
 | Hex, message authentication code (MAC) tags and entity tags | `hex::encode` renders bytes, and `af_core::lower_hex` is the one lowercase-hex digit test. `af_crypto`'s tag type compares a presented hex tag in constant time over its hex form, which is how the connector's state and subject tags are checked. The webhook scheme decodes a provider's digest first, on purpose and case-insensitively, then compares the decoded tag in constant time. `af_core::etag::compute` is the one entity-tag encoding. |
 | Small shared rules | `af_validate::rules` owns the path-segment rule two crates wrote; `afd_db` owns the query type alias and the escaping of untrusted text inside a `LIKE` pattern; `afd_api_wire::approval` owns the approval-gate status vocabulary both the gate and the inbox read. |
 
@@ -92,20 +99,22 @@ single endpoint override for test isolation.
 The [`oauth2` crate](https://docs.rs/oauth2/latest/oauth2/) can own authorization
 URLs, typed exchange requests and token responses. Adopting it would still require
 the provider adapters and grant parsing, plus translation into the existing secret
-and error types. Retain the current bounded composition for this change. Revisit
-when Proof Key for Code Exchange (PKCE), discovery or additional grant types create shared protocol machinery;
-that evaluation should compare deleted code and the provider behaviour each adapter preserves.
+and error types. Retain the current bounded composition for this change.
+
+Revisit when Proof Key for Code Exchange (PKCE), discovery or additional grant
+types create shared protocol machinery. That evaluation should compare deleted
+code and the provider behaviour each adapter preserves.
 
 ## Migration checksum upgrade design
 
 The September upgrade proposal is superseded by the current SQLx migration owner.
 `afd_db` runs SQLx Migrator, which creates its checksum ledger at runtime.
-The [migration owner](../../rustd/crates/daemon/afd_db/src/migrate/mod.rs) configures its location and records each applied slot.
+`afd_db`'s migrate module configures its location and records each applied slot.
 
 An edited applied slot or a version unknown to the binary is refused.
 
 The daemon retains its bounded advisory lock and disables SQLx's unbounded lock.
-Each slot applies in one transaction (`rustd/crates/daemon/afd_db/src/migrate/mod.rs`, `migration.rs`).
+Each slot applies in one transaction (`afd_db`'s migrate module and migration list).
 Databases began empty under this ledger; no older-ledger adoption runs.
 
 [Postgres schemas](postgres_schemas.md#layout) owns the current layout.

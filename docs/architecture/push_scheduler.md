@@ -9,7 +9,7 @@ Indy made each decision below on Nov 06, 2026. The specs quote his words.
 | Decision | What it means |
 |---|---|
 | Postgres accepts every message and fences every run | `fleet.admissions` is the only acceptance store. `runner.fleet_slots.fencing_token` is the only execution authority. |
-| Messages fold into a running run | A chat message that arrives mid-run joins that run at its next safe boundary, through #803's input claims. A call in flight is never interrupted. Revised Nov 06, 2026: no compaction marker, no parallel path (M242_002 Discovery). |
+| Messages fold into a running run | A message that arrives mid-run joins that run before its next model call, whatever sent it, up to the first parked or task-bound message. A call in flight is never interrupted. A durable task keeps #803's person-only claim. Revised Nov 07, 2026: every sender folds (M242_002 Discovery). |
 | Runners hold one stream | A runner host keeps one outbound connection to `agentsfleetd`. Work is pushed down it; nothing polls. |
 | Core NATS replaces Dragonfly | NATS carries signals only: no JetStream, no KV. Every durable fact moves to Postgres first. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
@@ -38,7 +38,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 |---|---|---|
 | Message accepted, in order | `fleet.admissions` | The runner's pending input, re-read at each model call |
 | Run assigned, and its fence | `runner.fleet_slots`, `runner.leases` | The runner's stream session, rebuilt from Postgres on reconnect |
-| Message folded into a run | `fleet.admissions.input_claim_lease_id` and `input_claim_fence` (#803) | None |
+| Message folded into a run | `fleet.admissions.input_claim_lease_id` and `input_claim_fence` (#803; `claim_inputs.sql` for any other run) | None |
 | Lease deadline | `runner.leases.lease_expires_at`, one clock | None |
 | Usage and money | `billing.usage_lines` and the billing relay | None |
 | Outbound reply owed | `fleet.obligations` | A NATS ping wakes a worker; a 30 s scan is the backstop |
@@ -76,7 +76,9 @@ client          agentsfleetd                       Postgres                     
   │                 │                                 │   under the fence (#803)     │ next safe boundary
 ```
 
-A live durable-task run claims a person's later message in its conversation at its next safe boundary, through #803's input claims. Which fleets fold, and the burst bar, are open for Indy (M242_002 Discovery).
+A live run claims every later message before its next model call, oldest first, up to the first parked or task-bound one. A durable task claims a person's later messages in its conversation through #803.
+
+The report settles each message that a completed model call read (M242_002). Each settled message gets the run's answer on its own event, and a reply owed to its own destination.
 
 ### A runner connects, and reconnects
 
@@ -209,6 +211,6 @@ Measured on Indy's laptop on Nov 07, 2026, with `make bench-steer PROFILE=rig`'s
 
 The 3 s one-fleet window scattered from 210 to 837 on the branch, so the 10 s runs are the comparison. One fleet now admits about 2.7 times as many messages a second.
 
-A burst on the branch measured pickup p95 at 54.7 s, unchanged from M241, because nothing folds yet.
+A burst on the branch measured pickup p95 at 54.7 s, unchanged from M241, because that branch did not fold messages yet.
 
 Tail and wake p99 and the broker-kill drill are measured in M244, on Dragonfly and then on NATS, against the same code.

@@ -65,6 +65,12 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 ---
 
+## Built with
+
+- [`guffbolt`](rustd/crates/harness/guffbolt), the agent harness that runs every agent loop in `agentsfleet-runner`.
+
+---
+
 ## Local development
 
 **Prerequisites:** [Rust 1.99.1](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets

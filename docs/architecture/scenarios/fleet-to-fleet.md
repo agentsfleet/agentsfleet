@@ -70,7 +70,7 @@ The repairer answers where the responder was asked because the steer copies the 
 |---|---|---|
 | `fleet_steer` tool | `message` verb shape: `LeaseVerbs`, a lease-proven runner route, refusal codes the model reads (`rustd/crates/runner/afr_tools/src/verbs/`) | the tool, `POST /v1/runners/me/leases/{lease_id}/steers` |
 | Admission | `Producer::Steer`, key `<fleet_id>:<operation_id>` | `Steer::prepare_from_fleet`, staged by the lease in the transaction that takes its steer slot; actor `fleet:<sender_fleet_id>`, hop and sender name in the stored body |
-| Reply in the sender's thread | `Reply::Inherit` | `insert_admission.sql` joins the inherited row by workspace, not by fleet |
+| Reply in the sender's thread | `Reply::Inherit` | `admit_one.sql` joins the inherited row by workspace, not by fleet |
 | `fleet_activity` tool | lease proof by fencing token, as the schedules `GET` does | two statements (fleets with last event; events with an answer excerpt), `GET /v1/runners/me/leases/{lease_id}/fleets` and `.../fleets/{fleet_id}/events` |
 | Chat label | the actor-to-summary map (`ui/packages/app/lib/events/event-summary.ts`) | a `fleet:` arm reading `sender_fleet_name` from the stored body |
 | Owner consent | the fleet's `tools` list in its reviewed revision | none: no allowlist, no subscription, no rule |

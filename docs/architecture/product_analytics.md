@@ -7,12 +7,12 @@ execution-telemetry store. Two halves write into one PostHog project:
 | Half | Owner | Captures |
 |---|---|---|
 | **Client activation events** | `ui/packages/app` (`posthog-js`) | User-driven dashboard actions (catalog below), autocapture, pageviews, `identify` on Clerk sign-in, `reset` on sign-out. |
-| **Server conversion truth** | agentsfleetd (`posthog-rs`, `rustd/crates/protocol/af_observability/src/product/telemetry/mod.rs`) | Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry". |
+| **Server conversion truth** | agentsfleetd (`posthog-rs`, `af_observability`'s product telemetry) | Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry". |
 
 Client events stitch to the same person via `identify(clerk_user_id)`. A
-conversion that completes server-side — workspace creation, fleet runs — is
-captured server-side only. Browser events get ad-blocked and
-lost on tab close, so the backend is authoritative for them.
+conversion that completes server-side (workspace creation, fleet runs) is
+captured server-side only. Browser events get ad-blocked and lost on tab
+close, so the backend is authoritative for them.
 
 ## Client event rules
 
@@ -35,12 +35,12 @@ smuggle extra fields.
 Capture is exception-contained: analytics can never break the product flow it
 instruments.
 
-`EVENTS` is the list. It carries two dozen entries across fleets, runners,
-keys, secrets, models, approvals, the library and onboarding, and it grows with the dashboard — so
-reading it beats reading a copy here that stops being true the next time someone
-adds a surface.
+`EVENTS` is the list. It names the dashboard's events across fleets, runners,
+keys, secrets, models, approvals, the library and onboarding, and it grows with
+the dashboard. Reading it beats reading a copy here that stops being true the
+next time someone adds a surface.
 
-Mutation events fire on success only — validation failures and aborted actions
+Mutation events fire on success only; validation failures and aborted actions
 emit nothing.
 
 ## Private chat to fleet funnel
@@ -53,21 +53,24 @@ emit nothing.
 | `fleet_setup_cancelled` | Daemon | Setup cancellation is durable. |
 | `fleet_library_published` | Daemon | A new Library revision is committed, excluding idempotent replays. |
 
-Acceptance and completion counts must come from the daemon so terminal-client
-activity, closed browser tabs, and blocked analytics scripts cannot turn a
-browser click into conversion truth. Join only through opaque identifiers within the authorized workspace.
+Acceptance and completion counts must come from the daemon. Terminal-client
+activity, closed browser tabs, and blocked analytics scripts cannot then turn
+a browser click into conversion truth. Join only through opaque identifiers
+within the authorized workspace.
+
 The daemon reports each step from `afd_authoring` after the commit that made it
 true, attributed to the person's identity-provider subject. Every property is a
-UUID or a fixed word, and
-`rustd/crates/protocol/af_observability/src/product/telemetry/authoring_tests.rs` pins
+UUID or a fixed word, and `af_observability`'s authoring telemetry tests pin
 each event's exact key set.
 
 These events allow only kind, state, outcome, and opaque authorized identifiers.
 Never attach message text, titles, Definitions, instructions, URLs, or secret
-values. The browser uses the existing event catalog's runtime property allowlist
-and automatic pathname context; it does not capture query strings or fragments.
-`tests/draft-analytics-privacy.test.ts` exercises that allowlist with a widened
-payload.
+values.
+
+The browser uses the existing event catalog's runtime property allowlist and
+automatic pathname context; it does not capture query strings or fragments.
+`ui/packages/app/tests/draft-analytics-privacy.test.ts` exercises that
+allowlist with a widened payload.
 
 ## Identity lifecycle
 
@@ -100,16 +103,20 @@ Identity reset clears the group, so the next session binds its workspace again.
 
 `ui/packages/website` emits `signup_started`, `navigation_clicked`, and
 `interaction_clicked`. Each explicit event includes a stable `source`, its
-`surface`, a fixed `target` or `mode`, and the current pathname. The property
-allowlist drops private input; request text, clipboard text, query parameters,
-and hashes are never supplied by these handlers. The composer excludes
-automatic capture. Capture failures cannot interrupt the visitor's action.
+`surface`, a fixed `target` or `mode`, and the current pathname.
 
-PostHog enriches events before sending them. The final `before_send` filter removes
-URL, referrer, campaign, element and person-property payloads after that enrichment.
-It retains pathname, catalog properties and required ingestion fields.
-Unused feature-flag and remote-configuration requests are disabled because those
-requests bypass the event filter and can carry initial URLs.
+The property allowlist drops private input; request text, clipboard text,
+query parameters, and hashes are never supplied by these handlers. The
+composer excludes automatic capture. Capture failures cannot interrupt the
+visitor's action.
+
+PostHog enriches events before sending them. The final `before_send` filter
+removes URL, referrer, campaign, element and person-property payloads after
+that enrichment. It retains pathname, catalog properties and required
+ingestion fields.
+
+Unused feature-flag and remote-configuration requests are disabled because
+those requests bypass the event filter and can carry initial URLs.
 
 | Event | Sources | Meaning |
 |---|---|---|
@@ -135,7 +142,8 @@ Current hosted-access labels and destinations belong to [Website job entrance](w
 The website reads `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` from the existing deployment configuration.
 The [bootstrap mapping](../../playbooks/founding/01_bootstrap/02_vercel_env.sh) selects the same development and production PostHog projects as the app.
 
-The funnel is redirect-based — signup completes on the app origin under Clerk, and
-the deliberate localStorage-only persistence (the cookie-less posture) does not
-cross subdomains — so signup *completion* deliberately has no client event.
+The funnel is redirect-based. Signup completes on the app origin under Clerk.
+The deliberate localStorage-only storage (the cookie-less posture) does not
+cross subdomains, so signup *completion* has no client event.
+
 Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry".
