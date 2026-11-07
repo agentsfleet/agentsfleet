@@ -8,11 +8,15 @@ The architecture optimises for one generic operational runtime, not bespoke type
 
 Principles. Each links to where it's enforced; when a spec contradicts one of these, the spec is wrong:
 
-- **One Fleet is a durable runtime, not a one-shot prompt.** The lease model enforces it. `agentsfleetd` hands a runner one event at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each lease ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"). See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The coding fleet and the Fleet runtime".
+- **One Fleet is a durable runtime, not a one-shot prompt.** The lease model enforces it. `agentsfleetd` hands a runner one event at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each lease ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
+
+  See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The coding fleet and the Fleet runtime".
 
 - **All trigger sources enter the same event-processing path.** Webhook, cron, steer, and continuation all commit to `fleet.admissions`; the lease/run path treats every actor alike. See the [admission and run flows](./data_flow.md).
 
-- **Behaviour is primarily defined in natural language, through chat, into one reviewed Definition.** It holds a one-line `description`, `instructions_md` and a `config` policy document. `af_fleet_runtime` owns the Definition type and the one parser that turns `config` into `FleetConfig`: triggers, tools, credentials, network, budget, gates, repository binding, model, and context. The instructions are advisory prose the fleet reads at run open. See [`capabilities.md`](./capabilities.md) §1.
+- **Behaviour is primarily defined in natural language, through chat, into one reviewed Definition.** It holds a one-line `description`, `instructions_md` and a `config` policy document. `af_fleet_runtime` owns the Definition type and the one parser that turns `config` into `FleetConfig`: triggers, tools, credentials, network, budget, gates, repository binding, model, and context. The instructions are advisory prose the fleet reads at run open.
+
+  See [`capabilities.md`](./capabilities.md) §1.
 
 - **Secrets are injected at run time, never embedded in prompt text or fleet context.** The supervisor substitutes `${secrets.NAME.FIELD}` at send time, outside the sandbox. The activity frame carries `args_redacted`, never the bytes ([`runner_execution.md`](./runner_execution.md#credentials)). See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`, [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
 
@@ -24,9 +28,15 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
 - **Approvals are first-class.** Risky actions block at the gate; the state machine survives runner restarts. See [`capabilities.md`](./capabilities.md) §3 "Approval gating" row and [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
 
-- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the lease, before the run starts (`afd_fleet`'s lease pull). The instructions may ask for approval explicitly. See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
+- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the lease, before the run starts (`afd_fleet`'s lease pull). The instructions may ask for approval explicitly.
 
-- **Fleet-memory recall has no search infrastructure; the language model is the search engine**. Memory list/recall returns raw entries; the model reads and decides relevance. No vector search, embeddings, pgvector, pg_trgm, or full-text indexes for memory. The ceiling is a plain case-insensitive substring match on key and content, with no index behind it. Sequential scans over one Fleet's rows are not a reason to add search infrastructure. A spec or review proposing it gets amended. See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
+  See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
+
+- **Fleet-memory recall has no search infrastructure; the language model is the search engine**. Memory list/recall returns raw entries; the model reads and decides relevance. No vector search, embeddings, pgvector, pg_trgm, or full-text indexes for memory.
+
+  The ceiling is a plain case-insensitive substring match on key and content, with no index behind it. Sequential scans over one Fleet's rows are not a reason to add search infrastructure; a spec or review proposing it gets amended.
+
+  See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
 
 - **Slack uses the existing runtime.** Configured fleet subscriptions select the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns admission and fixed notices.
 

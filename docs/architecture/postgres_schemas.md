@@ -164,9 +164,9 @@ there is no generic repository trait.
   platform default and otherwise reference a `model.tenant_models` row of the same tenant. The wire
   keeps today's string: `platform-default` maps to NULL, a tenant model id maps to the row.
 - **Chat save intent.** `messages.save_requested` records the accepted request to save after a completed turn. The report writer saves the setup with the answer. A checked save refusal keeps the answer and records its safe code in `save_error_code`.
-- **Source and publication are separate facts**. `source_type` (blank, definition, library, fleet)
+- **Source and publication are separate facts**: `source_type` (blank, definition, library, fleet)
   plus `source_library_revision_id` or `source_fleet_revision_id` record where the chat started.
-  `library_revision_id` records what it published. A draft can start from Library revision A and
+  `library_revision_id` records what it published; a draft can start from Library revision A and
   publish revision B. All three references are `ON DELETE SET NULL`, so deleting a card or purging
   a fleet never blocks on, or deletes, someone's private draft.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
@@ -364,11 +364,11 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`model.platform_defaults.base_url`: kept.** Slot 1320 declares it; `afd_credential`'s
   `select_active_platform_default.sql` reads it.
 - **`runner.leases.last_metered_at`: kept.** Slot 1810 declares it as the lease's runtime cursor
-  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `meter_lease.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
-  `bill_expired_slice.sql`). The review listed it as dropped. Per-request billing kept this one
+  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `meter_lease.sql`); the expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
+  `bill_expired_slice.sql`).
+
+  The review listed it as dropped. Per-request billing kept this one
   cursor and dropped the lease's token cursors and the slot's cursors instead.
-- **`runner.runners.degraded`: dropped.** Derived on read as `degraded_reason IS NOT NULL`
-  (slot 1800; `afd_runner`'s `lock_host.sql`).
 - **`runner.runners.selftest_all_ok`: dropped.** Derived from `selftest_checks` (slot 1800), read
   by `afd_runner`'s `runner_detail.sql`.
 - **`runner.runners.capability_reported_at`: dropped.** Slot 1800 declares the table with

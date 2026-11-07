@@ -29,7 +29,9 @@ For the environment being moved:
    `max_connections`. It is 25 on the current cluster size, with 3 reserved and
    3 held by PlanetScale's own admin and exporter roles. Then **PgBouncers →** the
    local bouncer and set `default_pool_size` so that it, those three, and the
-   migrator at release all fit. A pool of 16 leaves room on a 25-connection cluster.
+   migrator at release all fit.
+
+   A pool of 16 leaves room on a 25-connection cluster.
    Raise the cluster size instead if the pool must stay at 20.
 4. Stage the new strings in the vault beside the live ones, and do not overwrite
    the live fields yet:

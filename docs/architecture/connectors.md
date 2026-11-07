@@ -65,7 +65,9 @@ The per-provider deltas are each provider's `complete::read` arm and GitHub's pr
 
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs. Handlers match exhaustively on it, so a new archetype cannot land half-wired. No `if provider == "slack"` exists anywhere in the flow.
 
-- **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name and a variant with a missing arm does not compile. Unit tests pin the rest. Every id parses back to its variant, no two display names match, and every OAuth connector asks for at least one scope. No two providers share a signed-state domain or nonce namespace.
+- **Invariants are compile-time facts or pinned tests.** Two variants cannot share a name and a variant with a missing arm does not compile.
+
+  Unit tests pin the rest. Every id parses back to its variant, no two display names match, and every OAuth connector asks for at least one scope. No two providers share a signed-state domain or nonce namespace.
 
 - **Each callback and Disconnect commits its own vault and routing changes together.** A failure rolls back that operation's changes. Neither takes a shared workspace lock (`afd_connector`'s grant module).
 
@@ -134,7 +136,9 @@ Those three providers are plain `agentsfleet secret create` entries, never regis
 
 ## Trust anchors
 
-1. **The signed single-use `state` binds workspace intent and starter identity**. It is keyed with the approval signing secret and carries a keyed identity tag instead of a raw subject. It verifies in constant time and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state.
+1. **The signed single-use `state` binds workspace intent and starter identity**. It is keyed with the approval signing secret and carries a keyed identity tag instead of a raw subject.
+
+   The state verifies in constant time and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state.
 
    Forged, expired, replayed, or identity-mismatched state returns 400 `UZ-CONN-002`. State does not prove ownership of a provider installation.
 
@@ -146,7 +150,7 @@ Those three providers are plain `agentsfleet secret create` entries, never regis
 
 4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
 
-5. **A signature proves origin, never the producer**. GitHub permits every push-capable identity to create deployment statuses. Every such identity in a mapped repository sits inside the trusted producer boundary. The daemon verifies the App signature and the installation routing; it does not inspect `deployment_status.creator` or attest which system produced the status.
+5. **A signature proves origin, never the producer**: GitHub permits every push-capable identity to create deployment statuses. Every such identity in a mapped repository sits inside the trusted producer boundary. The daemon verifies the App signature and the installation routing; it does not inspect `deployment_status.creator` or attest which system produced the status.
 
    A scenario that depends on this says so and cites this anchor rather than restating it.
 

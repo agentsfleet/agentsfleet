@@ -302,7 +302,9 @@ Captured here because it surfaced as product direction (marketing showcase + cus
 
 - **Open fleet (mode C).** Self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 
-- **Trust-scoped sticky affinity.** Still deferred. Once runners can be local or low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility. Those come before the sticky preference: "prefer the last runner *among the eligible set*", never an override of eligibility. M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
+- **Trust-scoped sticky affinity.** Still deferred. Once runners can be local or low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility. Those come before the sticky preference: "prefer the last runner *among the eligible set*", never an override of eligibility.
+
+  M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
 
 - **Fleet keys as a first-class principal.** Deferred to v2.1.
 

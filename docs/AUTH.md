@@ -335,7 +335,7 @@ second trips `uq_users_oidc_subject` (`schema/1120_identity_users.sql`), re-read
 winner committed, and answers as a replay. An index holds under concurrency and a
 read never can.
 
-**The writeback cannot fail the delivery**. The tenant row is already committed, so refusing the delivery would reject an account that exists and invite a retry that can only duplicate work.
+**The writeback cannot fail the delivery**. The tenant row is already committed, so refusing the delivery would reject an existing account and invite a retry that can only duplicate work.
 
 A failed writeback is logged with the tenant and the reason; the subject stays out of the log line. The cost is a person whose next token carries no tenant. An operator repairs that from the provider's dashboard, and only if the log gave them something to repair from.
 
@@ -680,7 +680,7 @@ Rotate on suspected exposure, and prefer an interactive credential (Flow 1 or Fl
 
 §"CLI credential: resolved, not granted" gives the same reasoning for `identity.cli_credentials`. The tenant-api-key class resolves the claim Clerk holds for the subject in `created_by`, through the same resolver and cache as `afc_`. So narrowing a person narrows every key they minted, with no deploy.
 
-Two keys in one tenant now differ exactly when their creators do: minting a read-only key means minting it as a read-only person.
+Two keys in one tenant now differ exactly when their creators do. Minting a read-only key means minting it as a read-only person.
 
 **Still open: a ceiling below the person**. Inheritance is exact, so a key cannot be narrower than its creator without a narrower creator. A per-key ceiling (a key that holds a subset of a wide person's grant) is the remaining design question.
 
@@ -1051,7 +1051,7 @@ On the daemon side, durable command-line credentials and tenant API keys keep wo
 
 ## Sensitive-data classification
 
-Every named credential / token / identifier in the auth surface, with sensitivity class, acceptable surfaces, and forbidden surfaces. Reach for this table when designing a new audit-log event, a new metric label, a new error-response body, or a new diagnostic bundle. That covers anything that copies data out of a process and into a place where humans or external systems can read it.
+Every named credential / token / identifier in the auth surface, with sensitivity class, acceptable surfaces, and forbidden surfaces. Reach for this table when designing a new audit-log event, metric label, error-response body, or diagnostic bundle. That covers anything that copies data out of a process and into a place where humans or external systems can read it.
 
 | Item | Class | Lifetime | Acceptable surfaces | Forbidden surfaces |
 |---|---|---|---|---|
@@ -1225,7 +1225,9 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 
 - **Bearer tokens.** Sending `Authorization: Bearer …` to `/v1/webhooks/...`, `/v1/ingress/...`, or a provider App-events route contributes nothing. The header is not consulted. Generic Bearer auth applies only to the normal API surface listed above.
 - **Session cookies.** Webhook URLs are not session-authed; cookies are ignored.
-- **URL-embedded secrets** (legacy `/v1/webhooks/{fleet_id}/{secret}` form). Removed in M43. The two-segment form is now `/v1/webhooks/{fleet_id}/{source}`. Its second segment names the webhook trigger's `source`, a lowercase slug, never a credential. The signature header is still the only proof, and a segment no trigger declares resolves no binding (`UZ-WH-001`). Spans record the route template, not the segment.
+- **URL-embedded secrets** (legacy `/v1/webhooks/{fleet_id}/{secret}` form). Removed in M43. The two-segment form is now `/v1/webhooks/{fleet_id}/{source}`.
+
+  Its second segment names the webhook trigger's `source`, a lowercase slug, never a credential. The signature header is still the only proof, and a segment no trigger declares resolves no binding (`UZ-WH-001`). Spans record the route template, not the segment.
 
 ### Cross-references: manual fleet webhooks
 
@@ -1254,12 +1256,24 @@ A missing state is malformed (`UZ-REQ-001`). A forged, expired, replayed, or ide
 - **Slack** exchanges the `code` for a bot token, then writes the vault handle and `connector.installs` routing row atomically.
   When OAuth supplies `authed_user.id`, the subject-checked callback also links that person through `connector.person_links`.
   Current workspace membership and installation ownership remain required; a bot-only grant establishes no person authority.
+
   Installation deletion cascades the link. Reconnecting never silently transfers an existing person's link to a different account.
   Durable-task interpretation uses the signed sender's own mention text, never quoted thread messages or a display name.
+
   Retained origin and applied-input identities are rechecked at native task execution boundaries.
-- **GitHub** starts with GitHub user authorization. The callback exchanges the one-time `code` using platform client credentials. When GitHub supplies `installation_id`, the user token must access that claimed installation. When an external App installation survived an `agentsfleet` datastore rebuild, the callback lists installations accessible through this App and accepts exactly one. Zero installations return 403 `UZ-CONN-008` with the install-the-App-first sentence, and the person connects again after installing it. The daemon carries no App slug and so no redirect to GitHub's install page (recorded in M187_001). More than one returns 403 `UZ-CONN-008` instead of selecting an organisation silently. Only a verified installation writes the encrypted workspace vault handle and non-secret `connector.installs` route. The token never enters provider-visible state and is discarded after the probe.
-- **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**. The callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below). The runner never sees the refresh token.
-- **Datadog, Grafana, Fly are not connectors**. A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector. There is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`. The fleet's reviewed setup names it under `credentials`, so a tool call references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.
+- **GitHub** starts with GitHub user authorization. The callback exchanges the one-time `code` using platform client credentials. When GitHub supplies `installation_id`, the user token must access that claimed installation.
+
+  When an external App installation survived an `agentsfleet` datastore rebuild, the callback lists installations accessible through this App and accepts exactly one. Zero installations return 403 `UZ-CONN-008` with the install-the-App-first sentence, and the person connects again after installing it. The daemon carries no App slug and so no redirect to GitHub's install page (recorded in M187_001).
+
+  More than one returns 403 `UZ-CONN-008` instead of selecting an organisation silently. Only a verified installation writes the encrypted workspace vault handle and non-secret `connector.installs` route. The token never enters provider-visible state and is discarded after the probe.
+- **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**. The callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label.
+
+  The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below). The runner never sees the refresh token.
+- **Datadog, Grafana, Fly are not connectors**. A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector.
+
+  There is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`.
+
+  The fleet's reviewed setup names it under `credentials`, so a tool call references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.
 
 The rows themselves:
 

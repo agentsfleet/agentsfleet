@@ -56,10 +56,10 @@ Each trap is enforced in its owner section; this list is the index.
 
 1. **C1: declared producer and consumer, receiver owns the payload**. Every
    channel that crosses a task or thread boundary has a single declared producer
-   and a declared consumer. Ownership at the boundary is unambiguous. On both
-   planes the value moves to the receiver and the compiler is the proof. A
-   channel read by several consumers
-   hands each of them its own copy and tells a slow one what it missed.
+   and a declared consumer. Ownership at the boundary is unambiguous: on both
+   planes the value moves to the receiver and the compiler is the proof.
+
+   A channel read by several consumers hands each of them its own copy and tells a slow one what it missed.
 2. **C2: stop → join → drop.** Shutdown signals stop, joins the worker, and
    only then releases shared state. A bounded drain that times out never frees
    state a straggler can still touch.

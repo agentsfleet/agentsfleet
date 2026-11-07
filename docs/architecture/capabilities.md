@@ -181,7 +181,9 @@ Durable memory is selected rather than searched. Loading pins the `core` categor
 
 Four habits make that selection work for the fleet instead of against it:
 
-- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints: anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of loading. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (`afd_memory`). Every other category stays until cap eviction; `memory_forget` hides a key for the current run only (`afr_memory`).
+- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints: anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of loading.
+
+  `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (`afd_memory`). Every other category stays until cap eviction; `memory_forget` hides a key for the current run only (`afr_memory`).
 
 - **Reuse stable keys.** Re-storing a key is an upsert, so it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.
 

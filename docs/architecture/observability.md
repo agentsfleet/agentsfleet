@@ -285,21 +285,29 @@ no telemetry knob, so hardening still sees a single thread.
 - **Spans:** `runner.lease`, `invoke_agent`, `chat` and `execute_tool`, and
   nothing else. The layer admits only spans under the `agentsfleet-runner`
   target. No library's span leaves the host, and no log record rides a span as
-  an event. Each lease is its own root trace carrying `agentsfleet.lease.id`
+  an event.
+
+  Each lease is its own root trace carrying `agentsfleet.lease.id`
   and `agentsfleet.event.id`. The tool span names its tool by the published
   catalog, `_other` for anything else, so a name the model made up never
   leaves the host.
 
 - **A fixed span budget** (`afr_telemetry`'s `budget` module): at most
   `MAX_LEASE_SPANS` (256) spans per lease, its root included. The runner-wide cap is `RUNNER_SPANS_PER_SECOND` (128) per monotonic second. A
-  lease's root is never refused. It is charged to its second while the second
+  lease's root is never refused.
+
+  The root is charged to its second while the second
   has room, and kept uncharged in a second already spent. A second's exports
   therefore pass 128 only by the roots of leases started after it was spent. A
   span started under a shed span is shed too, so no exported span points at a
-  parent the collector never received. The budget is a fixed table of lease
+  parent the collector never received.
+
+  The budget is a fixed table of lease
   slots claimed by compare-and-swap, plus one packed word for the second.
   Admitting a span therefore never waits on another worker. A shed span counts in
-  `agentsfleet_runner_spans_suppressed_total`. The batch processor's queue
+  `agentsfleet_runner_spans_suppressed_total`.
+
+  The batch processor's queue
   (2048 spans) and send interval (five seconds) are pinned in `af_otlp` rather
   than read from `OTEL_BSP_*`. At 128 a second the queue fills to at most 640
   against a collector that keeps up. A slower collector fills the queue, and
@@ -310,6 +318,7 @@ no telemetry knob, so hardening still sees a single thread.
   and graded both ways against their producers. Provider families cover turn
   duration and retries, by provider and outcome or reason. The provider's own
   measurements are declared where it takes them (`af_providers::observe`).
+
   The runner's telemetry records them by implementing that `Observer`, so the
   harness layer depends on no runner crate. Sandbox families cover start, wait
   and release durations, builds, holds between a fleet's leases, and processes
@@ -335,7 +344,9 @@ no telemetry knob, so hardening still sees a single thread.
 - **Its own losses:** spans suppressed by the budget, and
   `agentsfleet_runner_otlp_entries_discarded_total{signal,reason}` for what an
   export lost before the collector took it. That is the daemon's loss family,
-  under the runner's name. The shared counting wrappers route a process's losses
+  under the runner's name.
+
+  The shared counting wrappers route a process's losses
   there when no daemon producer set is installed. A down or misaddressed
   runner collector therefore shows as a series and not only as a stderr line.
 
@@ -354,7 +365,9 @@ The current collectors "are for the agentsfleetd daemon only".
 
 - A new OpenTelemetry collector on the bare-metal host serves runners. It is
   separate from `otelcol-{dev,prod}` (§The export path), which stay the
-  daemon's alone, and it exports to the backends itself. The dev unit and
+  daemon's alone, and it exports to the backends itself.
+
+  The dev unit and
   installer are in `deploy/baremetal/otelcol-runner.*` and `install-collector.sh`.
   Indy chose the existing `ZMB_CD_DEV/grafana-dev` key for that installation.
 
@@ -731,12 +744,16 @@ there would have no driver.
 - **Log records** ride the batch log processor inside a counting wrapper of
   their own, whose number is RECORDS the exporter failed to send. It is the
   one wrapper that raises no warning. A warning about a failed log export
-  becomes a log record the subscriber hands to the batch processor. The
+  becomes a log record the subscriber hands to the batch processor.
+
+  The
   processor hands it back to the exporter that just failed, so a collector
   that stayed down would drive a feedback loop. For this signal the count is the whole
   report, and it reaches
   `agentsfleet_otlp_entries_discarded_total{signal="logs"}` like the other
-  two. `logs.rs` installs the stderr subscriber in `main`, before any knob is
+  two.
+
+  `logs.rs` installs the stderr subscriber in `main`, before any knob is
   read, with an empty reload slot. Boot fills the slot with two bridges, one
   for spans and one for events, over the SAME emits stderr already writes.
   Stderr stays logfmt with the exporter present, absent or failed.

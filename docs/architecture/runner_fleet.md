@@ -181,7 +181,9 @@ A transient renewal failure retries on the next tick. At the last granted deadli
 
 The fleet borrows Kubernetes, Nomad and Temporal **semantics**: leases, fencing, node heartbeats, drain, sticky scheduling and checkpointed workloads. It is **not** a general scheduler and must not drift into one. The non-goals are load-bearing; each rejected feature stays unbuilt until a spec changes this direction.
 
-- **Not a general scheduler, beyond label placement.** Label placement (a fleet's `required_tags ⊆ runner.labels`, matched before the sticky hint) landed in M85_001. The lease query in `afd_fleet` matches `required_tags <@ labels`. Capacity, fairness and autoscale stay out of scope. The earlier "M80_007" reservation for this was a stale ID; M80_007 shipped as the runner-observability spec.
+- **Not a general scheduler, beyond label placement.** Label placement (a fleet's `required_tags ⊆ runner.labels`, matched before the sticky hint) landed in M85_001. The lease query in `afd_fleet` matches `required_tags <@ labels`. Capacity, fairness and autoscale stay out of scope.
+
+  The earlier "M80_007" reservation for this was a stale ID; M80_007 shipped as the runner-observability spec.
 
 - **No autoscale.** Runners scale by operators adding hosts, not by the platform reacting to queue depth.
 
@@ -460,11 +462,13 @@ Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.f
 
 Three load-bearing facts:
 
-1. **The runner never authenticates to Postgres.** It holds zero datastore credentials and reaches the platform only over `/v1/runners`. `agentsfleetd` writes every `runner.*` row *on the runner's behalf*, connecting as `api_runtime`. The runner schema slots grant those tables to `api_runtime` only. They never mention `worker_runtime`, dead substrate removed wholesale in the worker-substrate retirement workstream.
+1. **The runner never authenticates to Postgres.** It holds zero datastore credentials and reaches the platform only over `/v1/runners`. `agentsfleetd` writes every `runner.*` row *on the runner's behalf*, connecting as `api_runtime`. The runner schema slots grant those tables to `api_runtime` only and never mention `worker_runtime`, dead substrate removed wholesale in the worker-substrate retirement workstream.
 
-2. **`runner:enroll` is not a Postgres role; it is a token scope**. "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1. Layer 1 gates `register` and the fleet-management routes. It is not, and must not become, a database `GRANT`.
+2. **`runner:enroll` is not a Postgres role; it is a token scope**. "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1. Layer 1 gates `register` and the fleet-management routes; `runner:enroll` is not, and must not become, a database `GRANT`.
 
-3. **Therefore there is no `runner_runtime` role, and there must never be one**. A `runner_*`-named datastore role would assert that the runner connects to the datastore. That is exactly the guarantee this fleet is built to deny. An in-PR `worker_runtime` to `runner_runtime` rename was rejected for this reason; removal, not rename, is the correct direction.
+3. **Therefore there is no `runner_runtime` role, and there must never be one**. A `runner_*`-named datastore role would assert that the runner connects to the datastore. That is exactly the guarantee this fleet is built to deny.
+
+   An in-PR `worker_runtime` to `runner_runtime` rename was rejected for this reason; removal, not rename, is the correct direction.
 
 If connection-level isolation of the fleet write path is ever warranted, that is a **control-plane** role. Name it `fleet_runtime` and back it with its own pool.
 
@@ -621,7 +625,11 @@ A dedicated, scalable memory store remains the post-launch direction. The `GET` 
 
 Two decisions by Indy on 2026-10-03, after the options below were weighed.
 
-1. **The runner reaches memory only through `agentsfleetd`'s runner API, whatever store holds it** ("Always via agentsfleetd"). Stores sit behind one trait inside `agentsfleetd`: Postgres by default; a vendor store later. A workspace's store is flipped in `agentsfleetd`, and a flip migrates the workspace's memory to the new store before it takes effect. The runner holds no credential for any store. This replaced option C, which Indy chose earlier the same day ("C: hybrid"), before the flip-with-migration requirement arrived. The flip shipped in M210_004 with no caller and was removed in M229 (Indy, 2026-10-18). No endpoint called it and no second store existed. The trait, the flip and the in-memory store it was proved against return with the first vendor store.
+1. **The runner reaches memory only through `agentsfleetd`'s runner API, whatever store holds it** ("Always via agentsfleetd"). Stores sit behind one trait inside `agentsfleetd`: Postgres by default; a vendor store later. A workspace's store is flipped in `agentsfleetd`, and a flip migrates the workspace's memory to the new store before it takes effect.
+
+   The runner holds no credential for any store. This replaced option C, which Indy chose earlier the same day ("C: hybrid"), before the flip-with-migration requirement arrived.
+
+   The flip shipped in M210_004 with no caller and was removed in M229 (Indy, 2026-10-18). No endpoint called it and no second store existed. The trait, the flip and the in-memory store it was proved against return with the first vendor store.
 
 2. **Memory carries both keys.** Every entry belongs to a workspace; a fleet-scoped entry also belongs to its fleet. A fleet reads and writes its own fleet-scoped memory as today. Workspace-scoped memory is shared by the workspace's fleets and reached only by a fleet granted that access. Indy: "we must have flexibility to have the memory have a key of the fleet_id, workspace_id as well. The workspace_id are restricted based on scope (access control)", refining an earlier "Workspace-wide only". A configured Slack fleet keeps private memory fleet-scoped unless its reviewed grants permit sharing.
 
@@ -749,7 +757,13 @@ Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s lease
 
 Each renewal reads that ceiling afresh. A paused or stopped fleet's config can be edited mid-run and the next renewal obeys the edit. A killed fleet's config cannot be edited.
 
-- **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own. While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_event_id`. The running lease claims it at its next model call through `POST /v1/runners/me/leases/{lease_id}/folds`. A run claims every message its fleet received after its own, oldest first, up to the first parked (approval-gated) or task-bound one. That message is a barrier, and nothing after it folds. The model call in flight is never cut short. When the run reports succeeded, each folded message's own event gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
+- **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own.
+
+  While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_event_id`. The running lease claims it at its next model call through `POST /v1/runners/me/leases/{lease_id}/folds`.
+
+  A run claims every message its fleet received after its own, oldest first, up to the first parked (approval-gated) or task-bound one. That message is a barrier, and nothing after it folds. The model call in flight is never cut short.
+
+  When the run reports succeeded, each folded message's own event gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
 
 - **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the fleet. A lease in flight runs on as under Kill, below: to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
 
@@ -857,7 +871,11 @@ Three network policies, assigned per runner (`af_wire`'s runner types):
 
 - **`deny_all_egress`** — the sandbox's own network namespace, with loopback only; it reaches nothing. A missing assignment gets the same, because a runner never opens egress on missing input.
 
-- **`allow_list_egress` (enforced allowlist)** — the sandbox keeps its **own** network namespace, joined to the host by one **veth pair**, `afv<slot>`. The link is point-to-point `10.69.<slot>.0/30` (host `.1`, sandbox `.2`), slot `0..=253`. The runner installs **default-deny nf_tables rules in the host namespace**, on the host side of the pair. They are owned by root and never live inside the sandbox's namespace, so `nft flush ruleset` inside it changes nothing. Egress is permitted only to the IPv4 set resolved at lease bind. Traffic to any other address is dropped at the kernel, a raw address included, but the set matches addresses alone (residuals below). A host the fleet names never brings a private or reserved address into the set. The lease is refused instead, as the fail-closed rules below say.
+- **`allow_list_egress` (enforced allowlist)** — the sandbox keeps its **own** network namespace, joined to the host by one **veth pair**, `afv<slot>`. The link is point-to-point `10.69.<slot>.0/30` (host `.1`, sandbox `.2`), slot `0..=253`. The runner installs **default-deny nf_tables rules in the host namespace**, on the host side of the pair.
+
+  The rules are owned by root and never live inside the sandbox's namespace, so `nft flush ruleset` inside it changes nothing. Egress is permitted only to the IPv4 set resolved at lease bind. Traffic to any other address is dropped at the kernel, a raw address included, but the set matches addresses alone (residuals below).
+
+  A host the fleet names never brings a private or reserved address into the set. The lease is refused instead, as the fail-closed rules below say.
 
 **One table per sandbox, scoped to its link.** The table is `inet afegress<slot>`, built over netlink from Rust, never through the `nft` or `ip` binaries. It holds the set of allowed addresses and three chains:
 

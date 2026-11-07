@@ -77,7 +77,9 @@ v2 ships hosted on Fly.io, and the canonical datastore is **self-hosted Dragonfl
 
 - **The plan-bound max-connections cap is gone.** There is no plan. The ceiling is now the machine's file-descriptor limit and Dragonfly's own accept path. Both sit orders of magnitude above anything the connection budget below asks for.
 - **Per-request pricing is gone**. Command volume consumes CPU on the datastore machine, and the fleet scheduler's idle query consumes Postgres capacity. The section "Idle request volume" still matters, but it now sizes a **machine**, not an invoice.
-- **The Transport Layer Security (TLS) dial cost is gone in-region**. 6PN is WireGuard-encrypted already, so the seed is plaintext and a dial pays no handshake. That is worth roughly 230 ms per connection against an RSA-2048 leaf. The local rig therefore keeps a TLS node for one suite and runs everything else plaintext.
+- **The Transport Layer Security (TLS) dial cost is gone in-region**. 6PN is WireGuard-encrypted already, so the seed is plaintext and a dial pays no handshake. That is worth roughly 230 ms per connection against an RSA-2048 leaf.
+
+   The local rig therefore keeps a TLS node for one suite and runs everything else plaintext.
 
 **A fixed machine replaces them, with a different failure shape.** A hosted plan degrades by refusing a dial or sending a bill. A machine degrades by running out of memory or CPU, and a Dragonfly node that hits `maxmemory` while retaining rather than evicting refuses writes.
 
@@ -92,7 +94,7 @@ Postgres is **PlanetScale**, and two of its properties bind the same way:
    The request path is therefore meant to run through PlanetScale's PgBouncer (port `6432`, transaction pooling), which multiplexes replicas' connections onto one bounded server pool. The deployment preflight refuses an `api-connection-string` on any other port, and the migrator stays on `5432` for its session advisory lock.
 
    PgBouncer's own `default_pool_size` (20) counts against that same ceiling once, beside PlanetScale's admin and exporter backends and the migrator at release. Set it low enough in the console that all four fit.
-2. **Region**. Production's database sits in `us-east` beside Fly `iad`. Development's sits in `aws-us-east-2` (Ohio), a round trip away on every handshake and every query. A region cannot be changed in place; `playbooks/operations/database_region_move/` moves it.
+2. **Region**: production's database sits in `us-east` beside Fly `iad`. Development's sits in `aws-us-east-2` (Ohio), a round trip away on every handshake and every query. A region cannot be changed in place; `playbooks/operations/database_region_move/` moves it.
 
 ---
 
