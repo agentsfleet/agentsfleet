@@ -33,6 +33,26 @@ impl Harness<'_, '_> {
         super::task_slice::within_budget(budget, self.answer_task_inputs()).await
     }
 
+    /// Adds the answer a run ended on to its history. The loop remembers an
+    /// answer the model gave, so only an ending an extension made up, such as
+    /// a task's final status, is still to be added.
+    fn record_answer(&mut self, ending: &Ending) {
+        let Ending::Answered(text) = ending else {
+            return;
+        };
+        let remembered = matches!(
+            self.messages.last(),
+            Some(af_providers::Message::Assistant { calls, .. }) if calls.is_empty()
+        );
+        if !remembered {
+            self.messages.push(af_providers::Message::Assistant {
+                text: self.shared.scrub.text(text).into_owned(),
+                calls: Vec::new(),
+                replay: af_providers::Replay::default(),
+            });
+        }
+    }
+
     /// Closes every session the run's calls left open, then hands back the
     /// outcome, the answer and the tokens spent, with the calls and the memory
     /// the run leaves for the supervisor to post. The root's end; a child
@@ -51,13 +71,7 @@ impl Harness<'_, '_> {
         if let Ending::Answered(text) = ending {
             ending = Ending::Answered(self.combined_task_answer(text));
         }
-        if let Ending::Answered(text) = &ending {
-            self.messages.push(af_providers::Message::Assistant {
-                text: self.shared.scrub.text(text).into_owned(),
-                calls: Vec::new(),
-                replay: af_providers::Replay::default(),
-            });
-        }
+        self.record_answer(&ending);
         let recovery_task = self
             .task
             .as_ref()
@@ -76,6 +90,9 @@ impl Harness<'_, '_> {
                     None
                 }
             });
+        let folded_through_sequence = self
+            .folded_through()
+            .filter(|_| matches!(ending, Ending::Answered(_)));
         let shared = self.shared;
         let (outcome, content) = match ending {
             Ending::Answered(text) => (
@@ -119,6 +136,7 @@ impl Harness<'_, '_> {
             memory,
             trace: Some(trace),
             records,
+            folded_through_sequence,
         }
     }
 

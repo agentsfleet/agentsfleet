@@ -141,7 +141,7 @@ const fn verdict(ok: bool, on: &'static str, off: &'static str) -> (bool, &'stat
     if ok { (true, on) } else { (false, off) }
 }
 
-fn check<'a>(name: &'static str, (ok, detail): (bool, &'static str)) -> SelftestCheck<'a> {
+const fn check<'a>(name: &'static str, (ok, detail): (bool, &'static str)) -> SelftestCheck<'a> {
     SelftestCheck {
         name: Cow::Borrowed(name),
         ok,

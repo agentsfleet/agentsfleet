@@ -111,7 +111,7 @@ impl Unread {
             let unfinished = chunk.data.len() - whole;
             if unfinished > 0 {
                 chunk.data.truncate(whole);
-                self.gap += unfinished as u64;
+                self.gap += u64::try_from(unfinished).unwrap_or(u64::MAX);
             }
             if chunk.data.is_empty() {
                 return Some(Next::Omitted(self.cross()));
@@ -157,7 +157,7 @@ impl Unread {
             let drop = count.min(front.data.len());
             front.data.advance(drop);
             self.tail_len -= drop;
-            self.gap += drop as u64;
+            self.gap += u64::try_from(drop).unwrap_or(u64::MAX);
             count -= drop;
             if front.data.is_empty() {
                 self.tail.pop_front();

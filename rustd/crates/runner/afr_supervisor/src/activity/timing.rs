@@ -35,7 +35,7 @@ pub(crate) struct RunTiming {
 
 impl RunTiming {
     /// What the model took: the run less its tools.
-    pub(crate) fn model(self) -> Duration {
+    pub(crate) const fn model(self) -> Duration {
         self.elapsed.saturating_sub(self.tools)
     }
 }
@@ -119,6 +119,9 @@ impl RunClock {
                     // there is, and an open stretch would already cover it.
                     let ms = u64::try_from(body.ms).unwrap_or_default();
                     clocked.busy += Duration::from_millis(ms);
+                } else {
+                    // Unpaired while another call is open: the open stretch
+                    // already covers it.
                 }
             }
             ActivityFrame::ToolCallProgress(_)

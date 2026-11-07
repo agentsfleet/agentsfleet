@@ -55,12 +55,9 @@ async fn prior_unreconciled_effect_prevents_capture_and_new_publication() -> cra
         native: publisher(),
         prior: true,
     };
-    let script = Script::new([vec![
-        super::publication_guards::publication_call(),
-        ended(false),
-    ]]);
+    let script = Script::new([vec![publication_guards::publication_call(), ended(false)]]);
     let executor = ScriptedExecutor::new([]);
-    let output = super::publication_guards::execute(
+    let output = publication_guards::execute(
         &script,
         &native,
         native.native.goals.inputs.clone(),
@@ -68,7 +65,7 @@ async fn prior_unreconciled_effect_prevents_capture_and_new_publication() -> cra
     )
     .await?;
     assert_eq!(executor.spawned().len(), 0);
-    super::publication_guards::refusal(
+    publication_guards::refusal(
         &native.native,
         output,
         "previous publication must be reconciled",
@@ -82,16 +79,13 @@ async fn uncertain_publication_reply_does_not_claim_confirmed_tool_success() -> 
         native: publisher(),
         prior: false,
     };
-    let script = Script::new([vec![
-        super::publication_guards::publication_call(),
-        ended(false),
-    ]]);
+    let script = Script::new([vec![publication_guards::publication_call(), ended(false)]]);
     let executor = ScriptedExecutor::new([
         ScriptedProcess::exits(&candidate(), 0),
         ScriptedProcess::exits("checks passed", 0),
         ScriptedProcess::exits(&candidate(), 0),
     ]);
-    let output = super::publication_guards::execute(
+    let output = publication_guards::execute(
         &script,
         &native,
         native.native.goals.inputs.clone(),

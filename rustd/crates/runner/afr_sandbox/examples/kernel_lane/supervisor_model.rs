@@ -22,12 +22,7 @@ use af_providers::{Call, Chunk};
 use af_wire::activity::StreamTextKind;
 use serde_json::{Value, json};
 
-#[path = "../../../../daemon/agentsfleetd/tests/support/fake_model.rs"]
-#[allow(
-    dead_code,
-    reason = "shared model support: kernel trials use scripted turns and observations"
-)]
-mod existing;
+use af_providers::testing::scripted as existing;
 pub(crate) use existing::Asked;
 
 /// The installed instructions accompanying the fixture's lease.

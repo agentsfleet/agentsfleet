@@ -269,7 +269,7 @@ impl<'a> Heartbeat<'a> {
     /// the shortest poll pause, so a burst of admissions cannot turn beats
     /// into a busy loop; a held beat already waited, so it waits only what is
     /// left of the interval; any other waits the interval.
-    fn next_pause(&self, interval: Duration, took: Duration) -> Duration {
+    const fn next_pause(&self, interval: Duration, took: Duration) -> Duration {
         match self.last_beat {
             LastBeat::Woken => MIN_POLL_PAUSE,
             LastBeat::Held => interval.saturating_sub(took),

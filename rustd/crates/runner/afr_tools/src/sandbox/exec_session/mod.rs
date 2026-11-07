@@ -124,6 +124,9 @@ impl Handler for ExecCommand {
         let ended = collected.until(&mut process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
         let lease_id = context.lease.lease_id;
+        // `process` stays locked through the close inside `reply`: a call that
+        // locked a finished process before then would find its ending already
+        // taken and answer `Interrupted`.
         reply(sessions, lease_id, id, &collected, ended, budget, None)
     }
 }
@@ -190,6 +193,7 @@ impl Handler for WriteStdin {
         };
         let budget = output::budget(arguments.max_output_tokens);
         let lease_id = context.lease.lease_id;
+        // Locked through the close inside `reply`, as in `ExecCommand::run`.
         reply(sessions, lease_id, id, &collected, ended, budget, refused)
     }
 }

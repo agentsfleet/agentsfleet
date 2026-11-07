@@ -45,14 +45,14 @@ impl Outcome {
             status,
             head: (!head.is_empty()).then(|| head.to_owned()),
             tail: tail.filter(|tail| !tail.is_empty()).map(str::to_owned),
-            line_count: Some(output.lines().count() as u64),
+            line_count: Some(u64::try_from(output.lines().count()).unwrap_or(u64::MAX)),
             exit_code,
             elapsed,
         }
     }
 
     /// A call the run ended before it did.
-    pub(crate) fn interrupted(elapsed: Duration) -> Self {
+    pub(crate) const fn interrupted(elapsed: Duration) -> Self {
         Self {
             status: ToolCallStatus::Interrupted,
             head: None,
@@ -71,8 +71,9 @@ fn edge_head(output: &str) -> &str {
         .take(OUTPUT_EDGE_MAX_LINES)
         .map(str::len)
         .sum::<usize>();
-    let head = &output[..lines_end];
-    &head[..head.floor_char_boundary(OUTPUT_EDGE_MAX_BYTES)]
+    let head = output.get(..lines_end).unwrap_or_default();
+    head.get(..head.floor_char_boundary(OUTPUT_EDGE_MAX_BYTES))
+        .unwrap_or_default()
 }
 
 /// The output's last lines, within both edge bounds.
@@ -82,9 +83,9 @@ fn edge_tail(output: &str) -> &str {
         .rmatch_indices('\n')
         .nth(OUTPUT_EDGE_MAX_LINES - 1)
         .map_or(0, |(newline, _)| newline + 1);
-    let tail = &output[start..];
+    let tail = output.get(start..).unwrap_or_default();
     let cut = tail.len().saturating_sub(OUTPUT_EDGE_MAX_BYTES);
-    &tail[tail.ceil_char_boundary(cut)..]
+    tail.get(tail.ceil_char_boundary(cut)..).unwrap_or_default()
 }
 
 /// `arguments` as a trace row and a start frame may carry them: every key and
@@ -98,7 +99,12 @@ pub(crate) fn bounded_arguments(arguments: &Clean<Value>) -> Map<String, Value> 
     json::rewrite(&mut bounded, &leaf);
     match bounded {
         Value::Object(bounded) if encoded_len(&bounded) <= ARGS_MAX_BYTES => bounded,
-        _ => Map::new(),
+        Value::Null
+        | Value::Bool(_)
+        | Value::Number(_)
+        | Value::String(_)
+        | Value::Array(_)
+        | Value::Object(_) => Map::new(),
     }
 }
 
@@ -106,7 +112,7 @@ pub(crate) fn bounded_arguments(arguments: &Clean<Value>) -> Map<String, Value> 
 /// longer.
 fn leaf(text: &str) -> Option<String> {
     let cut = text.floor_char_boundary(ARGS_LEAF_MAX_BYTES);
-    (cut < text.len()).then(|| text[..cut].to_owned())
+    (cut < text.len()).then(|| text.get(..cut).unwrap_or_default().to_owned())
 }
 
 /// The run's trace as it grows.

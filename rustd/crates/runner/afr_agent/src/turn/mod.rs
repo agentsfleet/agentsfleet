@@ -29,6 +29,20 @@ pub(crate) struct Turn {
     pub(crate) finished: bool,
 }
 
+impl guffbolt::ModelTurn for Turn {
+    fn text(&self) -> &str {
+        &self.text
+    }
+
+    fn has_calls(&self) -> bool {
+        !self.calls.is_empty()
+    }
+
+    fn cut(&self) -> bool {
+        self.cut
+    }
+}
+
 /// Reads `stream` to its end. An error ends the turn there; dropping the
 /// stream closes the provider's connection.
 pub(crate) async fn take(

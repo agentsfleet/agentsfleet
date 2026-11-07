@@ -26,7 +26,7 @@ impl Checkpoints {
     }
 
     /// Counts one finished call; `true` when it completes a cadence.
-    pub(crate) fn due(&mut self) -> bool {
+    pub(crate) const fn due(&mut self) -> bool {
         if self.every == 0 {
             return false;
         }

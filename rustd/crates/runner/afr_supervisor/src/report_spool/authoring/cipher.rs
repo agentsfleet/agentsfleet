@@ -68,7 +68,7 @@ pub(super) fn metadata(directory: &Path) -> Result<(Metadata, Kek)> {
             .map_err(error::malformed(crate::client::Verb::AuthoringReport))?;
     let bytes = Zeroizing::new(files::read(
         &directory.join(files::KEY),
-        af_crypto::KEY_LEN as u64,
+        crate::byte_count(af_crypto::KEY_LEN),
     )?);
     let key = bytes
         .as_slice()

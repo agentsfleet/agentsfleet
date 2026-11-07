@@ -40,9 +40,8 @@ mod refusals {
     fn refusal(image: &std::path::Path) -> Option<ToolboxRefusal> {
         let mounts = tempfile::tempdir().unwrap();
         let manifest = Signer::new().manifest(IMAGE);
-        Toolbox::admit_now(&manifest, image, mounts.path())
-            .err()
-            .and_then(|refused| refused.toolbox_refusal())
+        let refused = Toolbox::admit_now(&manifest, image, mounts.path()).err()?;
+        refused.toolbox_refusal()
     }
 
     #[test]

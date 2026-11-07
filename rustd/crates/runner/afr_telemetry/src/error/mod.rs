@@ -67,7 +67,7 @@ impl From<af_otlp::Error> for Error {
 impl Error {
     /// The registry code an operator reads this under.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Knob { .. } => error_code::STARTUP_ENV_CHECK,
             ErrorKind::Transport { source } => source.code(),
@@ -77,10 +77,10 @@ impl Error {
 
     /// The knob this failure refused, when it refused one.
     #[must_use]
-    pub fn knob(&self) -> Option<&'static str> {
+    pub const fn knob(&self) -> Option<&'static str> {
         match self.kind() {
             ErrorKind::Knob { source } => Some(source.knob),
-            _built => None,
+            ErrorKind::Transport { .. } | ErrorKind::Census { .. } => None,
         }
     }
 }

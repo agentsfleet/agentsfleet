@@ -241,7 +241,8 @@ impl Catalog {
                 || page_bytes + separator + entry_bytes > af_wire::task::CHECKPOINT_PAGE_BYTES
             {
                 if page.entries.is_empty()
-                    || pages.len() == af_wire::task::CHECKPOINT_PAGES as usize
+                    || pages.len()
+                        == usize::try_from(af_wire::task::CHECKPOINT_PAGES).unwrap_or(usize::MAX)
                 {
                     return Err(error::config("checkpoint manifest exceeds its page bound"));
                 }
@@ -283,7 +284,7 @@ impl Catalog {
                 history_objects,
             });
         }
-        if pages.len() > af_wire::task::CHECKPOINT_PAGES as usize {
+        if pages.len() > usize::try_from(af_wire::task::CHECKPOINT_PAGES).unwrap_or(usize::MAX) {
             return Err(error::config("checkpoint manifest exceeds its page bound"));
         }
         for page in &pages {
@@ -299,7 +300,7 @@ impl Catalog {
 fn descriptor(bytes: &[u8], kind: &str) -> CheckpointPlaintext {
     CheckpointPlaintext {
         sha256: af_core::etag::sha256_hex(bytes),
-        size: bytes.len() as u64,
+        size: crate::byte_count(bytes.len()),
         kind: kind.to_owned(),
     }
 }

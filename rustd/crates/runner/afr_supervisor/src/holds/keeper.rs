@@ -208,7 +208,8 @@ impl Keeper {
     /// Releases the oldest holds until at most `keep` remain.
     fn cap(&mut self, keep: usize) {
         let over = self.held.len().saturating_sub(keep);
-        for entry in self.held.drain(..over).collect::<Vec<_>>() {
+        let kept = self.held.split_off(over);
+        for entry in std::mem::replace(&mut self.held, kept) {
             self.retire(entry, Release::Capped);
         }
     }

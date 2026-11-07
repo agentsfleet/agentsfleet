@@ -1,13 +1,101 @@
+//! What a durable task adds to its root loop, and the steps it adds.
+//!
 //! Only the root assesses completed action groups; children cannot settle goals.
 
 use super::{Ending, Harness};
 use af_wire::task::{TaskDisposition, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
+use guffbolt::Budget;
+
+use crate::turn::Turn;
+
+/// What becomes of a task's answer, a failure being the provider's.
+type Answer = guffbolt::Answer<af_providers::Error>;
+
+/// What the model is told when its goal assessment says to go on.
+const CONTINUE: &str = "The accepted task goal remains incomplete. Continue the next bounded action group using the current evidence.";
+/// What an assessment of a recovered run's first turn is told.
+const RECOVERED: &str = "Recovery reconciled; no new action has run.";
+/// What the assessment that ends an execution slice is told.
+const SLICE_ENDING: &str = "Execution slice is ending; preserve current work for continuation.";
+
+/// A durable task's additions to its root loop: its inputs and confirmed
+/// effects read before each model call, its goal assessed after each action
+/// group, and its execution slice as the loop's budget. The loop itself
+/// (`guffbolt::drive`) knows none of this.
+pub(super) struct Task;
+
+impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for Task {
+    fn budget(&self, root: &Harness<'s, 'run>) -> Budget {
+        if !root.task.as_ref().is_some_and(|task| task.allow_actions) {
+            return Budget::Unbounded;
+        }
+        root.task_execution_budget()
+            .map_or(Budget::Spent, Budget::Within)
+    }
+
+    fn budget_spent(&mut self, root: &mut Harness<'s, 'run>) {
+        // An interrupted group never carries a prior group's completion authority.
+        root.task_report = None;
+    }
+
+    async fn before_model(&mut self, root: &mut Harness<'s, 'run>, number: u64) -> Option<Ending> {
+        if root.incorporate_task_inputs().await.is_err()
+            || root.reconcile_task_effects().await.is_err()
+            || root.answer_task_inputs().await.is_err()
+        {
+            return Some(Ending::Stopped);
+        }
+        if let Some(answer) = root.accepted_answer() {
+            return Some(Ending::Answered(answer));
+        }
+        if number == 1
+            && root.shared.recovered_task.is_some()
+            && let Some(ending) = root.assess_task(RECOVERED).await
+        {
+            return Some(ending);
+        }
+        if root.task_yield_due() {
+            return Some(
+                root.assess_task(SLICE_ENDING)
+                    .await
+                    .unwrap_or(Ending::Stopped),
+            );
+        }
+        None
+    }
+
+    fn after_turn(&mut self, _root: &Harness<'s, 'run>, turn: &Turn) -> Option<Ending> {
+        // A task never acts on a turn its stream did not finish, or one cut at
+        // its output limit.
+        (!turn.finished || turn.cut).then_some(Ending::Stopped)
+    }
+
+    async fn on_answer(&mut self, root: &mut Harness<'s, 'run>, answer: &str) -> Answer {
+        if let Some(ending) = root.assess_task(answer).await {
+            return Answer::End(ending);
+        }
+        if root
+            .task_report
+            .as_ref()
+            .is_some_and(|report| report.disposition == TaskDisposition::Continue)
+        {
+            return Answer::Continue(CONTINUE.to_owned());
+        }
+        Answer::Accept
+    }
+
+    async fn after_group(&mut self, root: &mut Harness<'s, 'run>) -> Option<Ending> {
+        if root.incorporate_task_inputs().await.is_err()
+            || root.reconcile_task_effects().await.is_err()
+        {
+            return Some(Ending::Stopped);
+        }
+        root.assess_task("").await
+    }
+}
 
 impl Harness<'_, '_> {
     pub(super) async fn assess_task(&mut self, answer: &str) -> Option<Ending> {
-        if self.depth != 0 {
-            return None;
-        }
         self.task
             .as_ref()
             .filter(|prepared| prepared.allow_actions)?;
@@ -43,7 +131,7 @@ impl Harness<'_, '_> {
                         Some(Ending::Answered(if answer.trim().is_empty() { match disposition {
                             TaskDisposition::Complete => "The action group finished and the goal assessment requested completion. Native publication and validation checks will confirm the final task status.",
                             TaskDisposition::Waiting => "The action group finished. The task is waiting for its recorded dependency to complete.",
-                            _ => "The task is blocked; its current progress will be saved.",
+                            TaskDisposition::Blocked | TaskDisposition::Continue => "The task is blocked; its current progress will be saved.",
                         }.to_owned() } else { answer.to_owned() })),
                 }
             }

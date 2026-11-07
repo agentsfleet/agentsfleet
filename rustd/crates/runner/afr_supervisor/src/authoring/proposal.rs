@@ -61,7 +61,7 @@ pub(super) async fn apply(
     ))
 }
 
-fn feedback(reason: ProposalRejection) -> &'static str {
+const fn feedback(reason: ProposalRejection) -> &'static str {
     match reason {
         ProposalRejection::InvalidArguments => {
             "No changes were applied. Correct the propose_setup arguments using the fixed schema. For initialize, tools, credentials, triggers, network.allow and gates.rules are arrays (empty is []); gates.timeout_ms is an integer and budget.daily_nanos is a decimal string. For edit, base_candidate_revision is a decimal string and instruction edits use kind=append or kind=replace, never byte offsets."

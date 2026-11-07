@@ -22,7 +22,7 @@ struct Ending {
 }
 
 impl Ending {
-    fn completed(answer: Option<String>) -> Self {
+    const fn completed(answer: Option<String>) -> Self {
         Self {
             outcome: Outcome::Completed,
             reason: None,
@@ -30,7 +30,7 @@ impl Ending {
         }
     }
 
-    fn unknown() -> Self {
+    const fn unknown() -> Self {
         Self {
             outcome: Outcome::Failed,
             reason: Some(FailureReason::ProviderUsageUnknown),
@@ -38,7 +38,7 @@ impl Ending {
         }
     }
 
-    fn incomplete() -> Self {
+    const fn incomplete() -> Self {
         Self {
             outcome: Outcome::Failed,
             reason: Some(FailureReason::ProviderFailed),
@@ -46,7 +46,7 @@ impl Ending {
         }
     }
 
-    fn timed_out() -> Self {
+    const fn timed_out() -> Self {
         Self {
             outcome: Outcome::TimedOut,
             reason: Some(FailureReason::AttemptTimedOut),

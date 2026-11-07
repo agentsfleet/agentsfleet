@@ -11,7 +11,7 @@ pub(super) struct Index {
 }
 
 impl Index {
-    pub(super) fn new(pinned: usize) -> Self {
+    pub(super) const fn new(pinned: usize) -> Self {
         Self {
             pinned,
             groups: Vec::new(),
@@ -29,7 +29,7 @@ impl Index {
         messages: &[Message],
         mut encode: impl FnMut(&[Message]) -> af_context::Result<String>,
     ) -> af_context::Result<()> {
-        // Completed groups are immutable in Harness. read_input can extend the
+        // Completed groups are immutable in Harness. take_input can extend the
         // last user message, and the next turn can complete that same group.
         let mut index = self.groups.pop().map_or(0, |(_, range)| range.start);
         if index > messages.len() {
@@ -56,7 +56,7 @@ impl Index {
                 .ok_or_else(af_context::Error::stale)?;
             self.groups.push((
                 Group {
-                    sequence: index as u64,
+                    sequence: u64::try_from(index).unwrap_or(u64::MAX),
                     text: encode(group)?,
                 },
                 start..index,

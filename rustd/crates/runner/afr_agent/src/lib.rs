@@ -9,6 +9,7 @@
 //! lease's tools, and the [`Router`] runs each call where its runtime says; a
 //! scripted engine drives the supervisor's lanes.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;
@@ -36,7 +37,9 @@ pub mod testing;
 mod trace;
 mod turn;
 
-pub use self::engine::{AgentEngine, AgentRun, Checkpoint, EventSink, Meter, Needs, RunOutput};
+pub use self::engine::{
+    AgentEngine, AgentRun, Checkpoint, EventSink, Folded, Inbox, Meter, Needs, RunOutput,
+};
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
 pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};

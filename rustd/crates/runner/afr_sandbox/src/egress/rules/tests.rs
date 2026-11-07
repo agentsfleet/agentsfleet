@@ -334,7 +334,7 @@ fn test_only_prefixed_tables_are_listed() {
 /// unsigned field, is refused.
 #[test]
 fn test_a_kernel_number_narrows_unchanged_or_not_at_all() {
-    let getchain = libc::NFNL_SUBSYS_NFTABLES << 8 | libc::NFT_MSG_GETCHAIN;
+    let getchain = (libc::NFNL_SUBSYS_NFTABLES << 8) | libc::NFT_MSG_GETCHAIN;
 
     assert_eq!(u16_of(getchain), 0x0a04); // pin test: literal is the contract
     assert_eq!(u8_of(libc::IPPROTO_UDP), 17); // pin test: literal is the contract

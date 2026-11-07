@@ -43,7 +43,9 @@ impl LeaseTable {
     /// A table of `capacity` vacant slots.
     pub(super) fn with_capacity(capacity: usize) -> Self {
         Self {
-            slots: (0..capacity.max(1)).map(|_slot| Slot::default()).collect(),
+            slots: std::iter::repeat_with(Slot::default)
+                .take(capacity.max(1))
+                .collect(),
         }
     }
 

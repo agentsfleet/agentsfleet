@@ -25,10 +25,14 @@ use super::{
     SANDBOX_BUILDS, SANDBOX_HOLDS, SANDBOX_RELEASE_DURATION, SANDBOX_START_DURATION,
     SANDBOX_WAIT_DURATION, SPANS_SUPPRESSED, TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
 };
-use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
+use af_providers::observe::Observer;
+use af_providers::observe::labels::{
+    CallOutcome, DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
+};
+
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
-    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, PushFailure, SandboxBuild, SandboxHold, SandboxRelease, SandboxStart, SandboxWait,
+    Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -254,7 +258,7 @@ fn record_every_family(families: &Families) {
     families.model_call(
         "accounts/fireworks/models/minimax-m3p1-flash",
         Provider::of("fireworks"),
-        crate::labels::CallOutcome::Completed,
+        CallOutcome::Completed,
         elapsed,
         Some(elapsed),
     );

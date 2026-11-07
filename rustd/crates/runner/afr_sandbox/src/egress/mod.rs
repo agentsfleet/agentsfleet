@@ -98,7 +98,8 @@ fn probe(kernel: &impl Kernel, forwarding: &Path) -> Result<()> {
     let sandbox = kernel.fresh_namespace()?;
     let empty = Allowlist::new(Vec::new())?;
     kernel.inside(host.as_fd(), || {
-        Scope::build(kernel, sandbox.as_fd(), &empty).and_then(|scope| scope.remove(kernel))
+        let scope = Scope::build(kernel, sandbox.as_fd(), &empty)?;
+        scope.remove(kernel)
     })
 }
 

@@ -120,7 +120,7 @@ impl LeaseRun<'_> {
         &self,
         request: Request<'_>,
         stop: &CancellationToken,
-    ) -> crate::error::Result<()> {
+    ) -> error::Result<()> {
         let lease_id = self.ids.lease.as_str();
         let repository = request.checkout.repository;
         let event = EVENT_CHECKOUT_STARTED;

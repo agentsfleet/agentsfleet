@@ -139,7 +139,7 @@ fn default_and_explicit_bubblewrap_select_the_shipping_engine() {
 /// subscriber, and another test's scoped subscriber raises it while it runs.
 #[test]
 fn the_log_level_comes_from_the_environment_or_the_default() {
-    let unreadable = MapEnv::from_pairs([(af_core::env::LOG_LEVEL_VAR, "loud")]);
+    let unreadable = MapEnv::from_pairs([(LOG_LEVEL_VAR, "loud")]);
 
     let filter = log_filter(&unreadable);
     super::install_logs(&unreadable, None);

@@ -67,7 +67,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 impl Error {
     /// The registry code this refusal carries.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Malformed { .. } | ErrorKind::Query { .. } | ErrorKind::NotGranted => {
                 error_code::INVALID_REQUEST

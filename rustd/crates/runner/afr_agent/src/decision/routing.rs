@@ -26,7 +26,7 @@ pub(super) fn answers(
     }
     match &recorded.result.result {
         DecisionOutcome::Answered { answers } => Ok(answers),
-        _ => Err(unavailable()),
+        DecisionOutcome::Refused | DecisionOutcome::Invalid { .. } => Err(unavailable()),
     }
 }
 

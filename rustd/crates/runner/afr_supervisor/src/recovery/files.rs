@@ -211,7 +211,7 @@ impl Workspace {
         }
         super::links::validate(entries.iter().filter_map(|(path, entry)| match entry {
             Entry::Symlink { target } => Some((path.as_str(), target.as_str())),
-            _ => None,
+            Entry::File { .. } | Entry::Directory => None,
         }))?;
         Ok(entries)
     }
@@ -271,11 +271,11 @@ pub(super) struct Restoring {
 
 impl Restoring {
     pub(super) fn append(&mut self, bytes: &[u8]) -> Result<()> {
-        if bytes.len() as u64 > self.remaining {
+        if crate::byte_count(bytes.len()) > self.remaining {
             return Err(error::config("checkpoint file exceeds declared size"));
         }
         self.file.write_all(bytes)?;
-        self.remaining -= bytes.len() as u64;
+        self.remaining -= crate::byte_count(bytes.len());
         Ok(())
     }
 
@@ -298,10 +298,10 @@ fn owned(file: &impl std::os::fd::AsFd, owner: (u32, u32)) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn size(entry: &Entry) -> u64 {
+pub(super) const fn size(entry: &Entry) -> u64 {
     match entry {
         Entry::File { identity, .. } => identity.size,
-        _ => 0,
+        Entry::Directory | Entry::Symlink { .. } => 0,
     }
 }
 
@@ -336,7 +336,9 @@ pub(super) fn valid_link(path: &str, target: &str) -> Result<()> {
             Component::Normal(_) => depth += 1,
             Component::CurDir => {}
             Component::ParentDir if depth > 0 => depth -= 1,
-            _ => return Err(error::config("checkpoint symlink escapes its workspace")),
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir => {
+                return Err(error::config("checkpoint symlink escapes its workspace"));
+            }
         }
     }
     Ok(())

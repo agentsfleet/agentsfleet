@@ -125,7 +125,10 @@ impl Workspace {
         let listed = entries
             .by_ref()
             .take(MAX_LIST_ENTRIES)
-            .map(|entry| entry.and_then(|entry| described(&entry)))
+            .map(|entry| {
+                let entry = entry?;
+                described(&entry)
+            })
             .collect::<io::Result<Vec<_>>>()?;
         Ok(Listing {
             entries: listed,

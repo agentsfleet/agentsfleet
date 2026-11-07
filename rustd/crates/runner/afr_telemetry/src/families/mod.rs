@@ -1,5 +1,6 @@
 //! The runner's own metric families: declared in their own census, claimed
-//! from it once, recorded through the [`Recorder`] they implement.
+//! from it once, recorded through the [`Recorder`] they implement and the
+//! provider [`Observer`] it extends.
 //!
 //! The census is `docs/metrics.runner.census.tsv`, compiled in and read by the
 //! daemon's own registry reader, so the two binaries' censuses are one format
@@ -15,10 +16,15 @@ use af_observability::semconv::{LABEL_OUTCOME, LABEL_REASON, LABEL_SIGNAL};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
-use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose, LABEL_PURPOSE};
+use af_providers::observe::Observer;
+use af_providers::observe::labels::{
+    CallOutcome, DecisionOutcome, DecisionProvider, DecisionPurpose, LABEL_PROVIDER, LABEL_PURPOSE,
+    Provider, RetryReason,
+};
+
 use crate::labels::{
-    FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxBuild,
-    SandboxHold, SandboxRelease, SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, LABEL_TOOL, PushFailure, SandboxBuild, SandboxHold, SandboxRelease, SandboxStart,
+    SandboxWait, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -163,7 +169,7 @@ pub const DECISION_EVALUATIONS: Declared<CounterKind> =
 pub const DECISION_DURATION: Declared<HistogramKind> =
     Declared::new("agentsfleet_runner_decision_duration_seconds");
 
-impl Recorder for Families {
+impl Observer for Families {
     fn decision(
         &self,
         provider: DecisionProvider,
@@ -179,16 +185,6 @@ impl Recorder for Families {
         self.decisions.add(1, &labels);
         self.decision_duration
             .record(elapsed.as_secs_f64(), &labels);
-    }
-
-    fn memory_source(&self, source: crate::labels::MemorySource) {
-        self.memory_sources.add(
-            1,
-            &[KeyValue::new(
-                crate::labels::LABEL_MEMORY_SOURCE,
-                source.as_str(),
-            )],
-        );
     }
 
     fn model_tokens(&self, model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens) {
@@ -216,7 +212,7 @@ impl Recorder for Families {
         &self,
         model: &str,
         provider: Provider,
-        outcome: crate::labels::CallOutcome,
+        outcome: CallOutcome,
         elapsed: Duration,
         first_text: Option<Duration>,
     ) {
@@ -234,22 +230,34 @@ impl Recorder for Families {
         }
     }
 
-    fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
-        self.turns.record(
-            elapsed.as_secs_f64(),
-            &[
-                KeyValue::new(LABEL_PROVIDER, provider.as_str()),
-                KeyValue::new(LABEL_OUTCOME, outcome.as_str()),
-            ],
-        );
-    }
-
     fn retry(&self, provider: Provider, reason: RetryReason) {
         self.retries.add(
             1,
             &[
                 KeyValue::new(LABEL_PROVIDER, provider.as_str()),
                 KeyValue::new(LABEL_REASON, reason.as_str()),
+            ],
+        );
+    }
+}
+
+impl Recorder for Families {
+    fn memory_source(&self, source: crate::labels::MemorySource) {
+        self.memory_sources.add(
+            1,
+            &[KeyValue::new(
+                crate::labels::LABEL_MEMORY_SOURCE,
+                source.as_str(),
+            )],
+        );
+    }
+
+    fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
+        self.turns.record(
+            elapsed.as_secs_f64(),
+            &[
+                KeyValue::new(LABEL_PROVIDER, provider.as_str()),
+                KeyValue::new(LABEL_OUTCOME, outcome.as_str()),
             ],
         );
     }

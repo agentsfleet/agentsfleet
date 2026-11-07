@@ -233,7 +233,9 @@ impl Session<'_> {
             .try_fold(0_u64, |sum, entry| {
                 sum.checked_add(match entry {
                     CheckpointEntry::File(file) => file.size,
-                    _ => 0,
+                    CheckpointEntry::Directory { .. }
+                    | CheckpointEntry::Symlink { .. }
+                    | CheckpointEntry::Remove { .. } => 0,
                 })
             })
             .ok_or_else(|| error::config("checkpoint expanded size overflow"))?;
@@ -250,7 +252,7 @@ impl Session<'_> {
         entries: &mut BTreeMap<String, CheckpointEntry>,
         bytes: &mut usize,
     ) -> Result<Vec<String>> {
-        if ids.len() > CHECKPOINT_PAGES as usize {
+        if ids.len() > usize::try_from(CHECKPOINT_PAGES).unwrap_or(usize::MAX) {
             return Err(error::config("checkpoint page count exceeds its bound"));
         }
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
@@ -277,7 +279,7 @@ impl Session<'_> {
             *bytes = bytes
                 .checked_add(encoded.len())
                 .ok_or_else(|| error::config("checkpoint manifest size overflow"))?;
-            if page.page_number as usize != position
+            if usize::try_from(page.page_number).unwrap_or(usize::MAX) != position
                 || encoded.len() > CHECKPOINT_PAGE_BYTES
                 || *bytes > 64 * CHECKPOINT_PAGE_BYTES
             {
@@ -314,7 +316,9 @@ impl Session<'_> {
     ) -> Result<()> {
         super::links::validate(entries.values().filter_map(|entry| match entry {
             CheckpointEntry::Symlink { path, target } => Some((path.as_str(), target.as_str())),
-            _ => None,
+            CheckpointEntry::File(_)
+            | CheckpointEntry::Directory { .. }
+            | CheckpointEntry::Remove { .. } => None,
         }))?;
         let Some((path, owner)) = destination else {
             return if entries.is_empty() {
@@ -385,7 +389,7 @@ impl Session<'_> {
                 digests.push((
                     id.clone(),
                     af_core::etag::sha256_hex(bytes.expose()),
-                    bytes.expose().len() as u64,
+                    crate::byte_count(bytes.expose().len()),
                 ));
                 history.extend_from_slice(bytes.expose());
             }

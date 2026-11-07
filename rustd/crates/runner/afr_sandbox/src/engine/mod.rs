@@ -52,7 +52,7 @@ impl Limits {
     /// `ENOSPC` while the tenant keeps the rest of its memory.
     #[must_use]
     pub const fn shared_memory_bytes(&self) -> u64 {
-        self.memory_bytes / SHARED_MEMORY_SHARE
+        self.memory_bytes.div_euclid(SHARED_MEMORY_SHARE)
     }
 }
 

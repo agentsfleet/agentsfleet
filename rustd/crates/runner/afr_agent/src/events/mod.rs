@@ -56,7 +56,7 @@ impl<'run> Live<'run> {
         Self::new(&SILENT, scrub, started)
     }
 
-    pub(crate) fn hide_reasoning(&mut self) {
+    pub(crate) const fn hide_reasoning(&mut self) {
         self.private_reasoning = true;
     }
 

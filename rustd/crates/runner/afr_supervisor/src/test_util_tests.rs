@@ -73,10 +73,11 @@ async fn test_each_route_answers_as_its_verb() {
     plane.me().await.unwrap();
     plane.tool_calls(&lease, Bytes::new()).await.unwrap();
     plane.report(Bytes::new()).await.unwrap();
+    plane.folds(&lease, 1, 0).await.unwrap();
 
     let healthy = healthy();
     let sent = drain(&mut calls);
-    assert_eq!(sent.len(), 9, "every request reached the daemon");
+    assert_eq!(sent.len(), 10, "every request reached the daemon");
     for call in sent {
         let method = call.verb.method().http();
         assert_eq!(

@@ -184,7 +184,8 @@ async fn mask_response(lease: &Lease<'_>, inbound: &mut Inbound) {
 /// `text` with every token the lease minted masked; `text` itself when none
 /// is in it.
 pub(crate) async fn masked(lease: &Lease<'_>, text: String) -> String {
-    let changed = match lease.egress.lock().await.mask(&text) {
+    let mask = lease.egress.lock().await.mask(&text);
+    let changed = match mask {
         Cow::Owned(masked) => Some(masked),
         Cow::Borrowed(_) => None,
     };

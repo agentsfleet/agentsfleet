@@ -81,6 +81,7 @@ impl Spool {
             .map_err(|_poisoned| error::config(STATE_INTERRUPTED))?;
         state.high_water = old.unwrap_or_else(|| self.0.clock.now());
         state.uncertain = old.is_none() && fs::read_dir(&self.0.directory)?.count() != 0;
+        drop(state);
         Ok(())
     }
 
@@ -139,6 +140,7 @@ impl Spool {
                 .deadlines
                 .insert(directory, Instant::now() + PRIVATE_TTL);
         }
+        drop(state);
         Ok(())
     }
 
@@ -182,6 +184,7 @@ impl Spool {
         let present: std::collections::HashSet<_> = pending.iter().chain(held_paths).collect();
         state.deadlines.retain(|path, _| present.contains(path));
         state.uncertain = false;
+        drop(state);
         Ok(Scanned { pending, held })
     }
 

@@ -32,8 +32,6 @@ backon.workspace = true
 # The sandbox entry's two descriptor flags, parsed once here for the runner
 # binary and the kernel lane alike.
 clap.workspace = true
-# The bubblewrap launcher's error stream, read a line at a time with a cap.
-futures-util.workspace = true
 # The toolbox image is named by its SHA-256, streamed through the hasher.
 digest-io.workspace = true
 hex.workspace = true
@@ -61,7 +59,6 @@ procfs-core.workspace = true
 rustix.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
-tokio-util = { workspace = true, features = ["codec"] }
 tracing.workspace = true
 # The in-sandbox process logs to the error stream the supervisor drains.
 tracing-subscriber.workspace = true
@@ -81,6 +78,10 @@ netlink-sys.workspace = true
 netlink-packet-core.workspace = true
 netlink-packet-route.workspace = true
 netlink-packet-netfilter.workspace = true
+# The bubblewrap launcher's error stream, read a line at a time with a cap;
+# the launcher is Linux-only, so the library links these only there.
+futures-util.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
 
 [features]
 # M-TEST-UTIL. What the kernel lane proves egress against: the host's egress
@@ -94,7 +95,7 @@ af_wire.workspace = true
 afr_agent.workspace = true
 # The kernel lane's lease and credential expiries are jiff instants.
 jiff.workspace = true
-af_providers.workspace = true
+af_providers = { workspace = true, features = ["test-util"] }
 axum = { workspace = true, features = ["json"] }
 hyper.workspace = true
 hyper-util.workspace = true
@@ -111,6 +112,8 @@ afr_tools = { workspace = true, features = ["test-util"] }
 # the one `afr_sandbox` library the supervisor does.
 afr_supervisor = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
+# The warm-slot suite polls a claim once, and the kernel lane joins its budgets.
+futures-util.workspace = true
 libtest-mimic.workspace = true
 serde_json.workspace = true
 # The checkout's interrupt in the kernel lane.

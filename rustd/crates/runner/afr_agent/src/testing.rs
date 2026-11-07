@@ -79,6 +79,17 @@ impl crate::ContextCheckpoints for ContextMemory {
     }
 }
 
+/// An inbox no message ever reaches: a run that folds nothing.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoInbox;
+
+#[async_trait::async_trait]
+impl crate::Inbox for NoInbox {
+    async fn claim(&self, _after_sequence: i64) -> Vec<crate::Folded> {
+        Vec::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(

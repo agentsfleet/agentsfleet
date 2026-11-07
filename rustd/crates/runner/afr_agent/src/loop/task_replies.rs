@@ -142,8 +142,8 @@ impl Harness<'_, '_> {
                     parts.push(answer.as_str());
                     included = true;
                 }
-            } else if let Some(reply) = item.response_text.as_deref() {
-                parts.push(reply);
+            } else {
+                parts.extend(item.response_text.as_deref());
             }
         }
         if !included {

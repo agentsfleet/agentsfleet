@@ -77,6 +77,7 @@ pub(super) async fn drive_in(
         mint: &CountingMint::never(),
         checkpoint: &Discard,
         context_checkpoints: &crate::testing::ContextMemory::default(),
+        inbox: &crate::testing::NoInbox,
         events: &sink,
         meter: &Meter::default(),
         verbs: &afr_tools::CLOSED,
@@ -195,6 +196,6 @@ async fn a_run_whose_sessions_all_ended_kills_nothing() {
         completions(&frames),
         [("1".to_owned(), ToolCallStatus::Succeeded)]
     );
-    assert_eq!(executor.killed(), [] as [afr_executor::ProcessId; 0]);
+    assert_eq!(executor.killed(), [] as [ProcessId; 0]);
     assert!(!interrupted_any(&capture));
 }

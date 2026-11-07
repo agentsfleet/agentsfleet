@@ -7,6 +7,7 @@
 //! where its [`Runtime`] says (`docs/architecture/runner_execution.md` §"Tool
 //! catalog").
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod catalog;

@@ -54,7 +54,7 @@ fn test_toolbox_admission_refusals() {
         fs::write(&source, download).unwrap();
         toolboxes.admit(&manifest, &source).err()
     };
-    let mut half = image.clone();
+    let mut half = image;
     half.get_mut(32..).unwrap().fill(0);
 
     let refusals = [
@@ -70,7 +70,10 @@ fn test_toolbox_admission_refusals() {
             .err(),
         staged(half),
     ]
-    .map(|refused| refused.and_then(|refused| refused.toolbox_refusal()));
+    .map(|refused| {
+        let refused = refused?;
+        refused.toolbox_refusal()
+    });
 
     assert_eq!(
         refusals,

@@ -4,7 +4,7 @@
 //! # Why a trait object in a slot
 //!
 //! The producers live in three crates and none of them should know whether
-//! telemetry is on. They call [`turn`], [`retry`] and the rest; each reaches
+//! telemetry is on. They call [`turn`] and the rest; each reaches
 //! the [`Recorder`] `run` installed, or nothing. That is the daemon's shape
 //! (`af_observability::producers`) with one change: the slot holds a trait
 //! object rather than a struct of handles, so a test can route one future's
@@ -22,42 +22,26 @@ use std::time::Duration;
 
 use af_observability::metrics::label::http::{DiscardReason, Signal};
 
-use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
+use af_providers::observe::Observer;
+use af_providers::observe::labels::Provider;
+
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
-    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, PushFailure, SandboxBuild, SandboxHold, SandboxRelease, SandboxStart, SandboxWait,
+    Tool, ToolOutcome, TurnOutcome,
 };
 
 /// What every runner measurement is recorded through.
 ///
 /// One method per family, each taking only its closed label set, so a call
 /// site cannot attribute a measurement to a label the census never declared.
-pub trait Recorder: Send + Sync + core::fmt::Debug {
-    /// One native decision evaluation ended, including refused preflight.
-    fn decision(
-        &self,
-        provider: DecisionProvider,
-        purpose: DecisionPurpose,
-        outcome: DecisionOutcome,
-        elapsed: Duration,
-    );
+/// The provider's own measurements are the [`Observer`] it extends: the
+/// harness declares them (`af_providers::observe`), and this crate records
+/// them with the rest.
+pub trait Recorder: Observer {
     /// A lease chose its inline memory or a separate hydration request.
     fn memory_source(&self, source: crate::labels::MemorySource);
     /// One model turn ended, after `elapsed`.
     fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration);
-    /// One provider stream request ended, with an optional first-text measurement.
-    fn model_call(
-        &self,
-        model: &str,
-        provider: Provider,
-        outcome: crate::labels::CallOutcome,
-        elapsed: Duration,
-        first_text: Option<Duration>,
-    );
-    /// Provider-reported usage from one request, including known partial usage.
-    fn model_tokens(&self, model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens);
-    /// A turn's send is about to be retried.
-    fn retry(&self, provider: Provider, reason: RetryReason);
     /// A sandbox start ended, after `elapsed`.
     fn sandbox_start(&self, outcome: SandboxStart, elapsed: Duration);
     /// A sandbox tool call's wait for its lease's build ended, after `elapsed`.
@@ -90,9 +74,13 @@ static INSTALLED: OnceLock<Arc<dyn Recorder>> = OnceLock::new();
 ///
 /// Answers whether it took: the first install wins, because one process
 /// exports through one pipeline and a second would be a second set of series
-/// under the same names.
+/// under the same names. It takes in both slots or neither: the provider's
+/// slot is claimed first, so an observer already there leaves this one
+/// uninstalled rather than recording everything but the provider's
+/// measurements.
 pub fn install(recorder: Arc<dyn Recorder>) -> bool {
-    INSTALLED.set(recorder).is_ok()
+    let observer: Arc<dyn Observer> = Arc::<dyn Recorder>::clone(&recorder);
+    af_providers::observe::install(observer) && INSTALLED.set(recorder).is_ok()
 }
 
 /// Runs `record` against the recorder in force here, if there is one.
@@ -107,40 +95,9 @@ fn with(record: impl FnOnce(&dyn Recorder)) {
     }
 }
 
-/// Records one decision evaluation, independently of coding-model turns.
-pub fn decision(
-    provider: DecisionProvider,
-    purpose: DecisionPurpose,
-    outcome: DecisionOutcome,
-    elapsed: Duration,
-) {
-    with(|recorder| recorder.decision(provider, purpose, outcome, elapsed));
-}
-
 /// Records one model turn.
 pub fn turn(provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
     with(|recorder| recorder.turn(provider, outcome, elapsed));
-}
-
-/// Records a single provider request, separate from an agent turn's retries and tools.
-pub fn model_call(
-    model: &str,
-    provider: Provider,
-    outcome: crate::labels::CallOutcome,
-    elapsed: Duration,
-    first_text: Option<Duration>,
-) {
-    with(|recorder| recorder.model_call(model, provider, outcome, elapsed, first_text));
-}
-
-/// Records provider usage once after response recovery; unknown values stay absent.
-pub fn model_tokens(model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens) {
-    with(|recorder| recorder.model_tokens(model, provider, usage));
-}
-
-/// Records a turn's send about to be retried.
-pub fn retry(provider: Provider, reason: RetryReason) {
-    with(|recorder| recorder.retry(provider, reason));
 }
 
 /// Records a sandbox start.
@@ -216,14 +173,16 @@ mod tests {
 
     use af_observability::metrics::label::http::{DiscardReason, Signal};
 
+    use af_providers::observe::labels::{Provider, RetryReason};
+
     use crate::labels::{
-        FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool,
-        ToolOutcome, TurnOutcome,
+        FrameDrop, PushFailure, SandboxHold, SandboxStart, Tool, ToolOutcome, TurnOutcome,
     };
     use crate::testing::{Recorded, Tally, scoped};
 
     /// A scoped future's measurements reach its own recorder, each through
-    /// the free function its producer calls; outside the scope they do not.
+    /// the free function its producer calls, the provider's port included;
+    /// outside the scope they do not.
     #[tokio::test]
     async fn a_scoped_future_records_into_its_own_recorder() {
         let (tally, received) = Tally::new();
@@ -233,7 +192,7 @@ mod tests {
 
         scoped(tally, async {
             super::turn(anthropic, TurnOutcome::Completed, elapsed);
-            super::retry(anthropic, RetryReason::Transport);
+            af_providers::observe::retry(anthropic, RetryReason::Transport);
             super::sandbox_start(SandboxStart::Failed, elapsed);
             super::frames_dropped(FrameDrop::PostFailed, 4);
             super::push_failed(PushFailure::Refused);

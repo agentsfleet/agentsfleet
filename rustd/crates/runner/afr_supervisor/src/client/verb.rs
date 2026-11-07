@@ -88,6 +88,8 @@ pub(crate) enum Verb {
     ScheduleRuns,
     /// A line said to the leased event's thread.
     Message,
+    /// The messages a person sent while the run works, claimed for it.
+    Folds,
     /// Complete native human input and recovered meaning.
     TaskInputs,
     /// One complete immutable human interpretation.
@@ -126,7 +128,7 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 40] = [
+    pub(crate) const ALL: [Self; 41] = [
         Self::Heartbeat,
         Self::ContextLoad,
         Self::ContextCommit,
@@ -151,6 +153,7 @@ impl Verb {
         Self::ScheduleRun,
         Self::ScheduleRuns,
         Self::Message,
+        Self::Folds,
         Self::TaskInputs,
         Self::TaskBindings,
         Self::TaskInputReceipt,
@@ -203,6 +206,7 @@ impl Verb {
             | Self::ScheduleCreate
             | Self::ScheduleRun
             | Self::Message
+            | Self::Folds
             | Self::TaskBindings
             | Self::TaskInputReceipt
             | Self::TaskDecisionReserve
@@ -241,6 +245,7 @@ impl Verb {
             Self::ScheduleRun => "schedule_run",
             Self::ScheduleRuns => "schedule_runs",
             Self::Message => "message",
+            Self::Folds => "folds",
             Self::TaskInputs => "task_inputs",
             Self::TaskBindings => "task_bindings",
             Self::TaskInputReceipt => "task_input_receipt",
@@ -285,6 +290,7 @@ impl Verb {
             | Self::ScheduleRun
             | Self::ScheduleRuns
             | Self::Message
+            | Self::Folds
             | Self::TaskInputs
             | Self::TaskBindings
             | Self::TaskInputReceipt

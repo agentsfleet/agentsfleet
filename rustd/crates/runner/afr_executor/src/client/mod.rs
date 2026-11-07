@@ -77,7 +77,9 @@ impl Client {
     /// The last attempt's failure once `deadline` passes, or at once for a
     /// failure that waiting cannot fix, such as a refused permission.
     pub async fn connect_within(socket: &Path, deadline: Duration) -> Result<Self> {
-        let attempts = deadline.as_millis() / CONNECT_RETRY_DELAY.as_millis();
+        let attempts = deadline
+            .as_millis()
+            .div_euclid(CONNECT_RETRY_DELAY.as_millis());
         let policy = ConstantBuilder::new()
             .with_delay(CONNECT_RETRY_DELAY)
             .with_max_times(usize::try_from(attempts).unwrap_or(usize::MAX));
@@ -117,11 +119,11 @@ impl Client {
     /// Sends one call and waits, until the deadline, for the reply `wrap`
     /// routes back. A call past its deadline gives up the link: an executor
     /// that does not answer one call will not answer the next.
-    async fn ask<P: Serialize, T>(
+    async fn ask<P: Serialize + Sync, T: Send>(
         &self,
         method: &'static str,
         params: &P,
-        wrap: impl FnOnce(oneshot::Sender<Result<T>>) -> Reply,
+        wrap: impl FnOnce(oneshot::Sender<Result<T>>) -> Reply + Send,
     ) -> Result<T> {
         if self.lost.is_cancelled() {
             return Err(error::connection_lost());
@@ -156,7 +158,7 @@ impl Client {
 
     /// A call whose result is a value, decoded through the object-only gate:
     /// the executor shares its sandbox with tenant code.
-    async fn fetch<P: Serialize, T: serde::de::DeserializeOwned>(
+    async fn fetch<P: Serialize + Sync, T: serde::de::DeserializeOwned + Send>(
         &self,
         method: &'static str,
         params: &P,
@@ -166,7 +168,7 @@ impl Client {
     }
 
     /// A call answered with nothing but that it was done.
-    async fn order<P: Serialize>(&self, method: &'static str, params: &P) -> Result<()> {
+    async fn order<P: Serialize + Sync>(&self, method: &'static str, params: &P) -> Result<()> {
         self.ask(method, params, Reply::Value).await.map(drop)
     }
 }

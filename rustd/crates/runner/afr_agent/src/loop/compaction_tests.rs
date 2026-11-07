@@ -157,6 +157,7 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
             context_checkpoints: &contexts,
+            inbox: &crate::testing::NoInbox,
             events: &frames.sink(),
             meter: &meter,
             stop: &CancellationToken::new(),

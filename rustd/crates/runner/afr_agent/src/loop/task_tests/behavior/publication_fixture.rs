@@ -131,6 +131,7 @@ pub(super) async fn publish(
             verbs: native,
             checkpoint: &crate::testing::Discard,
             context_checkpoints: &crate::testing::ContextMemory::default(),
+            inbox: &crate::testing::NoInbox,
             events: &|_| {},
             meter: &Meter::default(),
             stop: &tokio_util::sync::CancellationToken::new(),

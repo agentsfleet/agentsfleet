@@ -8,7 +8,6 @@ mod support;
 #[cfg(debug_assertions)]
 #[path = "fake_daemon.rs"]
 mod fake_daemon;
-mod http_server;
 #[cfg(debug_assertions)]
 #[path = "run.rs"]
 mod run;

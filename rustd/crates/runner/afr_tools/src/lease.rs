@@ -71,7 +71,7 @@ impl<'run> Lease<'run> {
     /// The same lease, whose wire takes an image with a call's result, or
     /// not.
     #[must_use]
-    pub fn with_image_input(mut self, image_input: bool) -> Self {
+    pub const fn with_image_input(mut self, image_input: bool) -> Self {
         self.image_input = image_input;
         self
     }

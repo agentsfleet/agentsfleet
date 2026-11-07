@@ -165,9 +165,7 @@ pub(crate) fn main() -> ExitCode {
     // leases are made under; a host that cannot delegate them is a gap too.
     let delegated = if root { delegate().ok() } else { None };
     let paths = ProbePaths {
-        cgroup_root: delegated
-            .clone()
-            .unwrap_or_else(|| PathBuf::from(LANE_CGROUP)),
+        cgroup_root: delegated.unwrap_or_else(|| PathBuf::from(LANE_CGROUP)),
         ..ProbePaths::default()
     };
     let gaps = missing(&paths, toolbox.as_deref(), root);

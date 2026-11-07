@@ -139,7 +139,7 @@ impl LeaseCgroup {
     }
 
     fn limit(&self, limits: &Limits) -> Result<()> {
-        let quota = u64::from(limits.cpu_millis) * CPU_PERIOD_MICROS / MILLIS_PER_CORE;
+        let quota = (u64::from(limits.cpu_millis) * CPU_PERIOD_MICROS).div_euclid(MILLIS_PER_CORE);
         self.write(MEMORY_MAX, &limits.memory_bytes.to_string())?;
         self.write(CPU_MAX, &format!("{quota} {CPU_PERIOD_MICROS}"))?;
         self.write(PIDS_MAX, &limits.pids.to_string())?;
@@ -163,7 +163,10 @@ impl LeaseCgroup {
         let tenant = limits
             .memory_bytes
             .saturating_sub(SANDBOX_MEMORY_RESERVE_BYTES);
-        let high = tenant - (tenant / TENANT_HIGH_SHARE).min(TENANT_HIGH_HEADROOM_MAX_BYTES);
+        let high = tenant
+            - tenant
+                .div_euclid(TENANT_HIGH_SHARE)
+                .min(TENANT_HIGH_HEADROOM_MAX_BYTES);
         fs::write(self.tenant().join(MEMORY_MAX), tenant.to_string())
             .map_err(cgroup(MEMORY_MAX))?;
         fs::write(self.tenant().join(MEMORY_HIGH), high.to_string()).map_err(cgroup(MEMORY_HIGH))

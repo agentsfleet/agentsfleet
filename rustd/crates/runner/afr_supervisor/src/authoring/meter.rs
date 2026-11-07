@@ -48,6 +48,7 @@ impl Observed {
         meter.input_tokens = None;
         meter.output_tokens = None;
         meter.provider_cost_nanos = None;
+        drop(meter);
         Ok(())
     }
 
@@ -92,6 +93,7 @@ impl Observed {
                 .ok_or_else(|| error::config("the daemon provider cost overflowed"))?
                 .to_string(),
         );
+        drop(meter);
         Ok(())
     }
 }

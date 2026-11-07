@@ -174,6 +174,7 @@ fn say(events: &dyn EventSink, turn: &mut Turn, text: &str) {
 /// The report half of a finished turn.
 fn finish(turn: Turn, started: Instant) -> RunOutput {
     RunOutput {
+        folded_through_sequence: None,
         recovery: None,
         task: None,
         result: ExecutionResult {

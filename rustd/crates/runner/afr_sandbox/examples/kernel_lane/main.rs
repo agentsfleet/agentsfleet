@@ -54,9 +54,6 @@ mod git;
 #[cfg(target_os = "linux")]
 mod hold;
 #[cfg(target_os = "linux")]
-#[path = "../../../agentsfleet_runner/tests/http_server.rs"]
-mod http_server;
-#[cfg(target_os = "linux")]
 mod kill;
 #[cfg(target_os = "linux")]
 mod lane;
@@ -89,12 +86,7 @@ mod tools;
 #[cfg(target_os = "linux")]
 mod trials;
 #[cfg(target_os = "linux")]
-#[path = "../../../../daemon/agentsfleetd/tests/support/https.rs"]
-#[allow(
-    dead_code,
-    reason = "shared upstream support: the kernel lane uses HTTPS routes and observations"
-)]
-mod upstream;
+use af_egress::testing::upstream;
 
 use std::process::ExitCode;
 

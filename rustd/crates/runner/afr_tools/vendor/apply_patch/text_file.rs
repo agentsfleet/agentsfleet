@@ -8,7 +8,7 @@ enum LineEnding {
 }
 
 impl LineEnding {
-    fn as_str(self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
             Self::Lf => "\n",
             Self::CrLf => "\r\n",

@@ -16,8 +16,9 @@ workspace = true
 
 [features]
 # The daemon's integration lane runs the supervisor against fixture
-# repositories served over `file://` (`run_fetching_from`).
-test-util = []
+# repositories served over `file://` (`run_fetching_from`); a fake daemon
+# serves on `test_util::Listener`.
+test-util = ["dep:axum"]
 
 [dependencies]
 af_context = { workspace = true }
@@ -85,6 +86,8 @@ tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros", "n
 # The token that stops a run when its lease is refused, and stops the pool at
 # shutdown.
 tokio-util.workspace = true
+# `test_util::Listener`: the loopback listener a fake daemon serves on.
+axum = { workspace = true, optional = true }
 tracing.workspace = true
 # `catch_unwind` around an agent run, so a panicking engine still has its
 # sandbox torn down.
@@ -92,7 +95,6 @@ futures-util.workspace = true
 
 [dev-dependencies]
 # Verified local HTTPS object storage boundary for recovery transfer tests.
-afd_identity.workspace = true
 rcgen.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true

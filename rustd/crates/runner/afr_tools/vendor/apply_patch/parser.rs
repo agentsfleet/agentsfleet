@@ -237,13 +237,13 @@ fn test_parse_patch() {
     assert_eq!(
         parse_patch_text("bad", ParseMode::Strict),
         Err(InvalidPatchError(
-            "The first line of the patch must be '*** Begin Patch'".to_string()
+            "The first line of the patch must be '*** Begin Patch'".to_owned()
         ))
     );
     assert_eq!(
         parse_patch_text("*** Begin Patch\nbad", ParseMode::Strict),
         Err(InvalidPatchError(
-            "The last line of the patch must be '*** End Patch'".to_string()
+            "The last line of the patch must be '*** End Patch'".to_owned()
         ))
     );
 
@@ -261,7 +261,7 @@ fn test_parse_patch() {
         .unwrap(),
         vec![AddFile {
             path: PathBuf::from("foo"),
-            contents: "hi\n".to_string()
+            contents: "hi\n".to_owned()
         }]
     );
     assert_eq!(
@@ -272,7 +272,7 @@ fn test_parse_patch() {
             ParseMode::Strict
         ),
         Err(InvalidHunkError {
-            message: "Update file hunk for path 'test.py' is empty".to_string(),
+            message: "Update file hunk for path 'test.py' is empty".to_owned(),
             line_number: 2,
         })
     );
@@ -304,7 +304,7 @@ fn test_parse_patch() {
         vec![
             AddFile {
                 path: PathBuf::from("path/add.py"),
-                contents: "abc\ndef\n".to_string()
+                contents: "abc\ndef\n".to_owned()
             },
             DeleteFile {
                 path: PathBuf::from("path/delete.py")
@@ -313,9 +313,9 @@ fn test_parse_patch() {
                 path: PathBuf::from("path/update.py"),
                 move_path: Some(PathBuf::from("path/update2.py")),
                 chunks: vec![UpdateFileChunk {
-                    change_context: Some("def f():".to_string()),
-                    old_lines: vec!["    pass".to_string()],
-                    new_lines: vec!["    return 123".to_string()],
+                    change_context: Some("def f():".to_owned()),
+                    old_lines: vec!["    pass".to_owned()],
+                    new_lines: vec!["    return 123".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: false
                 }]
@@ -342,14 +342,14 @@ fn test_parse_patch() {
                 chunks: vec![UpdateFileChunk {
                     change_context: None,
                     old_lines: vec![],
-                    new_lines: vec!["line".to_string()],
+                    new_lines: vec!["line".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: false
                 }],
             },
             AddFile {
                 path: PathBuf::from("other.py"),
-                contents: "content\n".to_string()
+                contents: "content\n".to_owned()
             }
         ]
     );
@@ -371,8 +371,8 @@ fn test_parse_patch() {
             move_path: None,
             chunks: vec![UpdateFileChunk {
                 change_context: None,
-                old_lines: vec!["import foo".to_string()],
-                new_lines: vec!["import foo".to_string(), "bar".to_string()],
+                old_lines: vec!["import foo".to_owned()],
+                new_lines: vec!["import foo".to_owned(), "bar".to_owned()],
                 context_line_indices: vec![(0, 0)],
                 is_end_of_file: false,
             }],
@@ -392,7 +392,7 @@ fn test_parse_patch_preserves_end_of_file_marker() {
             chunks: vec![UpdateFileChunk {
                 change_context: None,
                 old_lines: Vec::new(),
-                new_lines: vec!["quux".to_string()],
+                new_lines: vec!["quux".to_owned()],
                 context_line_indices: vec![],
                 is_end_of_file: true,
             }],
@@ -412,14 +412,14 @@ fn test_parse_patch_lenient() {
         move_path: None,
         chunks: vec![UpdateFileChunk {
             change_context: None,
-            old_lines: vec!["import foo".to_string()],
-            new_lines: vec!["import foo".to_string(), "bar".to_string()],
+            old_lines: vec!["import foo".to_owned()],
+            new_lines: vec!["import foo".to_owned(), "bar".to_owned()],
             context_line_indices: vec![(0, 0)],
             is_end_of_file: false,
         }],
     }];
     let expected_error =
-        InvalidPatchError("The first line of the patch must be '*** Begin Patch'".to_string());
+        InvalidPatchError("The first line of the patch must be '*** Begin Patch'".to_owned());
 
     let patch_text_in_heredoc = format!("<<EOF\n{patch_text}\nEOF\n");
     assert_eq!(
@@ -462,7 +462,7 @@ fn test_parse_patch_lenient() {
     );
 
     let patch_text_with_missing_closing_heredoc =
-        "<<EOF\n*** Begin Patch\n*** Update File: file2.py\nEOF\n".to_string();
+        "<<EOF\n*** Begin Patch\n*** Update File: file2.py\nEOF\n".to_owned();
     assert_eq!(
         parse_patch_text(&patch_text_with_missing_closing_heredoc, ParseMode::Strict),
         Err(expected_error)
@@ -470,7 +470,7 @@ fn test_parse_patch_lenient() {
     assert_eq!(
         parse_patch_text(&patch_text_with_missing_closing_heredoc, ParseMode::Lenient),
         Err(InvalidPatchError(
-            "The last line of the patch must be '*** End Patch'".to_string()
+            "The last line of the patch must be '*** End Patch'".to_owned()
         ))
     );
 }

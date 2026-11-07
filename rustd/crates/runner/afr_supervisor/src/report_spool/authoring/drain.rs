@@ -28,28 +28,29 @@ impl Spool {
             } else {
                 Instant::now() + RETRY
             };
-            if let Ok(pending) = pending {
-                // Each entry settles, waits or is dropped on its own: one
-                // failure never holds back the entries behind it.
-                let sending = async {
-                    for path in pending {
-                        if let Err(failure) = self.deliver(plane, path).await {
-                            if halt.stops_on(&failure) {
-                                return true;
+            match pending {
+                Ok(pending) => {
+                    // Each entry settles, waits or is dropped on its own: one
+                    // failure never holds back the entries behind it.
+                    let sending = async {
+                        for path in pending {
+                            if let Err(failure) = self.deliver(plane, path).await {
+                                if halt.stops_on(&failure) {
+                                    return true;
+                                }
+                                waiting(&failure, EVENT_REPORT_WAITING);
                             }
-                            waiting(&failure, EVENT_REPORT_WAITING);
                         }
+                        false
+                    };
+                    tokio::select! {
+                        () = halt.serving().cancelled() => return,
+                        () = self.0.changed.notified() => continue,
+                        () = tokio::time::sleep_until(deadline) => continue,
+                        stopped = sending => if stopped { return; },
                     }
-                    false
-                };
-                tokio::select! {
-                    () = halt.serving().cancelled() => return,
-                    () = self.0.changed.notified() => continue,
-                    () = tokio::time::sleep_until(deadline) => continue,
-                    stopped = sending => if stopped { return; },
                 }
-            } else if let Err(failure) = pending {
-                waiting(&failure, EVENT_CLEANUP_FAILED);
+                Err(failure) => waiting(&failure, EVENT_CLEANUP_FAILED),
             }
             tokio::select! {
                 () = halt.serving().cancelled() => return,

@@ -35,25 +35,27 @@ pub(crate) fn record(
     let (arguments, truncated_arguments) = match arguments.into_inner() {
         Value::Object(fields) if encoded_len(&fields) <= DETAIL_FIELD_MAX_BYTES => (fields, false),
         Value::Object(_) => (Map::new(), true),
-        _ => (Map::new(), false),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) | Value::Array(_) => {
+            (Map::new(), false)
+        }
     };
     let mut record = ToolCallRecord {
         call_number: number,
         arguments,
         truncated_arguments,
         output: Cow::Owned(String::new()),
-        output_line_count: output.lines().count() as u64,
+        output_line_count: u64::try_from(output.lines().count()).unwrap_or(u64::MAX),
         truncated: false,
     };
     let room = DETAIL_POST_MAX_BYTES.saturating_sub(post_envelope_bytes());
     let mut keep = output.floor_char_boundary(DETAIL_FIELD_MAX_BYTES);
     loop {
-        record.output = Cow::Owned(output[..keep].to_owned());
+        record.output = Cow::Owned(output.get(..keep).unwrap_or_default().to_owned());
         record.truncated = keep < output.len();
         if keep == 0 || encoded_len(&record) <= room {
             return record;
         }
-        keep = output.floor_char_boundary(keep / 2);
+        keep = output.floor_char_boundary(keep.div_euclid(2));
     }
 }
 

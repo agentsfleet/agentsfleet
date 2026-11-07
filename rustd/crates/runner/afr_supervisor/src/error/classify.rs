@@ -20,7 +20,27 @@ impl Error {
     pub const fn refusal_code(&self) -> Option<ErrorCode> {
         match self.kind() {
             ErrorKind::Refused { code, .. } => *code,
-            _other => None,
+            ErrorKind::Io { .. }
+            | ErrorKind::Crypto { .. }
+            | ErrorKind::Persist { .. }
+            | ErrorKind::Config { .. }
+            | ErrorKind::Boundary { .. }
+            | ErrorKind::Address { .. }
+            | ErrorKind::Client { .. }
+            | ErrorKind::CheckpointTransfer { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Unavailable { .. }
+            | ErrorKind::TokenRefused
+            | ErrorKind::Malformed { .. }
+            | ErrorKind::Encode { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::Git { .. }
+            | ErrorKind::LeaseSize { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::EgressUnresolved { .. }
+            | ErrorKind::EgressNoIpv4 { .. }
+            | ErrorKind::EgressBlocked { .. }
+            | ErrorKind::Egress { .. } => None,
         }
     }
 
@@ -29,7 +49,27 @@ impl Error {
     pub const fn refusal_status(&self) -> Option<u16> {
         match self.kind() {
             ErrorKind::Refused { status, .. } => Some(*status),
-            _other => None,
+            ErrorKind::Io { .. }
+            | ErrorKind::Crypto { .. }
+            | ErrorKind::Persist { .. }
+            | ErrorKind::Config { .. }
+            | ErrorKind::Boundary { .. }
+            | ErrorKind::Address { .. }
+            | ErrorKind::Client { .. }
+            | ErrorKind::CheckpointTransfer { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Unavailable { .. }
+            | ErrorKind::TokenRefused
+            | ErrorKind::Malformed { .. }
+            | ErrorKind::Encode { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::Git { .. }
+            | ErrorKind::LeaseSize { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::EgressUnresolved { .. }
+            | ErrorKind::EgressNoIpv4 { .. }
+            | ErrorKind::EgressBlocked { .. }
+            | ErrorKind::Egress { .. } => None,
         }
     }
 
@@ -54,7 +94,24 @@ impl Error {
             ErrorKind::Unavailable { .. } => PushFailure::Upstream,
             ErrorKind::Refused { .. } | ErrorKind::TokenRefused => PushFailure::Refused,
             ErrorKind::Transport { .. } => PushFailure::Transport,
-            _local => PushFailure::Internal,
+            ErrorKind::Io { .. }
+            | ErrorKind::Crypto { .. }
+            | ErrorKind::Persist { .. }
+            | ErrorKind::Config { .. }
+            | ErrorKind::Boundary { .. }
+            | ErrorKind::Address { .. }
+            | ErrorKind::Client { .. }
+            | ErrorKind::CheckpointTransfer { .. }
+            | ErrorKind::Malformed { .. }
+            | ErrorKind::Encode { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::Git { .. }
+            | ErrorKind::LeaseSize { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::EgressUnresolved { .. }
+            | ErrorKind::EgressNoIpv4 { .. }
+            | ErrorKind::EgressBlocked { .. }
+            | ErrorKind::Egress { .. } => PushFailure::Internal,
         }
     }
 
@@ -67,7 +124,7 @@ impl Error {
 
     /// The registry code this failure is logged under.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Refused {
                 code: Some(code), ..

@@ -146,7 +146,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
 
 /// A failed call as a tool reads it: a refusal keeps its registry code, and
 /// anything else is `agentsfleetd` out of reach.
-fn unanswered(failure: &crate::Error) -> Unanswered {
+const fn unanswered(failure: &crate::Error) -> Unanswered {
     match failure.refusal_status() {
         Some(_status) => Unanswered::Refused(failure.refusal_code()),
         None => Unanswered::Unreachable,
@@ -155,3 +155,50 @@ fn unanswered(failure: &crate::Error) -> Unanswered {
 
 #[cfg(test)]
 mod tests;
+
+#[async_trait::async_trait]
+impl afr_agent::Inbox for FencedVerbs<'_> {
+    async fn claim(&self, after_sequence: i64) -> Vec<afr_agent::Folded> {
+        // The loop drops this future when the lease stops, so a stopped run's
+        // last claim leaves this record alone.
+        let event = EVENT_FOLD_CLAIM_STARTED;
+        tracing::debug!(after_sequence, event);
+        let claimed: crate::Result<Vec<afr_agent::Folded>> = self
+            .plane
+            .folds(self.lease_id, self.fencing_token, after_sequence)
+            .await
+            .and_then(|body| {
+                body.decode::<af_wire::fold::FoldResponse<'_>>()
+                    .map(|reply| {
+                        reply
+                            .inputs
+                            .into_iter()
+                            .map(|input| afr_agent::Folded {
+                                sequence: input.sequence,
+                                text: input.text.into_owned(),
+                            })
+                            .collect()
+                    })
+            });
+        match claimed {
+            Ok(folded) => {
+                let (count, event) = (folded.len(), EVENT_FOLD_CLAIM_COMPLETED);
+                tracing::debug!(after_sequence, claimed = count, event);
+                folded
+            }
+            Err(failure) => {
+                // The next claim asks from the same place, so nothing is lost.
+                let error_code = failure.code().as_str();
+                tracing::warn!(event = EVENT_FOLD_CLAIM_FAILED, error_code, after_sequence);
+                Vec::new()
+            }
+        }
+    }
+}
+
+/// A claim of the messages the fleet received while the run works was sent.
+const EVENT_FOLD_CLAIM_STARTED: &str = "fold_claim_started";
+/// A claim was answered, with however many messages.
+const EVENT_FOLD_CLAIM_COMPLETED: &str = "fold_claim_completed";
+/// A claim went unanswered.
+const EVENT_FOLD_CLAIM_FAILED: &str = "fold_claim_failed";

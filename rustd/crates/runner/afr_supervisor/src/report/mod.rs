@@ -117,6 +117,14 @@ pub(crate) fn report<'a>(
         tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
         // The wire still spells this instant as epoch milliseconds.
         held_until,
+        // Only a processed run's folds settle with its answer; any other
+        // ending leaves them for the fleet's next run.
+        folded_through_sequence: match ending {
+            Ending::Ran { output, .. } if outcome == Outcome::Processed => {
+                output.folded_through_sequence
+            }
+            Ending::Ran { .. } | Ending::Failed { .. } => None,
+        },
         memory: Vec::new(),
     }
 }

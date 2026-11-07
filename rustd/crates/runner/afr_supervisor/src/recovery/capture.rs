@@ -113,7 +113,7 @@ impl Capture<'_> {
             .chunks
             .values()
             .try_fold(0_u64, |sum, chunk| {
-                sum.checked_add(chunk.descriptor.size + af_crypto::TAG_LEN as u64)
+                sum.checked_add(chunk.descriptor.size + crate::byte_count(af_crypto::TAG_LEN))
             })
             .ok_or_else(|| error::config("checkpoint upload allowance overflow"))?;
         let plan = self
@@ -195,7 +195,7 @@ impl Session<'_> {
                 if !matches!(object.status, CheckpointObjectStatus::Busy) {
                     self.progress.discover(
                         &object.object_id,
-                        object.plaintext.size + af_crypto::TAG_LEN as u64,
+                        object.plaintext.size + crate::byte_count(af_crypto::TAG_LEN),
                         matches!(object.status, CheckpointObjectStatus::Reused),
                     );
                 }
@@ -217,7 +217,7 @@ impl Session<'_> {
                     return Err(error::config("checkpoint chunk has another live writer"));
                 }
                 if !matches!(object.status, CheckpointObjectStatus::Reused) {
-                    let bytes = object.plaintext.size + af_crypto::TAG_LEN as u64;
+                    let bytes = object.plaintext.size + crate::byte_count(af_crypto::TAG_LEN);
                     if !pending.is_empty() && pending_bytes + bytes > super::UPLOAD_BATCH_BYTES {
                         self.upload_batch(std::mem::take(&mut pending)).await?;
                         pending_bytes = 0;

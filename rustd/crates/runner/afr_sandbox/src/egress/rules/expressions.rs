@@ -172,11 +172,15 @@ fn connection_state() -> Expression {
 
 /// The first register, `bits` of it kept: the state register is host-ordered.
 fn mask(bits: u32) -> Expression {
+    #[cfg(target_endian = "little")]
+    let host_order = bits.to_le_bytes();
+    #[cfg(target_endian = "big")]
+    let host_order = bits.to_be_bytes();
     Expressions::Bitwise(vec![
         Bitwise::SourceRegister(Register::Reg1),
         Bitwise::DestinationRegister(Register::Reg1),
         Bitwise::Length(WORD),
-        Bitwise::Mask(DataAttribute::Value(bits.to_ne_bytes().to_vec())),
+        Bitwise::Mask(DataAttribute::Value(host_order.to_vec())),
         Bitwise::Xor(DataAttribute::Value(vec![0; 4])),
     ])
     .into()

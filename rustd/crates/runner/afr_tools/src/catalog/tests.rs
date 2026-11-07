@@ -18,7 +18,7 @@ fn catalog() -> Catalog {
 }
 
 fn names<'a>(selection: &'a Selection<'_>) -> Vec<&'a str> {
-    selection.tools().map(crate::Tool::name).collect()
+    selection.tools().map(Tool::name).collect()
 }
 
 #[test]

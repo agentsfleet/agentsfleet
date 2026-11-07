@@ -13,7 +13,7 @@ const TITLE: &str = "title";
 /// Built only by [`Schema::of`], so what a model is told a tool takes is always
 /// derived from the type the tool's arguments parse into, never hand-written
 /// beside it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Schema {
     /// What the tool does, as the model reads it.
     description: &'static str,
@@ -60,7 +60,7 @@ impl Schema {
 // line below is what schemars hands the model as the schema's description,
 // so it is written for the model.
 /// Takes no arguments.
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[expect(
     clippy::empty_structs_with_brackets,

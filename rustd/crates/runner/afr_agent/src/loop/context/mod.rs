@@ -21,7 +21,7 @@ pub(super) struct State {
     pub(super) output: Option<u32>,
 }
 impl State {
-    pub(super) fn new(pinned: usize) -> Self {
+    pub(super) const fn new(pinned: usize) -> Self {
         Self {
             pinned,
             branch: None,

@@ -107,7 +107,7 @@ pub struct Task {
 }
 
 /// A child named by id.
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Named {
     /// The id `spawn` answered with.
@@ -115,7 +115,7 @@ pub struct Named {
 }
 
 /// `wait_agent`'s arguments.
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Wait {
     /// The id `spawn` answered with.

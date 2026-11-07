@@ -24,6 +24,7 @@
 //! [`StorageHome::sandboxes`], so the engine's boot sweep finds what a crashed
 //! runner left. [`capability::probe_answer`] is the `probe` command's answer.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod capability;
@@ -210,7 +211,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         halt: Halt::new(shutdown),
         held: Notify::new(),
         whoami: Whoami::default(),
-        wake: crate::worker_pool::Wake::default(),
+        wake: worker_pool::Wake::default(),
     });
     let (assignment, watching) = watch::channel(Assignment::initial());
     let heartbeat = Heartbeat::new(&lessee.plane, &probe, &lessee.holds)
@@ -248,6 +249,12 @@ async fn open_authoring_spool(
     .await??;
     authoring_spool.sweep().await?;
     Ok(authoring_spool)
+}
+
+/// `len` as the `u64` byte count the wire and the spool files carry; a length
+/// held in memory is far below `u64::MAX`.
+pub(crate) fn byte_count(len: usize) -> u64 {
+    u64::try_from(len).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

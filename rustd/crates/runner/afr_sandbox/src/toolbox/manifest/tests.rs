@@ -54,10 +54,8 @@ const P256_KEY_LENGTH: usize = 91;
 
 /// Which check `release` fails `manifest` signed as `signature` on.
 fn refusal(release: &Release, manifest: &[u8], signature: &[u8]) -> Option<ToolboxRefusal> {
-    release
-        .verify(manifest, signature)
-        .err()
-        .and_then(|refused| refused.toolbox_refusal())
+    let refused = release.verify(manifest, signature).err()?;
+    refused.toolbox_refusal()
 }
 
 #[test]
@@ -250,7 +248,10 @@ fn should_refuse_a_release_for_another_host_runner_or_kernel() {
 fn an_image_is_held_to_the_manifests_length_then_its_digest() {
     let manifest = Signer::new().manifest(IMAGE);
     let length = IMAGE.len() as u64;
-    let refused = |checked: crate::Result<()>| checked.err().and_then(|e| e.toolbox_refusal());
+    let refused = |checked: crate::Result<()>| {
+        let e = checked.err()?;
+        e.toolbox_refusal()
+    };
 
     manifest.check_length(length).unwrap();
     manifest.check_digest(&sha256(IMAGE)).unwrap();

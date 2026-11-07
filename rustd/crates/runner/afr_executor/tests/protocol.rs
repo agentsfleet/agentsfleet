@@ -130,6 +130,6 @@ async fn a_successful_call_answers_with_its_result_and_the_request_id() {
     let answers = exchange(&lines).await;
 
     assert_eq!(answers.first().unwrap()["result"], Value::Null);
-    assert_eq!(answers.get(1).unwrap()["result"]["entries"][0]["name"], "a");
-    assert_eq!(answers.get(1).unwrap()["id"], 1);
+    assert_eq!(answers[1]["result"]["entries"][0]["name"], "a");
+    assert_eq!(answers[1]["id"], 1);
 }

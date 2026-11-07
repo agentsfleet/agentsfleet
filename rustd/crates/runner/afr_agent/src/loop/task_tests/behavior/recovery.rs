@@ -112,7 +112,7 @@ async fn uncertain_effect_is_read_by_original_identity_before_any_new_action() -
         TaskEffectState::Unknown,
     ] {
         let mut native = receipts();
-        let confirmed = super::publication_fixture::Publisher::receipt();
+        let confirmed = publication_fixture::Publisher::receipt();
         let mut previous = confirmed.clone();
         previous.state = state;
         previous.commit = None;
@@ -140,10 +140,10 @@ async fn uncertain_effect_is_read_by_original_identity_before_any_new_action() -
 async fn unknown_or_mismatched_effect_receipt_blocks_actions_and_completion() -> crate::Result<()> {
     for mutation in ["unknown", "identity", "ordinal", "head", "tree", "commit"] {
         let mut native = receipts();
-        let mut previous = super::publication_fixture::Publisher::receipt();
+        let mut previous = publication_fixture::Publisher::receipt();
         previous.state = TaskEffectState::Unknown;
         previous.commit = None;
-        let mut resolved = super::publication_fixture::Publisher::receipt();
+        let mut resolved = publication_fixture::Publisher::receipt();
         match mutation {
             "unknown" => {
                 resolved.state = TaskEffectState::Unknown;

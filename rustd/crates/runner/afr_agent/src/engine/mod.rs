@@ -49,6 +49,26 @@ where
     }
 }
 
+/// One message a person sent the fleet while the run works, claimed for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Folded {
+    /// Its place in the fleet's order; the report names the last one read.
+    pub sequence: i64,
+    /// What the person wrote, unscrubbed: the run masks it with everything else.
+    pub text: String,
+}
+
+/// Where a run's root takes the messages a person sends while it works.
+///
+/// The loop claims before each model call. A claim never fails the run: an
+/// implementation logs what went wrong and answers nothing, and the next claim
+/// asks again from the same place, so a lost answer loses no message.
+#[async_trait::async_trait]
+pub trait Inbox: Send + Sync + fmt::Debug {
+    /// The messages sent after `after_sequence`, oldest first.
+    async fn claim(&self, after_sequence: i64) -> Vec<Folded>;
+}
+
 /// Writes a run's memory back while it runs, fenced like the push before the
 /// report.
 ///
@@ -62,7 +82,7 @@ pub trait Checkpoint: Send + Sync + fmt::Debug {
     /// # Errors
     /// [`Error::checkpoint`](crate::Error::checkpoint): the write failed. The
     /// run goes on; the push before the report carries every entry again.
-    async fn push(&self, memory: Vec<MemoryDelta<'static>>) -> crate::Result<()>;
+    async fn push(&self, memory: Vec<MemoryDelta<'static>>) -> Result<()>;
 }
 
 /// Everything one run is given.
@@ -89,6 +109,8 @@ pub struct AgentRun<'run> {
     pub checkpoint: &'run dyn Checkpoint,
     /// Persists private model-window working notes under this run's fence.
     pub context_checkpoints: &'run dyn ContextCheckpoints,
+    /// Where the root takes the messages a person sends while it works.
+    pub inbox: &'run dyn Inbox,
     /// Where activity frames go.
     pub events: &'run dyn EventSink,
     /// The tokens the run has spent so far, which the engine adds to after
@@ -261,6 +283,9 @@ pub struct RunOutput {
     pub trace: Option<ToolTrace<'static>>,
     /// Each finished call's full record, posted before the report.
     pub records: Vec<ToolCallRecord<'static>>,
+    /// The last folded message a completed model call read, when the run
+    /// answered: each message claimed up to it is answered by this result.
+    pub folded_through_sequence: Option<i64>,
 }
 
 /// What a lease needs prepared before its turn runs.

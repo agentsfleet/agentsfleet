@@ -5,7 +5,7 @@
 //!   OTEL_EXPORTER_OTLP_ENDPOINT ──► Endpoint (no header, no user) ──► Telemetry
 //!                                                                      │
 //!   runner.lease ─► invoke_agent ─► chat / execute_tool  ──► LeaseSampler ─┤ spans
-//!   turn · retry · sandbox · frames · push · tool  ──► record::* ──► Families ┤ metrics
+//!   turn · sandbox · frames · push · tool  ──► record::* ──► Families ┤ metrics
 //!                                                                      ▼
 //!                                                   OTLP/HTTP ──► runner collector
 //! ```
@@ -25,7 +25,10 @@
 //! would put a telemetry parameter on types whose job is something else, so a
 //! producer calls [`record`]'s functions and they reach whatever [`Recorder`]
 //! is installed — none until `run` installs one, which makes every call a
-//! no-op in `sandbox`, in `probe`, and in every test that does not ask.
+//! no-op in `sandbox`, in `probe`, and in every test that does not ask. The
+//! provider's own measurements, a retried send among them, go through
+//! `af_providers::observe`; the [`Recorder`] extends that port, so one install
+//! serves both.
 #![forbid(unsafe_code)]
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
@@ -34,7 +37,6 @@
 use tokio as _;
 
 pub mod budget;
-pub mod decision;
 pub mod endpoint;
 pub mod error;
 pub mod families;

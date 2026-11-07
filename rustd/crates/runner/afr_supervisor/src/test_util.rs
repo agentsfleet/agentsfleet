@@ -6,11 +6,12 @@
 
 use std::borrow::Cow;
 
+use af_wire::fold::FoldResponse;
 use af_wire::lease::LeaseResponse;
 use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
 use af_wire::paths::{
-    LEASE_CONTEXT, LEASE_RENEW_SUFFIX, LEASE_TOOL_CALLS_SUFFIX, RUNNER_HEARTBEATS, RUNNER_LEASES,
-    RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_SELF,
+    LEASE_CONTEXT, LEASE_FOLDS_SUFFIX, LEASE_RENEW_SUFFIX, LEASE_TOOL_CALLS_SUFFIX,
+    RUNNER_HEARTBEATS, RUNNER_LEASES, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_SELF,
 };
 use af_wire::report::{RenewResponse, ReportResponse};
 use af_wire::runner::{AssignedPolicy, HeartbeatResponse, HeartbeatStatus, SelfResponse};
@@ -114,6 +115,8 @@ impl Healthy {
                 skipped_count: 0,
             }),
             Some(Verb::Me) => self.me(),
+            // A healthy daemon with no message waiting for the run.
+            Some(Verb::Folds) => value(&FoldResponse::default()),
             Some(
                 Verb::Activity
                 | Verb::Report
@@ -184,6 +187,7 @@ fn routed(method: &str, path: &str) -> Option<Verb> {
         (RUNNER_SELF, _) => Some(Verb::Me),
         (_, Some(LEASE_RENEW_SUFFIX)) => Some(Verb::Renew),
         (_, Some(LEASE_TOOL_CALLS_SUFFIX)) => Some(Verb::Records),
+        (_, Some(LEASE_FOLDS_SUFFIX)) => Some(Verb::Folds),
         _ if context && method == GET => Some(Verb::ContextLoad),
         _ if context && method == Verb::ContextCommit.method().http().as_str() => {
             Some(Verb::ContextCommit)
@@ -199,6 +203,57 @@ fn routed(method: &str, path: &str) -> Option<Verb> {
 fn value(reply: &impl Serialize) -> Value {
     serde_json::to_value(reply)
         .unwrap_or_else(|never| unreachable!("a wire reply always encodes: {never}"))
+}
+
+/// A loopback listener a fake daemon or collector serves on, aborted when
+/// its owner drops it.
+#[cfg(feature = "test-util")]
+#[derive(Debug)]
+pub struct Listener {
+    /// Where the fake answers, as `http://127.0.0.1:<port>`.
+    pub url: String,
+    stop: tokio_util::sync::CancellationToken,
+    task: tokio::task::JoinHandle<std::io::Result<()>>,
+}
+
+#[cfg(feature = "test-util")]
+impl Listener {
+    /// Serves `app` on a fresh loopback port.
+    ///
+    /// # Errors
+    /// No loopback port binds, or the bound one has no address.
+    pub async fn serve(app: axum::Router) -> std::io::Result<Self> {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let url = format!("http://{}", listener.local_addr()?);
+        let stop = tokio_util::sync::CancellationToken::new();
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(stopped.cancelled_owned())
+                .await
+        });
+        Ok(Self { url, stop, task })
+    }
+
+    /// Stops serving and waits for the listener to finish.
+    ///
+    /// # Errors
+    /// The listener did not finish within ten seconds, panicked, or failed.
+    pub async fn stop(&mut self) -> std::io::Result<()> {
+        self.stop.cancel();
+        tokio::time::timeout(std::time::Duration::from_secs(10), &mut self.task)
+            .await
+            .map_err(std::io::Error::other)?
+            .map_err(std::io::Error::other)?
+    }
+}
+
+#[cfg(feature = "test-util")]
+impl Drop for Listener {
+    fn drop(&mut self) {
+        self.stop.cancel();
+        self.task.abort();
+    }
 }
 
 #[cfg(test)]

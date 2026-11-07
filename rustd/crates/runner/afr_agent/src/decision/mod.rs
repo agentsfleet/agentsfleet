@@ -69,7 +69,7 @@ pub(crate) async fn prepare(
             limit: 4,
         })
         .await
-        .map_err(crate::decision::native)?;
+        .map_err(native)?;
     let mut prepared = PreparedTask {
         execution_deadline: inputs.execution_deadline,
         allow_actions: inputs.current_message.is_none() && inputs.current_task.is_some(),
@@ -119,7 +119,7 @@ pub(crate) async fn prepare(
             limit: 4,
         })
         .await
-        .map_err(crate::decision::native)?;
+        .map_err(native)?;
     prepared.execution_deadline = prepared.inputs.execution_deadline;
     prepared.allow_actions = prepared
         .inputs
@@ -159,12 +159,12 @@ impl Intake<'_> {
                 fencing_token: lease.fencing_token,
                 source_admission_id: source.to_owned(),
                 assessment: DecisionAssessment::Message,
-                task: version(inputs.current_task.as_ref()),
+                task: inputs.current_task.as_ref().map(version),
                 retry_of: None,
                 evidence: serde_json::json!({}),
             })
             .await
-            .map_err(crate::decision::native)?;
+            .map_err(native)?;
         let answers = routing::answers(&evaluated)?;
         let count = routing::multiplicity(answers, &assignment.intent)?;
         let proposed =
@@ -206,24 +206,21 @@ impl Intake<'_> {
                             source_start: item.proposed.source_start,
                             source_end: item.proposed.source_end,
                         },
-                        task: version(inputs.current_task.as_ref()),
+                        task: inputs.current_task.as_ref().map(version),
                         retry_of: None,
                         evidence: serde_json::to_value(&item.proposed)?,
                     })
                     .await
-                    .map_err(crate::decision::native)?;
+                    .map_err(native)?;
                 routing::check(&item_call, &item.proposed, &assignment.intent)?;
                 item.decision_call_id = Some(item_call.call_id);
             }
         }
-        verbs
-            .task_bindings(binding)
-            .await
-            .map_err(crate::decision::native)
+        verbs.task_bindings(binding).await.map_err(native)
     }
 }
 
-fn actionable(item: &TaskItemBinding) -> bool {
+const fn actionable(item: &TaskItemBinding) -> bool {
     item.applies_here
         && item.task_id.is_some()
         && matches!(
@@ -232,9 +229,9 @@ fn actionable(item: &TaskItemBinding) -> bool {
         )
 }
 
-pub(crate) fn version(task: Option<&TaskContext<'_>>) -> Option<DecisionTaskVersion> {
-    task.map(|task| DecisionTaskVersion {
+pub(crate) fn version(task: &TaskContext<'_>) -> DecisionTaskVersion {
+    DecisionTaskVersion {
         task_id: task.task_id.to_string(),
         generation: task.generation,
-    })
+    }
 }

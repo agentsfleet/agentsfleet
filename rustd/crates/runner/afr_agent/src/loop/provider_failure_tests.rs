@@ -79,6 +79,7 @@ async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
             context_checkpoints: &crate::testing::ContextMemory::default(),
+            inbox: &crate::testing::NoInbox,
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),
@@ -183,7 +184,7 @@ async fn a_stopped_turn_is_counted_as_stopped() {
 
 /// Drives a run whose model plays `turns` with an empty-tooled lease.
 async fn outcome_of(turns: Vec<Vec<af_providers::Chunk>>) -> crate::engine::RunOutput {
-    let script = crate::fixture::Script::new(turns);
+    let script = Script::new(turns);
     let engine = engine(Vec::new(), &script);
     let (output, _frames) =
         drive(&engine, &lease(&[], unbounded()), &CancellationToken::new()).await;
@@ -248,7 +249,7 @@ async fn a_short_non_ascii_answer_still_completes() {
 #[tokio::test]
 async fn a_closing_turn_without_text_after_a_tool_call_still_completes() {
     use afr_tools::catalog::UPDATE_PLAN;
-    let script = crate::fixture::Script::new([
+    let script = Script::new([
         vec![crate::fixture::call(
             "p1",
             UPDATE_PLAN.name(),

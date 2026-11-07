@@ -30,7 +30,7 @@ use crate::web_fetch::WebFetch;
 /// One published tool: its name and the runtime it executes in.
 ///
 /// Built only here, so every [`Tool::entry`] names a published tool.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry {
     name: &'static str,
     runtime: Runtime,

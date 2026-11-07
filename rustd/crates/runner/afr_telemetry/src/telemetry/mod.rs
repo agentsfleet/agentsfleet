@@ -96,7 +96,8 @@ impl Telemetry {
     }
 
     /// Whether this pipeline's families are the ones the process records
-    /// into: false only for a second install in one process.
+    /// into: false for a second install in one process, or when another
+    /// observer already holds the provider's slot.
     #[must_use]
     pub const fn recording(&self) -> bool {
         self.recording

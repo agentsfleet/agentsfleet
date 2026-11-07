@@ -15,6 +15,7 @@
 //! wraps any engine; [`UnsandboxedEngine`] serves the executor in-process for
 //! tests and refuses to exist in a release build.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;

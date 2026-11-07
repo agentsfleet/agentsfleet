@@ -90,9 +90,7 @@ fn should_carry_an_exit_code_only_when_one_was_given() {
 fn should_cut_each_argument_to_its_leaf_bound() {
     let long = format!("{}é", "a".repeat(ARGS_LEAF_MAX_BYTES - 1));
 
-    let bounded = bounded_arguments(&clean_json(
-        json!({"query": long, "nested": [{long.clone(): "y"}]}),
-    ));
+    let bounded = bounded_arguments(&clean_json(json!({"query": long, "nested": [{long: "y"}]})));
 
     let query = bounded["query"].as_str().unwrap();
     assert_eq!(
@@ -160,7 +158,7 @@ fn should_take_rows_that_exactly_fill_the_room() {
     };
 
     trace.push(1, "update_plan", Map::new(), outcome.clone());
-    trace.push(2, "update_plan", Map::new(), outcome.clone());
+    trace.push(2, "update_plan", Map::new(), outcome);
 
     assert_eq!(trace.room, 0);
     assert_eq!(trace.calls.len(), 2);
@@ -178,7 +176,7 @@ fn should_keep_a_later_row_without_edges_that_exactly_fills_the_room() {
     };
 
     trace.push(1, "update_plan", Map::new(), outcome.clone());
-    trace.push(2, "update_plan", Map::new(), outcome.clone());
+    trace.push(2, "update_plan", Map::new(), outcome);
 
     assert_eq!((trace.room, trace.calls.len()), (0, 2));
     assert!(trace.calls[0].output_head.is_some());

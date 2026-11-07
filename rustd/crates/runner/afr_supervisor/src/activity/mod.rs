@@ -97,7 +97,7 @@ struct Early {
 
 impl Early {
     /// Whether the batch `frame` just joined should go now.
-    fn wants(&mut self, frame: &ActivityFrame<'_>) -> bool {
+    const fn wants(&mut self, frame: &ActivityFrame<'_>) -> bool {
         let answer = matches!(frame, ActivityFrame::FleetResponseChunk(_));
         let first = !self.frame_tried || (answer && !self.answer_tried);
         self.frame_tried = true;

@@ -163,7 +163,7 @@ impl Claim {
     /// not be removed, and a scope reusing its name would meet them. The boot
     /// sweep of the next run removes them.
     pub(crate) fn abandon(self) {
-        std::mem::forget(self);
+        let _held_for_the_process = std::mem::ManuallyDrop::new(self);
     }
 }
 

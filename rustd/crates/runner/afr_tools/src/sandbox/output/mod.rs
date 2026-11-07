@@ -41,7 +41,7 @@ const ABANDONED: &str =
 /// The most tokens a call reads back, whatever the model asks: the two edges
 /// a call can hold, at four bytes a token; Codex's
 /// `UNIFIED_EXEC_OUTPUT_MAX_TOKENS`.
-const OUTPUT_TOKENS_MAX: usize = 2 * EDGE_BYTES / BYTES_PER_TOKEN;
+const OUTPUT_TOKENS_MAX: usize = (2 * EDGE_BYTES).div_euclid(BYTES_PER_TOKEN);
 
 /// A process's output as it arrived, whichever stream carried it, and the
 /// bytes dropped unread between its head and tail.
@@ -164,8 +164,9 @@ fn edges(text: &str, budget: usize) -> (&str, &str) {
     if text.len() <= budget {
         return (text, "");
     }
-    let head_end = text.floor_char_boundary(budget / 2);
-    let tail_start = text.ceil_char_boundary(text.len() - (budget - budget / 2));
+    let half = budget.div_euclid(2);
+    let head_end = text.floor_char_boundary(half);
+    let tail_start = text.ceil_char_boundary(text.len() - (budget - half));
     (
         text.get(..head_end).unwrap_or_default(),
         text.get(tail_start..).unwrap_or_default(),
@@ -202,7 +203,7 @@ pub(super) fn status(ending: Ending) -> String {
 }
 
 /// The code a call fails with when its process did not end by itself.
-pub(super) fn error_code(ending: Ending) -> Option<ToolErrorCode> {
+pub(super) const fn error_code(ending: Ending) -> Option<ToolErrorCode> {
     match ending {
         Ending::TimedOut => Some(ToolErrorCode::TimedOut),
         Ending::OutOfMemory => Some(ToolErrorCode::OutOfMemory),

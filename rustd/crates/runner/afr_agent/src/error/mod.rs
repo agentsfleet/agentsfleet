@@ -120,7 +120,7 @@ impl Error {
 
     /// The registry code this failure is logged under.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED

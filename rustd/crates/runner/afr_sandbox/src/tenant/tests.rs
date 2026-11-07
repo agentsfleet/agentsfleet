@@ -189,7 +189,7 @@ fn a_leaf_file_the_engine_cannot_open_is_named() {
     for (procs, events, named) in [
         (
             absent.join(CGROUP_PROCS),
-            events.clone(),
+            events,
             "the cgroup refused a write to cgroup.procs",
         ),
         (

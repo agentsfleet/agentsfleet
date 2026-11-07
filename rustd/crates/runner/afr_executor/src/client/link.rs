@@ -223,6 +223,8 @@ impl Link {
                     self.oversized(output.process_id, output.data.len());
                 } else if let Some(feed) = self.processes.get(&ProcessId::new(output.process_id)) {
                     feed.output(output.stream, output.data);
+                } else {
+                    // A process the link no longer tracks: its output has no reader.
                 }
             }
             NOTIFY_EXITED => {

@@ -95,7 +95,9 @@ impl Session<'_> {
         batch: Vec<(Object, Zeroizing<Vec<u8>>)>,
     ) -> Result<()> {
         let bytes = batch.iter().fold(0_u64, |sum, (_, bytes)| {
-            sum.saturating_add(bytes.len() as u64 + af_crypto::TAG_LEN as u64)
+            sum.saturating_add(
+                crate::byte_count(bytes.len()) + crate::byte_count(af_crypto::TAG_LEN),
+            )
         });
         if batch.is_empty() || batch.len() > CHECKPOINT_BATCH || bytes > super::UPLOAD_BATCH_BYTES {
             return Err(error::config("checkpoint physical batch exceeds its bound"));
@@ -113,7 +115,7 @@ impl Session<'_> {
             descriptors.push(CheckpointUpload {
                 object_id: object.object_id.clone(),
                 ciphertext_sha256: af_core::etag::sha256_hex(&bytes),
-                ciphertext_length: bytes.len() as u64,
+                ciphertext_length: crate::byte_count(bytes.len()),
             });
             ciphertexts.insert(object.object_id.clone(), bytes);
         }
@@ -156,7 +158,7 @@ impl Session<'_> {
             }
         }
         let transfers = &self.transfers;
-        let outcomes = stream::iter(sends.into_iter().map(|(object, bytes)| async move {
+        let outcomes = stream::iter(sends.into_iter().map(async move |(object, bytes)| {
             let transfer = object
                 .transfer
                 .as_ref()
@@ -272,7 +274,8 @@ impl Session<'_> {
             let length = object
                 .ciphertext_length
                 .filter(|length| {
-                    (17..=super::files::CHUNK + af_crypto::TAG_LEN as u64).contains(length)
+                    (17..=super::files::CHUNK + crate::byte_count(af_crypto::TAG_LEN))
+                        .contains(length)
                 })
                 .ok_or_else(|| error::config("checkpoint ciphertext length is invalid"))?;
             self.progress.discover(&object.object_id, length, false);
@@ -285,7 +288,7 @@ impl Session<'_> {
         .await;
         let transfers = &self.transfers;
         let workspace = self.workspace;
-        let outcomes = stream::iter(objects.into_iter().map(|mut object| async move {
+        let outcomes = stream::iter(objects.into_iter().map(async move |mut object| {
             let bytes = transfers.download(&object).await?;
             let bytes = transfer::open(workspace, &mut object, bytes)?;
             Ok::<_, crate::Error>((object.object_id.clone(), bytes))

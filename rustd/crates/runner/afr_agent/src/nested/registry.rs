@@ -218,7 +218,9 @@ impl<'run> Registry<'run> {
         let book = self.book();
         let child = book.children.get(&id)?;
         let running = !child.status.borrow().is_final();
-        Some(running && child.input.send(message).is_ok())
+        let taken = running && child.input.send(message).is_ok();
+        drop(book);
+        Some(taken)
     }
 
     /// Every child, oldest first.

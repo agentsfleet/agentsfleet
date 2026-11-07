@@ -15,33 +15,31 @@ use std::time::Duration;
 
 use af_observability::metrics::label::http::{DiscardReason, Signal};
 
-use crate::labels::decision::{DecisionOutcome, DecisionProvider, DecisionPurpose};
+use af_providers::observe::Observer;
+use af_providers::observe::labels::{
+    CallOutcome, DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
+};
+
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxBuild, SandboxHold, SandboxRelease,
-    SandboxStart, SandboxWait, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, PushFailure, SandboxBuild, SandboxHold, SandboxRelease, SandboxStart, SandboxWait,
+    Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
 /// One measurement, as a test reads it back.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Recorded {
-    /// [`Recorder::decision`].
+    /// [`Observer::decision`].
     Decision(DecisionProvider, DecisionPurpose, DecisionOutcome, Duration),
     /// [`Recorder::memory_source`].
     MemorySource(crate::labels::MemorySource),
     /// The observed usage of one model request.
     ModelTokens(String, Provider, af_wire::usage::ObservedTokens),
     /// One model request and its safe catalogue identity.
-    ModelCall(
-        String,
-        Provider,
-        crate::labels::CallOutcome,
-        Duration,
-        Option<Duration>,
-    ),
+    ModelCall(String, Provider, CallOutcome, Duration, Option<Duration>),
     /// [`Recorder::turn`].
     Turn(Provider, TurnOutcome, Duration),
-    /// [`Recorder::retry`].
+    /// [`Observer::retry`].
     Retry(Provider, RetryReason),
     /// [`Recorder::sandbox_start`].
     SandboxStart(SandboxStart, Duration),
@@ -85,7 +83,7 @@ impl Tally {
     }
 }
 
-impl Recorder for Tally {
+impl Observer for Tally {
     fn decision(
         &self,
         provider: DecisionProvider,
@@ -96,10 +94,6 @@ impl Recorder for Tally {
         self.send(Recorded::Decision(provider, purpose, outcome, elapsed));
     }
 
-    fn memory_source(&self, source: crate::labels::MemorySource) {
-        self.send(Recorded::MemorySource(source));
-    }
-
     fn model_tokens(&self, model: &str, provider: Provider, usage: af_wire::usage::ObservedTokens) {
         self.send(Recorded::ModelTokens(model.to_owned(), provider, usage));
     }
@@ -108,7 +102,7 @@ impl Recorder for Tally {
         &self,
         model: &str,
         provider: Provider,
-        outcome: crate::labels::CallOutcome,
+        outcome: CallOutcome,
         elapsed: Duration,
         first_text: Option<Duration>,
     ) {
@@ -121,12 +115,18 @@ impl Recorder for Tally {
         ));
     }
 
-    fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
-        self.send(Recorded::Turn(provider, outcome, elapsed));
-    }
-
     fn retry(&self, provider: Provider, reason: RetryReason) {
         self.send(Recorded::Retry(provider, reason));
+    }
+}
+
+impl Recorder for Tally {
+    fn memory_source(&self, source: crate::labels::MemorySource) {
+        self.send(Recorded::MemorySource(source));
+    }
+
+    fn turn(&self, provider: Provider, outcome: TurnOutcome, elapsed: Duration) {
+        self.send(Recorded::Turn(provider, outcome, elapsed));
     }
 
     fn sandbox_start(&self, outcome: SandboxStart, elapsed: Duration) {
@@ -184,11 +184,13 @@ pub(crate) fn scoped_recorder() -> Option<Arc<dyn Recorder>> {
     SCOPED.with(|slot| slot.borrow().clone())
 }
 
-/// `future`, recording into `recorder` whenever it is polled.
+/// `future`, recording into `recorder` whenever it is polled: the runner's
+/// own families, and the provider measurements `af_providers` observes.
 pub fn scoped<F: Future>(recorder: Arc<dyn Recorder>, future: F) -> Scoped<F> {
+    let observer: Arc<dyn Observer> = Arc::<dyn Recorder>::clone(&recorder);
     Scoped {
         recorder,
-        inner: Box::pin(future),
+        inner: Box::pin(af_providers::testing::scoped(observer, future)),
     }
 }
 
@@ -196,7 +198,7 @@ pub fn scoped<F: Future>(recorder: Arc<dyn Recorder>, future: F) -> Scoped<F> {
 #[derive(Debug)]
 pub struct Scoped<F> {
     recorder: Arc<dyn Recorder>,
-    inner: Pin<Box<F>>,
+    inner: Pin<Box<af_providers::testing::Scoped<F>>>,
 }
 
 /// Puts the previous scope back when a poll ends, panicking or not.

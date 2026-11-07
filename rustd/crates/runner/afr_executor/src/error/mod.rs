@@ -157,7 +157,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 impl Error {
     /// The registry code this failure is logged under.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         error_code::INTERNAL_OPERATION_FAILED
     }
 
@@ -220,7 +220,13 @@ impl Error {
                 INVALID_PARAMS_CODE
             }
             ErrorKind::Io { source } if is_caller_mistake(source) => INVALID_PARAMS_CODE,
-            _internal => INTERNAL_ERROR_CODE,
+            ErrorKind::Io { .. }
+            | ErrorKind::ConnectionLost
+            | ErrorKind::Unresponsive { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::LaunchIncomplete
+            | ErrorKind::TenantUnavailable { .. }
+            | ErrorKind::FileCallsUnsupported => INTERNAL_ERROR_CODE,
         }
     }
 }
@@ -229,7 +235,7 @@ impl Error {
 /// boundary, so a cut there halves no character, and `text.len()` when it
 /// fits. A boundary rather than a cut, so a borrowed flood is sliced before
 /// it is ever copied.
-fn wire_end(text: &str) -> usize {
+const fn wire_end(text: &str) -> usize {
     text.floor_char_boundary(WIRE_MESSAGE_MAX_BYTES)
 }
 

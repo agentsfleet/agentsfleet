@@ -97,7 +97,7 @@ fn is_root() -> bool {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn is_root() -> bool {
+const fn is_root() -> bool {
     false
 }
 

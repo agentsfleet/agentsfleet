@@ -193,7 +193,7 @@ impl Manifest {
 
     /// The image's length in bytes.
     #[must_use]
-    pub fn length(&self) -> u64 {
+    pub const fn length(&self) -> u64 {
         self.length
     }
 

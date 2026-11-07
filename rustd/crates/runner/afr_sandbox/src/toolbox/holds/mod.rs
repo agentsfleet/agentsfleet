@@ -105,6 +105,7 @@ impl<M: Mounter> Toolboxes<M> {
         let kept = self
             .retain_in(&mut admitted)
             .and_then(|_released| self.prune(&admitted));
+        drop(admitted);
         if let Err(stuck) = kept {
             let Logged { error_code, reason } = stuck.logged();
             let event = EVENT_RELEASE_FAILED;
@@ -146,6 +147,7 @@ impl<M: Mounter> Toolboxes<M> {
                 return Err(refused);
             }
         }
+        drop(admitted);
         Ok(())
     }
 

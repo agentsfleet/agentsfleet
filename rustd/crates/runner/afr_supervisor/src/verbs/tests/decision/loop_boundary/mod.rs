@@ -89,6 +89,7 @@ async fn execute(
             verbs,
             checkpoint: &afr_agent::testing::Discard,
             context_checkpoints: &afr_agent::testing::ContextMemory::default(),
+            inbox: &afr_agent::testing::NoInbox,
             events: &|_| {},
             meter: &afr_agent::Meter::default(),
             stop: &host.stop,

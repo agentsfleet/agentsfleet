@@ -65,7 +65,7 @@ pub(crate) fn landlock_enforceable() -> bool {
 
 /// Only Linux has Landlock.
 #[cfg(not(target_os = "linux"))]
-pub(crate) const fn landlock_enforceable() -> bool {
+pub(crate) fn landlock_enforceable() -> bool {
     false
 }
 

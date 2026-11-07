@@ -96,7 +96,7 @@ impl Allowlist {
     /// How many names it admits, each counted once however many addresses
     /// it resolved to: what a log line may say of it.
     #[must_use]
-    pub fn hosts(&self) -> usize {
+    pub const fn hosts(&self) -> usize {
         self.names.len()
     }
 

@@ -56,7 +56,7 @@ pub(crate) struct Server {
     pub(crate) url: String,
     pub(crate) reported: Arc<Notify>,
     pub(crate) calls: mpsc::Receiver<Received>,
-    listener: crate::http_server::Server,
+    listener: afr_supervisor::test_util::Listener,
 }
 
 impl Server {
@@ -98,7 +98,7 @@ impl Server {
                 .map(Mutex::new),
         });
         let app = Router::new().fallback(reply).with_state(plane);
-        let listener = crate::http_server::Server::serve(app).await?;
+        let listener = afr_supervisor::test_util::Listener::serve(app).await?;
         Ok(Self {
             url: listener.url.clone(),
             reported,

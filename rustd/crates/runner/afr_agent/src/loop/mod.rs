@@ -12,6 +12,7 @@ use af_providers::{Call, Connect, Hosted, Message, Replay, ToolSpec};
 use af_secrets::Scrub;
 use af_wire::policy::ExecutionPolicy;
 use afr_tools::{Catalog, Selection};
+use guffbolt::Plain;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
@@ -35,6 +36,9 @@ const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
 const REASON_STOPPED: &str = "lease_stopped";
 /// What joins two messages a parent sent a child before one turn.
 const INPUT_JOIN: &str = "\n\n";
+
+/// How a loop's turns ended, a failure being the provider's.
+pub(crate) type Ending = guffbolt::Ending<af_providers::Error>;
 
 /// The agent engine that runs the model against the lease's tools.
 #[derive(Debug)]
@@ -159,13 +163,6 @@ impl AgentEngine for Loop {
     }
 }
 
-/// How a loop's turns ended.
-pub(crate) enum Ending {
-    Answered(String),
-    Failed(af_providers::Error),
-    Stopped,
-}
-
 /// One loop in progress: the root, or a child.
 pub(crate) struct Harness<'s, 'run> {
     task: Option<crate::PreparedTask>,
@@ -192,6 +189,9 @@ pub(crate) struct Harness<'s, 'run> {
     /// The child this loop is, when it is one: its guard, and what its
     /// parent sent, read into its next turn.
     pub(crate) child: Option<Tether<'s, 'run>>,
+    /// The last folded message this loop took, by sequence; 0 before the
+    /// first. A child takes none.
+    folded_through: i64,
 }
 
 impl<'s, 'run> Harness<'s, 'run> {
@@ -232,6 +232,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             }),
             messages: opening,
             child: None,
+            folded_through: 0,
         };
         if root.task.is_some() {
             root.live.hide_reasoning();
@@ -274,117 +275,17 @@ impl<'s, 'run> Harness<'s, 'run> {
                 guard,
                 input: seat.input,
             }),
+            folded_through: 0,
         }
     }
 
-    /// Runs the loop's turns to their end.
+    /// Runs the loop's turns to their end: the root of a durable task with
+    /// its task's additions, every other loop as it is.
     pub(crate) async fn drive(&mut self) -> Ending {
-        if self.depth != 0 || !self.task.as_ref().is_some_and(|task| task.allow_actions) {
-            return self.drive_work().await;
-        }
-        let Some(budget) = self.task_execution_budget() else {
-            return Ending::Stopped;
-        };
-        match tokio::time::timeout(budget, self.drive_work()).await {
-            Ok(ending) => ending,
-            Err(_deadline) => {
-                // An interrupted group never carries a prior group's completion authority.
-                self.task_report = None;
-                Ending::Stopped
-            }
-        }
-    }
-
-    async fn drive_work(&mut self) -> Ending {
-        let mut turns: u64 = 0;
-        loop {
-            turns += 1;
-            self.read_input();
-            if self.incorporate_task_inputs().await.is_err() {
-                break Ending::Stopped;
-            }
-            if self.reconcile_task_effects().await.is_err() {
-                break Ending::Stopped;
-            }
-            if self.answer_task_inputs().await.is_err() {
-                break Ending::Stopped;
-            }
-            if let Some(answer) = self.accepted_answer() {
-                break Ending::Answered(answer);
-            }
-            if turns == 1
-                && self.shared.recovered_task.is_some()
-                && let Some(ending) = self
-                    .assess_task("Recovery reconciled; no new action has run.")
-                    .await
-            {
-                break ending;
-            }
-            if self.task_yield_due() {
-                break self
-                    .assess_task(
-                        "Execution slice is ending; preserve current work for continuation.",
-                    )
-                    .await
-                    .unwrap_or(Ending::Stopped);
-            }
-            if let Err(error) = self.preflight().await {
-                if self.stop.is_cancelled() {
-                    break Ending::Stopped;
-                }
-                break Ending::Failed(af_providers::Error::lost(error));
-            }
-            self.group_start = self.messages.len();
-            let turn = match self.turn(turns, false).await {
-                Some(Ok(turn)) => turn,
-                Some(Err(failure)) => break Ending::Failed(failure),
-                None => break Ending::Stopped,
-            };
-            if self.task.is_some() && (!turn.finished || turn.cut) {
-                break Ending::Stopped;
-            }
-            if turn.calls.is_empty() {
-                // An empty first turn must not turn a silent failure into task success.
-                if turns == 1 && turn.text.trim().is_empty() {
-                    break Ending::Failed(af_providers::Error::silent(turn.cut));
-                }
-                if let Some(ending) = self.assess_task(&turn.text).await {
-                    break ending;
-                }
-                if self.task_report.as_ref().is_some_and(|report| {
-                    report.disposition == af_wire::task::TaskDisposition::Continue
-                }) {
-                    let said = self.remembered(turn.text, turn.calls, turn.replay);
-                    self.messages.push(said);
-                    self.messages.push(Message::User("The accepted task goal remains incomplete. Continue the next bounded action group using the current evidence.".to_owned()));
-                    continue;
-                }
-                break Ending::Answered(turn.text);
-            }
-            let mut results = Vec::with_capacity(turn.calls.len());
-            for call in &turn.calls {
-                match self.call(call, turn.cut).await {
-                    Some(result) => results.push(result),
-                    None => break,
-                }
-                if self.checkpoints.due() {
-                    self.checkpoint().await;
-                }
-            }
-            let said = self.remembered(turn.text, turn.calls, turn.replay);
-            self.messages.push(said);
-            self.messages.extend(results);
-            if self.stop.is_cancelled() {
-                break Ending::Stopped;
-            }
-            if self.incorporate_task_inputs().await.is_err()
-                || self.reconcile_task_effects().await.is_err()
-            {
-                break Ending::Stopped;
-            }
-            if let Some(ending) = self.assess_task("").await {
-                break ending;
-            }
+        if self.task.is_some() {
+            guffbolt::drive(self, &mut task::Task).await
+        } else {
+            guffbolt::drive(self, &mut Plain).await
         }
     }
 
@@ -476,3 +377,6 @@ mod checkout_tests;
 
 #[cfg(test)]
 mod compaction_tests;
+
+#[cfg(test)]
+mod fold_tests;

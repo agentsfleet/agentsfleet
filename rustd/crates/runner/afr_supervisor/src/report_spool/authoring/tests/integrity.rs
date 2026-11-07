@@ -111,8 +111,8 @@ async fn an_oversized_report_is_refused_before_any_private_or_accounting_write()
     assert!(!fixture.directory.exists());
 }
 
-/// Spec Dimension 4.5: a spool entry carries no deletion generation, and one
-/// written in exactly that shape decodes and replays its original identity.
+/// A spool entry carries no deletion generation, and one written in exactly
+/// that shape decodes and replays its original identity.
 #[tokio::test]
 async fn a_spool_entry_without_a_deletion_generation_decodes() {
     let fixture = Fixture::new();

@@ -1,27 +1,64 @@
 //! A loop's conversation between turns: what a parent sent, what the model
-//! said, what the memory checkpoint wrote back, and the cap's last word.
+//! said, what the memory checkpoint wrote back, and the cap's last word; and
+//! the loop as `guffbolt` drives it.
 
 use af_providers::{Call, Message, Replay};
 use af_wire::memory::MemoryDelta;
+use guffbolt::{Prepared, Sampled};
 
 use super::{EVENT_CHECKPOINT_FAILED, Harness, INPUT_JOIN};
+use crate::nested::Tether;
+use crate::turn::Turn;
 
 impl Harness<'_, '_> {
-    /// Reads what a parent sent since the last turn into the conversation,
-    /// scrubbed like anything the model wrote, joined onto a user message
-    /// already waiting so no provider sees two in a row.
-    pub(super) fn read_input(&mut self) {
-        let Some(child) = self.child.as_mut() else {
-            return;
+    /// What a parent sent a child since the child's last turn.
+    fn sent_by_parent(tether: &mut Tether<'_, '_>) -> Vec<String> {
+        let mut sent = Vec::new();
+        while let Ok(text) = tether.input.try_recv() {
+            sent.push(text);
+        }
+        sent
+    }
+
+    /// The messages a person sent the fleet since the root's last claim,
+    /// claimed for this run; a stopped loop claims none.
+    async fn claim_folded(&mut self) -> Vec<String> {
+        let shared = self.shared;
+        let mut claimed = tokio::select! {
+            biased;
+            () = self.stop.cancelled() => return Vec::new(),
+            claimed = shared.inbox.claim(self.folded_through) => claimed,
         };
-        while let Ok(text) = child.input.try_recv() {
-            let text = self.shared.scrub.clean(text).into_inner();
-            if let Some(Message::User(waiting)) = self.messages.last_mut() {
-                waiting.push_str(INPUT_JOIN);
-                waiting.push_str(&text);
-            } else {
-                self.messages.push(Message::User(text));
-            }
+        // An inbox that replays a message must not join it twice.
+        claimed.retain(|folded| folded.sequence > self.folded_through);
+        if let Some(last) = claimed.iter().map(|folded| folded.sequence).max() {
+            self.folded_through = last;
+        }
+        claimed.into_iter().map(|folded| folded.text).collect()
+    }
+
+    /// Adds `text` to the conversation, scrubbed like anything the model
+    /// wrote, joined onto a user message already waiting so no provider sees
+    /// two in a row.
+    fn join_user(&mut self, text: String) {
+        let text = self.shared.scrub.clean(text).into_inner();
+        if let Some(Message::User(waiting)) = self.messages.last_mut() {
+            waiting.push_str(INPUT_JOIN);
+            waiting.push_str(&text);
+        } else {
+            self.messages.push(Message::User(text));
+        }
+    }
+
+    /// The last folded message a completed model call read, once the loop
+    /// answered: every message taken was read by the call that answered,
+    /// because an answer is final only when no input arrived while it was
+    /// written.
+    pub(super) const fn folded_through(&self) -> Option<i64> {
+        if self.folded_through > 0 {
+            Some(self.folded_through)
+        } else {
+            None
         }
     }
 
@@ -69,5 +106,75 @@ impl Harness<'_, '_> {
             calls,
             replay,
         }
+    }
+}
+
+impl guffbolt::Conversation for Harness<'_, '_> {
+    type Turn = Turn;
+    type Results = Vec<Message>;
+    type Failure = af_providers::Error;
+
+    async fn take_input(&mut self) -> bool {
+        let sent = match self.child.as_mut() {
+            Some(tether) => Self::sent_by_parent(tether),
+            None => self.claim_folded().await,
+        };
+        let took = !sent.is_empty();
+        for text in sent {
+            self.join_user(text);
+        }
+        took
+    }
+
+    async fn prepare(&mut self) -> Prepared<af_providers::Error> {
+        match self.preflight().await {
+            Ok(()) => Prepared::Ready,
+            Err(_) if self.stop.is_cancelled() => Prepared::Stopped,
+            Err(error) => Prepared::Failed(af_providers::Error::lost(error)),
+        }
+    }
+
+    fn begin_group(&mut self) {
+        self.group_start = self.messages.len();
+    }
+
+    async fn sample(&mut self, number: u64) -> Sampled<Turn, af_providers::Error> {
+        match self.turn(number, false).await {
+            Some(Ok(turn)) => Sampled::Turn(turn),
+            Some(Err(failure)) => Sampled::Failed(failure),
+            None => Sampled::Stopped,
+        }
+    }
+
+    async fn run_calls(&mut self, turn: &Turn) -> Vec<Message> {
+        let mut results = Vec::with_capacity(turn.calls.len());
+        for call in &turn.calls {
+            match self.call(call, turn.cut).await {
+                Some(result) => results.push(result),
+                None => break,
+            }
+            if self.checkpoints.due() {
+                self.checkpoint().await;
+            }
+        }
+        results
+    }
+
+    fn remember(&mut self, turn: Turn, results: Vec<Message>) {
+        let said = self.remembered(turn.text, turn.calls, turn.replay);
+        self.messages.push(said);
+        self.messages.extend(results);
+    }
+
+    fn push_user(&mut self, text: String) {
+        self.messages.push(Message::User(text));
+    }
+
+    fn stopped(&self) -> bool {
+        self.stop.is_cancelled()
+    }
+
+    fn silent(&self, cut: bool) -> af_providers::Error {
+        af_providers::Error::silent(cut)
     }
 }

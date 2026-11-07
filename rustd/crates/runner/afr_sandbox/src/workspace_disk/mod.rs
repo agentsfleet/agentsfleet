@@ -229,7 +229,8 @@ impl WorkspaceDisk {
     /// The kernel refuses the unmount, or the files cannot be removed.
     #[cfg(target_os = "linux")]
     pub fn release(self) -> Result<()> {
-        crate::mounts::unmount(&self.mount_point, false).and_then(|()| self.remove_files())
+        crate::mounts::unmount(&self.mount_point, false)?;
+        self.remove_files()
     }
 
     /// Adopts whatever disk a previous run left in `dir`, mounted or not.

@@ -28,7 +28,7 @@ pub(crate) async fn assess(
             assessment: DecisionAssessment::Goal {
                 action_group_id: identity()?,
             },
-            task: version(Some(task)),
+            task: Some(version(task)),
             retry_of: None,
             evidence,
         })
@@ -56,7 +56,7 @@ pub(crate) async fn assess(
         return Err(unavailable());
     }
     Ok(TaskReport {
-        task: version(Some(task)).ok_or_else(unavailable)?,
+        task: version(task),
         disposition,
         decision_call_id: Some(evaluated.call_id),
         checkpoint_id: None,

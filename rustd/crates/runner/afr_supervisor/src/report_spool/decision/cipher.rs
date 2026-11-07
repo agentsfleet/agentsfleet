@@ -35,7 +35,7 @@ pub(super) fn create(directory: &Path) -> Result<()> {
 fn key(directory: &Path) -> Result<Kek> {
     let bytes = Zeroizing::new(files::read(
         &directory.join(KEY),
-        af_crypto::KEY_LEN as u64,
+        crate::byte_count(af_crypto::KEY_LEN),
     )?);
     let key = bytes
         .as_slice()

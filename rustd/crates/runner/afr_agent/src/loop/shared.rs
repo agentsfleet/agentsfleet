@@ -11,11 +11,11 @@ use std::time::Instant;
 use af_core::clock::SystemClock;
 use af_egress::Egress;
 use af_providers::Provider;
+use af_providers::observe::labels::Provider as ProviderLabel;
 use af_secrets::Scrub;
 use af_wire::policy::ContextBudget;
 use afr_executor::ExecutorSource;
 use afr_memory::Hydrated;
-use afr_telemetry::labels::Provider as ProviderLabel;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Lease, Selection};
 use tokio_util::sync::CancellationToken;
@@ -43,6 +43,8 @@ pub(crate) struct Shared<'run> {
     pub(crate) stop: &'run CancellationToken,
     pub(crate) checkpoint: &'run dyn Checkpoint,
     pub(crate) context_checkpoints: &'run dyn crate::ContextCheckpoints,
+    /// Where the root takes the messages a person sends while it works.
+    pub(crate) inbox: &'run dyn crate::Inbox,
     pub(crate) model_context_tokens: u32,
     pub(crate) output_tokens: u32,
     pub(crate) inference: Option<&'run af_wire::inference::ModelInference>,
@@ -92,6 +94,7 @@ impl<'run> Shared<'run> {
             stop: run.stop,
             checkpoint: run.checkpoint,
             context_checkpoints: run.context_checkpoints,
+            inbox: run.inbox,
             model_context_tokens: policy.model_context_tokens,
             output_tokens: policy
                 .inference

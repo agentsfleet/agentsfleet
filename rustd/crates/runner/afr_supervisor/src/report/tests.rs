@@ -188,3 +188,64 @@ fn a_finished_run_bills_its_requests_and_reports_its_result_total() {
         "billing charges each request the meter saw, never the result's sum"
     );
 }
+
+/// A run the engine finished, having read messages up to `sequence`.
+fn ran_through(sequence: i64) -> Ending {
+    let mut output = answer();
+    output.folded_through_sequence = Some(sequence);
+    Ending::Ran {
+        output: Box::new(output),
+        first_chunk: None,
+    }
+}
+
+/// The folded-through sequence a report of `ending` carries.
+fn folded_through(ending: &Ending) -> Option<i64> {
+    report(
+        &lease(LEASE_ID, FLEET_ID),
+        ending,
+        &Meter::default(),
+        Duration::ZERO,
+        None,
+        None,
+    )
+    .folded_through_sequence
+}
+
+#[test]
+fn a_processed_run_reports_the_last_message_it_read() {
+    assert_eq!(folded_through(&ran_through(7)), Some(7));
+}
+
+#[test]
+fn a_run_cut_after_reading_a_message_reports_none_so_the_message_runs_next() {
+    let cut = ran_through(7).cut(FailureClass::RenewalTerminate, "renewal refused");
+
+    assert_eq!(folded_through(&cut), None);
+}
+
+#[test]
+fn a_fleet_failure_after_reading_a_message_reports_none() {
+    let mut output = answer();
+    output.folded_through_sequence = Some(7);
+    output.result.outcome = ResultOutcome::Failed(Failure {
+        class: Some(FailureClass::PolicyDeny),
+        detail: "denied".into(),
+    });
+    let failed = Ending::Ran {
+        output: Box::new(output),
+        first_chunk: None,
+    };
+
+    assert_eq!(folded_through(&failed), None);
+}
+
+#[test]
+fn a_run_that_never_finished_reports_no_message_read() {
+    let never = Ending::Failed {
+        class: FailureClass::RunnerCrash,
+        detail: "the engine broke mid-run",
+    };
+
+    assert_eq!(folded_through(&never), None);
+}

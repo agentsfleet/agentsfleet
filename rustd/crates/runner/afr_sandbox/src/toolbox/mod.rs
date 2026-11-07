@@ -117,7 +117,7 @@ impl Toolbox {
     /// Adopts a root file system already in place under the digest it is
     /// known by, for an engine whose root is not a mounted image of its own.
     #[must_use]
-    pub fn at(root: PathBuf, digest: String) -> Self {
+    pub const fn at(root: PathBuf, digest: String) -> Self {
         Self { root, digest }
     }
 

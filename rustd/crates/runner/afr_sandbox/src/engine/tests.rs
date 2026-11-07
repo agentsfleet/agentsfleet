@@ -77,7 +77,7 @@ impl super::Sandbox for Watchless {
         Ok(())
     }
 
-    async fn reallow(&mut self, _allowlist: &crate::Allowlist) -> crate::Result<()> {
+    async fn reallow(&mut self, _allowlist: &Allowlist) -> crate::Result<()> {
         Ok(())
     }
 

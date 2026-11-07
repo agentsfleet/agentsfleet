@@ -181,7 +181,7 @@ fn egress_enforceable() -> bool {
 
 /// No other kernel has `nf_tables`.
 #[cfg(not(target_os = "linux"))]
-const fn egress_enforceable() -> bool {
+fn egress_enforceable() -> bool {
     false
 }
 
@@ -201,7 +201,7 @@ fn direct_io(dir: &Path) -> bool {
 
 /// No other kernel's loop device skips the page cache.
 #[cfg(not(target_os = "linux"))]
-const fn direct_io(_dir: &Path) -> bool {
+fn direct_io(_dir: &Path) -> bool {
     false
 }
 

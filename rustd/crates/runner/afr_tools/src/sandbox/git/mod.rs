@@ -106,7 +106,9 @@ fn subcommand(args: &[String]) -> Option<&str> {
     while let Some(arg) = rest.next() {
         if VALUED_OPTIONS.contains(&arg) {
             rest.next();
-        } else if !arg.starts_with('-') {
+            continue;
+        }
+        if !arg.starts_with('-') {
             return Some(arg);
         }
     }

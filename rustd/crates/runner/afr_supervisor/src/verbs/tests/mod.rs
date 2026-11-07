@@ -6,6 +6,7 @@
 )]
 
 mod decision;
+mod folds;
 
 use af_core::error_code;
 use af_core::id::Uuid7;

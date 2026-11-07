@@ -86,7 +86,9 @@ impl Sessions {
             let mut book = self.book();
             book.reserved += 1;
             let full = book.open.len() + book.reserved > SESSIONS_PER_LEASE_MAX;
-            full.then(|| book.pruned()).flatten()
+            let pruned = full.then(|| book.pruned()).flatten();
+            drop(book);
+            pruned
         };
         let slot = Slot(Some(self));
         if let Some((id, process)) = pruned {
@@ -185,7 +187,7 @@ impl Book {
     }
 
     /// The next use's number.
-    fn used(&mut self) -> u64 {
+    const fn used(&mut self) -> u64 {
         self.uses += 1;
         self.uses
     }

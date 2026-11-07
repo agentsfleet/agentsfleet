@@ -35,7 +35,7 @@ pub(crate) trait Wire {
 
 impl Wire for Socket {
     fn send(&mut self, datagram: &[u8]) -> io::Result<()> {
-        Socket::send(self, datagram, 0).map(drop)
+        Self::send(self, datagram, 0).map(drop)
     }
 
     fn recv(&mut self) -> io::Result<Vec<u8>> {

@@ -99,7 +99,9 @@ fn preserve_detached_head(
                 full_ref_name,
                 object,
             } if full_ref_name == "HEAD" => Some(*object),
-            _ => None,
+            Ref::Peeled { .. } | Ref::Direct { .. } | Ref::Symbolic { .. } | Ref::Unborn { .. } => {
+                None
+            }
         });
     detached
         .map(|object| {

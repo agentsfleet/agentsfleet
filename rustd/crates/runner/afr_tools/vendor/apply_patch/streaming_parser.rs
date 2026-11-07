@@ -92,7 +92,7 @@ impl StreamingPatchParser {
             {
                 if line == END_PATCH_MARKER {
                     return Err(InvalidHunkError {
-                        message: UPDATE_HUNK_EMPTY.to_string(),
+                        message: UPDATE_HUNK_EMPTY.to_owned(),
                         line_number: self.line_number,
                     });
                 }
@@ -168,7 +168,7 @@ impl StreamingPatchParser {
         }
 
         if !matches!(self.state.mode, StreamingParserMode::EndedPatch) {
-            return Err(InvalidPatchError(END_PATCH_EXPECTED.to_string()));
+            return Err(InvalidPatchError(END_PATCH_EXPECTED.to_owned()));
         }
 
         Ok(self.state.hunks.clone())
@@ -183,7 +183,7 @@ impl StreamingPatchParser {
                     return Ok(());
                 }
                 Err(InvalidPatchError(
-                    "The first line of the patch must be '*** Begin Patch'".to_string(),
+                    "The first line of the patch must be '*** Begin Patch'".to_owned(),
                 ))
             }
             StreamingParserMode::StartedPatch => {
@@ -258,7 +258,7 @@ impl StreamingPatchParser {
 
                     if let Some(change_context) = update_line.strip_prefix(CHANGE_CONTEXT_MARKER) {
                         chunks.push(UpdateFileChunk {
-                            change_context: Some(change_context.to_string()),
+                            change_context: Some(change_context.to_owned()),
                             ..UpdateFileChunk::default()
                         });
                         self.state.mode = StreamingParserMode::UpdateFile { hunk_line_number };
@@ -270,7 +270,7 @@ impl StreamingPatchParser {
                             chunk.old_lines.is_empty() && chunk.new_lines.is_empty()
                         }) {
                             return Err(InvalidHunkError {
-                                message: UPDATE_HUNK_EMPTY.to_string(),
+                                message: UPDATE_HUNK_EMPTY.to_owned(),
                                 line_number: self.line_number,
                             });
                         }
@@ -297,7 +297,7 @@ impl StreamingPatchParser {
                             chunks.push(UpdateFileChunk::default());
                         }
                         if let Some(chunk) = chunks.last_mut() {
-                            chunk.push_context_line(line_to_add.to_string());
+                            chunk.push_context_line(line_to_add.to_owned());
                         }
                         self.state.mode = StreamingParserMode::UpdateFile { hunk_line_number };
                         return Ok(());
@@ -308,7 +308,7 @@ impl StreamingPatchParser {
                             chunks.push(UpdateFileChunk::default());
                         }
                         if let Some(chunk) = chunks.last_mut() {
-                            chunk.new_lines.push(line_to_add.to_string());
+                            chunk.new_lines.push(line_to_add.to_owned());
                         }
                         self.state.mode = StreamingParserMode::UpdateFile { hunk_line_number };
                         return Ok(());
@@ -319,7 +319,7 @@ impl StreamingPatchParser {
                             chunks.push(UpdateFileChunk::default());
                         }
                         if let Some(chunk) = chunks.last_mut() {
-                            chunk.old_lines.push(line_to_remove.to_string());
+                            chunk.old_lines.push(line_to_remove.to_owned());
                         }
                         self.state.mode = StreamingParserMode::UpdateFile { hunk_line_number };
                         return Ok(());
@@ -337,7 +337,7 @@ impl StreamingPatchParser {
                 if trimmed.is_empty() {
                     Ok(())
                 } else {
-                    Err(InvalidPatchError(END_PATCH_EXPECTED.to_string()))
+                    Err(InvalidPatchError(END_PATCH_EXPECTED.to_owned()))
                 }
             }
         }
@@ -356,14 +356,14 @@ mod tests {
             parser.push_delta("*** Begin Patch\n*** Add File: src/hello.txt\n+hello\n+wor"),
             Ok(vec![AddFile {
                 path: PathBuf::from("src/hello.txt"),
-                contents: "hello\n".to_string(),
+                contents: "hello\n".to_owned(),
             }])
         );
         assert_eq!(
             parser.push_delta("ld\n"),
             Ok(vec![AddFile {
                 path: PathBuf::from("src/hello.txt"),
-                contents: "hello\nworld\n".to_string(),
+                contents: "hello\nworld\n".to_owned(),
             }])
         );
 
@@ -377,8 +377,8 @@ mod tests {
                 move_path: Some(PathBuf::from("src/new.rs")),
                 chunks: vec![UpdateFileChunk {
                     change_context: None,
-                    old_lines: vec!["old".to_string()],
-                    new_lines: vec!["new".to_string()],
+                    old_lines: vec!["old".to_owned()],
+                    new_lines: vec!["new".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: false,
                 }],
@@ -405,7 +405,7 @@ mod tests {
             Ok(vec![
                 AddFile {
                     path: PathBuf::from("src/one.txt"),
-                    contents: "one\n".to_string(),
+                    contents: "one\n".to_owned(),
                 },
                 DeleteFile {
                     path: PathBuf::from("src/two.txt"),
@@ -529,15 +529,15 @@ mod tests {
                 chunks: vec![
                     UpdateFileChunk {
                         change_context: None,
-                        old_lines: vec!["old a".to_string(), "*** Update File: b.txt".to_string()],
-                        new_lines: vec!["new a".to_string(), "*** Update File: b.txt".to_string()],
+                        old_lines: vec!["old a".to_owned(), "*** Update File: b.txt".to_owned()],
+                        new_lines: vec!["new a".to_owned(), "*** Update File: b.txt".to_owned()],
                         context_line_indices: vec![(1, 1)],
                         is_end_of_file: false,
                     },
                     UpdateFileChunk {
                         change_context: None,
-                        old_lines: vec!["old b".to_string()],
-                        new_lines: vec!["new b".to_string()],
+                        old_lines: vec!["old b".to_owned()],
+                        new_lines: vec!["new b".to_owned()],
                         context_line_indices: vec![],
                         is_end_of_file: false,
                     },
@@ -569,14 +569,14 @@ mod tests {
                     // The normal parser treats a bare empty line in an update hunk as an
                     // empty context line. Preserve that leniency in the streaming parser.
                     old_lines: vec![
-                        "context before".to_string(),
+                        "context before".to_owned(),
                         String::new(),
-                        "context after".to_string(),
+                        "context after".to_owned(),
                     ],
                     new_lines: vec![
-                        "context before".to_string(),
+                        "context before".to_owned(),
                         String::new(),
-                        "context after".to_string(),
+                        "context after".to_owned(),
                     ],
                     context_line_indices: vec![(0, 0), (1, 1), (2, 2)],
                     is_end_of_file: false,
@@ -598,7 +598,7 @@ mod tests {
                 chunks: vec![UpdateFileChunk {
                     change_context: None,
                     old_lines: Vec::new(),
-                    new_lines: vec!["quux".to_string()],
+                    new_lines: vec!["quux".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: true,
                 }],
@@ -616,8 +616,8 @@ mod tests {
                 move_path: None,
                 chunks: vec![UpdateFileChunk {
                     change_context: None,
-                    old_lines: vec!["old".to_string()],
-                    new_lines: vec!["new".to_string()],
+                    old_lines: vec!["old".to_owned()],
+                    new_lines: vec!["new".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: false,
                 }],
@@ -632,8 +632,8 @@ mod tests {
                 move_path: None,
                 chunks: vec![UpdateFileChunk {
                     change_context: None,
-                    old_lines: vec!["old\r".to_string()],
-                    new_lines: vec!["new".to_string()],
+                    old_lines: vec!["old\r".to_owned()],
+                    new_lines: vec!["new".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: false,
                 }],
@@ -648,14 +648,14 @@ mod tests {
             parser.push_delta("*** Begin Patch\n*** Add File: file.txt\n+hello\n*** End Patch"),
             Ok(vec![AddFile {
                 path: PathBuf::from("file.txt"),
-                contents: "hello\n".to_string(),
+                contents: "hello\n".to_owned(),
             }])
         );
         assert_eq!(
             parser.finish(),
             Ok(vec![AddFile {
                 path: PathBuf::from("file.txt"),
-                contents: "hello\n".to_string(),
+                contents: "hello\n".to_owned(),
             }])
         );
 
@@ -669,8 +669,8 @@ mod tests {
                 move_path: None,
                 chunks: vec![UpdateFileChunk {
                     change_context: None,
-                    old_lines: vec!["old".to_string()],
-                    new_lines: vec!["new".to_string()],
+                    old_lines: vec!["old".to_owned()],
+                    new_lines: vec!["new".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: false,
                 }],
@@ -683,8 +683,8 @@ mod tests {
                 move_path: None,
                 chunks: vec![UpdateFileChunk {
                     change_context: None,
-                    old_lines: vec!["old".to_string()],
-                    new_lines: vec!["new".to_string()],
+                    old_lines: vec!["old".to_owned()],
+                    new_lines: vec!["new".to_owned()],
                     context_line_indices: vec![],
                     is_end_of_file: false,
                 }],
@@ -699,13 +699,13 @@ mod tests {
             parser.push_delta("*** Begin Patch\n*** Add File: file.txt\n+hello\n"),
             Ok(vec![AddFile {
                 path: PathBuf::from("file.txt"),
-                contents: "hello\n".to_string(),
+                contents: "hello\n".to_owned(),
             }])
         );
         assert_eq!(
             parser.finish(),
             Err(InvalidPatchError(
-                "The last line of the patch must be '*** End Patch'".to_string(),
+                "The last line of the patch must be '*** End Patch'".to_owned(),
             ))
         );
     }
@@ -718,7 +718,7 @@ mod tests {
                 "*** Begin Patch\n*** Add File: file.txt\n+hello\n*** End Patch\nextra\n",
             ),
             Err(InvalidPatchError(
-                "The last line of the patch must be '*** End Patch'".to_string(),
+                "The last line of the patch must be '*** End Patch'".to_owned(),
             ))
         );
 
@@ -729,7 +729,7 @@ mod tests {
             ),
             Ok(vec![AddFile {
                 path: PathBuf::from("file.txt"),
-                contents: "hello\n".to_string(),
+                contents: "hello\n".to_owned(),
             }])
         );
     }
@@ -740,7 +740,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("bad\n"),
             Err(InvalidPatchError(
-                "The first line of the patch must be '*** Begin Patch'".to_string(),
+                "The first line of the patch must be '*** Begin Patch'".to_owned(),
             ))
         );
 
@@ -749,8 +749,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("bad\n"),
             Err(InvalidHunkError {
-                message: "'bad' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'"
-                    .to_string(),
+                message: "'bad' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'".to_owned(),
                 line_number: 2,
             })
         );
@@ -759,8 +758,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("*** Begin Patch\n*** Add File: file.txt\nbad\n"),
             Err(InvalidHunkError {
-                message: "'bad' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'"
-                    .to_string(),
+                message: "'bad' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'".to_owned(),
                 line_number: 3,
             })
         );
@@ -769,8 +767,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("*** Begin Patch\n*** Delete File: file.txt\nbad\n"),
             Err(InvalidHunkError {
-                message: "'bad' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'"
-                    .to_string(),
+                message: "'bad' is not a valid hunk header. Valid hunk headers: '*** Add File: {path}', '*** Delete File: {path}', '*** Update File: {path}'".to_owned(),
                 line_number: 3,
             })
         );
@@ -779,7 +776,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("*** Begin Patch\n*** Update File: file.txt\n*** End Patch\n"),
             Err(InvalidHunkError {
-                message: "Update file hunk for path 'file.txt' is empty".to_string(),
+                message: "Update file hunk for path 'file.txt' is empty".to_owned(),
                 line_number: 2,
             })
         );
@@ -790,7 +787,7 @@ mod tests {
                 "*** Begin Patch\n*** Update File: old.txt\n*** Move to: new.txt\n*** Delete File: other.txt\n",
             ),
             Err(InvalidHunkError {
-                message: "Update file hunk for path 'old.txt' is empty".to_string(),
+                message: "Update file hunk for path 'old.txt' is empty".to_owned(),
                 line_number: 2,
             })
         );
@@ -799,7 +796,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("*** Begin Patch\n*** Update File: file.txt\n@@\n*** End Patch\n"),
             Err(InvalidHunkError {
-                message: "Update hunk does not contain any lines".to_string(),
+                message: "Update hunk does not contain any lines".to_owned(),
                 line_number: 4,
             })
         );
@@ -808,7 +805,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("*** Begin Patch\n*** Update File: file.txt\n@@\n*** End of File\n"),
             Err(InvalidHunkError {
-                message: "Update hunk does not contain any lines".to_string(),
+                message: "Update hunk does not contain any lines".to_owned(),
                 line_number: 4,
             })
         );
@@ -817,8 +814,7 @@ mod tests {
         assert_eq!(
             parser.push_delta("*** Begin Patch\n*** Update File: file.txt\n@@\n@@\n"),
             Err(InvalidHunkError {
-                message: "Unexpected line found in update hunk: '@@'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)"
-                    .to_string(),
+                message: "Unexpected line found in update hunk: '@@'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)".to_owned(),
                 line_number: 4,
             })
         );
@@ -828,7 +824,7 @@ mod tests {
             parser.push_delta("*** Begin Patch\n*** Update File: file.txt\n@@\n-old\nbad\n"),
             Err(InvalidHunkError {
                 message: "Expected update hunk to start with a @@ context marker, got: 'bad'"
-                    .to_string(),
+                    .to_owned(),
                 line_number: 5,
             })
         );
@@ -839,8 +835,7 @@ mod tests {
                 "*** Begin Patch\n*** Update File: file.txt\n@@\n*** Update File: other.txt\n",
             ),
             Err(InvalidHunkError {
-                message: "Unexpected line found in update hunk: '*** Update File: other.txt'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)"
-                    .to_string(),
+                message: "Unexpected line found in update hunk: '*** Update File: other.txt'. Every line should start with ' ' (context line), '+' (added line), or '-' (removed line)".to_owned(),
                 line_number: 4,
             })
         );

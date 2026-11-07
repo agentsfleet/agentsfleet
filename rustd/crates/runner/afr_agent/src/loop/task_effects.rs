@@ -61,14 +61,11 @@ impl Harness<'_, '_> {
                 } else {
                     previous
                 };
-                match effect.state {
-                    TaskEffectState::Confirmed if effect.commit.is_some() => {
-                        self.confirmed_effect_watermark = effect.ordinal;
-                    }
-                    TaskEffectState::Refused if effect.commit.is_none() => {}
-                    // An unknown remote outcome blocks further publication. It
-                    // cannot become a fresh operation after replacement.
-                    _ => return Err(unavailable()),
+                if blocks_publication(effect.state, effect.commit.is_some()) {
+                    return Err(unavailable());
+                }
+                if matches!(effect.state, TaskEffectState::Confirmed) {
+                    self.confirmed_effect_watermark = effect.ordinal;
                 }
                 self.messages.push(af_providers::Message::User(
                     self.shared
@@ -108,5 +105,16 @@ impl Harness<'_, '_> {
         prepared.execution_deadline = inputs.execution_deadline;
         prepared.inputs = inputs;
         Ok(())
+    }
+}
+
+/// Whether an effect in `state` blocks further publication: anything but a
+/// confirmation with its commit or a refusal without one. An unknown remote
+/// outcome cannot become a fresh operation after replacement.
+const fn blocks_publication(state: TaskEffectState, committed: bool) -> bool {
+    match state {
+        TaskEffectState::Confirmed => !committed,
+        TaskEffectState::Refused => committed,
+        TaskEffectState::Prepared | TaskEffectState::Issued | TaskEffectState::Unknown => true,
     }
 }

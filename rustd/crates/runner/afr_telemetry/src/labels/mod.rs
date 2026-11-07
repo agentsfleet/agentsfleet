@@ -1,17 +1,14 @@
 //! The values a runner family's labels may take, and nothing else.
 //!
 //! Every label is a closed set, by construction rather than by review: a
-//! provider is a bounded public vendor name or `_other`, a tool is a
-//! published catalog name or `_other`, and every outcome and reason is an enum.
+//! tool is a published catalog name or `_other`, and every outcome and reason
+//! is an enum. The provider's labels are declared where it measures them
+//! (`af_providers::observe::labels`).
 //! A label written from a string the model or the lease chose would be one
 //! more series than the census ceiling admits, and the SDK would fold live
 //! data into its overflow marker.
 
 use afr_tools::catalog;
-pub mod decision;
-
-/// The label key a provider is attributed under.
-pub const LABEL_PROVIDER: &str = "provider";
 
 /// The label key a tool is attributed under.
 pub const LABEL_TOOL: &str = "tool";
@@ -20,39 +17,13 @@ pub const LABEL_TOOL: &str = "tool";
 /// matches a failed turn, a failed sandbox start and a failed call alike.
 const FAILED: &str = "failed";
 
-/// The spelling for a request that never reached the other side, shared by
-/// a retried send and a lost push.
+/// The spelling for a push that never reached the daemon.
 const TRANSPORT: &str = "transport";
 
 /// The value everything past a closed set is attributed under: the spelling
 /// the daemon's runner table already uses for "past the set", so one panel
 /// reads both.
 pub const OTHER: &str = af_observability::runner::OVERFLOW_RUNNER;
-
-/// A canonical public vendor name, or [`OTHER`] for a workspace's own provider name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Provider(&'static str);
-
-impl Provider {
-    /// How many values this label can take: every canonical public provider, and
-    /// [`OTHER`].
-    #[must_use]
-    pub fn count() -> usize {
-        af_observability::semconv::provider::count() + 1
-    }
-
-    /// The label for the provider a lease configured.
-    #[must_use]
-    pub fn of(configured: &str) -> Self {
-        Self(af_observability::semconv::provider::normalize(configured).unwrap_or(OTHER))
-    }
-
-    /// The label value, byte-exact.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        self.0
-    }
-}
 
 /// A tool, as a label: its published catalog name, or [`OTHER`] for a name
 /// the model made up.
@@ -88,36 +59,6 @@ af_observability::closed_set! {
         Stopped => "stopped",
     }
 }
-
-af_observability::closed_set! {
-    /// Why a turn's send was retried.
-    RetryReason {
-        /// The provider answered 429.
-        RateLimited => "rate_limited",
-        /// The provider answered 5xx.
-        ServerError => "server_error",
-        /// The send could not connect or timed out.
-        Transport => TRANSPORT,
-        /// The stream broke after it opened and the turn was opened again.
-        StreamReopened => "stream_reopened",
-    }
-}
-
-impl RetryReason {
-    /// The reason a send that failed with `status` was retried; none for a
-    /// send that never got a status.
-    #[must_use]
-    pub const fn of_status(status: Option<u16>) -> Self {
-        match status {
-            Some(TOO_MANY_REQUESTS) => Self::RateLimited,
-            Some(_server_error) => Self::ServerError,
-            None => Self::Transport,
-        }
-    }
-}
-
-/// The status a provider rate-limits with.
-const TOO_MANY_REQUESTS: u16 = 429;
 
 af_observability::closed_set! {
     /// How a sandbox start ended.
@@ -245,9 +186,6 @@ af_observability::closed_set! {
 
 #[cfg(test)]
 mod tests;
-
-/// Terminal outcome of an individual provider stream request.
-pub use af_observability::metrics::label::models::CallOutcome;
 
 af_observability::closed_set! {
     /// Where a lease obtains its memory window, regardless of the run's outcome.

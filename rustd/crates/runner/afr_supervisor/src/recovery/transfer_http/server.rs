@@ -49,7 +49,9 @@ impl Server {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?;
         let (certificate, acceptor) = tls()?;
-        let client = afd_identity::direct(Duration::from_secs(5))
+        let client = reqwest::ClientBuilder::new()
+            .timeout(Duration::from_secs(5))
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
             .add_root_certificate(certificate)

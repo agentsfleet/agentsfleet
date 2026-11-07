@@ -119,6 +119,7 @@ impl Timeline {
             Segment::Report => &mut segments.report,
         };
         *slot = Some(elapsed);
+        drop(segments);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Segments> {

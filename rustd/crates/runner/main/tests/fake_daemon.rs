@@ -40,7 +40,7 @@ pub(crate) struct FakeDaemon {
     /// The base address the binary is pointed at.
     pub(crate) url: String,
     reports: mpsc::UnboundedReceiver<Value>,
-    _server: crate::http_server::Server,
+    _server: afr_supervisor::test_util::Listener,
 }
 
 impl FakeDaemon {
@@ -100,7 +100,7 @@ impl FakeDaemon {
                 ([(header::CONTENT_TYPE, JSON)], answered.to_string())
             }
         });
-        let server = crate::http_server::Server::serve(app)
+        let server = afr_supervisor::test_util::Listener::serve(app)
             .await
             .expect("a loopback port");
         Self {
@@ -174,7 +174,7 @@ pub(crate) struct FakeCollector {
     /// The endpoint the binary exports to.
     pub(crate) url: String,
     received: Arc<Mutex<Vec<(String, Value)>>>,
-    _server: crate::http_server::Server,
+    _server: afr_supervisor::test_util::Listener,
 }
 
 impl FakeCollector {
@@ -196,7 +196,7 @@ impl FakeCollector {
                 ""
             }
         });
-        let server = crate::http_server::Server::serve(app)
+        let server = afr_supervisor::test_util::Listener::serve(app)
             .await
             .expect("a loopback port");
         Self {

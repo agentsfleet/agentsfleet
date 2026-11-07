@@ -54,7 +54,7 @@ pub(crate) fn path_swap(lane: &Lane) -> Result<(), Failed> {
     let mounts = ToolboxHome::at(dir.path().to_owned()).mounts();
     let stop = Arc::new(AtomicBool::new(false));
     let racer = {
-        let (published, decoy, stop) = (published.clone(), decoy.clone(), Arc::clone(&stop));
+        let (published, decoy, stop) = (published.clone(), decoy, Arc::clone(&stop));
         std::thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
                 let _swapped =

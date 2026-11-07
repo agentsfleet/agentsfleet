@@ -43,7 +43,7 @@ impl Transfers {
                 "checkpoint upload lacks create-only authority",
             ));
         }
-        if bytes.len() as u64 > MAX_BYTES {
+        if crate::byte_count(bytes.len()) > MAX_BYTES {
             return Err(error::config("checkpoint upload exceeds its bound"));
         }
         let response = self
@@ -91,12 +91,12 @@ impl Transfers {
             .await
             .map_err(error::checkpoint_transfer("download body"))?
         {
-            if bytes.len() as u64 + chunk.len() as u64 > expected {
+            if crate::byte_count(bytes.len()) + crate::byte_count(chunk.len()) > expected {
                 return Err(error::config("checkpoint download exceeds its descriptor"));
             }
             bytes.extend_from_slice(&chunk);
         }
-        if bytes.len() as u64 != expected
+        if crate::byte_count(bytes.len()) != expected
             || Some(af_core::etag::sha256_hex(&bytes).as_str())
                 != object.ciphertext_sha256.as_deref()
         {
@@ -143,7 +143,7 @@ pub(super) fn seal(
     object: &mut CheckpointObject,
     plaintext: Zeroizing<Vec<u8>>,
 ) -> Result<Vec<u8>> {
-    if plaintext.len() as u64 != object.plaintext.size
+    if crate::byte_count(plaintext.len()) != object.plaintext.size
         || af_core::etag::sha256_hex(&plaintext) != object.plaintext.sha256
     {
         return Err(error::config(
@@ -173,8 +173,8 @@ pub(super) fn open(
     object: &mut CheckpointObject,
     mut ciphertext: Vec<u8>,
 ) -> Result<SecretBytes> {
-    if object.ciphertext_length != Some(ciphertext.len() as u64)
-        || ciphertext.len() as u64 > MAX_BYTES
+    if object.ciphertext_length != Some(crate::byte_count(ciphertext.len()))
+        || crate::byte_count(ciphertext.len()) > MAX_BYTES
         || object.ciphertext_sha256.as_deref()
             != Some(af_core::etag::sha256_hex(&ciphertext).as_str())
     {
@@ -204,7 +204,7 @@ pub(super) fn open(
             format_version: 1,
         },
     )?;
-    if plaintext.expose().len() as u64 != object.plaintext.size
+    if crate::byte_count(plaintext.expose().len()) != object.plaintext.size
         || af_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
     {
         return Err(error::config(

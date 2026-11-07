@@ -20,6 +20,7 @@ fn a_run_debugs_without_the_leases_secrets() {
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
         context_checkpoints: &crate::testing::ContextMemory::default(),
+        inbox: &crate::testing::NoInbox,
         events: &sink,
         meter: &Meter::default(),
         stop: &CancellationToken::new(),

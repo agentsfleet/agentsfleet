@@ -12,7 +12,7 @@ pub(super) struct Source<'a> {
 }
 
 impl<'a> Source<'a> {
-    pub(super) fn new(
+    pub(super) const fn new(
         messages: &'a [Message],
         pinned: usize,
         groups: &'a [Entry],
@@ -26,7 +26,7 @@ impl<'a> Source<'a> {
         }
     }
 
-    pub(super) fn pages(&self) -> Pages<'_> {
+    pub(super) const fn pages(&self) -> Pages<'_> {
         Pages(self.groups)
     }
 

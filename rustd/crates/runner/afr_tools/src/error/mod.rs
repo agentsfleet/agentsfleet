@@ -55,7 +55,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 impl Error {
     /// The registry code this refusal is logged under.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Unhosted { .. }
             | ErrorKind::InvalidRepository { .. }

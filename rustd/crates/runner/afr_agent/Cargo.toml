@@ -37,6 +37,9 @@ afr_executor.workspace = true
 afr_memory.workspace = true
 # The model a run drives, behind one trait.
 af_providers.workspace = true
+# The loop's order of turns: this crate is its conversation, and a durable
+# task is its extension.
+guffbolt.workspace = true
 # Every secret value masked in one pass over a frame, an output or a reply.
 af_secrets.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.
@@ -71,4 +74,19 @@ afr_tools = { workspace = true, features = ["test-util"] }
 # A mint that mints nothing, and a transport that records, for the loop suites.
 af_egress = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time", "test-util"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "sync", "time", "test-util"] }
+# `tests/providers`: each wire against a fake provider on a real TLS socket,
+# driven by this loop, so a turn is proven end to end: frames, trace, records
+# and report included.
+af_providers = { workspace = true, features = ["test-util"] }
+af_inference.workspace = true
+reqwest.workspace = true
+axum.workspace = true
+tempfile.workspace = true
+tokio-rustls.workspace = true
+
+[[test]]
+name = "providers"
+path = "tests/providers/main.rs"
+# The suite drives the scripted discard sink this crate's `testing` exports.
+required-features = ["test-util"]

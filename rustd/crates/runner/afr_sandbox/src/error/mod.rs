@@ -247,10 +247,31 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 impl Error {
     /// The registry code this failure is logged under.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Executor { source } => source.code(),
-            _local => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Io { .. }
+            | ErrorKind::Refused { .. }
+            | ErrorKind::ToolboxRefused { .. }
+            | ErrorKind::ToolboxUnreadable { .. }
+            | ErrorKind::Program { .. }
+            | ErrorKind::Cgroup { .. }
+            | ErrorKind::CgroupUnreadable { .. }
+            | ErrorKind::CgroupLeft { .. }
+            | ErrorKind::CgroupUnsettled { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::NotInherited { .. }
+            | ErrorKind::Unconfined { .. }
+            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::UnsandboxedInRelease
+            | ErrorKind::EgressRefused { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            #[cfg(target_os = "linux")]
+            ErrorKind::NotReady { .. }
+            | ErrorKind::Netlink { .. }
+            | ErrorKind::System { .. }
+            | ErrorKind::Landlock { .. }
+            | ErrorKind::SeccompProgram { .. }
+            | ErrorKind::Seccomp { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -263,21 +284,62 @@ impl Error {
     /// The mechanism this host lacks, when the failure is that the host cannot
     /// build a sandbox at all — as opposed to one sandbox failing.
     #[must_use]
-    pub fn missing_mechanism(&self) -> Option<&'static str> {
+    pub const fn missing_mechanism(&self) -> Option<&'static str> {
         match self.kind() {
             ErrorKind::Refused { missing } => Some(missing),
-            _built => None,
+            ErrorKind::Io { .. }
+            | ErrorKind::ToolboxRefused { .. }
+            | ErrorKind::ToolboxUnreadable { .. }
+            | ErrorKind::Program { .. }
+            | ErrorKind::Cgroup { .. }
+            | ErrorKind::CgroupUnreadable { .. }
+            | ErrorKind::CgroupLeft { .. }
+            | ErrorKind::CgroupUnsettled { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::Executor { .. }
+            | ErrorKind::NotInherited { .. }
+            | ErrorKind::Unconfined { .. }
+            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::UnsandboxedInRelease
+            | ErrorKind::EgressRefused { .. } => None,
+            #[cfg(target_os = "linux")]
+            ErrorKind::NotReady { .. }
+            | ErrorKind::Netlink { .. }
+            | ErrorKind::System { .. }
+            | ErrorKind::Landlock { .. }
+            | ErrorKind::SeccompProgram { .. }
+            | ErrorKind::Seccomp { .. } => None,
         }
     }
 
     /// Which admission check a toolbox release failed, when that is the
     /// failure.
     #[must_use]
-    pub fn toolbox_refusal(&self) -> Option<ToolboxRefusal> {
+    pub const fn toolbox_refusal(&self) -> Option<ToolboxRefusal> {
         match self.kind() {
             ErrorKind::ToolboxRefused { refusal, .. }
             | ErrorKind::ToolboxUnreadable { refusal, .. } => Some(*refusal),
-            _other => None,
+            ErrorKind::Io { .. }
+            | ErrorKind::Refused { .. }
+            | ErrorKind::Program { .. }
+            | ErrorKind::Cgroup { .. }
+            | ErrorKind::CgroupUnreadable { .. }
+            | ErrorKind::CgroupLeft { .. }
+            | ErrorKind::CgroupUnsettled { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::Executor { .. }
+            | ErrorKind::NotInherited { .. }
+            | ErrorKind::Unconfined { .. }
+            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::UnsandboxedInRelease
+            | ErrorKind::EgressRefused { .. } => None,
+            #[cfg(target_os = "linux")]
+            ErrorKind::NotReady { .. }
+            | ErrorKind::Netlink { .. }
+            | ErrorKind::System { .. }
+            | ErrorKind::Landlock { .. }
+            | ErrorKind::SeccompProgram { .. }
+            | ErrorKind::Seccomp { .. } => None,
         }
     }
 
@@ -286,7 +348,28 @@ impl Error {
     pub const fn egress_refusal(&self) -> Option<&EgressRefusal> {
         match self.kind() {
             ErrorKind::EgressRefused { refusal } => Some(refusal),
-            _other => None,
+            ErrorKind::Io { .. }
+            | ErrorKind::Refused { .. }
+            | ErrorKind::ToolboxRefused { .. }
+            | ErrorKind::ToolboxUnreadable { .. }
+            | ErrorKind::Program { .. }
+            | ErrorKind::Cgroup { .. }
+            | ErrorKind::CgroupUnreadable { .. }
+            | ErrorKind::CgroupLeft { .. }
+            | ErrorKind::CgroupUnsettled { .. }
+            | ErrorKind::Task { .. }
+            | ErrorKind::Executor { .. }
+            | ErrorKind::NotInherited { .. }
+            | ErrorKind::Unconfined { .. }
+            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::UnsandboxedInRelease => None,
+            #[cfg(target_os = "linux")]
+            ErrorKind::NotReady { .. }
+            | ErrorKind::Netlink { .. }
+            | ErrorKind::System { .. }
+            | ErrorKind::Landlock { .. }
+            | ErrorKind::SeccompProgram { .. }
+            | ErrorKind::Seccomp { .. } => None,
         }
     }
 
