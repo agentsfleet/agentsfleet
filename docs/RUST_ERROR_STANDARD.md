@@ -17,7 +17,7 @@ guideline both describe something this repository does not hand-write.
 
 > [!IMPORTANT]
 > **`af_core::error_shell!` is the implementation. Do not hand-write the error
-> type.** A hand-rolled `struct Error` in a new crate is a defect, even though
+> type**. A hand-rolled `struct Error` in a new crate is a defect, even though
 > both upstream texts describe one.
 
 `M-ERRORS-CANONICAL-STRUCTS` prescribes a situation-specific `struct` carrying
@@ -44,7 +44,7 @@ a reader cannot see, which is the thing rule 1 exists to prevent.
 rather than a list of names. See §"The shared hull" below for which crates are
 on each side and why a fieldless refusal vocabulary stays a plain enum.
 
-**One deliberate exception, and it is security not style.** `af_crypto`'s
+**One deliberate exception, and it is security not style**. `af_crypto`'s
 `ErrorKind::OpenFailed` declines to wrap the Authenticated Encryption with
 Associated Data (AEAD) library's reason. A wrong key, a tampered tag and
 mismatched associated data all answer `UZ-INTERNAL-003`.
@@ -91,10 +91,10 @@ Rules 1, 2 and 4 describe scaffolding that every crate-level error repeats:
 None of it depends on what went wrong, so `af_core::error_shell!` generates it.
 `af_core::error_lifts!` generates the per-source `From` impls rule 2 asks for.
 
-**Applies wherever a crate's error COMPOSES a source or CARRIES data.** That is
+**Applies wherever a crate's error COMPOSES a source or CARRIES data**. That is
 the test, and it is a property of the error rather than a list of crate names.
-The previous wording named crates, which let a crate keep a plain enum by having
-been on the list rather than by earning it.
+The previous wording named crates, which let a crate keep a plain enum by being
+on the list rather than earning it.
 
 If any kind holds a `#[source]`, a `#[from]`, or a bound field, the crate calls
 both macros. The hull exists to stop nine crates hand-writing the same boxed
@@ -121,11 +121,11 @@ plain enum today is not the argument.
 `Unavailable`, so it owns no error to give a hull to. A crate implementing a
 foreign trait does not choose the trait's error type.
 
-**A finer-grained type still lifts.** The carve-out below lets a crate keep a
+**A finer-grained type still lifts**. The carve-out below lets a crate keep a
 second type where a caller DISCRIMINATES on it.
 
-That type still composes into the crate's `Error`, through `error_lifts!` or a hand-written `From`, so a
-caller that only propagates keeps writing `Result<T>`.
+That type still composes into the crate's `Error`, through `error_lifts!` or a hand-written `From`.
+A caller that only propagates keeps writing `Result<T>`.
 
 ## Conformance, crate by crate
 
@@ -185,7 +185,7 @@ one of the two. A reader seeing the short spelling would have to check which,
 and rule 1 exists to prevent exactly that.
 
 **A crate may keep a second, finer-grained type where a caller
-DISCRIMINATES on it.** `afd_auth::VerifyError` is finer than what a client is
+DISCRIMINATES on it**. `afd_auth::VerifyError` is finer than what a client is
 told, on purpose. `afd_identity::ClaimUnavailable::UnknownSubject` is
 deliberately not an outage, and the caller matches on it and answers with the
 empty capability set.

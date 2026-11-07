@@ -54,23 +54,22 @@ Each trap is enforced in its owner section; this list is the index.
 
 ## The five invariants (rules C1–C5)
 
-1. **C1: declared producer and consumer, receiver owns the payload.** Every
+1. **C1: declared producer and consumer, receiver owns the payload**. Every
    channel that crosses a task or thread boundary has a single declared producer
-   and a declared consumer, and ownership at the boundary is unambiguous. On both
+   and a declared consumer. Ownership at the boundary is unambiguous. On both
    planes the value moves to the receiver and the compiler is the proof. A
    channel read by several consumers
    hands each of them its own copy and tells a slow one what it missed.
 2. **C2: stop → join → drop.** Shutdown signals stop, joins the worker, and
    only then releases shared state. A bounded drain that times out never frees
    state a straggler can still touch.
-3. **C3: no blocking work under a lock the consumer needs.** A blocking socket
+3. **C3: no blocking work under a lock the consumer needs**. A blocking socket
    write or push is never done while holding a lock the consumer must acquire to
    make progress. Lock state is an explicit parameter, not an ambient assumption.
-4. **C4: one documented lock per shared aggregate.** Each shared aggregate has
+4. **C4: one documented lock per shared aggregate**. Each shared aggregate has
    exactly one lock whose doc comment states precisely what it protects and any
    ordering constraint. The guard's scope is visible where it is taken.
-5. **C5: confined by default.** State touched by one task or thread carries no
-   lock but says so; on both planes an exclusive borrow is the statement.
+5. **C5: confined by default**. State touched by one task or thread carries no lock but says so. On both planes an exclusive borrow is the statement.
 
 The control plane's primitives are tokio's. `CancellationToken` stops,
 `tokio::select!` races I/O against it, and `tokio::time::timeout` bounds a
@@ -79,9 +78,7 @@ deadline. `broadcast` and `mpsc` carry fan-out and commands.
 `tokio::sync::Mutex` guards state held across an await and `std::sync::Mutex`
 a leaf map that is not.
 
-The runner uses the same primitives: `CancellationToken` for stop, a `watch`
-channel for the heartbeat's assignment, and a `JoinSet` for its workers
-(`afr_supervisor`'s worker pool).
+The runner uses the same primitives: `CancellationToken` for stop, and a `watch` channel for the heartbeat's assignment. The runner also uses a `JoinSet` for its workers (`afr_supervisor`'s worker pool).
 
 ---
 
@@ -202,7 +199,7 @@ constraint. Each is documented at its declaration (C4).
 | egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf, held alone |
 
 The load-bearing ordering rule is the C3 fix that ended the hub's
-blocking-write-under-the-map-mutex hazard: the pub/sub socket is behind no lock
+blocking-write-under-the-map-mutex hazard. The pub/sub socket is behind no lock
 at all. The control task owns it, and a subscriber that wants an `SSUBSCRIBE`
 or an `SUNSUBSCRIBE` enqueues a command.
 
@@ -252,8 +249,10 @@ that a teardown had to hold by hand.
 
    `Supervisor::shutdown` cancels the token, then joins every handle with a
    `JOIN_TIMEOUT` deadline. It reports any task that would not stop by name
-   instead of hanging the process. Cancellation is edge-triggered and reaches
-   into a blocked read, so a task is interrupted where it is waiting rather
+   instead of hanging the process.
+
+   Cancellation is edge-triggered and reaches
+   into a blocked read. A task is interrupted where it is waiting rather
    than at the next poll interval.
 
    `test_task_inventory_and_cancellation` proves that for a real blocked

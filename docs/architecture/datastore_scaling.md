@@ -37,12 +37,13 @@ price of the control plane, and when it is worth paying; the data plane is the
 same.
 
 Four processes are not a cheap Swarm. They are four processes that need their
-own cluster controller. Dragonfly's own cluster-mode documentation says
-multi-shard server mode does not manage failover, health, rebalancing or
-consistent topology configuration; Swarm is what supplies those.
+own cluster controller.
 
-So a self-hosted deployment buys the data plane and owes the operations, and
-that trade is only sound while an unattended node loss is survivable.
+Dragonfly's own cluster-mode documentation says
+multi-shard server mode does not manage failover, health, rebalancing or
+consistent topology configuration. Swarm is what supplies those.
+
+So a self-hosted deployment buys the data plane and owes the operations. That trade is only sound while an unattended node loss is survivable.
 
 PostgreSQL records accepted work, completion and delivery obligations. Each lease poll reads the admissions queue, even when Dragonfly sends no notification.
 
@@ -117,7 +118,9 @@ running and every suite then failed with `Connection refused`.
 
 A 64-way concurrent `XGROUP CREATE … MKSTREAM` does NOT reproduce it. Redis
 7.4.11 and Dragonfly v1.40.2 both answer that correctly with one `OK` and 63
-`BUSYGROUP`, so the trigger is not group creation alone. The same window carried
+`BUSYGROUP`. So the trigger is not group creation alone.
+
+The same window carried
 slot migration and `DFLYCLUSTER FLUSHSLOTS`, which was the leading unproven
 candidate.
 

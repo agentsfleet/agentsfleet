@@ -39,7 +39,7 @@ The nine sizing anti-patterns are the trap list. Read §Anti-patterns (do NOT do
 
 - Statement count alone hides server work: measure discovery latency at the intended active fleet count (§Idle request volume).
 - Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a traffic increase and a fan-out regression look identical (§Candidate and claim bounds).
-- Fleet-memory load still sorts, and correctly so; an index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
+- Fleet-memory load still sorts, and correctly so. An index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
 
 ## Topology
 
@@ -76,8 +76,8 @@ v2 ships hosted on Fly.io, and the canonical datastore is **self-hosted Dragonfl
 **Three properties of the hosted service are gone.** They were three of the five things this page used to size against. A reader who sized a deployment last quarter sized it against them, so they are recorded here:
 
 - **The plan-bound max-connections cap is gone.** There is no plan. The ceiling is now the machine's file-descriptor limit and Dragonfly's own accept path. Both sit orders of magnitude above anything the connection budget below asks for.
-- **Per-request pricing is gone.** Command volume consumes CPU on the datastore machine, and the fleet scheduler's idle query consumes Postgres capacity. The section "Idle request volume" still matters, but it now sizes a **machine**, not an invoice.
-- **The Transport Layer Security (TLS) dial cost is gone in-region.** 6PN is WireGuard-encrypted already, so the seed is plaintext and a dial pays no handshake. That is worth roughly 230 ms per connection against an RSA-2048 leaf. The local rig therefore keeps a TLS node for one suite and runs everything else plaintext.
+- **Per-request pricing is gone**. Command volume consumes CPU on the datastore machine, and the fleet scheduler's idle query consumes Postgres capacity. The section "Idle request volume" still matters, but it now sizes a **machine**, not an invoice.
+- **The Transport Layer Security (TLS) dial cost is gone in-region**. 6PN is WireGuard-encrypted already, so the seed is plaintext and a dial pays no handshake. That is worth roughly 230 ms per connection against an RSA-2048 leaf. The local rig therefore keeps a TLS node for one suite and runs everything else plaintext.
 
 **A fixed machine replaces them, with a different failure shape.** A hosted plan degrades by refusing a dial or sending a bill. A machine degrades by running out of memory or CPU, and a Dragonfly node that hits `maxmemory` while retaining rather than evicting refuses writes.
 
@@ -92,7 +92,7 @@ Postgres is **PlanetScale**, and two of its properties bind the same way:
    The request path is therefore meant to run through PlanetScale's PgBouncer (port `6432`, transaction pooling), which multiplexes replicas' connections onto one bounded server pool. The deployment preflight refuses an `api-connection-string` on any other port, and the migrator stays on `5432` for its session advisory lock.
 
    PgBouncer's own `default_pool_size` (20) counts against that same ceiling once, beside PlanetScale's admin and exporter backends and the migrator at release. Set it low enough in the console that all four fit.
-2. **Region.** Production's database sits in `us-east` beside Fly `iad`; development's sits in `aws-us-east-2` (Ohio), a round trip away on every handshake and every query. A region cannot be changed in place; `playbooks/operations/database_region_move/` moves it.
+2. **Region**. Production's database sits in `us-east` beside Fly `iad`. Development's sits in `aws-us-east-2` (Ohio), a round trip away on every handshake and every query. A region cannot be changed in place; `playbooks/operations/database_region_move/` moves it.
 
 ---
 
@@ -428,8 +428,8 @@ Step 4: Emit configuration
 1. **Size Dragonfly connections by fleet or viewer count.** Each replica has three logical cluster clients. Physical sockets depend on connected nodes and reconnect activity.
 2. **Tune `XREADGROUP BLOCK`.** It no longer exists on the hot path. Use `NO_WORK_RETRY_AFTER` for the idle-cost/latency trade.
 3. **Add runners to fix lease/report latency.** Runners add compute, not control-plane throughput. Scale `agentsfleetd` replicas + Postgres for hot-path latency.
-4. **Raise `DRAGONFLY_REQUEST_TIMEOUT_MS` above 5000.** A healthy datastore's p99 is single-digit-ms, and in-region 6PN is below that; above 5 s is failure, not slowness.
-5. **Put `SUBSCRIBE` on the shared command socket.** The hub owns a separate connection and fans out locally; request-path commands keep their multiplexed socket.
+4. **Raise `DRAGONFLY_REQUEST_TIMEOUT_MS` above 5000**. A healthy datastore's p99 is single-digit-ms, and in-region 6PN is below that. Above 5 s is failure, not slowness.
+5. **Put `SUBSCRIBE` on the shared command socket**. The hub owns a separate connection and fans out locally; request-path commands keep their multiplexed socket.
 6. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
 7. **Ignore active fleet count in the Postgres budget.** One discovery statement per poll can still perform many indexed head lookups. Measure at the intended fleet population.
 8. **Replace randomized candidate ordering with a fixed prefix.** A bounded result with a fixed order can repeatedly exclude eligible fleets. Notification and affinity priority do not provide a strict fairness guarantee.
@@ -441,11 +441,13 @@ Step 4: Emit configuration
 
 ### Runner host loss
 
-A runner that dies holds no datastore connection to leak and no Dragonfly consumer to reclaim. Its in-flight lease expires at `lease_expires_at`; the next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Recovery latency is `LEASE_TTL` + poll density, the floor that section calls S0.
+A runner that dies holds no datastore connection to leak and no Dragonfly consumer to reclaim. Its in-flight lease expires at `lease_expires_at`.
+
+The next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Recovery latency is `LEASE_TTL` + poll density, the floor that section calls S0.
 
 There is **no connection storm** on runner loss: the survivors just keep polling.
 
-**Failure domain scales with the assigned `worker_count`.** A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one. Each lease expires and re-leases independently (no batch coupling), so no work is lost, but N runs restart instead of one.
+**Failure domain scales with the assigned `worker_count`**. A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one. Each lease expires and re-leases independently (no batch coupling), so no work is lost, but N runs restart instead of one.
 
 This is the cost of running more fleets per host; `worker_count=1` keeps the failure domain at one run. Operators size N against this tradeoff.
 

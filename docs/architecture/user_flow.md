@@ -100,7 +100,7 @@ v2 ships **hosted-only** on `api.agentsfleet.net`. The skill detects no choice p
 
 This is a deliberate scope cut. The auth substrate (Clerk OAuth), the key management service (KMS) adapter, and process control (Fly.io machines) are the only deployment-specific layers. The worker, runner, sandbox, event stream, and reasoning loop are all posture-agnostic.
 
-Validating that on a clean non-Fly Linux host is a v3 workstream, once v2 has earned the trust to justify the integration burden. That validation covers a Clerk shim or local-token auth, a portable KMS adapter, the runner's Landlock+cgroups+bwrap on a vanilla VM, and systemd process control.
+Validating that on a clean non-Fly Linux host is a v3 workstream, once v2 has earned the trust to justify the integration burden. That validation covers a Clerk shim or local-token auth, a portable KMS adapter and systemd process control. The validation also covers the runner's Landlock+cgroups+bwrap on a vanilla VM.
 
 Practically, this means:
 
@@ -168,7 +168,7 @@ Login proves the new credential against `GET /v1/users/me`, which needs no capab
 5. **Readiness.** The saved fleet starts in `installing` with one check per need: definition, model, wallet, credential, connection, and grant. A missing credential or unapproved grant is a pending check, never a refused Save.
    - Repeating Save with the same idempotency key retries the same fleet.
    - The fleet turns `active` once every check passes and activation commits; run-now activation commits its initial admission in the same transaction. See [`data_flow.md`](./data_flow.md#fleet-creation-and-setup-recovery).
-6. **Provider wiring follows the trigger surface.** A GitHub App trigger needs a one-time workspace connection, and a custom webhook keeps its per-fleet URL, which the saved fleet's response lists in `webhook_urls`. The platform holds its own App secrets, never a user's Personal Access Token (PAT) ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
+6. **Provider wiring follows the trigger surface**. A GitHub App trigger needs a one-time workspace connection. A custom webhook keeps its per-fleet URL, which the saved fleet's response lists in `webhook_urls`. The platform holds its own App secrets, never a user's Personal Access Token (PAT) ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
 7. Future triggers are served with no restart and no watcher thread. Each trigger commits a row to the admission ledger (`fleet.admissions`). The control plane assigns that event to an eligible `agentsfleet-runner` through the ledger claim (`POST /v1/runners/me/leases`).
    - [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" carries the full path.
 8. **Improve.** A change to a saved fleet is a new draft from `--fleet <id> --setup-revision <n>`, reviewed, then applied as the next immutable revision (N11). Saving never publishes, and publishing never changes a saved fleet.
@@ -188,11 +188,11 @@ Two first scenarios anchor the product flow:
 
 A Fleet's setup declares `triggers: [...]` under `config.x-agentsfleet`: an array of up to 8 trigger entries, unique on the `(type, source)` tuple. It may be empty or omitted: a fleet with no trigger is woken only by the messages sent to it. Each entry is one of:
 
-- **GitHub App trigger.** Type `webhook`, `source: github`, explicit `repositories` and `events`; omitting `repositories` is fail-closed for App traffic ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
+- **GitHub App trigger**. Type `webhook`, `source: github`, explicit `repositories` and `events`. Omitting `repositories` is fail-closed for App traffic ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
 - **Manual/custom webhook trigger.** Type `webhook` with a lowercase-slug `source` (never `approval`, whose segment is the approval route). Registry sources `github`, `linear` and `slack` use their fixed signing recipes and refuse overrides.
   - Other sources declare `verifier.scheme` using one of the five [webhook recipes](fleet_definitions.md#webhook-declarations). Each trigger's `credential_name` selects a workspace JSON credential with a `webhook_secret` string; the name defaults to its source.
   - Save returns `POST /v1/webhooks/{fleet_id}/{source}` for every webhook trigger, including Svix. The operator registers the URL and signing secret with the provider. This path does not infer a fleet from an App installation and does not require `repositories`.
-- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Save copies it into the fleet's inherited schedule in the same transaction, and `afd_cron` mirrors that intent to QStash under a stable identifier.
+- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Save copies it into the fleet's inherited schedule in the same transaction. `afd_cron` mirrors that intent to QStash under a stable identifier.
   - QStash owns the clock and sends each signed fire to `agentsfleetd`, which admits one event through the admission ledger with `actor=cron:<schedule_id>`. The runner owns no timer.
   - A setup allows at most one cron trigger; the schedule API can manage additional explicit schedules within the per-Fleet limit.
 
@@ -212,7 +212,9 @@ In addition to the declared triggers, every Fleet always accepts:
 
   A replayed answer for an event the page never loaded reads that event's detail and settles its row. An event already loaded settles from its own frames. A running event unheard from for 45 seconds is read once, so a lost completion still ends its row.
 
-All actors flow through the same runtime path. The Fleet's in-run loop does not branch on actor type: the same `http_request`-driven evidence gathering and Slack post happen however the work was triggered. A "morning health check" steer produces a real first-pass evidence sweep; the fleet's instructions dictate behaviour, never the actor field.
+All actors flow through the same runtime path. The Fleet's in-run loop does not branch on actor type. The same `http_request`-driven evidence gathering and Slack post happen however the work was triggered.
+
+A "morning health check" steer produces a real first-pass evidence sweep; the fleet's instructions dictate behaviour, never the actor field.
 
 A fleet that declares no trigger is valid: steers reach every fleet, whatever it declares.
 

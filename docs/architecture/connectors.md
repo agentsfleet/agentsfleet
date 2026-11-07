@@ -57,7 +57,9 @@ Each variant carries its id (the route segment and vault-key stem) and a display
 
 `event_ingress()` and `state_binding()` complete the per-provider facts.
 
-At runtime `Provider::parse(segment)` answers `None`, a 404 `UZ-CONN-004` whose body names the id, or `Some`, which dispatches on the archetype. The generic `{provider}` handlers are connect, callback, status and disconnect. The per-provider deltas are each provider's `complete::read` arm, GitHub's probe and ownership check, Zoho's multi-data-center token endpoint, and Slack's mention events and replies.
+At runtime `Provider::parse(segment)` answers `None`, a 404 `UZ-CONN-004` whose body names the id, or `Some`, which dispatches on the archetype. The generic `{provider}` handlers are connect, callback, status and disconnect.
+
+The per-provider deltas are each provider's `complete::read` arm and GitHub's probe and ownership check. Zoho's multi-data-center token endpoint and Slack's mention events and replies are deltas too.
 
 - **Routes are generic over `{provider}`** (API reference › Connectors). The dashboard owns `/api/connectors/{provider}/callback`; Disconnect removes only `agentsfleet` state.
 
@@ -132,7 +134,7 @@ Those three providers are plain `agentsfleet secret create` entries, never regis
 
 ## Trust anchors
 
-1. **The signed single-use `state` binds workspace intent and starter identity.** It is keyed with the approval signing secret and carries a keyed identity tag instead of a raw subject. It verifies in constant time and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state.
+1. **The signed single-use `state` binds workspace intent and starter identity**. It is keyed with the approval signing secret and carries a keyed identity tag instead of a raw subject. It verifies in constant time and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state.
 
    Forged, expired, replayed, or identity-mismatched state returns 400 `UZ-CONN-002`. State does not prove ownership of a provider installation.
 
@@ -144,11 +146,11 @@ Those three providers are plain `agentsfleet secret create` entries, never regis
 
 4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
 
-5. **A signature proves origin, never the producer.** GitHub permits every push-capable identity to create deployment statuses, so every such identity in a mapped repository sits inside the trusted producer boundary. The daemon verifies the App signature and the installation routing; it does not inspect `deployment_status.creator` or attest which system produced the status.
+5. **A signature proves origin, never the producer**. GitHub permits every push-capable identity to create deployment statuses. Every such identity in a mapped repository sits inside the trusted producer boundary. The daemon verifies the App signature and the installation routing; it does not inspect `deployment_status.creator` or attest which system produced the status.
 
    A scenario that depends on this says so and cites this anchor rather than restating it.
 
-6. **The standing integration grant authorises every mint, including a repository write.** `connector.integration_grants` holds one row per `(fleet_id, service)`, enforced by `UNIQUE (fleet_id, service)`, and only an `approved`, unrevoked row admits a mint. Save writes that row `pending` and raises one approval card.
+6. **The standing integration grant authorises every mint, including a repository write**. `connector.integration_grants` holds one row per `(fleet_id, service)`, enforced by `UNIQUE (fleet_id, service)`, and only an `approved`, unrevoked row admits a mint. Save writes that row `pending` and raises one approval card.
 
    A person's yes on that card is the answer. The reviewed Definition names the integration, and its binding names the repositories and the access level.
 
@@ -338,7 +340,7 @@ This page previously credited the recovery to "GitHub's retry", which does not e
 | After a leg's admission row commits | Durable. The committed ledger row remains available for the next eligible runner claim; wake notifications are best effort. |
 | Before it commits (the failing leg, and every leg after it in the loop) | **Nothing.** No row, no entry, and no sender that will ask again. |
 
-So the durable-acceptance guarantee covers work this deployment ACCEPTED, and the window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow.
+So the durable-acceptance guarantee covers work this deployment ACCEPTED. The window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow.
 
 The ten-second budget is a hard deadline rather than a target. It is shared across signature verification, fleet resolution, and one admission per subscribed fleet, so fan-out width spends it.
 

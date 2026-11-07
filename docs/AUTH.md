@@ -118,7 +118,7 @@ Five principal surfaces, one wire shape (`Authorization: Bearer …`), and a pre
 | Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `Guard::WebhookSignature` / `WebhookHmac` / `Svix` / `PayloadSigned` → verified in the handler |
 
-The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/daemon/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so a runner token cannot satisfy a tenant route and the reverse.
+The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/daemon/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so runner tokens cannot satisfy tenant routes and the reverse.
 
 Authorization is **scope-based** (M104_001). Every capability is an explicit `resource:action` scope carried on the verified token's `scopes` claim and surfaced as `principal.scopes` (a bitset). Two independent axes decide a request:
 
@@ -190,7 +190,7 @@ Capabilities reach a principal as an explicit `scopes` claim. The identity provi
 | `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `library:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform/cross-tenant scope, preserving "an admin cannot enroll a runner" |
 | `RUNNER_SCOPES` | `runner:self` | DERIVED for every `agt_r` runner principal by `Principal::scopes` (`rustd/crates/daemon/afd_auth/src/principal.rs`), never stored on it — the one credential class with no identity at the provider to resolve against, because it names a machine, not a person |
 
-**Approving follows the person, not the credential class (M160_002 §6, Indy's call, Aug 13, 2026).** An earlier revision authored a machine grant in code (the owner set minus `approval:resolve`). This kept a Fleet holding an `agt_t` key from approving the gate guarding its own next action.
+**Approving follows the person, not the credential class (M160_002 §6, Indy's call, Aug 13, 2026)**. An earlier revision authored a machine grant in code (the owner set minus `approval:resolve`). This kept a Fleet holding an `agt_t` key from approving the gate guarding its own next action.
 
 That subtraction is retired with the grant that carried it, so a key inherits its creator's capabilities exactly. A key minted by someone holding `approval:resolve` can resolve approvals. A key minted by a collaborator with narrow access cannot do what its creator cannot.
 
@@ -351,7 +351,7 @@ request on /v1/workspaces/{workspace_id}/…
   └─► handler
 ```
 
-**Scopes first, role second.** The capability gate passes a member on the
+**Scopes first, role second**. The capability gate passes a member on the
 scopes signup wrote for their own account, and those include `secret:write`.
 The role then withholds it inside somebody else's account
 (`rustd/crates/daemon/afd_http/src/auth/ownership/role.rs`).
@@ -360,9 +360,9 @@ The role then withholds it inside somebody else's account
 `connector:write`. A route mounted later that needs either is withheld from
 members with no change to the route.
 
-**A member uses every secret, through fleets.** The role withholds writing a
+**A member uses every secret, through fleets**. The role withholds writing a
 secret, not using one. A member who installs or edits a fleet can declare any
-secret stored in the workspace, and the runner receives its value at lease
+secret stored in the workspace, and the runner receives it at lease
 (`rustd/crates/daemon/afd_credential/src/secrets/mod.rs`).
 
 An invited member is
@@ -409,7 +409,7 @@ too.
 | invitee | `GET /v1/users/me/invites` | none | lists invites waiting for the signed-in address |
 | invitee | `POST /v1/users/me/invites/{invite_id}/accept` | none | joins the account as a `member` |
 
-**`/v1/tenants/me` is always the caller's own account.** Owning it is a fact of
+**`/v1/tenants/me` is always the caller's own account**. Owning it is a fact of
 the path: the `OwnTenant` extractor resolves the caller's own account before the handler runs (`rustd/crates/daemon/afd_api_tenant/src/handler/tenant/own.rs`). A member
 calling these routes manages their own account, never the one they joined.
 
@@ -748,11 +748,11 @@ A runner principal reaches only `/v1/runners/me/*`, and every route there requir
 - fleet memory
 - a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness)
 
-Each acts for the one runner the token identifies (`me`), and a per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route.
+Each acts for the one runner the token identifies (`me`). A per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route.
 
 The runner receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it. That is a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries.
 
-**Secret delivery is placement, not a standing grant.** `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
+**Secret delivery is placement, not a standing grant**. `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
 The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. It is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
 
@@ -1132,7 +1132,7 @@ These recipes verify incoming signed deliveries. They do not connect an account,
 The check itself is provider-agnostic. For the URL's `{fleet_id}` it takes two facts from the fleet's trigger binding (`rustd/crates/daemon/afd_ingress/src/binding/mod.rs`):
 
 1. **The recipe** — `Binding::family()` reads the named trigger's declaration or registry recipe, even if its vault credential is missing. This is what makes "credential not configured" fail closed instead of silently falling back to anything else.
-2. **The secret** — `Ingress::signing_secret` (`rustd/crates/daemon/afd_ingress/src/secret.rs`) loads the workspace vault entry named by `credential_name()` and reads its `webhook_secret` field (`{ "webhook_secret": "<key>", ... }`). The name defaults to the matching trigger's `source` value, and the fleet's `x-agentsfleet.triggers[].credential_name` frontmatter can override it for the per-fleet credential-scoping case. Two fleets subscribing to the same source within one workspace can each point at distinct vault rows (e.g. multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
+2. **The secret** — `Ingress::signing_secret` (`rustd/crates/daemon/afd_ingress/src/secret.rs`) loads the workspace vault entry named by `credential_name()` and reads its `webhook_secret` field (`{ "webhook_secret": "<key>", ... }`). The name defaults to the matching trigger's `source` value. The fleet's `x-agentsfleet.triggers[].credential_name` frontmatter can override it for the per-fleet credential-scoping case. Two fleets subscribing to the same source within one workspace can each point at distinct vault rows (e.g. multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
 
 Every recipe reads a JSON credential object containing `webhook_secret`. For Svix, that field contains the sender's `whsec_` string. Replacing one workspace credential changes verification for every fleet that names it; a raw Svix string is not a supported credential object.
 
@@ -1232,7 +1232,7 @@ Grant-read DB failures fail closed at mint (500, no token). They also refuse the
 
 Static pasted secrets (no `integration` field) are not gated.
 
-**The handle is held to what the workspace connected (`rustd/crates/daemon/afd_fleet/src/lease/mint/claim.rs`).** A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body. So after the vault read and before the exchange, the mint checks two facts the workspace did not write.
+**The handle is held to what the workspace connected (`rustd/crates/daemon/afd_fleet/src/lease/mint/claim.rs`)**. A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body. So after the vault read and before the exchange, the mint checks two facts the workspace did not write.
 
 First, an on-demand handle must sit under its own connector's name. The grant gate ran against the requested name, so a GitHub handle filed as `mything` would otherwise mint as a connector nobody granted (`UZ-CRED-001`). Second, a GitHub handle's `installation_id` must have a `connector.installs` row for **this** workspace.
 
@@ -1240,7 +1240,7 @@ An installation id is a short integer, not a secret. The platform App's key sign
 
 A miss answers `UZ-GH-001`, the same reconnect a handle naming no installation gets. The refusal therefore never reveals whether another workspace holds that installation. The connect flow stores installation ids unpadded, so the row and the mint spell one installation one way.
 
-**A refresh handle posts only where its connect flow points it.** A refresh grant carries the deployment's `<provider>-app` client secret, and a Zoho handle's `accounts_base` names the server it is posted to. The SSRF guard admits any public `https` host, so it does not keep the secret with the provider.
+**A refresh handle posts only where its connect flow points it**. A refresh grant carries the deployment's `<provider>-app` client secret, and a Zoho handle's `accounts_base` names the server it is posted to. The SSRF guard admits any public `https` host, so it does not keep the secret with the provider.
 
 The exchange does. `steer::endpoint` (`rustd/crates/daemon/afd_credential/src/credential/oauth/steer.rs`) dials only the descriptor's own endpoint or one of `af_core::credential::ZOHO_ACCOUNTS_SERVERS`, the list the connect flow writes from. It refuses anything else before a request is built.
 

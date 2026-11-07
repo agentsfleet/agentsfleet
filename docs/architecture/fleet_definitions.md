@@ -125,7 +125,9 @@ Count system instructions, tools, history, and reserved output against the model
 
 The daemon derives candidate identity, normalized definition, `canonical_digest`, `schema_version`, and `policy_semantics`. The model sets none of these.
 
-Digest v1 uses recursively sorted object keys, preserved array order, normalized finite-number JSON rendering, LF text and UTF-8 bytes, with an explicit version prefix. Pin key ordering and numeric rendering through fixtures. Money is already a decimal string and never rounded through a float.
+Digest v1 uses recursively sorted object keys, preserved array order and normalized finite-number JSON rendering. The digest also uses LF text and UTF-8 bytes, with an explicit version prefix.
+
+Pin key ordering and numeric rendering through fixtures. Money is already a decimal string and never rounded through a float.
 
 Unsupported versions or executable setup stop before Save.
 

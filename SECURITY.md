@@ -23,7 +23,7 @@ This is the short policy entrypoint for agentsfleet.
 1. `agentsfleet-runner` leases one event and runs its tool calls in a sandbox of its own (`rustd/crates/runner/afr_sandbox`). The runner destroys it when the lease ends, or holds it frozen for the same fleet's next lease.
 2. The agent loop and the model keys stay in the runner's supervisor (`rustd/crates/runner/afr_agent`), outside every sandbox. The runner owns Linux sandbox enforcement (bubblewrap, Landlock, seccomp, cgroup v2) for each lease.
 3. If the sandbox posture is unsafe, run admission must fail closed.
-4. If a sandboxed child dies mid-stage, the lease expires and the run is reclaimed + re-run by another runner, or blocked from saved stage state.
+4. If a sandboxed child dies mid-stage, the lease expires. The run is then reclaimed and re-run by another runner, or blocked from saved stage state.
 5. Active runs are not guaranteed to survive `agentsfleet-runner` upgrades.
 
 ## Detection

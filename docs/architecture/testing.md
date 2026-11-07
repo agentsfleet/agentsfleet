@@ -134,7 +134,7 @@ The failure these rules codify had no error in it. Every red was a query that su
 
 Shared test data read concurrently gives correct answers to the wrong question, and the assertion is what breaks.
 
-**ISO-1: Mint every identifier a test writes or reads back.** A fixed constant suits only a row nothing asserts over (the fixture tenant, written `ON CONFLICT DO NOTHING`). The moment a test counts, lists or filters by an identifier, that identifier is minted per test.
+**ISO-1: Mint every identifier a test writes or reads back**. A fixed constant suits only a row nothing asserts over (the fixture tenant, written `ON CONFLICT DO NOTHING`). The moment a test counts, lists or filters by an identifier, that identifier is minted per test.
 
 `Lane::isolated` is the shape: mint the workspace and fleet, seed them, scope every read. It costs a few statements and removes the whole row-collision class.
 

@@ -91,7 +91,7 @@ The existing `DecisionEvaluator`/`DecisionClient` handles the physical request; 
 A native `authoring.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text.
 
 It commits physical intent before sending and preserves frozen decision pricing and usage independently of private chat deletion.
-The per-call reservation is tentative, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum; actual provider usage remains authoritative. Further decision checks stop on unresolved usage or overage.
+The per-call reservation is tentative, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum. Actual provider usage remains authoritative, and further decision checks stop on unresolved usage or overage.
 
 Decision charges use the existing biller, `AuthoringAttempt` work key and `SetupChat` attribution, with a distinct usage-line sequence. An unresolved physical check retains its reservation without blocking the conversational reply.
 No new task scheduler, setup-chat admission SQL or question-authoring decision path is introduced.

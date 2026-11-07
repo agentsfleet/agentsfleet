@@ -170,7 +170,7 @@ stable is not measuring availability.
 ### Error budget burn
 
 Burn rate is the error ratio divided by the error budget. A burn of 1 spends
-the budget exactly over the window, and a burn of 14.4 spends 2% of a 30-day
+the budget exactly over the window. A burn of 14.4 spends 2% of a 30-day
 budget in an hour.
 
 The dashboard draws two windows per severity. The long one makes the budget
@@ -291,8 +291,7 @@ no telemetry knob, so hardening still sees a single thread.
   leaves the host.
 
 - **A fixed span budget** (`afr_telemetry`'s `budget` module): at most
-  `MAX_LEASE_SPANS` (256) spans per lease, its root included, and
-  `RUNNER_SPANS_PER_SECOND` (128) per monotonic second, runner-wide. A
+  `MAX_LEASE_SPANS` (256) spans per lease, its root included. The runner-wide cap is `RUNNER_SPANS_PER_SECOND` (128) per monotonic second. A
   lease's root is never refused. It is charged to its second while the second
   has room, and kept uncharged in a second already spent. A second's exports
   therefore pass 128 only by the roots of leases started after it was spent. A
@@ -393,7 +392,7 @@ through the control plane would tie request and database capacity to log
 volume. It would also make the control plane the failure point for the
 diagnostics you need when that plane is unhealthy.
 
-**Runner collector rules (fail-closed on privacy).** It forwards only
+**Runner collector rules (fail-closed on privacy)**. The collector forwards only
 single-line logfmt records after an allowlist: `ts_ms`, `level`, `scope`,
 `event`, registered `error_code`, reviewed bounded metadata.
 
@@ -458,8 +457,7 @@ accepted terminal report. It does not read the World Wide Web Consortium (W3C)
 request span is therefore a new root, and the header never rejects a request.
 
 The Rust runner exports its spans to the runner collector under a fixed
-per-lease and per-second budget (§`agentsfleet-runner` has a collector of its
-own). Its verbs carry no trace field.
+per-lease and per-second budget. Its verbs carry no trace field. See §`agentsfleet-runner` has a collector of its own.
 
 Each lease is its own root trace
 carrying `agentsfleet.lease.id` and `agentsfleet.event.id`. It joins
@@ -533,9 +531,9 @@ Gaps left by M238, each named in M233_001:
 
 The authenticated library reads record stage timing as fixed-cardinality
 families in the library stage registry. They are the tenant model registry,
-the global catalogue, the fleet gallery and a workspace's onboarded entries. A six-stage read
-emitting spans would spend most of a second's span admission on its own
-timing and evict the server-error spans the budget protects.
+the global catalogue, the fleet gallery and a workspace's onboarded entries.
+
+A six-stage read emitting spans would spend most of a second's span admission on its own timing. That would also evict the server-error spans the budget protects.
 
 Stage timing is high-frequency, closed-label data; that is what a metric is
 for. The trace half is one `http.server.request` span per read.

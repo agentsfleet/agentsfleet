@@ -101,7 +101,7 @@ or skipped development gate stops promotion. A newly published fixable Critical
 vulnerability can stop a later rescan without rebuilding the image.
 
 To recover an expired candidate, explicitly run `test.yml` on the intended
-trusted branch/tag and then run `deploy-dev.yml` on that same tree to qualify
+trusted branch/tag. Then run `deploy-dev.yml` on that same tree to qualify
 new evidence. If main's merge tree differs from the tested tree, update the PR
 against main and rerun its checks before merging.
 

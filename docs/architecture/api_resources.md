@@ -435,7 +435,8 @@ The [DT API target](durable_tasks.md#proposed-native-api) describes the remainin
 
 Collection responses use `private, no-store`; detail responses use `private, no-cache` with revalidation.
 Dashboard proxies retain the resource tag and apply `no-store` without exposing bearer credentials to browser code.
-Native reads run under one five-second client deadline that covers acquisition and commit (`afd_fleet`'s task fetch); the API login's statement bound applies beneath it ([concurrency](concurrency.md#every-daemon-statement-runs-under-the-api-logins-bounds)).
+
+Native reads run under one five-second client deadline that covers acquisition and commit (`afd_fleet`'s task fetch). The API login's statement bound applies beneath it ([concurrency](concurrency.md#every-daemon-statement-runs-under-the-api-logins-bounds)).
 
 ## Errors
 

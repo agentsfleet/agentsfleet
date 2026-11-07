@@ -198,6 +198,6 @@ The selection is deterministic and documented, so "why does my fleet remember X 
 - Never logs raw secret bytes
 - Never echoes secrets in the fleet's context
 - Never saves secrets in `fleet.events`
-- Never lets the GitHub App private key leave the daemon; it is platform-side, and the lease envelope, the `secrets_map`, and the runner never carry it
+- Never lets the GitHub App private key leave the daemon. The key is platform-side, and the lease envelope, the `secrets_map`, and the runner never carry it
 - Never lets the fleet reach a host outside its `network.allow` list
 - Never lets the fleet exceed its `budget` caps without trip-blocking

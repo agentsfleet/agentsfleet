@@ -217,9 +217,13 @@ rig traces every request and reply whole, before the scrub. So the shared log fi
 
 The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the event's message and the model's own earlier turns.
 
-A chat lease also carries the fleet's thread before its event: up to eight finished turns within 64 KiB, the rows the dashboard thread shows. The loop sends each as a user and an assistant turn ahead of the new message, through the same scrub. Webhook, cron and continuation leases carry none.
+A chat lease also carries the fleet's thread before its event: up to eight finished turns within 64 KiB. The rows are the ones the dashboard thread shows.
 
-The trusted repair context stays in the system prompt, and no turn enters it. A conversation repeats its prefix lease after lease, so the Messages wire marks the tools and the system prompt for caching at the five-minute default. The Responses wire sends the fleet id as `prompt_cache_key`.
+The loop sends each turn as a user and an assistant turn ahead of the new message, through the same scrub. Webhook, cron and continuation leases carry none.
+
+The trusted repair context stays in the system prompt, and no turn enters it. A conversation repeats its prefix lease after lease. So the Messages wire marks the tools and the system prompt for caching at the five-minute default.
+
+The Responses wire sends the fleet id as `prompt_cache_key`.
 
 A turn reports its cache writes apart from its input, split by the lifetime the provider names (`af_providers::usage`). Messages sends five minutes and one hour; Responses and Chat send a write with no lifetime. The daemon prices each class at its tier's write rate ([billing §11](./billing_and_provider_keys.md#11-one-billing-lifecycle-behind-a-biller-trait)).
 
@@ -872,7 +876,7 @@ When a fleet requires approval, the push runs in the continuation lease after so
 
 The loop renders the same rules into the prompt as a trusted repair context. That context names the one repository, the daemon-named repair branch and the trusted base. A write-bound fleet's instructions require that input before writing, and nothing else supplies it.
 
-A write token inside the sandbox would be readable by every program there, including a dependency's install hook. The rules' own module documentation says a repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request".
+A write token inside the sandbox would be readable by every program there, including a dependency's install hook. The rules' own module documentation says this about a repository-scoped write token. That token "can force-push to `main` as easily as it can open a draft Pull Request".
 
 ## Why Rust
 

@@ -326,7 +326,9 @@ An acquire can fail two ways, and they are **different operator problems**:
 | `PoolTimeout` | every connection is leased and the acquire budget elapsed | capacity: pool size, or the slow query holding a slot |
 | `PoolUnavailable` | the pool could not produce a connection at all | the datastore: reachability, credentials, TLS |
 
-The pool acquire answers those as a typed error, and `afd_db`'s error module asks the two apart by name (`is_pool_capacity` against `is_datastore_unavailable`). An acquire that answered only an absent connection would erase the distinction at the handler boundary and put both behind one alert. The handler that needed to tell them apart would then acquire from the pool directly, reimplementing the acquire/release pairing the pooled-connection guard makes unskippable.
+The pool acquire answers those as a typed error. `afd_db`'s error module asks the two apart by name (`is_pool_capacity` against `is_datastore_unavailable`). An acquire that answered only an absent connection would erase the distinction at the handler boundary and put both behind one alert.
+
+The handler that needed to tell them apart would then acquire from the pool directly. That reimplements the acquire/release pairing the pooled-connection guard makes unskippable.
 
 **What the pool guarantees, and what it does not.** Releasing an occupied slot lets at least one queued waiter progress. Every waiter either acquires or receives the configured timeout, so no waiter blocks forever.
 
@@ -794,7 +796,9 @@ register schedules independently
 lost wake -> the next idle poll still reads the ledger
 ```
 
-Do not delete the retained fleet on setup failure, claim activation after a zero-row update, or submit another initial event on retry. Undelivered, unsettled steer admissions take part in ordinary message history alongside delivered events in one statement snapshot, with stable event identity and pagination (`afd_events`'s `select_thread_page.sql`). No creation worker is introduced.
+Do not delete the retained fleet on setup failure. Do not claim activation after a zero-row update or submit another initial event on retry.
+
+Undelivered, unsettled steer admissions take part in ordinary message history alongside delivered events in one statement snapshot. That history carries stable event identity and pagination (`afd_events`'s `select_thread_page.sql`). No creation worker is introduced.
 
 ## Proposed Durable Task admission
 

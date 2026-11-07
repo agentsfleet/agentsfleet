@@ -76,7 +76,7 @@ Three structural pillars carry v2:
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net`, signing users in through Clerk with Open Authorization (OAuth). The architecture admits self-host: the auth substrate, the key-management-service adapter, and process management are the only deployment-specific layers. Validating it on a clean Linux host outside Fly.io is a v3 workstream.
 
-The `agentsfleet` command-line interface (CLI) and dashboard, both over workspace chat, plus the Library ([`user_flow.md`](./user_flow.md) §8.0) make the v2 pillars reachable from a cold start.
+The `agentsfleet` command-line interface (CLI) and dashboard, both over workspace chat, make the v2 pillars reachable from a cold start. So does the Library ([`user_flow.md`](./user_flow.md) §8.0).
 
 ### The first problem we solve
 
@@ -265,8 +265,8 @@ Structural changes from MVP to bastion:
 1. **Per-fleet audience routing.** The setup's `config` (`x-agentsfleet`) gains `audiences: [internal_slack, customer_status, customer_email]`; the instructions draft per-audience summaries from the same evidence.
 2. **Status-page rendering surface.** A hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
 3. **Broadcast channels.** The fleet's `tools:` grows `email_send`, `sms_send` (text message; approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
-4. **Approval gating per audience.** The setup's `gates` can require human approval for customer-facing audiences while internal Slack flows without a gate (the M47 approval inbox handles the mechanic).
-5. **Per-actor retention.** Customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `fleet.events` retention becomes per-actor configurable.
+4. **Approval gating per audience**. The setup's `gates` can require human approval for customer-facing audiences while internal Slack flows without a gate. The M47 approval inbox handles the mechanic.
+5. **Per-actor retention**. Customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `fleet.events` retention becomes per-actor configurable.
 
 What does not change: the runtime architecture, the sandbox boundary and the trigger model. The secret vault, network policy, budget caps and context lifecycle stay as they are. Bastion audience routing applies to work-events only; worker-emitted `system:*` rows stay on the internal operator timeline.
 
