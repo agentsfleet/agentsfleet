@@ -122,7 +122,10 @@ async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_f
     .expect("real daemon boot");
 
     tokio::time::timeout(Duration::from_secs(15), async {
-        let mut resident = false;
+        // Only Linux has `/proc/self/statm`; every other host reports no
+        // resident reading by design (`the_resident_reading_is_a_measurement_or_nothing`),
+        // so the wait asks for one only where one can exist.
+        let mut resident = !cfg!(target_os = "linux");
         let mut catalogue = false;
         let mut schedules = false;
         while !(resident && catalogue && schedules) {
