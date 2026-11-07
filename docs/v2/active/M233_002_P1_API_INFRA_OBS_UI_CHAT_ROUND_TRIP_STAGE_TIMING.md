@@ -63,7 +63,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 ## Implementing agent — read these first
 
 1. `docs/architecture/observability.md` — §Traces (leases are separate root spans joined by attribute; the daemon has no span budget, only `SPAN_QUEUE`), §"`agentsfleet-runner` — a collector of its own", and §"Signal routing" (the fail-closed rules for runner logs, which this spec leaves out).
-2. `rustd/crates/daemon/agentsfleetd/src/logs.rs` — the subscriber layout; the OpenTelemetry span bridge sits in a `reload` slot that refuses downcasts, which is why §1 moves the span layer out of it.
+2. `rustd/crates/daemon/main/src/logs.rs` — the subscriber layout; the OpenTelemetry span bridge sits in a `reload` slot that refuses downcasts, which is why §1 moves the span layer out of it.
 3. `rustd/crates/runner/afr_supervisor/src/lease_loop/segments.rs` and `rustd/crates/protocol/af_observability/src/metrics/label/fleet.rs` — the existing stage names: the runner's `Segments` and the daemon's seven `DeliveryStage` members. They are reused, not duplicated.
 4. `rustd/crates/runner/afr_sandbox/src/bubblewrap_engine/mod.rs` — sandboxes run under `sandbox_ids` when the runner is root, which the collector's admission rule depends on.
 5. `deploy/baremetal/agentsfleet-runner.service` and `deploy/fly/otelcol-dev/config.yml` — the runner unit the collector sits beside, and the collector configuration to copy, minus its public binds and logs pipeline.
@@ -75,8 +75,8 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks (§0.2�
 | `deploy/fly/agentsfleetd-dev/fly.toml` | EDIT | §0: dev daemon `shared-cpu-2x` 1 GB |
 | `deploy/fly/dragonfly-dev/fly.toml` | EDIT | §0: dev Dragonfly `shared-cpu-1x` 1 GB |
 | `docs/architecture/scaling.md` | EDIT | §0: dev cluster size; dev database region once verified |
-| `rustd/crates/daemon/agentsfleetd/src/logs.rs` | EDIT | §1: install the `tracing_opentelemetry` span layer permanently, over a global-provider tracer, outside the reload slot |
-| `rustd/crates/daemon/agentsfleetd/src/telemetry/mod.rs` | EDIT | §1: `attach` installs the global tracer provider |
+| `rustd/crates/daemon/main/src/logs.rs` | EDIT | §1: install the `tracing_opentelemetry` span layer permanently, over a global-provider tracer, outside the reload slot |
+| `rustd/crates/daemon/main/src/telemetry/mod.rs` | EDIT | §1: `attach` installs the global tracer provider |
 | `rustd/crates/protocol/af_observability/Cargo.toml` | EDIT | §1: add `tracing-opentelemetry` (workspace 0.34.0) |
 | `rustd/crates/protocol/af_observability/src/stage_clock.rs` | CREATE | §1: per-request stage clock over closed per-verb stage enums; writes `agentsfleet.<verb>.<stage>_ms` to the current span |
 | `rustd/crates/protocol/af_observability/src/lib.rs` | EDIT | §1: export the stage clock |
@@ -345,7 +345,7 @@ No dead code is removed by the delivery-row change. Shipped authoring cleanup re
 ## Out of Scope
 
 - **Runner logs through the collector.** Forwarding journald logs requires the fail-closed rules in `observability.md` §"Signal routing" (field allowlist, drop on parse failure, allowlist proof). Future work; the deferral is recorded in Discovery.
-- **Per-request SQL statement counts.** A `tracing` layer cannot see `sqlx::query` events at `info`, because the level filter in `rustd/crates/daemon/agentsfleetd/src/logs.rs` is global. Statement questions use PlanetScale Insights and the `afd_bench` lanes. Future work if needed.
+- **Per-request SQL statement counts.** A `tracing` layer cannot see `sqlx::query` events at `info`, because the level filter in `rustd/crates/daemon/main/src/logs.rs` is global. Statement questions use PlanetScale Insights and the `afd_bench` lanes. Future work if needed.
 - **New metric families for stages.** Per-event questions are answered by spans. Future work once a production aggregate need exists.
 - **The idle cost of lease polling.** It is a CPU question, measured as daemon process CPU ÷ `rate(agentsfleet_lease_polls_total)`, both already exported. Future work.
 - **Making the round trip faster.** Further transaction reductions wait for measurements. Memory-in-lease and capture-in-report already shipped in M238; this spec does not claim them as future optimisations.

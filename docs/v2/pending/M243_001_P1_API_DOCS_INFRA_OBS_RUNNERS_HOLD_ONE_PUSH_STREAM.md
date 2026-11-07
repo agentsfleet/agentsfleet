@@ -108,9 +108,9 @@ agentsfleet-runner ──WebSocket over HTTPS──► cloudflared ──► age
 | `rustd/crates/daemon/afd_authoring/src/creation/patch.rs`, `creation/sql/mark_leases_cancel_requested.sql`, `afd_api_tenant/src/handler/fleet/native/patch.rs` | EDIT, CREATE | §5: the kill marks running leases in its transaction; the handler publishes `Cancel` after commit |
 | `rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_patch.rs`, `runner_delete.rs` | EDIT | §5: publish `Recheck` after every runner-row write |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `metrics/label/**`, `producers/fleet/mod.rs` | EDIT | §4, §7: stream closes and offer claims in; wake answers out |
-| `rustd/crates/daemon/agentsfleetd/src/plane/mod.rs`, `serve/mod.rs`, `serve/runtime.rs`, `serve/optional.rs`, `serve/drain/mod.rs`, `serve/drain/tests.rs` | EDIT | §2, §4: build the bus and gateway once; `go_away` on drain; the doorbell close goes |
-| `rustd/crates/daemon/agentsfleetd/tests/integration_runner_stream/**` | CREATE | §4–§6: reconnect, kill across replicas, revocation, rotation, supersede, blackhole, chat statements |
-| `rustd/crates/daemon/agentsfleetd/tests/integration_runner_e2e/**`, `integration_rust_runner*.rs`, `integration_runner_activity*.rs`, `integration_runner_messages*.rs`, `integration_runner_shapes.rs` | EDIT | §6: drive leases over the stream |
+| `rustd/crates/daemon/main/src/plane/mod.rs`, `serve/mod.rs`, `serve/runtime.rs`, `serve/optional.rs`, `serve/drain/mod.rs`, `serve/drain/tests.rs` | EDIT | §2, §4: build the bus and gateway once; `go_away` on drain; the doorbell close goes |
+| `rustd/crates/daemon/main/tests/integration_runner_stream/**` | CREATE | §4–§6: reconnect, kill across replicas, revocation, rotation, supersede, blackhole, chat statements |
+| `rustd/crates/daemon/main/tests/integration_runner_e2e/**`, `integration_rust_runner*.rs`, `integration_runner_activity*.rs`, `integration_runner_messages*.rs`, `integration_runner_shapes.rs` | EDIT | §6: drive leases over the stream |
 | `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, `harness/stubs_runner.rs`, `afd_api/src/openapi/stability/mod.rs` | EDIT | §4, §7: one route in, six out |
 | `rustd/crates/runner/afr_supervisor/src/downlink/**`, `uplink/**` | CREATE | §6: connect, hello, reconnect, dispatch; the prioritised writer |
 | `rustd/crates/runner/afr_supervisor/src/{worker_pool,renew,activity,report,drainer,lease_loop,client,halt}/**`, `inbox.rs`, `lib.rs`, `test_util.rs`, `Cargo.toml` | EDIT | §6: workers take offers; renewals batch per host; activity, reports and folds ride the uplink |
@@ -352,7 +352,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 | `RUNNER_WAKE_ANSWERS_TOTAL`, `agentsfleet_runner_wake_answers_total` | `git grep -n -w -e RUNNER_WAKE_ANSWERS_TOTAL -e agentsfleet_runner_wake_answers_total -- ':!docs/v2'` | no output |
 | `LeaseRequest`, `LeaseResponse` | `git grep -n -w -e LeaseRequest -e LeaseResponse -- rustd public` | no output |
 | `IDLE_STATEMENTS_PER_POLL`, `idle_statements_per_poll` | `git grep -n -w -e IDLE_STATEMENTS_PER_POLL -e idle_statements_per_poll -- ':!docs/v2'` | no output |
-| retired handler, test and module files | `git ls-files rustd/crates/daemon/afd_api_runner/src/handler/runner/heartbeat.rs rustd/crates/daemon/afd_api_runner/src/handler/runner/wake.rs rustd/crates/daemon/afd_api_runner/src/handler/runner/lease rustd/crates/runner/afr_supervisor/src/heartbeat rustd/crates/daemon/afd_dragonfly/src/doorbell rustd/crates/daemon/agentsfleetd/tests/integration_runner_wake.rs` | no output |
+| retired handler, test and module files | `git ls-files rustd/crates/daemon/afd_api_runner/src/handler/runner/heartbeat.rs rustd/crates/daemon/afd_api_runner/src/handler/runner/wake.rs rustd/crates/daemon/afd_api_runner/src/handler/runner/lease rustd/crates/runner/afr_supervisor/src/heartbeat rustd/crates/daemon/afd_dragonfly/src/doorbell rustd/crates/daemon/main/tests/integration_runner_wake.rs` | no output |
 
 Hits under `docs/v2/` are records and stay. CHORE(open) reruns each search on `origin/main` and adds any new hit to Files Changed.
 

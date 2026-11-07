@@ -114,7 +114,7 @@ A beats again: runner_online ─► 30 s with no newer offline record ─► cor
 | `rustd/crates/daemon/afd_fleet/tests/integration_runner_views.rs` | EDIT | §5: the route test |
 | `ui/packages/app/lib/api/runners-types.ts`, `app/(dashboard)/admin/runners/components/RunnerStatus.tsx`, `[runnerId]/components/RunnerStatusLine.tsx`, `RunnerStatusLine.test.tsx`, `runner-activity.ts`, `runner-activity.test.ts`, `runner-copy.ts` | EDIT | §5: the cordon badge and the lift event |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `tests/producers_drive.rs`; `docs/metrics.census.tsv` | EDIT | §5: `agentsfleet_runner_cordon_changes_total` |
-| `rustd/crates/runner/agentsfleet_runner/tests/respawn.rs`, `tests/runner_suite.rs`, `Cargo.toml` | CREATE, EDIT | §6: the kill drill and its dev-dependencies |
+| `rustd/crates/runner/main/tests/respawn.rs`, `tests/runner_suite.rs`, `Cargo.toml` | CREATE, EDIT | §6: the kill drill and its dev-dependencies |
 | `public/openapi.json` | EDIT | §3, §5: regenerated with `--no-banner` |
 | `docs/architecture/push_scheduler.md`, `runner_fleet.md`, `lease_flow.md`, `runner_execution.md`, `scaling.md`, `observability.md` | EDIT | §6: held sandboxes counted; the cordon rule; respawn from checkpoint; the sweep row and the predecessor proposal |
 | `~/Projects/docs` `runners.mdx`, `changelog.mdx` on `chore/m247-respawn-changelog` | EDIT | §6: the public cordon rule and the restart frame |

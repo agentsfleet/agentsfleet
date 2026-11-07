@@ -122,8 +122,8 @@ deadlines ─► sweeper:expiry (daemon) and one host timer (runner)
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_for_renew.sql`, `sql/meter_lease.sql`, `sql/meter.rs` | DELETE | §7: both callers of the meter replaced |
 | `rustd/crates/daemon/afd_gateway/**`, `afd_fleet/src/lease/rebuild.rs`, `afd_fleet/src/lease/sql/select_runner_live_leases.sql` (all created by M243), `afd_http/src/services/leasing/**` | EDIT | §6, §7: the session's lease cache gains pricing facts and the funds tick; `renew_batch` calls the batch verb |
 | `rustd/crates/foundation/af_core/src/timing.rs` | EDIT | §7: `FUNDS_CHECK_TICKS`, `EXPIRY_TICK` and their asserts |
-| `rustd/crates/daemon/agentsfleetd/src/sweepers/clock.rs` | CREATE | §7: `sweeper:expiry` |
-| `rustd/crates/daemon/agentsfleetd/src/sweepers/mod.rs`, `billing.rs`, `authoring.rs`, `afd_authoring/src/maintenance/mod.rs`, `agentsfleetd/tests/supervisor.rs` | EDIT | §7: the expiry passes move to one clock; inventory follows |
+| `rustd/crates/daemon/main/src/sweepers/clock.rs` | CREATE | §7: `sweeper:expiry` |
+| `rustd/crates/daemon/main/src/sweepers/mod.rs`, `billing.rs`, `authoring.rs`, `afd_authoring/src/maintenance/mod.rs`, `agentsfleetd/tests/supervisor.rs` | EDIT | §7: the expiry passes move to one clock; inventory follows |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3: `agentsfleet_lease_cache_lookups_total` |
 | `rustd/crates/daemon/afd_fleet/tests/integration_lease_caches.rs`, `integration_renew_batch.rs`, `integration_report_statement.rs`, `afd_credential/tests/integration_platform_key_cache.rs` | CREATE | §3–§7 Dimensions |
 | `rustd/crates/daemon/afd_fleet/tests/integration_report_renewal_lock.rs` → `integration_report_renewal_lines.rs`; `integration_lease_plan/meter.rs`; fixtures under `afd_fleet/tests/**` calling `record_received`, `load_for_report` or `claim_and_settle` | MOVE, EDIT | §4, §6, §7: the race test loses the host lock; plan tests reach the new statements |

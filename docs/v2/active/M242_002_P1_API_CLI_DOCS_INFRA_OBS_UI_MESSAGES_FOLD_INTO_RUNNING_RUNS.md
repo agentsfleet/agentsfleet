@@ -6,7 +6,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 - No time or effort estimates, owners or implementation dates (SPEC-ESTIMATE).
 -->
 
-# M242_002: A chat message sent mid-run folds into that run, and every send answers its disposition
+# M242_002: A message sent mid-run folds into that run, on one harness every embedder drives
 
 **Prototype:** v2.0.0
 
@@ -34,283 +34,226 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A steer sent while its fleet's chat run is live answers `folded`, reaches that run's next model call under the run's fence, settles exactly once with the run, and the burst bench's pickup p95 stays under 1 s.
+**Goal (testable):** A message sent while its fleet's run is live answers `folded`, reaches that run's next model call under the run's fence, and settles once with the run's answer on its own event.
 
-**Problem:** Every chat message is a run of its own; `docs/architecture/runner_fleet.md:541` says "The current run finishes first; the steer runs next."
-- M241's short burst left 480 of 500 messages unleased at window close, with pickup p95 at 8.56 s (`bench/results/lease-burst.rig.json`).
+**Problem:** Every message is a run of its own; `docs/architecture/runner_fleet.md:541` says "The current run finishes first; the steer runs next."
+- M241's burst left 29,729 of 29,953 messages unleased at the window's close, with pickup p95 at 54.2 s (`docs/architecture/push_scheduler.md`, Baselines).
 - A person who adds a sentence mid-reply waits a full run, then pays for another.
-- The 202 says only `accepted`, so neither the command-line interface (CLI) nor the chat can say where the message went.
+- The 202 said only `accepted`, so neither the command-line interface (CLI) nor the chat could say where a message went.
 
-**Solution summary:** The runner holding the fleet reads pending steers at each model-call boundary under its fence, as Codex drains its turn input queue, and the daemon settles each fold with the run's report. A send answers `started`, `folded`, `queued` or `waiting_compaction`. During compaction a message waits while both surfaces say "compacting", then folds at the first model call after.
+**Solution summary:** The agent loop moves into its own crate, `guffbolt`, which takes input before every model call and once more after an answer, as Codex drains its turn input. A live run that is not a durable task claims every message its fleet receives, oldest first, up to the first parked or task-bound one. Its report settles what a completed model call read, each message with its own event and its own reply.
 
 **Design flow:**
 
 ```
-POST /messages ─► M242_001 intake statement + slot and head reads ─► 202 {event_id, disposition, folded_into_event_id}
-runner root loop, at each model-call boundary
-  preflight compacts ─► POST /folds {compacting: true} ─► slot.compacting_started_at set ─► sends answer waiting_compaction
-  POST /folds {fencing_token, after_event_id} ─► fold_pending.sql under the fence
-       link the steer prefix after the head, stamp lease_fence ─► messages appended as user input
-       event_folded per new fold on the tail (best effort)
-  answered turn and input waiting ─► one more model call (Codex tasks/regular.rs:117-120)
-report {folded_through_event_id} ─► meter_lease.sql says folds wait ─► settle_folded.sql
-       settle links at or below the cursor under this fence, write their event rows; release every other link
+POST /messages ─► admit_one.sql ─► 202 {event_id, disposition, folded_into_event_id}
+runner root loop (guffbolt::drive), before every model call and once after an answer
+  Conversation::take_input ─► Inbox::claim ─► POST /folds {fencing_token, after_sequence}
+       claim_inputs.sql: lease, runner and fence proven; later messages claimed in order
+       joined onto the waiting user message ─► the model call reads them
+report {folded_through_sequence} ─► meter_lease.sql settles the run's own message
+       settle_folds.sql settles what was read ─► each folded message:
+       its event opened and closed with the answer, its reply owed once per destination
 ```
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat(fleet): fold chat messages into the running run, and answer each send's disposition
-- **Intent (one sentence):** a message sent mid-run joins the run already answering, so a burst is one conversation instead of a queue of runs.
-- **Authoring handshake:** Indy wants a chat message that arrives mid-run to fold into that run, read by the runner holding the lease at each model call under its fence, with compaction making it wait and both surfaces saying "compacting". Each send answers its disposition; each folded message keeps its own event row and settles once with its run. ASSUMPTIONS I'M MAKING:
-  1. Folding covers steer-route messages only (producer `steer`, no reply destination). Slack mentions are `chat` too but each owes a reply to its own thread (`afd_ingress/src/slack/admit.rs:62-71`); they wait, like webhooks.
-  2. The runner reads over a new fenced route, because the runner stream arrives in M243, which moves this read onto it.
-  3. The disposition is a prediction made at send time. The admission's link and the `event_folded` frame are the truth; a run that ends first leaves the message to start the next run.
+- **PR title (eventual):** feat(fleet): fold messages into the running run, on an embeddable harness
+- **Intent (one sentence):** a message sent mid-run joins the run already answering, through one harness every embedder drives the same way.
+- **Authoring handshake:** Indy wants a message that arrives mid-run to fold into that run, read before each model call under the run's fence, whatever sent it (Discovery, Nov 07, 2026: 09:40 PM). The harness is common and abstract, with no durable-versus-plain branch (Discovery, 11:20 AM). ASSUMPTIONS I'M MAKING:
+  1. A durable-task run keeps #803's person-only claim (`pending_inputs.sql`); every other live run claims through `claim_inputs.sql`.
+  2. A parked message and a task-bound one are barriers: nothing after them folds, so no message passes one sent before it.
+  3. The disposition is a prediction made at send time; the claim and the report decide. A message claimed but never read runs next.
   4. A run's reply joins every answering turn's text, so an answer given before a fold is not lost.
-  5. CHORE(open) re-verifies Files Changed, the loop under `afr_agent/src/loop/`, the steer path and the schema slots against `origin/main`, because Pull Request (PR) #803 may merge first.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
 ## Implementing agent — read these first
 
-1. `rustd/crates/runner/afr_agent/src/loop/mod.rs` and `loop/conversation.rs` — the turn loop, and how a child joins input onto a waiting user message; the root's inbox mirrors that join.
-2. `rustd/crates/daemon/afd_fleet/src/lease/sql/meter_lease.sql` and `sql/lease/claim_admission_head.sql` — the fence and settle predicates every fold step must keep.
-3. `rustd/crates/daemon/afd_fleet/src/lease/context.rs`, `afd_api_runner/src/handler/runner/context.rs` and `afr_supervisor/src/context.rs` — the fenced runner route, end to end, that the folds route copies.
-4. `docs/architecture/push_scheduler.md` — the decisions, the fact-to-store table and the "A message arrives" sequence this spec builds.
-5. `cli/src/commands/fleet_steer_events.ts` — the CLI filters frames by its own `event_id` (`:88-89`), which a folded message must widen.
+1. `rustd/crates/harness/guffbolt/src/drive/mod.rs` — the loop's order, and the one place input reaches the model.
+2. `rustd/crates/runner/afr_agent/src/loop/conversation.rs` and `loop/task.rs` — the runner as `guffbolt`'s conversation, and the durable task as its extension.
+3. `rustd/crates/daemon/afd_fleet/src/lease/fold.rs` with `sql/lease/claim_inputs.sql` and `settle_folds.sql` — the claim and the settle.
+4. `rustd/crates/daemon/afd_fleet/src/task/input_receipt/answer.rs` — the durable fold's event and reply writes the plain fold reuses.
+5. `docs/architecture/push_scheduler.md` — the decisions and the "A message arrives" sequence this spec builds.
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M242_002_P1_API_CLI_DOCS_INFRA_OBS_UI_MESSAGES_FOLD_INTO_RUNNING_RUNS.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
-| `schema/2710_fleet_admissions_folded_into.sql`, `schema/2720_fleet_events_folded_into.sql`, `schema/2730_runner_fleet_slots_compacting.sql` | CREATE | §1: three columns; placeholder slots, renumbered at CHORE(open) |
-| `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | §1: registers the three slots |
-| `rustd/crates/daemon/afd_fleet/src/lease/fold.rs`, `lease/mod.rs`, `lease/sql/lease/fold_pending.sql`, `lease/sql/queue.rs`, `lease/pull/mod.rs` | CREATE, EDIT | §1: the fenced fold verb on `Leases` and `Plane` |
-| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | EDIT | §1: a claim clears the compacting marker |
-| `rustd/crates/protocol/af_wire/src/paths.rs`, `af_wire/src/lease/folds.rs`, `af_wire/src/lease/mod.rs` | EDIT, CREATE | §1: `LEASE_FOLDS` and its request and response types |
-| `rustd/crates/daemon/afd_http/src/route/runner.rs`, `afd_http/src/services/leasing/mod.rs`, `leasing/plane.rs` | EDIT | §1: `RunnerRoute::Folds` and the `Leasing::fold` seam |
-| `rustd/crates/daemon/afd_api_runner/src/handler/runner/folds.rs`, `handler/runner/mod.rs`, `src/lib.rs`, `src/openapi.rs` | CREATE, EDIT | §1: the handler, its mount and its annotation |
-| `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, `tests/harness/stubs_runner.rs` | EDIT | §1: `INVENTORY`, the counts, the `NoWork` stub |
-| `rustd/crates/daemon/afd_fleet/src/lease/sql/meter_lease.sql`, `sql/meter.rs`, `lease/settle.rs`, `lease/commit.rs` | EDIT | §2: `folds_waiting` from the guard; the fold settle runs only then |
-| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/settle_folded.sql`, `lease/settle_folded.rs` | CREATE | §2: settle and release a head's folds |
-| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/settle_terminal.sql` | EDIT | §2: a refused head releases its folds |
-| `rustd/crates/daemon/afd_fleet/src/lease/report/mod.rs`, `report/steps.rs`, `afd_api_runner/src/handler/runner/report.rs` | EDIT | §2: the cursor reaches the settle; each settled fold's `event_complete` |
-| `rustd/crates/protocol/af_wire/src/report/mod.rs` | EDIT | §2: `ReportRequest.folded_through_event_id` |
-| `rustd/crates/daemon/afd_fleet/src/lease/history.rs`, `lease/history_tests.rs` | EDIT | §2: a run's folds join its turn |
-| `rustd/crates/daemon/afd_events/src/history/row.rs`, `history/detail.rs`, every statement under `history/statement/` | EDIT | §2, §4: each page and the thread carry `folded_into_event_id`, as each carries `resumes_event_id` |
-| `rustd/crates/runner/afr_agent/src/engine/mod.rs`, `engine/inbox.rs` | EDIT, CREATE | §3: the `Inbox` port, `AgentRun.inbox`, `RunOutput.folded_through_event_id` |
-| `rustd/crates/runner/afr_agent/src/loop/mod.rs`, `loop/inbox.rs`, `loop/shared.rs`, `loop/context/mod.rs`, `loop/finish.rs` | EDIT, CREATE | §3: the boundary read, the compaction mark, the continuing turn, the joined reply |
-| `rustd/crates/runner/afr_agent/src/error/mod.rs`, `error/raise.rs`, `src/testing.rs` | EDIT | §3: the `Inbox` error kind; a scripted inbox double |
-| `rustd/crates/runner/afr_agent/src/loop/inbox_tests.rs`, `turn_tests.rs`, `compaction_tests.rs`, every test building an `AgentRun` (`engine/tests.rs`, `loop/*_tests.rs`, `nested/run_tests.rs`, `af_providers/tests/support/mod.rs`) | CREATE, EDIT | §3: the loop proofs; each literal gains `inbox` |
-| `rustd/crates/runner/afr_supervisor/src/inbox.rs`, `client/folds.rs`, `client/mod.rs`, `client/verb.rs`, `lease_loop/drive.rs`, `report/mod.rs`, `lib.rs`, `test_util.rs` | CREATE, EDIT | §3: `LeaseInbox` over the plane; the report carries the cursor |
-| `rustd/crates/daemon/afd_admission/src/sql/admit_one.sql` (created by M242_001), `sql/select_repeated.sql`, `admit.rs`, `repeat.rs` | EDIT | §4: the disposition facts, fresh and replayed |
-| `rustd/crates/daemon/afd_events/src/steer/mod.rs`, `steer/disposition.rs`, `steer/tests.rs`, `afd_http/src/services/event.rs` | EDIT, CREATE | §4: `Disposition::of`; `Steered` and `FleetSteering` carry it |
-| `rustd/crates/protocol/af_wire/src/event/steer.rs`, `af_wire/src/event/mod.rs` | EDIT | §4: `SteerAccepted`, `EventSummary`, `EventDetail` |
-| `rustd/crates/daemon/afd_api_wire/src/tail/mod.rs`, `tail/tests.rs` | EDIT | §4: `TailFrame::EventFolded`; `TailRow.folded_into_event_id` |
-| `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs`, `message_steer/tests.rs` | EDIT | §4: the 202 carries the disposition |
-| `rustd/crates/daemon/afd_api/src/openapi/stability/mod.rs`, `public/openapi.json` | EDIT | §1, §4: new fields published `beta`; the document regenerated with `--no-banner` |
-| `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `tests/producers_drive.rs`, `docs/metrics.census.tsv` | EDIT | §4, §2: two counter families |
-| `rustd/crates/daemon/afd_fleet/tests/integration_lease_fold.rs`, `integration_lease_fold_settle.rs`, `fleet_suite.rs` | CREATE, EDIT | §1, §2: the store proofs |
-| `rustd/crates/daemon/agentsfleetd/tests/integration_runner_folds.rs`, `integration_steer_disposition.rs`, `daemon_suite.rs` | CREATE, EDIT | §1, §3, §4: the router and real-runner proofs |
-| `cli/src/commands/fleet_steer.ts`, `fleet_steer_events.ts`, `cli/test/fleet-steer-fold.integration.test.ts`, `fleet-steer-tail.unit.test.ts` | EDIT, CREATE | §5 |
-| `ui/packages/app/lib/api/fleets-types.ts`, `lib/api/fleet-steer.ts`, `lib/api/events-types.ts`, `lib/api/events.ts` | EDIT | §6: the 202 and the frame, read through `zod` |
-| `ui/packages/app/lib/streaming/fleet-stream-admitted.ts`, `fleet-stream-frames.ts`, `fleet-stream-row.ts`, `workspace-store.ts` and their tests | EDIT | §6: `applyEventFolded`; the wall ignores the frame as it ignores `event_admitted` |
-| `ui/packages/app/components/domain/useFleetMessageDelivery.ts`, `fleetMessageStatus.ts`, `useFleetThreadEntries.ts` and their tests | EDIT | §6: the label and the thread order |
-| `ui/packages/app/tests/e2e/fleet-fold.spec.ts` | CREATE | §6: the dry-lane render |
-| `rustd/crates/daemon/afd_bench/src/lane/lease/drain/runner.rs`, `drain/turn.rs`, `drain/burst/mod.rs`, `burst/tests.rs`, `src/profile/mod.rs`, `profile/tests.rs`, `src/statements/paths.rs`, `statements/tests.rs`, `make/bench.mk` | EDIT | §7: model-call reads, fold pickups, the `input` path, the knob's help text |
-| `bench/baselines/lease.rig.json`, `bench/baselines/lease-burst.rig.json` | EDIT | §7: median runs |
-| `docs/architecture/push_scheduler.md`, `runner_fleet.md`, `lease_flow.md`, `data_flow.md`, `api_resources.md`, `context_lifecycle.md`, `runner_execution.md` | EDIT | §7: steers fold; compaction holds input; the new columns and baselines |
-| `playbooks/operations/acceptance/baselines/M242_002-<sha>.md` | CREATE | §7: the manual evidence |
-| `~/Projects/docs`: `fleets/running.mdx`, `cli/agentsfleet.mdx`, `changelog.mdx` on `chore/m242-002-folding-changelog` | EDIT | §7: public behaviour; API pages after this Pull Request merges |
-| `ui/packages/app/app/(dashboard)/admin/runners/components/PolicyFields.tsx`, `admin/runners/[runnerId]/components/RunnerIdentityLine.tsx` and their tests | EDIT | a "Durable tasks" on/off control beside Isolation mode and Network egress, defaulting on; the daemon already stores `AssignedPolicy.durable_tasks_enabled` per runner (Indy, Discovery). CHORE(open) confirms off stops durable work reaching that runner |
+| `rustd/crates/harness/guffbolt/**` | CREATE | §1: the loop, its two ports, media input and the loop's failure tests |
+| `README.md` | EDIT | §1: a "Built with" section naming `guffbolt` (Indy, Discovery) |
+| `docs/architecture/*.md` | EDIT | §8: every page read against the code, stale claims fixed, prose within the docs standard's limits, crate trees and other drift-prone inventories removed (Indy, Discovery) |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | §1, §7: the new member; four dependency bumps and nineteen lockfile patches |
+| `rustd/crates/runner/afr_agent/src/loop/{mod,conversation,task,finish,shared,model_turn}.rs`, `src/turn/mod.rs`, `src/nested/child.rs` | EDIT | §2: the runner drives `guffbolt`; `drive_work` and its task branches go |
+| `rustd/crates/runner/afr_agent/src/{engine/mod,lib,testing,scripted}.rs` | EDIT | §3: the `Inbox` port, `RunOutput.folded_through_sequence`, test inboxes |
+| `rustd/crates/runner/afr_agent/src/loop/fold_tests.rs` | CREATE | §3: the root's folds against the real loop |
+| `rustd/crates/runner/afr_agent/tests/providers/**` | MOVE | §7: the provider suite drives the runner's loop, so it lives here |
+| `rustd/crates/runner/afr_supervisor/src/{client/verb,client/lease_verbs/mod,verbs/mod,lease_loop/drive,report/mod,test_util}.rs` | EDIT | §3: the `Folds` verb, the inbox over the daemon, the report's cursor |
+| `rustd/crates/protocol/af_wire/src/fold/**`, `src/{lib,paths}.rs`, `src/report/mod.rs` | CREATE, EDIT | §3, §4: the folds route's types and path; the report's cursor |
+| `rustd/crates/daemon/afd_fleet/src/lease/fold.rs`, `sql/lease/{claim_inputs,settle_folds}.sql`, `sql/lease/mod.rs` | CREATE, EDIT | §3, §4: the claim and the settle |
+| `rustd/crates/daemon/afd_fleet/src/lease/{commit,mod}.rs`, `report/{mod,steps}.rs` | EDIT | §4: the settle inside the report's transaction, announced after it |
+| `rustd/crates/daemon/afd_fleet/tests/integration_lease_folds.rs`, `fleet_suite.rs` | CREATE, EDIT | §3, §4: the claim and settle proofs against live Postgres |
+| `rustd/crates/daemon/afd_http/src/{route/runner,services/leasing/mod,services/leasing/plane}.rs` | EDIT | §3: `RunnerRoute::Folds` and the leasing seam |
+| `rustd/crates/daemon/afd_api_runner/src/handler/runner/folds.rs`, `handler/runner/mod.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §3: the handler, its mount and its annotation |
+| `rustd/crates/daemon/afd_api/tests/{route_meta_total.rs,harness/stubs_runner.rs}`, `src/openapi/stability/mod.rs`, `public/openapi.json` | EDIT | §3: the pinned count, the stub, the `beta` fields, the regenerated document |
+| `rustd/crates/daemon/afd_admission/src/sql/admit_one.sql`, `src/lib.rs`, `src/stage/verdict/mod.rs` | EDIT | §5: the run's kind and the barrier as disposition facts |
+| `rustd/crates/daemon/afd_events/src/steer/disposition.rs` | EDIT | §5: the fold rule and its truth table |
+| `rustd/crates/protocol/af_observability/src/{metrics/declared/fleet,metrics/label/fleet,producers/fleet/mod,producers/fleet/fold}.rs`, `tests/producers_drive.rs`, `docs/metrics.census.tsv`, `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs` | EDIT, CREATE | §5, §4: the disposition and fold counters |
+| `rustd/crates/daemon/afd_bench/src/lane/lease/drain/{runner,burst/mod,burst/pace}.rs` | EDIT | §8: the burst claims folds before each simulated model call and reports `burst_folded` |
+| `cli/src/commands/fleet_steer.ts`, `cli/test/fleet-steer-fold.integration.test.ts` | EDIT | §6: a folded send waits on its own event |
+| `ui/packages/app/lib/streaming/{fleet-stream-registry,fleet-stream-row}.ts`, `fleet-stream-registry-optimistic.test.ts` | EDIT | §6: a folded send's own reply is watched |
+| `rustd/crates/harness/af_providers/src/{observe,testing}/**`, `rustd/crates/runner/afr_telemetry/src/**` | CREATE, EDIT | §7: the provider measurement port, so the harness depends on no runner crate |
+| `rustd/crates/*/*` (every crate), `.ast-grep/rules/**`, `make/{test-unit,test-integration-rustd}.mk`, `scripts/rustd_coverage{,_test}.py` | MOVE, EDIT | §7: five layer folders, the `af_` prefix, and each binary in its layer's `main/` |
+| `rustd/crates/{harness/af_egress,daemon/afd_dragonfly,daemon/afd_db,daemon/afd_fleet,runner/afr_supervisor}` `test_util`/`testing` | CREATE | §7: shared fakes live with the crate whose seam they fake |
+| `.orly/LOCAL.md` | EDIT | §7: the crate layout rule, and new scripts need Indy's sign-off |
 
 ## Applicable Rules
 
-- **`domains/sql.md`** — SQL-SLOT, SQL-FKNAME, SQL-TIMECOL, SQL-READER, SQL-FILE, SQL-ROW, SQL-LOCKCLOCK, TXN, IDMP, SQL-PLAN
+- **`domains/sql.md`** — SQL-SLOT, SQL-READER, SQL-FILE, SQL-ROW, SQL-LOCKCLOCK, TXN, IDMP, SQL-PLAN
 - **`domains/http.md`** — HTTP-NOUN, HTTP-ROUTE, HTTP-GARDE, HTTP-VALID
-- **`domains/http-responses.md`** — HTTP-FIELD, HTTP-NULL, HTTP-STATEEXT
-- **`domains/http-surface.md`** — HTTP-OPENAPI, HTTP-BREAK, HTTP-ENUM, HTTP-STABILITY, HTTP-SURFACE, HTTP-TESTS, JCL
-- **`languages/rust.md`** — ERR-RS, RS-FROM, RS-MAPERR, RS-NEWTYPE
+- **`domains/http-responses.md`** — HTTP-FIELD, HTTP-NULL
+- **`domains/http-surface.md`** — HTTP-OPENAPI, HTTP-BREAK, HTTP-STABILITY, HTTP-SURFACE, HTTP-TESTS
+- **`languages/rust.md`** — ERR-RS, RS-FROM, RS-MAPERR
 - **`languages/typescript.md`** — TS-SCHEMA, TS-BUNTEST
-- **`tests.md`** — TEST-REAL, TEST-INJECT, TEST-RESIDUAL, TEST-ACKLOSS, TEST-KILL, TEST-CONTEND, TEST-LANE
-- **`code.md`** — FLL, CODE-SEAM, OWN, TIM
-- **`domains/logging.md`** — LOG-EVENT, LOG-HOIST, LOG-CODE
+- **`tests.md`** — TEST-REAL, TEST-INJECT, TEST-ACKLOSS, TEST-CONTEND, TEST-LANE
+- **`code.md`** — FLL, CODE-SEAM, OWN
+- **`domains/logging.md`** — LOG-EVENT, LOG-CODE
 - **`domains/architecture.md`** — ARCH-LAND, ARCH-HOMES
-- **`docs.md`** — DOC-02, DOC-03, DOC-14b
+- **`docs.md`** — DOC-02, DOC-03
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| `docs.language` at `orly gate verify` and `orly gate pr` | yes, seven architecture pages and this spec | sentences under 25 words, three per paragraph, no prose em dashes |
-| `make lint-all` (clippy `-D warnings`, `cargo shear`, TypeScript lint, OpenAPI drift) | yes | `public/openapi.json` regenerated from `rustd/` in the commit that changes a wire type |
-| Route inventory and meta totals | yes, one runner route | `INVENTORY` and `route_meta_total.rs` move with the route |
-| Metrics census and producer tests | yes, two families | census rows, declarations and producers in one commit |
-| Coverage gates in `make test-unit-all` | yes, CLI and app modules change | each changed module's test file grows with it |
-| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes: `loop/mod.rs` is 313 lines and `drive` is near 45 | the boundary and the continuing turn live in `loop/inbox.rs`; the fold settle in `settle_folded.rs` |
+| `docs.language` at `orly gate verify` and `orly gate pr` | yes, this spec and the architecture pages | sentences under 25 words, no prose em dashes |
+| `make lint-all` (clippy `-D warnings`, `cargo shear`, TypeScript lint, OpenAPI drift) | yes | `public/openapi.json` regenerated from `rustd/` with `--no-banner` |
+| Route inventory and meta totals | yes, one runner route | `route_meta_total.rs` moves with the route |
+| Coverage gates in `make test-unit-all` | yes, CLI and app modules change | each changed module's test file changes with it |
+| File & Function Length | yes | the loop's order lives in `guffbolt`; `loop/mod.rs` shrank by 107 lines |
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** Codex, `~/Projects/oss/rs/codex/codex-rs/core/src`. `TurnInputQueue` (`session/input_queue.rs:90-92`) is drained by `get_pending_input` with `split_off(0)` (`:400-415`) before each model request (`session/turn.rs:418-433`). Another turn runs while input waits (`tasks/regular.rs:117-120`). Mirror all three. Divergences: the queue is the Postgres ledger, read over a fenced route. Codex defers its drain one sample past an auto-compact (`turn.rs:418-421`); here input folds at the first model call after compaction, as Indy decided. The first model call of a run also drains, because the head's followers waited in the ledger before the run began.
-- **Reference:** `afr_agent/src/loop/conversation.rs` `read_input`. A child's input is scrubbed and joined onto a waiting user message so no provider sees two in a row. The root's inbox joins the same way.
-- **Reference:** the fenced context trio named in read-first item 3: route, store verb, `retrying` client, and `409 superseded` on a moved fence.
-- **Reference:** `schema/1700_fleet_events.sql` `resumes_event_id`, a text link between events with a partial index; `folded_into_event_id` copies its shape.
+- **Reference:** Codex, `~/Projects/oss/rs/codex/codex-rs/core/src`. Pending input is drained before every sampling request (`session/turn.rs:424-446`), another turn runs while input waits (`turn.rs:574`, `tasks/regular.rs:120`), and run kinds are `SessionTask`s over one session (`tasks/mod.rs:180,222`). `guffbolt` mirrors all three: `drive`, the final take, and `Extension`.
+- **Reference:** Codex's `UserInput` (`protocol/src/user_input.rs:16`): text, images and audio. `guffbolt::input` adds video and documents behind one `MediaReader` port.
+- **Reference:** `afd_fleet/src/task/input_receipt/answer.rs:38-132`, a durable fold's event opened and closed with the answer and its reply owed. The plain fold runs the same two event statements.
 
 ## Sections (implementation slices)
 
-### §1 — Three columns and the fenced folds route
+### §1 — One harness every embedder drives
 
-Three slots, numbered from the placeholder range 2710-2740 and renumbered from `origin/main` at CHORE(open), because PR #803 takes 2190-2690. `fleet.admissions.folded_into_admission_id` is a nullable self reference, `ON DELETE SET NULL`, with a partial index on unsettled linked rows; the fold, settle and thread statements read it. `fleet.events.folded_into_event_id` is nullable text with no foreign key, as `resumes_event_id` has none, plus a partial index on `(fleet_id, folded_into_event_id)`; history and the event pages read it. `runner.fleet_slots.compacting_started_at` is a nullable marker the send's disposition reads.
+`rustd/crates/harness/guffbolt` holds one loop's order of turns and nothing else. `drive` takes input before every model call and once more after an answer. The embedder implements `Conversation`: input, the window, the model call and the tools. What a run of one kind adds is an `Extension`; a run of no special kind installs `Plain`. A turn, its tool results and a failure are the embedder's own types, read through `ModelTurn`, so `guffbolt` depends on `tokio` and `tracing` only. A message is text and media parts; a `MediaReader` turns a part into what the model reads, and `Unread` names each part until an embedder reads that kind.
 
-`fold_pending.sql` is one statement. State authority: `runner.fleet_slots.fencing_token`. Guarded transition: it locks the lease and slot rows `FOR SHARE`, reads `clock_timestamp()` once in a `MATERIALIZED` step, and writes only when the lease is active, its own token equals the slot's, and both deadlines lie ahead. The head is the admission the lease runs: unsettled, unparked, producer `steer`. It links unsettled steer rows after the head and before the first unsettled non-steer row, stamping `lease_fence`; a row is eligible when unlinked or linked to this head under a lower fence. It returns those rows, plus rows this fence linked after `after_event_id`, in `sequence` order, at most `FOLD_BATCH_MAX` (32). With `compacting: true` it sets the marker when unset and returns nothing; with `false` it clears a set marker. Commit before release: the statement commits before the 200, then the handler publishes `event_folded` per new link, best effort. Failover: a reclaim's slot upsert waits on the share lock, and afterwards the old token matches nothing, so the old runner links nothing and gets `409 superseded`.
+**Implementation default:** the loop knows no lease, fleet or task.
 
-The route mirrors the context route: `RunnerRoute::Folds` with every HTTP-ROUTE part, a `garde`-validated body with unknown fields refused, `Leasing::fold` on the seam and `NoWork`. The claim's slot upsert clears `compacting_started_at`. **Implementation default:** a route of its own rather than a renewal field, because renewal runs every 5 s and a fold must reach the next model call; M243 moves the read onto the runner stream. **Implementation default:** an `after_event_id` that names no row this fence linked reads as absent, and the runner skips an event id it already holds, so a retry is always safe.
+- **Dimension 1.1** — input that arrives mid-call is read by the next call, never by the one in flight → `a_message_sent_mid_stream_is_read_by_the_next_call_and_never_cuts_this_one` (unit)
+- **Dimension 1.2** — input that arrives while the answer is written runs one more turn, and the reply joins both answers → `a_correction_sent_while_the_answer_is_written_runs_one_more_turn` (unit)
+- **Dimension 1.3** — seeded interleavings never answer over input that arrived first → `no_answer_ignores_input_that_arrived_before_it` (unit, 200 seeds)
+- **Dimension 1.4** — an unread media part reaches the model as a note naming it → `an_embedder_that_reads_no_media_names_each_part_instead_of_dropping_it` (unit)
+- **Dimension 1.5** — `guffbolt` links no model client, tool or secret store → `cargo tree -p guffbolt -e normal --depth 1` lists `tokio` and `tracing` only (by hand)
 
-- **Dimension 1.1** — waiting steers fold in order → Test `test_a_fold_read_takes_waiting_steers_in_order` (integration): head `h` and steers `s1`, `s2` → returns `[s1, s2]`; both rows link to `h` under the live fence.
-- **Dimension 1.2** — a non-steer row stops the fold → Test `test_a_webhook_between_stops_the_fold` (integration): `h`, `s1`, webhook `w`, `s2` → returns `[s1]`; `s2` stays unlinked, so `w` runs before it.
-- **Dimension 1.3** — a moved fence links nothing → Test `test_a_superseded_fold_stamps_nothing` (integration): reclaim to fence 2, then a fence-1 read → `409` with `current_state` `superseded`; no admission row changed.
-- **Dimension 1.4** — a lost reply is retried safely → Test `test_a_retried_fold_read_returns_the_same_rows` (integration): two reads with no `after_event_id` both return `[s1, s2]`; one with `after_event_id = s1` returns `[s2]`; links unchanged.
-- **Dimension 1.5** — compaction holds input → Test `test_compacting_marks_the_slot_and_folds_nothing` (integration): `compacting: true` with `s1` waiting returns `[]` and sets the marker; `compacting: false` returns `[s1]` and clears it.
-- **Dimension 1.6** — a parked head takes no folds → Test `test_a_parked_head_takes_no_folds` (integration): `parked_at` injected on `h` under a live fence → returns `[]`; nothing linked.
-- **Dimension 1.7** — a malformed body is refused → Test `test_a_fold_request_with_an_unknown_field_is_400` (integration, router): a body with `"extra": 1` → 400; no statement runs.
-- **Dimension 1.8** — another runner's lease is hidden → Test `test_a_fold_on_another_runners_lease_is_404` (integration, router): runner B names runner A's lease → 404; A's slot untouched.
-- **Dimension 1.9** — a runner that died compacting leaves no marker → Test `test_a_reclaim_clears_compacting` (integration): marker set, lease lapses, another runner claims → `compacting_started_at` is NULL.
+### §2 — The runner on the harness
 
-### §2 — Each fold settles once, with its run
+`afr_agent`'s `Harness` implements `Conversation`. The durable task is `loop/task.rs`'s `Task` extension, installed only on a run with a prepared task; every other loop installs `Plain`. `drive_work` and its seven task branches are gone.
 
-The report carries `folded_through_event_id`, the last fold the run appended. `meter_lease.sql` returns `folds_waiting`, whether an unsettled row links to the head, from its existing guard, so a chat with no folds sends no extra statement. When it is true, the report's transaction runs `settle_folded.sql` after `mark_terminal`. That statement settles rows linked to the head under this fence at or below the cursor's `sequence`, writing each one's `fleet.events` row; the row takes the head's final status and failure fields, the admission's `created_at` and the head's event id, with no reply, tokens or wall time. In the same statement it clears the link and `lease_fence` on every other row linked to the head, so each runs next in order. `settle_terminal.sql` releases every row linked to a refused head. After commit, the report publishes `event_complete` for each settled fold.
+- **Dimension 2.1** — every existing loop, task and nested suite passes unchanged → `make test-unit-rustd` (S2)
+- **Dimension 2.2** — a nested child reads its parent's input once more after it answers → existing `nested` suites (S2); the change is named in the Pull Request
 
-Authority is `settled_at IS NULL` beside `lease_fence`; everything rides the report's one transaction (TXN); a stale report fails `meter_lease.sql`'s guard and reaches no fold step. History renders a run as one turn: its message, then each folded message in `sequence` order, joined by a blank line as the runner joined them. **Implementation default:** release, never settle, a fold the run did not report consuming, because settling it would mark answered a message no model read.
+### §3 — A live run claims what its fleet receives
 
-- **Dimension 2.1** — a report settles its folds once → Test `test_a_report_settles_its_folds_once` (integration): `s1`, `s2` folded; report through `s2` → three rows settled; `s1` and `s2` each have one event row with `folded_into_event_id = h` and status `processed`.
-- **Dimension 2.2** — an unconsumed fold runs next → Test `test_rows_past_folded_through_are_released` (integration): report through `s1` → `s1` settled; `s2` unlinked and unsettled; zero unsettled rows link to `h`; the next claim leases `s2`; `agentsfleet_lease_folds_total{outcome="released"}` rises by 1.
-- **Dimension 2.3** — contention across a moved fence → Test `test_folds_settle_once_under_contention` (integration): 100 steers released from a barrier while runner A folds; a reclaim gives B fence 2 mid-way; A's report is `Fenced`; after B's report each admission has one `settled_at` and one event row.
-- **Dimension 2.4** — a killed runner's folds re-fold once → Test `test_a_killed_runners_folds_refold_once` (integration): A links `s1`, A's task is dropped, the lease lapses; B's first read returns `s1`; B's report settles `h` and `s1`; A's late report is `Fenced`.
-- **Dimension 2.5** — a refused head releases its folds → Test `test_a_refused_head_releases_its_folds` (integration): `s1` linked under fence 1, the lapsed head redelivered and refused at issue by an injected budget gate → `h` settled, `s1` unlinked and next.
-- **Dimension 2.6** — a predicted fold no runner read runs next → Test `test_an_unread_fold_runs_as_the_next_head` (integration): a send answers `folded`, the run reports without reading → `s1` becomes the head and starts.
-- **Dimension 2.7** — history keeps the conversation → Test `history_joins_folded_messages_into_their_run` (unit): rows `h` ("a", answer "A") and `f` ("b", linked to `h`) → one turn, message `a\n\nb`, answer `A`.
+Before each model call the root claims through `Inbox`; the supervisor's inbox posts `POST /v1/runners/me/leases/{lease_id}/folds`. `claim_inputs.sql` proves the lease, its runner and its fence, then claims every unsettled message after the run's own, oldest first, up to the first parked or task-bound one. A durable task's root claims nothing here; #803 reads its inputs.
 
-### §3 — The runner reads its inbox at each model-call boundary
+- **Dimension 3.1** — every later message folds, whatever sent it, in order → `test_a_live_run_claims_every_later_message_oldest_first` (integration)
+- **Dimension 3.2** — a parked message stops the fold → `test_a_parked_message_stops_the_fold` (integration)
+- **Dimension 3.3** — another runner or a superseded fence claims nothing → `test_another_runner_or_a_superseded_fence_claims_nothing` (integration)
+- **Dimension 3.4** — a repeated claim answers the same messages → `test_a_repeated_claim_answers_the_same_messages` (integration)
+- **Dimension 3.5** — the root joins a claimed message onto its opening or next user turn, and the cursor moves past it → `afr_agent` `fold_tests` (unit, six cases)
 
-`afr_agent` gains an `Inbox` port beside `ContextCheckpoints`, carried on `AgentRun`. Only `Harness::root` holds it. At each boundary the root runs preflight, reads its inbox, and runs preflight again when the read returned input, so folded text sits inside the window the call is sized for. Before `effects::compact` the root marks compacting; that read returns nothing. An answered turn reads once more before ending: input keeps the loop going with the answer kept in the conversation, as Codex continues. The reply joins each answering turn's text with a blank line. `RunOutput` carries the last folded event id, whatever the ending.
+### §4 — Each folded message settles once, with its own reply
 
-A failed read logs `lease_input_read_failed` at `warn` with its `error_code` and the run goes on; the next boundary reads again. `afr_supervisor`'s `LeaseInbox` calls the folds route through `retrying`, and the report carries the cursor. The daemon, runner, command-line interface (CLI) and web app ship together, so no build meets another's older wire (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM). **Implementation default:** the first model call drains too, unlike Codex, because the head's followers waited in the ledger before the run began.
+A succeeded report carries `folded_through_sequence`. Inside the report's transaction `settle_folds.sql` settles the messages this lease claimed through it. Each one's event is opened and closed with the run's answer, and its reply is owed to its own destination unless the run's or an earlier fold's reply already reaches it. A failed or stopped run settles none; each message runs next, in order.
 
-- **Dimension 3.1** — input joins the next call → Test `inbox_input_joins_the_next_model_call` (unit): turn 1 calls a tool; the inbox holds "m2" → turn 2's request ends with the tool result, then user "m2".
-- **Dimension 3.2** — compaction holds input to the first call after → Test `input_during_compaction_folds_at_the_next_call` (unit): "m2" arrives while compaction runs → the summary input lacks "m2"; the first request after carries it; the inbox saw the compacting mark first.
-- **Dimension 3.3** — an answered turn continues while input waits → Test `answered_turn_continues_while_input_waits` (unit): turn 1 answers "A1", the inbox holds "m2", turn 2 answers "A2" → `Answered("A1\n\nA2")` with the cursor at "m2".
-- **Dimension 3.4** — child loops never read the inbox → Test `child_loops_never_read_the_inbox` (unit): a nested child runs while "m2" waits → no child request carries "m2"; the root's next request does.
-- **Dimension 3.5** — a failed read keeps the run going → Test `failed_inbox_read_keeps_the_run_going` (unit): the first read errs, the second returns "m2" → the run completes with "m2" folded and one `lease_input_read_failed` record.
-- **Dimension 3.6** — a stopped run still reports its cursor → Test `stopped_run_reports_its_folded_through` (unit): stop after "m2" folds → `Failed` output with the cursor at "m2".
-- **Dimension 3.7** — two sends become one run through the shipped daemon → Test `test_runner_folds_a_second_send_into_one_run` (e2e, real runner, scripted provider holding turn 1 on a barrier): send 1 answers `started`, send 2 answers `folded`; one lease issued; both events settled; the report carried the cursor.
+- **Dimension 4.1** — what a completed call read settles with the answer and names the run; an unread claim stays → `test_a_succeeded_report_settles_what_the_run_read` (integration)
+- **Dimension 4.2** — a failed run settles no fold → `test_a_failed_report_settles_no_fold` (integration)
 
-### §4 — The send answers its disposition
+### §5 — The send answers its disposition
 
-For steer sends only, M242_001's intake statement reads the fleet's slot by primary key and the earliest unsettled admission before the new row. A pure `Disposition::of` in `afd_events` decides. No earlier unsettled admission and no live lease → `started`. A live lease on an unparked steer head with no compacting marker → `folded`; with the marker → `waiting_compaction`. Anything else → `queued`. "Live" means the slot's `lease_expires_at` lies ahead of the statement clock, so a lapsed marker is ignored. A replay answers from the stored row: `folded` when linked, `started` when it was delivered as a head, otherwise from the same facts read now; `select_repeated.sql` returns them. `folded_into_event_id` accompanies `folded`, `waiting_compaction` and a linked replay.
+`admit_one.sql` returns the run's kind and whether a message waits that this send must not pass. `afd_events::steer::disposition::of` names `started`, `folded` or `queued`: a durable task folds a person's send in its conversation; any other live run folds every send unless a barrier waits ahead.
 
-The 202 keeps `status`, `event_id` and `replayed`. `TailFrame::EventFolded` and `folded_into_event_id` on `EventSummary`, `EventDetail`, `TailRow` and the thread rows are new; the thread's ledger half carries the link for unsettled folds. **Implementation default:** the facts are statement columns and the decision is Rust, so the truth table is a unit test. **Implementation default:** the new fields publish `beta`, because M243 may reshape the disposition.
+- **Dimension 5.1** — the truth table holds → `disposition_follows_the_run_state` (unit)
+- **Dimension 5.2** — a send behind a parked message answers that it waits → `test_a_parked_message_stops_the_fold` (integration)
 
-- **Dimension 4.1** — the truth table holds → Test `disposition_follows_the_run_state` (unit): six fact sets → `started`, `folded`, `waiting_compaction`, `queued` (webhook head), `queued` (parked head), `queued` (no lease, earlier row).
-- **Dimension 4.2** — each disposition through the route → Test `test_a_send_answers_each_disposition` (integration, router): idle fleet, live steer run, compacting run, live webhook run → the four values, with `folded_into_event_id` on the two fold answers; each counts once in `agentsfleet_steer_dispositions_total`.
-- **Dimension 4.3** — a replay answers its fold → Test `test_a_replayed_send_answers_its_fold` (integration): resend the folded send's `operation_id` → `replayed: true`, `folded`, the same link; one admission row.
-- **Dimension 4.4** — a parked head queues the send → Test `test_a_send_behind_a_parked_head_is_queued` (integration): head parked on an open gate → `queued`, no link.
-- **Dimension 4.5** — a lapsed marker is ignored → Test `test_a_compacting_marker_on_a_lapsed_lease_is_ignored` (integration): marker set, lease expired, no other row → `started`.
-- **Dimension 4.6** — the thread shows a fold before settle → Test `test_the_thread_shows_a_folded_message_before_settle` (integration): after a fold, the thread's queued row for `s1` carries `folded_into_event_id = h`.
+### §6 — The CLI and the chat wait for the message's own reply
 
-### §5 — The CLI says where the message went
+A folded send prints `added to the current run` and waits on its own `event_id`, which its run's report answers. The chat labels the row "Added to the current run" and watches its own reply.
 
-`agentsfleet steer` prints one line per disposition. `queued` prints "queued behind the current run". `folded` prints "added to the current run", then renders the run's frames from the `event_folded` frame for its own event onward. `waiting_compaction` prints "waiting: the fleet is compacting its context". The command still ends on `event_complete` for its own event id. A tail that times out falls back to the event poll; a polled event with `folded_into_event_id` renders that run's reply. `--json` adds `disposition` and `folded_into_event_id`, with no new error code (JCL). The six command-line practices hold as today: layers apart, handlers that neither print nor exit, one renderer, structured errors, three test tiers, JSON when stdout is not a terminal.
+- **Dimension 6.1** — a folded send settles on its own event → `a folded send says it joined the run and settles on its own event` (CLI unit)
+- **Dimension 6.2** — a folded row is labelled until its own completion lands → `a folded send is labelled until the run it joined answers it on its own event` (app unit)
 
-- **Dimension 5.1** — a folded send renders its run after the fold → Test `steer renders the run after its fold` (integration, mock API): 202 `folded`; a chunk for `h`, then `event_folded`, then a chunk for `h` → only the second chunk prints; exit 0 on `event_complete`.
-- **Dimension 5.2** — compaction is named → Test `steer says compacting while it waits` (unit): 202 `waiting_compaction` → the compacting line prints once.
-- **Dimension 5.3** — a lost fold frame falls back → Test `steer settles a folded send from the poll when its fold frame is lost` (integration, mock API): no `event_folded`, tail timeout → the poll reads `s1` linked to `h` and renders `h`'s reply.
-- **Dimension 5.4** — CUT — every component ships together (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
-- **Dimension 5.5** — scripts see the disposition → Test `steer --json prints the disposition` (unit): 202 `folded` → the JSON line holds `disposition` and `folded_into_event_id`.
+### §7 — Crates in layers, and the harness free of runner crates
 
-### §6 — The chat shows a folded message in its run
+`rustd/crates/` holds five layer folders: `foundation/`, `protocol/`, `harness/`, `runner/`, `daemon/`. A crate ships with its own layer or a lower one, and `runner/` and `daemon/` never with each other. Shared crates take `af_`. `af_providers` no longer depends on `afr_telemetry`: it declares an `Observer` port the runner's telemetry implements. No test includes another crate's file by `#[path]`; shared fakes live in their owner's `test-util`.
 
-`postSteer` reads `disposition` as its four-value enum and `folded_into_event_id` as optional, through `zod`. A known value labels the pending row: "Added to the current reply", "Waiting: compacting context" or "Queued"; `started` keeps today's row. `applyEventFolded` links a waiting row to its run on the `event_folded` frame. The thread renders a run's folded messages between its message and its reply, so the reply moves below a new fold once. The existing "Context summarizing…" status is unchanged.
+- **Dimension 7.1** — the layer rule holds → `python3 scripts/rustd_layers.py rustd` by hand during this refactor, then deleted (Indy, Discovery)
+- **Dimension 7.2** — every crate still compiles and its suites pass → S1, S2, S3
 
-- **Dimension 6.1** — a folded send is labelled → Test `useFleetMessageDelivery labels a folded send` (unit): 202 `folded` → the row reads "Added to the current reply".
-- **Dimension 6.2** — the frame links a waiting row → Test `applyEventFolded marks the waiting row folded` (unit): a queued row for `s1` and `event_folded(s1 → h)` → the row links to `h`.
-- **Dimension 6.3** — the reply follows its folds → Test `thread entries place folded messages before the run's reply` (unit): `h`, its reply and `s1` linked to `h` → order `h`, `s1`, reply.
-- **Dimension 6.4** — CUT — every component ships together (Indy, M242_001 Discovery, Nov 06, 2026: 10:22 PM).
-- **Dimension 6.5** — the page renders a folded send → Test `fleet-fold.spec.ts renders a folded send` (e2e, dry lane): stubbed 202 `folded` and frames → the label shows and the reply sits below the folded message.
+### §8 — The burst proves it, and the pages say it
 
-### §7 — The burst proves it, and the pages say it
+The burst bench's simulated runner claims folds before each model call, and its result reports `burst_folded`. `runner_fleet.md` and `push_scheduler.md` describe the fold as built.
 
-The drain's simulated runner reads the folds verb through `Plane` every `BENCH_MODEL_CALL_MS` (default 500, at most `BENCH_TURN_MS`). After its turn it keeps making model calls while the last read returned input, then reports with the cursor. Under `BENCH_SHAPE=burst`, `BENCH_RUNNERS` defaults to `BENCH_FLEETS`, and runners read for two model calls after the last append. A fold counts as a pickup; `burst_folded` counts them; `burst_unleased` counts messages neither leased nor folded. `statements/paths.rs` attributes the fold statement to `input`. Each lane runs three times; the median run becomes the baseline, and `push_scheduler.md` §Baselines records all three.
-
-**Implementation default:** one simulated worker per bursting fleet, because a real host runs many leases through its worker pool and the bench measures the scheduler, not host capacity. **Implementation default:** a 500 ms simulated model call, so the fold path, not the model, sets pickup; the open blocker on the 1 s target names the gap. The architecture pages change in the commit that changes the behaviour (ARCH-LAND).
-
-- **Dimension 7.1** — a fold is a pickup → Test `burst_counts_a_fold_as_pickup` (unit): 3 appends, 1 leased, 2 folded → `burst_unleased` 0, `burst_folded` 2.
-- **Dimension 7.2** — the fold statement has a path → Test `fold_statement_counts_as_input` (unit): the fold statement's normalized text → `input`, not `other`.
-- **Dimension 7.3** — the knob refuses nonsense → Test `model_call_longer_than_turn_is_refused` (unit): `BENCH_MODEL_CALL_MS=3000` with `BENCH_TURN_MS=2000` fails naming the cap.
-- **Dimension 7.4** — a fold-free chat costs the report path nothing → Test `make bench-lease PROFILE=rig` (integration): `drain_statements_per_lease_report` equals M241's committed baseline.
-- **Dimension 7.5** — the burst meets the bar → Test `make bench-lease PROFILE=rig BENCH_SHAPE=burst` (integration): R1, R2 and R3 hold on the committed median run.
-- **Dimension 7.6** — folding works on dev → Test `fold_on_dev` (manual): Indy sends two `agentsfleet steer` messages to the dev "Support triage" fleet within one run. The second prints `added to the current run`, and `agentsfleet events <fleet_id> --json` shows its link. Evidence lands in the acceptance baseline file with a chat screenshot.
+- **Dimension 8.1** — the burst's pickup p95 falls under 1 s → R1
+- **Dimension 8.2** — no page says a steer waits for the run → R5
 
 ## Interfaces
 
-- **Send:** `POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages` answers 202 with two new fields. `disposition` is one of `started`, `folded`, `queued`, `waiting_compaction`; `folded_into_event_id` is omitted unless named above. Example: `{"status":"accepted","event_id":"0193b2c4-…-a2","replayed":false,"disposition":"folded","folded_into_event_id":"0193b2c4-…-a1"}`.
-- **Folds:** `POST /v1/runners/me/leases/{lease_id}/folds`, runner bearer. Request `{"fencing_token":7,"after_event_id":"0193…-a1","compacting":false}`; `after_event_id` is optional. 200 `{"messages":[{"event_id":"0193…-a2","message":"also check the queue depth"}]}`, at most 32 messages. 400 malformed; 404 not this runner's lease; 409 `current_state` `superseded`.
-- **Report:** `ReportRequest.folded_through_event_id`, optional; absent settles no fold and releases every link to the head.
-- **Tail:** `{"kind":"event_folded","event_id":"…-a2","folded_into_event_id":"…-a1"}`. It is a new frame kind, so the Pull Request description names it under HTTP-ENUM; both clients skip kinds they do not know (`ui/packages/app/lib/streaming/fleet-stream-frames.ts:70-75`, `cli/src/commands/fleet_steer_events.ts:88-108`).
-- **Events:** `folded_into_event_id`, optional, on `EventSummary`, `EventDetail`, `TailRow` and thread rows. Every new field is `beta` (HTTP-STABILITY). `disposition` is a new field, so no existing enum gains a value.
-- **Runner port:** `afr_agent::Inbox` with `read(after: Option<&str>) -> Result<Vec<Folded>>` and `compacting() -> Result<()>`; `AgentRun.inbox`; `RunOutput.folded_through_event_id`.
-- **Daemon seam:** `Leasing::fold(runner, lease, &Valid<FoldRequest>) -> Result<Folds>`.
-- **Bench:** `BENCH_MODEL_CALL_MS` (default 500, cap `BENCH_TURN_MS`); result keys `burst_folded` and `drain_statements_per_lease_input`.
+- **Send:** `POST /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages` answers 202 with `disposition` (`started`, `folded`, `queued`) and, for a fold, `folded_into_event_id`. Both are `beta`.
+- **Folds:** `POST /v1/runners/me/leases/{lease_id}/folds`, runner bearer. Request `{"fencing_token":7,"after_sequence":0}`. 200 `{"inputs":[{"event_id":"0193…-a2","sequence":9,"text":"also check the queue depth"}]}`, at most 32 inputs. A lease this runner does not hold live answers no input. 400 malformed.
+- **Report:** `ReportRequest.folded_through_sequence`, optional; only a succeeded report settles folds.
+- **Events:** each folded message's event carries `resumes_event_id` naming the run, and the run's answer as its reply.
+- **Harness:** `guffbolt::{drive, Conversation, Extension, Plain, ModelTurn, Ending, Answer, Budget, Prepared, Sampled}` and `guffbolt::input::{Part, Media, MediaKind, MediaReader, Unread, Unreadable, render}`.
+- **Runner port:** `afr_agent::Inbox::claim(after_sequence) -> Vec<Folded>`; `AgentRun.inbox`; `RunOutput.folded_through_sequence`.
+- **Daemon seam:** `Leasing::folds(runner, lease, &FoldRequest) -> Result<FoldResponse>`; `Leases::claim_folds`.
 
 ## Failure Modes
 
 | Mode | Kind | Cause | Handling (response and what the caller observes) | Test |
 |------|------|-------|--------------------------------------------------|------|
-| Fold races a reclaim | failure | the fence moves before the read | 409 `superseded`; nothing linked; renewal stops the old run | `test_a_superseded_fold_stamps_nothing` |
-| Many sends while the fence moves | failure | 100 steers, a fold and a reclaim at once | each admission settles once, by the fence that consumed it | `test_folds_settle_once_under_contention` |
-| Fold reply lost | failure | network after commit | the retry returns the same rows; no second link | `test_a_retried_fold_read_returns_the_same_rows` |
-| Runner killed after folding | failure | crash, `SIGKILL` | the next fence re-folds; the late report is `Fenced` | `test_a_killed_runners_folds_refold_once` |
-| Run ends before consuming a link | failure | final read reply lost, stop | the link is released and runs next | `test_rows_past_folded_through_are_released` |
-| Head refused at issue | failure | budget or gate refusal on redelivery | links released, each runs in order | `test_a_refused_head_releases_its_folds` |
-| Runner never reads | failure | a runner that dies before its first read | the predicted fold starts the next run | `test_an_unread_fold_runs_as_the_next_head` |
-| Runner died compacting | failure | crash mid-summary | a claim clears the marker; a lapsed one is ignored | `test_a_reclaim_clears_compacting` |
-| Fold read fails on the runner | failure | daemon unreachable, or the read times out | `warn`, the run goes on, the next boundary retries | `failed_inbox_read_keeps_the_run_going` |
-| Malformed fold body | failure | unknown field, bad bound | 400 | `test_a_fold_request_with_an_unknown_field_is_400` |
-| Foreign lease named | security | runner B names A's lease | 404; nothing read | `test_a_fold_on_another_runners_lease_is_404` |
-| Replayed send | failure | same `operation_id` again | same event and disposition, `replayed: true`; one row | `test_a_replayed_send_answers_its_fold` |
-| Parked head | failure | an open approval gate | `queued`; no fold | `test_a_parked_head_takes_no_folds` |
-| Non-steer between | failure | a webhook queued after the head | the fold stops before it; order holds | `test_a_webhook_between_stops_the_fold` |
-| Fold frame lost | failure | tail drop | the CLI polls; the chat reads the event detail | `steer settles a folded send from the poll when its fold frame is lost` |
-| Run stopped after folding | failure | lease stop | consumed folds settle with the run's failure | `stopped_run_reports_its_folded_through` |
+| Claim under a moved fence | failure | a reclaim took the slot | no input; renewal stops the old run | `test_another_runner_or_a_superseded_fence_claims_nothing` |
+| Foreign lease named | security | runner B names A's lease | no input; nothing claimed | `test_another_runner_or_a_superseded_fence_claims_nothing` |
+| Claim reply lost | failure | network after commit | the same cursor answers the same messages | `test_a_repeated_claim_answers_the_same_messages` |
+| Claim fails on the runner | failure | daemon unreachable | `fold_claim_failed` logged; the next call claims from the same cursor | `afr_supervisor` inbox (S2) |
+| Parked message ahead | failure | an open approval gate | nothing after it folds; the send answers `queued` | `test_a_parked_message_stops_the_fold` |
+| Run fails after folding | failure | provider failure, stop | no fold settles; each message runs next | `test_a_failed_report_settles_no_fold`, `a_failed_run_reports_no_cursor_so_its_folds_run_again` |
+| Claimed, never read | failure | input claimed after the last call | it stays unsettled and runs next | `test_a_succeeded_report_settles_what_the_run_read` |
+| Two folds, one thread | failure | a Slack thread sends twice | one reply reaches the thread | `test_folds_from_one_thread_owe_it_one_reply` |
+| Message sent mid-call | failure | arrives during streaming | the call in flight is not cut; the next reads it | `a_message_sent_mid_stream_is_read_by_the_next_call_and_never_cuts_this_one` |
 
 ## Invariants
 
-1. A fold writes only under the live fence — `fold_pending.sql` gates every write on its fence step; the counterexample is `test_a_superseded_fold_stamps_nothing`.
-2. A fold settles only with its head, under the fence that linked it, at or below the reported cursor — `settle_folded.sql`'s predicate with `settled_at IS NULL`; `test_folds_settle_once_under_contention`.
-3. No unsettled row stays linked to a settled head — `settle_folded.sql` and `settle_terminal.sql` release every other link in the statement that settles the head; `test_rows_past_folded_through_are_released` counts zero.
-4. Folding keeps `sequence` order — the statement links only the steer prefix before the first unsettled non-steer row; `test_a_webhook_between_stops_the_fold`.
-5. Only the root loop reads the inbox — the field is an `Option` that only `Harness::root` fills, so a child holds nothing to read; `child_loops_never_read_the_inbox`.
-6. One function decides a disposition — `Disposition::of` over the statement's facts; `disposition_follows_the_run_state`.
+1. A claim writes only for the runner holding the lease under its live fence — `claim_inputs.sql`'s `run` step; `test_another_runner_or_a_superseded_fence_claims_nothing`.
+2. A fold settles only with a succeeded report, under the fence that claimed it, at or below the reported cursor — `settle_folds.sql` and `commit.rs`; `test_a_failed_report_settles_no_fold`.
+3. No message passes one sent before it — the claim's barrier step; `test_a_parked_message_stops_the_fold`.
+4. Input reaches a model call at one place — `guffbolt::drive`; `no_answer_ignores_input_that_arrived_before_it`.
+5. The harness depends on no runner or daemon crate — §7's layer rule.
 
 ## Metrics & Observability
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
-| `agentsfleet_steer_dispositions_total` | operator | a steer is answered | `disposition`, four values | no fleet, actor or text | `test_a_send_answers_each_disposition` |
-| `agentsfleet_lease_folds_total` | operator | a fold links or a settle releases | `outcome`: `folded`, `released` | no fleet, actor or text | `test_rows_past_folded_through_are_released` |
-| `lease_input_read_failed` (runner log, `warn`) | operator | an inbox read fails | `error_code`, `lease_id` | no message text | `failed_inbox_read_keeps_the_run_going` |
+| `fold_claim_failed` (runner log, `warn`) | operator | a claim goes unanswered | `error_code`, `after_sequence` | no message text | `afr_supervisor` inbox (S2) |
+| `queue_fold_delivery` report step | operator | a folded reply's queue append fails | the step's own fields | no message text | report steps (S3) |
+| `agentsfleet_steer_dispositions_total` | operator | a steer is answered | `outcome`: `started`, `folded`, `queued` | no fleet, actor or text | `test_every_fleet_producer_runs_its_body` |
+| `agentsfleet_lease_folds_total` | operator | a claim takes messages, or a report answers them | `outcome`: `claimed`, `settled` | no fleet, actor or text | `test_every_fleet_producer_runs_its_body` |
+| `folds_claimed` (`debug`), `folds_settled` (`info`) | operator | a claim answers; a report settles folds | lease, counts, cursor | no message text | S3 |
+| `loop_input_taken`, `loop_ended` (`debug`, `guffbolt`) | operator | input reaches a turn; the loop ends | turn, ending | no message text | S2 |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Burst pickup p95 is under 1 s (§7) | `jq -e '.measurements.burst_pickup_p95_ms < 1000' bench/baselines/lease-burst.rig.json` | `true`, exit 0 | P0 | |
-| R2 | At most 1% of burst messages go unpicked (§7) | `jq -e '.measurements.burst_unleased <= .measurements.burst_accepted / 100' bench/baselines/lease-burst.rig.json` | `true`, exit 0 | P0 | |
-| R3 | Burst messages fold rather than queue (§3, §7) | `jq -e '.measurements.burst_folded > .measurements.burst_accepted / 2' bench/baselines/lease-burst.rig.json` | `true`, exit 0 | P0 | |
-| R4 | The send publishes its disposition (§4) | `jq -e '.components.schemas.SteerAccepted.properties.disposition' public/openapi.json` | exit 0 | P0 | |
-| R5 | The runner's folds route is published (§1) | `jq -e '.paths["/v1/runners/me/leases/{lease_id}/folds"].post' public/openapi.json` | exit 0 | P0 | |
-| R6 | The race and kill proofs sit in the integration lane (§2) | `git grep -n -w -e test_folds_settle_once_under_contention -e test_a_killed_runners_folds_refold_once -- rustd/crates/daemon/afd_fleet/tests` | two hits; S3 runs them | P0 | |
-| R7 | The chat renders a folded send (§6) | `make dry-app` | exit 0 | P1 | |
-| R8 | Two CLI sends fold on dev (§7) | Manual: Dimension 7.6; evidence in `playbooks/operations/acceptance/baselines/M242_002-<sha>.md` | the second send prints `added to the current run`; its event links the first | P1 | |
-| R9 | No page says a steer waits for the run (§7) | `git grep -n -e "The current run finishes first; the steer runs next" -e "It waits behind the fleet's running lease" -- docs/architecture` | no output | P1 | |
+| R1 | Burst pickup p95 is under 1 s (§8) | `jq -e '.measurements.burst_pickup_p95_ms < 1000' bench/baselines/lease-burst.rig.json` | `true`, exit 0 | P0 | |
+| R2 | The send publishes its disposition (§5) | `jq -e '.components.schemas.SteerAccepted.properties.disposition' public/openapi.json` | exit 0 | P0 | |
+| R3 | The folds route is published (§3) | `jq -e '.paths["/v1/runners/me/leases/{lease_id}/folds"].post' public/openapi.json` | exit 0 | P0 | |
+| R4 | The fold proofs sit in the integration lane (§3, §4) | `git grep -n -w -e test_a_succeeded_report_settles_what_the_run_read -e test_a_parked_message_stops_the_fold -- rustd/crates/daemon/afd_fleet/tests` | two hits; S3 runs them | P0 | |
+| R5 | No page says a steer waits for the run (§8) | `git grep -n -e "The current run finishes first; the steer runs next" -- docs/architecture` | no output | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -319,40 +262,39 @@ The drain's simulated runner reads the folds verb through `Plane` every `BENCH_M
 
 ## Dead Code Sweep
 
-N/A: no files or symbols are deleted. `read_input` stays for child loops.
-
-Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+- `afr_agent`'s `drive_work` and its local `Ending`: replaced by `guffbolt::drive` and `guffbolt::Ending`, which `afr_agent` names with the provider's failure (`git grep -n -w drive_work -- rustd` finds nothing). `afr_agent`'s `Turn` stays its own, read through `ModelTurn`.
+- `afr_telemetry::labels::decision`, `afr_telemetry::decision` and the provider labels: moved to `af_providers::observe`.
+- Every per-crate test support file another crate included by `#[path]`: moved into its owner's `test-util`.
 
 ## Out of Scope
 
-- Webhook and Slack same-thread coalescing: out of the programme until a webhook burst is measured (Indy, Discovery); each owes a reply to its own destination.
 - Interrupting a model call for new input: a fold waits for the call in flight, as in Codex (Indy, Discovery).
-- Carrying this read on the runner stream: M243 moves the folds request onto the stream, and nothing pushes input down it.
-- Gate checks at fold time: the head's gates admitted the run's tools at issue, renewal meters money, and a message adds no capability.
-- A fold cap per run: runtime, budget and compaction already bound a run.
+- Carrying the claim on the runner stream: M243 moves it onto the stream.
+- Folding into a durable task beyond #803's person-only claim: a task's inputs carry task authority.
 - Folding into setup-chat (authoring) leases: a different lease kind with its own route.
-- Respawn from a checkpoint after #803: M247. Until then a respawned head re-folds its links from the ledger (Dimension 2.4).
+- Grading test-only dependencies by layer: asked, not answered (punch list).
+- Showing a folded message as folded after a page reload: until its run reports, the thread's admission half reads it as `queued`. Claim state is not in the 16 history statements, so it is a follow-up.
 
 ---
 
 ## Product Clarity (authoring record)
 
-1. **Successful user moment** — In a busy fleet, a person sends a second message while the first reply streams. It is marked "Added to the current reply", and that reply answers it with no second run.
-2. **Preserved user behaviour** — A message to an idle fleet starts a run as today. An `operation_id` retry answers the first send. `status`, `event_id` and `replayed` keep their meaning, and a message behind a webhook, schedule or parked approval waits as today.
+1. **Successful user moment** — In a busy fleet, a person sends a second message while the first reply streams. It is marked "Added to the current run", and the run's reply lands on it too, with no second run.
+2. **Preserved user behaviour** — A message to an idle fleet starts a run as today. An `operation_id` retry answers the first send. A message behind a parked approval waits as today.
 3. **Optimal-way check** — The direct way is Codex's: the run holding the fleet drains pending input before each model call. The gap is one HTTP round trip per model call until M243's stream carries it.
-4. **Rebuild-vs-iterate** — Iterate. The ledger, the fence and the loop stay; folding adds three columns, one runner route and one loop boundary.
-5. **What we build** — The folds route and statement; the root's inbox; the fold settle and release; the disposition on the send; the CLI lines and chat labels; fold pickups in the burst bench.
-6. **What we do NOT build** — A model-call interrupt, because Codex waits too. Webhook and Slack folding, because each owes its own reply. A per-run fold cap, because runtime, budget and compaction bound a run. A daemon-side input queue, because Postgres is the queue.
-7. **Fit with existing features** — Compounds with M242_001's intake statement, compaction progress frames and M247's respawn, which re-folds from the ledger. It must not destabilize the fence: a run still settles exactly once.
-8. **Surface order** — Both at once. The CLI and the chat read the same 202 and frames, and either one alone would show a folded message as stalled.
-9. **Dashboard restraint** — No fold counts or compaction timers on the dashboard. The message's own label is the only new screen element; counts stay operator metrics.
-10. **Confused-user next step** — `agentsfleet events <fleet_id> --json` shows each message's `folded_into_event_id`. The chat label names where it went, and the docs page "Running fleets" explains folding.
+4. **Rebuild-vs-iterate** — Iterate on the ledger and the fence; rebuild the loop's order as `guffbolt`, so every run kind shares it.
+5. **What we build** — `guffbolt`; the runner on it; the claim and the settle; the disposition; the CLI and chat waits; the crate layers.
+6. **What we do NOT build** — A model-call interrupt, because Codex waits too. A daemon-side input queue, because Postgres is the queue. A media reader, because the port and its no-op are what this milestone provisions.
+7. **Fit with existing features** — Compounds with M242_001's intake statement and #803's durable claims. It must not destabilize the fence: a run still settles exactly once.
+8. **Surface order** — Both at once. The CLI and the chat read the same 202, and either one alone would show a folded message as stalled.
+9. **Dashboard restraint** — No fold counts on the dashboard. The message's own label is the only new screen element.
+10. **Confused-user next step** — `agentsfleet events <fleet_id> --json` shows each folded message's own event and the run it names.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** columns and the fenced read first, then the settle that keeps exactly-once, then the runner that calls both, then the send's answer, the two surfaces and the proof. Each Section is testable on the one before it.
-- **Alternatives considered:** a fold flag on renewal, rejected because a 5 s renewal cannot reach the next model call. A daemon-side owner queue per fleet, rejected because Postgres already orders and fences, and Indy asked for the smallest design. Event rows written at fold time, rejected because a released fold would leave a row claiming a run it never joined. Folding Slack same-thread mentions, rejected for now because each mention carries its own reply obligation.
-- **Patch-vs-refactor verdict:** a **patch** because the claim, fence and report paths keep their shape and gain one predicate, one statement and one loop boundary.
+- **Chosen shape:** the harness first, then the runner on it, then the claim, the settle, the send's answer and the two surfaces. Each Section is testable on the one before it.
+- **Alternatives considered:** reusing `pending_inputs.sql`, rejected because it orders only among person messages and needs a guard statement first. Batching the folded events in two new statements, offered to Indy; the build reuses the durable fold's two event statements, one owner of event rows. A compacting marker, dropped on Nov 06 (Discovery).
+- **Patch-vs-refactor verdict:** a **refactor** of the loop's home and the crate layout, and a **patch** on the claim, fence and report paths.
 
 ## Discovery (consult log)
 
@@ -396,6 +338,42 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 07, 2026: 05:40 PM): chose "Full regroup" — "it is time we do this and make crates individual and separate." — context: supersedes the flat `rustd/crates/` layout (`rustd/Cargo.toml:3-9`, his Aug 23, 2026 call).
   > Indy (Nov 07, 2026: 05:52 PM): chose "Five layers + lint", "Rename in this PR" and "Approve path-only edits" — context: `rustd/crates/` becomes `foundation/` → `protocol/` → `harness/` → `runner/` | `daemon/`; a crate depends only on its own folder or a lower one, and `runner/` and `daemon/` never on each other, checked in `make lint-rustd`. Shared crates (foundation, protocol, harness) take the `af_` prefix; daemon-only keep `afd_`, runner-only keep `afr_` (`afd_memory` and `afr_memory` both exist, so one prefix would collide). The path-only edits to `.github/actions/sign-toolbox/action.yml` and `deploy/local/*.sh` are approved.
   - Facts the layout rests on (Nov 07, 2026): `agentsfleetd` links seven runner crates through two edges, `afd_authoring` → `af_providers` and `afd_fleet` → `af_secrets`; the one runtime edge that breaks the layers is `af_providers` → `afr_telemetry`. Fourteen test-only edges cross runner and daemon, led by 14 of `agentsfleetd`'s 88 test files that boot a real runner; those move to a system-test crate.
+- **`guffbolt` as built (Nov 07, 2026):** `rustd/crates/harness/guffbolt` owns one loop's order of turns (`drive`) over two ports. `Conversation` is the embedder's input, window, model call and tools; `afr_agent`'s `Harness` implements it (`loop/conversation.rs`). `Extension` is what a run of one kind adds; the durable task is `loop/task.rs`'s `Task`, installed only on a run with a prepared task, and every other loop installs `Plain`. `drive_work`'s seven task branches are gone (`loop/mod.rs`). Input is taken before every model call and once more after an answer, so a message that arrives while the answer is written runs one more turn and the reply joins both answers.
+  - Behaviour change: a nested child now reads its parent's input once more after it answers, where before a message that arrived during the child's last turn was never read.
+  - Media: `guffbolt::input` types a message as text and image, audio, video or document parts (Codex's `UserInput` has text, image and audio). A `MediaReader` port turns a part into what the model reads; `Unread` names each part to the model until an embedder reads that kind. Indy (Nov 07, 2026: 07:20 PM): "Yes accept images, audio and ...".
+  - Root folding is not wired yet: the root's input is empty until the daemon's fenced claim and the supervisor's inbox land.
+- **Fold scope widened (Nov 07, 2026):**
+  > Indy (Nov 07, 2026: 09:40 PM): chose "Anything" — context: supersedes his Nov 06, 2026: 04:06 PM "Not now" on webhook and Slack coalescing. Every unsettled message after a live plain run's own folds into it, whatever sent it, oldest first; a parked message (its approval gate) and a task-bound one (its durable task's generation) are barriers. Durable-task runs keep #803's person-only claim. Each folded message owes its reply to its own destination, once per destination.
+- **Binary folders and tracing (Nov 07, 2026):**
+  > Indy (Nov 07, 2026: 09:55 PM): "I prefer the bin compile to be named folder as main so `crates/runner/main` crates/daemon/main." — context: the two binaries' folders are `main`; their package names stay `agentsfleetd` and `agentsfleet_runner`, because two packages cannot share a name. The unit shards read each package's name from its manifest, and the coverage rollup names a binary with its layer.
+  > Indy (Nov 07, 2026: 09:58 PM): "I assume we have tracing added for the crates/" — context: `guffbolt` logs `loop_input_taken`, `loop_budget_spent` and `loop_ended` at `debug`; the runner's claim logs its `fold_claim_started`/`_completed`/`_failed` pair; the daemon logs `folds_claimed` at `debug` and `folds_settled` at `info`.
+- **Fold SQL signed off (Nov 07, 2026):**
+  > Indy (Nov 07, 2026: 10:09 PM): chose "Approve all three" — context: `claim_inputs.sql` (new), `settle_folds.sql` (new) and the `admit_one.sql` change, as shown with their reasoning; the four reused event and reply statements unchanged. The lane run he answered "Not yet".
+- **`guffbolt` links no provider crate (Nov 07, 2026):**
+  > Indy (Nov 07, 2026: 10:24 PM): "If guffbolt dependent on the secrets etc.. or they are part of the afr_agent/ crate that uses guffbolt?" — context: it was, through `af_providers`, which reaches `af_secrets`, `af_egress`, `reqwest` and `rig-core` (`cargo tree -p af_providers -e normal -i <crate>`). `guffbolt` is now generic over the embedder's turn, tool results and failure; `afr_agent` owns `Turn` again and implements `ModelTurn`.
+  > Indy (Nov 07, 2026: 10:35 PM): "what is async-trait?" — context: `guffbolt`'s three ports now return `impl Future + Send`, so `drive` is generic over its extension and `guffbolt` depends on `tokio` and `tracing` only (`cargo tree -p guffbolt -e normal --depth 1`). The rest of `rustd/` keeps `async-trait` where it needs `dyn`.
+  > Indy (Nov 07, 2026: 10:36 PM): "also can you add a README.md in guffbolt so we can push that as a crate later, and update agentsfleet README.md with  guffbolt harness (built with) keepti it simple and short" — context: `rustd/crates/harness/guffbolt/README.md` is the crate's page and its `Cargo.toml` names it; the root `README.md` gains a "Built with" section.
+- **Architecture pages polished (Nov 07, 2026):**
+  > Indy (Nov 07, 2026: 10:44 PM): "Just review all the docs/architechture/*.md and make sure they are coherent, there is no stale content, the paragraphs are short with human understandable lines and not long. Tou can pick the count. Ensure its polished, preferably dont add any crates/ folder structure in runner_execution.md or other places it is bound to drift. Similary see what driful items or content will  be there and polish them" — context: the count is the docs standard's own, 25 words a sentence and three sentences a paragraph (DOC-02, DOC-03); the crate tree in `runner_execution.md` §Crates goes, and no page lists crates or files by folder.
+- **Lint set made exhaustive where it can be (Nov 07, 2026):**
+  > Indy: "okay update the lint and clippy to be exhaustive. first", then chose "Tiers 1+2, tests exempt (Recommended)" — context: of 241 stable lints beyond the table, 123 fired (125,752 findings, tests included) and about 30 contradict the table or each other. `rustd/Cargo.toml` now denies 144 more: every lint that found nothing, plus 56 bug-catching ones (1,413 findings in shipping code). Tests keep `unwrap`, `expect` and `panic` through their `#[expect]` blocks; `linker_info` stays off; `unused_crate_dependencies` is a per-crate attribute.
+- **Code references in the architecture pages stay (Nov 07, 2026):**
+  > Indy chose "Keep verified references", then: "let the docs has unverified code refs, i will do a pass after some milestones are done." — context: the pages keep the code names the polish pass verified, and the claims it could not verify stay as written, listed in the closing report for his later pass.
+  > Indy: "if you need to do this, i prefer we comment that clippy or lint and turn it on later to fix it in a clean way" and "So stop this expect crap" — context: no new `#[expect]` in shipping code or tests. A lint that cannot reach zero by fixing code stays commented out in `rustd/Cargo.toml`, marked to turn on later.
+- **`Result::unwrap_or` in shipping code, left for Indy (Nov 08, 2026):**
+  > Indy: "just ignore for now, indy will eyeball and decide, give indy few sample rs filenames to check" — context: shipping code has 179 `try_from(..).unwrap_or(..)`, 112 on `origin/main` and 67 added by this branch's lint fixes; nothing changes until he decides.
+- **Merge delegated to Aiwa (Nov 08, 2026):**
+  > Indy: "Okay, i am off to bed, produce a report of your merge. When PR's CI job is green, and greptile is reviewed fixed and resolved and green merge the PR." — context: supersedes his Nov 06, 2026: 11:41 PM "Indy will eyeball the PR and merge" for a PR that deletes existing SQL; he knew the PR deletes seven statements and asked for the report instead. The merge waits for green CI and every Greptile thread resolved; nothing else is waived.
+  > Indy: "Does the new packages leverage the error_shell! error approach or a common form of error like guffbolt harness?" — context: `guffbolt` owns no error type and takes no hull; `docs/RUST_ERROR_STANDARD.md` now has its row.
+  > Indy (Nov 08, 2026): "If that has merged first ... then i request you to take a pull from main, and push again ... I expect you to ensure the PR sent via orly-ship is babysit - CI jobs to green, greptile feedback are replied and resolved. And when all are green, merge the PR." — context: another agent has a UI Pull Request in orly-ship; if it lands first, this branch takes `origin/main`, pushes again, and the same babysit and merge rule holds.
+- **Punch list (Nov 07, 2026), answered in the closing report:**
+  > Indy (Nov 07, 2026: 07:00 PM): "I need to know the code you have reduced when you complete this refactor and writing harness/guffbolt" — owed: lines before and after, per crate, once the regroup and `guffbolt` land.
+  > Indy (Nov 07, 2026: 07:00 PM): "I need to know if you we need to use both rusttls and aws_lw_sys crates? if so why how can we avoid using both." — owed: why `rustls` and `aws-lc-sys` are both linked, and the path to drop `aws-lc-sys`: every crate that pulls it publishes a `ring` option (sqlx-core `_tls-rustls-ring-*`, object_store `ring`, rcgen `ring`, lettre `ring`, rustls, rustls-webpki, hyper-rustls and tokio-rustls `ring`, reqwest `rustls-no-provider`, jsonwebtoken `rust_crypto`), and `afr_sandbox` calls `aws-lc-rs` directly.
+  > Indy (Nov 07, 2026: 06:20 PM): "when you are ready may be inform Indy to signoff /approve to run the ceremonies (lint, unit tests and so on)" — owed: the sign-off ask before `make lint-all`, `make test-unit-all` and `make test-integration-rustd` run once, at the end.
+  - Open, re-ask in the closing report: whether the layer lint also grades test-only dependencies, which would move `agentsfleetd`'s `daemon_suite` into a `system/` crate (the question timed out Nov 07, 2026; the lint grades shipping dependencies and `#[path]` until he answers).
+  - Unverified until a Linux lane runs: the kernel lane's edits (`afr_sandbox/examples/kernel_lane`), which compile only on Linux.
+  > Indy (Nov 07, 2026: 07:02 PM): "I want the temporary scripts /Users/kishore/Projects/agentsfleet-m240-lease/scripts/rustd_layers.py to be nuked after you are done" — context: the layer check runs by hand during this refactor and is deleted with its test at the end; `make lint-rustd` does not run it, so the layer rule is enforced by review alone.
+  > Indy (Nov 07, 2026: 07:04 PM): "if there are scripts you add ensure you get indy's signoff" — owed in the closing report: sign-off on `scripts/rustd_layers.py` and `scripts/rustd_layers_test.py` (added, run by hand, deleted at the end) and on `scripts/rustd_coverage.py` with its test (changed in `e0d73beda` so the coverage rollup names a crate past its layer folder).
 
   Approved disposition SQL (added to `admit_one.sql` after `already_sent`; `$17` binds `LEASE_STATUS_ACTIVE`). Built with one change, listed in the final report for Indy's morning review: the `run_live` column is dropped, and a live run is read as `run_event_id IS NOT NULL`. The two are the same fact, because `live_run` returns a row only with its event, and the change keeps the answer row under clippy's limit on bools per struct:
 
@@ -438,5 +416,5 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   - Answered, SQL-TIMEOUT: the runtime bounds are the API login's `ALTER ROLE` values (`afd_db::login`), with no in-code override and no boot check.
   > Indy (Nov 07, 2026: 04:35 PM): "Cut this bootcheck crap. I dont need additional verification. This is stupid." — context: the proposed boot check that `SHOW lock_timeout` / `statement_timeout` match `afd_db::login` is not built.
 - **Model reviews** — skipped on Indy's call: chose "Skip it (Recommended)" (Nov 06, 2026: 11:41 PM), as for M242_001.
-- **Open blockers** — none; Indy answered both on Nov 06 (above).
+- **Open blockers (Nov 08, 2026):** one. A read-only review of the branch found that a gate approval's continuation (`Producer::GateContinuation`, event type `continuation`) is foldable under the signed-off `claim_inputs.sql`: a live run that is not a durable task can claim it as chat text, and that run's succeeded report settles it as processed, so the approved action never resumes. Only a change to `claim_inputs.sql` and `admit_one.sql` fixes it, and Indy's gate allows no product SQL without his line-by-line approval. The patch is written, not applied, in the PR description and the closing report. The PR is opened and babysat to green, and **the merge waits for Indy's approval of that patch**, which supersedes his "merge when green" for this PR only. Indy answered the two Nov 06 blockers (above).
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

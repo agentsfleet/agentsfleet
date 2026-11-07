@@ -72,6 +72,9 @@ facts.
   `&garde::Valid<T>`, so it cannot run on unproved input.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
+- A new script (`scripts/**`, `deploy/**/*.sh`, a `make` recipe's helper) needs
+  Indy's sign-off before it is committed; a one-off helper lives outside the
+  repository and is deleted when the work ends.
 - Test fleets use purpose-driven display names, such as `Support triage` or
   `Pull request review`. Keep run identifiers, timestamps, and cleanup keys out
   of names shown in the sidebar; track fixture ownership by fleet identifier.
@@ -85,7 +88,9 @@ repository:
   `foundation/`, `protocol/`, `harness/`, `runner/` or `daemon/`. It depends
   on its own layer or a lower one, and `runner/` and `daemon/` never on each
   other (`rustd/Cargo.toml`). Shared crates are `af_*`, daemon-only `afd_*`,
-  runner-only `afr_*`.
+  runner-only `afr_*`. A layer's binary sits in `main/` (`daemon/main` is
+  `agentsfleetd`, `runner/main` is `agentsfleet_runner`); every other folder
+  is its crate's name.
 - **SQL:** schema slots are `schema/*.sql`; statement files are
   `rustd/crates/**/src/**/*.sql`; the migration list is
   `rustd/crates/daemon/afd_db/src/migration.rs`; a foreign-key violation is read with

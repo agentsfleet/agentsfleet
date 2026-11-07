@@ -110,10 +110,10 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/model_call.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §4: the runner-plane route |
 | `rustd/crates/runner/afr_supervisor/src/model_proxy/` (`mod.rs`, `tests.rs`), `lib.rs`, `client/`, `config/mod.rs`, `config/tests.rs`, `halt/mod.rs` | CREATE, EDIT | §4, §5: proxied provider; token file and reload |
 | `rustd/crates/harness/af_providers/src/connect/mod.rs`, `turn.rs`; `afr_sandbox/examples/kernel_lane/supervisor_plane.rs` | EDIT | §4: read `ModelAccess::Direct` only |
-| `rustd/crates/runner/agentsfleet_runner/src/main.rs`, `af_core/src/signal.rs`, `agentsfleet_runner/tests/fake_daemon.rs`, `tests/fixtures/runner/help.txt` | EDIT | §5: SIGHUP reload and its tests; help lists the file variable |
+| `rustd/crates/runner/main/src/main.rs`, `af_core/src/signal.rs`, `agentsfleet_runner/tests/fake_daemon.rs`, `tests/fixtures/runner/help.txt` | EDIT | §5: SIGHUP reload and its tests; help lists the file variable |
 | The M243 gateway's stream re-check (path fixed when M243 merges) | EDIT | §5: re-check by the digest that opened the connection |
 | `rustd/crates/daemon/afd_fleet/tests/integration_runner_owner.rs`, `integration_runner_owner/`; `afd_authoring/tests/` placement module | CREATE | §3: matrix, claim, issue, hold, authoring |
-| `rustd/crates/daemon/agentsfleetd/tests/integration_rust_runner_tenant.rs`, `daemon_suite.rs`, `tests/support/fake_model.rs` | CREATE, EDIT | §4: end-to-end run; the fake records the auth header it received |
+| `rustd/crates/daemon/main/tests/integration_rust_runner_tenant.rs`, `daemon_suite.rs`, `tests/support/fake_model.rs` | CREATE, EDIT | §4: end-to-end run; the fake records the auth header it received |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3, §4: two operator families |
 | `cli/src/commands/runner.ts`, `cli/src/program/tree/runner.command.ts`, `root.command.ts`, `flags.ts`, `cli/test/runner.integration.test.ts` | CREATE, EDIT | §6: the `runner` command group |
 | `ui/packages/app/app/(dashboard)/settings/runners/` (`page.tsx`, `actions.ts`, `loading.tsx`, `components/`), `settings/page.tsx` | CREATE, EDIT | §6: Settings → Runners |
