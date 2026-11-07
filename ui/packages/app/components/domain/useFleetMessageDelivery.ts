@@ -208,7 +208,7 @@ function useAcknowledgement({ reconcileOptimistic, writers }: DeliveryCtx) {
   return useCallback(
     (operationId: string, tempId: string, accepted: SteerAccepted): boolean => {
       writers.settle(operationId);
-      const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_event_id ?? null : null;
+      const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_event_id : null;
       reconcileOptimistic(tempId, accepted.event_id, accepted.replayed, foldedInto);
       return true;
     },

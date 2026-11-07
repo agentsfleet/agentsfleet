@@ -129,7 +129,7 @@ describe("useMessageDelivery", () => {
     expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, true, null);
   });
 
-  it("hands a folded 202 to the reconcile with the run it joined (M242_002)", async () => {
+  it("hands a folded 202 to the reconcile with the run it joined", async () => {
     postSteer.mockResolvedValue(FOLDED);
     const { ctx, hook } = delivery();
     await act(() => hook.result.current.onNew(message(DEPLOY)));
@@ -137,7 +137,7 @@ describe("useMessageDelivery", () => {
   });
 
   it("a folded 202 that names no run reconciles as an ordinary send", async () => {
-    postSteer.mockResolvedValue({ ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false, disposition: "folded" } });
+    postSteer.mockResolvedValue({ ok: true, data: { status: "accepted", event_id: EVENT_ID, replayed: false, disposition: "folded", folded_into_event_id: null } });
     const { ctx, hook } = delivery();
     await act(() => hook.result.current.onNew(message(DEPLOY)));
     expect(ctx.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, false, null);

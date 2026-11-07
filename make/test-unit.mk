@@ -15,14 +15,15 @@
 #                `afd_bench` included
 #
 # Shards by layer folder rather than a list, so a crate added under `crates/`
-# joins its shard with no edit here (`rustd/Cargo.toml`). `daemon-libs` is the
+# joins its shard with no edit here (`rustd/Cargo.toml`). Each crate is named
+# by its manifest, not its folder: a layer's binary sits in `main/`. `daemon-libs` is the
 # rest of the workspace, so a crate no shard names still runs. `afd_bench` is
 # in `daemon-libs`: the coverage lane drops its LINES as a measuring
 # instrument, but its tests run here, as they always have.
 #
 # Every selection runs through `_rust_lane`, whose zero-tests guard fails a
 # shard that selects nothing.
-_rustd_layer = $(sort $(notdir $(wildcard $(addprefix $(RUSTD_DIR)/crates/,$(addsuffix /*,$(1))))))
+_rustd_layer = $(sort $(foreach manifest,$(wildcard $(addprefix $(RUSTD_DIR)/crates/,$(addsuffix /*/Cargo.toml,$(1)))),$(shell awk -F'"' '/^name = /{print $$2; exit}' $(manifest))))
 _RUSTD_UNIT_RUNNER = $(call _rustd_layer,runner harness)
 _RUSTD_UNIT_DAEMON = agentsfleetd
 _RUSTD_UNIT_DAEMON_LIBS = $(filter-out $(_RUSTD_UNIT_RUNNER) $(_RUSTD_UNIT_DAEMON),$(call _rustd_layer,*))

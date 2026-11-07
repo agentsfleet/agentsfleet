@@ -23,12 +23,19 @@ const NO_ANSWER = "The steer got no answer";
 const NO_RECEIPT = "The steer was answered without a receipt";
 const SIGNED_OUT = "Not authenticated";
 
+// The dashboard and the daemon deploy separately, and a local `next dev` talks
+// to whatever daemon the dev API runs. One that predates `disposition` answers
+// a 202 without it, and every such send started a run of its own, so an absent
+// field reads as `started` instead of discarding a receipt that proves the
+// daemon holds the message.
 const AcceptedSchema = z.object({
   status: z.string(),
   event_id: z.string(),
   replayed: z.boolean(),
-  disposition: z.enum([STEER_DISPOSITION.STARTED, STEER_DISPOSITION.FOLDED, STEER_DISPOSITION.QUEUED]),
-  folded_into_event_id: z.string().optional(),
+  disposition: z
+    .enum([STEER_DISPOSITION.STARTED, STEER_DISPOSITION.FOLDED, STEER_DISPOSITION.QUEUED])
+    .default(STEER_DISPOSITION.STARTED),
+  folded_into_event_id: z.string().nullish().transform((runEventId) => runEventId ?? null),
 });
 // The route answers a refusal as the daemon's problem body does.
 const RefusalSchema = z.object({ detail: z.string().optional(), error_code: z.string().optional() });

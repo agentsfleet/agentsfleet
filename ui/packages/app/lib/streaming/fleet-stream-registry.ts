@@ -188,11 +188,13 @@ reconcileOptimistic(
   const entry = this.#entries.get(fleetId);
   if (!entry) return false;
   if (foldedInto !== null) {
-    // The live run took it: no reply will ever arrive under its own id, so
-    // nothing is watched; the run's row keeps streaming the answer.
+    // The live run took it at its next model call, and that run's report
+    // answers it under its own id: the row says it joined the run until then,
+    // and its reply is watched like any other send's.
     setEvents(entry, (prev) => foldRow(prev, tempId, realEventId));
+    watchReply(entry, fleetId, realEventId, entry.apply, entry.isCurrent, false);
     landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
-    return true;
+    return false;
   }
   const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realEventId);
   setEvents(entry, () => events);

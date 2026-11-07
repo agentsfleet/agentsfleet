@@ -72,7 +72,7 @@ export function reconcileRows(
 }
 
 /** A send the live run took: named by the server, settled with no reply of its
- * own, and labelled so the operator reads where it went (M242_002). */
+ * own, and labelled so the operator reads where it went. */
 export function foldRow(prev: FleetEvent[], tempId: string, realEventId: string): FleetEvent[] {
   return prev.map((event) =>
     event.id === tempId

@@ -8,7 +8,7 @@ primary_region = "iad"
   app = "/usr/local/bin/agentsfleetd serve"
 
 # HTTP concurrency. agentsfleetd serves on a multi-threaded tokio runtime
-# (`Runtime::new` in rustd/crates/daemon/agentsfleetd/src/main.rs), which starts one
+# (`Runtime::new` in rustd/crates/daemon/main/src/main.rs), which starts one
 # worker thread per core: four on this machine size. A request and an event
 # stream are each a task, so neither pins a thread while it waits on Postgres,
 # Dragonfly or the client, and the runner lease is a single non-blocking poll
@@ -19,7 +19,7 @@ primary_region = "iad"
 # Backpressure:
 #   In-flight request ceiling — 256 per instance, `DEFAULT_MAX_IN_FLIGHT` in
 #                      rustd/crates/daemon/afd_http/src/admission/mod.rs, installed at
-#                      boot by rustd/crates/daemon/agentsfleetd/src/serve/mod.rs. It is a
+#                      boot by rustd/crates/daemon/main/src/serve/mod.rs. It is a
 #                      constant: no environment knob sets it. API-class routes
 #                      only: /healthz and /readyz are ops-class and are NEVER
 #                      shed (an overload must not blind the operators), and the

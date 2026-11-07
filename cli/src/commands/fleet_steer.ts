@@ -29,6 +29,13 @@ import {
 import { exitToCliError, renderCliError } from "../lib/cli-error-render.ts";
 import { parkedGateHint } from "./approvals_pending.ts";
 import {
+  DISPOSITION_FOLDED,
+  DISPOSITION_QUEUED,
+  DISPOSITION_STARTED,
+  decodeMessagesResponse,
+  type MessagesResponse,
+} from "./steer-placement.ts";
+import {
   openEventTail,
   pollEventTerminal,
   SSE_FALLBACK_TIMEOUT_SECONDS,
@@ -42,10 +49,8 @@ import {
 const TAG_FIELD = "_tag";
 
 const STEER_OUTCOME = "Steer outcome" as const;
-// Where the daemon placed the message (M242_002). `started` prints nothing:
-// the run that follows is the message's own.
-const DISPOSITION_FOLDED = "folded" as const;
-const DISPOSITION_QUEUED = "queued" as const;
+// Where the daemon placed the message. `started` prints nothing: the run that
+// follows is the message's own.
 const LINE_FOLDED = "added to the current run" as const;
 const LINE_QUEUED = "queued behind the current run" as const;
 const MESSAGE_PLACEHOLDER = "<message>" as const;
@@ -75,18 +80,17 @@ const failMissingEventId = (): Effect.Effect<never, CliError> =>
     }),
   );
 
-interface MessagesResponse {
-  readonly event_id?: string;
-  readonly disposition?: string;
-  readonly folded_into_event_id?: string;
-}
+// The daemon accepted the message but its answer is not one this CLI reads,
+// so the message may still run and the guidance is the same as for a stall.
+const failUnreadableResponse = (): CliError =>
+  new ServerError({
+    detail: "messages response did not match the supported API shape",
+    suggestion: SUGGESTION_INSPECT_EVENTS,
+    code: "BAD_RESPONSE",
+    status: 502,
+    requestId: null,
+  });
 
-// A folded message has no run of its own: the live run takes it, so the CLI
-// follows that run's event to the reply.
-const followedEvent = (post: MessagesResponse, own: string): string =>
-  post.disposition === DISPOSITION_FOLDED && post.folded_into_event_id
-    ? post.folded_into_event_id
-    : own;
 type StreamGetFn = typeof defaultStreamGet;
 export interface SteerDeps {
   readonly streamGet?: StreamGetFn;
@@ -136,7 +140,7 @@ const steerTurnWithTail = (
       // Cancelled before the send — the fleet must not execute the message.
       return yield* failSteerInterrupted();
     }
-    const post = yield* http.request<MessagesResponse>({
+    const answer = yield* http.request<unknown>({
       path: wsFleetMessagesPath(wsId, fleetId),
       method: "POST",
       body: { message },
@@ -145,6 +149,7 @@ const steerTurnWithTail = (
     }).pipe(
       Effect.catch((error) => signal?.aborted ? failSteerInterrupted() : Effect.fail(error)),
     );
+    const post = yield* decodeMessagesResponse(answer).pipe(Effect.mapError(failUnreadableResponse));
     if (!post.event_id) {
       return yield* failMissingEventId();
     }
@@ -153,16 +158,18 @@ const steerTurnWithTail = (
     }
     const output = yield* Output;
     if (output.format === OUTPUT_FORMAT.text) {
-      if (post.disposition === DISPOSITION_FOLDED) yield* output.info(LINE_FOLDED);
-      if (post.disposition === DISPOSITION_QUEUED) yield* output.info(LINE_QUEUED);
+      const placement = post.disposition ?? DISPOSITION_STARTED;
+      if (placement === DISPOSITION_FOLDED) yield* output.info(LINE_FOLDED);
+      if (placement === DISPOSITION_QUEUED) yield* output.info(LINE_QUEUED);
     }
-    const followed = followedEvent(post, post.event_id);
-    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, followed, token, signal);
+    // A folded message keeps its own event: the run it joined answers it
+    // there when that run reports, so the CLI waits on the message's own id.
+    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, post.event_id, token, signal);
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
-    yield* readSteeredWork(wsId, fleetId, followed, token, signal);
-    yield* renderOutcome(outcome, followed, fleetId, wsId, token, signal, post);
+    yield* readSteeredWork(wsId, fleetId, post.event_id, token, signal);
+    yield* renderOutcome(outcome, post.event_id, fleetId, wsId, token, post, signal);
   });
 
 // A tail that never became ready may have missed the event's opening frames;
@@ -197,8 +204,8 @@ const renderOutcome = (
   fleetId: string,
   wsId: string,
   token: Redacted.Redacted<string>,
+  post: MessagesResponse,
   signal?: AbortSignal,
-  post: MessagesResponse = {},
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const output = yield* Output;

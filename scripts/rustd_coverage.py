@@ -47,6 +47,8 @@ ROLLUP_ROWS = 12
 CRATES_SEGMENT = "/crates/"
 # Every crate sits one folder below `crates/`, in its layer (`rustd/Cargo.toml`).
 LAYERS = frozenset({"foundation", "protocol", "harness", "runner", "daemon"})
+# The folder a layer's binary sits in.
+BINARY = "main"
 WORKSPACE_ROOT = "(workspace root)"
 REVISION_SUFFIX = ".rev"
 NOT_TAKEN = "-"
@@ -162,11 +164,16 @@ def totals(merged):
 
 
 def crate_of(path):
-    """The crate a source path belongs to, past its layer folder."""
+    """The crate a source path belongs to, past its layer folder.
+
+    A layer's binary sits in `main/`, so it is named with its layer.
+    """
     if CRATES_SEGMENT not in path:
         return WORKSPACE_ROOT
     parts = path.split(CRATES_SEGMENT, 1)[1].split("/")
-    return parts[1] if parts[0] in LAYERS and len(parts) > 1 else parts[0]
+    if parts[0] not in LAYERS or len(parts) < 2:
+        return parts[0]
+    return f"{parts[0]}/{parts[1]}" if parts[1] == BINARY else parts[1]
 
 
 def missed_by_crate(merged):

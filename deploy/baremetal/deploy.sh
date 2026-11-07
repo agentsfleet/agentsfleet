@@ -97,7 +97,7 @@ readonly HEALTH_DELAY_SECONDS=2
 readonly HEALTH_STABLE_SECONDS=30
 
 # `agentsfleet-runner --version` prints `agentsfleet-runner <version>`: clap's
-# `version` flag over the workspace version (`rustd/crates/runner/agentsfleet_runner/src/main.rs`).
+# `version` flag over the workspace version (`rustd/crates/runner/main/src/main.rs`).
 # The version is whitespace-delimited field 2.
 readonly VERSION_FIELD_INDEX=2
 

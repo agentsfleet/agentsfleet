@@ -10,6 +10,8 @@ const OPERATION_ID = "0190a3b4-0000-7000-8000-000000000001";
 // pin test: literal is the contract — the route the browser POSTs to, ids encoded.
 const ROUTE = "/live/v1/workspaces/ws%2F1/fleets/fleet%201/messages";
 const ACCEPTED = { status: "accepted", event_id: "1790573387481-566", replayed: false, disposition: "started" };
+// What the parse hands back for a send that joined no run.
+const PARSED = { ...ACCEPTED, folded_into_event_id: null };
 const HTTP_ACCEPTED = 202;
 const HTTP_CONFLICT = 409;
 const HTTP_BAD_GATEWAY = 502;
@@ -38,7 +40,7 @@ describe("postSteer", () => {
   it("POSTs one JSON steer to the same-origin route under the caller's signal, and reads the 202", async () => {
     fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, ACCEPTED));
     const signal = new AbortController().signal;
-    expect(await steer(signal)).toEqual({ ok: true, data: ACCEPTED });
+    expect(await steer(signal)).toEqual({ ok: true, data: PARSED });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(ROUTE);
     expect(init.method).toBe("POST");
@@ -74,13 +76,29 @@ describe("postSteer", () => {
     expect(result).not.toHaveProperty("status");
   });
 
-  it("reads where a folded send went, and the run it joined (M242_002)", async () => {
+  it("reads where a folded send went, and the run it joined", async () => {
     const folded = { ...ACCEPTED, disposition: "folded", folded_into_event_id: "0190d5c2-7e1a-7000-8000-00000000e00f" };
     fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, folded));
     expect(await steer()).toEqual({ ok: true, data: folded });
   });
 
-  it("reads a disposition this app does not know as no answer: every part ships together", async () => {
+  // The dashboard can deploy before the daemon, and `next dev` runs against
+  // whichever daemon the dev API serves: a 202 that predates `disposition`
+  // still proves the daemon holds the message, and it started its own run.
+  it("reads a 202 without a disposition as a send that started", async () => {
+    const { disposition: _absent, ...older } = ACCEPTED;
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, older));
+    expect(await steer()).toEqual({ ok: true, data: PARSED });
+  });
+
+  it("reads a folded send's absent or null run as no run", async () => {
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { ...ACCEPTED, disposition: "folded" }));
+    expect(await steer()).toEqual({ ok: true, data: { ...PARSED, disposition: "folded" } });
+    fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { ...ACCEPTED, folded_into_event_id: null }));
+    expect(await steer()).toEqual({ ok: true, data: PARSED });
+  });
+
+  it("reads a disposition this app does not know as no answer", async () => {
     fetchMock.mockResolvedValueOnce(answer(HTTP_ACCEPTED, { ...ACCEPTED, disposition: "later" }));
     expect((await steer()).ok).toBe(false);
   });

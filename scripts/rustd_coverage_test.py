@@ -73,6 +73,13 @@ class FileGrades(unittest.TestCase):
         report = merged({"/w/rustd/crates/daemon/afd_db/src/lib.rs": {1: 0, 2: 0}, "/w/build.rs": {1: 0}})
         self.assertEqual(judge.missed_by_crate(report), [("afd_db", 2), ("(workspace root)", 1)])
 
+    def test_each_layers_binary_rolls_up_under_its_own_name(self):
+        report = merged({
+            "/w/rustd/crates/daemon/main/src/cli.rs": {1: 0, 2: 0},
+            "/w/rustd/crates/runner/main/src/main.rs": {1: 0},
+        })
+        self.assertEqual(judge.missed_by_crate(report), [("daemon/main", 2), ("runner/main", 1)])
+
 
 class ReportFiles(unittest.TestCase):
     def run_report(self, grades, floor="99"):

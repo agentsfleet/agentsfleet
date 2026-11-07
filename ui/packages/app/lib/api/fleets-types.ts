@@ -36,10 +36,12 @@ export type SteerAccepted = {
   status: string;
   event_id: string;
   replayed: boolean;
-  // Where the message went (M242_002). `folded`: the fleet's live run took it,
-  // and `folded_into_event_id` names that run.
+  // Where the message went. `folded`: the fleet's live run took it, and
+  // `folded_into_event_id` names that run; the message's own event gets the
+  // run's reply when that run reports. A daemon that predates the field sends
+  // neither, and `postSteer` reads that as `started` and no run.
   disposition: SteerDisposition;
-  folded_into_event_id?: string;
+  folded_into_event_id: string | null;
 };
 
 /** Mirrors `af_wire::event::SteerDisposition`. */

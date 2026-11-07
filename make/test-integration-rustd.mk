@@ -71,7 +71,7 @@
 # the provider's `--inherited-roles api_runtime`, spelled in plain Postgres.
 # Idempotent; roles are cluster-wide and outlive the schema reset. The two
 # bounds equal `afd_db::login`'s constants, which
-# `the_api_login_runs_under_the_intake_bounds` reads back (M242_001 §6).
+# `the_api_login_runs_under_the_intake_bounds` reads back.
 define _api_login
 docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -c \
   "DO \$$\$$ BEGIN CREATE ROLE $(TEST_DATABASE_API_LOGIN) LOGIN PASSWORD '$(TEST_DATABASE_API_LOGIN)' IN ROLE api_runtime; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END \$$\$$" \

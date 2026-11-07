@@ -44,14 +44,17 @@ describe("fleet-stream-registry — optimistic mutations", () => {
     a();
   });
 
-  it("a folded send is named, labelled and never watched for a reply of its own (M242_002)", () => {
+  it("a folded send is labelled until the run it joined answers it on its own event", () => {
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "and also this", "steer:k@e2e.com");
-    expect(reconcileOptimistic(Z_A, tempId, "evt_folded", false, "evt_run")).toBe(true);
+    expect(reconcileOptimistic(Z_A, tempId, "evt_folded", false, "evt_run")).toBe(false);
     const row = getSnapshot(Z_A).events[0];
     expect(row?.id).toBe("evt_folded");
     expect(row?.status).toBe(AGENTSFLEET_EVENT_STATUS.FOLDED);
     expect(row?.outcome).toBe(FOLDED_OUTCOME);
+    // The run reports: the folded send's own event completes with its reply.
+    sourceAt(0).emit({ kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_folded", status: AGENTSFLEET_EVENT_STATUS.PROCESSED });
+    expect(getSnapshot(Z_A).events[0]?.status).toBe(AGENTSFLEET_EVENT_STATUS.PROCESSED);
     a();
   });
 
