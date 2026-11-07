@@ -211,7 +211,7 @@ The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that h
 
 - **`agentsfleetd`** — the control plane. Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; `XREADGROUP` and `XACK` remain on the separate outbound delivery queue.
 
-- **`agentsfleet-runner`** — the host-resident execution plane, one Rust binary. A trusted supervisor runs the lease loop and the agent loop, and each lease that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
+- **`agentsfleet-runner`** — the host-resident runner plane, one Rust binary. A trusted supervisor runs the lease loop and the agent loop, and each lease that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
 The BEFORE/NOW split diagram is front-loaded in §Topology.
 
