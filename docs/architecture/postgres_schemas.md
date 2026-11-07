@@ -296,7 +296,7 @@ by the setup review, which blocks a connection whose granted scopes fall short.
 
 `platform_models.inference` holds the saved API format, endpoint, dialect and output limit.
 Routing follows those settings; credential endpoint restrictions must match them.
-[Billing §9](billing_and_provider_keys.md#9-provider-routing--saved-model-settings) owns provider routing.
+[Billing §9](billing_and_provider_keys.md#9-provider-routing-saved-model-settings) owns provider routing.
 
 ## billing
 

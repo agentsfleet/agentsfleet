@@ -6,7 +6,7 @@ product_version: 0.62.2
 executable: false
 ---
 
-# Data Flow — how an event moves through the system
+# Data Flow: how an event moves through the system
 
 > Parent: [`README.md`](./README.md) · Sibling: [`runner_fleet.md`](./runner_fleet.md) (the structural split this flow runs on). · User-facing: [docs.agentsfleet.net/fleets/webhooks](https://docs.agentsfleet.net/fleets/webhooks) (sending an event) and [docs.agentsfleet.net/fleets/running](https://docs.agentsfleet.net/fleets/running) (watching one).
 
@@ -260,7 +260,7 @@ Runner leases keep no duplicate request body. Claim and reclaim read the payload
 
 A later partition key by `created_at` therefore never splits a line from its own conflict target. The machinery waits for a measurement that demands it.
 
-## Two streams + one pub/sub channel — and the one that retired
+## Two streams + one pub/sub channel (and the one that retired)
 
 The admissions queue lives in Postgres. Dragonfly carries outbound delivery, live activity and wake notifications.
 
@@ -281,7 +281,7 @@ The registry fetches the bounded `fleet.events` list on every reconnect open, ne
 
 The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events`, the mirror of the SSE proxy. The `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel. No server, channel, or frame-shape change: the durable table stays the recovery source of truth.
 
-## Connection topology — the cutover collapsed the dedicated tier
+## Connection topology: the cutover collapsed the dedicated tier
 
 The Rust daemon shares one cluster command owner for ordinary Dragonfly commands.
 A lease request probes the Postgres ledger and never blocks on a Dragonfly stream.
@@ -338,7 +338,7 @@ There is **no ordering or fairness guarantee**: which waiter wins is scheduling.
 
 No product statement sets its own override. A statement that hits either bound answers `55P03` or `57014`, and `afd_db::error::is_bound_reached` reads both as "try later".
 
-## Config reload — pull-per-lease, no signal
+## Config reload: pull-per-lease, no signal
 
 Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). Config resolves fresh from `fleet.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal.
 
@@ -755,7 +755,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 | Runner ↔ control plane | The `agt_r` token authenticates the runner per call, and a lease carries one fleet's event and scoped secrets ([`runner_fleet.md`](./runner_fleet.md) §"Registering a runner"). |
 | Runner supervisor and sandbox | Secrets stay in the supervisor, substituted at send time, and a sandbox holds no credential ([`runner_execution.md`](./runner_execution.md) §"Credentials"). |
 
-## One active lease per fleet — the ownership model
+## One active lease per fleet: the ownership model
 
 Before the cutover, a single worker thread owned all events for a Fleet, and the concern was round-robin across worker replicas breaking per-fleet continuity. That model is gone. Ownership is now a **durable lease**, not a thread:
 

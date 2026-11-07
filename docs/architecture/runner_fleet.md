@@ -1,4 +1,4 @@
-# Runner Fleet — `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane
+# Runner Fleet: `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane
 
 > Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (how one event flows through this split). · User-facing: [docs.agentsfleet.net/runners](https://docs.agentsfleet.net/runners).
 
@@ -148,7 +148,7 @@ A runner's work becomes eligible when its slot expires. Another eligible runner 
 A live runner renews through the fenced `/renew` route. Renewal remains credit-gated and bounded by `MAX_RUNTIME`.
 A runner that stops renewing loses its slot at the database deadline.
 
-### Per-lease renewal — how a long fleet keeps its lease
+### Per-lease renewal: how a long fleet keeps its lease
 
 A renewal pushes the kill-deadline forward while the runner's lease task lives. The supervisor's renew module calls `/renew` on every `RENEWAL_TICK` tick from the lease's start. Each call carries one line per provider request the daemon has not yet recorded.
 
@@ -177,7 +177,7 @@ The runner gives the lease up at the last granted deadline less two seconds. The
 
 A transient renewal failure retries on the next tick. At the last granted deadline, the runner stops and another runner can reclaim unsettled work. Fences reject stale durable writes; external effects keep their own retry and idempotency limits.
 
-## Scope — an execution plane, deliberately not a control plane
+## Scope: an execution plane, deliberately not a control plane
 
 The fleet borrows Kubernetes, Nomad and Temporal **semantics**: leases, fencing, node heartbeats, drain, sticky scheduling and checkpointed workloads. It is **not** a general scheduler and must not drift into one. The non-goals are load-bearing; each rejected feature stays unbuilt until a spec changes this direction.
 
@@ -205,7 +205,7 @@ The pre-cutover runtime ran one `agentsfleetd` binary as `serve` (the HTTP API) 
 
 The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that hold **no datastore credentials**. They reach the platform only over the authenticated `/v1/runners` protocol.
 
-## The split — two binaries, no sidecar
+## The split: two binaries, no sidecar
 
 - **`agentsfleetd`** — the control plane. Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; `XREADGROUP` and `XACK` remain on the separate outbound delivery queue.
 
@@ -227,7 +227,7 @@ The frozen `/v1/runners` wire types live in `af_wire` and the knobs both planes 
 
 The runner's supervisor, agent loop, tool catalog, outbound guard, executor and sandbox engine are the `afr_*` crates under `rustd/crates/`. They import nothing from the control plane.
 
-## The control protocol — `/v1/runners`
+## The control protocol: `/v1/runners`
 
 `agentsfleetd` translates the runner's calls into the Postgres writes and Dragonfly stream operations the worker did directly, so the runner never sees a datastore. The routes, their methods and their request and reply shapes are the API reference's **Runner plane** group on docs.agentsfleet.net, generated from `public/openapi.json`. The enrolment route sits in its **Fleet** group; this doc does not restate them.
 
@@ -345,7 +345,7 @@ Assigned and achievable live in **separate columns** that never overwrite each o
 
 The report is unauthenticated self-assertion, so a compromised host can lie. Placement trust therefore stays operator-assigned; attestation is a separate workstream.
 
-## Runner state — three categories, no JSONB status
+## Runner state: three categories, no JSONB status
 
 A runner's "status" is three *separate* concerns. Folding them into one Kubernetes-style `status` JSONB object is the trap we deliberately avoid (cross-validated Jun 2026).
 
@@ -372,7 +372,7 @@ A runner can hold multiple active leases. Busy status derives from live leases; 
 > [!WARNING]
 > Cordon and drain currently block every authenticated runner request, including renewal and reports. The capacity layer permits cordoned or draining renewals, but authentication accepts only `active` tokens (`afd_state`'s credential rows and `afd_auth`'s authenticate step). Do not rely on these actions for graceful completion; existing work can stop and reports can remain spooled.
 
-### Operator plane — the read surface
+### Operator plane: the read surface
 
 The runner detail read (API reference › Fleet) takes lifetime counters one-to-one from `runner.lifetime_counters`. It never reads the per-runner metric families, which are process-global, restart-zeroed and capped (§"The four per-runner families").
 
@@ -434,7 +434,7 @@ The surface shipped; what it should *do* in these four cases did not.
 
 - **Drain rules.** How long to wait for in-flight work before reclaiming; how the heartbeat `drain` reply composes with renewal.
 
-## Datastore role model — why there is no `runner_runtime`
+## Datastore role model: why there is no `runner_runtime`
 
 Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.fleet_slots`) is governed at **two independent layers**. Conflating them is the recurring design error. The temptation to mint a `runner_runtime` database role "so the runner tables have an owner" collapses an authorization rule onto an authentication identity.
 
@@ -518,7 +518,7 @@ A continuation event still exists, chained by `resumes_event_id`. An approval's 
 
 Sticky routing (below) prefers the runner that ran the previous event, but correctness never depends on it.
 
-## Memory continuity — durable fleet memory rides the trusted plane
+## Memory continuity: durable fleet memory rides the trusted plane
 
 Memory is the second kind of cross-run state, under the same law as the checkpoint. Durable fleet memory lives only behind `agentsfleetd`, never in the runner and never in the fleet. The runner reaches it through `agentsfleetd`'s runner API alone and holds no credential for any store.
 
@@ -845,7 +845,7 @@ The assigned policy carries an operator list of extra binds, each with a mode an
 
 The table covers the file system alone. Under `allow_all` the sandbox also shares the host's network namespace (§Egress model).
 
-## Egress model — outbound is the only network surface
+## Egress model: outbound is the only network surface
 
 The runner box is **outbound-only**. It runs no inbound listener (the supervisor dials the control plane over HTTPS; see §Datastore role model) and holds no co-located datastore. No model key or minted token enters a sandbox.
 
@@ -975,7 +975,7 @@ The one piece needing care at multi-replica scale is placement (assignment and s
 
 The hot path (lease and report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
-## Observability — bounded facts to `agentsfleetd`; logs, traces and metrics to a runner collector
+## Observability: bounded facts to `agentsfleetd`; logs, traces and metrics to a runner collector
 
 The fleet is observed **without any inbound reach into runners**. A runner may sit behind Network Address Translation (NAT), on an untrusted host, or on a customer host. A scraper cannot reliably reach those machines.
 
@@ -1007,7 +1007,7 @@ The OTLP export reads only that in-memory snapshot, **zero Postgres on the expor
 
 Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore bounded by that cap regardless of fleet size or uptime. A `agentsfleetd` restart zeroes the table; Prometheus counter-reset semantics absorb it, and gauges self-heal within one heartbeat or lease cycle.
 
-### Multi-replica (`agentsfleetd` N>1) — correctness is an *aggregation* property
+### Multi-replica (`agentsfleetd` N>1): correctness is an *aggregation* property
 
 Prod is sized for **3 `agentsfleetd` machines**. The release workflow sets that count with `flyctl scale` and verifies that all three machines are running before public readiness. The sections below are written for N>1 as the operating shape, not the contingency.
 
@@ -1025,7 +1025,7 @@ The series are identified by the OpenTelemetry resource attribute carrying the m
 
 The cross-replica queries in the table above are the operator's responsibility to apply. This repository ships no dashboards, and any dashboard that graphs `active_leases` must label the panel best-effort under N>1.
 
-### The deferred refresher — exact gauges without metrics-in-the-DB
+### The deferred refresher: exact gauges without metrics-in-the-DB
 
 The exact, restart-resilient form of the two gauges is a read-only background thread per replica. On a timer of about 15 s it queries Postgres for `last_seen_at` and the live lease count (`count(*) WHERE lease_expires_at > now()`).
 

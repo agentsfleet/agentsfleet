@@ -771,7 +771,7 @@ More A evidence -> incident A
 ```
 
 The responder can handle another outage while the separate repairer works on the first.
-The [one active lease per fleet](data_flow.md#one-active-lease-per-fleet--the-ownership-model) rule still bounds each fleet.
+The [one active lease per fleet](data_flow.md#one-active-lease-per-fleet-the-ownership-model) rule still bounds each fleet.
 A busy responder delays its next sweep; scheduled monitoring does not promise continuous log tailing.
 
 For this proposal, another approved repair queues while the same repairer is busy.

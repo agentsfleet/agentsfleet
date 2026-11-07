@@ -1,4 +1,4 @@
-# Runner execution — a trusted supervisor, a sandbox per lease, a workspace that outlives the lease
+# Runner execution: a trusted supervisor, a sandbox per lease, a workspace that outlives the lease
 
 > Scope: how `agentsfleet-runner` runs one lease, where its agent loop runs and what its sandbox is made of. The page also covers how a fleet's code and files survive from one lease to the next. It covers how credentials and repository writes cross the sandbox wall too.
 
@@ -153,7 +153,7 @@ Each worker polls for a lease while the last assignment says to take work. It ru
 
 **One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy (`afr_supervisor/src/turns/mod.rs`).
 
-A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's affinity slot already admits one live lease per fleet across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane").
+A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's affinity slot already admits one live lease per fleet across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity: durable fleet memory rides the trusted plane").
 
 **A refusal ends the lease with a report.** It ends as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Refusals cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and a binding no checkout serves.
 
@@ -205,7 +205,7 @@ What a run of one kind adds is an `Extension`: a durable task is `afr_agent`'s `
 
 One binary supplies both the host supervisor and its in-sandbox `sandbox` entry. The sandbox entry builds only the executor server, and each sandbox binds the binary read-only. The planned Firecracker guest receives it inside the root image or a second read-only disk (§Toolbox).
 
-A lease carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `af_inference` validates them and builds the codec, and missing settings refuse admission. [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing--saved-model-settings) owns configuration and credential matching.
+A lease carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `af_inference` validates them and builds the codec, and missing settings refuse admission. [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing-saved-model-settings) owns configuration and credential matching.
 
 `rig-core` and `rig-http` speak the three supported API formats, at the version `rustd/Cargo.toml` pins. The transport under rig is the runner's: one HTTP client per runner that follows no redirect. So a turn and its key reach the admitted host and no other.
 

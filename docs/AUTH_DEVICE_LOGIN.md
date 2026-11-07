@@ -1,4 +1,4 @@
-# CLI device login — security model (Flow 1)
+# CLI device login: security model (Flow 1)
 
 | Question | Answer |
 |---|---|
@@ -21,9 +21,15 @@ It saves the returned durable credential in `credentials.json`, with mode `0o600
 
 ## Non-interactive token seeding (no device flow)
 
-**Removed in M160_002 §3.** `agentsfleet login` used to accept an already-held bearer token directly — `--token <pat>`, falling back to piped stdin on a non-TTY — validate it against `/v1/me`, and write it to `credentials.json`. Both sources are gone, and `login` now has no non-interactive path at all.
+**Removed in M160_002 §3.** `agentsfleet login` used to accept an already-held bearer token directly. The token came from `--token <pat>`, falling back to piped stdin on a non-TTY. Login validated it against `/v1/me` and wrote it to `credentials.json`.
 
-The reason is that it never had a job of its own. `AGENTSFLEET_API_KEY` already carries an `agt_t` tenant key on every request and **outranks the stored credential**, so an unattended caller was always served by the environment variable; the flag only added a second way to reach the same place, by way of a file the caller then had to manage. It was also the one path that could write a value the credential loader would later refuse: the write checked only whether the token *authenticated*, while every subsequent read checks whether it is *well-formed* (`isPersistable`, `cli/src/services/credentials.ts`, accepting a well-formed `afc_` credential or an `agt_t` key, nothing else). Seeding a Clerk session token therefore reported success and then read back as logged-out on the next command — a failure that surfaced one command after the mistake.
+Both token sources are gone, and `login` now has no non-interactive path at all.
+
+The reason is that it never had a job of its own. `AGENTSFLEET_API_KEY` already carries an `agt_t` tenant key on every request and **outranks the stored credential**. An unattended caller was therefore always served by the environment variable.
+
+The flag only added a second way to reach the same place, through a file the caller then had to manage. It was also the one path that could write a value the credential loader would later refuse. The write checked only whether the token *authenticated*, while every subsequent read checks whether it is *well-formed*.
+
+The check is `isPersistable` in `cli/src/services/credentials.ts`, which accepts a well-formed `afc_` credential or an `agt_t` key and nothing else. Seeding a Clerk session token therefore reported success and then read back as logged-out on the next command. The failure surfaced one command after the mistake.
 
 Unattended callers use `AGENTSFLEET_API_KEY`. Login still requires an interactive terminal and a person authorizing the browser request (`cli/src/commands/login.ts`).
 
@@ -295,7 +301,7 @@ History replacement failure records a failed handoff, but cannot guarantee remov
 | `expired` | `pending` · `verification_pending` | (terminal) |
 | `aborted` | `verification_pending` | (terminal) |
 
-**Invariants.** The state machine is monotonic — no backward transitions. There is no codepath from `pending` directly to `consumed`; verification code presentation is mandatory. `verified` is not a stored state; the successful POST /verify writes `consumed` atomically.
+**Invariants.** The state machine is monotonic, with no backward transitions. There is no codepath from `pending` directly to `consumed`; verification code presentation is mandatory. `verified` is not a stored state; the successful POST /verify writes `consumed` atomically.
 
 **`expired` is eviction, not a stored transition.** It is an enum variant with a
 branch in `verify_consume.lua`, and nothing in the tree ever writes it. What
@@ -333,11 +339,12 @@ crate's only two-key script went when acceptance became a Postgres row.
 | `session/verify_consume.lua` | `POST /v1/auth/sessions/{id}/verify` | `verification_pending` → `consumed` |
 | `session/abort.lua` | `DELETE /v1/auth/sessions/{id}` and `DELETE /v1/auth/sessions` | `verification_pending` → `aborted`, for the approver only; a `pending` session has no owner yet, so it answers `not_owner` |
 
-They dispatch through `redis::Script`, which sends the 40-byte digest with
-`EVALSHA` and loads the body only when the server has never seen it — after the
-first call of a deployment, never. Raw `EVAL` would ship the whole program on
-every call, and these are the flow's hot path: one approval and one redemption
-per attempt, per user.
+They dispatch through `redis::Script`. It sends the 40-byte digest with
+`EVALSHA`. The body loads only when the server has never seen it, so after the
+first call of a deployment it never loads.
+
+Raw `EVAL` would ship the whole program on every call. These calls are the
+flow's hot path, with one approval and one redemption per attempt, per user.
 
 ## Endpoint trust boundaries
 
@@ -376,7 +383,9 @@ Rate limiting decomposes across three layers. Only L3 lives inside agentsfleetd.
 | **L2** | Cloudflare WAF in front of `api.agentsfleet.net` | `POST /v1/auth/sessions` | 10 / IP / minute — request never reaches origin on block |
 | **L3** | agentsfleetd — `session/verify_consume.lua` | `POST /v1/auth/sessions/{id}/verify` | 5 attempts per session → session aborted with reason `rate_limit_exceeded` |
 
-No in-app rate-limit middleware in agentsfleetd. The per-IP and per-Clerk-user counters that an earlier revision of the M74_002 spec described inside agentsfleetd are not authored — per-IP belongs at edge (L2), per-Clerk-user backstop is deferred post-launch (L1 already throttles the upstream Clerk identity supply). See `docs/v2/done/M74_002_P1_API_CLI_UI_CLI_BROWSER_AUTHORIZATION_FLOW.md` Captain decision Q10 for the full rationale and the dead-code sweep that landed alongside this decision.
+No in-app rate-limit middleware in agentsfleetd. An earlier revision of the M74_002 spec described per-IP and per-Clerk-user counters inside agentsfleetd; they are not authored. Per-IP belongs at edge (L2).
+
+The per-Clerk-user backstop is deferred post-launch, because L1 already throttles the upstream Clerk identity supply. See `docs/v2/done/M74_002_P1_API_CLI_UI_CLI_BROWSER_AUTHORIZATION_FLOW.md` Captain decision Q10 for the full rationale and the dead-code sweep that landed alongside this decision.
 
 ## Threats this flow closes
 
@@ -464,7 +473,7 @@ sequenceDiagram
     Note over CLI,API: server PUBLISH frames →<br/>SSE events for the lifetime of the connection
 ```
 
-The credential does not expire, so a 401 here means the row was revoked (`UZ-AUTH-023`) or never existed. Capabilities are resolved per request rather than frozen at mint: [`AUTH.md`](./AUTH.md) §"CLI credential — resolved, not granted" carries the model and its failure modes.
+The credential does not expire, so a 401 here means the row was revoked (`UZ-AUTH-023`) or never existed. Capabilities are resolved per request rather than frozen at mint: [`AUTH.md`](./AUTH.md#cli-credential-resolved-not-granted) carries the model and its failure modes.
 
 `agentsfleet logout` revokes the credential server-side with `DELETE /v1/cli-credentials/{id}` and clears local state (`cli/src/commands/auth-logout.ts`). A new login from the same machine revokes that machine's previous credential in the mint transaction, so a machine holds one live credential (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`).
 

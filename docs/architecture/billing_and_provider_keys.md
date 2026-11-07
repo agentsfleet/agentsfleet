@@ -357,7 +357,7 @@ The lease path reads it once per pass, before the transaction opens, so no catal
 
 **A catalogue that cannot be read** still logs every request line, with its tokens counted as unpriced and the run fee charged (`lease_tokens_unpriced`). Nothing is held for a later pass, because each request is priced on its own line.
 
-### 4.2 What an event costs — by shape, not by number
+### 4.2 What an event costs: by shape, not by number
 
 A worked example with hardcoded dollar amounts goes stale the moment a rate moves. The cost shape a caller can reason about instead, summed over the run's lines:
 
@@ -381,7 +381,7 @@ The token component dominates a token-heavy run; the run fee dominates a long, q
 
 ---
 
-## 5. The balance gate — code path
+## 5. The balance gate: code path
 
 `money_gates` in `afd_fleet`'s lease admit module runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is logged as it runs and the relay charges it (§3).
 
@@ -417,7 +417,7 @@ Properties:
 - **That spend still settles**, so the balance can end below zero by about one slice per run. The debt refuses new work until a grant repays it (`parallel_runs_overdraw_by_at_most_a_slice_each_then_stop`).
 - **An outage admits.** Under `OutagePolicy::Open`, a funds check the biller cannot answer comes back `Unconfirmed` and the run continues. Its lines settle when the biller is back (§11).
 
-### 5.1 The per-fleet budget gate — a second, independent ceiling
+### 5.1 The per-fleet budget gate: a second, independent ceiling
 
 The balance gate above bounds what a **tenant** may spend: one credit pool, one `balance_nanos`. It says nothing about how that pool is divided. A single misbehaving fleet in a tool-call loop can drain the whole pool while every other fleet in the tenant starves.
 
@@ -496,7 +496,7 @@ A bad key surfaces at the first event, when the provider refuses it. The CLI pri
 
 ## 8. The self-managed credential and the api_key visibility boundary
 
-### 8.1 The credential body — user-named, opaque
+### 8.1 The credential body: user-named, opaque
 
 Vault credentials are opaque JSON objects keyed by name (the M45 vault design). The self-managed record uses a **user-chosen name**: John picks `account-fireworks-key`, another user might pick `anthropic-prod` or `openai-team-shared`. The name is whatever makes sense to the user; the schema does not impose a convention.
 
@@ -559,7 +559,7 @@ Both endpoints honour §8.2: the metadata lives in non-secret `meta_*` columns b
 
 M87's spec is left as-written (a historical record of the reasoning at the time). This note is the pointer for anyone reading it cold.
 
-### 8.4 The tenant model registry — many entries, one shared key (M121)
+### 8.4 The tenant model registry: many entries, one shared key (M121)
 
 The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set. Every Anthropic key past the first was hidden, and every non-Anthropic provider piled into one bucket row. The same model on two hosts (for example GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live.
 
@@ -594,7 +594,7 @@ The original M121 shape was a synthesize-on-read self-heal inside GET. It was re
 
 ---
 
-## 9. Provider routing — saved model settings
+## 9. Provider routing: saved model settings
 
 `model.platform_models.inference` owns the non-secret provider settings: `api`, `base_url`, optional `dialect`, and `max_output_tokens`.
 The column is nullable; catalogue seeding fills missing settings and preserves existing settings.
@@ -625,7 +625,7 @@ Pinned input that cannot fit refuses dispatch.
 
 ---
 
-## 10. The model library — catalogue table + authenticated read
+## 10. The model library: catalogue table + authenticated read
 
 `model.platform_models` holds each exact provider/model identity, display name, context evidence, advanced flag and inference settings. `model.platform_model_prices` holds its prompt-size tiers, effective date ranges, token rates and price evidence. Platform admins manage both through `POST/PATCH/DELETE /v1/admin/models`; authenticated tenants read them through **`GET /v1/models`**.
 

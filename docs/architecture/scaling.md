@@ -127,7 +127,7 @@ The constants live in `afr_supervisor`'s activity module: `Early`, `MAX_BATCH_BY
 
 Each daemon replica owns three logical Dragonfly clients: shared commands, the hub and the outbound reader. Each cluster client maintains node connections; three owners do not mean three physical sockets.
 
-Size physical connections against the connected topology and measured reconnect headroom. Fleet and viewer counts add no dedicated datastore clients. [Data flow](data_flow.md#connection-topology--the-cutover-collapsed-the-dedicated-tier) owns the connection topology.
+Size physical connections against the connected topology and measured reconnect headroom. Fleet and viewer counts add no dedicated datastore clients. [Data flow](data_flow.md#connection-topology-the-cutover-collapsed-the-dedicated-tier) owns the connection topology.
 
 `afd_dragonfly` owns the client and its transport; the daemon's `serve` runtime and outbound worker boot the three owners.
 
@@ -140,7 +140,7 @@ This is the scheduler probe; authentication and accepted-kind placement reads ar
 
 Runner authentication reads `runner.runners` on every request.
 Reading the row makes cordon, drain, revoke and delete effective across replicas after commit
-([runner token](../AUTH.md#runner-token)).
+([runner token](../AUTH.md#runner-token-agt_r-the-machine-principal)).
 
 For 20 hosts with one idle worker each, one poll per second gives approximately 72,000 fleet-discovery statements per hour.
 
