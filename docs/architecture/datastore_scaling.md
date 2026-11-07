@@ -42,7 +42,7 @@ PostgreSQL records accepted work, completion and delivery obligations. Each leas
 
 An expired slot makes its unsettled admission eligible again. Recovery needs no stream reconstruction or readiness marks.
 
-`rebuild()` (`rustd/crates/afd_runner/src/sweep/rebuild/mod.rs`) repairs outbound delivery from `fleet.obligations`.
+`rebuild()` (`rustd/crates/daemon/afd_runner/src/sweep/rebuild/mod.rs`) repairs outbound delivery from `fleet.obligations`.
 
 Single-use session approvals have no durable row. Losing those keys requires the user to request another approval.
 The cluster recovery test checks this distinction: `test_cluster_restart_and_stale_snapshot_preserve_obligations`.
@@ -274,9 +274,9 @@ because one half of the move is finished and the other has not started.
 cluster since Sep 17, 2026. The `upstash-dev` vault item was archived out of
 `ZMB_CD_DEV` the same day on Indy's named approval, and Indy deleted the hosted
 Upstash database itself from the provider console. The daemon proves the
-cluster on every boot regardless. `rustd/crates/afd_dragonfly/src/preflight/mod.rs`
+cluster on every boot regardless. `rustd/crates/daemon/afd_dragonfly/src/preflight/mod.rs`
 issues `INFO CLUSTER` and refuses a seed that answers as a single server;
-`rustd/crates/agentsfleetd/src/serve/runtime.rs` calls it before the daemon
+`rustd/crates/daemon/agentsfleetd/src/serve/runtime.rs` calls it before the daemon
 serves anything, so a machine that reaches healthy has passed that check.
 
 **Production — not started, and `upstash-prod` stays until it is.** There is no

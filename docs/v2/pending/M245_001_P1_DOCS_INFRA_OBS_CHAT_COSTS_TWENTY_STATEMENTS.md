@@ -84,10 +84,10 @@ deadlines ─► sweeper:expiry (daemon) and one host timer (runner)
 
 ## Implementing agent — read these first
 
-1. `rustd/crates/afd_fleet/src/lease/sql/meter_lease.sql` and `sql/meter.rs` — the fenced metering statement whose guard and measurement both new statements reuse; its comment states the snapshot rule `daemon_line_count` replaces.
-2. `rustd/crates/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` and `lease/event.rs` — the claim, and the delivery writes §4 folds into it.
-3. `rustd/crates/afd_fleet/src/lease/commit.rs` — every write a report commits today, in order.
-4. `rustd/crates/afd_credential/src/credential/broker/cache.rs` — the daemon's existing in-process `moka` cache holding `Zeroizing` secrets, to mirror for the platform key.
+1. `rustd/crates/daemon/afd_fleet/src/lease/sql/meter_lease.sql` and `sql/meter.rs` — the fenced metering statement whose guard and measurement both new statements reuse; its comment states the snapshot rule `daemon_line_count` replaces.
+2. `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` and `lease/event.rs` — the claim, and the delivery writes §4 folds into it.
+3. `rustd/crates/daemon/afd_fleet/src/lease/commit.rs` — every write a report commits today, in order.
+4. `rustd/crates/daemon/afd_credential/src/credential/broker/cache.rs` — the daemon's existing in-process `moka` cache holding `Zeroizing` secrets, to mirror for the platform key.
 5. `docs/architecture/push_scheduler.md` — the target design, and the rules this milestone retires.
 
 ## Files Changed (blast radius)
@@ -99,35 +99,35 @@ deadlines ─► sweeper:expiry (daemon) and one host timer (runner)
 | `docs/architecture/push_scheduler.md` | EDIT | §1: renewal takes no host lock, M245's table row; §8: the M245 baseline |
 | `schema/2950_runner_leases_daemon_line_count.sql` | CREATE | §2: the column, `NOT NULL` |
 | `schema/2960_vault_secrets_resource_version.sql` | CREATE | §2: the column, `NOT NULL` and the update trigger |
-| `rustd/crates/afd_db/src/migration.rs`, `afd_db/tests/integration_migrate/**` | EDIT | §2: register both slots; positions and grants follow (MIG) |
-| `rustd/crates/afd_vault/src/sql/insert_secret_if_absent.sql` and its binder | EDIT | §2: binds the initial version constant |
-| `rustd/crates/afd_admin/src/platform_key.rs` | EDIT | §2: `set` and `deactivate` bump `catalogue_version` |
-| `rustd/crates/afd_db/src/test_util/**` platform-default seeds; test fixtures that insert `vault.secrets` rows | EDIT | §2: seeds bump the catalogue; raw inserts bind the version |
-| `rustd/crates/afd_fleet/src/lease/cache/mod.rs`, `cache/tests.rs` | CREATE | §3: the definition and price-book caches and their versioned keys |
-| `rustd/crates/afd_fleet/src/lease/installed.rs`, `coverage.rs`, `usage/mod.rs`, `deliver/window.rs` | EDIT | §3: parse once per revision; ceilings and prices from the caches |
-| `rustd/crates/afd_billing/src/price/mod.rs`, `src/sql/select_price_book.sql` | EDIT | §3: a book carries the catalogue version it was read at |
-| `rustd/crates/afd_credential/src/provider/cache.rs` | CREATE | §3: the platform resolution and its zeroized key |
-| `rustd/crates/afd_credential/src/provider/runtime/resolve.rs`, `registered/mod.rs` | EDIT | §3: resolve through the cache for the platform reference |
-| `rustd/crates/afd_memory/src/memories.rs`, `hydrate.rs`, `access.rs` | EDIT | §3: the lease window hydrates from the scope the claim read |
-| `rustd/crates/afd_fleet/src/lease/sql/lease/claim_admission_head.sql`, `assign/ledger.rs`, `envelope.rs`, `event.rs`, `pull/mod.rs`, `pull/refuse.rs` | EDIT | §4: the claim reads the fleet, opens the event and stamps delivery |
-| `rustd/crates/afd_fleet/src/lease/sql/lease/stamp_delivery.sql`, `afd_events/src/sql/insert_leased_fleet_event.sql`, `afd_events/src/sql/mod.rs` | DELETE, EDIT | §4: folded into the claim |
-| `rustd/crates/afd_fleet/src/lease/sql/select_gates.sql` | CREATE | §5: spend, recorded gate and grants in one read |
-| `rustd/crates/afd_fleet/src/lease/admit/mod.rs`, `admit/gates.rs`, `afd_gate/src/gate/pass.rs`, `afd_gate/src/gate/grants.rs` | EDIT | §5: gates judge facts the read returned |
-| `rustd/crates/afd_fleet/src/lease/issue.rs`, `sql/lease/insert_lease_with_event.sql`, `afd_runner/src/capacity/mod.rs`, `capacity/choice.rs` | EDIT | §5: census, ticket and choice inside the insert |
-| `rustd/crates/afd_fleet/src/lease/sql/commit_report.sql` | CREATE | §6: the one report statement |
-| `rustd/crates/afd_fleet/src/lease/commit.rs`, `settle.rs`, `finalize.rs`, `obligation.rs`, `report/mod.rs`, `report/steps.rs`, `report/tokens.rs`, `sql/report.rs` | EDIT | §6: one statement, its binder and its answer |
-| `rustd/crates/afd_fleet/src/lease/sql/select_lease_for_report.sql`, `select_run_tokens.sql`, `select_lease_disposition.sql`, `afd_events/src/sql/update_fleet_event_result.sql` | DELETE | §6: absorbed by the report statement |
-| `rustd/crates/afd_fleet/src/lease/sql/renew_batch.sql`, `renew/batch.rs` | CREATE | §7: one statement per host per tick |
-| `rustd/crates/afd_fleet/src/lease/renew/mod.rs`, `sql/renew.rs`, `sql/bill_expired_slice.sql`, `billing_sweep.rs` | EDIT | §7: the batch verb; the expiry statement advances the line count |
-| `rustd/crates/afd_fleet/src/lease/sql/select_lease_for_renew.sql`, `sql/meter_lease.sql`, `sql/meter.rs` | DELETE | §7: both callers of the meter replaced |
-| `rustd/crates/afd_gateway/**`, `afd_fleet/src/lease/rebuild.rs`, `afd_fleet/src/lease/sql/select_runner_live_leases.sql` (all created by M243), `afd_http/src/services/leasing/**` | EDIT | §6, §7: the session's lease cache gains pricing facts and the funds tick; `renew_batch` calls the batch verb |
-| `rustd/crates/afd_core/src/timing.rs` | EDIT | §7: `FUNDS_CHECK_TICKS`, `EXPIRY_TICK` and their asserts |
-| `rustd/crates/agentsfleetd/src/sweepers/clock.rs` | CREATE | §7: `sweeper:expiry` |
-| `rustd/crates/agentsfleetd/src/sweepers/mod.rs`, `billing.rs`, `authoring.rs`, `afd_authoring/src/maintenance/mod.rs`, `agentsfleetd/tests/supervisor.rs` | EDIT | §7: the expiry passes move to one clock; inventory follows |
-| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3: `agentsfleet_lease_cache_lookups_total` |
-| `rustd/crates/afd_fleet/tests/integration_lease_caches.rs`, `integration_renew_batch.rs`, `integration_report_statement.rs`, `afd_credential/tests/integration_platform_key_cache.rs` | CREATE | §3–§7 Dimensions |
-| `rustd/crates/afd_fleet/tests/integration_report_renewal_lock.rs` → `integration_report_renewal_lines.rs`; `integration_lease_plan/meter.rs`; fixtures under `afd_fleet/tests/**` calling `record_received`, `load_for_report` or `claim_and_settle` | MOVE, EDIT | §4, §6, §7: the race test loses the host lock; plan tests reach the new statements |
-| `rustd/crates/afd_bench/src/statements/paths.rs`, `statements/tests.rs`, `lane/lease/drain/runner.rs`, `lane/lease/seed/tests.rs` | EDIT | §8: fragments follow; the drain counts memory windows |
+| `rustd/crates/daemon/afd_db/src/migration.rs`, `afd_db/tests/integration_migrate/**` | EDIT | §2: register both slots; positions and grants follow (MIG) |
+| `rustd/crates/daemon/afd_vault/src/sql/insert_secret_if_absent.sql` and its binder | EDIT | §2: binds the initial version constant |
+| `rustd/crates/daemon/afd_admin/src/platform_key.rs` | EDIT | §2: `set` and `deactivate` bump `catalogue_version` |
+| `rustd/crates/daemon/afd_db/src/test_util/**` platform-default seeds; test fixtures that insert `vault.secrets` rows | EDIT | §2: seeds bump the catalogue; raw inserts bind the version |
+| `rustd/crates/daemon/afd_fleet/src/lease/cache/mod.rs`, `cache/tests.rs` | CREATE | §3: the definition and price-book caches and their versioned keys |
+| `rustd/crates/daemon/afd_fleet/src/lease/installed.rs`, `coverage.rs`, `usage/mod.rs`, `deliver/window.rs` | EDIT | §3: parse once per revision; ceilings and prices from the caches |
+| `rustd/crates/daemon/afd_billing/src/price/mod.rs`, `src/sql/select_price_book.sql` | EDIT | §3: a book carries the catalogue version it was read at |
+| `rustd/crates/daemon/afd_credential/src/provider/cache.rs` | CREATE | §3: the platform resolution and its zeroized key |
+| `rustd/crates/daemon/afd_credential/src/provider/runtime/resolve.rs`, `registered/mod.rs` | EDIT | §3: resolve through the cache for the platform reference |
+| `rustd/crates/daemon/afd_memory/src/memories.rs`, `hydrate.rs`, `access.rs` | EDIT | §3: the lease window hydrates from the scope the claim read |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql`, `assign/ledger.rs`, `envelope.rs`, `event.rs`, `pull/mod.rs`, `pull/refuse.rs` | EDIT | §4: the claim reads the fleet, opens the event and stamps delivery |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/stamp_delivery.sql`, `afd_events/src/sql/insert_leased_fleet_event.sql`, `afd_events/src/sql/mod.rs` | DELETE, EDIT | §4: folded into the claim |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/select_gates.sql` | CREATE | §5: spend, recorded gate and grants in one read |
+| `rustd/crates/daemon/afd_fleet/src/lease/admit/mod.rs`, `admit/gates.rs`, `afd_gate/src/gate/pass.rs`, `afd_gate/src/gate/grants.rs` | EDIT | §5: gates judge facts the read returned |
+| `rustd/crates/daemon/afd_fleet/src/lease/issue.rs`, `sql/lease/insert_lease_with_event.sql`, `afd_runner/src/capacity/mod.rs`, `capacity/choice.rs` | EDIT | §5: census, ticket and choice inside the insert |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/commit_report.sql` | CREATE | §6: the one report statement |
+| `rustd/crates/daemon/afd_fleet/src/lease/commit.rs`, `settle.rs`, `finalize.rs`, `obligation.rs`, `report/mod.rs`, `report/steps.rs`, `report/tokens.rs`, `sql/report.rs` | EDIT | §6: one statement, its binder and its answer |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_for_report.sql`, `select_run_tokens.sql`, `select_lease_disposition.sql`, `afd_events/src/sql/update_fleet_event_result.sql` | DELETE | §6: absorbed by the report statement |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/renew_batch.sql`, `renew/batch.rs` | CREATE | §7: one statement per host per tick |
+| `rustd/crates/daemon/afd_fleet/src/lease/renew/mod.rs`, `sql/renew.rs`, `sql/bill_expired_slice.sql`, `billing_sweep.rs` | EDIT | §7: the batch verb; the expiry statement advances the line count |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_for_renew.sql`, `sql/meter_lease.sql`, `sql/meter.rs` | DELETE | §7: both callers of the meter replaced |
+| `rustd/crates/daemon/afd_gateway/**`, `afd_fleet/src/lease/rebuild.rs`, `afd_fleet/src/lease/sql/select_runner_live_leases.sql` (all created by M243), `afd_http/src/services/leasing/**` | EDIT | §6, §7: the session's lease cache gains pricing facts and the funds tick; `renew_batch` calls the batch verb |
+| `rustd/crates/foundation/afd_core/src/timing.rs` | EDIT | §7: `FUNDS_CHECK_TICKS`, `EXPIRY_TICK` and their asserts |
+| `rustd/crates/daemon/agentsfleetd/src/sweepers/clock.rs` | CREATE | §7: `sweeper:expiry` |
+| `rustd/crates/daemon/agentsfleetd/src/sweepers/mod.rs`, `billing.rs`, `authoring.rs`, `afd_authoring/src/maintenance/mod.rs`, `agentsfleetd/tests/supervisor.rs` | EDIT | §7: the expiry passes move to one clock; inventory follows |
+| `rustd/crates/protocol/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3: `agentsfleet_lease_cache_lookups_total` |
+| `rustd/crates/daemon/afd_fleet/tests/integration_lease_caches.rs`, `integration_renew_batch.rs`, `integration_report_statement.rs`, `afd_credential/tests/integration_platform_key_cache.rs` | CREATE | §3–§7 Dimensions |
+| `rustd/crates/daemon/afd_fleet/tests/integration_report_renewal_lock.rs` → `integration_report_renewal_lines.rs`; `integration_lease_plan/meter.rs`; fixtures under `afd_fleet/tests/**` calling `record_received`, `load_for_report` or `claim_and_settle` | MOVE, EDIT | §4, §6, §7: the race test loses the host lock; plan tests reach the new statements |
+| `rustd/crates/daemon/afd_bench/src/statements/paths.rs`, `statements/tests.rs`, `lane/lease/drain/runner.rs`, `lane/lease/seed/tests.rs` | EDIT | §8: fragments follow; the drain counts memory windows |
 | `bench/baselines/lease.rig.json` | EDIT | §8: the median run |
 | `~/Projects/docs` `changelog.mdx`, branch `chore/m245-chat-costs-changelog` | EDIT | §7: a tenant out of credits stops within three renewals |
 
@@ -345,8 +345,8 @@ Funds go through `Biller::check` once per distinct payer: on a session's first t
 | R4 | A host batch renews live leases and refuses a fenced one (§7) | `make test-integration-rustd` | exit 0; `host_batch_extends_live_refuses_fenced ... ok` | P0 | |
 | R5 | The one-statement report is fenced and replay-safe (§6) | `make test-integration-rustd` | exit 0; `one_statement_report_refuses_stale_fence` and `one_statement_report_replay_returns_stored_outcome` print `ok` | P0 | |
 | R6 | A report and a renewal never share a line number (§6) | `make test-integration-rustd` | exit 0; `report_and_renewal_number_lines_distinctly ... ok` | P0 | |
-| R7 | No page or comment keeps "config is never cached" (§1) | `git grep -n -i -e "config is never cached" -e "no in-memory config cache" -e "re-read per lease and never cached" -- docs/architecture rustd/crates/afd_fleet/src ':!docs/architecture/push_scheduler.md'` | no output | P1 | |
-| R8 | Only the issue takes the host lock in `afd_fleet` (§6, §7) | `git grep -n "capacity::lock(" -- rustd/crates/afd_fleet/src` | one line, in `issue.rs` | P1 | |
+| R7 | No page or comment keeps "config is never cached" (§1) | `git grep -n -i -e "config is never cached" -e "no in-memory config cache" -e "re-read per lease and never cached" -- docs/architecture rustd/crates/daemon/afd_fleet/src ':!docs/architecture/push_scheduler.md'` | no output | P1 | |
+| R8 | Only the issue takes the host lock in `afd_fleet` (§6, §7) | `git grep -n "capacity::lock(" -- rustd/crates/daemon/afd_fleet/src` | one line, in `issue.rs` | P1 | |
 | R9 | The replaced statements have no caller (§4, §6, §7) | `git grep -n -w -e SELECT_LEASE_FOR_RENEW -e SELECT_LEASE_FOR_REPORT -e SELECT_RUN_TOKENS -e SELECT_LEASE_DISPOSITION -e SELECT_FLEET_CONFIG -e STAMP_DELIVERY -e METER_LEASE -e INSERT_LEASED_FLEET_EVENT -e UPDATE_FLEET_EVENT_RESULT -- rustd` | no output | P1 | |
 | R10 | The diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |

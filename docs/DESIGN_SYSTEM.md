@@ -526,7 +526,7 @@ Keep the original history.
 If compaction fails or pinned input still cannot fit, show the recorded failure and recovery action.
 [Conversation compaction](architecture/context_lifecycle.md) owns the shared behavior and limits.
 
-These boundaries follow the [model instructions](../rustd/crates/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/afd_authoring/src/library/publish/persist.rs), and [resource reference](architecture/api_resources.md).
+These boundaries follow the [model instructions](../rustd/crates/daemon/afd_authoring/src/model/provider/prompt.rs), [publication implementation](../rustd/crates/daemon/afd_authoring/src/library/publish/persist.rs), and [resource reference](architecture/api_resources.md).
 
 ### Example playback
 

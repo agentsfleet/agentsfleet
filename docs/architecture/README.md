@@ -170,8 +170,8 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 
 | Term | Meaning |
 |---|---|
-| **`agentsfleetd`** (control plane) | The daemon (`rustd/crates/agentsfleetd`) that serves the API, owns Postgres and Dragonfly, and hands work to runners. [(more)](./runner_fleet.md#the-split--two-binaries-no-sidecar) |
-| **`agentsfleet-runner`** | The host binary (`rustd/crates/agentsfleet_runner`) that asks `agentsfleetd` for leases and runs each one in a sandbox. [(more)](./runner_execution.md#process-model) |
+| **`agentsfleetd`** (control plane) | The daemon (`rustd/crates/daemon/agentsfleetd`) that serves the API, owns Postgres and Dragonfly, and hands work to runners. [(more)](./runner_fleet.md#the-split--two-binaries-no-sidecar) |
+| **`agentsfleet-runner`** | The host binary (`rustd/crates/runner/agentsfleet_runner`) that asks `agentsfleetd` for leases and runs each one in a sandbox. [(more)](./runner_execution.md#process-model) |
 | **Tenant** (`identity.tenants`) | The paying account: it owns one or more workspaces and one wallet (`billing.wallets`). [(more)](../AUTH.md#signup--what-usercreated-writes) |
 | **Workspace** (`identity.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
 | **Fleet** (`fleet.fleets`, `fleet_id`) | A durable AI agent defined by a reviewed Definition, saved into one workspace. [(more)](./high_level.md#1-product-thesis) |

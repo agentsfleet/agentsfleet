@@ -18,7 +18,7 @@ facts.
   "Swarm is the required target" rule); the local lane is a real four-node cluster. Redis is not a supported
   backend: Indy called the cutover on 2026-09-12 (M192_001 Discovery), superseding the earlier
   "Redis remains the default" rule. The crate is `afd_dragonfly`; the boot knob is
-  `DRAGONFLY_URL`, declared at `rustd/crates/afd_dragonfly/src/config.rs`. The retired Zig
+  `DRAGONFLY_URL`, declared at `rustd/crates/daemon/afd_dragonfly/src/config.rs`. The retired Zig
   daemon's `REDIS_*` spelling went with it — one URL for both roles, and a seed that answers
   as a single server is refused at `serve/runtime.rs` before the daemon serves anything.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
@@ -83,16 +83,16 @@ repository:
 
 - **SQL:** schema slots are `schema/*.sql`; statement files are
   `rustd/crates/**/src/**/*.sql`; the migration list is
-  `rustd/crates/afd_db/src/migration.rs`; a foreign-key violation is read with
+  `rustd/crates/daemon/afd_db/src/migration.rs`; a foreign-key violation is read with
   `afd_db::constraint::violates_foreign_key`.
 - **Identifiers and secrets:** identifiers come from `afd_core::id`, secret
   bytes from `afd_crypto::entropy`.
 - **HTTP:** wire types live in `afd_wire`; routes in
-  `rustd/crates/afd_http/src/route/*.rs`; handlers in
-  `rustd/crates/afd_api_*/src/**`; bounds and paging in `afd_validate` and
+  `rustd/crates/daemon/afd_http/src/route/*.rs`; handlers in
+  `rustd/crates/daemon/afd_api_*/src/**`; bounds and paging in `afd_validate` and
   `afd_core::paging`. A new route updates `INVENTORY` in `route_inventory.rs`
   and the counts in `route_meta_total.rs`.
-- **Errors:** codes live in `rustd/crates/afd_core/src/error_code/**` with the
+- **Errors:** codes live in `rustd/crates/foundation/afd_core/src/error_code/**` with the
   `UZ-` prefix; problem types resolve under
   `https://docs.agentsfleet.net/errors/`. A new code lands as a family const, a
   `REGISTRY` row and a `problem/` entry in one commit. `From` impls come from

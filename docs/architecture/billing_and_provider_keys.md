@@ -8,7 +8,7 @@ This is a cross-cutting topic. The data model lives in the tenant provider recor
 
 The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); a run deducts credits for the usage it logs; when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per run. The **run** charge is posture-dispatched and reflects the cost difference (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
-> **Where the live values are.** The authenticated billing surface reports the current runtime rate; the public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately do not quote dollar amounts because they go stale when a rate moves. For implementers: server-authoritative constants are declared once, in `rustd/crates/afd_billing/src/nanos.rs`; no client recomputes a fee it is served. Public documentation mirrors belong in `~/Projects/docs/snippets/rates.mdx` and require a coordinated docs Pull Request when used.
+> **Where the live values are.** The authenticated billing surface reports the current runtime rate; the public early-access page does not publish launch pricing. This doc and the scenarios in this directory deliberately do not quote dollar amounts because they go stale when a rate moves. For implementers: server-authoritative constants are declared once, in `rustd/crates/daemon/afd_billing/src/nanos.rs`; no client recomputes a fee it is served. Public documentation mirrors belong in `~/Projects/docs/snippets/rates.mdx` and require a coordinated docs Pull Request when used.
 
 ---
 
@@ -169,7 +169,7 @@ Every tenant has exactly one balance: `billing.wallets.balance_nanos` (`BIGINT N
 
 ### 2.1 The starter grant
 
-Each new tenant receives a **one-time starter credit** at tenant-create time: `STARTER_CREDIT_NANOS` in `rustd/crates/afd_tenant/src/signup/mod.rs`. The credit is written to `billing.wallets.balance_nanos` in the same signup transaction that creates the tenant. There is no replenish; it is a one-time onboarding allowance. Read the source for the current dollar amount.
+Each new tenant receives a **one-time starter credit** at tenant-create time: `STARTER_CREDIT_NANOS` in `rustd/crates/daemon/afd_tenant/src/signup/mod.rs`. The credit is written to `billing.wallets.balance_nanos` in the same signup transaction that creates the tenant. There is no replenish; it is a one-time onboarding allowance. Read the source for the current dollar amount.
 
 Under M80_010's metering the grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed, and at the run fee plus the three-tier per-token cost under platform. A quiet long run therefore stretches the grant further than a token-heavy one, and platform spend depends on the model (see §4.2). The grant is sized so a new user comfortably covers a few thousand runs on either posture without thinking about top-ups.
 
@@ -187,7 +187,7 @@ Three properties fall out of the removal, all load-bearing:
 
 - **The balance gate can refuse.** While the window was open, run charge was `0` for every posture, so the balance gate could never refuse anyone — `0 balance ≥ 0 charge` always covers. Both money checkpoints were effectively open for all tenants. They now bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended).
 - **An unpriceable model is charged its runtime only.** Platform posture with no price covering the request charges the run fee, and the line counts its tokens in `unpriced_token_count`, so nothing reads as free by accident. The lease-estimate gate admits, because an estimate is not a charge.
-- **A catalogue fault logs tokens unpriced.** A renewal or report that cannot read the catalogue still charges the run fee, and logs each request's tokens as unpriced: visible on the line, never charged (`lease_tokens_unpriced`, `rustd/crates/afd_fleet/src/lease/usage/mod.rs`). Each request is its own line, so no later slice can charge them.
+- **A catalogue fault logs tokens unpriced.** A renewal or report that cannot read the catalogue still charges the run fee, and logs each request's tokens as unpriced: visible on the line, never charged (`lease_tokens_unpriced`, `rustd/crates/daemon/afd_fleet/src/lease/usage/mod.rs`). Each request is its own line, so no later slice can charge them.
 
 Every slice is logged with its posture and token counts whatever it is charged, and its `charged_nanos` carries the catalogue's number.
 
@@ -221,16 +221,16 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
    sweeper:billing, the relay, every 2 s: settle(lines)
 ```
 
-The native decision allocator assigns this range before dispatch in `rustd/crates/afd_fleet/src/task/decision/intent.rs`.
+The native decision allocator assigns this range before dispatch in `rustd/crates/daemon/afd_fleet/src/task/decision/intent.rs`.
 Lease-scoped reservation and PATCH routes fund one send and record its receipt under the original payer and frozen prices.
 The runner reserves and records intent and goal calls through these routes; the [native decision billing design](goal_evaluation.md#native-billing-integration) describes their accounting.
 
 | Step | What moves | Where |
 |---|---|---|
-| Admit | nothing; the balance and budget gates read (§5) | `rustd/crates/afd_fleet/src/lease/admit/mod.rs` |
-| Renew | the payer must fund one more floor after its unsettled lines; the slice is logged | `rustd/crates/afd_fleet/src/lease/renew/mod.rs`, `coverage.rs` |
-| Report | the final slice is logged in the report's transaction; nothing else | `rustd/crates/afd_fleet/src/lease/report/mod.rs`, `settle.rs` |
-| Relay | every unsettled line, and the last slice of a lease that ended unreported | `rustd/crates/afd_fleet/src/lease/billing_sweep.rs`, `afd_billing::ledger::resettle` |
+| Admit | nothing; the balance and budget gates read (§5) | `rustd/crates/daemon/afd_fleet/src/lease/admit/mod.rs` |
+| Renew | the payer must fund one more floor after its unsettled lines; the slice is logged | `rustd/crates/daemon/afd_fleet/src/lease/renew/mod.rs`, `coverage.rs` |
+| Report | the final slice is logged in the report's transaction; nothing else | `rustd/crates/daemon/afd_fleet/src/lease/report/mod.rs`, `settle.rs` |
+| Relay | every unsettled line, and the last slice of a lease that ended unreported | `rustd/crates/daemon/afd_fleet/src/lease/billing_sweep.rs`, `afd_billing::ledger::resettle` |
 
 **Request lines.** The runner reports one line per provider request, `{seq, at, input, cached input, three cache-write classes, output}`, in each renewal and in its report (`afd_wire::usage::RequestUsage`). It numbers them from zero and keeps every line the daemon has not recorded. A renewal's answer names `recorded_through`, the highest line it recorded, and the runner forgets only those, so a lost answer or an unreadable body re-sends its lines instead of losing them. One body carries at most 512 lines (`afd_wire::usage::LINES_MAX`), a cap a renewal and the report share, and the runner sends its oldest 512 unrecorded lines in each. Before its report, a runner holding more than 512 renews them away in full bodies (`afr_supervisor::renew::flush`). If a renewal fails mid-flush, the lines past the report's 512 are logged as `usage_lines_unflushed` and never billed.
 
@@ -243,9 +243,9 @@ The two paths answer a broken body differently:
 
 A runner still sending cumulative totals can never have a line recorded, so its renewal is refused rather than extended: renewing would only run it unbilled to a report refused for the same field.
 
-**Measuring run time.** `METER_LEASE` (`rustd/crates/afd_fleet/src/lease/sql/meter_lease.sql`) keeps its fence, its two deadlines and its lifetime tally, and moves no money. It answers the run time since the lease's own `last_metered_at`, on the database's clock and never past the deadline the lease was granted, and advances that cursor. Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` serialises every pass on one lease.
+**Measuring run time.** `METER_LEASE` (`rustd/crates/daemon/afd_fleet/src/lease/sql/meter_lease.sql`) keeps its fence, its two deadlines and its lifetime tally, and moves no money. It answers the run time since the lease's own `last_metered_at`, on the database's clock and never past the deadline the lease was granted, and advances that cursor. Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` serialises every pass on one lease.
 
-**Logging the lines.** The lease path prices every request line and the runtime line through the `Rater` and logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing. Runtime lines take numbers from `afd_wire::usage::DAEMON_SEQ_BASE`, after the runtime lines the lease already logged, read under its row lock. A runner line and a daemon line never share a number, and two passes never take one (`rustd/crates/afd_fleet/tests/integration_lease_billing_races.rs`).
+**Logging the lines.** The lease path prices every request line and the runtime line through the `Rater` and logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing. Runtime lines take numbers from `afd_wire::usage::DAEMON_SEQ_BASE`, after the runtime lines the lease already logged, read under its row lock. A runner line and a daemon line never share a number, and two passes never take one (`rustd/crates/daemon/afd_fleet/tests/integration_lease_billing_races.rs`).
 
 **Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, about 2 s later. After a restart, its first pass settles what the crash left.
 
@@ -289,7 +289,7 @@ let rated: RatedLine = Rater::new(&book, posture, window).rate(&line)?;
 // RatedLine { usage, price: Option<Uuid7>, charged: Nanos, unpriced_tokens: u64 }
 ```
 
-- **Runtime** is charged under both postures at `RUN_NANOS_PER_SEC` (`rustd/crates/afd_billing/src/nanos.rs`), from the line's `runtime_ms`.
+- **Runtime** is charged under both postures at `RUN_NANOS_PER_SEC` (`rustd/crates/daemon/afd_billing/src/nanos.rs`), from the line's `runtime_ms`.
 - **Tokens** are charged under platform only, each category (input, cache read, the three cache-write classes, output) at its rate per million and **rounded up on its own** (Indy, 2026-10-19), so the platform never under-bills and over-bills by at most one nano per category per line.
 - **The price row** is chosen by the line's instant, clamped to the work's window so a runner cannot backdate a request into a cheaper range, and by the request's whole prompt for context tiers. Every request is its own line, so each is priced at its own tier.
 - **Nothing is ever free by accident.** A category whose rate is unpublished, or a request no range covers, counts in `unpriced_tokens` and charges nothing, visibly.
@@ -298,7 +298,7 @@ The issue-time floor (`Accounts::estimate`) prices `ESTIMATE_FLOOR_INPUT_TOKENS`
 
 **There is no rate cache.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows; the lease path reads it once per pass, before the transaction opens, so no catalogue read waits while the lease is locked. A cache would add a version check and an eviction path to save that one read.
 
-**A catalogue that cannot be read** still logs every request line, with its tokens counted as unpriced and the run fee charged (`lease_tokens_unpriced`, `rustd/crates/afd_fleet/src/lease/usage/mod.rs`). Nothing is held for a later pass, because each request is priced on its own line.
+**A catalogue that cannot be read** still logs every request line, with its tokens counted as unpriced and the run fee charged (`lease_tokens_unpriced`, `rustd/crates/daemon/afd_fleet/src/lease/usage/mod.rs`). Nothing is held for a later pass, because each request is priced on its own line.
 
 ### 4.2 What an event costs — by shape, not by number
 
@@ -326,7 +326,7 @@ The token component dominates a token-heavy run; the run fee dominates a long, q
 
 ## 5. The balance gate — code path
 
-`money_gates` (`rustd/crates/afd_fleet/src/lease/admit/mod.rs`) runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is logged as it runs and the relay charges it (§3).
+`money_gates` (`rustd/crates/daemon/afd_fleet/src/lease/admit/mod.rs`) runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is logged as it runs and the relay charges it (§3).
 
 ```mermaid
 flowchart TD
@@ -374,9 +374,9 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
 | Source of truth | `Biller::balance` | the fleet's `billing.usage_lines`, summed by `afd_billing::limits::fleet_spend` |
 
-**Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance`, before the lease is issued (`rustd/crates/afd_fleet/src/lease/admit/mod.rs`). Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick, whatever the fleet's status (`rustd/crates/afd_fleet/src/lease/coverage.rs`) — applying a revision that lowers a runaway fleet's `daily_nanos` bites at its next tick, not only at its next run.
+**Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance`, before the lease is issued (`rustd/crates/daemon/afd_fleet/src/lease/admit/mod.rs`). Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick, whatever the fleet's status (`rustd/crates/daemon/afd_fleet/src/lease/coverage.rs`) — applying a revision that lowers a runaway fleet's `daily_nanos` bites at its next tick, not only at its next run.
 
-**Windows.** `daily_nanos` is a **rolling 24 hours** and `monthly_nanos` the **UTC calendar month**, both opened from one `now()` in the same statement (`rustd/crates/afd_billing/src/limits/select_fleet_spend.sql`), so the two windows can never straddle a tick. A line counts in a window when it was written inside it; each line is one slice of at most one renewal interval, so a long run's spend lands in the window it was used in. The read is served by `idx_usage_lines_fleet_id_created_at`, and a planner probe pins that (`rustd/crates/afd_fleet/tests/integration_ledger_reads.rs`). `monthly_nanos` is optional — absent means no monthly ceiling.
+**Windows.** `daily_nanos` is a **rolling 24 hours** and `monthly_nanos` the **UTC calendar month**, both opened from one `now()` in the same statement (`rustd/crates/daemon/afd_billing/src/limits/select_fleet_spend.sql`), so the two windows can never straddle a tick. A line counts in a window when it was written inside it; each line is one slice of at most one renewal interval, so a long run's spend lands in the window it was used in. The read is served by `idx_usage_lines_fleet_id_created_at`, and a planner probe pins that (`rustd/crates/daemon/afd_fleet/tests/integration_ledger_reads.rs`). `monthly_nanos` is optional — absent means no monthly ceiling.
 
 **Spend means what the fleet's usage cost.** A line that took the balance below zero counts at its price like any other: the ceiling bounds what a fleet uses, and the debt is the balance gate's concern. The setup chat that authored a fleet does not count against its budget; whether it should is open (§11).
 
@@ -407,7 +407,7 @@ When the gate blocks, the user's surfaces show:
 
 The blocked row is **terminal** (admission settled, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they re-trigger from the source (push another commit, send another steer).
 
-The `actor=continuation:<original>` resume belongs to the approval gate (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`); a balance-blocked row has no resume.
+The `actor=continuation:<original>` resume belongs to the approval gate (`rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs`); a balance-blocked row has no resume.
 
 The reasoning is that a balance-exhausted event is usually evidence the user was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
 
@@ -445,7 +445,7 @@ Vault credentials are opaque JSON objects keyed by name (the M45 vault design). 
 
 The `model.tenant_selections` row points at a `model.tenant_models` row, which names the credential through `secret_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet tenant provider create --secret <other>`); only one is *active* at a time per tenant.
 
-**Vault scope: workspace-keyed; tenant→workspace bridge.** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet secret create` write path) bridge through `Providers::primary_workspace` (`rustd/crates/afd_credential/src/provider/selection/mod.rs`), which picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace; per-workspace credential isolation — and a fully tenant-keyed vault — is post-v2.0 work. Until then, the bridge is the rule.
+**Vault scope: workspace-keyed; tenant→workspace bridge.** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet secret create` write path) bridge through `Providers::primary_workspace` (`rustd/crates/daemon/afd_credential/src/provider/selection/mod.rs`), which picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace; per-workspace credential isolation — and a fully tenant-keyed vault — is post-v2.0 work. Until then, the bridge is the rule.
 
 **`context_cap_tokens` is not in the credential body.** The cap is read from the catalogue (`model.platform_models`, §10) with each model resolution, matched by provider and model name. Splitting the two lets a catalogue edit change the cap without touching the vault.
 
@@ -456,7 +456,7 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 **The api_key MAY exist in:**
 
 - `vault.secrets` rows as envelope ciphertext.
-- Server-side process memory. For runtime, `Providers::resolve_reference` opens the selected key in `agentsfleetd` and delivers it on `ExecutionPolicy.api_key` to the trusted runner supervisor. The key stays outside the sandbox and `secrets_map` ([`runner_execution.md`](./runner_execution.md#crates)). Authoring instead opens the selected inference key inside the daemon for each scoped dispatch; the authoring runner receives only its capability. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that distinction. Resolved keys use `SecretString` (`rustd/crates/afd_credential/src/provider/resolved.rs`).
+- Server-side process memory. For runtime, `Providers::resolve_reference` opens the selected key in `agentsfleetd` and delivers it on `ExecutionPolicy.api_key` to the trusted runner supervisor. The key stays outside the sandbox and `secrets_map` ([`runner_execution.md`](./runner_execution.md#crates)). Authoring instead opens the selected inference key inside the daemon for each scoped dispatch; the authoring runner receives only its capability. [`AUTH.md`](../AUTH.md#fleet-setup-and-credential-boundary) owns that distinction. Resolved keys use `SecretString` (`rustd/crates/daemon/afd_credential/src/provider/resolved.rs`).
 - Outbound HTTPS request headers to the provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**
@@ -467,11 +467,11 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 - Persisted event rows — `fleet.events`, `billing.usage_lines`, anything else under `core.*` or `billing.*`.
 - User-facing artefacts — fleet setup and reviews, the dashboard, CLI table output, status-page bodies.
 
-The boundary is "process-internal vs user-facing," not "in memory vs not in memory." Within `agentsfleetd`, the resolved provider key and connector tokens are held as `afd_crypto::secret::SecretString`, whose owned buffer is wiped on drop (`rustd/crates/afd_crypto/src/secret/string.rs`). The decrypted `secrets_map` a lease carries, authorization-header storage, and plaintext during active use remain outside this guarantee. A grep across the event log, `agentsfleetd` logs, runner logs, and user-facing HTTP responses for the api_key bytes after a self-managed run is a Continuous Integration (CI) invariant (M48 acceptance criteria).
+The boundary is "process-internal vs user-facing," not "in memory vs not in memory." Within `agentsfleetd`, the resolved provider key and connector tokens are held as `afd_crypto::secret::SecretString`, whose owned buffer is wiped on drop (`rustd/crates/foundation/afd_crypto/src/secret/string.rs`). The decrypted `secrets_map` a lease carries, authorization-header storage, and plaintext during active use remain outside this guarantee. A grep across the event log, `agentsfleetd` logs, runner logs, and user-facing HTTP responses for the api_key bytes after a self-managed run is a Continuous Integration (CI) invariant (M48 acceptance criteria).
 
 ### 8.3 The credential metadata list and whole-body replace
 
-`GET /v1/workspaces/{ws}/secrets` projects each stored credential's **non-secret** descriptor so the dashboard classifies and labels without guessing from the user-chosen name. Each row carries a server-derived `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`} plus the non-secret `provider` / `base_url`, and **never** `api_key`. Key presence (`has_key`) is the tenant model registry's question (§8.4), not this list's. The list reads the four `meta_*` projection columns and decrypts nothing (`rustd/crates/afd_vault/src/read.rs`). `model` is not projected, because answering it would mean decrypting every row (`rustd/crates/afd_vault/src/projection/mod.rs`). The projection type has no `api_key` field, so a leak is a compile error rather than a review catch. `kind` is derived from the `provider` field — `openai-compatible` → `custom_endpoint`, any other provider string → `provider_key`, missing/non-string → `custom_secret` — never from the name. A row with NULL or unknown metadata lists as `custom_secret` and the list still returns 200. Nothing fills such rows today: `agentsfleetd` has no backfill verb (`serve`, `migrate` and `openapi` only, `rustd/crates/agentsfleetd/src/cli.rs`). The list sits behind the workspace ownership layer (`afd_http::auth::ownership`) and needs the `secret:read` scope; writes and deletes need `secret:write` (`rustd/crates/afd_http/src/route/workspace.rs`).
+`GET /v1/workspaces/{ws}/secrets` projects each stored credential's **non-secret** descriptor so the dashboard classifies and labels without guessing from the user-chosen name. Each row carries a server-derived `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`} plus the non-secret `provider` / `base_url`, and **never** `api_key`. Key presence (`has_key`) is the tenant model registry's question (§8.4), not this list's. The list reads the four `meta_*` projection columns and decrypts nothing (`rustd/crates/daemon/afd_vault/src/read.rs`). `model` is not projected, because answering it would mean decrypting every row (`rustd/crates/daemon/afd_vault/src/projection/mod.rs`). The projection type has no `api_key` field, so a leak is a compile error rather than a review catch. `kind` is derived from the `provider` field — `openai-compatible` → `custom_endpoint`, any other provider string → `provider_key`, missing/non-string → `custom_secret` — never from the name. A row with NULL or unknown metadata lists as `custom_secret` and the list still returns 200. Nothing fills such rows today: `agentsfleetd` has no backfill verb (`serve`, `migrate` and `openapi` only, `rustd/crates/daemon/agentsfleetd/src/cli.rs`). The list sits behind the workspace ownership layer (`afd_http::auth::ownership`) and needs the `secret:read` scope; writes and deletes need `secret:write` (`rustd/crates/daemon/afd_http/src/route/workspace.rs`).
 
 A replace swaps the whole body and never claims a name; the envelope and its `meta_*` projection are rewritten in one statement (API reference › Secrets).
 
@@ -490,7 +490,7 @@ model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_
 
 **Entries reference keys — they never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns. `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time, the same projection §8.3's credential list already uses — `api_key` is structurally absent from the join, not filtered out. A keyless endpoint (Out of Scope: runner auth behaviour is unchanged) stores an empty `api_key` in the secret body so the activate/resolve chain in §9 stays uniform whether or not a key exists.
 
-**Activation upserts the entry — the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`. The selection write (`rustd/crates/afd_credential/src/provider/activate/mod.rs`) upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case. So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent). `GET /v1/tenants/me/models` is a **pure read**: it computes each entry's `active` flag by checking whether the selection's `tenant_model_id` is that entry's `id` (`is_active`, `rustd/crates/afd_credential/src/provider/entries/mod.rs`) and never writes. Side effect worth knowing: a secret activated via bare `PUT /provider` is immediately referenced by an entry, so the referenced-secret delete guard (**Guards**, below) protects the credential backing the active selection. (The original M121 shape was a synthesize-on-read self-heal inside GET; it was reworked pre-merge — a read handler mutating rows papered over an invariant the write path was allowed to violate. Pre-2.0, no legacy backfill: an old selection with no entry simply shows no Active row until the next activation.)
+**Activation upserts the entry — the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`. The selection write (`rustd/crates/daemon/afd_credential/src/provider/activate/mod.rs`) upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case. So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent). `GET /v1/tenants/me/models` is a **pure read**: it computes each entry's `active` flag by checking whether the selection's `tenant_model_id` is that entry's `id` (`is_active`, `rustd/crates/daemon/afd_credential/src/provider/entries/mod.rs`) and never writes. Side effect worth knowing: a secret activated via bare `PUT /provider` is immediately referenced by an entry, so the referenced-secret delete guard (**Guards**, below) protects the credential backing the active selection. (The original M121 shape was a synthesize-on-read self-heal inside GET; it was reworked pre-merge — a read handler mutating rows papered over an invariant the write path was allowed to violate. Pre-2.0, no legacy backfill: an old selection with no entry simply shows no Active row until the next activation.)
 
 **Guards.** Entry writes refuse an unknown secret, a duplicate pair and the active entry, and deleting a still-referenced secret is refused (codes: API reference › Tenant models).
 
@@ -544,7 +544,7 @@ A repeated unchanged apply writes nothing.
 Properties:
 
 - **Reading the catalogue requires an authenticated tenant.** The dashboard fetches through a token-minting Server Action. The command-line interface resolves context caps server-side through provider selection.
-- **The response carries no global rate block.** The run fee is declared once, in `rustd/crates/afd_billing/src/nanos.rs`; the daemon charges, and a client renders what it is served.
+- **The response carries no global rate block.** The run fee is declared once, in `rustd/crates/daemon/afd_billing/src/nanos.rs`; the daemon charges, and a client renders what it is served.
 - **Consumed per-session, not cached at the edge.** The dashboard fetches the library once per session; the payload is small and the read is no longer a Content Delivery Network (CDN) concern.
 - **Runtime admission resolves the saved model reference.** Its catalogue row supplies the physical context and inference settings; `ExecutionPolicy.model_context_tokens` carries that window separately from the fleet's operating cap. Token rates are read once per lease pass, as one price book (§4.1).
 

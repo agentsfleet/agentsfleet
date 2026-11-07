@@ -88,8 +88,8 @@ The route does not use historical channel fleets as fallback responders.
 | No matching name, several eligible unaddressed subscribers | `Choose` notice; ask which fleet should receive the request. |
 
 Addressed-only repairers require their configured name even when they are the channel's only subscriber.
-The [native route](../../../rustd/crates/afd_ingress/src/slack/route.rs) owns eligibility and name matching.
-The [mention handler](../../../rustd/crates/afd_api_ingress/src/handler/mention/mod.rs) owns admission and the unconfigured outcome.
+The [native route](../../../rustd/crates/daemon/afd_ingress/src/slack/route.rs) owns eligibility and name matching.
+The [mention handler](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/mod.rs) owns admission and the unconfigured outcome.
 
 Fixed ambiguity, paused and addressing notices use the existing outbound ledger and Slack poster.
 The existing `connector.channels` row supplies a stable notice-only owner.
@@ -99,7 +99,7 @@ The binding must match the current workspace and installed team.
 Deleted owners and moved-team bindings cannot supply stale authority; a killed owner cannot acquire another outbound obligation.
 Concurrent notices converge on the channel's existing unique binding.
 
-[Notice ownership](../../../rustd/crates/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
+[Notice ownership](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
 Slack retries reuse the existing deterministic notice identity.
 No second outbound path or new schema is required.
 

@@ -37,14 +37,14 @@ Each trap is enforced in its owner section; this list is the index.
 
 | Term | Means | Lives in |
 |---|---|---|
-| **connector** | auth + credential plumbing for a third-party provider: the connect/callback/status routes, the vaulted per-workspace credential handle, the platform app secrets | `rustd/crates/afd_connector/` (provider catalogue, connect flow, grant handle), `rustd/crates/afd_credential/` (token minting from the handle), and the routes in `rustd/crates/afd_http/src/route/connector.rs` |
+| **connector** | auth + credential plumbing for a third-party provider: the connect/callback/status routes, the vaulted per-workspace credential handle, the platform app secrets | `rustd/crates/daemon/afd_connector/` (provider catalogue, connect flow, grant handle), `rustd/crates/daemon/afd_credential/` (token minting from the handle), and the routes in `rustd/crates/daemon/afd_http/src/route/connector.rs` |
 | **integration** | a product-facing capability built ON a connector's credential (configured Slack fleet mentions, GitHub fleet triggers, future Zoho/Jira/Linear surfaces) | feature code that consumes the vault handle |
 
 A workspace *connects* a provider once (connector); everything fleets then do with that credential is *integration*. Specs, UI copy, and code comments follow this split — "Slack integration is broken" and "Slack connector is broken" name different layers.
 
 ## The registry: a provider is a data entry
 
-The connector registry is the closed `Provider` enum (`rustd/crates/afd_connector/src/provider.rs`), declared once by the `catalogue!` macro, which also generates `Provider::ALL`. `Provider::archetype()` (`rustd/crates/afd_connector/src/registry/mod.rs`) says which flow each variant runs. Adding a provider is one variant plus its match arms — never new route or flow code:
+The connector registry is the closed `Provider` enum (`rustd/crates/daemon/afd_connector/src/provider.rs`), declared once by the `catalogue!` macro, which also generates `Provider::ALL`. `Provider::archetype()` (`rustd/crates/daemon/afd_connector/src/registry/mod.rs`) says which flow each variant runs. Adding a provider is one variant plus its match arms — never new route or flow code:
 
 ```
             ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -97,7 +97,7 @@ workspace's registered grant names concurrently.
 It checks each grant's matching
 connector marker and returns no tokens. A missing, unrelated or malformed handle
 is disconnected. Storage failures remain errors instead of invented disconnected
-states (`rustd/crates/afd_connector/src/connection.rs` and `grant/catalogue.rs`).
+states (`rustd/crates/daemon/afd_connector/src/connection.rs` and `grant/catalogue.rs`).
 
 The connection page streams its heading before this single list finishes. It
 makes no separate GitHub or Slack status read. Connected means a saved
@@ -121,7 +121,7 @@ initial access token and expiry are unused by the credential broker and are not
 stored. The broker mints its own access token and caches that token's expiry.
 
 This keeps a large initial vendor token from overflowing the vault's bounded
-credential object (`rustd/crates/afd_connector/src/grant/parse/mod.rs`).
+credential object (`rustd/crates/daemon/afd_connector/src/grant/parse/mod.rs`).
 
 ## Archetypes
 
@@ -130,7 +130,7 @@ credential object (`rustd/crates/afd_connector/src/grant/parse/mod.rs`).
 | `oauth2` | authorize-redirect → code exchange (deadline-armed) → the provider's `complete::read` arm parses, then the grant is sealed | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector.installs`) | `slack`, `zoho` (multi-data-center — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
 | `app_install` | user authorization → discover or verify App installation → `complete::read` (GitHub arm); zero reachable installations REFUSE with `UZ-CONN-008` (no install-page continuation in this tree — see §GitHub App) | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
 
-**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector: it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. The `catalogue!` macro declares five variants (`rustd/crates/afd_connector/src/provider.rs`) — five Open Authorization (OAuth) or app-install connectors, not eight.
+**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector: it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. The `catalogue!` macro declares five variants (`rustd/crates/daemon/afd_connector/src/provider.rs`) — five Open Authorization (OAuth) or app-install connectors, not eight.
 
 ## Trust anchors
 
@@ -235,7 +235,7 @@ triggers:
     repositories: [acme/payments]
 ```
 
-For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository. The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`rustd/crates/afd_ingress/src/binding/mod.rs`).
+For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository. The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`rustd/crates/daemon/afd_ingress/src/binding/mod.rs`).
 
 ### What the event belongs to
 
@@ -275,13 +275,13 @@ This gives each layer one job:
 
 A grant is **requested at Save**: when a saved fleet's readiness review finds a
 declared credential's grant missing, setup activation asks for it
-(`rustd/crates/afd_authoring/src/creation/activate.rs`). The request writes a
+(`rustd/crates/daemon/afd_authoring/src/creation/activate.rs`). The request writes a
 `pending` `connector.integration_grants` row and raises an approval card in one
-transaction (`rustd/crates/afd_approval/src/grant_sql/mod.rs`), and the fleet stays
+transaction (`rustd/crates/daemon/afd_approval/src/grant_sql/mod.rs`), and the fleet stays
 `installing` until every readiness check, the grant included, is ready
-(`rustd/crates/afd_authoring/src/creation/progress.rs`). The lease path asks the
+(`rustd/crates/daemon/afd_authoring/src/creation/progress.rs`). The lease path asks the
 same way the first time a delivery reaches a credential with no grant
-(`rustd/crates/afd_fleet/src/lease/deliver/mod.rs`).
+(`rustd/crates/daemon/afd_fleet/src/lease/deliver/mod.rs`).
 
 Either way, the decision belongs to the approval-gate machine this codebase already ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
 a timeout sweeper, and an append-only audit. **A gate is a per-event decision; a
@@ -332,7 +332,7 @@ runner poll → Postgres ledger → fenced claim
 
 Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only.
 
-If one fan-out leg fails before its admission commits, redelivery retries that leg. Fleets already admitted answer `replayed`; redelivery admits only the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app/mod.rs`).
+If one fan-out leg fails before its admission commits, redelivery retries that leg. Fleets already admitted answer `replayed`; redelivery admits only the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/daemon/afd_ingress/src/app/mod.rs`).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries": a delivery fails when the receiver is down or takes longer than **ten seconds** to answer, and recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries. This page previously credited the recovery to "GitHub's retry", which does not exist, and the correction matters because it moves the boundary of what is recoverable:
 
@@ -343,7 +343,7 @@ If one fan-out leg fails before its admission commits, redelivery retries that l
 
 So the durable-acceptance guarantee covers work this deployment ACCEPTED, and the window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow. The ten-second budget is a hard deadline rather than a target, and it is shared across signature verification, fleet resolution, and one admission per subscribed fleet — fan-out width spends it. And deduplication is still worth every line, because the redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed, which is exactly when a duplicate review would otherwise appear on a pull request.
 
-`deployment_status` and repair-branch deliveries are classified unsupported and dropped until the repair-evidence writer is ported; the repair sweeper waits rather than acting on evidence it never received (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`).
+`deployment_status` and repair-branch deliveries are classified unsupported and dropped until the repair-evidence writer is ported; the repair sweeper waits rather than acting on evidence it never received (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs`).
 
 Slack is the contrast and the reason this page cannot generalise: its retry semantics are load-bearing precisely because Slack does retry.
 
@@ -356,7 +356,7 @@ The daemon derives the fleet and workspace from the lease and rechecks the appro
 It loads the workspace installation handle, signs with the platform key and exchanges for a short-lived token.
 
 The runner caches that token for the lease and refreshes it 30 seconds before expiry.
-It masks the token in tool responses (`rustd/crates/afr_egress/src/vault/mod.rs`).
+It masks the token in tool responses (`rustd/crates/harness/afr_egress/src/vault/mod.rs`).
 The App private key and webhook secret never enter the lease, runner environment, sandbox, logs or response frames.
 
 The binding determines token scope (`afd_credential/src/credential/github/request.rs`).
@@ -372,7 +372,7 @@ See [guarded downloads](runner_fleet.md#guarded-tool-downloads); implementation 
 | Provider | Connect credential | Inbound events after M102_005 |
 |---|---|---|
 | <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
-| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from OAuth | specialized events route: signature, challenge, and mention routing to one `slack_mention` event (`rustd/crates/afd_api_ingress/src/handler/mention/mod.rs`) |
+| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from OAuth | specialized events route: signature, challenge, and mention routing to one `slack_mention` event (`rustd/crates/daemon/afd_api_ingress/src/handler/mention/mod.rs`) |
 | <img src="https://cdn.simpleicons.org/zoho" width="14" alt="" /> Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/jira" width="14" alt="" /> Jira | OAuth refresh handle | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/linear" width="14" alt="" /> Linear | OAuth refresh handle | no inbound integration in this workstream |
@@ -381,8 +381,8 @@ See [guarded downloads](runner_fleet.md#guarded-tool-downloads); implementation 
 
 Every connector vendor call runs under a deadline set at its call site. A callback exchange past its deadline, or one that cannot reach the vendor, answers `UZ-CONN-003` (502); background paths log the same code and retry.
 
-- **Deadlines are named per call class.** Token exchange and credential mint: 10 s, a client-wide total timeout that covers connect and the Transport Layer Security (TLS) handshake (`rustd/crates/agentsfleetd/src/credentials.rs`, `EXCHANGE_TIMEOUT`). Slack post: 5 s (`rustd/crates/afd_outbound/src/slack/mod.rs`, `POST_DEADLINE`). Slack thread re-read: 1.5 s (`rustd/crates/afd_connector/src/slack/replies/mod.rs`, `READ_DEADLINE`). Slack answer check: 3 s (`rustd/crates/afd_connector/src/slack/answered/mod.rs`, `ANSWER_CHECK_DEADLINE`).
-- **The exchange and the mint hold separate clients.** A slow connect exchange cannot consume the connection slots a credential mint needs (`rustd/crates/agentsfleetd/src/credentials.rs`).
+- **Deadlines are named per call class.** Token exchange and credential mint: 10 s, a client-wide total timeout that covers connect and the Transport Layer Security (TLS) handshake (`rustd/crates/daemon/agentsfleetd/src/credentials.rs`, `EXCHANGE_TIMEOUT`). Slack post: 5 s (`rustd/crates/daemon/afd_outbound/src/slack/mod.rs`, `POST_DEADLINE`). Slack thread re-read: 1.5 s (`rustd/crates/daemon/afd_connector/src/slack/replies/mod.rs`, `READ_DEADLINE`). Slack answer check: 3 s (`rustd/crates/daemon/afd_connector/src/slack/answered/mod.rs`, `ANSWER_CHECK_DEADLINE`).
+- **The exchange and the mint hold separate clients.** A slow connect exchange cannot consume the connection slots a credential mint needs (`rustd/crates/daemon/agentsfleetd/src/credentials.rs`).
 - **No pool slot rides a vendor call.** Credentials load under a short acquire released before the exchange; the events ingress pre-loads the bot token and returns its slot before the thread re-read (closes a priority-1 review finding on merged Pull Request #468).
 
 ## Unknown vs unconfigured (the two front-door failures)
@@ -391,7 +391,7 @@ An unknown provider (`UZ-CONN-004`) and a registry id with no `<provider>-app` b
 
 ## Adding a provider (the recipe)
 
-1. One `Provider` variant in the `catalogue!` macro, with its id and display name (RULE UFS) — the id is simultaneously the route segment, the vault-key stem (`<provider>-app` for the platform app, the bare `<provider>` for the workspace grant: `Provider::app_key` and `Provider::grant_key` in `rustd/crates/afd_connector/src/provider.rs`), and the registry id.
+1. One `Provider` variant in the `catalogue!` macro, with its id and display name (RULE UFS) — the id is simultaneously the route segment, the vault-key stem (`<provider>-app` for the platform app, the bare `<provider>` for the workspace grant: `Provider::app_key` and `Provider::grant_key` in `rustd/crates/daemon/afd_connector/src/provider.rs`), and the registry id.
 2. One arm in `Provider::archetype()` — `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints) — plus arms in `state_binding()` and `event_ingress()`.
 3. The provider's arm in `complete::read`, which is where its answer is parsed into a grant. The registry holds no per-provider hook functions: it dispatches on the archetype enum and matches per provider.
 4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret create`, never a registry entry.)

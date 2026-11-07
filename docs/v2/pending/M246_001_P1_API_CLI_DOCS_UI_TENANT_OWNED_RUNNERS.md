@@ -76,11 +76,11 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 
 ## Implementing agent — read these first
 
-1. `rustd/crates/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` and `select_ledger_candidates.sql` — the claim and the scan the ownership predicate enters; the claim is the control, the scan only a filter.
-2. `rustd/crates/afd_runner/src/capacity/mod.rs` and `capacity/sql/lock_host.sql` — the host lock both `Leases::issue` and the authoring `admit` take; the owner rides this row.
-3. `rustd/crates/afd_authoring/src/model/capability.rs`, `afd_wire/src/authoring/lease.rs` (`ModelAccess`) and `afd_api_runner/src/handler/runner/authoring/model_call.rs` — the proxied capability §4 mirrors.
+1. `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` and `select_ledger_candidates.sql` — the claim and the scan the ownership predicate enters; the claim is the control, the scan only a filter.
+2. `rustd/crates/daemon/afd_runner/src/capacity/mod.rs` and `capacity/sql/lock_host.sql` — the host lock both `Leases::issue` and the authoring `admit` take; the owner rides this row.
+3. `rustd/crates/daemon/afd_authoring/src/model/capability.rs`, `afd_wire/src/authoring/lease.rs` (`ModelAccess`) and `afd_api_runner/src/handler/runner/authoring/model_call.rs` — the proxied capability §4 mirrors.
 4. `docs/AUTH.md` §"Runner token (`agt_r`) — the machine principal" — the trust model, per-request runner auth and why the principal carries no tenant.
-5. `rustd/crates/afd_api_tenant/src/handler/tenant/api_key.rs` with `cli/src/commands/api_key.ts` and `ui/packages/app/app/(dashboard)/settings/api-keys/` — the tenant-minted, reveal-once credential surfaces §2 and §6 mirror.
+5. `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/api_key.rs` with `cli/src/commands/api_key.ts` and `ui/packages/app/app/(dashboard)/settings/api-keys/` — the tenant-minted, reveal-once credential surfaces §2 and §6 mirror.
 
 ## Files Changed (blast radius)
 
@@ -88,33 +88,33 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 |------|--------|-----|
 | `docs/v2/pending/M246_001_P1_API_CLI_DOCS_UI_TENANT_OWNED_RUNNERS.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
 | `schema/2850_runner_runners_owner_and_token_overlap.sql`, `2860_runner_tenant_placements.sql`, `2870_runner_leases_model_token.sql`, `2880_runner_enrolment_receipts.sql` | CREATE | §1; placeholder numbers, renumbered from `origin/main` at CHORE(open) |
-| `rustd/crates/afd_db/src/migration.rs` and its position assertions | EDIT | §1: register the slots (MIG) |
-| `rustd/crates/afd_state/src/sql/select_runner_token.sql`, `credentials/mod.rs`, `credentials/rows.rs`, `credentials/tests.rs` | EDIT | §1, §5: the previous digest authenticates inside its window |
-| `rustd/crates/afd_core/src/timing.rs` | EDIT | §3, §5: `PLATFORM_FALLBACK_AFTER`, `RUNNER_TOKEN_OVERLAP`, with their assertions |
-| `rustd/crates/afd_core/src/error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §2: `UZ-RUN-024` const, `REGISTRY` row, problem entry |
-| `rustd/crates/afd_auth/src/scope.rs` and its tests | EDIT | §2: `Scope::RunnerOwn`; `TENANT_OWNER_GRANT` grows to 11 |
-| `rustd/crates/afd_runner/src/store.rs`, `rotate.rs`, `sql/runner/insert_runner_with_event.sql`, `sql/runner/rotate_runner_token.sql` | EDIT | §2, §5: owner and receipt at enrolment; overlap rotation |
-| `rustd/crates/afd_runner/src/sql/runner/select_runner_owned.sql`, `sql/runner_view/list_owned_runners_first.sql`, `list_owned_runners_after.sql`, `list_runners_first.sql`, `list_runners_after.sql`, `runner_detail.sql`, `view/` | CREATE, EDIT | §2: ownership proof, owned list, operator views gain the owner |
-| `rustd/crates/afd_runner/src/placement/mod.rs`, `placement/tests.rs`, `placement/sql/*.sql` | CREATE | §2, §3: setting names, rule table, settings read and write |
-| `rustd/crates/afd_runner/src/capacity/mod.rs`, `capacity/sql/lock_host.sql` | EDIT | §3: the owner rides the host lock |
-| `rustd/crates/afd_api_wire/src/admin/mod.rs`, `afd_api_wire/src/tenant/runners.rs` | EDIT, CREATE | §2: `owner_tenant_id`; placement wire |
-| `rustd/crates/afd_wire/src/paths.rs`, `afd_wire/src/policy/mod.rs`, `afd_wire/src/redact.rs`, `afd_wire/src/runner/model_call.rs` | EDIT, CREATE | §2, §4: paths, `ModelAccess`, model-call frames |
-| `rustd/crates/afd_http/src/route/tenant.rs`, `route/runner.rs`, `services/leasing/mod.rs` | EDIT | §2, §4: four route templates; the model-call service |
-| `rustd/crates/afd_api_tenant/src/handler/tenant/runner/` (`mod.rs`, `enrol.rs`, `manage.rs`, `placement.rs`), `handler/tenant/mod.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §2: tenant handlers and their mount |
-| `rustd/crates/afd_api_operator/src/handler/operator/runners.rs` | EDIT | §2: owner in the operator view |
-| `rustd/crates/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, and a new `integration_tenant_runners.rs` | EDIT, CREATE | §2: `INVENTORY`, counts, route tests |
-| `rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`, `claim_admission_head.sql`, `lease/assign/`, `lease/issue.rs`, `lease/deliver/mod.rs` | EDIT | §3, §4: the predicate, its binds, the issue re-check, owner into the gate |
-| `rustd/crates/afd_authoring/src/lease/claim/sql/candidates.sql`, `claim/mod.rs`, `claim/selection.rs` | EDIT | §3: the same filter for setup work |
-| `rustd/crates/afd_gate/src/policy/build/mod.rs` | EDIT | §4: direct or proxied access by owner and posture |
-| `rustd/crates/afd_fleet/src/lease/model_call/` (`mod.rs`, `meter.rs`, `tests.rs`), `lease/usage/mod.rs`, `lease/renew/`, `lease/report/`, `Cargo.toml` | CREATE, EDIT | §4: daemon-side turn, daemon metering, runner lines skipped |
-| `rustd/crates/afd_api_runner/src/handler/runner/model_call.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §4: the runner-plane route |
-| `rustd/crates/afr_supervisor/src/model_proxy/` (`mod.rs`, `tests.rs`), `lib.rs`, `client/`, `config/mod.rs`, `config/tests.rs`, `halt/mod.rs` | CREATE, EDIT | §4, §5: proxied provider; token file and reload |
-| `rustd/crates/afr_providers/src/connect/mod.rs`, `turn.rs`; `afr_sandbox/examples/kernel_lane/supervisor_plane.rs` | EDIT | §4: read `ModelAccess::Direct` only |
-| `rustd/crates/agentsfleet_runner/src/main.rs`, `afd_core/src/signal.rs`, `agentsfleet_runner/tests/fake_daemon.rs`, `tests/fixtures/runner/help.txt` | EDIT | §5: SIGHUP reload and its tests; help lists the file variable |
+| `rustd/crates/daemon/afd_db/src/migration.rs` and its position assertions | EDIT | §1: register the slots (MIG) |
+| `rustd/crates/daemon/afd_state/src/sql/select_runner_token.sql`, `credentials/mod.rs`, `credentials/rows.rs`, `credentials/tests.rs` | EDIT | §1, §5: the previous digest authenticates inside its window |
+| `rustd/crates/foundation/afd_core/src/timing.rs` | EDIT | §3, §5: `PLATFORM_FALLBACK_AFTER`, `RUNNER_TOKEN_OVERLAP`, with their assertions |
+| `rustd/crates/foundation/afd_core/src/error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §2: `UZ-RUN-024` const, `REGISTRY` row, problem entry |
+| `rustd/crates/daemon/afd_auth/src/scope.rs` and its tests | EDIT | §2: `Scope::RunnerOwn`; `TENANT_OWNER_GRANT` grows to 11 |
+| `rustd/crates/daemon/afd_runner/src/store.rs`, `rotate.rs`, `sql/runner/insert_runner_with_event.sql`, `sql/runner/rotate_runner_token.sql` | EDIT | §2, §5: owner and receipt at enrolment; overlap rotation |
+| `rustd/crates/daemon/afd_runner/src/sql/runner/select_runner_owned.sql`, `sql/runner_view/list_owned_runners_first.sql`, `list_owned_runners_after.sql`, `list_runners_first.sql`, `list_runners_after.sql`, `runner_detail.sql`, `view/` | CREATE, EDIT | §2: ownership proof, owned list, operator views gain the owner |
+| `rustd/crates/daemon/afd_runner/src/placement/mod.rs`, `placement/tests.rs`, `placement/sql/*.sql` | CREATE | §2, §3: setting names, rule table, settings read and write |
+| `rustd/crates/daemon/afd_runner/src/capacity/mod.rs`, `capacity/sql/lock_host.sql` | EDIT | §3: the owner rides the host lock |
+| `rustd/crates/daemon/afd_api_wire/src/admin/mod.rs`, `afd_api_wire/src/tenant/runners.rs` | EDIT, CREATE | §2: `owner_tenant_id`; placement wire |
+| `rustd/crates/protocol/afd_wire/src/paths.rs`, `afd_wire/src/policy/mod.rs`, `afd_wire/src/redact.rs`, `afd_wire/src/runner/model_call.rs` | EDIT, CREATE | §2, §4: paths, `ModelAccess`, model-call frames |
+| `rustd/crates/daemon/afd_http/src/route/tenant.rs`, `route/runner.rs`, `services/leasing/mod.rs` | EDIT | §2, §4: four route templates; the model-call service |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/runner/` (`mod.rs`, `enrol.rs`, `manage.rs`, `placement.rs`), `handler/tenant/mod.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §2: tenant handlers and their mount |
+| `rustd/crates/daemon/afd_api_operator/src/handler/operator/runners.rs` | EDIT | §2: owner in the operator view |
+| `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, and a new `integration_tenant_runners.rs` | EDIT, CREATE | §2: `INVENTORY`, counts, route tests |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql`, `claim_admission_head.sql`, `lease/assign/`, `lease/issue.rs`, `lease/deliver/mod.rs` | EDIT | §3, §4: the predicate, its binds, the issue re-check, owner into the gate |
+| `rustd/crates/daemon/afd_authoring/src/lease/claim/sql/candidates.sql`, `claim/mod.rs`, `claim/selection.rs` | EDIT | §3: the same filter for setup work |
+| `rustd/crates/daemon/afd_gate/src/policy/build/mod.rs` | EDIT | §4: direct or proxied access by owner and posture |
+| `rustd/crates/daemon/afd_fleet/src/lease/model_call/` (`mod.rs`, `meter.rs`, `tests.rs`), `lease/usage/mod.rs`, `lease/renew/`, `lease/report/`, `Cargo.toml` | CREATE, EDIT | §4: daemon-side turn, daemon metering, runner lines skipped |
+| `rustd/crates/daemon/afd_api_runner/src/handler/runner/model_call.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §4: the runner-plane route |
+| `rustd/crates/runner/afr_supervisor/src/model_proxy/` (`mod.rs`, `tests.rs`), `lib.rs`, `client/`, `config/mod.rs`, `config/tests.rs`, `halt/mod.rs` | CREATE, EDIT | §4, §5: proxied provider; token file and reload |
+| `rustd/crates/harness/afr_providers/src/connect/mod.rs`, `turn.rs`; `afr_sandbox/examples/kernel_lane/supervisor_plane.rs` | EDIT | §4: read `ModelAccess::Direct` only |
+| `rustd/crates/runner/agentsfleet_runner/src/main.rs`, `afd_core/src/signal.rs`, `agentsfleet_runner/tests/fake_daemon.rs`, `tests/fixtures/runner/help.txt` | EDIT | §5: SIGHUP reload and its tests; help lists the file variable |
 | The M243 gateway's stream re-check (path fixed when M243 merges) | EDIT | §5: re-check by the digest that opened the connection |
-| `rustd/crates/afd_fleet/tests/integration_runner_owner.rs`, `integration_runner_owner/`; `afd_authoring/tests/` placement module | CREATE | §3: matrix, claim, issue, hold, authoring |
-| `rustd/crates/agentsfleetd/tests/integration_rust_runner_tenant.rs`, `daemon_suite.rs`, `tests/support/fake_model.rs` | CREATE, EDIT | §4: end-to-end run; the fake records the auth header it received |
-| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3, §4: two operator families |
+| `rustd/crates/daemon/afd_fleet/tests/integration_runner_owner.rs`, `integration_runner_owner/`; `afd_authoring/tests/` placement module | CREATE | §3: matrix, claim, issue, hold, authoring |
+| `rustd/crates/daemon/agentsfleetd/tests/integration_rust_runner_tenant.rs`, `daemon_suite.rs`, `tests/support/fake_model.rs` | CREATE, EDIT | §4: end-to-end run; the fake records the auth header it received |
+| `rustd/crates/protocol/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `docs/metrics.census.tsv` | EDIT | §3, §4: two operator families |
 | `cli/src/commands/runner.ts`, `cli/src/program/tree/runner.command.ts`, `root.command.ts`, `flags.ts`, `cli/test/runner.integration.test.ts` | CREATE, EDIT | §6: the `runner` command group |
 | `ui/packages/app/app/(dashboard)/settings/runners/` (`page.tsx`, `actions.ts`, `loading.tsx`, `components/`), `settings/page.tsx` | CREATE, EDIT | §6: Settings → Runners |
 | `ui/packages/app/lib/api/tenant_runners.ts`, `lib/auth/scopes.ts`, `lib/analytics/events.ts` | CREATE, EDIT | §6: client, scope, product events |

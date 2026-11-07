@@ -2,7 +2,7 @@
  * Svix HMAC-SHA256 signing for outbound webhook posts.
  *
  * Mirrors the shape agentsfleetd's identity-events handler verifies
- * (rustd/crates/afd_webhook/src/vendor/svix.rs) and the Svix spec:
+ * (rustd/crates/protocol/afd_webhook/src/vendor/svix.rs) and the Svix spec:
  *   signed_input = `${id}.${timestamp}.${body}`
  *   signature    = base64( HMAC_SHA256(decode_base64(secret_after_whsec_prefix), signed_input) )
  *   header value = `v1,${signature}`

@@ -1,6 +1,6 @@
 # Runner execution — a trusted supervisor, a sandbox per lease, a workspace that outlives the lease
 
-> Scope: how `agentsfleet-runner` executes one lease — where the agent loop runs, what the sandbox is made of, how a fleet's code and files survive from one lease to the next, and how credentials and repository writes cross the sandbox wall. `agentsfleet-runner` is the one runner binary, with three entries: `run`, `probe` and `sandbox` (`rustd/crates/agentsfleet_runner/src/main.rs`). The control protocol, renewal, fencing and report semantics are in [Runner Fleet](./runner_fleet.md).
+> Scope: how `agentsfleet-runner` executes one lease — where the agent loop runs, what the sandbox is made of, how a fleet's code and files survive from one lease to the next, and how credentials and repository writes cross the sandbox wall. `agentsfleet-runner` is the one runner binary, with three entries: `run`, `probe` and `sandbox` (`rustd/crates/runner/agentsfleet_runner/src/main.rs`). The control protocol, renewal, fencing and report semantics are in [Runner Fleet](./runner_fleet.md).
 
 ## Facts
 
@@ -117,7 +117,7 @@ Workspace restore and save, and the supervisor's push, are drawn as the target; 
 
 ## One lease, end to end
 
-`agentsfleet-runner run` boots, probes the host, admits the staged toolbox and builds one bubblewrap engine (`rustd/crates/agentsfleet_runner/src/main.rs`). Then the heartbeat, the report-spool drain and the worker pool run side by side until shutdown (`afr_supervisor/src/lib.rs`). Each worker polls for a lease while the last assignment says to take work, and runs the lease it gets to its report before polling again (`afr_supervisor/src/worker_pool/mod.rs`).
+`agentsfleet-runner run` boots, probes the host, admits the staged toolbox and builds one bubblewrap engine (`rustd/crates/runner/agentsfleet_runner/src/main.rs`). Then the heartbeat, the report-spool drain and the worker pool run side by side until shutdown (`afr_supervisor/src/lib.rs`). Each worker polls for a lease while the last assignment says to take work, and runs the lease it gets to its report before polling again (`afr_supervisor/src/worker_pool/mod.rs`).
 
 ```
  lease reply
@@ -666,7 +666,7 @@ Artifacts a fleet saves for the user live beside the snapshots and are downloade
 ## Credentials
 
 - **Model keys** stay in the supervisor.
-- **Repository reads.** The supervisor clones with the lease's own one-hour, repository-scoped token from the mint verb, which reads on a read binding and writes on a write binding (`rustd/crates/afd_credential/src/credential/github/request.rs`). The token never enters the sandbox: the fetch presents it in an in-memory header, and the clone's configuration names the plain URL (`rustd/crates/afr_supervisor/src/workspace_clone/mod.rs`).
+- **Repository reads.** The supervisor clones with the lease's own one-hour, repository-scoped token from the mint verb, which reads on a read binding and writes on a write binding (`rustd/crates/daemon/afd_credential/src/credential/github/request.rs`). The token never enters the sandbox: the fetch presents it in an in-memory header, and the clone's configuration names the plain URL (`rustd/crates/runner/afr_supervisor/src/workspace_clone/mod.rs`).
 - **Tools that need a login reuse today's mint path.** Fleets already name credentials and never hold them: a `${secrets.github.token}` placeholder resolves through `POST /v1/runners/me/credentials/mint`, and the supervisor calls that verb. What is new is only where a token lands. Today it is minted once per lease, kept in that lease's egress guard until shortly before it expires, substituted only into a request's `Authorization` header, and masked in whatever the upstream sends back. A command-line tool such as the GitHub one needs it as a file or variable. The design writes it into a memory-only `/run/creds` for that lease; that is not built, so a token stays in the egress guard and no sandbox command receives one. Each token is bound to the hosts it is for, and the lease's allowlist admits only those hosts.
 - **A line said to the thread, and a schedule's message, are masked twice.** The `message`, `cron_add`, `cron_update` and `schedule` tools mask every token the lease minted before the text leaves the runner; `agentsfleetd` masks the fleet's declared static secrets with the same `afr_secrets::Scrub` before it posts a line through the outbound worker's Slack poster or stores a schedule. The runner never holds the channel credential.
 - **A placeholder-swap proxy can replace the file later without fleets noticing.** The mint path stays the same, and the supervisor writes a placeholder into the planned `/run/creds` instead of the token. Every connection an `allow_list_egress` sandbox makes already leaves through the host-side end of its veth pair, and the toolbox's trust store has an empty slot for a proxy's certificate. Adding the proxy reverses the no-interception rule in [Runner Fleet](./runner_fleet.md) §Traps, and that reversal is recorded when it ships.
@@ -685,7 +685,7 @@ The fleet uses real git inside the sandbox: branches, several commits, the norma
 2. mints a write token for that one call and pushes;
 3. opens a draft Pull Request.
 
-When a fleet requires approval, the push runs in the continuation lease after someone approves. The daemon compiles the rules (`rustd/crates/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox. The loop renders the same rules into the prompt as a trusted repair context — the one repository, the daemon-named repair branch, the trusted base — because a write-bound fleet's instructions require that input before writing and nothing else supplies it. A write token inside the sandbox would be readable by every program there, including a dependency's install hook. A repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request", in the words of the rules' own module documentation.
+When a fleet requires approval, the push runs in the continuation lease after someone approves. The daemon compiles the rules (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), and the supervisor enforces them outside the sandbox. The loop renders the same rules into the prompt as a trusted repair context — the one repository, the daemon-named repair branch, the trusted base — because a write-bound fleet's instructions require that input before writing and nothing else supplies it. A write token inside the sandbox would be readable by every program there, including a dependency's install hook. A repository-scoped write token "can force-push to `main` as easily as it can open a draft Pull Request", in the words of the rules' own module documentation.
 
 ## Why Rust
 

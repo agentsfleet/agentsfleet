@@ -199,7 +199,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
-# `crates/*/src/test_util.rs`, or `test_util/mod.rs` where the module has
+# `crates/*/*/src/test_util.rs`, or `test_util/mod.rs` where the module has
 # children, is fixture code compiled only under the `test-util` feature --
 # `TestDatabase::shared` and the two like it. The lane measures with
 # `--all-features`, so it was being graded as production surface:
@@ -226,7 +226,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 # The bench crate leaves the DENOMINATOR too, on Indy's call (2026-09-07):
 # "the afd_bench/ crate must be ignored from codecov and the coverage we
 # conduct, that is just an optional crate to measure bench and no where used
-# in production". `crates/afd_bench` is a measuring instrument -- five lane
+# in production". `crates/daemon/afd_bench` is a measuring instrument -- five lane
 # binaries and the harness they share -- with no consumer in the workspace
 # (`rustd/Cargo.toml` lists it as a member; nothing depends on it) and no path
 # into a shipped binary. Its tests still RUN in this lane, so the lanes stay
@@ -241,7 +241,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 # then merged `make test-coverage-runner-kernel`'s report into it, and
 # excluding them threw that lane's measurement away. Dropped on Indy's call
 # (2026-10-15, M227).
-RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/afd_bench/)
+RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 
 # The floor's verdict, carrying the number that decided it, decided ONCE.
 #

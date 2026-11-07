@@ -173,12 +173,12 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 
 | Area | Files |
 |---|---|
-| Shared engine | `rustd/crates/afd_context/Cargo.toml`, `src/{lib,error,window,ports,plan,compact,checkpoint,summary,trace}.rs`, tests and daemon repository modules |
-| Registration and storage | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `schema/2160_memory_context_checkpoints.sql`, `rustd/crates/afd_db/src/migration.rs` and migration tests |
-| Authoring admission and accounting | `rustd/crates/afd_authoring/Cargo.toml`, `src/lease/claim/{context,issue/payload}.rs`, claim history SQL, `src/model/budget.rs`, report usage and model preparation/receipt/continuation modules and new context adapters |
-| Runner protocol | `rustd/crates/afd_wire/src/authoring/{model,meter,lease}.rs`, shared context payloads/paths, runner route declarations and generated `public/openapi.json` |
-| Runtime | `rustd/crates/afr_agent/Cargo.toml`, context and loop modules, provider request estimation, `rustd/crates/afd_gate/src/policy/context.rs`, checkpoint adapter on `AgentRun` |
-| Trusted transport | `rustd/crates/afd_http/src/services/leasing` and its manifests, `rustd/crates/afd_api_runner` context handlers, `rustd/crates/afd_fleet` fenced context methods, `rustd/crates/afr_supervisor` authoring turn, client and context adapter modules, related manifests |
+| Shared engine | `rustd/crates/protocol/afd_context/Cargo.toml`, `src/{lib,error,window,ports,plan,compact,checkpoint,summary,trace}.rs`, tests and daemon repository modules |
+| Registration and storage | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `schema/2160_memory_context_checkpoints.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` and migration tests |
+| Authoring admission and accounting | `rustd/crates/daemon/afd_authoring/Cargo.toml`, `src/lease/claim/{context,issue/payload}.rs`, claim history SQL, `src/model/budget.rs`, report usage and model preparation/receipt/continuation modules and new context adapters |
+| Runner protocol | `rustd/crates/protocol/afd_wire/src/authoring/{model,meter,lease}.rs`, shared context payloads/paths, runner route declarations and generated `public/openapi.json` |
+| Runtime | `rustd/crates/runner/afr_agent/Cargo.toml`, context and loop modules, provider request estimation, `rustd/crates/daemon/afd_gate/src/policy/context.rs`, checkpoint adapter on `AgentRun` |
+| Trusted transport | `rustd/crates/daemon/afd_http/src/services/leasing` and its manifests, `rustd/crates/daemon/afd_api_runner` context handlers, `rustd/crates/daemon/afd_fleet` fenced context methods, `rustd/crates/runner/afr_supervisor` authoring turn, client and context adapter modules, related manifests |
 | Status and traces | `afd_context/src/trace.rs`, `afd_authoring/src/model/{dispatch,progress}`, tenant private-stream forwarding, shared activity payloads, runtime/supervisor activity handling, app draft/fleet stream reducers, projections, accessible status components and their tests |
 | Behavior and evidence | Host unit/integration tests, existing unchanged continuity acceptance, `docs/architecture/{README,capabilities,runner_fleet,api_resources,billing_and_provider_keys}.md`, active M230 spec and relevant published guidance |
 

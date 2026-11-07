@@ -1,12 +1,19 @@
 # Workspace root for the Rust daemon port.
 #
-# Layout follows Microsoft's M-CRATES-FLAT-FOLDER: every crate is a sibling in
-# one direct subdirectory, `crates/`, with the directory name equal to the crate
-# name. This root is a VIRTUAL manifest — no `[package]`, so it builds no library
-# or binary of its own and no crate is nested inside another crate's source tree.
-# The workspace mechanics (virtual root, explicit member list, the lint
-# rationale below) come from ~/Projects/oss/bun; its `src/<name>/` crate
-# directory does not, by Indy's call on Aug 23, 2026.
+# Every crate sits in one layer folder under `crates/`, with the directory name
+# equal to the crate name (Indy, Nov 07, 2026, superseding the flat
+# M-CRATES-FLAT-FOLDER layout of Aug 23, 2026):
+#
+#   foundation/  no product knowledge: errors, validation, crypto
+#   protocol/    the types both binaries speak
+#   harness/     the agent harness and the model, secret and egress seams it uses
+#   runner/      `agentsfleet-runner` and the crates only it links
+#   daemon/      `agentsfleetd` and the crates only it links
+#
+# A crate depends on its own layer or a lower one, and `runner/` and `daemon/`
+# never on each other. This root is a VIRTUAL manifest: no `[package]`, so it
+# builds no library or binary of its own. The workspace mechanics (virtual root,
+# explicit member list, the lint rationale below) come from ~/Projects/oss/bun.
 #
 # Every setting a member could restate lives here instead (M-CARGO-WORKSPACE):
 # members inherit package metadata via `.workspace = true`, dependency versions
@@ -15,7 +22,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_api_wire", "crates/afd_approval", "crates/afd_auth", "crates/afd_authoring", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_context", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_inference", "crates/afd_ingress", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = ["crates/daemon/afd_admin", "crates/daemon/afd_admission", "crates/daemon/afd_api", "crates/daemon/afd_api_ingress", "crates/daemon/afd_api_operator", "crates/daemon/afd_api_runner", "crates/daemon/afd_api_tenant", "crates/daemon/afd_api_wire", "crates/daemon/afd_approval", "crates/daemon/afd_auth", "crates/daemon/afd_authoring", "crates/daemon/afd_bench", "crates/daemon/afd_billing", "crates/daemon/afd_connector", "crates/protocol/afd_context", "crates/foundation/afd_core", "crates/daemon/afd_credential", "crates/daemon/afd_cron", "crates/foundation/afd_crypto", "crates/daemon/afd_db", "crates/daemon/afd_dragonfly", "crates/daemon/afd_events", "crates/daemon/afd_fleet", "crates/daemon/afd_fleet_lifecycle", "crates/daemon/afd_fleet_ops", "crates/protocol/afd_fleet_runtime", "crates/daemon/afd_gate", "crates/daemon/afd_http", "crates/daemon/afd_identity", "crates/protocol/afd_inference", "crates/daemon/afd_ingress", "crates/daemon/afd_mail", "crates/daemon/afd_memory", "crates/protocol/afd_observability", "crates/protocol/afd_otlp", "crates/daemon/afd_outbound", "crates/daemon/afd_runner", "crates/daemon/afd_sse", "crates/daemon/afd_state", "crates/daemon/afd_tenant", "crates/foundation/afd_validate", "crates/daemon/afd_vault", "crates/protocol/afd_webhook", "crates/protocol/afd_wire", "crates/runner/afr_agent", "crates/harness/afr_egress", "crates/runner/afr_executor", "crates/runner/afr_memory", "crates/harness/afr_providers", "crates/runner/afr_sandbox", "crates/harness/afr_secrets", "crates/runner/afr_supervisor", "crates/runner/afr_telemetry", "crates/runner/afr_tools", "crates/runner/agentsfleet_runner", "crates/daemon/agentsfleetd"]
 
 [workspace.package]
 version = "0.73.0"
@@ -47,137 +54,137 @@ aho-corasick = { version = "1.1.5", default-features = false, features = ["std",
 memmap2 = { version = "0.9.12", default-features = false }
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
-afd_admin = { path = "crates/afd_admin" }
+afd_admin = { path = "crates/daemon/afd_admin" }
 # The admission ledger: the Postgres row that IS a producer's acceptance, and
 # the queue entry that is only its receipt. Its own crate for the reason
 # `afd_events` gives for existing — one owner per table — and because every
 # producer crate (`afd_events`, `afd_ingress`, `afd_cron`, `afd_approval`,
 # `afd_runner`) admits through it while none of them may depend on another.
-afd_admission = { path = "crates/afd_admission" }
-afd_api = { path = "crates/afd_api" }
-afd_api_ingress = { path = "crates/afd_api_ingress" }
-afd_api_operator = { path = "crates/afd_api_operator" }
-afd_api_runner = { path = "crates/afd_api_runner" }
-afd_api_tenant = { path = "crates/afd_api_tenant" }
-afd_approval = { path = "crates/afd_approval" }
-afd_auth = { path = "crates/afd_auth" }
-afd_authoring = { path = "crates/afd_authoring" }
+afd_admission = { path = "crates/daemon/afd_admission" }
+afd_api = { path = "crates/daemon/afd_api" }
+afd_api_ingress = { path = "crates/daemon/afd_api_ingress" }
+afd_api_operator = { path = "crates/daemon/afd_api_operator" }
+afd_api_runner = { path = "crates/daemon/afd_api_runner" }
+afd_api_tenant = { path = "crates/daemon/afd_api_tenant" }
+afd_approval = { path = "crates/daemon/afd_approval" }
+afd_auth = { path = "crates/daemon/afd_auth" }
+afd_authoring = { path = "crates/daemon/afd_authoring" }
 # What a lease costs and what a tenant has. Split out of `afd_fleet` because it
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
 # calls it — the runner plane's other 23,000 lines never ask about money.
-afd_billing = { path = "crates/afd_billing" }
+afd_billing = { path = "crates/daemon/afd_billing" }
 # Connecting a workspace to a third party: the signed install state, the
 # code-for-token exchange, and the grant that lands in the vault. Its own crate
 # rather than a module in `afd_api` for the reason `afd_ingress` is one — the
 # state machine and the vendor conversation are decided with no router in
 # sight, and `afd_api` is already the workspace's largest crate.
-afd_connector = { path = "crates/afd_connector" }
-afd_core = { path = "crates/afd_core" }
-afd_context = { path = "crates/afd_context" }
+afd_connector = { path = "crates/daemon/afd_connector" }
+afd_core = { path = "crates/foundation/afd_core" }
+afd_context = { path = "crates/protocol/afd_context" }
 # What a run may USE: the declared secret, the vault that opens it, the provider
 # it dials, the token a broker mints. Split from afd_fleet once the one misfiled
 # file (an `impl Plane` living under credential/) stopped tying it to the lease.
-afd_credential = { path = "crates/afd_credential" }
-afd_crypto = { path = "crates/afd_crypto" }
-afd_db = { path = "crates/afd_db" }
+afd_credential = { path = "crates/daemon/afd_credential" }
+afd_crypto = { path = "crates/foundation/afd_crypto" }
+afd_db = { path = "crates/daemon/afd_db" }
 # `fleet.events` and its live tail. A crate of its own because the table
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
 # plane, so `afd_approval` copied the insert rather than depend on leases,
 # money, policy and four sweepers to reuse ten lines of SQL.
-afd_events = { path = "crates/afd_events" }
-afd_fleet = { path = "crates/afd_fleet" }
+afd_events = { path = "crates/daemon/afd_events" }
+afd_fleet = { path = "crates/daemon/afd_fleet" }
 # What a fleet is ALLOWED to do, and the gate a run stops at when the answer
 # needs a person. The lease plane calls down into it at two moments and it
 # calls back at none, which is what let it out.
-afd_gate = { path = "crates/afd_gate" }
-afd_http = { path = "crates/afd_http" }
-afd_inference = { path = "crates/afd_inference" }
+afd_gate = { path = "crates/daemon/afd_gate" }
+afd_http = { path = "crates/daemon/afd_http" }
+afd_inference = { path = "crates/protocol/afd_inference" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
 # that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and
 # login modules would then rebuild behind a configuration parser and a Redis
 # stream client they never call.
-afd_fleet_lifecycle = { path = "crates/afd_fleet_lifecycle" }
+afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
 # is the host's own plane and WRITES it — a lease-history join reaching for
 # `fleet.fleets` and `fleet.events` would put both on the heartbeat path.
-afd_fleet_ops = { path = "crates/afd_fleet_ops" }
-afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
-afd_identity = { path = "crates/afd_identity" }
+afd_fleet_ops = { path = "crates/daemon/afd_fleet_ops" }
+afd_fleet_runtime = { path = "crates/protocol/afd_fleet_runtime" }
+afd_identity = { path = "crates/daemon/afd_identity" }
 # What a signed delivery is resolved against. Not folded into `afd_events`,
 # which owns the same table's reads: this needs the vault and the config
 # parser, and adding them there would put AES-GCM and a configuration
 # document reader behind every history page the dashboard asks for. The same argument
 # `afd_vault` makes for not living in `afd_fleet`.
-afd_cron = { path = "crates/afd_cron" }
-afd_ingress = { path = "crates/afd_ingress" }
+afd_cron = { path = "crates/daemon/afd_cron" }
+afd_ingress = { path = "crates/daemon/afd_ingress" }
 # Product email: the invite rendered from templates kept in this repository and
 # sent over SMTP through the relay the `smtp-relay` platform bag names. Its own
 # crate so the transport, its TLS posture and the templates have one owner, and
 # the tenant store never links a mail client.
-afd_mail = { path = "crates/afd_mail" }
+afd_mail = { path = "crates/daemon/afd_mail" }
 # Fleet memory behind one store trait. Its own crate so the lease plane and both
 # route families reach memory through the trait, and a store for another vendor
 # is a new implementation rather than an edit to the runner plane.
-afd_memory = { path = "crates/afd_memory" }
-afd_observability = { path = "crates/afd_observability" }
+afd_memory = { path = "crates/daemon/afd_memory" }
+afd_observability = { path = "crates/protocol/afd_observability" }
 # The OTLP transport both binaries build their pipelines through: the knobs,
 # the exporters inside `afd_observability`'s counting wrappers, the globals.
-afd_otlp = { path = "crates/afd_otlp" }
-afd_outbound = { path = "crates/afd_outbound" }
-afd_dragonfly = { path = "crates/afd_dragonfly" }
+afd_otlp = { path = "crates/protocol/afd_otlp" }
+afd_outbound = { path = "crates/daemon/afd_outbound" }
+afd_dragonfly = { path = "crates/daemon/afd_dragonfly" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
-afd_runner = { path = "crates/afd_runner" }
+afd_runner = { path = "crates/daemon/afd_runner" }
 # One SSE connection's frames and the fan-in behind a workspace stream. Its own
 # crate rather than a module in `afd_api`: the frame shapes, the sequence
 # discipline and the concurrent-stream ceiling are decided with no router in
 # sight, and `afd_api` is already the workspace's largest crate.
-afd_sse = { path = "crates/afd_sse" }
-afd_state = { path = "crates/afd_state" }
-afd_tenant = { path = "crates/afd_tenant" }
+afd_sse = { path = "crates/daemon/afd_sse" }
+afd_state = { path = "crates/daemon/afd_state" }
+afd_tenant = { path = "crates/daemon/afd_tenant" }
 # The bounds every crate declares on untrusted input and cannot get from garde
 # alone: the custom rules (finite, NUL-free, digits, a charset), a `?limit`
 # proved against its route's ceiling, and the table from a reported path to a
 # route's fixed sentence. A leaf beside `afd_core` rather than a module in it
 # (M-SMALLER-CRATES): it depends on garde and nothing of ours.
-afd_validate = { path = "crates/afd_validate" }
+afd_validate = { path = "crates/foundation/afd_validate" }
 # The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
 # `vault` module is the RUNNER plane's reader — it opens a declared credential
 # for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,
 # which is the credential directory the authentication path cannot start
 # without and would then rebuild every login when a projection column moved.
-afd_vault = { path = "crates/afd_vault" }
+afd_vault = { path = "crates/daemon/afd_vault" }
 # The signature wall: what an unauthenticated delivery must prove before
 # anything reads its body. Its own crate rather than a module in `afd_auth`,
 # which answers a different question — who a CALLER is and what they may do.
 # A signed delivery has no principal, and the wall must be provable with no
 # datastore, no runtime and no router.
-afd_webhook = { path = "crates/afd_webhook" }
-afd_wire = { path = "crates/afd_wire" }
+afd_webhook = { path = "crates/protocol/afd_webhook" }
+afd_wire = { path = "crates/protocol/afd_wire" }
 # The daemon's own API types: every admin, tenant, operator and ingress shape
 # no runner speaks. Split from `afd_wire` so an edit here rebuilds no runner
 # crate.
-afd_api_wire = { path = "crates/afd_api_wire" }
+afd_api_wire = { path = "crates/daemon/afd_api_wire" }
 # The Rust runner: the supervisor outside every sandbox, the sandbox engines,
 # the executor that runs inside each one, and the agent-engine seam. They depend
 # on `afd_wire`, `afd_core` and `afd_observability` and on nothing else from the
 # daemon (`docs/architecture/runner_execution.md` §Crates).
-afr_agent = { path = "crates/afr_agent" }
-afr_egress = { path = "crates/afr_egress" }
-afr_executor = { path = "crates/afr_executor" }
-afr_memory = { path = "crates/afr_memory" }
-afr_providers = { path = "crates/afr_providers" }
-afr_sandbox = { path = "crates/afr_sandbox" }
-afr_secrets = { path = "crates/afr_secrets" }
-afr_supervisor = { path = "crates/afr_supervisor" }
+afr_agent = { path = "crates/runner/afr_agent" }
+afr_egress = { path = "crates/harness/afr_egress" }
+afr_executor = { path = "crates/runner/afr_executor" }
+afr_memory = { path = "crates/runner/afr_memory" }
+afr_providers = { path = "crates/harness/afr_providers" }
+afr_sandbox = { path = "crates/runner/afr_sandbox" }
+afr_secrets = { path = "crates/harness/afr_secrets" }
+afr_supervisor = { path = "crates/runner/afr_supervisor" }
 # The runner's telemetry: the credential-free endpoint, the span budget and
 # the runner's own metric families. Every runner crate that measures records
 # through it; it depends on none of them but the tool catalog.
-afr_telemetry = { path = "crates/afr_telemetry" }
-afr_tools = { path = "crates/afr_tools" }
+afr_telemetry = { path = "crates/runner/afr_telemetry" }
+afr_tools = { path = "crates/runner/afr_tools" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).

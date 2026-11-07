@@ -255,8 +255,8 @@ The write binding permits the exact paths below, prefixed by `/repos/{repo}`.
 | PATCH | `/git/refs/heads/{event_branch}` | Required boolean `force:false`; only `sha` beside it |
 
 Closed rules reject other fields, duplicate fields and query strings.
-The compiler lives in `rustd/crates/afd_gate/src/policy/egress/write.rs`.
-The runner matches these rules in `rustd/crates/afr_egress/src/origin/mod.rs`.
+The compiler lives in `rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`.
+The runner matches these rules in `rustd/crates/harness/afr_egress/src/origin/mod.rs`.
 
 The PATCH supports bounded corrections within the same event's branch and existing draft.
 GitHub rejects non-fast-forward updates when `force:false`; this is not an expected-old-head comparison.
@@ -266,15 +266,15 @@ A later admission cannot select an earlier event's draft through these rules.
 
 Compatible runners must precede leases carrying the new `patch` method; older readers reject it.
 
-The reviews path remains denied by `origin_admits` in `rustd/crates/afr_egress/src/admission/mod.rs`.
+The reviews path remains denied by `origin_admits` in `rustd/crates/harness/afr_egress/src/admission/mod.rs`.
 The tool returns `ToolErrorCode::RequestPolicyNotAllowed`, with `[request_policy_not_allowed]` visible to the model.
 The lease loop can continue after a refusal; the CI fleet instructions require stopping.
 
 The error advises against trying another path, API or credential because one development run tried sixteen alternatives after a denied post.
-The same guidance accompanies `secret_not_found`; see `rustd/crates/afr_egress/src/error/mod.rs`.
+The same guidance accompanies `secret_not_found`; see `rustd/crates/harness/afr_egress/src/error/mod.rs`.
 The platform has no refusal-count ceiling; that remains open scope.
 
-`rustd/crates/agentsfleetd/tests/integration_rust_runner_reviews.rs` verifies zero review POSTs reach GitHub and preserves the final denial code.
+`rustd/crates/daemon/agentsfleetd/tests/integration_rust_runner_reviews.rs` verifies zero review POSTs reach GitHub and preserves the final denial code.
 The [reviewer scenario](scenarios/github-pr-reviewer.md) records the same boundary.
 
 **What the operator sees.** The live tail: `event_received`, `tool_call_started` / `tool_call_completed` (the second with `status: failed` and the output head carrying the code), streamed text chunks, `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). Durably: `fleet.events` row `processed` with `response_text` = the model's final answer and `tool_calls` = the trace (`afd_fleet/src/lease/finalize.rs`), and `fleet.tool_calls` for "show all" (`afd_api_runner/src/handler/runner/tool_call.rs`). On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
@@ -295,7 +295,7 @@ A steer cannot add an egress rule.
 
 **The deferral, verbatim** (the agent-loop workstream's spec, under Discovery, its Deferrals bullet):
 
-> **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
+> **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, the `github-pr-reviewer/definition.json` instructions' step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/daemon/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
 
 **The other reply path, also not for GitHub.** The report owes a `fleet.obligations` delivery only when the admission recorded a reply destination (`afd_fleet/src/lease/commit.rs`; `schema/1720_fleet_admissions.sql`). The App webhook admits with `Reply::None` (`afd_ingress/src/deliver.rs`), and only Slack posters exist (`afd_outbound/src/poster/mod.rs`). So there is no daemon-side "answer back to the PR" either.
 

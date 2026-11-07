@@ -9,10 +9,10 @@ language: Rust
 severity: error
 message: "`$NAME` holds a span as integer milliseconds or is millisecond arithmetic; declare a `Duration`, convert at the edge with `.as_millis()`, and hold an instant as `jiff::Timestamp`"
 files:
-  - rustd/crates/*/src/**/*.rs
+  - rustd/crates/*/*/src/**/*.rs
 ignores:
-  - rustd/crates/*/src/**/{tests,test_util,test_support,testing,fixture,examples,benches}/**
-  - rustd/crates/*/src/**/{test,tests,*_test,*_tests,test_util,test_support,testing,fixture}.rs
+  - rustd/crates/*/*/src/**/{tests,test_util,test_support,testing,fixture,examples,benches}/**
+  - rustd/crates/*/*/src/**/{test,tests,*_test,*_tests,test_util,test_support,testing,fixture}.rs
 rule:
   not: { matches: rust-in-cfg-test }
   any:

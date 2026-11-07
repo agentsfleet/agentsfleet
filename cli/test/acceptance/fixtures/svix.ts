@@ -3,7 +3,7 @@
  *
  * TS twin of `ui/packages/app/tests/e2e/acceptance/fixtures/svix.ts`. Mirrors
  * agentsfleetd's identity-events handler
- * (rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs) and the
+ * (rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs) and the
  * Svix spec:
  *   signed_input = `${id}.${timestamp}.${body}`
  *   signature    = base64( HMAC_SHA256(decode_base64(secret_after_whsec_prefix), signed_input) )
@@ -23,7 +23,7 @@ export interface SvixHeaders {
 }
 
 function decodeWhsec(secret: string): Buffer {
-  // The agentsfleetd verifier (rustd/crates/afd_webhook/src/vendor/svix.rs)
+  // The agentsfleetd verifier (rustd/crates/protocol/afd_webhook/src/vendor/svix.rs)
   // refuses any configured secret that does NOT start with `whsec_`. Accepting
   // a bare base64 value here would produce a plausible signature the API
   // always rejects, surfacing as a confusing bootstrap

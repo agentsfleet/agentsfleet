@@ -2,8 +2,8 @@ import { request } from "./client";
 import { PROVIDER_MODE, type TenantProvider } from "../types";
 
 // GET/PUT/DELETE /v1/tenants/me/provider — see
-// rustd/crates/afd_api_wire/src/tenant_provider.rs for the wire shape and
-// rustd/crates/afd_api_tenant/src/handler/tenant/provider/ for the handlers.
+// rustd/crates/daemon/afd_api_wire/src/tenant_provider.rs for the wire shape and
+// rustd/crates/daemon/afd_api_tenant/src/handler/tenant/provider/ for the handlers.
 // The api_key is never returned in responses; this
 // helper only ever surfaces the resolved metadata (mode, provider, model,
 // secret_ref, context_cap_tokens).

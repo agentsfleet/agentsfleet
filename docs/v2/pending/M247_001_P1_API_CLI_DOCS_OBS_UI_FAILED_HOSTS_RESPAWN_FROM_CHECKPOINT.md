@@ -75,10 +75,10 @@ A beats again: runner_online ─► 30 s with no newer offline record ─► cor
 
 ## Implementing agent — read these first
 
-1. `rustd/crates/afd_runner/src/capacity/mod.rs` and `capacity/sql/census.sql` — the one host-capacity authority, read under the host-row lock; §1 widens its count.
-2. `rustd/crates/afd_runner/src/sweep/liveness/mod.rs` — the offline record §2 cordons beside, and the slot backdating it deletes.
-3. `rustd/crates/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` and `lease/assign/ledger.rs` — the reclaim: the prior lease, the fence bump and the billing it carries.
-4. `rustd/crates/afr_supervisor/src/holds/keeper.rs` — the hold cap and the saturation eviction §1 makes the single eviction rule.
+1. `rustd/crates/daemon/afd_runner/src/capacity/mod.rs` and `capacity/sql/census.sql` — the one host-capacity authority, read under the host-row lock; §1 widens its count.
+2. `rustd/crates/daemon/afd_runner/src/sweep/liveness/mod.rs` — the offline record §2 cordons beside, and the slot backdating it deletes.
+3. `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_admission_head.sql` and `lease/assign/ledger.rs` — the reclaim: the prior lease, the fence bump and the billing it carries.
+4. `rustd/crates/runner/afr_supervisor/src/holds/keeper.rs` — the hold cap and the saturation eviction §1 makes the single eviction rule.
 5. `ui/packages/app/lib/streaming/fleet-stream-reply-registry.ts` and `reply-stream.ts` — where a second stream start becomes a gap today.
 
 ## Files Changed (blast radius)
@@ -86,35 +86,35 @@ A beats again: runner_online ─► 30 s with no newer offline record ─► cor
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M247_001_P1_API_CLI_DOCS_OBS_UI_FAILED_HOSTS_RESPAWN_FROM_CHECKPOINT.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
-| `rustd/crates/afd_runner/src/capacity/mod.rs`, `capacity/sql/census.sql`, `capacity/sql/lock_host.sql`, `capacity/sql/mod.rs` | EDIT | §1, §2: the `Claimant`, the hold count, the cordon flag |
-| `rustd/crates/afd_fleet/src/lease/issue.rs`, `lease/renew/mod.rs`, `lease/commit.rs`; `rustd/crates/afd_authoring/src/lease/claim/mod.rs`, `lease/renew.rs` | EDIT | §1: each lock caller names its claimant |
-| `rustd/crates/afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql` | EDIT | §1: the issued lease clears its fleet's hold |
-| `rustd/crates/afr_supervisor/src/holds/keeper.rs`, `holds/keeper_tests.rs` | EDIT | §1: the one-free-worker reserve |
-| `rustd/crates/afd_runner/tests/capacity/holds.rs`, `capacity/mod.rs`, `capacity/fixture.rs`, `tests/integration_hold_plans.rs` | CREATE, EDIT | §1 tests and the census plan |
-| `rustd/crates/afd_fleet/tests/integration_held_sandbox/resume.rs` | EDIT | §1: the lease consumes the hold |
-| `schema/2900_runner_runners_cordon.sql`; `rustd/crates/afd_db/src/migration.rs` and its position assertions | CREATE, EDIT | §2: the cordon columns (placeholder slot) |
-| `rustd/crates/afd_core/src/timing.rs` | EDIT | §2: `UNCORDON_AFTER` and its asserted relation to `HEARTBEAT_INTERVAL` |
-| `rustd/crates/afd_runner/src/sweep/liveness/mod.rs`, `liveness/tests.rs` | EDIT | §2: cordon with the offline record; the slot release goes |
-| `rustd/crates/afd_runner/src/sql/sweep/expire_active_lease_slots.sql` | DELETE | §2: the second respawn trigger |
-| `rustd/crates/afd_runner/src/sql/sweep/mod.rs`, `sql/sweep/select_due_runners.sql`, `sql/sweep/cordon_silent_runner.sql` | EDIT, CREATE | §2: the cordon statement; the due query drops the release arm |
-| `rustd/crates/afd_runner/src/heartbeat/mod.rs`, `heartbeat/cordon.rs`, `sql/runner/lift_automatic_cordon.sql`, `sql/runner/select_runner_assigned_policy.sql`, `sql/runner/mod.rs` | EDIT, CREATE | §2: the lift beside the liveness write (M243's stream session once it replaces the heartbeat) |
-| `rustd/crates/afd_runner/src/cordon.rs`, `lib.rs` | CREATE, EDIT | §2: `CordonReason` and its stored spelling |
-| `rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql` | EDIT | §2: a cordoned claimer gets no candidate (M243's offer read once it replaces the scan) |
-| `rustd/crates/afd_runner/tests/integration_sweeps/mod.rs`, `seed.rs`; `rustd/crates/afd_fleet/tests/integration_runner_beat/cordon.rs`, `integration_runner_beat/mod.rs` | EDIT, CREATE | §2 tests; the sweep test stops asserting backdated slots |
-| `rustd/crates/afd_api_wire/src/tail/mod.rs`; `rustd/crates/afd_fleet/src/lease/bracket.rs`, `lease/pull/mod.rs`, `lease/pull/restart.rs` | EDIT, CREATE | §3: `RunRestarted`, published after an issued reclaim |
-| `rustd/crates/afd_fleet/src/lease/activity/mod.rs`, `lease/sql/select_lease_target.sql` | EDIT | §3: a superseded lease's frames are refused |
-| `rustd/crates/afd_api_tenant/src/handler/stream/mod.rs` | EDIT | §3: the stream's frame list names `run_restarted` |
+| `rustd/crates/daemon/afd_runner/src/capacity/mod.rs`, `capacity/sql/census.sql`, `capacity/sql/lock_host.sql`, `capacity/sql/mod.rs` | EDIT | §1, §2: the `Claimant`, the hold count, the cordon flag |
+| `rustd/crates/daemon/afd_fleet/src/lease/issue.rs`, `lease/renew/mod.rs`, `lease/commit.rs`; `rustd/crates/daemon/afd_authoring/src/lease/claim/mod.rs`, `lease/renew.rs` | EDIT | §1: each lock caller names its claimant |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql` | EDIT | §1: the issued lease clears its fleet's hold |
+| `rustd/crates/runner/afr_supervisor/src/holds/keeper.rs`, `holds/keeper_tests.rs` | EDIT | §1: the one-free-worker reserve |
+| `rustd/crates/daemon/afd_runner/tests/capacity/holds.rs`, `capacity/mod.rs`, `capacity/fixture.rs`, `tests/integration_hold_plans.rs` | CREATE, EDIT | §1 tests and the census plan |
+| `rustd/crates/daemon/afd_fleet/tests/integration_held_sandbox/resume.rs` | EDIT | §1: the lease consumes the hold |
+| `schema/2900_runner_runners_cordon.sql`; `rustd/crates/daemon/afd_db/src/migration.rs` and its position assertions | CREATE, EDIT | §2: the cordon columns (placeholder slot) |
+| `rustd/crates/foundation/afd_core/src/timing.rs` | EDIT | §2: `UNCORDON_AFTER` and its asserted relation to `HEARTBEAT_INTERVAL` |
+| `rustd/crates/daemon/afd_runner/src/sweep/liveness/mod.rs`, `liveness/tests.rs` | EDIT | §2: cordon with the offline record; the slot release goes |
+| `rustd/crates/daemon/afd_runner/src/sql/sweep/expire_active_lease_slots.sql` | DELETE | §2: the second respawn trigger |
+| `rustd/crates/daemon/afd_runner/src/sql/sweep/mod.rs`, `sql/sweep/select_due_runners.sql`, `sql/sweep/cordon_silent_runner.sql` | EDIT, CREATE | §2: the cordon statement; the due query drops the release arm |
+| `rustd/crates/daemon/afd_runner/src/heartbeat/mod.rs`, `heartbeat/cordon.rs`, `sql/runner/lift_automatic_cordon.sql`, `sql/runner/select_runner_assigned_policy.sql`, `sql/runner/mod.rs` | EDIT, CREATE | §2: the lift beside the liveness write (M243's stream session once it replaces the heartbeat) |
+| `rustd/crates/daemon/afd_runner/src/cordon.rs`, `lib.rs` | CREATE, EDIT | §2: `CordonReason` and its stored spelling |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql` | EDIT | §2: a cordoned claimer gets no candidate (M243's offer read once it replaces the scan) |
+| `rustd/crates/daemon/afd_runner/tests/integration_sweeps/mod.rs`, `seed.rs`; `rustd/crates/daemon/afd_fleet/tests/integration_runner_beat/cordon.rs`, `integration_runner_beat/mod.rs` | EDIT, CREATE | §2 tests; the sweep test stops asserting backdated slots |
+| `rustd/crates/daemon/afd_api_wire/src/tail/mod.rs`; `rustd/crates/daemon/afd_fleet/src/lease/bracket.rs`, `lease/pull/mod.rs`, `lease/pull/restart.rs` | EDIT, CREATE | §3: `RunRestarted`, published after an issued reclaim |
+| `rustd/crates/daemon/afd_fleet/src/lease/activity/mod.rs`, `lease/sql/select_lease_target.sql` | EDIT | §3: a superseded lease's frames are refused |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/stream/mod.rs` | EDIT | §3: the stream's frame list names `run_restarted` |
 | `ui/packages/app/lib/api/events-types.ts`, `lib/streaming/fleet-stream-dispatch.ts`, `fleet-stream-reply-registry.ts`, `fleet-stream-reply-frames.ts`, `fleet-stream-row.ts`, `fleet-stream-registry.reply.test.ts`, `reply-stream.test.ts` | EDIT | §3: the browser resets the reply |
 | `ui/packages/app/components/domain/useFleetEventStream.ts`, `fleetMessageReaders.ts`, `FleetReplyBody.tsx`, `FleetReplyBody.test.tsx` | EDIT | §3: the restart marker |
 | `cli/src/commands/fleet_steer_events.ts`, `cli/test/fleet-steer-tail.unit.test.ts` | EDIT | §3: the CLI's restart line |
-| `rustd/crates/afd_fleet/src/lease/reclaim.rs`, `lease/assign/ledger.rs`, `lease/sql/lease/claim_admission_head.sql` | EDIT | §4: `Reused` carries the prior lease |
-| `rustd/crates/afd_context/src/repository/load.sql`, `repository/mod.rs`, and the files #803 adds for its checkpoint pointer and the lease answer's checkpoint field, named at CHORE(open) | EDIT | §4: the reclaim reads the turn's last checkpoint (open blocker 1) |
-| `rustd/crates/afd_fleet/tests/integration_respawn.rs`, `tests/fleet_suite.rs` | CREATE, EDIT | §3, §4 integration tests |
-| `rustd/crates/afd_api_wire/src/operator.rs`, `admin/mod.rs`; `rustd/crates/afd_runner/src/view/decode.rs`, `view/mod.rs`, `sql/runner_view/list_runners_first.sql`, `list_runners_after.sql`, `runner_detail.sql` | EDIT | §5: `cordon` on runner reads; `runner_uncordoned` |
-| `rustd/crates/afd_fleet/tests/integration_runner_views.rs` | EDIT | §5: the route test |
+| `rustd/crates/daemon/afd_fleet/src/lease/reclaim.rs`, `lease/assign/ledger.rs`, `lease/sql/lease/claim_admission_head.sql` | EDIT | §4: `Reused` carries the prior lease |
+| `rustd/crates/protocol/afd_context/src/repository/load.sql`, `repository/mod.rs`, and the files #803 adds for its checkpoint pointer and the lease answer's checkpoint field, named at CHORE(open) | EDIT | §4: the reclaim reads the turn's last checkpoint (open blocker 1) |
+| `rustd/crates/daemon/afd_fleet/tests/integration_respawn.rs`, `tests/fleet_suite.rs` | CREATE, EDIT | §3, §4 integration tests |
+| `rustd/crates/daemon/afd_api_wire/src/operator.rs`, `admin/mod.rs`; `rustd/crates/daemon/afd_runner/src/view/decode.rs`, `view/mod.rs`, `sql/runner_view/list_runners_first.sql`, `list_runners_after.sql`, `runner_detail.sql` | EDIT | §5: `cordon` on runner reads; `runner_uncordoned` |
+| `rustd/crates/daemon/afd_fleet/tests/integration_runner_views.rs` | EDIT | §5: the route test |
 | `ui/packages/app/lib/api/runners-types.ts`, `app/(dashboard)/admin/runners/components/RunnerStatus.tsx`, `[runnerId]/components/RunnerStatusLine.tsx`, `RunnerStatusLine.test.tsx`, `runner-activity.ts`, `runner-activity.test.ts`, `runner-copy.ts` | EDIT | §5: the cordon badge and the lift event |
-| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `tests/producers_drive.rs`; `docs/metrics.census.tsv` | EDIT | §5: `agentsfleet_runner_cordon_changes_total` |
-| `rustd/crates/agentsfleet_runner/tests/respawn.rs`, `tests/runner_suite.rs`, `Cargo.toml` | CREATE, EDIT | §6: the kill drill and its dev-dependencies |
+| `rustd/crates/protocol/afd_observability/src/metrics/declared/fleet.rs`, `producers/fleet/mod.rs`, `tests/producers_drive.rs`; `docs/metrics.census.tsv` | EDIT | §5: `agentsfleet_runner_cordon_changes_total` |
+| `rustd/crates/runner/agentsfleet_runner/tests/respawn.rs`, `tests/runner_suite.rs`, `Cargo.toml` | CREATE, EDIT | §6: the kill drill and its dev-dependencies |
 | `public/openapi.json` | EDIT | §3, §5: regenerated with `--no-banner` |
 | `docs/architecture/push_scheduler.md`, `runner_fleet.md`, `lease_flow.md`, `runner_execution.md`, `scaling.md`, `observability.md` | EDIT | §6: held sandboxes counted; the cordon rule; respawn from checkpoint; the sweep row and the predecessor proposal |
 | `~/Projects/docs` `runners.mdx`, `changelog.mdx` on `chore/m247-respawn-changelog` | EDIT | §6: the public cordon rule and the restart frame |

@@ -4,8 +4,8 @@ import { SECRET_KIND } from "./secrets-types";
 // Workspace secret vault. The plaintext body stays opaque — never returned
 // on read — but the list now carries a non-secret metadata *projection* the
 // server derives by decrypting each body and extracting everything but
-// `api_key` (see rustd/crates/afd_vault/src/projection/mod.rs, and the sum type
-// it feeds in rustd/crates/afd_vault/src/classified.rs). The client reads
+// `api_key` (see rustd/crates/daemon/afd_vault/src/projection/mod.rs, and the sum type
+// it feeds in rustd/crates/daemon/afd_vault/src/classified.rs). The client reads
 // that projection instead of guessing what each secret is.
 
 // Common descriptors every secret carries regardless of kind. Display-only

@@ -45,7 +45,7 @@ export interface ChatOptions {
 const USAGE = "agentsfleet chat [draft-id] --model <authoring-ref>";
 const DECIMAL_REVISION = /^[1-9][0-9]*$/u;
 const BYTES_PER_KIB = 1024;
-/** `MAX_DEFINITION_BYTES` in rustd/crates/afd_fleet_runtime/src/definition/mod.rs: longer Definition text is refused there. */
+/** `MAX_DEFINITION_BYTES` in rustd/crates/protocol/afd_fleet_runtime/src/definition/mod.rs: longer Definition text is refused there. */
 export const MAX_DEFINITION_BYTES = 448 * BYTES_PER_KIB;
 const DEFINITION_HINT = "pass --definition a readable file holding one native Definition JSON object";
 

@@ -86,19 +86,19 @@ Report reads use a fixed number of queries, independent of page size. Concurrent
 
 | Path | Purpose |
 |---|---|
-| `rustd/crates/afd_billing/src/report/` | Owned report types, period selection, aggregates, grouped paging and detail reads; static SQL beside each use case. |
-| `rustd/crates/afd_billing/src/tenant/mod.rs` | Delegate read methods using the existing database handle. |
-| `rustd/crates/afd_billing/src/lib.rs` | Export the reporting module. |
-| `rustd/crates/afd_http/src/services/billing.rs` | Add typed read methods to the current transport seam. |
-| `rustd/crates/afd_api_tenant/src/handler/tenant/billing_report/` | Bounded input, scope-bound continuation parsing, thin handlers and wire conversion. |
-| `rustd/crates/afd_api_tenant/src/handler/tenant/mod.rs` | Register the reporting handlers. |
-| `rustd/crates/afd_api_tenant/src/lib.rs` | Mount each new served read. |
-| `rustd/crates/afd_api_tenant/src/openapi.rs` | Register the endpoint annotations. |
-| `rustd/crates/afd_http/src/route/tenant.rs` | Add both read routes with the existing bearer and BillingRead guards. |
-| `rustd/crates/afd_api_wire/src/billing/` | Reporting response types and shared OpenAPI query shapes, separate from storage rows. |
-| `rustd/crates/afd_api_wire/src/lib.rs` | Export the reporting response module. |
-| `rustd/crates/afd_api/tests/` | Served-route permission, tenant-isolation, malformed-input and response proofs; update exhaustive route assertions. |
-| `rustd/crates/afd_billing/tests/` | Real-schema aggregate, paging, settlement, concurrency, failure and query-plan proofs. |
+| `rustd/crates/daemon/afd_billing/src/report/` | Owned report types, period selection, aggregates, grouped paging and detail reads; static SQL beside each use case. |
+| `rustd/crates/daemon/afd_billing/src/tenant/mod.rs` | Delegate read methods using the existing database handle. |
+| `rustd/crates/daemon/afd_billing/src/lib.rs` | Export the reporting module. |
+| `rustd/crates/daemon/afd_http/src/services/billing.rs` | Add typed read methods to the current transport seam. |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/billing_report/` | Bounded input, scope-bound continuation parsing, thin handlers and wire conversion. |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/mod.rs` | Register the reporting handlers. |
+| `rustd/crates/daemon/afd_api_tenant/src/lib.rs` | Mount each new served read. |
+| `rustd/crates/daemon/afd_api_tenant/src/openapi.rs` | Register the endpoint annotations. |
+| `rustd/crates/daemon/afd_http/src/route/tenant.rs` | Add both read routes with the existing bearer and BillingRead guards. |
+| `rustd/crates/daemon/afd_api_wire/src/billing/` | Reporting response types and shared OpenAPI query shapes, separate from storage rows. |
+| `rustd/crates/daemon/afd_api_wire/src/lib.rs` | Export the reporting response module. |
+| `rustd/crates/daemon/afd_api/tests/` | Served-route permission, tenant-isolation, malformed-input and response proofs; update exhaustive route assertions. |
+| `rustd/crates/daemon/afd_billing/tests/` | Real-schema aggregate, paging, settlement, concurrency, failure and query-plan proofs. |
 | `ui/packages/app/lib/pagination/use-url-cursor-pages.ts` | Retain the captured report cutoff while moving between pages or changing page size. |
 | `ui/packages/app/lib/api/billing_report.ts` | Validate reporting responses and perform authorized reads. |
 | `ui/packages/app/app/(dashboard)/settings/billing/` | Integrate the approved page, URL filters, grouped activity and detail loading. |

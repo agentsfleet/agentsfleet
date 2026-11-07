@@ -104,7 +104,7 @@ no source to skip and no backtrace to box, so the hull would add a heap
 allocation and a `Backtrace::capture()` to the hottest refusal path in the
 product, buy nothing, and cost the exhaustive `ALL` walk that pins each
 client-visible detail string byte-for-byte
-(`rustd/crates/afd_auth/tests/auth_error_taxonomy.rs`). `afd_sse::Error` is the same shape
+(`rustd/crates/daemon/afd_auth/tests/auth_error_taxonomy.rs`). `afd_sse::Error` is the same shape
 for the same reason. A crate on THIS side of the line must say which property put
 it there, in its own module note — being a plain enum today is not the argument.
 

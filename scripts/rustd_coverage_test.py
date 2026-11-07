@@ -69,6 +69,10 @@ class FileGrades(unittest.TestCase):
         grades = judge.file_grades(report, {"crates/a/src/new.rs": {1}})
         self.assertEqual([grade[0] for grade in grades], ["crates/a/src/new.rs"])
 
+    def test_missed_lines_roll_up_to_the_crate_inside_its_layer(self):
+        report = merged({"/w/rustd/crates/daemon/afd_db/src/lib.rs": {1: 0, 2: 0}, "/w/build.rs": {1: 0}})
+        self.assertEqual(judge.missed_by_crate(report), [("afd_db", 2), ("(workspace root)", 1)])
+
 
 class ReportFiles(unittest.TestCase):
     def run_report(self, grades, floor="99"):

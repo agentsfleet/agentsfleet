@@ -56,7 +56,7 @@ acceptance_sign() {
   public="$(dirname "$manifest")/release.pub"
   cosign public-key --key env://COSIGN_PRIVATE_KEY --outfile "$public"
   expected="$(awk '/-----BEGIN PUBLIC KEY-----/{p=1; sub(/^.*-----BEGIN/, "-----BEGIN")} p{print} /-----END PUBLIC KEY-----/{exit}' \
-    "$root/rustd/crates/afr_sandbox/src/toolbox/manifest/mod.rs" | tr -d '[:space:]')"
+    "$root/rustd/crates/runner/afr_sandbox/src/toolbox/manifest/mod.rs" | tr -d '[:space:]')"
   [ "$(tr -d '[:space:]' <"$public")" = "$expected" ] || { echo 'toolbox signing key differs from the runner key' >&2; return 1; }
   cosign sign-blob --yes --tlog-upload=false --new-bundle-format=false --use-signing-config=false \
     --key env://COSIGN_PRIVATE_KEY --output-signature "$manifest.sig" "$manifest"

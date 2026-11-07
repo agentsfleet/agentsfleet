@@ -100,12 +100,12 @@ that evaluation should compare deleted code and the provider behaviour each adap
 
 The September upgrade proposal is superseded by the current SQLx migration owner.
 `afd_db` runs SQLx Migrator, which creates its checksum ledger at runtime.
-The [migration owner](../../rustd/crates/afd_db/src/migrate/mod.rs) configures its location and records each applied slot.
+The [migration owner](../../rustd/crates/daemon/afd_db/src/migrate/mod.rs) configures its location and records each applied slot.
 
 An edited applied slot or a version unknown to the binary is refused.
 
 The daemon retains its bounded advisory lock and disables SQLx's unbounded lock.
-Each slot applies in one transaction (`rustd/crates/afd_db/src/migrate/mod.rs`, `migration.rs`).
+Each slot applies in one transaction (`rustd/crates/daemon/afd_db/src/migrate/mod.rs`, `migration.rs`).
 Databases began empty under this ledger; no older-ledger adoption runs.
 
 [Postgres schemas](postgres_schemas.md#layout) owns the current layout.

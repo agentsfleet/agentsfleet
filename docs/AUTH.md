@@ -26,7 +26,7 @@ Find the question, jump to the one §-section that answers it. Do not read the w
 | Who can mint Token B, and where do secrets live? | §"Security model — who can mint Token B and where the secrets live" |
 | Where may `CLERK_SECRET_KEY` be *sent*? | §Where the secret is sent — `CLERK_API_BASE` |
 | How do I rotate `CLERK_SECRET_KEY`? | §Rotation procedure |
-| Signed in, but nothing loads (`503 UZ-AUTH-004`)? | §"How the key set is fetched (`rustd/crates/afd_identity/src/jwks/http.rs`)" |
+| Signed in, but nothing loads (`503 UZ-AUTH-004`)? | §"How the key set is fetched (`rustd/crates/daemon/afd_identity/src/jwks/http.rs`)" |
 | May field X appear in a log / metric / error body? | §Sensitive-data classification |
 | What does a signup write, and in what order? | §"Signup — what `user.created` writes" |
 | Who can open a workspace, and why is a member refused (`403 UZ-AUTH-026`)? | §Who opens a workspace |
@@ -93,12 +93,12 @@ A fifth surface — the **runner token** (`agt_r`) — is the first *machine* pr
 
 Cookies **never reach the Rust backend**. The Clerk `__session` cookie lives on the dashboard's own host (`app.agentsfleet.net`) — written by the Clerk SDK on the page after sign-in. Same-origin policy means it only attaches on requests back to the dashboard, never to `api-dev.agentsfleet.net`. See *Flow 2 — UI* below for the cookie-vs-Bearer picture.
 
-Every route declares a guard in `afd_http`'s route table (`Guard`, `rustd/crates/afd_http/src/route/mod.rs`). A `Guard::Bearer` or `Guard::RunnerBearer` route passes through one layer, `prove` (`rustd/crates/afd_http/src/auth/guard.rs`). It hands the header to the plane's `afd_auth::Registry` (`authenticate_header`, which parses the Bearer value and calls `authenticate`, `rustd/crates/afd_auth/src/authenticate.rs`), which reads the credential's prefix (`CredentialKind::of`) and picks one of two paths:
+Every route declares a guard in `afd_http`'s route table (`Guard`, `rustd/crates/daemon/afd_http/src/route/mod.rs`). A `Guard::Bearer` or `Guard::RunnerBearer` route passes through one layer, `prove` (`rustd/crates/daemon/afd_http/src/auth/guard.rs`). It hands the header to the plane's `afd_auth::Registry` (`authenticate_header`, which parses the Bearer value and calls `authenticate`, `rustd/crates/daemon/afd_auth/src/authenticate.rs`), which reads the credential's prefix (`CredentialKind::of`) and picks one of two paths:
 
 - `agt_t`, `afc_`, `agt_r` → a **stored credential**: SHA-256 digest, one row lookup, a revocation check.
 - anything else → a **session token**: verified against the identity provider's cached JSON Web Key Set (JWKS) — RS256 signature, `iss`, `aud`, `exp` — with the `scopes` claim read off the token.
 
-Every path ends in one `Principal` (`rustd/crates/afd_auth/src/principal.rs`): a `Person` for the three human credentials, a `Runner` for `agt_r`. Most handlers take a `PersonIdentity` and never learn which credential class was used; the few that must narrow by class take `DashboardIdentity`, `FreshSession` or `HumanIdentity` instead (`rustd/crates/afd_http/src/auth/person.rs`). Minting a CLI credential, for one, takes `FreshSession`, a browser session alone.
+Every path ends in one `Principal` (`rustd/crates/daemon/afd_auth/src/principal.rs`): a `Person` for the three human credentials, a `Runner` for `agt_r`. Most handlers take a `PersonIdentity` and never learn which credential class was used; the few that must narrow by class take `DashboardIdentity`, `FreshSession` or `HumanIdentity` instead (`rustd/crates/daemon/afd_http/src/auth/person.rs`). Minting a CLI credential, for one, takes `FreshSession`, a browser session alone.
 
 ---
 
@@ -114,11 +114,11 @@ Five principal surfaces, one wire shape (`Authorization: Bearer …`), and a pre
 | Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `Guard::WebhookSignature` / `WebhookHmac` / `Svix` / `PayloadSigned` → verified in the handler |
 
-The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so a runner token cannot satisfy a tenant route and the reverse.
+The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/daemon/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so a runner token cannot satisfy a tenant route and the reverse.
 
 Authorization is **scope-based** (M104_001). Every capability is an explicit `resource:action` scope carried on the verified token's `scopes` claim and surfaced as `principal.scopes` (a bitset). Two independent axes decide a request:
 
-1. **Capability** — `require_scope` (`rustd/crates/afd_auth/src/gate.rs`) checks the route's required scopes (declared per route + HTTP method in `afd_http`'s route table) against `principal.scopes`, any-of, hierarchy-expanded. Absent/insufficient ⇒ `403 UZ-AUTH-022`, whose detail names the whole requirement (`Requires scope a or b`), because any one of them would pass.
+1. **Capability** — `require_scope` (`rustd/crates/daemon/afd_auth/src/gate.rs`) checks the route's required scopes (declared per route + HTTP method in `afd_http`'s route table) against `principal.scopes`, any-of, hierarchy-expanded. Absent/insufficient ⇒ `403 UZ-AUTH-022`, whose detail names the whole requirement (`Requires scope a or b`), because any one of them would pass.
 2. **Ownership** — the ownership layer checks the principal owns the workspace's account or holds a membership in it, independent of scopes. A `member` is then withheld two owner-grade capabilities (§Memberships and roles). The two compose: holding `fleet:write` does not let you touch a workspace outside your accounts.
 
 Capabilities have no role ladder and no capability bool. A role that grants is an undocumented bundle, and "what may this principal do" needs an enumerable answer. The two account roles grant nothing; they only withhold. See the **Scope catalogue** below for the full vocabulary, the `read < write < admin` hierarchy, and the default provisioning grants.
@@ -129,7 +129,7 @@ Everything below is per-surface detail. For the CLI device-flow threat model + c
 
 ## Scope catalogue
 
-The complete capability vocabulary. The enum in `rustd/crates/afd_auth/src/scope.rs` is canon; this table restates it for reading, and drift between the two is a bug. The user-mintable subset (what a tenant API key can carry) is published separately at [docs.agentsfleet.net/api-reference/scopes](https://docs.agentsfleet.net/api-reference/scopes) — operator and platform scopes stay out of that page on purpose. Scope strings are the JWT `scopes` claim values — matched **verbatim** in the Clerk session-token template (RULE UFS). The `read < write < admin` ladder is stored as data: holding a higher scope satisfies a lower requirement (a `fleet:admin` holder passes a `fleet:read` gate), expanded at parse time.
+The complete capability vocabulary. The enum in `rustd/crates/daemon/afd_auth/src/scope.rs` is canon; this table restates it for reading, and drift between the two is a bug. The user-mintable subset (what a tenant API key can carry) is published separately at [docs.agentsfleet.net/api-reference/scopes](https://docs.agentsfleet.net/api-reference/scopes) — operator and platform scopes stay out of that page on purpose. Scope strings are the JWT `scopes` claim values — matched **verbatim** in the Clerk session-token template (RULE UFS). The `read < write < admin` ladder is stored as data: holding a higher scope satisfies a lower requirement (a `fleet:admin` holder passes a `fleet:read` gate), expanded at parse time.
 
 **Laddered resources** (`read < write < admin`):
 
@@ -150,7 +150,7 @@ The complete capability vocabulary. The enum in `rustd/crates/afd_auth/src/scope
 | Scope | Grants |
 |---|---|
 | `runner:enroll` | create a trusted runner (mint a `agt_r`) — uniquely dangerous (the host then receives every tenant's inline secrets); held independently of `runner:read`/`runner:write` so it is separately grantable/revocable |
-| `stream:read` | reserved for an operator diagnostic of the live SSE streams open on an instance. No route in `rustd/crates/afd_http/src/route/` requires it today, so holding it reaches nothing |
+| `stream:read` | reserved for an operator diagnostic of the live SSE streams open on an instance. No route in `rustd/crates/daemon/afd_http/src/route/` requires it today, so holding it reaches nothing |
 | `approval:read` / `approval:resolve` | view the approval inbox / decide (approve or deny) an approval gate. The one pair here with a ladder: `approval:resolve` includes `approval:read` (`HIERARCHY`, `scope.rs`) |
 | `billing:read` | Read the tenant balance, raw charges, settled report and activity charges. [Billing reporting](architecture/billing_reporting.md#public-reads) lists the reporting paths. Balance and raw charges retain `/v1/tenants/me/billing` and `/v1/tenants/me/billing/charges`. |
 | `workspace:admin` | create workspaces; list the tenant's workspaces; manage the account's invites and members (§Invites) |
@@ -179,10 +179,10 @@ Capabilities reach a principal as an explicit `scopes` claim. The identity provi
 
 | Constant | Scopes | Why it exists in code |
 |---|---|---|
-| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `library:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform/cross-tenant scope, preserving "an admin cannot enroll a runner" |
-| `RUNNER_SCOPES` | `runner:self` | DERIVED for every `agt_r` runner principal by `Principal::scopes` (`rustd/crates/afd_auth/src/principal.rs`), never stored on it — the one credential class with no identity at the provider to resolve against, because it names a machine, not a person |
+| `TENANT_OWNER_GRANT` | `fleet:admin`, `schedule:write`, `secret:write`, `apikey:admin`, `grant:write`, `connector:write`, `billing:read`, `workspace:admin`, `library:write`, `approval:resolve` | WRITTEN once into a new owner's `public_metadata.scopes` at signup, rendered space-delimited by `signup_owner_claim()` (`rustd/crates/daemon/afd_auth/src/scope.rs`). The writeback runs from the ingress plane's identity-events handler (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`), not the tenant one. A seed, not an authority: the provider owns the value from that instant, and an operator's edit wins permanently. No platform/cross-tenant scope, preserving "an admin cannot enroll a runner" |
+| `RUNNER_SCOPES` | `runner:self` | DERIVED for every `agt_r` runner principal by `Principal::scopes` (`rustd/crates/daemon/afd_auth/src/principal.rs`), never stored on it — the one credential class with no identity at the provider to resolve against, because it names a machine, not a person |
 
-**Approving follows the person, not the credential class (M160_002 §6, Indy's call, Aug 13, 2026).** An earlier revision authored a machine grant in code — the owner set minus `approval:resolve` — so that a Fleet holding an `agt_t` key could not approve the gate guarding its own next action. That subtraction is retired with the grant that carried it: a key inherits its creator's capabilities exactly, so a key minted by someone holding `approval:resolve` can resolve approvals, and a key minted by a narrowly-provisioned collaborator cannot do what its creator cannot. The gate is scoped to the person; keeping an automation out of the approval surface is done by narrowing the person (or minting the key as a narrower one), not by a credential-class carve-out. `test_narrowing_at_the_provider_reaches_the_next_request` (`rustd/crates/afd_identity/tests/capability_windows.rs`) pins the narrowing half.
+**Approving follows the person, not the credential class (M160_002 §6, Indy's call, Aug 13, 2026).** An earlier revision authored a machine grant in code — the owner set minus `approval:resolve` — so that a Fleet holding an `agt_t` key could not approve the gate guarding its own next action. That subtraction is retired with the grant that carried it: a key inherits its creator's capabilities exactly, so a key minted by someone holding `approval:resolve` can resolve approvals, and a key minted by a narrowly-provisioned collaborator cannot do what its creator cannot. The gate is scoped to the person; keeping an automation out of the approval surface is done by narrowing the person (or minting the key as a narrower one), not by a credential-class carve-out. `test_narrowing_at_the_provider_reaches_the_next_request` (`rustd/crates/daemon/afd_identity/tests/capability_windows.rs`) pins the narrowing half.
 
 **Manually-provisioned scope sets** — written by a human onto `public_metadata.scopes` in Clerk. There is **no code bundle**: these are recommended scope lists, not roles. Copy the exact strings (RULE UFS); each capability is enforced per-scope like any other.
 
@@ -193,7 +193,7 @@ Capabilities reach a principal as an explicit `scopes` claim. The identity provi
 
 ### CLI credential — resolved, not granted
 
-> **Status: live, revocation included (M160_002 §3 and §4, done).** `POST /v1/cli-credentials` and `DELETE /v1/cli-credentials/{id}` are routed (`rustd/crates/afd_http/src/route/tenant.rs`). A mint revokes the same machine's live credential in the same transaction, and a partial unique index on `(user_id, machine_name)` keeps one live credential per machine (`rustd/crates/afd_tenant/src/cli_credential/mod.rs`). `agentsfleet logout` revokes the credential server-side (`cli/src/commands/auth-logout.ts`). The command-line interface stores the API URL it logged into beside the credential and refuses to guess a deployment for it (`guardCommand`, `cli/src/program/auth-guard.ts`). No Clerk JWT reaches disk.
+> **Status: live, revocation included (M160_002 §3 and §4, done).** `POST /v1/cli-credentials` and `DELETE /v1/cli-credentials/{id}` are routed (`rustd/crates/daemon/afd_http/src/route/tenant.rs`). A mint revokes the same machine's live credential in the same transaction, and a partial unique index on `(user_id, machine_name)` keeps one live credential per machine (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`). `agentsfleet logout` revokes the credential server-side (`cli/src/commands/auth-logout.ts`). The command-line interface stores the API URL it logged into beside the credential and refuses to guess a deployment for it (`guardCommand`, `cli/src/program/auth-guard.ts`). No Clerk JWT reaches disk.
 
 The `afc_` credential minted by `agentsfleet login` proves identity and resolves capability, the model the `agt_t` key now shares. Its authenticate path is:
 
@@ -215,7 +215,7 @@ That is exactly who a code-applied grant would have harmed. A grant authored in 
 
 **Why the claim is not stored on the row.** Snapshotting it at mint would make `identity.cli_credentials` a second store of a fact Clerk owns, and it would freeze at issuance; a Postgres projection fed by `user.updated` webhooks would add backfill, ordering, and reconciliation to operate. The resolver holds an in-memory TTL cache instead — a latency optimisation with no persistence, so there is nothing to reconcile and staleness self-heals toward Clerk within the TTL.
 
-**Failure modes.** A fresh answer is served for 60 seconds without asking Clerk again. With Clerk unreachable, the last confirmed answer is served for up to 15 minutes (`DEFAULT_TTL`, `DEFAULT_STALE_CEILING`, `rustd/crates/afd_identity/src/capability.rs`). Past that, or with nothing cached: `503 UZ-AUTH-004`, the same answer a key-set fetch failure gives on the session-token path. No claim provisioned for the subject: empty set, fail closed.
+**Failure modes.** A fresh answer is served for 60 seconds without asking Clerk again. With Clerk unreachable, the last confirmed answer is served for up to 15 minutes (`DEFAULT_TTL`, `DEFAULT_STALE_CEILING`, `rustd/crates/daemon/afd_identity/src/capability.rs`). Past that, or with nothing cached: `503 UZ-AUTH-004`, the same answer a key-set fetch failure gives on the session-token path. No claim provisioned for the subject: empty set, fail closed.
 
 **Subject unknown to Clerk (404) — empty set, and deliberately not cached.** This cannot arise at login: the device flow needs a live Clerk user to approve in the browser, so an unknown subject never reaches a mint. It arises *after* one, and only because the credential is durable — the row outlives the person. **This 404 branch is currently the only thing closing that window, and that is a known gap.** Account teardown on `user.deleted` is not ported. The Rust handler answers every event type other than `user.created` with `200 {"ignored":"<event type>"}` (`identity_route.rs`), because a destructive delete does not belong in the milestone that opens accounts; the gap is visible in the answer rather than hidden behind a 404. Until teardown lands there is no `DELETE FROM identity.users`, so `1160_identity_cli_credentials.sql`'s `ON DELETE CASCADE` never fires and the credential row outlives the person indefinitely. The same branch also covers the cases a teardown webhook would miss anyway — a wiped Clerk development instance replays no per-user events, a delivery can be lost or rejected, and a database restored from a backup predating the deletion resurrects the row. In each case a live credential names someone Clerk no longer knows, so it resolves to no capabilities and every gate refuses it by scope. `UZ-AUTH-004` was the alternative and is wrong here: it tells a terminal to retry a credential that will never work again. The result is not cached, because a deletion is permanent and needs no cache while a transient 404 must not blank a live operator for a whole freshness window.
 
@@ -239,7 +239,7 @@ An account opens on one Svix-signed `user.created` delivery from Clerk. The
 route is `POST /v1/auth/identity-events/clerk`. Its path sits in the auth family,
 but it is served by the **ingress** plane, not the tenant one, because nothing
 about it is bearer-proven: the caller is a vendor presenting a signature over a
-body (`rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs`;
+body (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`;
 `afd_api_tenant/src/lib.rs` returns `None` for this verb).
 
 ```
@@ -251,7 +251,7 @@ Clerk user.created
   ├─► primary address, verified    (none → 400 UZ-REQ-001, metric reason missing_email;
   │                                 unproven → 400 UZ-REQ-001, reason unverified_email)
   │
-  ├─► ONE Postgres transaction     (rustd/crates/afd_tenant/src/signup/mod.rs)
+  ├─► ONE Postgres transaction     (rustd/crates/daemon/afd_tenant/src/signup/mod.rs)
   │     1. identity.tenants        one per person
   │     2. identity.users          the OIDC subject, unique
   │     3. identity.memberships    owner, linking the two
@@ -299,7 +299,7 @@ datastore learns about a tenant when that tenant's first fleet is installed.
 
 A person opens a workspace when they own its account or hold a membership in
 it. Two roles exist, `owner` and `member`, stored in `identity.memberships.role`
-(`rustd/crates/afd_tenant/src/workspace/access.rs`).
+(`rustd/crates/daemon/afd_tenant/src/workspace/access.rs`).
 
 A role grants no capability. A `member` loses two inside the owner's account:
 writing a secret and connecting an integration. Each is refused with
@@ -335,7 +335,7 @@ request on /v1/workspaces/{workspace_id}/…
 **Scopes first, role second.** The capability gate passes a member on the
 scopes signup wrote for their own account, and those include `secret:write`.
 The role then withholds it inside somebody else's account
-(`rustd/crates/afd_http/src/auth/ownership/role.rs`).
+(`rustd/crates/daemon/afd_http/src/auth/ownership/role.rs`).
 
 **The withheld list names capabilities.** `OWNER_ONLY` holds `secret:write` and
 `connector:write`. A route mounted later that needs either is withheld from
@@ -344,7 +344,7 @@ members with no change to the route.
 **A member uses every secret, through fleets.** The role withholds writing a
 secret, not using one. A member who installs or edits a fleet can declare any
 secret stored in the workspace, and the runner receives its value at lease
-(`rustd/crates/afd_credential/src/secrets/mod.rs`). An invited member is
+(`rustd/crates/daemon/afd_credential/src/secrets/mod.rs`). An invited member is
 trusted with the workspace's secrets (Indy, Oct 01, 2026). To keep a secret
 from a person, keep that person out of the account.
 
@@ -355,7 +355,7 @@ secrets and the platform model key. Accepted as is (Indy, Oct 01, 2026); invite
 into the operator's account only people trusted with the deployment.
 
 **One statement decides.** `AUTHORIZE_WORKSPACE`
-(`rustd/crates/afd_tenant/src/sql/workspace.rs`) joins the workspace, the
+(`rustd/crates/daemon/afd_tenant/src/sql/workspace.rs`) joins the workspace, the
 caller's user row and their membership. It admits a membership row, or the
 caller's own account from their user row or token claim. Each probe returns at
 most one row, so the plan is three index lookups at any table size.
@@ -387,7 +387,7 @@ too.
 | invitee | `POST /v1/users/me/invites/{invite_id}/accept` | none | joins the account as a `member` |
 
 **`/v1/tenants/me` is always the caller's own account.** Owning it is a fact of
-the path: the `OwnTenant` extractor resolves the caller's own account before the handler runs (`rustd/crates/afd_api_tenant/src/handler/tenant/own.rs`). A member
+the path: the `OwnTenant` extractor resolves the caller's own account before the handler runs (`rustd/crates/daemon/afd_api_tenant/src/handler/tenant/own.rs`). A member
 calling these routes manages their own account, never the one they joined.
 
 **Accepting takes no scope.** The signed-in person's email must match the
@@ -419,7 +419,7 @@ who outlasts the key: revoke the key, then remove that member. Kept as is
 
 Creating an invite sends one email to the invited address. It names the
 inviter and the account, and it carries the accept link. `afd_mail` renders it
-from `rustd/crates/afd_mail/templates/invite.{html,txt}`.
+from `rustd/crates/daemon/afd_mail/templates/invite.{html,txt}`.
 
 The names appear as the inviter's profile spells them, in the subject and the
 body. The templates escape them and the subject header is encoded, so a name
@@ -457,7 +457,7 @@ carry the address or the email body.
 
 A platform operator holding `workspace:any` passes the outer ownership check for any account's workspace.
 Authoring still checks current membership and private-draft ownership (§Fleet setup and credential boundary).
-The ownership layer logs each crossing once, before the handler runs (`rustd/crates/afd_tenant/src/workspace/crossing.rs`).
+The ownership layer logs each crossing once, before the handler runs (`rustd/crates/daemon/afd_tenant/src/workspace/crossing.rs`).
 
 The connector callback authorizes outside that layer and calls the same audit.
 
@@ -616,7 +616,7 @@ A tenant API key carries the same standing privilege as a long-lived JWT for the
 
 **Still open — a ceiling below the person.** Inheritance is exact, so a key cannot be narrower than its creator without a narrower creator. A per-key ceiling (a key that holds a subset of a wide person's grant) is the remaining design question, and its sibling for `afc_` is the *Known gap* under §CLI credential — resolved, not granted; if either lands, both should, and by the same mechanism.
 
-`agt_t` authentication is one read-only lookup (`SELECT_TENANT_API_KEY`, `rustd/crates/afd_state/src/sql/mod.rs`); nothing is written on the request path. The backend stores and compares only the SHA-256 digest. The raw key is returned once at creation and never persisted: the minted value lives in a `SecretString`, wiped once the response that revealed it is written (`Minted`, `rustd/crates/afd_auth/src/minted.rs`). Runner tokens and command-line credentials are minted by the same type.
+`agt_t` authentication is one read-only lookup (`SELECT_TENANT_API_KEY`, `rustd/crates/daemon/afd_state/src/sql/mod.rs`); nothing is written on the request path. The backend stores and compares only the SHA-256 digest. The raw key is returned once at creation and never persisted: the minted value lives in a `SecretString`, wiped once the response that revealed it is written (`Minted`, `rustd/crates/daemon/afd_auth/src/minted.rs`). Runner tokens and command-line credentials are minted by the same type.
 
 ### Provisioning
 
@@ -659,9 +659,9 @@ A runner has no credential until an **agentsfleet platform operator** mints one 
 
 Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/runners`) requires the `runner:enroll` scope — a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A caller without it — session token or `agt_t` key alike, since a key holds exactly its creator's scopes — is refused `403 UZ-AUTH-022`. An empty scope set fails closed. There is no open enrollment token.
 
-The operator plane has its own scopes (`rustd/crates/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/fleets/runners`, one runner `GET /v1/fleets/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/fleets/runners/{runner_id}`. Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest and returns the replacement `runner_token` once. The old token fails the next authentication read; the response and audit log never expose the old token, and the audit event records the operator subject.
+The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/fleets/runners`, one runner `GET /v1/fleets/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/fleets/runners/{runner_id}`. Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest and returns the replacement `runner_token` once. The old token fails the next authentication read; the response and audit log never expose the old token, and the audit event records the operator subject.
 
-The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`; `agentsfleet-runner` checks the `agt_r` prefix at boot (`rustd/crates/afr_supervisor/src/config/mod.rs`) and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
+The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`; `agentsfleet-runner` checks the `agt_r` prefix at boot (`rustd/crates/runner/afr_supervisor/src/config/mod.rs`) and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
 ```
 Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enroll)  agentsfleetd
@@ -682,7 +682,7 @@ Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enr
 
 ### Validation — a separate middleware, on purpose
 
-Every later call carries `Bearer agt_r`. Every `/v1/runners/me/*` route is `Guard::RunnerBearer` (`rustd/crates/afd_http/src/route/runner.rs`), which authenticates on `Plane::Runner` only:
+Every later call carries `Bearer agt_r`. Every `/v1/runners/me/*` route is `Guard::RunnerBearer` (`rustd/crates/daemon/afd_http/src/route/runner.rs`), which authenticates on `Plane::Runner` only:
 
 ```
 parse Bearer → Plane::Runner admits only "agt_r"   (else 401 UZ-RUN-001 — no JWKS fall-through)
@@ -692,25 +692,25 @@ SELECT id, admin_state, degraded FROM runner.runners WHERE token_hash = sha256(t
   non-active           → 401 UZ-RUN-009
 ```
 
-A runner token must never satisfy a tenant route, and a user or tenant token must never satisfy a runner route. The boundary is data: `Plane::accepts` lists each plane's credential classes (`rustd/crates/afd_auth/src/plane.rs`), and `test_planes_partition_the_catalogue` (`rustd/crates/afd_auth/tests/bearer_prefix_routing/classification.rs`) proves every class belongs to exactly one plane. No handler re-checks it. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.
+A runner token must never satisfy a tenant route, and a user or tenant token must never satisfy a runner route. The boundary is data: `Plane::accepts` lists each plane's credential classes (`rustd/crates/daemon/afd_auth/src/plane.rs`), and `test_planes_partition_the_catalogue` (`rustd/crates/daemon/afd_auth/tests/bearer_prefix_routing/classification.rs`) proves every class belongs to exactly one plane. No handler re-checks it. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.
 
-**Every call reads `runner.runners`. There is no memoized verdict** (`rustd/crates/afd_state/src/credentials/`). An `agt_r` is opaque, so unlike the JWT plane it cannot be verified without going to look.
+**Every call reads `runner.runners`. There is no memoized verdict** (`rustd/crates/daemon/afd_state/src/credentials/`). An `agt_r` is opaque, so unlike the JWT plane it cannot be verified without going to look.
 
-That lookup is where a cordon, drain, revoke or delete takes effect, because **admin-state transitions have no other delivery channel**. The heartbeat reply is unconditionally `.ok` (`rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs`), so auth rejection is the only way a runner learns it is out of service.
+That lookup is where a cordon, drain, revoke or delete takes effect, because **admin-state transitions have no other delivery channel**. The heartbeat reply is unconditionally `.ok` (`rustd/crates/daemon/afd_api_runner/src/handler/runner/heartbeat.rs`), so auth rejection is the only way a runner learns it is out of service.
 
 A per-process memo used to front this read, with entries living at most `HEARTBEAT_INTERVAL_MS`. It was removed in M143_001 because it made revocation deterministic only on the machine that served the operator's write: every *other* control-plane machine kept authenticating the runner until its own entry expired. Reading the row every time means a runner taken out of service authenticates **nowhere, immediately**, with no window to reason about and no per-machine state to reconcile.
 
 What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll — it returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER` = 1 s) — so an idle runner authenticates about once a second per worker. At the ~100 runners the sizing assumes (`runner.runners`, `schema/1800_runner_runners.sql`), that is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
 
-It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner treats as retryable (`Error::is_retryable`, `rustd/crates/afr_supervisor/src/error/mod.rs`) — **not** as a token refusal. Only a refused token stops the runner (`rustd/crates/afr_supervisor/src/halt/mod.rs`), so an outage cannot shut a healthy fleet down.
+It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner treats as retryable (`Error::is_retryable`, `rustd/crates/runner/afr_supervisor/src/error/mod.rs`) — **not** as a token refusal. Only a refused token stops the runner (`rustd/crates/runner/afr_supervisor/src/halt/mod.rs`), so an outage cannot shut a healthy fleet down.
 
 > **When this read rate stops being free**, the fix is not a cache — it is to stop the credential being opaque. Two-tier, as the human plane already works: keep `agt_r` as the long-lived provisioning credential, exchange it on the heartbeat for a short-lived signed token, and verify that locally with no database read. Any such design MUST re-check `admin_state` inside the lease-grant transaction, because a lease delivers the tenant's `secrets_map` and the resolved provider key inline (see *Least privilege* below) — a locally-verified token with no state check would let a revoked runner collect fresh secrets for its remaining lifetime. Trigger to revisit: runner count or poll rate making the per-request read measurable, not before.
 
 ### Least privilege
 
-A runner principal reaches only `/v1/runners/me/*`, and every route there requires `runner:self` (`rustd/crates/afd_http/src/route/runner.rs`): heartbeats, leases and the per-lease routes under a held lease (activity, renew, tool calls, schedules, messages), reports, the credential mint, fleet memory, and a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness). Each acts for the one runner the token identifies (`me`), and a per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route. It receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it — a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries. **Secret delivery is placement, not a standing grant.** `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
+A runner principal reaches only `/v1/runners/me/*`, and every route there requires `runner:self` (`rustd/crates/daemon/afd_http/src/route/runner.rs`): heartbeats, leases and the per-lease routes under a held lease (activity, renew, tool calls, schedules, messages), reports, the credential mint, fleet memory, and a read-only **self** (`GET /v1/runners/me`, which reads without bumping liveness). Each acts for the one runner the token identifies (`me`), and a per-lease route answers 404 for a lease another runner holds (`UZ-RUN-006`). It cannot enumerate tenants, read tenant data, or reach any `/v1` data-plane route. It receives a tenant's `secrets_map` inline in a lease only because `agentsfleetd` *placed* that tenant's work on it — a trust decision made when an operator registered a trusted-fleet runner, not authority the token carries. **Secret delivery is placement, not a standing grant.** `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
-The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
+The same placement model carries the resolved **LLM provider key** (M80_009): `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` — the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row. A runner receives the billed provider key only because work was placed on it; inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/daemon/afd_credential/src/provider/resolved.rs`); the serialized lease body is outside that guarantee. Operator-assigned-trust gating of *which* runners may receive the shared platform key (`trust_class`) is deferred to M80_007.
 
 ### Decision-provider credentials
 
@@ -718,7 +718,7 @@ Durable Task decisions use keys set by the platform administrator in Secrets.
 The daemon's `PLATFORM_ADMIN_WORKSPACE_ID` selects that workspace; neither a fleet nor a runner request supplies its identity.
 The configured decision API selects a fixed bag: `typesafe`, `openai`, `perplexity` or `cloudflare`, each containing `api_key`.
 
-`Providers::resolve_decision_key` reuses the credential vault reader in `rustd/crates/afd_credential/src/provider/decision.rs`.
+`Providers::resolve_decision_key` reuses the credential vault reader in `rustd/crates/daemon/afd_credential/src/provider/decision.rs`.
 Each read opens that admin workspace's current envelope without a key cache, tenant fallback or environment fallback.
 Missing, empty and malformed keys refuse resolution; damaged envelopes and unavailable storage retain their causes.
 
@@ -730,7 +730,7 @@ Parser scratch/error buffers, HTTP headers and transport buffers remain outside 
 
 `POST /v1/runners/me/leases/{lease_id}/tasks/decisions` reserves and funds a physical call before resolving its current key.
 `PATCH /v1/runners/me/leases/{lease_id}/tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
-Handlers live in `rustd/crates/afd_api_runner/src/handler/runner/decisions.rs`.
+Handlers live in `rustd/crates/daemon/afd_api_runner/src/handler/runner/decisions.rs`.
 The runner prepares intent before durable work and assesses completed action groups through `afr_agent/src/decision/` and `afr_agent/src/loop/task.rs`.
 Native report preparation independently checks task authority and completion evidence; live end-to-end verification remains pending.
 
@@ -740,7 +740,7 @@ The [decision architecture](architecture/goal_evaluation.md) owns model selectio
 
 `AGENTSFLEET_RUNNER_TOKEN` lives in the **supervisor's** environment: the trusted `agentsfleet-runner` process that speaks the control protocol and runs outside every sandbox ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Process model"). A lease's tool calls run in a bubblewrap sandbox that starts with an empty environment.
 
-The `bwrap` command itself is spawned with `env_clear()` (`rustd/crates/afr_sandbox/src/bubblewrap_engine/parts/mod.rs`). The entry inside gets `--clearenv` plus only the variables set by `--setenv` (`rustd/crates/afr_sandbox/src/bubblewrap/mod.rs`). Every process the in-sandbox executor starts gets `env_clear()` plus its plan's own variables (`rustd/crates/afr_executor/src/server/launch/mod.rs`).
+The `bwrap` command itself is spawned with `env_clear()` (`rustd/crates/runner/afr_sandbox/src/bubblewrap_engine/parts/mod.rs`). The entry inside gets `--clearenv` plus only the variables set by `--setenv` (`rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs`). Every process the in-sandbox executor starts gets `env_clear()` plus its plan's own variables (`rustd/crates/runner/afr_executor/src/server/launch/mod.rs`).
 
 A prompt-injected fleet that reads `AGENTSFLEET_RUNNER_TOKEN` or its own `/proc/self/environ` finds nothing. Model keys and minted tokens stay in the supervisor too ([`architecture/runner_execution.md`](./architecture/runner_execution.md) §"Credentials").
 
@@ -772,7 +772,7 @@ The route scopes live in `afd_http/src/route/{workspace,fleet}.rs`.
 [Fleet definitions](architecture/fleet_definitions.md) describes review, Save, Apply and publication.
 
 The setup review is where credential presence matters: it reports each named
-credential and why the setup needs it (`rustd/crates/afd_authoring/src/review/credentials/`).
+credential and why the setup needs it (`rustd/crates/daemon/afd_authoring/src/review/credentials/`).
 Named runtime secret values resolve at lease time inside `agentsfleetd` and
 ride the runner lease envelope described above. Capability comes from the
 server-built `ExecutionPolicy` and workspace credential grants.
@@ -813,7 +813,7 @@ flowchart TD
     Gate --> Handler["route handler"]
 ```
 
-### Configuration knobs (from `rustd/crates/agentsfleetd/src/preflight/mod.rs`)
+### Configuration knobs (from `rustd/crates/daemon/agentsfleetd/src/preflight/mod.rs`)
 
 | Knob              | Source                | Purpose                                                                         |
 | ----------------- | --------------------- | ------------------------------------------------------------------------------- |
@@ -821,9 +821,9 @@ flowchart TD
 | `OIDC_JWKS_URL`   | environment           | **Optional override.** Where to fetch the signing keys; defaults to the value derived from `OIDC_ISSUER`. Set only for a non-standard JWKS path (e.g. a `custom` provider). Cached for 6 h, refreshed on `kid` miss (fetch attempts are limited to one per 30 s). If refresh fails, the last confirmed set remains usable for at most 15 additional minutes. Once it is older than 6 h 15 min, verification returns authentication unavailable until a successful refresh. Failed attempts never renew the age. RSA keys must declare `kty: RSA`; any `use`, `key_ops`, and `alg` restrictions must permit RS256 signature verification. Duplicate usable key IDs invalidate the fetched set.   |
 | `OIDC_AUDIENCE`   | environment           | **Required.** The value the `aud` claim must equal. **Strict** — see audience-mismatch note below.   |
 
-The knob names live in `rustd/crates/agentsfleetd/src/preflight/knobs.rs`. `CLERK_API_BASE` and `CLERK_SECRET_KEY` are required as well; see §Where the secret is sent — `CLERK_API_BASE`.
+The knob names live in `rustd/crates/daemon/agentsfleetd/src/preflight/knobs.rs`. `CLERK_API_BASE` and `CLERK_SECRET_KEY` are required as well; see §Where the secret is sent — `CLERK_API_BASE`.
 
-#### How the key set is fetched (`rustd/crates/afd_identity/src/jwks/http.rs`)
+#### How the key set is fetched (`rustd/crates/daemon/afd_identity/src/jwks/http.rs`)
 
 The fetch negotiates no content-encoding, so the bytes read off the wire are
 the bytes the JSON parser is handed. A client that negotiates one and then
@@ -832,7 +832,7 @@ verification and every session-token request answers `503 UZ-AUTH-004` while
 sign-in itself still appears to work. That is the failure signature to
 recognise: *signed in, but nothing loads.*
 
-`MAX_RESPONSE_BYTES` (256 KiB, `rustd/crates/afd_identity/src/jwks/source.rs`) bounds the **decoded** stream, not a declared
+`MAX_RESPONSE_BYTES` (256 KiB, `rustd/crates/daemon/afd_identity/src/jwks/source.rs`) bounds the **decoded** stream, not a declared
 `Content-Length`: the body is streamed and counted as it arrives, and refused
 at the cap. A wire-byte cap taken on trust is not a bound at all here — a few
 hundred bytes of deflated filler inflates past any such limit. A body sent in an
@@ -860,7 +860,7 @@ Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries
 
 ## Why all three flows use Bearer
 
-The wire shape is deliberately uniform: one credential header, one authentication layer, two paths (stored and verified). New **outbound** principal types plug in by issuing a JWT with the right `aud`, or by minting a new prefixed credential, which is one new `CredentialKind` variant, one `HashedClass` constant (`rustd/crates/afd_auth/src/authenticate.rs`) and its place in `Plane::accepts` (`rustd/crates/afd_auth/src/plane.rs`, held by `test_planes_partition_the_catalogue`).
+The wire shape is deliberately uniform: one credential header, one authentication layer, two paths (stored and verified). New **outbound** principal types plug in by issuing a JWT with the right `aud`, or by minting a new prefixed credential, which is one new `CredentialKind` variant, one `HashedClass` constant (`rustd/crates/daemon/afd_auth/src/authenticate.rs`) and its place in `Plane::accepts` (`rustd/crates/daemon/afd_auth/src/plane.rs`, held by `test_planes_partition_the_catalogue`).
 
 **Inbound provider traffic is a separate story and never uses Bearer.** Fleet-trigger webhooks (§"Manual fleet-webhook auth (separate surface)") and OAuth connectors (§"OAuth connectors (separate surface — M106, generalized by the M108 registry)") authenticate by signature. That is a keyed hash over the raw body, or a signed single-use `state` on the callback. Either is verified against a vault-held secret, not against a token the caller presents.
 
@@ -896,9 +896,9 @@ Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint a token fo
 
 ### Where the secret is sent — `CLERK_API_BASE`
 
-`agentsfleetd` reads the Clerk Backend API root **once at boot** from `CLERK_API_BASE` and hands the same value to every backend call. The knob is **required**: boot refuses without it, `UZ-STARTUP-001` (`rustd/crates/agentsfleetd/src/preflight/read.rs`). There is no compiled-in default; each Fly deployment sets `https://api.clerk.com/v1` in its `fly.toml` (`deploy/fly/agentsfleetd-{dev,prod}/fly.toml`).
+`agentsfleetd` reads the Clerk Backend API root **once at boot** from `CLERK_API_BASE` and hands the same value to every backend call. The knob is **required**: boot refuses without it, `UZ-STARTUP-001` (`rustd/crates/daemon/agentsfleetd/src/preflight/read.rs`). There is no compiled-in default; each Fly deployment sets `https://api.clerk.com/v1` in its `fly.toml` (`deploy/fly/agentsfleetd-{dev,prod}/fly.toml`).
 
-The daemon builds `{CLERK_API_BASE}/users/{subject}` and sends `CLERK_SECRET_KEY` there on every scope-cache miss and every signup writeback (`rustd/crates/afd_identity/src/users/mod.rs`). Because the secret travels to it, boot refuses the knob with `UZ-STARTUP-001` unless it parses as a URL and is `https`, or plain `http` on a loopback host (`127.0.0.1`, `::1` or `localhost`) for a local stand-in (`provider_api_base`, `rustd/crates/agentsfleetd/src/preflight/read.rs`). The rule is the one `SLACK_API_URL` follows, and the refusal never echoes the value. The host is otherwise not restricted, because Clerk supports custom domains, so review a change to this knob as a change to where the secret is sent.
+The daemon builds `{CLERK_API_BASE}/users/{subject}` and sends `CLERK_SECRET_KEY` there on every scope-cache miss and every signup writeback (`rustd/crates/daemon/afd_identity/src/users/mod.rs`). Because the secret travels to it, boot refuses the knob with `UZ-STARTUP-001` unless it parses as a URL and is `https`, or plain `http` on a loopback host (`127.0.0.1`, `::1` or `localhost`) for a local stand-in (`provider_api_base`, `rustd/crates/daemon/agentsfleetd/src/preflight/read.rs`). The rule is the one `SLACK_API_URL` follows, and the refusal never echoes the value. The host is otherwise not restricted, because Clerk supports custom domains, so review a change to this knob as a change to where the secret is sent.
 
 ### Rotation procedure
 
@@ -908,7 +908,7 @@ Rotation does NOT invalidate existing user JWTs (Clerk signs those with its own 
 2. Update vault — `op item edit ZMB_CD_DEV/clerk-dev secret-key=<new>` (DEV) and `ZMB_CD_PROD/clerk-prod` (PROD). One vault update per environment.
 3. Redeploy consumers in this order.
    - **Vercel** first. Next.js Server Actions, Route Handlers and React Server Components call `getToken()` server-side.
-   - **Fly** second. `agentsfleetd` presents the secret on two live backend paths: scope resolution (`rustd/crates/afd_identity/src/provider.rs`, on every `afc_` or `agt_t` request that misses the scope cache) and the signup metadata merge (`rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs`).
+   - **Fly** second. `agentsfleetd` presents the secret on two live backend paths: scope resolution (`rustd/crates/daemon/afd_identity/src/provider.rs`, on every `afc_` or `agt_t` request that misses the scope cache) and the signup metadata merge (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`).
    - **Continuous Integration** needs no redeploy: workflows read `clerk-{dev,prod}/secret-key` from 1Password at job time, and the Fly deploy workflows are what write the new key into Fly.
 4. Revoke the old key in Clerk dashboard once all consumers report green.
 
@@ -933,7 +933,7 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | Connector per-install handle (`<provider>` in the **workspace** vault, M106/M108) — Slack: `{integration, bot_token (xoxb-…), …}`; GitHub: `{integration, installation_id}`; refresh connectors (Zoho/Jira/Linear): `{integration, refresh_token, connected_at_ms, label, …}`. (Datadog/Grafana/Fly are not connectors and write no per-install handle — their vendor keys are plain workspace secrets instead, governed by the standard workspace-vault write/read boundary above, not this connector-specific row.) | secret | until reconnected / revoked | workspace vault · agentsfleetd process memory (`afd_connector`'s `bot_token` for the outbound poster, `afd_vault`'s `Vault::load` for every handle read, the installation-token + oauth2-refresh broker mints) · outbound HTTPS `Authorization: Bearer` to the provider | logs · error bodies · client bundles · telemetry · the connector status + catalog reads (return only `{status}` or `{configured, connected, label}`, with an optional public label and no key material) |
 | Platform connector-app secret bag (admin-workspace `<provider>-app`, e.g. `slack-app` → `{client_id, client_secret, signing_secret}` and `github-app` → `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`) | secret except public identifiers (`app_id`, `app_slug`, `client_id`); catastrophic secrets are shared across every tenant | until rotated | admin-workspace vault (the workspace `PLATFORM_ADMIN_WORKSPACE_ID` names) · agentsfleetd process memory (connector exchange, token mint, inbound App-signature verify) | logs · error bodies · client bundles · any per-tenant surface · metrics labels |
 | Connector OAuth `state` (signed, single-use, M106) | sensitive ephemeral capability | one callback round-trip (consumed on use) | the provider authorize URL · the callback query string it returns on | server-side persistence · reuse after consume · auth logs |
-| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve_reference`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/afr_providers/src/connect/mod.rs`, driven by the agent loop in `rustd/crates/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
+| Language Model (LLM) provider `api_key` (platform OR self-managed, M80_009) | secret | per-lease ephemeral (resolved at lease, held as `SecretString` and wiped on drop) | vault items (`model.platform_defaults` pointer / tenant `secret_ref`) · `agentsfleetd` process memory (`Providers::resolve_reference`) · inline on the lease `ExecutionPolicy.api_key` over TLS to a *placed* trusted-fleet runner · the runner supervisor's in-process provider client (`rustd/crates/harness/afr_providers/src/connect/mod.rs`, driven by the agent loop in `rustd/crates/runner/afr_agent`) + outbound HTTPS to the provider in its authorization header | logs · activity/progress frames · the `runner.leases` row · `secrets_map` · telemetry · error bodies · `doctor --json` · any user-facing surface |
 | `clerk-{dev,prod}` publishable key (`pk_test_…`/`pk_live_…`) | non-credential identifier | until Clerk instance is rotated | client bundle (intentionally shipped via `NEXT_PUBLIC_…`) | (none — this is the "non-secret" one) |
 
 ### The one place a pepper touches disk, and why
@@ -1041,11 +1041,11 @@ Each of these is a real concern, named here so future fleets and security-review
 
 Manual fleet deliveries use `POST /v1/webhooks/{fleet_id}/{source}`, including Svix senders. GitHub keeps its event-aware `/{fleet_id}/github` handler. Both routes carry `Guard::WebhookSignature`.
 
-The handler resolves the named stored trigger and its workspace credential, verifies the untouched body, then parses the document (`rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs`). No request header can select a verifier or enable Bearer authentication.
+The handler resolves the named stored trigger and its workspace credential, verifies the untouched body, then parses the document (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/verify.rs`). No request header can select a verifier or enable Bearer authentication.
 
 ### Manual-route signing recipes
 
-`afd_webhook::Family` is the closed recipe list (`rustd/crates/afd_webhook/src/family.rs`). GitHub, Linear and Slack use their registry recipe and reject a `verifier` override. Other lowercase-slug sources require a `verifier` object with one of these `scheme` tokens:
+`afd_webhook::Family` is the closed recipe list (`rustd/crates/protocol/afd_webhook/src/family.rs`). GitHub, Linear and Slack use their registry recipe and reject a `verifier` override. Other lowercase-slug sources require a `verifier` object with one of these `scheme` tokens:
 
 | Scheme | Signature header | Signed fields | Encoding |
 |---|---|---|---|
@@ -1067,16 +1067,16 @@ These recipes verify incoming signed deliveries. They do not connect an account,
 
 ### Manual-route workspace-credential resolver
 
-The check itself is provider-agnostic. For the URL's `{fleet_id}` it takes two facts from the fleet's trigger binding (`rustd/crates/afd_ingress/src/binding/mod.rs`):
+The check itself is provider-agnostic. For the URL's `{fleet_id}` it takes two facts from the fleet's trigger binding (`rustd/crates/daemon/afd_ingress/src/binding/mod.rs`):
 
 1. **The recipe** — `Binding::family()` reads the named trigger's declaration or registry recipe, even if its vault credential is missing. This is what makes "credential not configured" fail closed instead of silently falling back to anything else.
-2. **The secret** — `Ingress::signing_secret` (`rustd/crates/afd_ingress/src/secret.rs`) loads the workspace vault entry named by `credential_name()` and reads its `webhook_secret` field (`{ "webhook_secret": "<key>", ... }`). The name defaults to the matching trigger's `source` value but can be overridden by the fleet's `x-agentsfleet.triggers[].credential_name` frontmatter for the per-fleet credential-scoping case — two fleets subscribing to the same source within one workspace can each point at distinct vault rows (e.g. multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
+2. **The secret** — `Ingress::signing_secret` (`rustd/crates/daemon/afd_ingress/src/secret.rs`) loads the workspace vault entry named by `credential_name()` and reads its `webhook_secret` field (`{ "webhook_secret": "<key>", ... }`). The name defaults to the matching trigger's `source` value but can be overridden by the fleet's `x-agentsfleet.triggers[].credential_name` frontmatter for the per-fleet credential-scoping case — two fleets subscribing to the same source within one workspace can each point at distinct vault rows (e.g. multi-org GitHub, multi-app Slack, multi-tenant B2B-on-agentsfleet).
 
 Every recipe reads a JSON credential object containing `webhook_secret`. For Svix, that field contains the sender's `whsec_` string. Replacing one workspace credential changes verification for every fleet that names it; a raw Svix string is not a supported credential object.
 
 ### Manual-route error taxonomy
 
-The check answers with exactly three error codes for webhook auth failures, each with a distinct operator action (`afd_webhook::verdict`, `rustd/crates/afd_webhook/src/verdict.rs`):
+The check answers with exactly three error codes for webhook auth failures, each with a distinct operator action (`afd_webhook::verdict`, `rustd/crates/protocol/afd_webhook/src/verdict.rs`):
 
 | Code | When it fires | What the operator should do |
 | --- | --- | --- |
@@ -1094,15 +1094,15 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 
 ### Cross-references — manual fleet webhooks
 
-- Implementation: `rustd/crates/afd_http/src/route/webhook.rs` (route guards), `rustd/crates/afd_api_ingress/src/handler/webhook/verify.rs` (the check), `rustd/crates/afd_ingress/src/binding/mod.rs` and `secret.rs` (scheme and secret), `rustd/crates/afd_webhook/src/scheme.rs` (the schemes).
+- Implementation: `rustd/crates/daemon/afd_http/src/route/webhook.rs` (route guards), `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/verify.rs` (the check), `rustd/crates/daemon/afd_ingress/src/binding/mod.rs` and `secret.rs` (scheme and secret), `rustd/crates/protocol/afd_webhook/src/scheme.rs` (the schemes).
 - Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md) §"B. TRIGGER  (steer / webhook / cron — three callers, ONE ingress)", [`architecture/user_flow.md`](./architecture/user_flow.md) §"§8.3 Triggering the Fleet".
-- Error registry: codes in `rustd/crates/afd_core/src/error_code/request.rs`, HTTP status and hint per code in `rustd/crates/afd_core/src/problem/request.rs`.
+- Error registry: codes in `rustd/crates/foundation/afd_core/src/error_code/request.rs`, HTTP status and hint per code in `rustd/crates/foundation/afd_core/src/problem/request.rs`.
 
 ---
 
 ## OAuth connectors (separate surface — M106, generalized by the M108 registry)
 
-The dashboard's **connectors** (GitHub App, Slack, and every future registry provider) are distinct from both Bearer auth and fleet-trigger webhooks. agentsfleet is the OAuth **client**: connecting is a browser redirect round-trip that ends with a provider-issued handle vaulted server-side. Since M108 the routes are one generic `{provider}` set, and `afd_connector::Provider::parse` resolves the segment (`rustd/crates/afd_connector/src/provider.rs`; unknown provider → 404 `UZ-CONN-004`). The platform shape lives in [`architecture/connectors.md`](./architecture/connectors.md); this section stays the behavior and trust-anchor reference. Scopes: `connector:write` gates connection and authenticated callback completion; `connector:read` gates status.
+The dashboard's **connectors** (GitHub App, Slack, and every future registry provider) are distinct from both Bearer auth and fleet-trigger webhooks. agentsfleet is the OAuth **client**: connecting is a browser redirect round-trip that ends with a provider-issued handle vaulted server-side. Since M108 the routes are one generic `{provider}` set, and `afd_connector::Provider::parse` resolves the segment (`rustd/crates/daemon/afd_connector/src/provider.rs`; unknown provider → 404 `UZ-CONN-004`). The platform shape lives in [`architecture/connectors.md`](./architecture/connectors.md); this section stays the behavior and trust-anchor reference. Scopes: `connector:write` gates connection and authenticated callback completion; `connector:read` gates status.
 
 ### Connect + callback (the OAuth round-trip)
 
@@ -1148,7 +1148,7 @@ Disconnect changes only `agentsfleet`. It does not revoke provider authorization
 
 ### Platform app secrets (`<provider>-app`, admin workspace)
 
-The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`rustd/crates/afd_credential/src/credential/platform/mod.rs`, `APP_KEY_STEM = "-app"`), in the workspace the `PLATFORM_ADMIN_WORKSPACE_ID` knob names (`rustd/crates/agentsfleetd/src/preflight/knobs.rs`).
+The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`rustd/crates/daemon/afd_credential/src/credential/platform/mod.rs`, `APP_KEY_STEM = "-app"`), in the workspace the `PLATFORM_ADMIN_WORKSPACE_ID` knob names (`rustd/crates/daemon/agentsfleetd/src/preflight/knobs.rs`).
 
 The bag is per-provider. `slack-app` holds `{client_id, client_secret, signing_secret}`. `github-app` holds `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}`: the private key signs outbound App identity, the webhook secret verifies inbound deliveries, and the client credentials exchange the one-time user-authorization code. The Open Authorization 2.0 (OAuth 2.0) refresh connectors `zoho-app`, `jira-app` and `linear-app` hold `{client_id, client_secret}`.
 
@@ -1156,30 +1156,30 @@ Datadog, Grafana and Fly are not connectors and have no `<provider>-app` bag. Ca
 
 ### Integration-grant gate on every mint (restores M102_001 Invariant 3)
 
-A connected integration alone does not authorize a fleet to use it. Every `POST /v1/runners/me/credentials/mint` requires the lease's **fleet** to hold an `approved` row in `connector.integration_grants` for the requested integration — read via the single enforcement module `rustd/crates/afd_gate/src/gate/grants.rs` **before** the vault handle is loaded (an ungranted request never touches handle bytes; refusal is 403 `UZ-GRANT-001`, no token, no upstream call). The same predicate gates lease-issue: the classifier emits an `ExecutionPolicy.mintable` entry only for approved integrations, and an ungranted connector credential is omitted from BOTH `mintable` and `secrets_map` (a static fallthrough would leak the raw handle to the child). A grant revoked mid-lease bites on the fleet's next mint; grant-read DB failures fail closed at mint (500, no token) and refuse the lease at issue (delivery stays leasable). The broker itself stays grant-free — it mints, the boundary authorizes. Static pasted secrets (no `integration` field) are not gated.
+A connected integration alone does not authorize a fleet to use it. Every `POST /v1/runners/me/credentials/mint` requires the lease's **fleet** to hold an `approved` row in `connector.integration_grants` for the requested integration — read via the single enforcement module `rustd/crates/daemon/afd_gate/src/gate/grants.rs` **before** the vault handle is loaded (an ungranted request never touches handle bytes; refusal is 403 `UZ-GRANT-001`, no token, no upstream call). The same predicate gates lease-issue: the classifier emits an `ExecutionPolicy.mintable` entry only for approved integrations, and an ungranted connector credential is omitted from BOTH `mintable` and `secrets_map` (a static fallthrough would leak the raw handle to the child). A grant revoked mid-lease bites on the fleet's next mint; grant-read DB failures fail closed at mint (500, no token) and refuse the lease at issue (delivery stays leasable). The broker itself stays grant-free — it mints, the boundary authorizes. Static pasted secrets (no `integration` field) are not gated.
 
-**The handle is held to what the workspace connected (`rustd/crates/afd_fleet/src/lease/mint/claim.rs`).** A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body, so after the vault read and before the exchange the mint checks two facts the workspace did not write. First, an on-demand handle must sit under its own connector's name, because the grant gate ran against the requested name, and a GitHub handle filed as `mything` would otherwise mint as a connector nobody granted (`UZ-CRED-001`). Second, a GitHub handle's `installation_id` must have a `connector.installs` row for **this** workspace. An installation id is a short integer, not a secret, and the platform App's key signs for every installation the App is on. The routing row is written only after the provider proves the connecting person's access. A miss answers `UZ-GH-001`, the same reconnect a handle naming no installation gets, so the refusal never reveals whether another workspace holds that installation. The connect flow stores installation ids unpadded, so the row and the mint spell one installation one way.
+**The handle is held to what the workspace connected (`rustd/crates/daemon/afd_fleet/src/lease/mint/claim.rs`).** A handle is bytes the workspace wrote, and the generic secrets route accepts any name and any body, so after the vault read and before the exchange the mint checks two facts the workspace did not write. First, an on-demand handle must sit under its own connector's name, because the grant gate ran against the requested name, and a GitHub handle filed as `mything` would otherwise mint as a connector nobody granted (`UZ-CRED-001`). Second, a GitHub handle's `installation_id` must have a `connector.installs` row for **this** workspace. An installation id is a short integer, not a secret, and the platform App's key signs for every installation the App is on. The routing row is written only after the provider proves the connecting person's access. A miss answers `UZ-GH-001`, the same reconnect a handle naming no installation gets, so the refusal never reveals whether another workspace holds that installation. The connect flow stores installation ids unpadded, so the row and the mint spell one installation one way.
 
-**A refresh handle posts only where its connect flow points it.** A refresh grant carries the deployment's `<provider>-app` client secret, and a Zoho handle's `accounts_base` names the server it is posted to. The SSRF guard admits any public `https` host, so it does not keep the secret with the provider. The exchange does: `steer::endpoint` (`rustd/crates/afd_credential/src/credential/oauth/steer.rs`) dials only the descriptor's own endpoint or one of `afd_core::credential::ZOHO_ACCOUNTS_SERVERS`, the list the connect flow writes from, and refuses anything else before a request is built. The mint admission reads the same predicate first, so a forged handle answers `UZ-CONN-006` and nothing is posted.
+**A refresh handle posts only where its connect flow points it.** A refresh grant carries the deployment's `<provider>-app` client secret, and a Zoho handle's `accounts_base` names the server it is posted to. The SSRF guard admits any public `https` host, so it does not keep the secret with the provider. The exchange does: `steer::endpoint` (`rustd/crates/daemon/afd_credential/src/credential/oauth/steer.rs`) dials only the descriptor's own endpoint or one of `afd_core::credential::ZOHO_ACCOUNTS_SERVERS`, the list the connect flow writes from, and refuses anything else before a request is built. The mint admission reads the same predicate first, so a forged handle answers `UZ-CONN-006` and nothing is posted.
 
 ### Broker refresh-mint (M108 — Zoho, Jira, Linear)
 
-The credential broker (`rustd/crates/afd_credential/`) resolves a workspace's `<provider>` refresh handle to a short-lived access token on demand. It posts a `grant_type=refresh_token` form to the provider's token endpoint using the `<provider>-app` client id and secret, then caches the result until expiry minus skew, mirroring the GitHub installation-token mint. A revoked token (`invalid_grant`) degrades to `reconnect_required` — never a crash, and never a raw refresh token reaching the runner.
+The credential broker (`rustd/crates/daemon/afd_credential/`) resolves a workspace's `<provider>` refresh handle to a short-lived access token on demand. It posts a `grant_type=refresh_token` form to the provider's token endpoint using the `<provider>-app` client id and secret, then caches the result until expiry minus skew, mirroring the GitHub installation-token mint. A revoked token (`invalid_grant`) degrades to `reconnect_required` — never a crash, and never a raw refresh token reaching the runner.
 
 The exchange is **deadline-armed** (`afd_credential`'s broker exchange, a per-call deadline watchdog), so a hung vendor endpoint fails closed rather than stalling the broker. The runner-facing mint response carries only the access token and its expiry.
 
 ### GitHub App events ingress (`POST /v1/ingress/github`)
 
-GitHub posts App-level events here after the platform operator activates the one webhook on the shared App. The route template is `/v1/ingress/{provider}` with `Guard::PayloadSigned`, and only `github` is served (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`). This is not the manual fleet-trigger route. The trust anchor is the platform `github-app.webhook_secret`; the App private key has no role in inbound verification.
+GitHub posts App-level events here after the platform operator activates the one webhook on the shared App. The route template is `/v1/ingress/{provider}` with `Guard::PayloadSigned`, and only `github` is served (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs`). This is not the manual fleet-trigger route. The trust anchor is the platform `github-app.webhook_secret`; the App private key has no role in inbound verification.
 
 Order is load-bearing:
 
 1. Refuse any provider but `github` (404 `UZ-CONN-004`), hold the body to the size cap, require the `x-github-event` header (400 `UZ-WH-002`), then read the admin workspace's `github-app` webhook secret (missing → 401 `UZ-WH-020`).
 2. Verify `x-hub-signature-256` over the untouched request body in constant time. A missing or bad signature returns the typed webhook refusal before any payload field or routing table is read.
-3. Return `{"status":"pong"}` for a signed GitHub `ping`; otherwise read the body once through the route's own `serde` types (`rustd/crates/afd_api_ingress/src/handler/webhook/github/payload/mod.rs`) and take `installation.id` and `repository.full_name`; a delivery missing either is acknowledged as `unsupported_event`. Only `pull_request` and `workflow_run` bodies are read past that envelope, so a malformed one answers `UZ-WH-002`; any other kind is classified as unsupported. The delivery header is diagnostic only.
+3. Return `{"status":"pong"}` for a signed GitHub `ping`; otherwise read the body once through the route's own `serde` types (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/github/payload/mod.rs`) and take `installation.id` and `repository.full_name`; a delivery missing either is acknowledged as `unsupported_event`. Only `pull_request` and `workflow_run` bodies are read past that envelope, so a malformed one answers `UZ-WH-002`; any other kind is classified as unsupported. The delivery header is diagnostic only.
 4. Resolve `(provider=github, external_account_id=installation.id) → workspace_id` through `connector.installs`. An unknown installation is acknowledged and dropped without revealing whether another workspace owns it.
 5. Select only active fleets in that workspace with an approved GitHub integration grant and a GitHub trigger whose explicit `repositories` contains `repository.full_name` and whose `events` admits the incoming event. Missing `repositories` means no App delivery; it remains valid for the manual fleet-addressed route.
-6. Hash the authenticated request body and admit one row per fleet in `fleet.admissions`, keyed by fleet and body digest. The ledger's unique `(producer, producer_key)` index turns a redelivery into a no-op (`rustd/crates/afd_ingress/src/deliver.rs`). The committed admission remains claimable; wake notifications are best effort ([admission flow](architecture/data_flow.md)).
+6. Hash the authenticated request body and admit one row per fleet in `fleet.admissions`, keyed by fleet and body digest. The ledger's unique `(producer, producer_key)` index turns a redelivery into a no-op (`rustd/crates/daemon/afd_ingress/src/deliver.rs`). The committed admission remains claimable; wake notifications are best effort ([admission flow](architecture/data_flow.md)).
 
    Changing the unsigned delivery header cannot bypass replay protection. More matches than `afd_ingress::MAX_FANOUT` are refused with `UZ-WH-022` rather than truncated.
 
@@ -1189,15 +1189,15 @@ Terminal `deployment_status` deliveries are acknowledged and dropped as unsuppor
 Repair evidence has neither a reader nor writer in this daemon.
 The [repair scenario](architecture/scenarios/production-deploy-repair.md) records this implementation boundary.
 
-The route documents the omission in `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`.
-The dropped-delivery check is `a_deployment_status_delivery_is_acknowledged_and_records_nothing` in `rustd/crates/afd_api/tests/app_ingress_route_dropped.rs`.
+The route documents the omission in `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs`.
+The dropped-delivery check is `a_deployment_status_delivery_is_acknowledged_and_records_nothing` in `rustd/crates/daemon/afd_api/tests/app_ingress_route_dropped.rs`.
 
 ### Signed events ingress (`POST /v1/connectors/slack/events`)
 
-Slack posts channel mentions here. This is **not** the fleet-trigger webhook path. The route template is `/v1/connectors/{provider}/events`, with `Guard::WebhookSignature` and no plane (`rustd/crates/afd_http/src/route/connector.rs`). It verifies **in the handler** (`verified_connector_events`, `rustd/crates/afd_api_ingress/src/handler/webhook/verify_platform.rs`), because the signing secret is the *platform-app* secret, not a per-fleet workspace credential. Order of operations:
+Slack posts channel mentions here. This is **not** the fleet-trigger webhook path. The route template is `/v1/connectors/{provider}/events`, with `Guard::WebhookSignature` and no plane (`rustd/crates/daemon/afd_http/src/route/connector.rs`). It verifies **in the handler** (`verified_connector_events`, `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/verify_platform.rs`), because the signing secret is the *platform-app* secret, not a per-fleet workspace credential. Order of operations:
 
 1. Resolve `{provider}` to a connector with an event ingress (else 404 `UZ-CONN-004`) and hold the body to the size cap.
-2. **Read `signing_secret`** from the admin workspace's `slack-app` entry on every request (`rustd/crates/afd_connector/src/app.rs`), so a rotated secret needs no restart. No admin workspace, no `slack-app` bag, or no `signing_secret` → 401 `UZ-WH-020`. The read precedes the verify because you cannot verify without the secret.
+2. **Read `signing_secret`** from the admin workspace's `slack-app` entry on every request (`rustd/crates/daemon/afd_connector/src/app.rs`), so a rotated secret needs no restart. No admin workspace, no `slack-app` bag, or no `signing_secret` → 401 `UZ-WH-020`. The read precedes the verify because you cannot verify without the secret.
 3. **Verify**: a missing `x-slack-signature` → 401 `UZ-WH-010`; a missing or stale `x-slack-request-timestamp` (5-min drift) → 401 `UZ-WH-011`; then a constant-time `v0=` HMAC over `v0:{ts}:{body}` (mismatch → 401 `UZ-WH-010`).
 4. Resolve `team_id → workspace_id` via `connector.installs`. An **unknown team is acknowledged with 200 and dropped** — the body says so (`{"ignored":"team_not_mapped"}`) — so Slack never enters a retry loop against an uninstalled workspace.
 
@@ -1232,6 +1232,6 @@ Slack's signature failures share the webhook codes (`UZ-WH-010`, `UZ-WH-011`, §
 ### Cross-references — OAuth connectors
 
 - Platform shape (registry, archetypes, bounded outbound, add-a-provider recipe, terminology): [`architecture/connectors.md`](./architecture/connectors.md).
-- Implementation: `afd_connector` (`rustd/crates/afd_connector/src/provider.rs`, the route-side provider list) and `rustd/crates/afd_credential/src/secrets/connector/mod.rs` (the mint-side registry), plus the generic connect, callback and status routes in `rustd/crates/afd_http/src/route/connector.rs`; the signed connect state in `rustd/crates/afd_connector/src/state/mod.rs`; the mint-side `<provider>-app` credentials in `rustd/crates/afd_credential/src/credential/platform/mod.rs`, the refresh-token grant in `rustd/crates/afd_credential/src/credential/oauth/mod.rs`, the GitHub App exchange in `rustd/crates/afd_credential/src/credential/github/exchange.rs`, and the mint cache in `rustd/crates/afd_credential/src/credential/broker/mod.rs`; `afd_credential` owns the bounded outbound; the Slack and GitHub App ingress live in `afd_api_ingress`. Per-install/webhook handles are vaulted under their bare provider/source name — no storage-key prefix (M121).
-- Scopes: `rustd/crates/afd_http/src/route/connector.rs` (`ConnectorRoute::Connect` and `Complete` → `connector:write`; `Status` GET → `connector:read`, DELETE → `connector:write`; `Catalog` → `connector:read`; the compatibility `Callback` and `Events` routes take no bearer by design).
-- Error registry: `rustd/crates/afd_core/src/error_code/integration.rs`, statuses in `rustd/crates/afd_core/src/problem/integration.rs`.
+- Implementation: `afd_connector` (`rustd/crates/daemon/afd_connector/src/provider.rs`, the route-side provider list) and `rustd/crates/daemon/afd_credential/src/secrets/connector/mod.rs` (the mint-side registry), plus the generic connect, callback and status routes in `rustd/crates/daemon/afd_http/src/route/connector.rs`; the signed connect state in `rustd/crates/daemon/afd_connector/src/state/mod.rs`; the mint-side `<provider>-app` credentials in `rustd/crates/daemon/afd_credential/src/credential/platform/mod.rs`, the refresh-token grant in `rustd/crates/daemon/afd_credential/src/credential/oauth/mod.rs`, the GitHub App exchange in `rustd/crates/daemon/afd_credential/src/credential/github/exchange.rs`, and the mint cache in `rustd/crates/daemon/afd_credential/src/credential/broker/mod.rs`; `afd_credential` owns the bounded outbound; the Slack and GitHub App ingress live in `afd_api_ingress`. Per-install/webhook handles are vaulted under their bare provider/source name — no storage-key prefix (M121).
+- Scopes: `rustd/crates/daemon/afd_http/src/route/connector.rs` (`ConnectorRoute::Connect` and `Complete` → `connector:write`; `Status` GET → `connector:read`, DELETE → `connector:write`; `Catalog` → `connector:read`; the compatibility `Callback` and `Events` routes take no bearer by design).
+- Error registry: `rustd/crates/foundation/afd_core/src/error_code/integration.rs`, statuses in `rustd/crates/foundation/afd_core/src/problem/integration.rs`.

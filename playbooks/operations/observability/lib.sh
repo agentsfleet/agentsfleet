@@ -153,7 +153,7 @@ obs_runner_offline_seconds() {
   # `RUNNER_OFFLINE_AFTER` passes without a heartbeat. Deriving the alert
   # threshold from the same line keeps the alert and the sweep from disagreeing
   # about when a runner is gone.
-  local constants="$OBS_REPO_ROOT/rustd/crates/afd_core/src/timing.rs"
+  local constants="$OBS_REPO_ROOT/rustd/crates/foundation/afd_core/src/timing.rs"
   local lease_seconds multiplier
   lease_seconds="$(
     sed -n \

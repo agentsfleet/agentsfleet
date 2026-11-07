@@ -72,15 +72,15 @@ gate reference ─► fleet.approval_gates · anomaly brake ─► per-replica m
 
 ## Implementing agent — read these first
 
-1. `rustd/crates/afd_dragonfly/src/hub/mod.rs` and `hub/gap/mod.rs` — the fan-out and gap semantics the NATS hub keeps; `tests/hub_gap_faults.rs` holds the gap tests §2 ports.
-2. `rustd/crates/afd_outbound/src/producer.rs` and `obligation/sql/` — the two recovery scans a still-running old replica keeps executing during the rollout; §4's ownership rule is written against them.
-3. `rustd/crates/afd_dragonfly/src/session/verify_consume.lua` and `docs/AUTH_DEVICE_LOGIN.md` §Threats — the transitions, the five-attempt cap and the 60 s replay window §5 must keep.
-4. `rustd/crates/afd_bench/src/lane/tail/` and `make/bench.mk` — the viewer and stream ladders §1 extends.
+1. `rustd/crates/daemon/afd_dragonfly/src/hub/mod.rs` and `hub/gap/mod.rs` — the fan-out and gap semantics the NATS hub keeps; `tests/hub_gap_faults.rs` holds the gap tests §2 ports.
+2. `rustd/crates/daemon/afd_outbound/src/producer.rs` and `obligation/sql/` — the two recovery scans a still-running old replica keeps executing during the rollout; §4's ownership rule is written against them.
+3. `rustd/crates/daemon/afd_dragonfly/src/session/verify_consume.lua` and `docs/AUTH_DEVICE_LOGIN.md` §Threats — the transitions, the five-attempt cap and the 60 s replay window §5 must keep.
+4. `rustd/crates/daemon/afd_bench/src/lane/tail/` and `make/bench.mk` — the viewer and stream ladders §1 extends.
 5. `docs/architecture/push_scheduler.md` — the subjects, backstops and fact homes this spec builds.
 
 ## Files Changed (blast radius)
 
-Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outside `rustd/crates/afd_dragonfly/` on 14539a73e. Rust: 155 production and 283 test files. Elsewhere: 103 files. M243 edits some of them first, and PR #803 may merge before this starts, so CHORE(open) reruns the search on `origin/main` and folds every hit into the rows below.
+Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outside `rustd/crates/daemon/afd_dragonfly/` on 14539a73e. Rust: 155 production and 283 test files. Elsewhere: 103 files. M243 edits some of them first, and PR #803 may merge before this starts, so CHORE(open) reruns the search on `origin/main` and folds every hit into the rows below.
 
 | File | Action | Why |
 |------|--------|-----|
@@ -94,22 +94,22 @@ Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outs
 | `.orly/LOCAL.md` | EDIT | §7: the datastore rule, the live-datastore lane, the auth line and the probe line name NATS |
 | `docs/metrics.census.tsv` | EDIT | §2, §4: two new families; the reconnect row's description |
 | `schema/2800_identity_device_sessions.sql`, `schema/2810_connector_oauth_nonces.sql`, `schema/2820_fleet_obligations_claims.sql` | CREATE | §4, §5; placeholders from 2800-2840, renumbered from `origin/main` at CHORE(open) because PR #803 takes `schema/2190-2690` |
-| `rustd/crates/afd_db/src/migration.rs` and its position tests | EDIT | §4, §5: three slots (MIG) |
+| `rustd/crates/daemon/afd_db/src/migration.rs` and its position tests | EDIT | §4, §5: three slots (MIG) |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | §2 add `async-nats` without default features; §7 drop `afd_dragonfly` and `redis` |
-| `rustd/crates/afd_bus/src/nats/` (`mod.rs`, `hub.rs`, `debt.rs`, `preflight.rs`, `config.rs`, `tests.rs`), `afd_bus/Cargo.toml`, `afd_bus/tests/` | CREATE, EDIT | §2: the NATS implementation, its gap sources, its boot checks and `NATS_URL` |
-| `rustd/crates/afd_bus/src/` (M243's Dragonfly implementation and its tests) | DELETE | §7 |
-| `rustd/crates/afd_dragonfly/**` | DELETE | §7: the crate, its Lua scripts and its 40 test files |
-| `rustd/crates/afd_outbound/src/{worker,lanes,obligation,claim}/`, `producer.rs`, `retry.rs`, `Cargo.toml`, `tests/` | EDIT, CREATE, DELETE | §4: claims, ping, claim pass; the stream reader, re-append and receipt scans go |
-| `rustd/crates/afd_fleet/src/lease/obligation.rs` | EDIT | §4: the report owes the row with its holder token and pings |
-| `rustd/crates/afd_tenant/src/session/` and its `sql/`, `tests/` | EDIT, CREATE | §5: sessions as rows |
-| `rustd/crates/afd_connector/src/state/nonce.rs`, `registry/mod.rs`, `connect.rs`, `tests/` | EDIT | §5: nonce digests as rows |
-| `rustd/crates/afd_gate/src/gate/{store,anomaly,park}*`, `tests/` | EDIT | §5: references from `approval_gates`; the mirror read goes; the brake in memory |
-| `rustd/crates/afd_sse/src/{live,tail,fanin}*`, `rustd/crates/afd_api_tenant/src/handler/{stream,draft/stream}/` | EDIT | §6: `catching_up` after subscribe and on failure; `draft.resync` on a lost subscription |
-| `rustd/crates/agentsfleetd/src/{serve,plane,preflight,sweepers}/`, `probes.rs`, `outbound.rs`, `error.rs`, `inventory.rs`, `migrate.rs`, `tests/` | EDIT | §2 boot; §4 claim pass; §5 expiry sweep; §6 readiness; §7 knob removal |
+| `rustd/crates/daemon/afd_bus/src/nats/` (`mod.rs`, `hub.rs`, `debt.rs`, `preflight.rs`, `config.rs`, `tests.rs`), `afd_bus/Cargo.toml`, `afd_bus/tests/` | CREATE, EDIT | §2: the NATS implementation, its gap sources, its boot checks and `NATS_URL` |
+| `rustd/crates/daemon/afd_bus/src/` (M243's Dragonfly implementation and its tests) | DELETE | §7 |
+| `rustd/crates/daemon/afd_dragonfly/**` | DELETE | §7: the crate, its Lua scripts and its 40 test files |
+| `rustd/crates/daemon/afd_outbound/src/{worker,lanes,obligation,claim}/`, `producer.rs`, `retry.rs`, `Cargo.toml`, `tests/` | EDIT, CREATE, DELETE | §4: claims, ping, claim pass; the stream reader, re-append and receipt scans go |
+| `rustd/crates/daemon/afd_fleet/src/lease/obligation.rs` | EDIT | §4: the report owes the row with its holder token and pings |
+| `rustd/crates/daemon/afd_tenant/src/session/` and its `sql/`, `tests/` | EDIT, CREATE | §5: sessions as rows |
+| `rustd/crates/daemon/afd_connector/src/state/nonce.rs`, `registry/mod.rs`, `connect.rs`, `tests/` | EDIT | §5: nonce digests as rows |
+| `rustd/crates/daemon/afd_gate/src/gate/{store,anomaly,park}*`, `tests/` | EDIT | §5: references from `approval_gates`; the mirror read goes; the brake in memory |
+| `rustd/crates/daemon/afd_sse/src/{live,tail,fanin}*`, `rustd/crates/daemon/afd_api_tenant/src/handler/{stream,draft/stream}/` | EDIT | §6: `catching_up` after subscribe and on failure; `draft.resync` on a lost subscription |
+| `rustd/crates/daemon/agentsfleetd/src/{serve,plane,preflight,sweepers}/`, `probes.rs`, `outbound.rs`, `error.rs`, `inventory.rs`, `migrate.rs`, `tests/` | EDIT | §2 boot; §4 claim pass; §5 expiry sweep; §6 readiness; §7 knob removal |
 | `rustd/crates/{afd_admission,afd_approval,afd_authoring,afd_events,afd_fleet,afd_memory,afd_vault,afd_runner,afd_api,afd_http,afd_cron,afd_ingress,afd_identity,afd_billing,afd_crypto,afd_wire,afd_api_wire,afd_api_runner,afd_db}` sources, manifests and tests that name Dragonfly | EDIT | §7: error seams, test harnesses and comments follow the deletion |
-| `rustd/crates/afd_core/src/error_code/request.rs`, `problem/request.rs`, `error_code/mod.rs` | EDIT | §7: `STARTUP_DRAGONFLY_CONNECT` becomes `STARTUP_BUS_CONNECT`; code `UZ-STARTUP-004` and its title stay; the hint names `NATS_URL` |
-| `rustd/crates/afd_observability/src/metrics/declared/`, `producers/`, `tests/producers_drive.rs` | EDIT | §2, §4: two families and their producers |
-| `rustd/crates/afd_bench/src/lane/tail/{viewers,wake}/`, `lane/tail/mod.rs`, `lane/outbound/`, `lane/cardinality/capacity.rs`, `lane/sweep/mod.rs`, `src/bin/tail.rs`, `Cargo.toml`, `tests/` | EDIT, CREATE | §1 p99 and the wake ladder; §2 `BENCH_BUS`; §4 the outbound lane drives claims; §7 the Dragonfly sample and raw `redis` go |
+| `rustd/crates/foundation/afd_core/src/error_code/request.rs`, `problem/request.rs`, `error_code/mod.rs` | EDIT | §7: `STARTUP_DRAGONFLY_CONNECT` becomes `STARTUP_BUS_CONNECT`; code `UZ-STARTUP-004` and its title stay; the hint names `NATS_URL` |
+| `rustd/crates/protocol/afd_observability/src/metrics/declared/`, `producers/`, `tests/producers_drive.rs` | EDIT | §2, §4: two families and their producers |
+| `rustd/crates/daemon/afd_bench/src/lane/tail/{viewers,wake}/`, `lane/tail/mod.rs`, `lane/outbound/`, `lane/cardinality/capacity.rs`, `lane/sweep/mod.rs`, `src/bin/tail.rs`, `Cargo.toml`, `tests/` | EDIT, CREATE | §1 p99 and the wake ladder; §2 `BENCH_BUS`; §4 the outbound lane drives claims; §7 the Dragonfly sample and raw `redis` go |
 | `bench/baselines/tail.rig.json`, `bench/baselines/outbound.rig.json` | EDIT | §3, §4: NATS-era median runs |
 | `docker-compose.yml`, `compose.dev-infra.yml` | EDIT | §2 three NATS nodes; mailpit owns the daemon's network namespace; §7 the Dragonfly service goes |
 | `make/test-infra.mk`, `make/test-integration-rustd.mk`, `make/bench.mk` | EDIT | §2 `TEST_NATS_URL`, `TEST_NATS_CONTROL`, the exclusive filter; §7 every `TEST_DRAGONFLY_*` goes |
@@ -332,7 +332,7 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 | R6 | The crate and knobs are gone everywhere (§7, §8) | `git grep -n -w -e afd_dragonfly -e DRAGONFLY_URL -e TEST_DRAGONFLY_URL -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!playbooks/operations/acceptance' ':!docs/RUST_ERROR_STANDARD.md'` | no output | P0 | |
 | R7 | The decision record quotes Indy (§7) | `grep -c "Yes i agree on NATS" docs/architecture/datastore_scaling.md` | `1` | P0 | |
 | R8 | The repository rule names NATS (§7) | `grep -c "NATS_URL" .orly/LOCAL.md` | `1` or more | P0 | |
-| R9 | Sessions and nonces are Postgres slots (§5) | `grep -c -e identity_device_sessions -e connector_oauth_nonces rustd/crates/afd_db/src/migration.rs` | `2` | P0 | |
+| R9 | Sessions and nonces are Postgres slots (§5) | `grep -c -e identity_device_sessions -e connector_oauth_nonces rustd/crates/daemon/afd_db/src/migration.rs` | `2` | P0 | |
 | R10 | Claims read the open-lane index (§4) | `git grep -c -w idx_obligations_open_lane -- schema` | one slot, count `1` | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
@@ -344,7 +344,7 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 
 | Deleted file or symbol | Verify | Expected |
 |------------------------|--------|----------|
-| `rustd/crates/afd_dragonfly/**`, `SessionStore` | `git grep -n -w -e afd_dragonfly -e SessionStore -- rustd` | no output |
+| `rustd/crates/daemon/afd_dragonfly/**`, `SessionStore` | `git grep -n -w -e afd_dragonfly -e SessionStore -- rustd` | no output |
 | `OutboundQueue`, `OutboundReader`, `outbound_consumer`, `MIN_AGE`, `select_unreceipted`, `reappend_receipt`, `receipt_delivery` | `git grep -n -w -e OutboundQueue -e OutboundReader -e outbound_consumer -e MIN_AGE -e select_unreceipted -e reappend_receipt -e receipt_delivery -- rustd` | no output; Dimension 4.6's fixtures are named `RETIRED_UNRECEIPTED_SCAN` and `RETIRED_LOST_SCAN` |
 | `increment_in_window`, `key::response`, `key::event_ref`, `key::anomaly` | `git grep -n -e increment_in_window -e "key::response" -e "key::event_ref" -e "key::anomaly" -- rustd` | no output |
 | `STARTUP_DRAGONFLY_CONNECT` | `git grep -n -w STARTUP_DRAGONFLY_CONNECT` | no output |

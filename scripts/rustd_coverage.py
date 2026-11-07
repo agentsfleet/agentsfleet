@@ -45,6 +45,8 @@ EXIT_FLOOR_MISSED = 1
 EXIT_UNUSABLE = 2
 ROLLUP_ROWS = 12
 CRATES_SEGMENT = "/crates/"
+# Every crate sits one folder below `crates/`, in its layer (`rustd/Cargo.toml`).
+LAYERS = frozenset({"foundation", "protocol", "harness", "runner", "daemon"})
 WORKSPACE_ROOT = "(workspace root)"
 REVISION_SUFFIX = ".rev"
 NOT_TAKEN = "-"
@@ -159,13 +161,21 @@ def totals(merged):
     return covered, total
 
 
+def crate_of(path):
+    """The crate a source path belongs to, past its layer folder."""
+    if CRATES_SEGMENT not in path:
+        return WORKSPACE_ROOT
+    parts = path.split(CRATES_SEGMENT, 1)[1].split("/")
+    return parts[1] if parts[0] in LAYERS and len(parts) > 1 else parts[0]
+
+
 def missed_by_crate(merged):
     """Missed lines per crate, most first: the answer to "where" after "how much"."""
     missed = {}
     for path, source in merged.items():
         gap = sum(1 for hits in source.lines.values() if hits == 0)
         if gap:
-            crate = path.split(CRATES_SEGMENT, 1)[1].split("/", 1)[0] if CRATES_SEGMENT in path else WORKSPACE_ROOT
+            crate = crate_of(path)
             missed[crate] = missed.get(crate, 0) + gap
     return sorted(missed.items(), key=lambda item: (-item[1], item[0]))
 

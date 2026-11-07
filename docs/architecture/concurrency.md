@@ -70,7 +70,7 @@ The control plane's primitives are tokio's: `CancellationToken` for stop,
 guard is held across an await and `std::sync::Mutex` where a leaf map is not.
 The runner uses the same primitives: `CancellationToken` for stop, a `watch`
 channel for the heartbeat's assignment, and a `JoinSet` for its workers
-(`rustd/crates/afr_supervisor/src/worker_pool/mod.rs`).
+(`rustd/crates/runner/afr_supervisor/src/worker_pool/mod.rs`).
 
 ---
 
@@ -88,7 +88,7 @@ The supervisor owns process-lifetime daemon tasks (`agentsfleetd/src/supervisor/
 Private answer previews use a request-owned publisher (`afd_authoring/src/model/progress/publish.rs`). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
 
 The inventory is asserted, not described: `test_boot_to_ready_on_compose`
-(`rustd/crates/agentsfleetd/tests/integration_serve.rs`) compares a booted
+(`rustd/crates/daemon/agentsfleetd/tests/integration_serve.rs`) compares a booted
 daemon's whole inventory against the names below, so a task added to boot without
 a name — or a sweeper that quietly went back to a bare spawn — is a failing test.
 
@@ -116,9 +116,9 @@ New process-lifetime background work belongs to the supervisor. Request-owned wo
 
 ### `agentsfleet-runner` (execution plane)
 
-Rooted at `rustd/crates/agentsfleet_runner/src/main.rs`; no runner crate links a
+Rooted at `rustd/crates/runner/agentsfleet_runner/src/main.rs`; no runner crate links a
 datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
-`afr_supervisor::run` composes the long-lived work (`rustd/crates/afr_supervisor/src/lib.rs`). The private report spool protects shared clock and deadline state with its own mutex.
+`afr_supervisor::run` composes the long-lived work (`rustd/crates/runner/afr_supervisor/src/lib.rs`). The private report spool protects shared clock and deadline state with its own mutex.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
@@ -207,10 +207,10 @@ Postgres stays outside any scheduler on purpose: the pool's acquire and connect
 timeouts already bound it.
 
 The runner bounds each call in the HTTP client that makes it: the control-plane
-client's `CALL_TIMEOUT` (`rustd/crates/afr_supervisor/src/client/http.rs`), the
+client's `CALL_TIMEOUT` (`rustd/crates/runner/afr_supervisor/src/client/http.rs`), the
 egress transport's request and connect timeouts
-(`rustd/crates/afr_egress/src/network/mod.rs`), and the model providers' connect and
-read timeouts (`rustd/crates/afr_providers/src/connect/mod.rs`).
+(`rustd/crates/harness/afr_egress/src/network/mod.rs`), and the model providers' connect and
+read timeouts (`rustd/crates/harness/afr_providers/src/connect/mod.rs`).
 
 ---
 

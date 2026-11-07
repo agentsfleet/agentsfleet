@@ -36,7 +36,7 @@ flowchart TD
     I --> J[Guarded physical HTTP sender]
 ```
 
-[`StreamTurn`](../../rustd/crates/afd_inference/src/stream.rs) owns one Rig stream.
+[`StreamTurn`](../../rustd/crates/protocol/afd_inference/src/stream.rs) owns one Rig stream.
 It handles cancellation, inactivity, finalization and partial usage.
 Neither caller owns another provider event parser.
 
@@ -93,7 +93,7 @@ The pool's existing five-second acquisition deadline remains unchanged.
 
 ### Private setup delivery
 
-[`Publisher`](../../rustd/crates/afd_authoring/src/model/progress/publish.rs) consumes a bounded preview queue.
+[`Publisher`](../../rustd/crates/daemon/afd_authoring/src/model/progress/publish.rs) consumes a bounded preview queue.
 The first answer text is flushed immediately.
 Later text is coalesced on a 50-millisecond interval.
 
@@ -376,8 +376,8 @@ The private-stream survivor replaces one cancellation-or-closure check with an A
 Its changed behavior requires a running message at or below the cancellation cutoff, or a running message in a closed draft.
 Production operations prevent both states under the same draft lock used by observation.
 
-See [`cancel`](../../rustd/crates/afd_authoring/src/message/cancel.rs), [`claim`](../../rustd/crates/afd_authoring/src/lease/claim/selection.rs),
-[`idle`](../../rustd/crates/afd_authoring/src/draft/patch.rs) and [`observe`](../../rustd/crates/afd_authoring/src/observe/mod.rs).
+See [`cancel`](../../rustd/crates/daemon/afd_authoring/src/message/cancel.rs), [`claim`](../../rustd/crates/daemon/afd_authoring/src/lease/claim/selection.rs),
+[`idle`](../../rustd/crates/daemon/afd_authoring/src/draft/patch.rs) and [`observe`](../../rustd/crates/daemon/afd_authoring/src/observe/mod.rs).
 The original defensive checks remain.
 
 The Miri run used nightly commit `1a2c4797ef2570bd76ca5dee34449169bc7dc457`, matching the workflow's dated pin.

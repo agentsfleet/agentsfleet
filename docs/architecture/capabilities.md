@@ -38,7 +38,7 @@ Each trap is enforced in its owner section; this list is the index — §5 (What
 
 ## 1. Reasoning + tool inventory (declared in the fleet's own files)
 
-A fleet's setup is one reviewed Definition (`rustd/crates/afd_fleet_runtime/src/definition/mod.rs`). Its parts carry different weight:
+A fleet's setup is one reviewed Definition (`rustd/crates/protocol/afd_fleet_runtime/src/definition/mod.rs`). Its parts carry different weight:
 
 | Part | What it carries | Enforced by |
 |---|---|---|
@@ -61,15 +61,15 @@ A fleet needs no declared trigger to receive `event_type: chat` from the steer A
 A `trigger.type: webhook` fleet receives `event_type: webhook`.
 The fields describe different things; values such as `webhook` overlap.
 
-Resolving an approval gate creates `event_type: continuation`, regardless of the original trigger type (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`).
+Resolving an approval gate creates `event_type: continuation`, regardless of the original trigger type (`rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs`).
 
-Source of truth: `rustd/crates/afd_fleet_runtime/src/config/trigger/mod.rs` (`Trigger`) for `trigger.type`; `rustd/crates/afd_wire/src/event/mod.rs` (`EventType`) for `event_type`.
+Source of truth: `rustd/crates/protocol/afd_fleet_runtime/src/config/trigger/mod.rs` (`Trigger`) for `trigger.type`; `rustd/crates/protocol/afd_wire/src/event/mod.rs` (`EventType`) for `event_type`.
 
 ---
 
 ## 2. The platform tools the fleet can call
 
-The runner hosts every published tool; `tools:` selects which the model is offered ([`runner_execution.md`](./runner_execution.md) §"Tool catalog"). Placeholders resolve at send time in two places only: the `Authorization` header's value and the URL's whole host (`${secrets.NAME.host}`) (`rustd/crates/afr_egress/src/admission/mod.rs`).
+The runner hosts every published tool; `tools:` selects which the model is offered ([`runner_execution.md`](./runner_execution.md) §"Tool catalog"). Placeholders resolve at send time in two places only: the `Authorization` header's value and the URL's whole host (`${secrets.NAME.host}`) (`rustd/crates/harness/afr_egress/src/admission/mod.rs`).
 
 ---
 
@@ -81,10 +81,10 @@ The runner hosts every published tool; `tools:` selects which the model is offer
 | Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` (tools, secrets, allowed hosts, context knobs) that the runner's supervisor enforces outside the sandbox. The sandbox's network posture is the runner's assigned `allow_all`, `deny_all_egress` or `allow_list_egress` ([`runner_fleet.md`](./runner_fleet.md) §"Egress model — outbound is the only network surface"). | Lease ExecutionPolicy |
 | Admissions ledger + history | Every steer / webhook / cron event commits to `fleet.admissions` with actor provenance. `fleet.events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub App + manual) | Both receivers verify the signature, bind the delivery to subscribed fleets and refuse replays before queueing. The App records actor `github-app`; the manual receiver records `webhook:<source>` ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution"). | App ingress + webhook receiver |
-| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`rustd/crates/afd_crypto/src/lib.rs`). Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`) — never a token — which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
+| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets. Each row is encrypted with its own data encryption key (DEK), which is sealed by the daemon's key encryption key (KEK), the `ENCRYPTION_MASTER_KEY` boot setting (`rustd/crates/foundation/afd_crypto/src/lib.rs`). Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`) — never a token — which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
 | Integration credential broker | `agentsfleetd` mints a short-lived, workspace-scoped token per mintable integration on demand; the App private key never leaves the daemon ([`connectors.md`](./connectors.md) §"Credential use remains separate from event receipt"). | Credential broker (daemon-side) |
 | Provider config (self-managed) | A tenant chooses platform-managed inference or its own provider key. The api_key crosses vault → lease `ExecutionPolicy` → runner's supervisor → outbound HTTPS and never reaches a user-facing surface ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"8.2 The api_key visibility boundary"). | Provider resolution path |
-| Approval gating | A gated event parks at lease until a workspace member approves it in the dashboard, through the API, or with `agentsfleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`rustd/crates/afd_gate/src/gate/park.rs`, "No pending summary, no staged notification"). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
+| Approval gating | A gated event parks at lease until a workspace member approves it in the dashboard, through the API, or with `agentsfleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`rustd/crates/daemon/afd_gate/src/gate/park.rs`, "No pending summary, no staged notification"). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
 | Budget caps | Daily and monthly hard caps in integer nanos (`daily_nanos`, `monthly_nanos`), configured per fleet in the reviewed `config`, block further runs at the first trip ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"5.1 The per-fleet budget gate — a second, independent ceiling"). | Billing gate |
 | Per-run context lifecycle | Shared compaction and guarded working notes let the same run continue. See §4. | Context lifecycle |
 
@@ -168,7 +168,7 @@ A pinned request that cannot fit the physical window fails before provider acces
 
 Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane"). Four habits make that selection work for the fleet instead of against it:
 
-- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (only `daily` — every other category persists until cap eviction; `memory_forget` hides a key for the current run only, `rustd/crates/afr_memory/src/hydrated.rs`).
+- **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (only `daily` — every other category persists until cap eviction; `memory_forget` hides a key for the current run only, `rustd/crates/runner/afr_memory/src/hydrated.rs`).
 - **Reuse stable keys.** Re-storing a key is an upsert — it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.
 - **Replace what's stale.** A store under the same key replaces the stored copy; `memory_forget` only hides a key for the rest of the run. A Fleet that hoards everything as `core` defeats the pinning: an all-`core` set over the entry cap evicts the coldest `core` as last resort.
 - **Keep entries small.** The hydration budget is bytes, not entries — one bloated entry crowds out many small ones. Snapshot conclusions, not transcripts.

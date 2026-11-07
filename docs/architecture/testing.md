@@ -11,7 +11,7 @@ compose those graphs; they never rebuild a component's import list.
 
 | Component | Lane | Build graph |
 |---|---|---|
-| `rustd/crates/*` (every Rust crate) | `test-unit-rustd` | `rustd/Cargo.toml` |
+| `rustd/crates/*/*` (every Rust crate) | `test-unit-rustd` | `rustd/Cargo.toml` |
 | `ui/packages/app` | `test-coverage-all` | its own `vitest.config.ts` |
 | `ui/packages/website` | `test-coverage-all` | its own `vite.config.ts` |
 | `ui/packages/design-system` | `test-coverage-all` | its own `vitest.config.ts` |

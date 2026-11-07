@@ -302,12 +302,12 @@ A connection that held 5 s is redialled at once.
 Recovery from a lost subscription: [datastore_scaling.md](./datastore_scaling.md) §"Target design".
 Each frame is one shared allocation, however many viewers read it.
 
-Source: [`afd_dragonfly::Dragonfly`](../../rustd/crates/afd_dragonfly/src/client/mod.rs),
-[`hub control task`](../../rustd/crates/afd_dragonfly/src/hub/pump/mod.rs),
-[`hub dispatch task`](../../rustd/crates/afd_dragonfly/src/hub/dispatch.rs),
-[`node repair`](../../rustd/crates/afd_dragonfly/src/hub/repair/mod.rs),
-[`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs), and
-[`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
+Source: [`afd_dragonfly::Dragonfly`](../../rustd/crates/daemon/afd_dragonfly/src/client/mod.rs),
+[`hub control task`](../../rustd/crates/daemon/afd_dragonfly/src/hub/pump/mod.rs),
+[`hub dispatch task`](../../rustd/crates/daemon/afd_dragonfly/src/hub/dispatch.rs),
+[`node repair`](../../rustd/crates/daemon/afd_dragonfly/src/hub/repair/mod.rs),
+[`runtime boot`](../../rustd/crates/daemon/agentsfleetd/src/serve/runtime.rs), and
+[`outbound worker boot`](../../rustd/crates/daemon/agentsfleetd/src/outbound.rs).
 
 ## The Postgres pool: a saturated pool and a dead datastore are different pages
 
@@ -325,7 +325,7 @@ An acquire can fail two ways, and they are **different operator problems**:
 | `PoolUnavailable` | the pool could not produce a connection at all | the datastore — reachability, credentials, TLS |
 
 The pool acquire answers those as a typed error, and the two are asked apart
-by name (`rustd/crates/afd_db/src/error/mod.rs`: `is_pool_capacity` against
+by name (`rustd/crates/daemon/afd_db/src/error/mod.rs`: `is_pool_capacity` against
 `is_datastore_unavailable`). An acquire that answered only an absent connection
 would erase the distinction at the handler boundary and put both behind one
 alert. The handler that needed to tell them apart would then acquire from the
@@ -387,7 +387,7 @@ A fresh Send refuses uncancelled unknown provider usage after checking exact rep
 
 Save preserves the watermark while the draft enters `saving`; activation closes it. A setup Kill that restores `editing` also preserves the watermark, so old proposals and answers remain fenced. Old reports may still settle their original attempt.
 
-Already accepted candidate edits remain available for the person's review; Stop does not undo them. The [Stop implementation](../../rustd/crates/afd_authoring/src/message/cancel.rs), [publication guard](../../rustd/crates/afd_authoring/src/lease/guard/mod.rs), and [creation regression](../../rustd/crates/afd_authoring/tests/draft/creation/stopped.rs) define these boundaries.
+Already accepted candidate edits remain available for the person's review; Stop does not undo them. The [Stop implementation](../../rustd/crates/daemon/afd_authoring/src/message/cancel.rs), [publication guard](../../rustd/crates/daemon/afd_authoring/src/lease/guard/mod.rs), and [creation regression](../../rustd/crates/daemon/afd_authoring/tests/draft/creation/stopped.rs) define these boundaries.
 
 POST fleets includes a UUIDv7 `Idempotency-Key`, immutable source, reviewed name, digest and start choice. Authorization precedes recording the normalized body and fleet identity. Changed-body reuse returns 409.
 
@@ -730,7 +730,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 
 Before the cutover, a single worker thread owned all events for a Fleet, and the concern was round-robin across worker replicas breaking per-fleet continuity. That model is gone. Ownership is now a **durable lease**, not a thread:
 
-- `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/afd_fleet/src/lease/assign/mod.rs`) claims it atomically and bumps a monotonic `fencing_token`; a runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently.
+- `runner.fleet_slots` holds one slot per fleet. `Leases::select` (`rustd/crates/daemon/afd_fleet/src/lease/assign/mod.rs`) claims it atomically and bumps a monotonic `fencing_token`; a runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently.
 - The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
 - Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement remains a hint, never ownership.

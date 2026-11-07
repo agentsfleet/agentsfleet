@@ -17,7 +17,7 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Dragonfly client owners | 3·R at normal boot | shared commands, hub and outbound reader each own a cluster client; physical sockets depend on connected nodes | §Connection budget after the cutover |
 | Idle request volume | `idle_workers / poll_s` requests/sec | one Postgres fleet-discovery statement per poll; authentication and accepted-kind placement reads are additional | §Idle request volume |
-| Idle-cost knob | `NO_WORK_RETRY_AFTER` = 1000 | trades idle bill against idle pickup latency; single-sourced in `rustd/crates/afd_core/src/timing.rs` | §Tuneup knobs |
+| Idle-cost knob | `NO_WORK_RETRY_AFTER` = 1000 | trades idle bill against idle pickup latency; single-sourced in `rustd/crates/foundation/afd_core/src/timing.rs` | §Tuneup knobs |
 | Candidate result ceiling | `MAX_CANDIDATES_PER_POLL` = 64 | bounds returned fleet identifiers and claim attempts; discovery still examines eligible active fleets | §Candidate and claim bounds |
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Idle request volume |
 | Fleet count in discovery work | eligible active fleets when unsettled admissions exist | an empty ledger skips fleet scans; otherwise one oldest-unsettled lookup per eligible fleet | §Candidate and claim bounds |
@@ -112,7 +112,7 @@ Four batches may be queued before backpressure delays posting.
 A single oversized frame rides alone.
 These limits do not bound browser paint time.
 
-The source is `rustd/crates/afr_supervisor/src/activity/mod.rs`: `Early`, `MAX_BATCH_BYTES`, `FLUSH_EVERY` and `MAX_BATCHES_HELD`.
+The source is `rustd/crates/runner/afr_supervisor/src/activity/mod.rs`: `Early`, `MAX_BATCH_BYTES`, `FLUSH_EVERY` and `MAX_BATCHES_HELD`.
 
 ---
 
@@ -122,9 +122,9 @@ Each daemon replica owns three logical Dragonfly clients: shared commands, the h
 
 Size physical connections against the connected topology and measured reconnect headroom. Fleet and viewer counts add no dedicated datastore clients. [Data flow](data_flow.md#connection-topology--the-cutover-collapsed-the-dedicated-tier) owns the connection topology.
 
-Source: [`runtime boot`](../../rustd/crates/agentsfleetd/src/serve/runtime.rs),
-[`Dragonfly handle`](../../rustd/crates/afd_dragonfly/src/client/mod.rs), and
-[`outbound worker boot`](../../rustd/crates/agentsfleetd/src/outbound.rs).
+Source: [`runtime boot`](../../rustd/crates/daemon/agentsfleetd/src/serve/runtime.rs),
+[`Dragonfly handle`](../../rustd/crates/daemon/afd_dragonfly/src/client/mod.rs), and
+[`outbound worker boot`](../../rustd/crates/daemon/agentsfleetd/src/outbound.rs).
 
 ### Idle request volume
 
@@ -151,7 +151,7 @@ Measure that cost separately from the number of statements.
 ### Candidate and claim bounds
 
 Discovery returns at most `MAX_CANDIDATES_PER_POLL` (64) fleet identifiers
-([assignment](../../rustd/crates/afd_fleet/src/lease/assign/mod.rs)).
+([assignment](../../rustd/crates/daemon/afd_fleet/src/lease/assign/mod.rs)).
 The query first checks for any unsettled admission, then checks placement labels and the oldest unsettled admission of each eligible fleet before applying that limit.
 
 The partial `(fleet_id, sequence)` admission index serves each head lookup; the limit bounds returned candidates and subsequent claim attempts.
@@ -181,7 +181,7 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 
 | Recurring read | Was | Now |
 |---|---|---|
-| Liveness sweep — due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/afd_runner/src/sql/sweep/mod.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/1800_runner_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
+| Liveness sweep — due runners | Sequential scan + top-N sort of `runner.runners`, every cycle | Still a sort, on purpose: `SELECT_DUE_RUNNERS` (`rustd/crates/daemon/afd_runner/src/sql/sweep/mod.rs`) orders by `updated_at, id` under its batch `LIMIT`, and `schema/1800_runner_runners.sql` leaves runner sorts unindexed because runners number about a hundred. M142_001's `idx_runners_updated_at_id` measured 6 shared buffer hits at 20 000 runners; the M154 rebuild dropped it. |
 | Liveness sweep — affinity expiry | Full scan of `runner.fleet_slots`, once **per due runner per cycle** | `idx_fleet_slots_last_runner_id_lease_expires_at`; also covers the unindexed `ON DELETE SET NULL` foreign key |
 | Reclaim — prior active lease | Scan of `runner.leases` on an unindexed `ON DELETE CASCADE` foreign key | `idx_leases_fleet_id_status_fencing_token`; filter, ordering and `LIMIT 1` in one seek |
 | Workspace event keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_events_workspace_id_created_at_event_id` with the workspace, cursor and `since` in its index condition, walked in order |
@@ -191,7 +191,7 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 
 **Queue discovery:** the unsettled partial index avoids completed admission history. Each probe still examines eligible active fleets; size Postgres against both fleet count and poll rate.
 
-**What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/afd_memory/src/sql/mod.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
+**What it does not cover.** Fleet-memory hydration (`SELECT_ALL_FOR_FLEET`, `rustd/crates/daemon/afd_memory/src/sql/mod.rs`) still sorts, and correctly so: it fetches a fleet's entire memory set with no `LIMIT`, and for an unbounded fetch a bitmap scan plus sort is genuinely cheaper than an ordered index scan with random heap access. An index only removes a sort where the plan can exit early.
 
 **One anti-pattern this replaced,** worth stating because it reads as an optimisation: the operator runner list resolved each row's lease-liveness in a common table expression (CTE) spanning the whole runner table before paginating. PostgreSQL answers that by hashing the *entire* `runner.leases` table once per request — 6 472 buffer hits against a 200 000-row lease table. Resolving liveness over the surviving page instead costs 79. When per-row work sits above a `LIMIT`, the cost is not "one lookup per row"; it is usually one whole-table build.
 
@@ -203,11 +203,11 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 |---|---|---|---|
 | `DRAGONFLY_REQUEST_TIMEOUT_MS` | 5000 | Datastore tail-latency tolerance | No healthy datastore's p99 round-trip approaches 4 s, and in-region 6PN is far below that. **Do not raise it** — >5 s is failure, not slowness. |
 | `DRAGONFLY_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `DRAGONFLY_REQUEST_TIMEOUT_MS` never covered — that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
-| `NO_WORK_RETRY_AFTER` | 1000 | Idle lease-poll request volume **and** idle pickup latency. **Not busy-fleet delivery latency.** | On self-hosted Dragonfly the idle loop costs CPU on a machine already paid for, not a per-request charge; it sizes the machine rather than an invoice. Raise to 2000–5000 to cut idle load proportionally; idle pickup latency rises by the same factor. Single-sourced in `rustd/crates/afd_core/src/timing.rs`. |
+| `NO_WORK_RETRY_AFTER` | 1000 | Idle lease-poll request volume **and** idle pickup latency. **Not busy-fleet delivery latency.** | On self-hosted Dragonfly the idle loop costs CPU on a machine already paid for, not a per-request charge; it sizes the machine rather than an invoice. Raise to 2000–5000 to cut idle load proportionally; idle pickup latency rises by the same factor. Single-sourced in `rustd/crates/foundation/afd_core/src/timing.rs`. |
 | `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one poll. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet/src/lease/assign/mod.rs`. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per poll. |
-| `LEASE_TTL` | 30000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`rustd/crates/afr_supervisor/src/renew/mod.rs`, `rustd/crates/afd_core/src/timing.rs`). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
+| `LEASE_TTL` | 30000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`rustd/crates/runner/afr_supervisor/src/renew/mod.rs`, `rustd/crates/foundation/afd_core/src/timing.rs`). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
 | `SSE_MAX_STREAMS` | 256 | Concurrent asynchronous SSE bodies per replica; shared by fleet, workspace and draft-progress tails. Zero is rejected at boot. Each stream holds a socket, and the daemon neither raises `RLIMIT_NOFILE` nor checks the knob against it: about 300 descriptors go to admitted requests, Postgres and Dragonfly first, so 256 is what a stock 1,024 soft limit leaves room for. | Raise only on a host whose descriptor limit is raised to match, after measuring stream refusals, memory, CPU, and proxy capacity. The tail itself held 4,096 streams inside every bound (below). Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
-| `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | `rustd/crates/agentsfleetd/src/serve/mod.rs` passes this constant (declared in `afd_http`'s `admission/mod.rs`) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
+| `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | `rustd/crates/daemon/agentsfleetd/src/serve/mod.rs` passes this constant (declared in `afd_http`'s `admission/mod.rs`) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
 | `agentsfleetd` API replica count | deployment-driven | HTTP requests per second (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
 | Runner count | operator-driven | Compute throughput; idle lease-poll request volume | Each enabled idle worker adds a poll loop, including workers on existing hosts. Tune `NO_WORK_RETRY_AFTER` against pickup latency and database load. |
 | assigned `worker_count` (per-runner, dashboard) | 1 | Concurrent leased fleets **per host** — the runner worker-pool size (M88_002), assigned on the runner row (M148) and delivered with the heartbeat. N workers each run the lease→execute→report unit; the per-fleet `affinity.claim` keeps two workers off the same fleet. | A host has spare cores/memory while one long fleet run monopolises it (per-host throughput is fixed at 1 at the default). Raise N to run more fleets per host instead of enrolling more hosts. **Tradeoff:** N is a capacity knob, not a throughput guarantee (CPU/RAM/disk/network are not isolated across workers), and it **widens the failure domain** — one host loss drops N in-flight runs, not 1 (all re-leased by the M84_002 sweeper, but interrupted). `worker_count=1` is maximum isolation. At the ceiling (`MAX_WORKERS` = 64, `afd_core/src/limits.rs`) and the 2-core sandbox default, any host under 128 cores is oversubscribed. |
@@ -215,7 +215,7 @@ The Dragonfly figures above are only half the idle bill. The other half is Postg
 The lease path never passes `BLOCK` to Dragonfly.
 The outbound reader uses `BLOCK_INTERVAL = 5000` ms on its dedicated socket, with cancellation raced against the read.
 Its worker also checks pending deliveries; include those commands when measuring idle request volume.
-Source: [`outbound worker`](../../rustd/crates/afd_outbound/src/worker/mod.rs).
+Source: [`outbound worker`](../../rustd/crates/daemon/afd_outbound/src/worker/mod.rs).
 
 ---
 
@@ -243,9 +243,9 @@ Measure response-buffer memory, serialization work, network throughput, and prox
 HTTP/2 can share a socket across streams, but each HTTP hop negotiates independently.
 See [Data Flow, D. WATCH](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) for the browser proxy path and protocol limits.
 
-Source: [`stream ceiling`](../../rustd/crates/afd_sse/src/ceiling.rs),
-[`tail`](../../rustd/crates/afd_sse/src/tail/mod.rs), and
-[`hub`](../../rustd/crates/afd_dragonfly/src/hub/mod.rs).
+Source: [`stream ceiling`](../../rustd/crates/daemon/afd_sse/src/ceiling.rs),
+[`tail`](../../rustd/crates/daemon/afd_sse/src/tail/mod.rs), and
+[`hub`](../../rustd/crates/daemon/afd_dragonfly/src/hub/mod.rs).
 
 ### 3. Datastore machine capacity (now rarely first)
 
@@ -259,7 +259,7 @@ Dragonfly uses `noeviction`, so a primary at `maxmemory` refuses writes. Measure
 
 The stream queue rows below are historical comparisons. Current ledger measurements follow the table.
 
-Numbers, not estimates. Each row is what a lane in `rustd/crates/afd_bench`
+Numbers, not estimates. Each row is what a lane in `rustd/crates/daemon/afd_bench`
 measured on one developer machine against a freshly reset compose Postgres and
 Dragonfly — `make bench-<lane> PROFILE=rig` — and the committed result sits beside
 it in `bench/baselines/`. Absolute rates move with hardware; the shapes below
