@@ -166,7 +166,7 @@ The token is still narrowed to the declared repositories by `ScopedRequest::for_
 
 The connector registry owns callback dispatch; provider ingress handlers own event routing once the route segment has selected them. Detailed auth behavior and refusal codes live in [`../AUTH.md`](../AUTH.md) §"OAuth connectors".
 
-## GitHub App: platform setup to fleet execution
+## GitHub App: platform setup to fleet runs
 
 One GitHub App serves every tenant in an environment. The platform operator configures two different URLs on that App:
 

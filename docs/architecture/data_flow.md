@@ -466,7 +466,7 @@ An active fleet with a blocked initial run prints the partial outcome and an act
 
 The heading keeps its old words because other pages cite it by text. Seven producers enter here, not three.
 
-Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: platform setup to fleet execution".
+Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: platform setup to fleet runs".
 
 [Conversation compaction](context_lifecycle.md) continues a run without a new admission. Only an approved gate admits a continuation.
 

@@ -238,7 +238,7 @@ Primary job:
 
 Trigger modes:
 
-- **Webhook.** GitHub Actions posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`). The ingress wakes only fleets subscribed to that repository and event ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution"). An App delivery lands as `actor=github-app`; the manual fleet-addressed route lands as `actor=webhook:github`.
+- **Webhook.** GitHub Actions posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`). The ingress wakes only fleets subscribed to that repository and event ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs"). An App delivery lands as `actor=github-app`; the manual fleet-addressed route lands as `actor=webhook:github`.
 
 - **Cron.** A periodic production health check, stored by `agentsfleet` and mirrored to Upstash QStash. Each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer or local scheduler state ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 

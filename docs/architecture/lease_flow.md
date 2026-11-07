@@ -434,7 +434,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 
 - Activity: 64 KiB batches, 4 held (`afr_supervisor`'s activity). Memory: a 256 KiB memory window (`af_wire`'s memory module).
 
-- Timers in `af_core`: the lease TTL is 30 s and a renewal comes every 5 s. A run lasts at most 12 h, and a runner counts as offline after 90 s. The heartbeat is 10 s, the empty-poll hint 1 s and the sandbox hold 10 min.
+- Timers in `af_core`: the lease TTL is 30 seconds and a renewal comes every 5 seconds. A run lasts at most 12 hours, and a runner counts as offline after 90 seconds. The heartbeat is 10 seconds, the empty-poll hint 1 second and the sandbox hold 10 minutes.
 
 - Poll and admission: at most 64 candidate fleets per poll; no per-fleet admission cap. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
 

@@ -166,7 +166,7 @@ there is no generic repository trait.
 - **Chat save intent.** `messages.save_requested` records the accepted request to save after a completed turn. The report writer saves the setup with the answer. A checked save refusal keeps the answer and records its safe code in `save_error_code`.
 - **Source and publication are separate facts**. `source_type` (blank, definition, library, fleet)
   plus `source_library_revision_id` or `source_fleet_revision_id` record where the chat started.
-  `library_revision_id` records what it published. A draft can start from Library revision A and
+  `library_revision_id` records what it published, so a draft can start from Library revision A and
   publish revision B.
 
   All three references are `ON DELETE SET NULL`, so deleting a card or purging

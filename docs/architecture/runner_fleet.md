@@ -1,4 +1,4 @@
-# Runner Fleet: `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane
+# Runner Fleet: `agentsfleetd` control plane + host-resident `agentsfleet-runner` runner plane
 
 > Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (how one event flows through this split). · User-facing: [docs.agentsfleet.net/runners](https://docs.agentsfleet.net/runners).
 
@@ -121,7 +121,7 @@ Everything below follows from that one decision. Read the guarantees before the 
 |---|---|---|
 | **No event loss on runner death** | A runner that crashes, partitions, or is killed mid-event never drops the event. | The lease has a `lease_expires_at`; a later ledger claim re-leases the unsettled admission with a higher fence. Durability is at-least-once through `fleet.admissions` and the fenced claim. |
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every lease carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the lease to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
-| **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is substituted at send time by the supervisor's egress guard outside every sandbox, and is never saved runner-side ([Runner execution](./runner_execution.md) §Credentials). |
+| **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is substituted at send time by the supervisor's egress guard outside every sandbox, and is never saved runner-side ([Runner runtime](./runner_execution.md) §Credentials). |
 | **Tool calls are always sandboxed** | No tenant program ever runs un-isolated. | A lease offered a tool that runs in a sandbox gets one under bubblewrap, Landlock, seccomp and its own cgroup; a sandbox that cannot be built fails **closed**: the turn never runs and the lease reports `fleet_error` as `startup_posture`. A lease whose tools all run in the supervisor starts none. |
 | **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Dragonfly, or the Vault. | No runner crate links `sqlx` or `redis` ([`runner_execution.md`](./runner_execution.md) §Crates); the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
 
@@ -177,7 +177,7 @@ The runner gives the lease up at the last granted deadline less two seconds. The
 
 A transient renewal failure retries on the next tick. At the last granted deadline, the runner stops and another runner can reclaim unsettled work. Fences reject stale durable writes; external effects keep their own retry and idempotency limits.
 
-## Scope: an execution plane, deliberately not a control plane
+## Scope: a runner plane, deliberately not a control plane
 
 The fleet borrows Kubernetes, Nomad and Temporal **semantics**: leases, fencing, node heartbeats, drain, sticky scheduling and checkpointed workloads. It is **not** a general scheduler and must not drift into one. The non-goals are load-bearing; each rejected feature stays unbuilt until a spec changes this direction.
 
@@ -490,7 +490,7 @@ It also stays out of scope while `agentsfleetd` runs a single write pool. A seco
 
 ## Running one event
 
-A `lease` reply is the runner's entire input for an event. The runner runs the event's turn and sends the result back with `report`. [Runner execution](./runner_execution.md) §"One lease, end to end" walks the runner's side.
+A `lease` reply is the runner's entire input for an event. The runner runs the event's turn and sends the result back with `report`. [Runner runtime](./runner_execution.md) §"One lease, end to end" walks the runner's side.
 
 ```text
 lease -> { event, ExecutionPolicy, instructions }  (full shape: API reference > Runner plane)

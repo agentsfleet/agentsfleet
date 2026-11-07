@@ -83,7 +83,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | Which locks exist, and what does each protect? | [`concurrency.md`](./concurrency.md) §"Lock-invariant registry" |
 | What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §"Shutdown choreography" |
 | How do I add a connector provider? | [`connectors.md`](./connectors.md) §"Adding a provider (the recipe)" |
-| How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution" |
+| How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs" |
 | How do drafts, Library revisions and installed fleets relate? | [Fleet definitions and revisions](fleet_definitions.md#drafts-library-and-fleets) |
 | What does one lease write, end to end, and when is its sandbox destroyed? | [`lease_flow.md`](./lease_flow.md) — one lease walked end to end against the Rust source, with its open gaps |
 | How does a definition become reusable in Library? | [Explicit publication](fleet_definitions.md#explicit-library-publication) |
