@@ -148,8 +148,17 @@ Chromium temporarily trusts the local certificate through the user’s Network S
 Bun receives an extra certificate authority (CA) bundle. Certificate verification stays enabled.
 When `CODEX_PROXY_CERT` is available, Docker builds and QStash also trust that public session certificate.
 
-Identity and model services must accept direct HTTPS connections from the host and runner.
-Their clients ignore environment proxies; an environment that requires an HTTP proxy needs different networking before these suites can pass.
+Identity requests use direct HTTPS unless `IDENTITY_HTTP_PROXY_URL` explicitly names a trusted proxy.
+For a Cloud acceptance invocation, pass the inherited HTTPS proxy deliberately:
+
+```sh
+IDENTITY_HTTP_PROXY_URL="$HTTPS_PROXY" make acceptance-codex
+```
+
+This setting covers signing-key reads, capability reads, and Clerk metadata writeback.
+It does not enable automatic proxy discovery, disable certificate verification, or change model networking in the runner.
+Use it only where the configured proxy and its certificate authority are trusted.
+Invalid values refuse boot; failed proxy requests never fall back to direct access.
 
 Exit stops and removes only the runner container this invocation created, preserving its private startup log.
 The shared datastores, local daemon, Caddy and saved registration remain available for the next run.

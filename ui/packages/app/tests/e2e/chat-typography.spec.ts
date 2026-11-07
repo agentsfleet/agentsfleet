@@ -4,6 +4,32 @@ import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
 import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
 
+test("setup and fleet activity share a stable loading sheen with accessible motion fallbacks", async ({page, chatProbe}) => {
+  for (const route of ["?loading=1", "?activity=1"]) {
+    await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "none"});
+    await page.goto(`${chatProbe}${route}`);
+    const label = page.locator('[data-chat-loading="true"]').first();
+    await expect(label).toBeVisible();
+    await expect(label).toHaveCSS("animation-name", "tool-shimmer");
+    const before = await label.boundingBox();
+    const position = await label.evaluate(element => getComputedStyle(element).backgroundPosition);
+    await expect.poll(() => label.evaluate(element => getComputedStyle(element).backgroundPosition)).not.toBe(position);
+    expect(await label.boundingBox()).toEqual(before);
+    await page.emulateMedia({reducedMotion: "reduce"});
+    await expect(label).toHaveCSS("animation-name", "none");
+    await expect(label).toHaveCSS("background-image", "none");
+    await expect(label).not.toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
+    await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "active"});
+    await expect(label).toHaveCSS("animation-name", "none");
+    await expect(label).toHaveCSS("background-image", "none");
+    await expect(label).not.toHaveCSS("-webkit-text-fill-color", "rgba(0, 0, 0, 0)");
+    if (route === "?activity=1") {
+      await page.getByRole("button", {name: "Show succeeded", exact: true}).click();
+      await expect(page.locator('[data-chat-loading="true"]')).toHaveCount(0);
+    }
+  }
+});
+
 test("incoming progress preserves the draft and reading position until the reader jumps to latest", async ({page, chatProbe}) => {
   await page.goto(`${chatProbe}?scroll=1`);
   const input = page.getByRole("textbox");

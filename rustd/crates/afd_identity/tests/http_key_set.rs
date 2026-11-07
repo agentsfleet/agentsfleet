@@ -19,6 +19,8 @@ use afd_auth::verifier::VerifyError;
 use afd_identity::HttpKeySet;
 use afd_identity::jwks::source::{KeySetSource, MAX_RESPONSE_BYTES};
 
+const DIRECT: &afd_identity::Transport = &afd_identity::Transport::Direct;
+
 /// How long a fetch waits before giving up. Generous for a loopback socket and
 /// short enough that a hung test fails rather than hangs.
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
@@ -107,7 +109,7 @@ fn test_a_served_key_set_is_read_back_verbatim() {
         })
         .await;
 
-        let fetched = HttpKeySet::new(&url, TIMEOUT)
+        let fetched = HttpKeySet::new(&url, TIMEOUT, DIRECT)
             .expect("a client")
             .fetch()
             .await
@@ -121,8 +123,12 @@ fn test_a_served_key_set_is_read_back_verbatim() {
 /// The endpoint is reported back, for a boot diagnostic to name.
 #[test]
 fn test_the_fetcher_reports_the_endpoint_it_reads() {
-    let source =
-        HttpKeySet::new("https://issuer.example/.well-known/jwks.json", TIMEOUT).expect("a client");
+    let source = HttpKeySet::new(
+        "https://issuer.example/.well-known/jwks.json",
+        TIMEOUT,
+        DIRECT,
+    )
+    .expect("a client");
     assert_eq!(source.url(), "https://issuer.example/.well-known/jwks.json");
 }
 
@@ -141,7 +147,7 @@ fn test_a_body_past_the_cap_is_refused() {
         })
         .await;
 
-        let refused = HttpKeySet::new(&url, TIMEOUT)
+        let refused = HttpKeySet::new(&url, TIMEOUT, DIRECT)
             .expect("a client")
             .fetch()
             .await
@@ -167,7 +173,7 @@ fn test_a_body_exactly_at_the_cap_is_accepted() {
         })
         .await;
 
-        let fetched = HttpKeySet::new(&url, TIMEOUT)
+        let fetched = HttpKeySet::new(&url, TIMEOUT, DIRECT)
             .expect("a client")
             .fetch()
             .await
@@ -194,7 +200,7 @@ fn test_a_non_success_status_is_refused() {
             })
             .await;
 
-            let refused = HttpKeySet::new(&url, TIMEOUT)
+            let refused = HttpKeySet::new(&url, TIMEOUT, DIRECT)
                 .expect("a client")
                 .fetch()
                 .await
@@ -213,7 +219,7 @@ fn test_a_dropped_connection_is_a_transport_failure() {
     block_on(async {
         let (url, server) = serve_once(Serve::Hangup).await;
 
-        let refused = HttpKeySet::new(&url, TIMEOUT)
+        let refused = HttpKeySet::new(&url, TIMEOUT, DIRECT)
             .expect("a client")
             .fetch()
             .await
@@ -243,6 +249,7 @@ fn test_a_refused_connection_is_the_same_refusal() {
         let refused = HttpKeySet::new(
             format!("http://{addr}/.well-known/jwks.json"),
             std::time::Duration::from_millis(500),
+            DIRECT,
         )
         .expect("a client")
         .fetch()

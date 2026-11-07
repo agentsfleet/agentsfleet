@@ -22,6 +22,13 @@ pub const PROVIDER_API_BASE_KNOB: &str = "CLERK_API_BASE";
 /// The secret that authorises this daemon to read a subject's claim.
 pub const PROVIDER_SECRET_KNOB: &str = "CLERK_SECRET_KEY";
 
+/// An optional, explicitly trusted proxy for identity-provider HTTP requests.
+pub const IDENTITY_HTTP_PROXY_URL_KNOB: &str = "IDENTITY_HTTP_PROXY_URL";
+
+/// Invalid proxy values refuse boot without echoing their possible credentials.
+pub(super) const WHY_IDENTITY_PROXY: &str =
+    "an absolute http or https proxy URL without a path, query, or fragment";
+
 /// The workspace holding this deployment's own platform credentials.
 ///
 /// The GitHub App and the OAuth clients the credential broker mints through

@@ -83,8 +83,8 @@ export function FleetThought({ live, reasoning, startedAtMs, endedAtMs, children
 function LiveLabel({ reasoning, startedAtMs }: { reasoning: string; startedAtMs: number | null }) {
   return (
     <span className="flex min-w-0 items-center gap-sm">
-      <SignalSpinner className="text-pulse" />
-      <span className="shrink-0">
+      <SignalSpinner className="text-info" />
+      <span className="shrink-0 text-body-sm" data-chat-loading="true">
         {THOUGHT_LIVE_LABEL}
         {/* The clock and the sentence are for the eye. The chip sits in the
             transcript's live log, so a ticking name would be read out ten

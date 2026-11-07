@@ -18,6 +18,8 @@ use afd_auth::principal::Subject;
 use afd_identity::error::MetadataUnwritten;
 use afd_identity::{ProviderMetadata, ProviderSecret};
 
+const DIRECT: &afd_identity::Transport = &afd_identity::Transport::Direct;
+
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// What the fake server's request buffer starts at before the read grows it.
@@ -147,7 +149,7 @@ fn test_the_status_ladder_separates_the_three_repairs() {
 fn test_a_successful_write_sends_the_merge_the_provider_reads() {
     block_on(async {
         let (base, server) = serve_once(200).await;
-        let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
+        let writer = ProviderMetadata::new(base, secret(), TIMEOUT, DIRECT).expect("a client");
 
         let outcome = writer.write_signup(&subject(), TENANT, SCOPES).await;
         assert!(outcome.is_ok(), "a 200 is not a refusal: {outcome:?}");
@@ -182,7 +184,7 @@ fn test_a_refused_credential_is_not_reported_as_an_outage() {
     for status in [401_u16, 403] {
         block_on(async move {
             let (base, server) = serve_once(status).await;
-            let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
+            let writer = ProviderMetadata::new(base, secret(), TIMEOUT, DIRECT).expect("a client");
 
             let outcome = writer.write_signup(&subject(), TENANT, SCOPES).await;
             assert_eq!(
@@ -200,7 +202,7 @@ fn test_a_refused_credential_is_not_reported_as_an_outage() {
 fn test_an_unknown_subject_is_distinguishable_from_an_outage() {
     block_on(async {
         let (base, server) = serve_once(404).await;
-        let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
+        let writer = ProviderMetadata::new(base, secret(), TIMEOUT, DIRECT).expect("a client");
 
         assert_eq!(
             writer.write_signup(&subject(), TENANT, SCOPES).await,
@@ -215,7 +217,7 @@ fn test_an_unknown_subject_is_distinguishable_from_an_outage() {
 fn test_a_provider_error_reads_as_unreachable() {
     block_on(async {
         let (base, server) = serve_once(500).await;
-        let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
+        let writer = ProviderMetadata::new(base, secret(), TIMEOUT, DIRECT).expect("a client");
 
         assert_eq!(
             writer.write_signup(&subject(), TENANT, SCOPES).await,
@@ -241,7 +243,7 @@ fn test_a_provider_that_never_answers_is_unreachable_not_a_panic() {
         let base = format!("http://{}", listener.local_addr().expect("a bound address"));
         drop(listener);
 
-        let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
+        let writer = ProviderMetadata::new(base, secret(), TIMEOUT, DIRECT).expect("a client");
         assert_eq!(
             writer.write_signup(&subject(), TENANT, SCOPES).await,
             Err(MetadataUnwritten::Unreachable)
@@ -255,7 +257,7 @@ fn test_a_provider_that_never_answers_is_unreachable_not_a_panic() {
 fn test_a_dot_segment_subject_is_refused_before_any_write() {
     block_on(async {
         let (base, listener) = silent_listener();
-        let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
+        let writer = ProviderMetadata::new(base, secret(), TIMEOUT, DIRECT).expect("a client");
         for dots in [".", ".."] {
             let subject = Subject::new(dots).expect("a non-blank subject");
             assert_eq!(
@@ -285,6 +287,7 @@ fn silent_listener() -> (String, std::net::TcpListener) {
 /// An API base no person's resource can hang off is refused at construction.
 #[test]
 fn test_an_api_base_that_is_not_a_url_is_refused_at_construction() {
-    let refused = ProviderMetadata::new("not a url", secret(), TIMEOUT).expect_err("not a URL");
+    let refused =
+        ProviderMetadata::new("not a url", secret(), TIMEOUT, DIRECT).expect_err("not a URL");
     assert_eq!(refused, MetadataUnwritten::Unreachable);
 }

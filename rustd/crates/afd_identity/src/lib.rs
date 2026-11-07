@@ -45,6 +45,7 @@ pub mod jwks;
 mod jwt;
 pub mod metadata;
 pub mod provider;
+pub mod transport;
 mod users;
 
 pub use crate::capability::ProviderCapabilities;
@@ -56,3 +57,4 @@ pub use crate::jwks::source::{KeySetSource, StaticKeySet};
 pub use crate::jwks::verifier::{JwksVerifier, VerifierConfig};
 pub use crate::metadata::ProviderMetadata;
 pub use crate::provider::{ProviderClaims, ProviderSecret};
+pub use crate::transport::Transport;

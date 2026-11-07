@@ -825,6 +825,13 @@ The knob names live in `rustd/crates/agentsfleetd/src/preflight/knobs.rs`. `CLER
 
 #### How the key set is fetched (`rustd/crates/afd_identity/src/jwks/http.rs`)
 
+Identity requests use a direct client by default, ignoring ambient proxy variables.
+`IDENTITY_HTTP_PROXY_URL` explicitly names a trusted HTTP or HTTPS proxy for signing-key reads, capability reads, and Clerk metadata writeback.
+The daemon validates this optional setting at startup; invalid values refuse boot without echoing the URL.
+Proxy failures remain failures, with no fallback to direct access.
+TLS certificate checks, token signatures, issuer and audience checks, deadlines, and response-size limits stay enabled.
+Only set this variable when the proxy and its certificate authority are trusted with identity traffic.
+
 The fetch negotiates no content-encoding, so the bytes read off the wire are
 the bytes the JSON parser is handed. A client that negotiates one and then
 reads the body raw hands that parser encoded bytes; every session token then fails
