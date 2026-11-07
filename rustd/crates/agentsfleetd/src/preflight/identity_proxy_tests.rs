@@ -20,7 +20,7 @@ fn an_unset_or_blank_proxy_keeps_identity_direct_despite_ambient_proxies() {
         let mut faults = Vec::new();
         let route = read::identity_transport(&MapEnv::from_pairs(pairs), &mut faults);
         assert!(matches!(route, Some(Transport::Direct)));
-        assert!(faults.is_empty());
+        assert_eq!(faults, []);
     }
 }
 
@@ -31,7 +31,7 @@ fn only_an_explicit_http_proxy_selects_the_trusted_route() {
         let env = MapEnv::from_pairs([(IDENTITY_HTTP_PROXY_URL_KNOB, url)]);
         let route = read::identity_transport(&env, &mut faults);
         assert!(matches!(route, Some(Transport::TrustedProxy(_))));
-        assert!(faults.is_empty());
+        assert_eq!(faults, []);
     }
 }
 
@@ -70,7 +70,7 @@ fn debug_output_never_exposes_proxy_credentials_or_destination() {
     assert!(matches!(route, Some(Transport::TrustedProxy(_))));
     assert_eq!(format!("{route:?}"), "Some(TrustedProxy([REDACTED]))");
     assert_eq!(format!("{:?}", Transport::default()), "Direct");
-    assert!(faults.is_empty());
+    assert_eq!(faults, []);
     let route = route.expect("configured proxy");
     let deadline = std::time::Duration::from_secs(1);
     let secret = afd_identity::ProviderSecret::new("fixture-only").expect("fixture secret");
