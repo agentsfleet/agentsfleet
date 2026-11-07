@@ -62,7 +62,7 @@ const STATE_SUPERSEDED: &str = "superseded";
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryHydrateResponse),
+        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryHydrateResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -100,12 +100,12 @@ pub(crate) async fn hydrate<D: Services>(
         "Shared entries are included when permitted and identify their authoring fleet. ",
         "Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
     ),
-    request_body = MemoryRecallRequest,
+    request_body = MemoryRecallRequest<'_>,
     params(
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryRecallResponse),
+        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryRecallResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -155,7 +155,7 @@ pub(crate) async fn recall<D: Services>(
         "replaced assignment or incorrect assignment token returns 409 `UZ-RUN-005` with ",
         "`superseded`.",
     ),
-    request_body = MemoryPushRequest,
+    request_body = MemoryPushRequest<'_>,
     params(
         afd_http::openapi::path::FleetOnly,
     ),

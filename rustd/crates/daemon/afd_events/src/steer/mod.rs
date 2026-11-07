@@ -44,9 +44,9 @@
 //! also what closes the race where two sends with one id both reached the
 //! insert, and no row deleted in between can make the check pass unchecked.
 //! A fleet that stopped taking work still answers a repeat: the ledger's one
-//! statement reads the key before it checks status (`M242_001` §4). Only one
-//! path looks the key up afterwards: a same-key send racing a spent deployment
-//! ceiling, whose insert never ran to meet the first row.
+//! statement reads the key before it checks status. Only one path looks the key
+//! up afterwards: a same-key send racing a spent deployment ceiling, whose
+//! insert never ran to meet the first row.
 //!
 //! The same id with a different payload — another message, or another sender
 //! — is refused rather than answered: the first message's event would tell the
@@ -126,7 +126,8 @@ pub struct Steered {
 
 impl Steered {
     /// The answer to a repeat: the first send's event, placed as the ledger
-    /// sees its fleet now.
+    /// sees its fleet now. The ledger keeps no record of where the first send
+    /// went, so a repeat after its run ended is placed afresh.
     const fn repeat(event_id: String, placed: disposition::Placed) -> Self {
         Self {
             event_id,
@@ -197,7 +198,7 @@ impl Steer {
             // The insert met a row already under this key: a retry, or a send
             // with the same id that won the race to the insert. Its event is
             // this caller's answer only if the row holds this caller's payload.
-            let placed = disposition::of(&admitted.run, actor);
+            let placed = disposition::of(&admitted.run, actor, &admitted.stored.id);
             return answer_repeat(&admission, admitted.stored)
                 .map(|event_id| Steered::repeat(event_id, placed));
         }
@@ -214,7 +215,7 @@ impl Steer {
             event = "steer_appended",
         );
         Ok(Steered {
-            placed: disposition::of(&admitted.run, actor),
+            placed: disposition::of(&admitted.run, actor, &admitted.stored.id),
             event_id: admitted.stored.id,
             admitted_at: Some(admitted.stored.created_at),
         })
@@ -302,7 +303,7 @@ fn scoped_key(fleet: &str, operation: &str) -> String {
 
 /// The admission a steer asks for: the same fields on the first send and on
 /// every repeat, which is what makes the digest comparison mean anything.
-fn steer_admission<'a>(
+const fn steer_admission<'a>(
     fleet: &'a str,
     workspace: &'a str,
     actor: &'a str,

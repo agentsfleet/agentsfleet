@@ -20,7 +20,7 @@ const EVENT: &str = "runner_task_inputs_failed";
     operation_id = "runner_read_task_inputs", summary = "Read pending human task input",
     description = "Returns up to four complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live lease and fence.",
     params(("lease_id" = String, Path, description = "Current lease UUIDv7."), TaskInputsQuery),
-    responses((status = 200, body = af_wire::task::TaskInputsResponse, description = "Complete pending input and native work"),
+    responses((status = 200, body = af_wire::task::TaskInputsResponse<'_>, description = "Complete pending input and native work"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED), (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND), (status = 409, description = afd_http::openapi::CONFLICT),

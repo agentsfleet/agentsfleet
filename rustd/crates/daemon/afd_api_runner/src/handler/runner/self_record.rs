@@ -36,7 +36,7 @@ const EVENT: &str = "runner_self_read_failed";
         "heartbeats update its connection status.",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = SelfResponse),
+        (status = 200, description = afd_http::openapi::OK, body = SelfResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),

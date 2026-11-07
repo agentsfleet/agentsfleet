@@ -144,6 +144,15 @@ impl Leasing for Plane {
         Self::message(self, runner_id, lease_id, request)
     }
 
+    fn folds(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &Uuid7,
+        request: &af_wire::fold::FoldRequest,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::fold::FoldResponse<'static>>> + Send {
+        Self::folds(self, runner_id, lease_id, request)
+    }
+
     fn masked(
         &self,
         standing: &Standing,

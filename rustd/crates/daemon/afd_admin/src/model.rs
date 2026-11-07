@@ -122,8 +122,9 @@ impl Models {
     /// As [`Self::list`].
     pub async fn bounded(&self, limit: u32) -> Result<(Vec<Model>, bool)> {
         let mut rows = self.read(Some(i64::from(limit) + 1), None).await?.0;
-        let clipped = rows.len() > limit as usize;
-        rows.truncate(limit as usize);
+        let kept = usize::try_from(limit).unwrap_or(usize::MAX);
+        let clipped = rows.len() > kept;
+        rows.truncate(kept);
         Ok((rows, clipped))
     }
 

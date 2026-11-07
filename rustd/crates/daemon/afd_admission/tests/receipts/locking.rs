@@ -1,5 +1,5 @@
 //! The fleet row lock: a revision install cannot slip under an admission, and
-//! staging admits a fleet in any status (`M242_001` Dimensions 2.5 and 3.4).
+//! staging admits a fleet in any status.
 
 use std::time::Duration;
 
@@ -7,7 +7,7 @@ use afd_admission::Reply as ReplyTo;
 use afd_db::test_util::mint_id;
 use sqlx::Connection as _;
 
-use super::{lane::Lane, ledger::steer, queue::over_fake};
+use super::{Fallible, lane::Lane, ledger::steer, queue::over_fake};
 
 /// How long an admission may take to start waiting on the held fleet lock.
 const BLOCK_WAIT: Duration = Duration::from_secs(5);
@@ -23,16 +23,15 @@ const FOREIGN_REVISION: &str = "INSERT INTO fleet.revisions \
            r.runtime_model_ref, now() \
     FROM fleet.revisions r JOIN fleet.fleets f ON f.head_revision_id = r.id WHERE f.id = $1::uuid";
 
-async fn wait_until_blocked(lane: &Lane, holder: i32) {
+async fn wait_until_blocked(lane: &Lane, holder: i32) -> Fallible {
     let deadline = tokio::time::Instant::now() + BLOCK_WAIT;
     loop {
         let blocked: i64 = sqlx::query_scalar(BLOCKED_ON)
             .bind(holder)
-            .fetch_one(&mut *lane.database.acquire().await.expect("observer"))
-            .await
-            .expect("blocked sessions");
+            .fetch_one(&mut *lane.database.acquire().await?)
+            .await?;
         if blocked > 0 {
-            return;
+            return Ok(());
         }
         assert!(
             tokio::time::Instant::now() < deadline,
@@ -44,33 +43,29 @@ async fn wait_until_blocked(lane: &Lane, holder: i32) {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_policy() {
-    let lane = std::sync::Arc::new(Lane::seed().await);
-    let (_server, admissions) = over_fake(&lane, &[]).await;
-    let mut connection = lane.database.acquire().await.expect("installer");
+async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_policy() -> Fallible {
+    let lane = std::sync::Arc::new(Lane::seed().await?);
+    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let mut connection = lane.database.acquire().await?;
     let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
         .fetch_one(&mut *connection)
-        .await
-        .expect("installer backend");
-    let mut install = connection.begin().await.expect("open the install");
+        .await?;
+    let mut install = connection.begin().await?;
     sqlx::query("SELECT 1 FROM fleet.fleets WHERE id = $1::uuid FOR UPDATE")
         .bind(&lane.fleet)
         .execute(&mut *install)
-        .await
-        .expect("the install holds the fleet row");
+        .await?;
     let revision = mint_id();
     sqlx::query(FOREIGN_REVISION)
         .bind(&lane.fleet)
         .bind(&revision)
         .execute(&mut *install)
-        .await
-        .expect("a foreign-policy revision");
+        .await?;
     sqlx::query("UPDATE fleet.fleets SET head_revision_id = $2::uuid WHERE id = $1::uuid")
         .bind(&lane.fleet)
         .bind(&revision)
         .execute(&mut *install)
-        .await
-        .expect("the new revision becomes head");
+        .await?;
     let waiter = tokio::spawn({
         let (lane, admissions) = (std::sync::Arc::clone(&lane), admissions.clone());
         async move {
@@ -78,13 +73,13 @@ async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_po
             admissions.admit(steer(&lane, &key, ReplyTo::None)).await
         }
     });
-    wait_until_blocked(&lane, holder).await;
-    install.commit().await.expect("the install commits");
+    wait_until_blocked(&lane, holder).await?;
+    install.commit().await?;
     drop(connection);
     let refused = waiter
-        .await
-        .expect("the admission task")
-        .expect_err("the admission meets the new head");
+        .await?
+        .err()
+        .ok_or("the admission meets the new head")?;
     assert_eq!(
         refused.code(),
         af_core::error_code::AUTHORING_POLICY,
@@ -93,31 +88,31 @@ async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_po
     let rows: i64 =
         sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
             .bind(&lane.fleet)
-            .fetch_one(&mut *lane.database.acquire().await.expect("observer"))
-            .await
-            .expect("rows");
+            .fetch_one(&mut *lane.database.acquire().await?)
+            .await?;
     assert_eq!(rows, 0, "nothing lands under the old policy");
     std::sync::Arc::into_inner(lane)
-        .expect("the admission task released the lane")
+        .ok_or("the admission task released the lane")?
         .cleanup()
         .await;
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn staging_admits_on_an_installing_fleet() {
-    let lane = Lane::seed().await;
-    let (_server, admissions) = over_fake(&lane, &[]).await;
+async fn staging_admits_on_an_installing_fleet() -> Fallible {
+    let lane = Lane::seed().await?;
+    let (_server, admissions) = over_fake(&lane, &[]).await?;
     sqlx::query("UPDATE fleet.fleets SET status = 'installing' WHERE id = $1::uuid")
         .bind(&lane.fleet)
-        .execute(&mut *lane.database.acquire().await.expect("fixture"))
-        .await
-        .expect("the fleet is installing");
+        .execute(&mut *lane.database.acquire().await?)
+        .await?;
     let key = mint_id();
     let refused = admissions
         .admit_runnable(steer(&lane, &key, ReplyTo::None))
         .await
-        .expect_err("an installing fleet takes no runnable send");
+        .err()
+        .ok_or("an installing fleet takes no runnable send")?;
     assert_eq!(
         refused.not_runnable(),
         Some(afd_fleet_lifecycle::FleetStatus::Installing)
@@ -125,18 +120,15 @@ async fn staging_admits_on_an_installing_fleet() {
     let staged_key = mint_id();
     let prepared = admissions
         .prepare(steer(&lane, &staged_key, ReplyTo::None))
-        .await
-        .expect("prepare");
-    let mut connection = lane.database.acquire().await.expect("activation");
-    let mut tx = connection.begin().await.expect("begin");
-    let staged = admissions
-        .stage(&mut tx, prepared)
-        .await
-        .expect("stage admits");
-    tx.commit().await.expect("commit");
+        .await?;
+    let mut connection = lane.database.acquire().await?;
+    let mut tx = connection.begin().await?;
+    let staged = admissions.stage(&mut tx, prepared).await?;
+    tx.commit().await?;
     assert!(!staged.replayed);
     drop(connection);
     lane.cleanup().await;
+    Ok(())
 }
 
 /// The SQLSTATE a lock wait past `lock_timeout` raises.
@@ -161,24 +153,24 @@ fn timed_out_on_a_lock(error: &afd_admission::Error) -> bool {
 }
 
 /// A send behind a fleet row held past `LOCK_TIMEOUT` fails alone, retryable,
-/// and records nothing (`M242_001` Dimension 6.2).
+/// and records nothing.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_send_behind_a_held_fleet_row_times_out() {
-    let lane = Lane::seed().await;
-    let (_server, admissions) = over_fake(&lane, &[]).await;
-    let mut connection = lane.database.acquire().await.expect("holder");
-    let mut holder = connection.begin().await.expect("open the holder");
+async fn a_send_behind_a_held_fleet_row_times_out() -> Fallible {
+    let lane = Lane::seed().await?;
+    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let mut connection = lane.database.acquire().await?;
+    let mut holder = connection.begin().await?;
     sqlx::query("SELECT 1 FROM fleet.fleets WHERE id = $1::uuid FOR UPDATE")
         .bind(&lane.fleet)
         .execute(&mut *holder)
-        .await
-        .expect("the holder takes the fleet row");
+        .await?;
     let key = mint_id();
     let refused = admissions
         .admit(steer(&lane, &key, ReplyTo::None))
         .await
-        .expect_err("the send gives up after the lock bound");
+        .err()
+        .ok_or("the send gives up after the lock bound")?;
     assert!(refused.is_datastore_unavailable(), "{refused}");
     assert!(
         !refused.is_over_capacity(),
@@ -186,33 +178,34 @@ async fn a_send_behind_a_held_fleet_row_times_out() {
     );
     assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_UNAVAILABLE);
     assert!(timed_out_on_a_lock(&refused), "{refused}");
-    holder.rollback().await.expect("release");
+    holder.rollback().await?;
     drop(connection);
     let rows: i64 =
         sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
             .bind(&lane.fleet)
-            .fetch_one(&mut *lane.database.acquire().await.expect("observer"))
-            .await
-            .expect("rows");
+            .fetch_one(&mut *lane.database.acquire().await?)
+            .await?;
     assert_eq!(rows, 0, "a timed-out send records nothing");
     lane.cleanup().await;
+    Ok(())
 }
 
 /// A stopped fleet's refusal is the caller's answer, not an admission failure:
 /// no `admission_failed` and no capacity line, and so no tick of
 /// `agentsfleet_admissions_total`, which `count_refusal` records beside that
-/// log (`M242_001` Dimension 4.5).
+/// log.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_stopped_fleet_refusal_counts_no_admission() {
+async fn a_stopped_fleet_refusal_counts_no_admission() -> Fallible {
     let capture = af_core::test_util::trace::Capture::install();
-    let lane = Lane::seed().await;
-    let (_server, admissions) = over_fake(&lane, &[]).await;
+    let lane = Lane::seed().await?;
+    let (_server, admissions) = over_fake(&lane, &[]).await?;
     let key = mint_id();
     let refused = admissions
         .admit_runnable(steer(&lane, &key, ReplyTo::None))
         .await
-        .expect_err("the lane's fleet is stopped");
+        .err()
+        .ok_or("the lane's fleet is stopped")?;
     assert_eq!(
         refused.not_runnable(),
         Some(afd_fleet_lifecycle::FleetStatus::Stopped)
@@ -232,4 +225,5 @@ async fn a_stopped_fleet_refusal_counts_no_admission() {
         "a stopped-fleet refusal is not an admission failure"
     );
     lane.cleanup().await;
+    Ok(())
 }

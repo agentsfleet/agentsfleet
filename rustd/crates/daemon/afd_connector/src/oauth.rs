@@ -81,7 +81,7 @@ pub fn authorize_url(
 /// The client secret is in this list, which is why nothing that handles the
 /// return value may log it. [`crate::exchange`] is the only caller and says so.
 #[must_use]
-pub fn exchange_form<'f>(
+pub const fn exchange_form<'f>(
     client_id: &'f str,
     client_secret: &'f str,
     code: &'f str,

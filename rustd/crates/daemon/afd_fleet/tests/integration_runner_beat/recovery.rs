@@ -76,7 +76,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                 &HeartbeatRequest {
                     capability_report: Some(report),
                     selftest: None,
-                    holds: af_wire::runner::HeldFleets::default(),
+                    holds: HeldFleets::default(),
                     closing: false,
                     wake: false,
                 },
@@ -160,7 +160,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
         )
         .await
         .expect("enrolment must succeed");
-    let phantom = af_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000ff")
+    let phantom = Uuid7::parse("019329c5-0000-7000-8000-0000000000ff")
         .expect("the fixture identifier is canonical");
 
     let read = fixtures.runners().self_record(&phantom).await;

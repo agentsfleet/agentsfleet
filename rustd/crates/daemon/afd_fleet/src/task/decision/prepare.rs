@@ -159,7 +159,7 @@ pub(super) async fn candidates(
         .fetch_all(connection)
         .await
         .map_err(query("read complete native decision candidates"))?;
-    if rows.len() > UNFINISHED_MAX as usize {
+    if rows.len() > usize::try_from(UNFINISHED_MAX).unwrap_or(usize::MAX) {
         return Err(TaskRefusal::LimitExhausted.into());
     }
     for (ordinal, candidate) in rows.iter_mut().enumerate() {
@@ -202,7 +202,7 @@ fn supported(assignment: &DecisionAssignment, request: &DecisionRequest) -> Resu
         .all(|named| assignment.profile.capabilities.supports(&named.question))
         || !af_wire::decision::serialized_within(
             &(&request.state, &request.questions),
-            assignment.profile.input_max_bytes as usize,
+            usize::try_from(assignment.profile.input_max_bytes).unwrap_or(usize::MAX),
         )
     {
         return Err(TaskRefusal::DecisionUnavailable.into());

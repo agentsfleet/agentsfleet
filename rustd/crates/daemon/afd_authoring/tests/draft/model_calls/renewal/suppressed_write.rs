@@ -25,7 +25,8 @@ async fn an_ignored_expiry_write_cannot_acknowledge_or_meter_a_renewal() {
         ),
         "RETURN NULL",
     )
-    .await;
+    .await
+    .expect("the fixture refusal installs");
     let error = f
         .drafts
         .renew(&f.runner, &a.lease, request())

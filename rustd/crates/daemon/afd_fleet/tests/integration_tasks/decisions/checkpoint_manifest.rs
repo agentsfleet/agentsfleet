@@ -191,7 +191,7 @@ impl Manifest<'_> {
     }
 }
 
-fn page(entries: Vec<CheckpointEntry>) -> CheckpointPage {
+const fn page(entries: Vec<CheckpointEntry>) -> CheckpointPage {
     CheckpointPage {
         page_number: 0,
         entries,

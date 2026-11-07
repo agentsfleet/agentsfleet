@@ -79,21 +79,15 @@ const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(1);
 /// which is why the hub's connection is built without it: see
 /// [`connect_with_pushes`].
 ///
-/// A `match` rather than `unwrap`, because a constant that panics at compile
-/// time needs no runtime proof and the manifest forbids `unwrap` everywhere.
-const CONNECT_ATTEMPTS: NonZeroUsize = match NonZeroUsize::new(3) {
-    Some(attempts) => attempts,
-    None => unreachable!(),
-};
+/// Built up from [`NonZeroUsize::MIN`] rather than unwrapped from `new`,
+/// because the manifest forbids `unwrap` and `unreachable!` everywhere.
+const CONNECT_ATTEMPTS: NonZeroUsize = NonZeroUsize::MIN.saturating_add(2);
 
 /// The attempt count the diagnosis dial uses.
 ///
 /// One, and that is the entire point: the ladder above is what destroys the
 /// answer that dial exists to recover.
-const ONE_ATTEMPT: NonZeroUsize = match NonZeroUsize::new(1) {
-    Some(attempts) => attempts,
-    None => unreachable!(),
-};
+const ONE_ATTEMPT: NonZeroUsize = NonZeroUsize::MIN;
 
 /// A connection and the receiver its server-initiated pushes arrive on.
 pub(crate) struct Pushed {

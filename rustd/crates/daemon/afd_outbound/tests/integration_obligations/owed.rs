@@ -6,7 +6,7 @@
 use super::*;
 
 /// One owed answer, addressed.
-pub(super) fn delivery(event_id: &str) -> Delivery<'_> {
+pub(super) const fn delivery(event_id: &str) -> Delivery<'_> {
     Delivery {
         fleet_id: FLEET,
         workspace_id: WORKSPACE,

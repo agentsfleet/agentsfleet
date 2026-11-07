@@ -86,7 +86,7 @@ impl Drafts {
         let mut owed = Owed::default();
         let selected = match selection::authorize(&mut tx, hint, &mut owed).await? {
             Authorized::Selected(selected) => *selected,
-            passed => {
+            passed @ (Authorized::Passed | Authorized::Locked) => {
                 tx.commit().await.map_err(query(sql::CONTEXT))?;
                 owed.settle(&self.analytics);
                 if matches!(passed, Authorized::Locked) {

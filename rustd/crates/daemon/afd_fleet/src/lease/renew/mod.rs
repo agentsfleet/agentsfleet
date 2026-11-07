@@ -134,7 +134,7 @@ impl Leases {
     pub async fn extend(
         &self,
         lease: Metering<'_>,
-        lease_key: &af_core::id::Uuid7,
+        lease_key: &Uuid7,
         pricing: &Pricing,
         now: Timestamp,
     ) -> Result<Renewed> {
@@ -283,10 +283,9 @@ impl Plane {
         now: Timestamp,
     ) -> Result<(Timestamp, Nanos)> {
         let Some(lease) = self.leases.load_for_renew(lease_id, runner_id).await? else {
-            return Err(crate::error::lease_not_found());
+            return Err(lease_not_found());
         };
-        let lease_key =
-            af_core::id::Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
+        let lease_key = Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
         let admission = if lease.status == sql::LEASE_STATUS_ACTIVE {
             self.gate_renewal(&lease, &lease_key, lease_id, now).await
         } else {

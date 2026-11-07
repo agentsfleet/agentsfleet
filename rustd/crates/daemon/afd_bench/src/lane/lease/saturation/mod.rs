@@ -210,11 +210,11 @@ fn spawn_viewers(
     shared: &Arc<Shared>,
 ) -> Vec<tokio::task::JoinHandle<Result<live::Reads>>> {
     let fleets = Fleets::new(stores.database.clone());
-    (0..live::READERS)
-        .map(|_| {
-            let (fleets, workspaces, shared) =
-                (fleets.clone(), Arc::clone(workspaces), Arc::clone(shared));
-            tokio::spawn(async move { live::view(&fleets, &workspaces, &shared).await })
-        })
-        .collect()
+    std::iter::repeat_with(|| {
+        let (fleets, workspaces, shared) =
+            (fleets.clone(), Arc::clone(workspaces), Arc::clone(shared));
+        tokio::spawn(async move { live::view(&fleets, &workspaces, &shared).await })
+    })
+    .take(live::READERS)
+    .collect()
 }

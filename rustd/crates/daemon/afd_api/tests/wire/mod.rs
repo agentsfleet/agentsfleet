@@ -34,7 +34,7 @@ pub(crate) struct Outcome {
 
 impl Outcome {
     /// The status, for a request that was expected to be answered.
-    pub(crate) fn expect_status(&self) -> u16 {
+    pub(crate) const fn expect_status(&self) -> u16 {
         self.status
             .expect("the request was expected to be answered, not dropped")
     }

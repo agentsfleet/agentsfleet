@@ -72,10 +72,10 @@ impl Wait {
             && self.target.number == self.pull_request_number.unsigned_abs()
             && self.target.head == self.expected_head
     }
-    pub(super) fn signalled(&self) -> bool {
+    pub(super) const fn signalled(&self) -> bool {
         self.signal_sequence > self.observed_signal_sequence
     }
-    pub(super) fn fallback(&self) -> bool {
+    pub(super) const fn fallback(&self) -> bool {
         self.initial_read_at.is_some() && !self.signalled()
     }
 }

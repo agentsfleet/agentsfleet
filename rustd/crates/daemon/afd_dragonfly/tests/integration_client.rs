@@ -23,10 +23,7 @@ use crate::support::DragonflyHarness;
 async fn test_client_reports_its_own_configuration() {
     let harness = DragonflyHarness::connect().await;
     assert_eq!(harness.redis.role(), afd_dragonfly::DragonflyRole::Default);
-    assert_eq!(
-        harness.redis.request_timeout(),
-        std::time::Duration::from_secs(5)
-    );
+    assert_eq!(harness.redis.request_timeout(), Duration::from_secs(5));
     harness
         .redis
         .ping()

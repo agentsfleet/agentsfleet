@@ -226,7 +226,7 @@ async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
             .publish(&activity, marker)
             .await
             .expect("the publish reaches Dragonfly");
-        match tokio::time::timeout(std::time::Duration::from_millis(100), primer.recv()).await {
+        match tokio::time::timeout(Duration::from_millis(100), primer.recv()).await {
             Ok(Ok(afd_dragonfly::hub::Received::Message(message))) if message.payload == marker => {
                 break;
             }

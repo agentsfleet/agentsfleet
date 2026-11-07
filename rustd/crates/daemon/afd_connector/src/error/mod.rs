@@ -168,10 +168,20 @@ impl Error {
     /// The refusal is a conflict the caller resolves, so the route answers it
     /// with a `current_state` where every other failure answers without one.
     #[must_use]
-    pub fn referenced_by(&self) -> Option<u32> {
+    pub const fn referenced_by(&self) -> Option<u32> {
         match self.kind() {
             ErrorKind::Vault { source } => source.referenced_by(),
-            _ => None,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::IdentifierShape { .. }
+            | ErrorKind::VendorUnreachable { .. }
+            | ErrorKind::ExchangeRefused { .. }
+            | ErrorKind::InstallationListingRefused { .. }
+            | ErrorKind::GrantUnreadable
+            | ErrorKind::InstallationUnresolved { .. }
+            | ErrorKind::InstallationHeldElsewhere => None,
         }
     }
 

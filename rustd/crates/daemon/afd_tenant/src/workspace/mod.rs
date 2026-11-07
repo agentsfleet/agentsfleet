@@ -217,7 +217,7 @@ impl<'a> TenantBinds<'a> {
 /// through the user row at authentication time, so reading it again would be
 /// a second round trip for a value the principal already carries, and its
 /// claim is therefore authoritative.
-fn reads_user_row(person: &Person) -> bool {
+const fn reads_user_row(person: &Person) -> bool {
     match person.credential() {
         PersonCredential::SessionToken { .. } => true,
         PersonCredential::TenantApiKey | PersonCredential::CliCredential => false,

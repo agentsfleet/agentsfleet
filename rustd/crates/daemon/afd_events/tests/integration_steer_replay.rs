@@ -20,6 +20,7 @@
 use af_core::error_code;
 use afd_admission::Budgets;
 use afd_db::test_util::mint_id;
+use afd_events::disposition::{Placed, SteerDisposition};
 use afd_events::{ACTOR_MACHINE, Steer};
 use tracing::Level;
 
@@ -75,7 +76,7 @@ fn spent(lane: &EventsLane) -> Steer {
 }
 
 /// A repeat is answered despite a spent deployment ceiling; new work is still
-/// refused (`M242_001` Dimension 1.4).
+/// refused.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_replay_bypasses_the_deployment_ceiling() {
@@ -248,7 +249,8 @@ async fn test_payload_drift_is_refused() {
 /// A send whose twin committed while it waited on the fleet lock, with the
 /// deployment ceiling spent, is still answered as the twin's replay: its insert
 /// never ran to meet the first row, so `repeat_despite` reads the key after the
-/// capacity refusal (`M242_001` §4).
+/// capacity refusal. The insert never ran, so the ledger reported no live run
+/// and the answer waits its turn.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceiling() {
@@ -329,6 +331,13 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
     assert_eq!(
         answered.event_id, twin.stored.id,
         "the twin's event answers the waiter"
+    );
+    assert_eq!(
+        answered.placed,
+        Placed {
+            disposition: SteerDisposition::Queued,
+            folded_into_event_id: None,
+        }
     );
     assert_eq!(admissions_for(&lane, operation).await, 1);
 }

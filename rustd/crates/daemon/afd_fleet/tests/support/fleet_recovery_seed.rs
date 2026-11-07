@@ -7,7 +7,11 @@ const REQUEST_JSON: &str = r#"{"delivery":"fixture"}"#;
 
 /// An admission for `fleet`, keyed so no two fleets dedup onto one row:
 /// `(producer, producer_key)` is unique across the whole ledger.
-pub(crate) fn admission<'a>(fleet: &'a str, workspace: &'a str, key: &'a str) -> Admission<'a> {
+pub(crate) const fn admission<'a>(
+    fleet: &'a str,
+    workspace: &'a str,
+    key: &'a str,
+) -> Admission<'a> {
     Admission {
         producer: Producer::Webhook,
         key: Key::Repeated(key),

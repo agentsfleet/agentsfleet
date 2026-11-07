@@ -4,6 +4,8 @@ use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint
 use afd_db::{Db, DbRole};
 use jiff::Timestamp;
 
+use super::Fallible;
+
 /// The instant the seeded rows carry.
 const SEEDED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
@@ -21,7 +23,7 @@ pub(crate) struct Lane {
 
 impl Lane {
     /// Seeds a tenant, a workspace and a stopped fleet on the lane's database.
-    pub(crate) async fn seed() -> Self {
+    pub(crate) async fn seed() -> Fallible<Self> {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let seeded = Self {
@@ -31,37 +33,32 @@ impl Lane {
             workspace: mint_id(),
             fleet: mint_id(),
         };
-        let mut connection = seeded
-            .database
-            .acquire()
-            .await
-            .expect("a pooled connection");
+        let mut connection = seeded.database.acquire().await?;
         TenantSeed::new(&seeded.tenant)
             .at(SEEDED_AT)
             .insert(&mut *connection)
-            .await
-            .expect("seeding a tenant");
+            .await?;
         WorkspaceSeed::new(&seeded.workspace, &seeded.tenant)
             .at(SEEDED_AT)
             .insert(&mut *connection)
-            .await
-            .expect("seeding a workspace");
+            .await?;
         drop(connection);
-        seeded.seed_fleet().await;
-        seeded
+        seeded.seed_fleet().await?;
+        Ok(seeded)
     }
 
-    async fn seed_fleet(&self) {
+    async fn seed_fleet(&self) -> Fallible {
         FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_STOPPED)
             .name("admission-fixture-fleet")
             .at(SEEDED_AT)
             .native_setup()
-            .insert(&mut *self.database.acquire().await.expect("a pooled connection"))
-            .await
-            .expect("seeding a fleet");
+            .insert(&mut *self.database.acquire().await?)
+            .await?;
+        Ok(())
     }
 
-    /// Removes the fleet's rows, parents last.
+    /// Removes the fleet's rows, parents last. Best effort: a connection that
+    /// cannot be had leaves the rows, which no other case addresses.
     pub(crate) async fn cleanup(self) {
         for (table, id) in [
             ("DELETE FROM fleet.fleets WHERE id = $1::uuid", &self.fleet),
@@ -74,10 +71,9 @@ impl Lane {
                 &self.tenant,
             ),
         ] {
-            let _removed = sqlx::query(table)
-                .bind(id)
-                .execute(&mut *self.database.acquire().await.expect("a pooled connection"))
-                .await;
+            if let Ok(mut connection) = self.database.acquire().await {
+                let _removed = sqlx::query(table).bind(id).execute(&mut *connection).await;
+            }
         }
         self.handle.cleanup().await;
     }

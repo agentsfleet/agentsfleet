@@ -54,11 +54,11 @@ const DETAIL_VERIFY_BODY: &str = "Malformed verify payload";
         "response includes a URL for approval in a browser. No access token ",
         "is required. Rate limits may return 429. ",
     ),
-    request_body = OpenSessionRequest,
+    request_body = OpenSessionRequest<'_>,
     params(
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = OpenSessionResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = OpenSessionResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -112,7 +112,7 @@ pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Byte
         afd_http::openapi::path::Session,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = PollSessionResponse),
+        (status = 200, description = afd_http::openapi::OK, body = PollSessionResponse<'_>),
         (status = 401, description = afd_http::openapi::SESSION_EXPIRED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 410, description = afd_http::openapi::GONE),

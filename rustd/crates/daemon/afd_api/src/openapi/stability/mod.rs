@@ -54,8 +54,12 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // is the runner release that reads them.
     ("HeartbeatResponse", &["woken"]),
     ("LeasePayload", &["memory"]),
-    // Where a steer went is new, and folding may reshape it (`M242_002`).
+    // Where a steer went is new, and folding may reshape it.
     ("SteerAccepted", &["disposition", "folded_into_event_id"]),
+    // A run claiming the messages its fleet receives is new, and so is the
+    // runner release that reads the claim.
+    ("FoldResponse", &["inputs"]),
+    ("FoldedInput", &["event_id", "sequence", "text"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.
@@ -124,14 +128,15 @@ fn annotate_beta(schema: &mut Schema) -> bool {
 
 /// Where a field's schema keeps its extensions and its description.
 ///
-/// The two shapes a response field takes here: an inline object, and the
-/// `oneOf` a nullable reference becomes. Any other shape is answered as
-/// missing, so the test naming every declared field fails on it.
-fn parts_of(schema: &mut Schema) -> Option<(&mut Option<Extensions>, &mut Option<String>)> {
+/// The three shapes a response field takes here: an inline object, the
+/// `oneOf` a nullable reference becomes, and an array. Any other shape is
+/// answered as missing, so the test naming every declared field fails on it.
+const fn parts_of(schema: &mut Schema) -> Option<(&mut Option<Extensions>, &mut Option<String>)> {
     match schema {
         Schema::Object(object) => Some((&mut object.extensions, &mut object.description)),
         Schema::OneOf(one_of) => Some((&mut one_of.extensions, &mut one_of.description)),
-        _other_shape => None,
+        Schema::Array(array) => Some((&mut array.extensions, &mut array.description)),
+        Schema::AllOf(_) | Schema::AnyOf(_) | _ => None,
     }
 }
 

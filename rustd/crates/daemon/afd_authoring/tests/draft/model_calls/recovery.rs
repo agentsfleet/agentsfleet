@@ -16,7 +16,7 @@ async fn late_known_usage_does_not_reopen_an_attempt_marked_uncertain() {
     let mut stub = Provider::known();
     stub.blocked = true;
     let provider = Arc::new(stub);
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
         let (calls, runner, lease, request) = (

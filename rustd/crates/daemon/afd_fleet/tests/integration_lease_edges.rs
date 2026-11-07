@@ -188,6 +188,7 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     )
     .await;
     let failed = ReportRequest {
+        folded_through_sequence: None,
         outcome: Outcome::FleetError,
         failure_detail: Cow::Borrowed("the child exited 1"),
         ..processed(&held, None)

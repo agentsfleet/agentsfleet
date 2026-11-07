@@ -135,10 +135,12 @@ impl Providers {
             .await
             .map_err(query(CONTEXT_PAGE))?;
 
-        let has_more = rows.len() > limit as usize;
+        // A `u32` always fits the `usize` of every target this daemon builds for.
+        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+        let has_more = rows.len() > limit;
         let entries: Vec<Entry> = rows
             .into_iter()
-            .take(limit as usize)
+            .take(limit)
             .map(EntryRow::into_entry)
             .collect::<Result<_>>()?;
 

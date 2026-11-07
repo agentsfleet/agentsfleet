@@ -93,7 +93,7 @@ pub(crate) fn rungs(ceiling: u64) -> Vec<u64> {
     }
     let mut rungs: Vec<u64> = (1..=RUNGS_BELOW_CEILING)
         .rev()
-        .map(|below| ceiling / 10_u64.pow(below))
+        .map(|below| ceiling.div_euclid(10_u64.pow(below)))
         .filter(|rung| *rung > 0)
         .collect();
     rungs.push(ceiling);

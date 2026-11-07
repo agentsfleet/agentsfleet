@@ -27,8 +27,7 @@ mod observe;
 mod privacy;
 mod proposals;
 mod races;
-#[path = "../support/refusal.rs"]
-mod refusal;
+use afd_db::test_util::refusal;
 mod replay;
 mod review;
 mod seed;

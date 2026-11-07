@@ -89,7 +89,7 @@ impl RunnerLeaseHistory {
             .into_iter()
             .map(|row| row.into_item(viewer))
             .collect::<Vec<_>>();
-        let next_cursor = (items.len() == limit as usize)
+        let next_cursor = (items.len() == usize::try_from(limit).unwrap_or(usize::MAX))
             .then(|| items.last().map(|item| item.id.clone()))
             .flatten();
         Ok(RunnerLeasesResponse {

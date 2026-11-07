@@ -19,7 +19,8 @@ use afd_dragonfly::{Subscription, SubscriptionHub};
 use backon::ExponentialBuilder;
 use tokio::time::Instant;
 
-use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply};
+use af_core::test_util::trace::install_subscriber;
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 pub(crate) const BUDGET: Duration = Duration::from_secs(10);
@@ -36,7 +37,7 @@ pub(crate) const SECOND: &str = "fleet:second:activity";
 const LATE: &str = "fleet:late:activity";
 
 /// A redial schedule a test can wait out; see `hub_socket_faults::impatient`.
-pub(crate) fn impatient() -> ExponentialBuilder {
+pub(crate) const fn impatient() -> ExponentialBuilder {
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(5))
         .with_max_delay(Duration::from_millis(20))

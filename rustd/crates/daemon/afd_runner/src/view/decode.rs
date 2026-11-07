@@ -285,7 +285,7 @@ mod tests {
     fn a_row_with_no_complete_self_test_reads_as_none() {
         let checks = Some("[]".to_owned());
 
-        assert!(selftest(checks.clone(), None, Some("deny_all_egress".to_owned())).is_none());
+        assert!(selftest(checks, None, Some("deny_all_egress".to_owned())).is_none());
         assert!(selftest(None, Some("dev_none".to_owned()), None).is_none());
         assert!(
             selftest(

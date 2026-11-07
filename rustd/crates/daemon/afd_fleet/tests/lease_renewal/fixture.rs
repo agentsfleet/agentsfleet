@@ -114,7 +114,7 @@ impl Running {
                 },
                 &self.lease,
                 &pricing,
-                af_core::clock::before(self.now, std::time::Duration::from_millis(10_000)),
+                clock::before(self.now, std::time::Duration::from_millis(10_000)),
             )
             .await
             .expect("renewal is a verdict")

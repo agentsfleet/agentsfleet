@@ -3,6 +3,7 @@
 //! Enrollment, heartbeat, lease, credential, memory, activity, and report
 //! handlers live here so host protocol changes compile independently.
 
+#![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
 pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
@@ -79,6 +80,7 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::ScheduleRuns => get(handler::runner::schedule_run::runs::<D>)
             .post(handler::runner::schedule_run::run::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
+        RunnerRoute::Folds => post(handler::runner::folds::handle::<D>),
     }
 }
 

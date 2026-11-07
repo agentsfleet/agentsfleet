@@ -95,8 +95,8 @@ const MAX_LOGGED_ID_BYTES: usize = 96;
         ("Upstash-Message-Id" = String, Header, description = "QStash delivery identifier used for replay suppression."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored),
-        (status = 202, description = "The schedule fired, or already had for this delivery", body = Fired),
+        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored<'_>),
+        (status = 202, description = "The schedule fired, or already had for this delivery", body = Fired<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),

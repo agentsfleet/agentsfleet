@@ -89,7 +89,7 @@ pub(crate) struct GrantPath {
         afd_http::openapi::path::Fleet,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = GrantsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = GrantsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

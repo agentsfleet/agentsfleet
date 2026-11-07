@@ -53,7 +53,7 @@ const ACTION_RETRY_MESSAGE: &str = "retry_message";
 const ACTION_REVIEW_SETUP: &str = "review_setup";
 
 /// Safe creator-visible failure without diagnostics, arbitrary URLs or keys.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Failure {
     /// Persisted bounded cause.
     pub reason: FailureReason,

@@ -33,7 +33,7 @@ const EVENT: &str = "runner_events_failed";
         ("until" = Option<String>, Query, description = "Upper bound on occurred_at, an RFC 3339 instant (inclusive). Must be >= since."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = RunnerEventsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = RunnerEventsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

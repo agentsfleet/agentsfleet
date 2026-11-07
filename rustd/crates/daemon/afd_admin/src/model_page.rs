@@ -48,8 +48,9 @@ impl Models {
         let (mut models, version) = self
             .read(Some(i64::from(limit) + 1), cursor.as_ref())
             .await?;
-        let more = models.len() > limit as usize;
-        models.truncate(limit as usize);
+        let kept = usize::try_from(limit).unwrap_or(usize::MAX);
+        let more = models.len() > kept;
+        models.truncate(kept);
         let next_cursor = models.last().filter(|_| more).map(|model| {
             struct_cursor::render(&Boundary {
                 v: struct_cursor::VERSION,

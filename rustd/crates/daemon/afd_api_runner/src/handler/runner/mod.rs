@@ -21,6 +21,7 @@ pub(crate) mod context;
 pub(crate) mod credential;
 pub(crate) mod decisions;
 pub(crate) mod enrolment;
+pub(crate) mod folds;
 pub(crate) mod heartbeat;
 pub(crate) mod lease;
 pub(crate) mod memory;

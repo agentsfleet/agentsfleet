@@ -136,7 +136,7 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
 }
 
 async fn head_plan(connection: &mut PgConnection, runner: &str) -> serde_json::Value {
-    sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+    sqlx::query_scalar(AssertSqlSafe(format!(
         "EXPLAIN (ANALYZE, FORMAT JSON) {SELECT_CANDIDATES}"
     )))
     .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)

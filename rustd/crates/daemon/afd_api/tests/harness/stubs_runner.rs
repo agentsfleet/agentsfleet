@@ -285,6 +285,16 @@ impl Leasing for NoWork {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }
 
+    /// No message ever waits for a run this daemon cannot lease.
+    fn folds(
+        &self,
+        _runner_id: &Uuid7,
+        _lease_id: &Uuid7,
+        _request: &af_wire::fold::FoldRequest,
+    ) -> impl Future<Output = afd_fleet::Result<af_wire::fold::FoldResponse<'static>>> + Send {
+        std::future::ready(Ok(af_wire::fold::FoldResponse::default()))
+    }
+
     /// Refused for the reason [`NoWork::standing`] is.
     fn masked(
         &self,

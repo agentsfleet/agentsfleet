@@ -90,10 +90,10 @@ pub(super) async fn page_on(
         .await
         .map_err(query(CONTEXT))?;
     let mut items = Vec::new();
-    let more = rows.len() > request.limit as usize;
+    let more = rows.len() > usize::try_from(request.limit).unwrap_or(usize::MAX);
     let mut next_cursor = None;
     for row in rows {
-        if items.len() == request.limit as usize {
+        if items.len() == usize::try_from(request.limit).unwrap_or(usize::MAX) {
             break;
         }
         next_cursor = Some(cursor(&binding, row.sequence, row.ordinal));
@@ -159,7 +159,7 @@ fn project(stored: Stored) -> Result<Message> {
         candidate_id: if user {
             None
         } else {
-            crate::draft::read::optional(stored.candidate_id.as_deref())?
+            read::optional(stored.candidate_id.as_deref())?
         },
         usage: stored.metered.usage()?,
         failure: stored

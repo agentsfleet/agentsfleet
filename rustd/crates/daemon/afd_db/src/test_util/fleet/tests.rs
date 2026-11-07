@@ -62,3 +62,13 @@ fn a_later_update_moves_updated_at_and_leaves_created_at() {
         (Some(CREATED), Some(UPDATED))
     );
 }
+
+/// The setup a seeded fleet selects is the one `af_fleet_runtime` writes,
+/// byte for byte: the parser that owns the format digests it the same way.
+#[test]
+fn the_seeded_fixture_setup_is_the_runtimes() {
+    let setup = af_fleet_runtime::test_util::FixtureSetup::default();
+    assert_eq!(setup.definition, super::FIXTURE_SETUP_DEFINITION);
+    assert_eq!(setup.digest, super::FIXTURE_SETUP_DIGEST);
+    assert_eq!(setup.semantics(), super::FIXTURE_SETUP_SEMANTICS);
+}

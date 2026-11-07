@@ -23,8 +23,18 @@ af_core::error_lifts!(Error, ErrorKind:
 /// A `map_err` that earns its place by ADDING the operation name — a fact the
 /// driver's error cannot carry and the call site alone knows
 /// (`RUST_ERROR_STANDARD` rule 3).
+///
+/// A statement the API login's lock or statement bound ended is told apart
+/// here, at the one place every statement failure passes, because the cure is
+/// to retry rather than to treat the caller's request as a defect.
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| ErrorKind::Query { context, source }.into()
+    move |source| {
+        if afd_db::error::is_bound_reached(&source) {
+            ErrorKind::TimedOut { context, source }.into()
+        } else {
+            ErrorKind::Query { context, source }.into()
+        }
+    }
 }
 
 /// Reports a stored value this build cannot read, naming table and column.
@@ -85,6 +95,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
 
     vec![
         ("query", query("settle usage")(sqlx::Error::RowNotFound)),
+        (
+            "timed out",
+            query("settle usage")(afd_db::error::database_answer("55P03")),
+        ),
         (
             "row malformed",
             row_malformed("billing.usage_lines", "tenant_id")(

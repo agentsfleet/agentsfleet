@@ -9,7 +9,7 @@ use afd_gate::gate::Waiting;
 use super::{Admission, Billed, Refusal, Transient};
 
 /// Why a pass stopped short of admitting.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Declined {
     /// End the event with this label.
     Refuse(Refusal),
@@ -24,7 +24,7 @@ impl Admission {
     ///
     /// # Errors
     /// Every arm but [`Admission::Admit`], as its [`Declined`] twin.
-    pub fn admitted(self) -> core::result::Result<Billed, Declined> {
+    pub fn admitted(self) -> Result<Billed, Declined> {
         match self {
             Self::Admit(billed) => Ok(billed),
             Self::Refuse(refusal) => Err(Declined::Refuse(refusal)),
@@ -71,8 +71,8 @@ mod tests {
     fn a_stop_round_trips_through_the_admission_unchanged() {
         for stop in every_stop() {
             assert_eq!(
-                Admission::from(stop.clone()).admitted(),
-                Err(stop.clone()),
+                Admission::from(stop).admitted(),
+                Err(stop),
                 "{stop:?} changed arm on the way through"
             );
         }

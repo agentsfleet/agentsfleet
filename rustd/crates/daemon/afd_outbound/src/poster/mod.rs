@@ -156,7 +156,7 @@ pub async fn deliver_with_retry<S: Deliver>(
     opening: Attempt,
 ) -> Verdict {
     let tried = AtomicBool::new(false);
-    let attempt = || async {
+    let attempt = async || {
         let this = if tried.swap(true, Ordering::Relaxed) {
             Attempt::Repeat
         } else {
@@ -167,7 +167,7 @@ pub async fn deliver_with_retry<S: Deliver>(
             // The verdict rides the `Err` so `when` can read it: `backon`
             // decides from the failure value, and collapsing the two failures
             // to one would retry a revoked token three times.
-            other => Err(other),
+            other @ (Verdict::Retryable | Verdict::Permanent) => Err(other),
         }
     };
 

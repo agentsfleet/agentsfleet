@@ -265,13 +265,10 @@ impl Error {
 /// measured duration: it is what the operator set, which is the number they
 /// need when deciding whether to raise it.
 pub(crate) fn classify_acquire(role: &'static str, waited: Duration, source: sqlx::Error) -> Error {
-    match source {
-        sqlx::Error::PoolTimedOut => Error::new(ErrorKind::PoolCapacity { role, waited }),
-        other => Error::new(ErrorKind::DatastoreUnavailable {
-            role,
-            source: other,
-        }),
+    if matches!(source, sqlx::Error::PoolTimedOut) {
+        return Error::new(ErrorKind::PoolCapacity { role, waited });
     }
+    Error::new(ErrorKind::DatastoreUnavailable { role, source })
 }
 
 /// Wraps a statement failure with the operation that issued it.
@@ -289,19 +286,23 @@ pub(crate) fn query(context: &'static str, source: sqlx::Error) -> Error {
 /// statement, and stays one however often it is retried.
 #[must_use]
 pub fn is_connection_lost(source: &sqlx::Error) -> bool {
-    match source {
-        sqlx::Error::Io(_)
-        | sqlx::Error::Tls(_)
-        | sqlx::Error::Protocol(_)
-        | sqlx::Error::PoolTimedOut
-        | sqlx::Error::PoolClosed
-        | sqlx::Error::WorkerCrashed => true,
-        sqlx::Error::Database(database) => database.code().is_some_and(|code| {
+    // `sqlx::Error` is non-exhaustive, so a variant added later reads as not
+    // lost until this list names it.
+    if let sqlx::Error::Database(database) = source {
+        return database.code().is_some_and(|code| {
             code.starts_with(SQLSTATE_CONNECTION_EXCEPTION)
                 || SQLSTATE_SHUTDOWN.contains(&code.as_ref())
-        }),
-        _ => false,
+        });
     }
+    matches!(
+        source,
+        sqlx::Error::Io(_)
+            | sqlx::Error::Tls(_)
+            | sqlx::Error::Protocol(_)
+            | sqlx::Error::PoolTimedOut
+            | sqlx::Error::PoolClosed
+            | sqlx::Error::WorkerCrashed
+    )
 }
 
 /// Whether a server-side bound ended the statement: the API login's

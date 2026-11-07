@@ -38,7 +38,7 @@ const SATURATION_FACTOR: u64 = 2;
 const DEFAULT_WINDOW_SECONDS: u64 = 30;
 
 /// Fleets a burst paces steers into when the caller does not say: the fifty
-/// bursting at once the push-scheduler targets were set against (`M241_001` §5).
+/// bursting at once the push-scheduler targets were set against.
 const BURST_FLEETS: u64 = 50;
 
 /// A burst's window when the caller does not say: thirty thousand steers at
@@ -52,7 +52,7 @@ const BURST_RATE: u64 = 10;
 const BURST_TURN: Duration = Duration::from_secs(2);
 
 /// One simulated turn when the caller does not say: two renewals and forty
-/// activity posts per lease at today's timing (`M241_001` §4).
+/// activity posts per lease at today's timing.
 const DEFAULT_TURN: Duration = Duration::from_secs(10);
 
 #[tokio::main]

@@ -30,12 +30,12 @@ pub struct ModelsQuery {
     pub starting_after: Option<String>,
 }
 
-fn default_limit() -> u32 {
+const fn default_limit() -> u32 {
     super::DEFAULT_PAGE_SIZE
 }
 
 /// Independent support facts, not permission receipts.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct ModelEligibility {
     /// This deployment can perform bounded authoring with the selection.
     pub authoring: bool,

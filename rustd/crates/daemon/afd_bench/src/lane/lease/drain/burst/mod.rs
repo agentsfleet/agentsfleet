@@ -1,12 +1,12 @@
-//! A paced burst of steers to fleets whose runners are busy (`M241_001` §5).
+//! A paced burst of steers to fleets whose runners are busy.
 //!
 //! Every fleet receives `BENCH_RATE` steers a second through the production
 //! intake (`Steer::append`) for the window, while the drain's runners hold
-//! each lease for a whole turn before reporting. Today each steer is a run of
-//! its own, so messages queue behind the run in flight; the burst measures how
-//! long one waits, on the bench's own clock from its append returning to a
-//! runner receiving its lease. That queue is what milestone 2's folding
-//! removes.
+//! each lease for a whole turn before reporting. A steer that arrives while
+//! its fleet's run is live folds into that run; any other waits for a lease
+//! of its own. The burst times each steer on the bench's own clock, from its
+//! append returning to a runner receiving its lease or the run taking the
+//! fold, and counts the folded ones apart.
 
 mod pace;
 
@@ -17,13 +17,14 @@ use std::sync::atomic::Ordering;
 use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
 use afd_events::Steer;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 pub(in crate::lane::lease::drain) use self::pace::Pickups;
 use self::pace::{Appends, pace};
 use super::turn::Turn;
-use super::window::window;
+use super::window::{Shape, window};
 use super::{platform, stage};
 use crate::abort::Abort;
 use crate::datastores::Datastores;
@@ -41,6 +42,8 @@ const ACCEPTED: &str = "burst_accepted";
 const REFUSED: &str = "burst_refused";
 /// Measurement key: accepted steers no runner had leased when the window closed.
 const UNLEASED: &str = "burst_unleased";
+/// Measurement key: accepted steers a live run folded in rather than leased.
+const FOLDED: &str = "burst_folded";
 /// Measurement key: how long an accepted append took, at the tail.
 const APPEND_P95_MS: &str = "burst_append_p95_ms";
 /// Measurement key: append returned → lease received, median.
@@ -110,29 +113,17 @@ async fn measure(
     let appends = Arc::new(Appends::new()?);
     let stop = CancellationToken::new();
     let sampler = tokio::spawn(peak_backlog(admissions(stores), stop.clone()));
-
-    let mut pacers = Vec::with_capacity(staged.fleets.len());
-    for fleet in &staged.fleets {
-        let steer = Arc::new(Steer::new(admissions(stores)));
-        let target = Arc::new((fleet.fleet.clone(), fleet.workspace.clone()));
-        let (pickups, appends) = (Arc::clone(&pickups), Arc::clone(&appends));
-        pacers.push(tokio::spawn(async move {
-            pace(burst.rate, parameters.window, || {
-                let (steer, target) = (Arc::clone(&steer), Arc::clone(&target));
-                let (pickups, appends) = (Arc::clone(&pickups), Arc::clone(&appends));
-                async move { append_one(&steer, &target, &pickups, &appends).await }
-            })
-            .await
-        }));
-    }
+    let pacers = spawn_pacers(burst, parameters, stores, staged, &pickups, &appends);
     window(
         &plane,
         stores,
         &staged.runners,
-        parameters.window,
-        None,
-        Turn::held(parameters.turn),
-        Some(Arc::clone(&pickups)),
+        Shape {
+            length: parameters.window,
+            target: None,
+            turn: Turn::held(parameters.turn),
+            pickups: Some(Arc::clone(&pickups)),
+        },
         &abort,
     )
     .await?;
@@ -141,11 +132,17 @@ async fn measure(
     }
     stop.cancel();
     let peak = joined(sampler.await, PACER_ROLE)?;
+    record_run(report, &appends, &pickups, peak).await;
+    Ok(())
+}
 
+/// Count what the pacers and the runners did, and write it into the report.
+async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, peak: u64) {
     let counted = Counted {
         accepted: appends.accepted.load(Ordering::Relaxed),
         refused: appends.refused.load(Ordering::Relaxed),
         leased: pickups.leased_count(),
+        folded: pickups.folded_count(),
         backlog_peak: peak,
     };
     record(
@@ -154,7 +151,35 @@ async fn measure(
         &*appends.took.lock().await,
         &pickups.waits().await,
     );
-    Ok(())
+}
+
+/// Start one pacer per staged fleet, each steering at the burst's rate for the
+/// window.
+fn spawn_pacers(
+    burst: Burst,
+    parameters: Parameters,
+    stores: &Datastores,
+    staged: &stage::Staged,
+    pickups: &Arc<Pickups>,
+    appends: &Arc<Appends>,
+) -> Vec<JoinHandle<u64>> {
+    staged
+        .fleets
+        .iter()
+        .map(|fleet| {
+            let steer = Arc::new(Steer::new(admissions(stores)));
+            let target = Arc::new((fleet.fleet.clone(), fleet.workspace.clone()));
+            let (pickups, appends) = (Arc::clone(pickups), Arc::clone(appends));
+            tokio::spawn(async move {
+                pace(burst.rate, parameters.window, || {
+                    let (steer, target) = (Arc::clone(&steer), Arc::clone(&target));
+                    let (pickups, appends) = (Arc::clone(&pickups), Arc::clone(&appends));
+                    async move { append_one(&steer, &target, &pickups, &appends).await }
+                })
+                .await
+            })
+        })
+        .collect()
 }
 
 /// Append one steer and remember when it returned.
@@ -214,8 +239,10 @@ pub(super) struct Counted {
     pub(super) accepted: u64,
     /// Steers the intake refused.
     pub(super) refused: u64,
-    /// Accepted steers a runner leased.
+    /// Accepted steers a runner leased or a live run folded in.
     pub(super) leased: u64,
+    /// Of those, the ones a live run folded in.
+    pub(super) folded: u64,
     /// The deepest backlog sampled.
     pub(super) backlog_peak: u64,
 }
@@ -230,6 +257,7 @@ pub(super) fn record(report: &mut Report, counted: Counted, appended: &Latency, 
         UNLEASED,
         count(counted.accepted.saturating_sub(counted.leased)),
     );
+    report.measurement(FOLDED, count(counted.folded));
     report.measurement(BACKLOG_PEAK, count(counted.backlog_peak));
     if !appended.is_empty() {
         report.measurement(APPEND_P95_MS, appended.quantile_ms(latency::P95));
@@ -248,6 +276,7 @@ pub fn summary(report: &Report) -> String {
         ACCEPTED,
         REFUSED,
         UNLEASED,
+        FOLDED,
         PICKUP_P95_MS,
         PICKUP_P99_MS,
         BACKLOG_PEAK,

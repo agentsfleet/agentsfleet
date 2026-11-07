@@ -135,7 +135,21 @@ fn knows_command(reply: &Value) -> bool {
         Value::Array(entries) => entries
             .first()
             .is_some_and(|entry| !matches!(entry, Value::Nil)),
-        _unrecognised_framing => true,
+        _unrecognised_framing @ (Value::Nil
+        | Value::Int(_)
+        | Value::BulkString(_)
+        | Value::SimpleString(_)
+        | Value::Okay
+        | Value::Map(_)
+        | Value::Attribute { .. }
+        | Value::Set(_)
+        | Value::Double(_)
+        | Value::Boolean(_)
+        | Value::VerbatimString { .. }
+        | Value::BigNumber(_)
+        | Value::Push { .. }
+        | Value::ServerError(_)
+        | _) => true,
     }
 }
 

@@ -81,7 +81,7 @@ impl Replay<'_> {
     }
 
     /// The receipt this request files for `resource` before writing it.
-    fn reservation<'r>(
+    const fn reservation<'r>(
         &'r self,
         receipt_id: &'r Uuid7,
         workspace: &'r Uuid7,

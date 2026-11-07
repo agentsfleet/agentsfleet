@@ -79,9 +79,9 @@ const STATE_MEMBER: &str = "member";
         "`invited` or `member`. After an uncertain response, check the invite list; ",
         "retrying cannot create another pending invite.",
     ),
-    request_body = CreateInviteRequest,
+    request_body = CreateInviteRequest<'_>,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = afd_api_wire::team::InviteSummary),
+        (status = 201, description = afd_http::openapi::CREATED, body = afd_api_wire::team::InviteSummary<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -132,7 +132,7 @@ pub(crate) async fn create<D: Services>(
         "use one page: `next_cursor` is null and `total` counts all invites.",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<afd_api_wire::team::InviteSummary>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<'_, afd_api_wire::team::InviteSummary<'_>>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -206,7 +206,7 @@ pub(crate) async fn revoke<D: Services>(
         "first. Each invite names its account. Results use one page; `next_cursor` is null.",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<WaitingInvite>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<'_, WaitingInvite<'_>>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -243,7 +243,7 @@ pub(crate) async fn waiting<D: Services>(
     ),
     params(afd_http::openapi::path::Invite),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = AcceptedInviteResponse),
+        (status = 200, description = afd_http::openapi::OK, body = AcceptedInviteResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

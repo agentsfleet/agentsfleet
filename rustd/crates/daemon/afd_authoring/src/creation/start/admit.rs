@@ -64,7 +64,7 @@ impl Creations {
     }
 }
 
-fn blocked(code: String) -> StartOutcome {
+const fn blocked(code: String) -> StartOutcome {
     StartOutcome::RunNow {
         state: StartState::Blocked,
         event_id: None,

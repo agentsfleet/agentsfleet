@@ -101,7 +101,7 @@ pub(crate) struct ResolvePath {
         ("cursor" = Option<String>, Query),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ApprovalsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = ApprovalsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -169,7 +169,7 @@ fn next_cursor(gates: &[GateRow], limit: i64) -> Option<String> {
         afd_http::openapi::path::Gate,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ApprovalSummary),
+        (status = 200, description = afd_http::openapi::OK, body = ApprovalSummary<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

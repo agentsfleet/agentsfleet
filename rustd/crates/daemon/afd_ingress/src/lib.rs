@@ -108,7 +108,7 @@ pub struct Ingress {
 impl Ingress {
     /// Binds the ingress to an already-connected pool, vault and ledger.
     #[must_use]
-    pub fn new(database: Db, vault: Vault, admissions: Admissions) -> Self {
+    pub const fn new(database: Db, vault: Vault, admissions: Admissions) -> Self {
         Self {
             database,
             vault,

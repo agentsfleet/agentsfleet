@@ -32,9 +32,9 @@ const EVENT: &str = "runner_lease_failed";
         "fleet work, private setup work, or both. Budget, approval, and policy checks ",
         "happen before assignment.",
     ),
-    request_body = LeaseRequest,
+    request_body = LeaseRequest<'_>,
     responses(
-        (status = 200, description = "A lease to run, or a backoff to wait out", body = af_wire::lease::LeaseResponse),
+        (status = 200, description = "A lease to run, or a backoff to wait out", body = af_wire::lease::LeaseResponse<'_>),
         (status = 400, description = "Invalid polling body or kind selection"),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

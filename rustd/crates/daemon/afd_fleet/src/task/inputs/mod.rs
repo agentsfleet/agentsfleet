@@ -221,7 +221,7 @@ async fn candidates(
         .fetch_all(&mut *connection)
         .await
         .map_err(query("read native input association candidates"))?;
-    if candidates.len() > af_wire::task::UNFINISHED_MAX as usize {
+    if candidates.len() > usize::try_from(af_wire::task::UNFINISHED_MAX).unwrap_or(usize::MAX) {
         return Err(super::TaskRefusal::LimitExhausted.into());
     }
     let candidates = candidates

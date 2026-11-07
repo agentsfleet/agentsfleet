@@ -47,6 +47,8 @@ pub(super) async fn check_on(
         if calls >= SOURCE_CALLS_MAX {
             return Err(TaskRefusal::LimitExhausted.into());
         }
+    } else {
+        // A non-goal call that allocates nothing spends no source allowance.
     }
     let config = Leases::stored_config_on(connection, &current.fleet_id, None)
         .await?

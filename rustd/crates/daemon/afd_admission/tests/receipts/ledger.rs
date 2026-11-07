@@ -12,7 +12,7 @@ use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
-use super::{lane::Lane, queue::over_fake};
+use super::{Fallible, lane::Lane, queue::over_fake};
 
 /// A connector and a thread, as a producer owning a reply surface states them.
 pub(super) const CONNECTOR: &str = "slack";
@@ -44,42 +44,37 @@ pub(super) fn steer<'a>(lane: &'a Lane, key: &'a str, reply: ReplyTo<'a>) -> Adm
     }
 }
 
-pub(super) async fn admit(admissions: &Admissions, admission: Admission<'_>) -> Admitted {
-    admissions
-        .admit(admission)
-        .await
-        .expect("the ledger answers")
+pub(super) async fn admit(admissions: &Admissions, admission: Admission<'_>) -> Fallible<Admitted> {
+    Ok(admissions.admit(admission).await?)
 }
 
-async fn stamps(lane: &Lane, id: &str) -> Stamps {
-    sqlx::query_as(
+async fn stamps(lane: &Lane, id: &str) -> Fallible<Stamps> {
+    Ok(sqlx::query_as(
         "SELECT created_at, updated_at, event_created_at, sequence \
          FROM fleet.admissions WHERE id = $1::uuid",
     )
     .bind(id)
-    .fetch_one(&mut *lane.database.acquire().await.expect("a pooled connection"))
-    .await
-    .expect("the admitted row is there")
+    .fetch_one(&mut *lane.database.acquire().await?)
+    .await?)
 }
 
 /// The event id an admission answers with is its row's `UUIDv7`, and a retry
 /// under the same key answers the same one.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn an_admitted_event_is_named_by_its_row_id() {
-    let lane = Lane::seed().await;
-    let (_server, admissions) = over_fake(&lane, &[]).await;
+async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
+    let lane = Lane::seed().await?;
+    let (_server, admissions) = over_fake(&lane, &[]).await?;
     let key = mint_id();
 
-    let first = admit(&admissions, steer(&lane, &key, ReplyTo::None)).await;
-    let retried = admit(&admissions, steer(&lane, &key, ReplyTo::None)).await;
+    let first = admit(&admissions, steer(&lane, &key, ReplyTo::None)).await?;
+    let retried = admit(&admissions, steer(&lane, &key, ReplyTo::None)).await?;
 
     let row: String =
         sqlx::query_scalar("SELECT id::text FROM fleet.admissions WHERE producer_key = $1")
             .bind(&key)
-            .fetch_one(&mut *lane.database.acquire().await.expect("a pooled connection"))
-            .await
-            .expect("one row holds the key");
+            .fetch_one(&mut *lane.database.acquire().await?)
+            .await?;
     assert_eq!(first.stored.id, row, "the event id is the row id");
     assert!(
         Uuid7::parse(&first.stored.id).is_ok(),
@@ -92,18 +87,19 @@ async fn an_admitted_event_is_named_by_its_row_id() {
         "a retry answers the first id"
     );
     lane.cleanup().await;
+    Ok(())
 }
 
 /// Every instant on the row is the database's: one `now()` for all three, and
 /// the one the producer was answered with.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn the_database_stamps_every_instant_on_the_row() {
-    let lane = Lane::seed().await;
-    let (_server, admissions) = over_fake(&lane, &[]).await;
+async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
+    let lane = Lane::seed().await?;
+    let (_server, admissions) = over_fake(&lane, &[]).await?;
 
-    let admitted = admit(&admissions, steer(&lane, &mint_id(), ReplyTo::None)).await;
-    let row = stamps(&lane, &admitted.stored.id).await;
+    let admitted = admit(&admissions, steer(&lane, &mint_id(), ReplyTo::None)).await?;
+    let row = stamps(&lane, &admitted.stored.id).await?;
 
     assert_eq!(row.created_at, row.event_created_at);
     assert!(
@@ -112,6 +108,7 @@ async fn the_database_stamps_every_instant_on_the_row() {
     );
     assert_eq!(admitted.stored.created_at, row.created_at);
     lane.cleanup().await;
+    Ok(())
 }
 
 /// Two admissions staged in one transaction share its `now()` to the
@@ -119,35 +116,27 @@ async fn the_database_stamps_every_instant_on_the_row() {
 /// instant, `sequence` decides.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn two_admissions_in_one_instant_order_by_their_sequence() {
-    let lane = Lane::seed().await;
-    let (_server, admissions) = over_fake(&lane, &[]).await;
+async fn two_admissions_in_one_instant_order_by_their_sequence() -> Fallible {
+    let lane = Lane::seed().await?;
+    let (_server, admissions) = over_fake(&lane, &[]).await?;
     let (first_key, second_key) = (mint_id(), mint_id());
     let first = admissions
         .prepare(steer(&lane, &first_key, ReplyTo::None))
-        .await
-        .expect("budget observation");
+        .await?;
     let second = admissions
         .prepare(steer(&lane, &second_key, ReplyTo::None))
-        .await
-        .expect("budget observation");
+        .await?;
 
-    let mut connection = lane.database.acquire().await.expect("a connection");
-    let mut transaction = connection.begin().await.expect("begin");
-    let first = admissions
-        .stage(&mut transaction, first)
-        .await
-        .expect("stage");
-    let second = admissions
-        .stage(&mut transaction, second)
-        .await
-        .expect("stage");
-    transaction.commit().await.expect("commit");
+    let mut connection = lane.database.acquire().await?;
+    let mut transaction = connection.begin().await?;
+    let first = admissions.stage(&mut transaction, first).await?;
+    let second = admissions.stage(&mut transaction, second).await?;
+    transaction.commit().await?;
     drop(connection);
 
     let (first_row, second_row) = (
-        stamps(&lane, &first.stored.id).await,
-        stamps(&lane, &second.stored.id).await,
+        stamps(&lane, &first.stored.id).await?,
+        stamps(&lane, &second.stored.id).await?,
     );
     assert_eq!(
         first_row.created_at, second_row.created_at,
@@ -162,9 +151,9 @@ async fn two_admissions_in_one_instant_order_by_their_sequence() {
          ORDER BY created_at, sequence",
     )
     .bind(&lane.fleet)
-    .fetch_all(&mut *lane.database.acquire().await.expect("a pooled connection"))
-    .await
-    .expect("the fleet's rows read");
+    .fetch_all(&mut *lane.database.acquire().await?)
+    .await?;
     assert_eq!(ordered, [first.stored.id, second.stored.id]);
     lane.cleanup().await;
+    Ok(())
 }

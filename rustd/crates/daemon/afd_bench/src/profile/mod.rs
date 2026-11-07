@@ -133,9 +133,9 @@ pub enum Parameter {
     Jobs,
     /// How many operations are in flight at once.
     Concurrency,
-    /// How long one simulated turn lasts, in milliseconds (`M241_001` §4).
+    /// How long one simulated turn lasts, in milliseconds.
     TurnMs,
-    /// Steers a second each fleet receives under the burst shape (§5).
+    /// Steers a second each fleet receives under the burst shape.
     Rate,
 }
 

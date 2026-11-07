@@ -82,7 +82,7 @@ async fn platform_operator_rotates_runner_token_once() {
 
     // A runner the platform never enrolled has no token to rotate, and the
     // refusal reveals nothing a client could hold.
-    let unknown = afd_db::test_util::mint_id();
+    let unknown = mint_id();
     let refused = send(
         &router,
         Method::PATCH,

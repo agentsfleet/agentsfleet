@@ -23,7 +23,7 @@ use afd_runner::reconcile::{
 };
 
 /// An assignment at `tier` under `network`, with nothing else set.
-fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static> {
+const fn assigned(tier: SandboxTier, network: NetworkPolicy) -> AssignedPolicy<'static> {
     AssignedPolicy {
         decision_model_id: None,
         durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,

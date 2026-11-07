@@ -28,8 +28,8 @@ const CALL_ID: &str = "call_id must be a UUIDv7";
     params(("lease_id" = String, Path, description = "Original lease UUIDv7.")),
     request_body = DecisionReservationInput,
     responses(
-        (status = 201, description = "One physical send authorized", body = af_wire::task::DecisionReservationResult),
-        (status = 200, description = "Saved call without another credential", body = af_wire::task::DecisionReservationResult),
+        (status = 201, description = "One physical send authorized", body = af_wire::task::DecisionReservationResult<'_>),
+        (status = 200, description = "Saved call without another credential", body = af_wire::task::DecisionReservationResult<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

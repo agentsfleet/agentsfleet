@@ -64,7 +64,7 @@ const NO_TOKEN: &str = "vendor-contract-probe-not-a-token";
 const ADMINISTRATIVE_REFUSAL: u16 = 403;
 
 /// Where this provider's grant is redeemed, whichever archetype it runs.
-fn token_endpoint(provider: Provider) -> &'static str {
+const fn token_endpoint(provider: Provider) -> &'static str {
     match provider.archetype() {
         Archetype::Oauth2(flow) => flow.token_endpoint,
         Archetype::AppInstall(flow) => flow.token_endpoint,

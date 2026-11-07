@@ -10,18 +10,23 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use af_observability::metrics::label::fleet::SteerPlaced;
 use af_wire::event::STEER_MESSAGE_MAX_BYTES;
+use afd_events::disposition::{Placed, SteerDisposition};
 use axum::body::Bytes;
-use axum::response::IntoResponse as _;
+use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
+use serde_json::{Value, json};
 
 use af_core::id::Uuid7;
 use afd_auth::principal::{Person, PersonCredential, Subject};
 use afd_auth::scope::ScopeSet;
 
-use super::{actor_for, read_steer, refuse_steer};
+use super::{accepted, actor_for, counted, read_steer, refuse_steer};
 
 const TENANT: &str = "01924f4e-0000-7000-8000-00000000a0a1";
+const EVENT: &str = "0190d5c2-7e1a-7000-8000-00000000e002";
+const RUN: &str = "0190d5c2-7e1a-7000-8000-00000000e001";
 const HUMAN: &str = "user_2steerer";
 
 fn person(credential: PersonCredential) -> Person {
@@ -145,8 +150,7 @@ fn should_admit_the_ceiling_and_refuse_one_byte_past_it() {
     read_steer(&Bytes::from(one_past.into_bytes())).unwrap_err();
 }
 
-/// A fleet that takes no work answers 409 `UZ-AGT-012` naming its status
-/// (`M242_001` Dimension 4.4).
+/// A fleet that takes no work answers 409 `UZ-AGT-012` naming its status.
 #[tokio::test]
 async fn a_stopped_fleet_refusal_names_its_status() {
     let response = super::not_runnable(afd_fleet_lifecycle::FleetStatus::Paused).into_response();
@@ -160,4 +164,83 @@ async fn a_stopped_fleet_refusal_names_its_status() {
         rendered.contains(r#""current_state":"paused""#),
         "{rendered}"
     );
+}
+
+/// The 202 body of an accepted steer, read back as the client reads it.
+async fn accepted_body(
+    event_id: &str,
+    replayed: bool,
+    disposition: SteerDisposition,
+    joined: Option<&str>,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let placed = Placed {
+        disposition,
+        folded_into_event_id: joined.map(str::to_owned),
+    };
+    let response: Response = accepted(event_id.to_owned(), replayed, placed);
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+/// The 202 names where the message went, and the run a fold joined; a send
+/// that joins no run carries no `folded_into_event_id` at all.
+#[tokio::test]
+async fn the_accepted_body_names_where_the_message_went() -> Result<(), Box<dyn std::error::Error>>
+{
+    assert_eq!(
+        accepted_body(EVENT, false, SteerDisposition::Folded, Some(RUN)).await?,
+        json!({
+            "status": "accepted",
+            "event_id": EVENT,
+            "replayed": false,
+            "disposition": "folded",
+            "folded_into_event_id": RUN,
+        })
+    );
+    for (disposition, word) in [
+        (SteerDisposition::Started, "started"),
+        (SteerDisposition::Queued, "queued"),
+    ] {
+        assert_eq!(
+            accepted_body(EVENT, false, disposition, None).await?,
+            json!({
+                "status": "accepted",
+                "event_id": EVENT,
+                "replayed": false,
+                "disposition": word,
+            })
+        );
+    }
+    Ok(())
+}
+
+/// A repeat's 202 says it is one, and still names where the message sits.
+#[tokio::test]
+async fn a_repeats_accepted_body_says_so() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(
+        accepted_body(EVENT, true, SteerDisposition::Folded, Some(RUN)).await?,
+        json!({
+            "status": "accepted",
+            "event_id": EVENT,
+            "replayed": true,
+            "disposition": "folded",
+            "folded_into_event_id": RUN,
+        })
+    );
+    Ok(())
+}
+
+/// A message is counted once, where this call placed it; a repeat of it is
+/// answered without a second tick.
+#[test]
+fn only_a_newly_admitted_message_is_counted() {
+    for (disposition, placed) in [
+        (SteerDisposition::Started, SteerPlaced::Started),
+        (SteerDisposition::Folded, SteerPlaced::Folded),
+        (SteerDisposition::Queued, SteerPlaced::Queued),
+    ] {
+        assert_eq!(counted(false, disposition), Some(placed));
+        assert_eq!(counted(true, disposition), None, "{disposition:?}");
+    }
 }

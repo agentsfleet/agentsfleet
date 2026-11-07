@@ -76,7 +76,7 @@ pub const DETAIL_INVALID_CURSOR: &str = "Invalid cursor format";
         ("limit" = Option<String>, Query, description = "Page size. Defaults to 20. Clamped to a maximum of 100."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = FleetsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = FleetsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -173,7 +173,8 @@ fn summary(row: &FleetRow) -> FleetSummary<'_> {
 /// The projection is cast from a `JSONB` column, so it always parses; the
 /// `.ok()` is the conversion's error type, not a path a stored row takes.
 pub(super) fn triggers(stored: Option<&afd_fleet_lifecycle::Triggers>) -> Triggers {
-    stored.and_then(|projection| RawValue::from_string(projection.as_json_text().to_owned()).ok())
+    let projection = stored?;
+    RawValue::from_string(projection.as_json_text().to_owned()).ok()
 }
 
 #[cfg(test)]

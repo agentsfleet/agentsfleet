@@ -43,7 +43,7 @@ async fn test_select_assigns_a_ready_fleets_event() {
         ..
     } = seeded::<1>(&fixtures).await;
 
-    let acquired = crate::seed::select_fleet(&fixtures.leases(), &runner, &fleet)
+    let acquired = seed::select_fleet(&fixtures.leases(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
 
@@ -89,7 +89,7 @@ async fn test_a_fleet_is_discovered_without_any_notification() {
     // A full rotation, because one poll proves nothing: since §4 it samples ONE
     // of sixteen partitions, so a single `None` is as likely to mean "wrong
     // partition" as "nothing marked". A rotation visits every partition once.
-    let acquired = crate::seed::select_fleet(&fixtures.leases(), &runner, &fleet).await;
+    let acquired = seed::select_fleet(&fixtures.leases(), &runner, &fleet).await;
 
     assert!(
         acquired.is_some(),
@@ -130,13 +130,13 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
 
-    let held = crate::seed::select_fleet(&leases, &first, &fleet)
+    let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
 
     // A full rotation: one poll could miss the claimed fleet's partition and
     // answer `None` for a reason that has nothing to do with the claim.
-    let refused = crate::seed::select_fleet(&leases, &second, &fleet).await;
+    let refused = seed::select_fleet(&leases, &second, &fleet).await;
     assert!(
         refused.is_none(),
         "one fleet, one holder — the second runner polls on"
@@ -150,7 +150,7 @@ async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
     // Scoped like the two acquisitions above it. `seeded::<2>` leaves a second
     // fleet leasable, so an unscoped poll could win THAT one and then be
     // compared, event id and fence, against a claim it never displaced.
-    let regained = crate::seed::select_fleet(&leases, &second, &fleet)
+    let regained = seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 

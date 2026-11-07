@@ -83,9 +83,9 @@ pub struct KeyRow {
     /// What it is called.
     pub name: String,
     /// When it was minted.
-    pub created_at: jiff::Timestamp,
+    pub created_at: Timestamp,
     /// When it stopped working, if it has.
-    pub revoked_at: Option<jiff::Timestamp>,
+    pub revoked_at: Option<Timestamp>,
 }
 
 impl KeyRow {

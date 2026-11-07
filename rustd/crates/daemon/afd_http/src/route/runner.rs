@@ -89,6 +89,8 @@ pub enum RunnerRoute {
     ScheduleRuns,
     /// A line said to the event's thread before the answer.
     Messages,
+    /// The messages the fleet received while the run works, claimed for it.
+    Folds,
 }
 
 impl RunnerRoute {
@@ -128,6 +130,7 @@ impl RunnerRoute {
         Self::Schedule,
         Self::ScheduleRuns,
         Self::Messages,
+        Self::Folds,
     ];
 
     /// The verbs this route identity serves.
@@ -169,7 +172,8 @@ impl RunnerRoute {
             | Self::TaskCheckpoints
             | Self::TaskCheckpointUploads
             | Self::TaskCheckpointAuthorizations
-            | Self::Messages => &[Verb::Post],
+            | Self::Messages
+            | Self::Folds => &[Verb::Post],
         }
     }
 
@@ -213,6 +217,7 @@ impl RunnerRoute {
             Self::Schedule => paths::LEASE_SCHEDULE,
             Self::ScheduleRuns => paths::LEASE_SCHEDULE_RUNS,
             Self::Messages => paths::LEASE_MESSAGES,
+            Self::Folds => paths::LEASE_FOLDS,
         };
         RouteMeta::new(
             Guard::RunnerBearer,

@@ -144,7 +144,7 @@ fn evidence(offered: &Value) -> Option<String> {
 ///
 /// A prefix of valid UTF-8 cut at a character boundary is itself valid UTF-8,
 /// so this cannot produce the mangled tail a byte-count truncation can.
-fn bounded(prose: &str, cap: usize) -> &str {
+const fn bounded(prose: &str, cap: usize) -> &str {
     // The last boundary at or below the cap, so a multi-byte character
     // straddling it is dropped whole; the whole string when it already fits.
     prose.split_at(prose.floor_char_boundary(cap)).0

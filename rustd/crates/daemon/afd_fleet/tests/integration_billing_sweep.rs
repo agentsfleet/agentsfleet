@@ -280,7 +280,7 @@ pub(crate) async fn abandon(held: &Held) -> i64 {
 }
 
 /// The run time an abandoned lease's last renewal left unbilled.
-const TAIL: std::time::Duration = std::time::Duration::from_secs(3);
+const TAIL: Duration = Duration::from_secs(3);
 
 /// `held`'s lease's runtime lines, as `(seq, runtime_ms)`.
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {

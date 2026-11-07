@@ -46,6 +46,6 @@ pub(crate) const DEFAULT_PAGE_SIZE: u32 = 50;
 
 pub(crate) fn present<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
     deserializer: D,
-) -> std::result::Result<Option<T>, D::Error> {
+) -> Result<Option<T>, D::Error> {
     T::deserialize(deserializer).map(Some)
 }

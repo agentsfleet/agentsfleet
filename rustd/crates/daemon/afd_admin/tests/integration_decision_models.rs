@@ -214,7 +214,7 @@ async fn rename_without_replacing_decision(models: &Models, id: &Uuid7) -> Model
     expected
 }
 
-async fn reject_unusable_profiles(models: &Models, id: &Uuid7, expected: &afd_admin::ModelUpdate) {
+async fn reject_unusable_profiles(models: &Models, id: &Uuid7, expected: &ModelUpdate) {
     for fault in 0..5 {
         let mut replacement = details("reviewed-2", None, 84);
         let profile = &mut replacement

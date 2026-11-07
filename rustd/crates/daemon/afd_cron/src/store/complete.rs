@@ -20,7 +20,7 @@ struct Update<'a> {
 }
 
 impl<'a> Outcome<'a> {
-    fn update(self) -> Update<'a> {
+    const fn update(self) -> Update<'a> {
         match self {
             Self::Synced(registered) => Update {
                 statement: sql::FINALIZE_SUCCESS,

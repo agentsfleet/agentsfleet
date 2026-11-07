@@ -130,7 +130,8 @@ pub(super) async fn accept(
         super::super::continuation::retire(connection, id.as_str()).await?;
     }
     let message = source.message()?;
-    let span = item.span().start.unsigned_abs() as usize..item.span().end.unsigned_abs() as usize;
+    let span = usize::try_from(item.span().start.unsigned_abs()).unwrap_or(usize::MAX)
+        ..usize::try_from(item.span().end.unsigned_abs()).unwrap_or(usize::MAX);
     sqlx::query(include_str!("sql/input.sql"))
         .bind(binding.item_id.as_str())
         .bind(id.as_str())

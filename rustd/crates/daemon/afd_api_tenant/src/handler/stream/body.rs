@@ -60,13 +60,15 @@ static HEARTBEAT: LazyLock<Bytes> = LazyLock::new(|| {
 
 /// One response body, holding `slot` for as long as it is alive.
 pub(super) fn serve(frames: BoxStream<'static, Frame>, slot: Slot) -> Response {
-    let wire = Wire {
-        frames,
-        _slot: slot,
-        queued: VecDeque::new(),
-        quiet_until: Instant::now() + afd_sse::HEARTBEAT_INTERVAL,
-    };
-    let chunks = stream::unfold(wire, Wire::next_chunk);
+    let chunks = stream::unfold(
+        Wire {
+            frames,
+            _slot: slot,
+            queued: VecDeque::new(),
+            quiet_until: Instant::now() + afd_sse::HEARTBEAT_INTERVAL,
+        },
+        Wire::next_chunk,
+    );
     (
         [
             (header::CONTENT_TYPE, EVENT_STREAM),

@@ -166,19 +166,19 @@ fn field_names_render_as_the_wire_spells_them() {
 #[test]
 fn contextual_database_failures_keep_their_classification_and_cause() -> Result<(), &'static str> {
     let query = super::query("tenant coverage query")(sqlx::Error::PoolClosed);
-    assert_eq!(query.code(), af_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(query.code(), error_code::INTERNAL_DB_QUERY);
     assert!(query.source().is_some());
 
     let malformed_id = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("malformed fixture unexpectedly parsed")?;
     let row = super::row_malformed("workspaces", "tenant_id")(malformed_id);
-    assert_eq!(row.code(), af_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(row.code(), error_code::INTERNAL_DB_QUERY);
     assert!(row.to_string().contains("workspaces"));
     assert!(row.source().is_some());
 
     let page = super::library_page_unavailable(sqlx::Error::PoolClosed);
-    assert_eq!(page.code(), af_core::error_code::LIBRARY_DB_UNAVAILABLE);
+    assert_eq!(page.code(), error_code::LIBRARY_DB_UNAVAILABLE);
     assert!(page.is_datastore_unavailable());
     assert!(page.source().is_some());
     Ok(())
@@ -188,10 +188,7 @@ fn contextual_database_failures_keep_their_classification_and_cause() -> Result<
 fn a_machine_collision_is_detectable_only_inside_the_tenant_crate() {
     let collision = super::cli_credential_machine_collision();
     assert!(collision.is_machine_collision());
-    assert_eq!(
-        collision.code(),
-        af_core::error_code::INTERNAL_OPERATION_FAILED
-    );
+    assert_eq!(collision.code(), error_code::INTERNAL_OPERATION_FAILED);
 }
 
 /// A cryptographic failure lifts through `From`, and an identifier a stored
@@ -210,7 +207,7 @@ fn foreign_failures_keep_their_cause() -> Result<(), &'static str> {
             .err()
             .ok_or("a malformed identifier unexpectedly parsed")?,
     );
-    let drawn: super::Error = af_crypto::secret::Kek::from_hex("zz")
+    let drawn: Error = af_crypto::secret::Kek::from_hex("zz")
         .err()
         .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")?
         .into();

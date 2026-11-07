@@ -132,7 +132,7 @@ pub struct MessageQuery {
     pub starting_after: Option<String>,
 }
 
-fn default_message_limit() -> u32 {
+const fn default_message_limit() -> u32 {
     20
 }
 
@@ -166,6 +166,6 @@ pub struct ListQuery {
     pub starting_after: Option<String>,
 }
 
-fn default_limit() -> u32 {
+const fn default_limit() -> u32 {
     super::DEFAULT_PAGE_SIZE
 }

@@ -40,25 +40,9 @@
 // scoped to the helpers rather than blanketed over every suite, which would
 // hand the suites permissions their own headers deliberately withhold.
 //
-// `subscriber` is declared here exactly once. `fake_redis` and `dragonfly_harness`
-// each used to declare it, which was fine while no single binary loaded both,
-// and is a duplicate module the moment one does.
-#[path = "support/subscriber.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::panic,
-    reason = "test support: an unmet precondition should fail the test loudly"
-)]
-mod subscriber;
-
-#[path = "support/fake_redis/mod.rs"]
-#[allow(
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    reason = "test support: an unmet precondition should fail the test loudly"
-)]
-mod fake_redis;
+// `fake_redis` is this crate's `test_util`, so every suite that needs it names
+// the same items.
+use afd_dragonfly::test_util::fake_redis;
 
 #[path = "support/dragonfly_harness.rs"]
 #[allow(

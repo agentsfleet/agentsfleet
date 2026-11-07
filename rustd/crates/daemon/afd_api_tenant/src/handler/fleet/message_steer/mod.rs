@@ -3,22 +3,31 @@
 //! The write half of `message.rs`, split at the length cap, and the only place
 //! in this daemon where a person puts work onto a fleet's stream.
 //!
-//! # A steer to a stopped fleet is refused, never accepted
+//! # One ledger statement decides the answer
 //!
-//! The ingress check is the difference between a 409 a person can act on and a
-//! 202 whose run never happens. It reads the status alone rather than the
-//! fleet, because deciding whether a message may be posted is not worth
-//! loading two authored documents.
+//! The handler reads no fleet and no status of its own. `afd_events::Steer`
+//! hands the message to the admission ledger, whose single statement decides
+//! ownership, a repeat of the caller's operation id, the fleet's status and
+//! the deployment ceiling together. A fleet this workspace does not hold is a
+//! 404 before any operation id is read, and a fleet that takes no work is a
+//! 409 naming its status.
 //!
 //! # A repeat is answered even by a fleet that stopped taking work
 //!
 //! A caller that names its operation and never saw the 202 sends again. If the
-//! first send was admitted, the answer is that send's event — even when the
+//! first send was admitted, the answer is that send's event, even when the
 //! fleet has stopped or paused since, because the message is already on its
-//! way to run. Ownership is checked first, so the lookup only ever reads this
-//! workspace's fleet, and a runnable fleet pays no lookup at all: the ledger's
-//! own insert answers a repeat (`afd_events::steer`).
+//! way to run. The statement reads the key before it checks the status, and its
+//! own insert answers a repeat, so no lookup runs ahead of it
+//! (`afd_events::steer`).
+//!
+//! # The 202 says where the message went
+//!
+//! `disposition` is `started`, `folded` or `queued`, and a fold names the run
+//! it joined. The dispositions counter records a message once, on the call
+//! that admitted it: a repeat is the same message answered again.
 
+use af_observability::metrics::label::fleet::SteerPlaced;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -27,6 +36,7 @@ use af_validate::Sentences;
 use af_wire::event::{EventType, SteerAccepted, SteerRequest};
 use afd_api_wire::tail::TailFrame;
 use afd_events::Steered;
+use afd_events::disposition::{Placed, SteerDisposition};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -108,12 +118,12 @@ const STATUS_ACCEPTED: &str = "accepted";
         "one sender; workspace API keys share one sender. Without `operation_id`, every ",
         "request creates a new message.",
     ),
-    request_body = SteerRequest,
+    request_body = SteerRequest<'_>,
     params(
         afd_http::openapi::path::Fleet,
     ),
     responses(
-        (status = 202, description = afd_http::openapi::ACCEPTED, body = SteerAccepted),
+        (status = 202, description = afd_http::openapi::ACCEPTED, body = SteerAccepted<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -140,9 +150,9 @@ pub(crate) async fn steer<D: Services>(
     let (fleet, workspace) = (fleet.as_str(), owned.workspace.as_str());
     let steering = services.steering();
     // One ledger statement decides ownership, a repeat, the fleet's status and
-    // the ceiling (`M242_001` §4): a foreign fleet is a 404 before any operation
-    // id is read, and a retry of a message admitted before the fleet stopped is
-    // still answered with its event.
+    // the ceiling: a foreign fleet is a 404 before any operation id is read, and
+    // a retry of a message admitted before the fleet stopped is still answered
+    // with its event.
     let steered = steering
         .append(fleet, workspace, &actor, &request_json, operation_id)
         .await
@@ -200,9 +210,26 @@ fn not_runnable(status: FleetStatus) -> Refusal {
     )
 }
 
-/// The 202 a steer answers with, for a new message or a repeat alike — which
-/// of the two it is, and where the message went (`M242_002`).
-fn accepted(event_id: String, replayed: bool, placed: afd_events::disposition::Placed) -> Response {
+/// The placement to count for an answer, or none for a repeat. A repeat is the
+/// same message answered again and its placement is read afresh from the
+/// ledger, so counting it would make one message several.
+const fn counted(replayed: bool, disposition: SteerDisposition) -> Option<SteerPlaced> {
+    if replayed {
+        return None;
+    }
+    Some(match disposition {
+        SteerDisposition::Started => SteerPlaced::Started,
+        SteerDisposition::Folded => SteerPlaced::Folded,
+        SteerDisposition::Queued => SteerPlaced::Queued,
+    })
+}
+
+/// The 202 a steer answers with, for a new message or a repeat alike: which of
+/// the two it is, and where the message went.
+fn accepted(event_id: String, replayed: bool, placed: Placed) -> Response {
+    if let Some(counted) = counted(replayed, placed.disposition) {
+        af_observability::producers::fleet::fold::disposition(counted);
+    }
     (
         StatusCode::ACCEPTED,
         Json(SteerAccepted {

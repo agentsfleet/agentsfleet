@@ -47,7 +47,7 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
         "65536 bytes; an event holds 1 MiB total. Records exceeding these limits count ",
         "toward `skipped_count`; other records are saved.",
     ),
-    request_body = ToolCallRecordsRequest,
+    request_body = ToolCallRecordsRequest<'_>,
     params(
         afd_http::openapi::path::Lease,
     ),

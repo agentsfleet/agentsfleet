@@ -147,7 +147,21 @@ fn range_of(range: &Value) -> Option<SlotRange> {
 fn small(value: &Value) -> Option<u16> {
     match value {
         Value::Int(number) => u16::try_from(*number).ok(),
-        _other => None,
+        _other @ (Value::Nil
+        | Value::BulkString(_)
+        | Value::Array(_)
+        | Value::SimpleString(_)
+        | Value::Okay
+        | Value::Map(_)
+        | Value::Attribute { .. }
+        | Value::Set(_)
+        | Value::Double(_)
+        | Value::Boolean(_)
+        | Value::VerbatimString { .. }
+        | Value::BigNumber(_)
+        | Value::Push { .. }
+        | Value::ServerError(_)
+        | _) => None,
     }
 }
 
@@ -173,7 +187,22 @@ fn node_of(node: Value) -> Option<Node> {
     })?;
     let port = entries.iter().find_map(|(key, value)| match value {
         Value::Int(port) if key == FIELD_PORT => u16::try_from(*port).ok(),
-        _other => None,
+        _other @ (Value::Nil
+        | Value::Int(_)
+        | Value::BulkString(_)
+        | Value::Array(_)
+        | Value::SimpleString(_)
+        | Value::Okay
+        | Value::Map(_)
+        | Value::Attribute { .. }
+        | Value::Set(_)
+        | Value::Double(_)
+        | Value::Boolean(_)
+        | Value::VerbatimString { .. }
+        | Value::BigNumber(_)
+        | Value::Push { .. }
+        | Value::ServerError(_)
+        | _) => None,
     })?;
     let role = if role == ROLE_MASTER {
         Role::Primary
@@ -210,7 +239,20 @@ fn pairs(value: Value) -> Option<Vec<(String, Value)>> {
             }
             Some(out)
         }
-        _other => None,
+        _other @ (Value::Nil
+        | Value::Int(_)
+        | Value::BulkString(_)
+        | Value::SimpleString(_)
+        | Value::Okay
+        | Value::Attribute { .. }
+        | Value::Set(_)
+        | Value::Double(_)
+        | Value::Boolean(_)
+        | Value::VerbatimString { .. }
+        | Value::BigNumber(_)
+        | Value::Push { .. }
+        | Value::ServerError(_)
+        | _) => None,
     }
 }
 
@@ -225,7 +267,19 @@ pub(crate) fn text(value: &Value) -> Option<String> {
     match value {
         Value::BulkString(bytes) => Some(String::from_utf8_lossy(bytes).into_owned()),
         Value::SimpleString(text) | Value::VerbatimString { text, .. } => Some(text.clone()),
-        _other => None,
+        _other @ (Value::Nil
+        | Value::Int(_)
+        | Value::Array(_)
+        | Value::Okay
+        | Value::Map(_)
+        | Value::Attribute { .. }
+        | Value::Set(_)
+        | Value::Double(_)
+        | Value::Boolean(_)
+        | Value::BigNumber(_)
+        | Value::Push { .. }
+        | Value::ServerError(_)
+        | _) => None,
     }
 }
 

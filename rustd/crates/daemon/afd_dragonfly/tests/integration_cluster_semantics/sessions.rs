@@ -103,7 +103,7 @@ pub(super) async fn a_race_through_a_cold_cache_still_redeems_once(
 
     let mut successes = 0_u32;
     let mut refused = 0_u32;
-    for attempt in attempts.collect::<Vec<_>>() {
+    for attempt in attempts {
         match attempt
             .await
             .expect("no caller panics")

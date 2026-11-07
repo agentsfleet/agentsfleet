@@ -55,9 +55,9 @@ const STATE_RECONNECT_REQUIRED: &str = "reconnect_required";
         "request cannot select another workspace. A removed or revoked GitHub App returns ",
         "409 `UZ-GH-001` with `reconnect_required`; reconnect GitHub before retrying.",
     ),
-    request_body = MintCredentialRequest,
+    request_body = MintCredentialRequest<'_>,
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = MintCredentialResponse),
+        (status = 200, description = afd_http::openapi::OK, body = MintCredentialResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

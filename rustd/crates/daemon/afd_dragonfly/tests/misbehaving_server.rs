@@ -23,8 +23,9 @@ use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::session::{AbortReason, Approval, SessionStore};
 use afd_dragonfly::{OutboundJob, OutboundQueue};
 
-use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply};
 use af_core::test_util::trace::Capture;
+use af_core::test_util::trace::install_subscriber;
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 const BUDGET: Duration = Duration::from_secs(10);

@@ -255,7 +255,7 @@ async fn an_unparseable_recipient_fails_before_delivery() {
         run(&mailer, &bad, DEADLINE).await,
         InviteEmailOutcome::Failed { reply: None }
     );
-    assert_eq!(mailer.formatted(), [] as [std::vec::Vec<u8>; 0]);
+    assert_eq!(mailer.formatted(), [] as [Vec<u8>; 0]);
 }
 
 /// A domain literal is refused at the route, because no send can address it:
@@ -274,5 +274,5 @@ async fn should_refuse_domain_literal_the_builder_cannot_address() {
         run(&mailer, &literal, DEADLINE).await,
         InviteEmailOutcome::Failed { reply: None }
     );
-    assert_eq!(mailer.formatted(), [] as [std::vec::Vec<u8>; 0]);
+    assert_eq!(mailer.formatted(), [] as [Vec<u8>; 0]);
 }

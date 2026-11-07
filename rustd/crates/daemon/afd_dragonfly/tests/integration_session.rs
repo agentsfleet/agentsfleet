@@ -78,7 +78,7 @@ async fn test_session_transition_atomic() {
 
     let mut successes = 0_u32;
     let mut consumed = 0_u32;
-    for attempt in attempts.collect::<Vec<_>>() {
+    for attempt in attempts {
         match attempt
             .await
             .expect("the task must not panic")

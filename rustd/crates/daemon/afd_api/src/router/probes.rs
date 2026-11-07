@@ -96,7 +96,7 @@ pub trait Dependencies: Send + Sync + std::fmt::Debug + 'static {
         "database and event queue.",
     ),
     responses(
-        (status = 200, description = "The process is alive", body = Liveness),
+        (status = 200, description = "The process is alive", body = Liveness<'_>),
     ),
 ))]
 pub(super) async fn healthz() -> Response {

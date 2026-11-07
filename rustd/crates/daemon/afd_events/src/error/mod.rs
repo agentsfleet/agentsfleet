@@ -134,11 +134,14 @@ impl Error {
     ///
     /// An outage answers 503, where a statement that would not run is a 500.
     #[must_use]
-    pub fn is_datastore_unavailable(&self) -> bool {
+    pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
-            _reachable => false,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::CursorMalformed
+            | ErrorKind::OperationConflict => false,
         }
     }
 
@@ -148,26 +151,36 @@ impl Error {
     /// suite's question: a best-effort read that skipped because the pool was
     /// empty is a different fact from one the queue refused.
     #[must_use]
-    pub fn is_pool_unavailable(&self) -> bool {
+    pub const fn is_pool_unavailable(&self) -> bool {
         matches!(self.kind(), ErrorKind::Datastore { .. })
     }
 
     /// Whether no fleet with the id belongs to the caller's workspace, as the
     /// ledger's one statement found.
     #[must_use]
-    pub fn is_fleet_absent(&self) -> bool {
+    pub const fn is_fleet_absent(&self) -> bool {
         match self.kind() {
             ErrorKind::Admission { source } => source.is_fleet_absent(),
-            _other => false,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::CursorMalformed
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::OperationConflict => false,
         }
     }
 
     /// The status of a fleet that takes no new work, when that refused the steer.
     #[must_use]
-    pub fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
+    pub const fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
         match self.kind() {
             ErrorKind::Admission { source } => source.not_runnable(),
-            _other => None,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::CursorMalformed
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::OperationConflict => None,
         }
     }
 
@@ -176,7 +189,7 @@ impl Error {
     /// The handler's question: this refusal is a 409 that names the state the
     /// id is in, where every other one here renders plain.
     #[must_use]
-    pub fn is_operation_conflict(&self) -> bool {
+    pub const fn is_operation_conflict(&self) -> bool {
         matches!(self.kind(), ErrorKind::OperationConflict)
     }
 }

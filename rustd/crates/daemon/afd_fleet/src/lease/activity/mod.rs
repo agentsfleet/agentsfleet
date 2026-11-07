@@ -285,7 +285,14 @@ fn first_visible_candidate_ms(frames: &[ActivityFrame<'_>]) -> Option<u64> {
         {
             body.first_chunk_after_ms
         }
-        _ => None,
+        ActivityFrame::TaskDecisionStarted(_)
+        | ActivityFrame::TaskDecisionCompleted(_)
+        | ActivityFrame::TaskTransferProgress(_)
+        | ActivityFrame::ContextProgress(_)
+        | ActivityFrame::ToolCallStarted(_)
+        | ActivityFrame::FleetResponseChunk(_)
+        | ActivityFrame::ToolCallCompleted(_)
+        | ActivityFrame::ToolCallProgress(_) => None,
     })
 }
 

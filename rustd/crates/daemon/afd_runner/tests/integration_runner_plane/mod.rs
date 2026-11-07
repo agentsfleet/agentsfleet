@@ -17,8 +17,7 @@ mod durable_upgrade;
 mod faults;
 mod lifecycle;
 mod operator;
-#[path = "../../../afd_authoring/tests/support/refusal.rs"]
-mod refusal;
+use afd_db::test_util::refusal;
 
 use std::borrow::Cow;
 

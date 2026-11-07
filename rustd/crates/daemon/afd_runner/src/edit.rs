@@ -168,7 +168,7 @@ async fn assign(
 ) -> Result<()> {
     let stored = &assignment.stored;
     let capability = policy::capability(capability_json.as_deref());
-    let verdict = reconcile::reconcile(stored, capability.as_ref());
+    let verdict = reconcile(stored, capability.as_ref());
     sqlx::query(sql::runner_admin::PATCH_RUNNER_ASSIGNED_POLICY)
         .bind(runner.as_str())
         .bind(tier_wire(stored.sandbox_tier))

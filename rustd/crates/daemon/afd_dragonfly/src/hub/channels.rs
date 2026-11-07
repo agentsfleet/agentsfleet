@@ -164,7 +164,8 @@ impl HubInner {
             };
             let prefix_len = message.channel.len() - logical.len();
             message.channel.drain(..prefix_len);
-            let _ = entry.sender.send(Delivery::Message(Arc::new(message)));
+            let _unheard: Result<usize, broadcast::error::SendError<Delivery>> =
+                entry.sender.send(Delivery::Message(Arc::new(message)));
         }
     }
 
@@ -182,7 +183,8 @@ impl HubInner {
             entry.confirmed = true;
             return Confirmation::First;
         }
-        let _ = entry.sender.send(Delivery::Gap);
+        let _unheard: Result<usize, broadcast::error::SendError<Delivery>> =
+            entry.sender.send(Delivery::Gap);
         Confirmation::Replay
     }
 
@@ -210,7 +212,8 @@ impl HubInner {
             // queues after this Unsubscribe rather than being overtaken by
             // it. `remove` consumes the entry and releases the shard, so the
             // two cannot be written the other way round.
-            let _ = commands.send(Command::Unsubscribe(channel.to_owned()));
+            let _hub_gone: Result<(), mpsc::error::SendError<Command>> =
+                commands.send(Command::Unsubscribe(channel.to_owned()));
             held.remove();
         }
     }

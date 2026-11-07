@@ -43,7 +43,7 @@ pub async fn commit(
     announcement.fleets.dedup();
     if let Some(streams) = streams {
         futures_util::stream::iter(announcement.fleets)
-            .for_each_concurrent(MAX_CONCURRENT_ACTIVITY_NOTICES, |fleet| async move {
+            .for_each_concurrent(MAX_CONCURRENT_ACTIVITY_NOTICES, async move |fleet| {
                 announce(streams, &fleet).await;
             })
             .await;

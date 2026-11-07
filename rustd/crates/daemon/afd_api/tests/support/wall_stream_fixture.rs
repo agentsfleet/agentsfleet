@@ -34,10 +34,7 @@ const CHUNK: &str = r#"{"kind":"chunk","event_id":"e","text":"live"}"#;
 /// The subject the fixture's workspace and key are created by.
 pub(crate) const SUBJECT: &str = "user_live_workspace_stream";
 
-pub(crate) async fn open_stream(
-    router: &axum::Router,
-    fixture: &Fixture,
-) -> axum::body::BodyDataStream {
+pub(crate) async fn open_stream(router: &axum::Router, fixture: &Fixture) -> BodyDataStream {
     let response = send(
         router,
         Method::GET,
@@ -97,7 +94,7 @@ async fn announces_counters(opening: &str, fixture: &Fixture) {
 /// The next whole SSE event, read to the blank line that ends it: an activity
 /// event arrives in several body chunks, and chunk boundaries carry no
 /// meaning to an SSE client.
-pub(crate) async fn next_chunk(body: &mut axum::body::BodyDataStream) -> String {
+pub(crate) async fn next_chunk(body: &mut BodyDataStream) -> String {
     let mut event = String::new();
     while !event.ends_with("\n\n") {
         let chunk = tokio::time::timeout(Duration::from_secs(2), body.next())
@@ -110,7 +107,7 @@ pub(crate) async fn next_chunk(body: &mut axum::body::BodyDataStream) -> String 
     event
 }
 
-pub(crate) async fn stream_ends(body: &mut axum::body::BodyDataStream) -> bool {
+pub(crate) async fn stream_ends(body: &mut BodyDataStream) -> bool {
     for _frame in 0..3 {
         match body.next().await {
             None => return true,

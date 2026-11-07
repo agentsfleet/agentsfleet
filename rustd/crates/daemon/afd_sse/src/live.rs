@@ -32,7 +32,7 @@ pub struct Live {
 impl Live {
     /// The live surface of an instance holding a pub/sub connection.
     #[must_use]
-    pub fn new(hub: SubscriptionHub, ceiling: Ceiling) -> Self {
+    pub const fn new(hub: SubscriptionHub, ceiling: Ceiling) -> Self {
         Self {
             hub: Some(hub),
             ceiling,
@@ -119,7 +119,7 @@ impl Live {
     pub fn multiplex_of(&self, fleets: &BTreeSet<String>) -> BoxStream<'static, Frame> {
         let mut fan_in = self.fan_in();
         fan_in.sync_to(fleets);
-        stream::unfold(fan_in, |mut fan_in| async move {
+        stream::unfold(fan_in, async move |mut fan_in| {
             let frame = fan_in.next_frame().await;
             Some((frame, fan_in))
         })

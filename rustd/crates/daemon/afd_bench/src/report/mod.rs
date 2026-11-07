@@ -119,7 +119,7 @@ impl Fixture {
 }
 
 /// Why a run stopped before its window elapsed.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AbortRecord {
     /// What the lane observed.
     pub observed_error_rate: f64,
@@ -265,7 +265,7 @@ impl Report {
 ///
 /// One home for the cast every lane needs, with the one reason it is sound.
 #[must_use]
-pub fn count(value: u64) -> f64 {
+pub const fn count(value: u64) -> f64 {
     #[expect(
         clippy::cast_precision_loss,
         reason = "a count past f64's exact range is not a run that finished"

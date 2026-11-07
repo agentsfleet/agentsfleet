@@ -128,7 +128,7 @@ pub struct VerifySessionResponse<'a> {
 
 /// What aborting every in-flight login answers with.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct DeleteAllSessionsResponse {
     /// How many were aborted by this call.
     pub aborted_count: usize,

@@ -3,6 +3,7 @@
 //! Runner inventory, lease history, event projections, and runner mutations
 //! live here so operator views compile independently of the host protocol.
 
+#![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
 pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};

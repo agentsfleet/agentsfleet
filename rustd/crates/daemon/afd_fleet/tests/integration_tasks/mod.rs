@@ -8,6 +8,7 @@ mod controls;
 mod decisions;
 mod exhaustion;
 mod fixture;
+mod fold_barrier;
 mod input_answers;
 mod input_receipts;
 mod qualification;

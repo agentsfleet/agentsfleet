@@ -122,7 +122,7 @@ fn renewal() -> Renew {
     }
 }
 
-fn meter(runtime_ms: u64) -> Meter {
+const fn meter(runtime_ms: u64) -> Meter {
     Meter {
         knowledge: Knowledge::Known,
         calls: 0,

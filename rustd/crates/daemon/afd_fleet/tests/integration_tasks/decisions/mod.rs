@@ -41,7 +41,7 @@ mod probes;
 mod publication_refusal;
 mod publication_transport;
 mod recovery;
-mod reply;
+use afd_fleet::test_util::decision as reply;
 mod report_completion;
 mod report_wait;
 mod settlement_recovery;

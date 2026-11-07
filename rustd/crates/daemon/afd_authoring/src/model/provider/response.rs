@@ -137,7 +137,9 @@ fn content(
                 proposal_calls.push(proposal(call, candidate, latest_said(request))?);
             }
             AssistantContent::ToolCall(_) | AssistantContent::Reasoning(_) => {}
-            _unexpected => return Err(ErrorKind::Provider.into()),
+            _unexpected @ (AssistantContent::Image(_) | AssistantContent::Opaque(_) | _) => {
+                return Err(ErrorKind::Provider.into());
+            }
         }
     }
     unique_calls(request, &proposal_calls)?;
@@ -195,7 +197,8 @@ fn latest_said(request: &garde::Valid<ModelCallInput>) -> Option<&str> {
         .rev()
         .find_map(|message| match message {
             af_wire::authoring::ModelMessage::User { text } => Some(text.as_str()),
-            _ => None,
+            af_wire::authoring::ModelMessage::Assistant { .. }
+            | af_wire::authoring::ModelMessage::Tool { .. } => None,
         })
 }
 
@@ -256,7 +259,10 @@ pub(in crate::model) fn decode_summary(
         match item {
             AssistantContent::Text(part) => text.push_str(&part.text),
             AssistantContent::Reasoning(_) => {}
-            _ => usable = false,
+            AssistantContent::ToolCall(_)
+            | AssistantContent::Image(_)
+            | AssistantContent::Opaque(_)
+            | _ => usable = false,
         }
     }
     let summary = usable

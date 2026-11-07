@@ -44,6 +44,9 @@ tracing.workspace = true
 
 [dev-dependencies]
 sqlx = { workspace = true, features = ["derive"] }
+# The parser that owns the stored fixture setup's format, which the seeded
+# copy is pinned against.
+af_fleet_runtime = { workspace = true, features = ["test-util"] }
 # The statements a use case joins with `const_format::concatcp!` instead of
 # keeping whole in one `.sql` file: the prepare suite (Dimension 7.4) cannot
 # find them on disk, so it names them. A dev-only cycle, which cargo allows.

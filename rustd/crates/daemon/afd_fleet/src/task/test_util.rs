@@ -11,7 +11,7 @@ use super::{PreparedPlan, PreparedTask};
 impl PreparedTask {
     /// Assembles already-prepared fixture data; native bind guards still apply.
     #[must_use]
-    pub fn from_parts(
+    pub const fn from_parts(
         source_span: Range<i32>,
         title: String,
         objective: String,

@@ -18,12 +18,12 @@ impl CurrentSettings {
             .decision
             .as_ref()
             .map(|model| &model.configuration)
-            .or(self.decision.as_ref().map(|configuration| &configuration.0));
+            .or_else(|| self.decision.as_ref().map(|configuration| &configuration.0));
         validate(
             details
                 .inference
                 .as_ref()
-                .or(self.inference.as_ref().map(|settings| &settings.0)),
+                .or_else(|| self.inference.as_ref().map(|settings| &settings.0)),
             &details.metadata,
             decision,
             &details.prices,

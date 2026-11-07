@@ -33,7 +33,11 @@ pub(super) fn canonical<'a>(
                 ActivityFrame::TaskTransferProgress(_) => {
                     ActivityFrame::TaskTransferProgress(saved)
                 }
-                _ => return None,
+                ActivityFrame::ContextProgress(_)
+                | ActivityFrame::ToolCallStarted(_)
+                | ActivityFrame::FleetResponseChunk(_)
+                | ActivityFrame::ToolCallCompleted(_)
+                | ActivityFrame::ToolCallProgress(_) => return None,
             })
         })
         .collect()

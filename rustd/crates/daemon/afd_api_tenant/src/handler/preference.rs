@@ -94,7 +94,7 @@ pub(crate) struct PreferencePath {
         afd_http::openapi::path::Preference,
     ),
     responses(
-        (status = 200, description = "The whole bag as it now reads, the written key included", body = PreferencesResponse),
+        (status = 200, description = "The whole bag as it now reads, the written key included", body = PreferencesResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

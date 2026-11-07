@@ -108,7 +108,7 @@ fn groups(rows: &[store::Aggregate]) -> (wire::Spending<'_>, wire::Choices<'_>) 
     (spending, choices)
 }
 
-fn totals(row: &store::Aggregate) -> wire::Totals {
+const fn totals(row: &store::Aggregate) -> wire::Totals {
     wire::Totals {
         charged_nanos: row.charged_nanos,
         input_tokens: row.input_tokens,

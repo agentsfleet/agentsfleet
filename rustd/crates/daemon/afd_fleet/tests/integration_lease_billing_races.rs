@@ -42,7 +42,7 @@ const BASE: i64 = af_wire::usage::DAEMON_SEQ_BASE as i64;
 const REQUEST_INPUT_TOKENS: u32 = 1_000;
 
 /// One provider request, numbered `seq`, as a runner reports it.
-fn request(held: &crate::report_seed::Held, seq: u32) -> af_wire::usage::RequestUsage {
+const fn request(held: &crate::report_seed::Held, seq: u32) -> af_wire::usage::RequestUsage {
     af_wire::usage::RequestUsage {
         seq,
         at: held.now,

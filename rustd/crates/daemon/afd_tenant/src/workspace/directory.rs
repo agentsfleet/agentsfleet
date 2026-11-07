@@ -147,8 +147,10 @@ impl Workspaces {
             .into_iter()
             .map(PageRow::parse)
             .collect::<Result<Vec<WorkspaceRow>>>()?;
-        let more = rows.len() > limit as usize;
-        rows.truncate(limit as usize);
+        // A `u32` always fits the `usize` of every target this daemon builds for.
+        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+        let more = rows.len() > limit;
+        rows.truncate(limit);
         Ok(WorkspacePage { rows, more })
     }
 

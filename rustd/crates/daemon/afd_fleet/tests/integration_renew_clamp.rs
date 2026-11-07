@@ -50,7 +50,7 @@ async fn extend(
 }
 
 /// The deadline a renewal granted, when it extended.
-fn deadline(renewed: &Renewed) -> Option<Timestamp> {
+const fn deadline(renewed: &Renewed) -> Option<Timestamp> {
     match renewed {
         Renewed::Extended { expires_at, .. } => Some(*expires_at),
         Renewed::MaxRuntime | Renewed::Lost | Renewed::Stopped { .. } => None,

@@ -83,7 +83,7 @@ impl Cursor {
         let plain = String::from_utf8(decoded).map_err(|_utf8| cursor_malformed())?;
         let (head, id) = plain
             .split_once(FIELD_SEPARATOR)
-            .ok_or(cursor_malformed())?;
+            .ok_or_else(cursor_malformed)?;
         let created_at: Timestamp = head.parse().map_err(|_instant| cursor_malformed())?;
         garde::Unvalidated::new(Self::after(created_at, id))
             .validate()

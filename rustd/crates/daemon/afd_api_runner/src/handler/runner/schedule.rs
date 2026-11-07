@@ -91,10 +91,10 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
     operation_id = "runner_create_schedule",
     summary = "Create a schedule for the running fleet",
     description = CREATE_DESCRIPTION,
-    request_body = ScheduleCreateRequest,
+    request_body = ScheduleCreateRequest<'_>,
     params(afd_http::openapi::path::Lease),
     responses(
-        (status = 201, description = RECONCILED, body = afd_api_wire::schedule::View),
+        (status = 201, description = RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -166,7 +166,7 @@ pub(crate) async fn create<D: Services>(
     ),
     params(afd_http::openapi::path::Lease, afd_http::openapi::query::Fence),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = Page),
+        (status = 200, description = afd_http::openapi::OK, body = Page<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

@@ -94,7 +94,7 @@ pub(super) async fn list(
         .fetch_all(&mut *tx)
         .await
         .map_err(query("page recoverable task effects"))?;
-    let more = effects.len() > input.limit as usize;
+    let more = effects.len() > usize::try_from(input.limit).unwrap_or(usize::MAX);
     if more {
         effects.pop();
     }

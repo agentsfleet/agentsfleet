@@ -9,7 +9,7 @@ use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, Selftest
 
 /// One runner in the newest-first operator list.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerItem<'a> {
     /// Canonical runner identifier.
@@ -49,7 +49,7 @@ pub struct RunnerItem<'a> {
 
 /// One page of runners.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnersResponse<'a> {
     /// Rows in newest-first order.
@@ -64,7 +64,7 @@ pub struct RunnersResponse<'a> {
 
 /// One runner with its live and lifetime counters.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerDetail<'a> {
     /// The fields shared with the runner list, flattened on the wire.

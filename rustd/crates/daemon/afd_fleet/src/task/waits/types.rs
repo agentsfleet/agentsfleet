@@ -19,25 +19,25 @@ pub struct VerifiedCompletion {
     #[garde(skip)]
     pub scope: CompletionScope,
     /// Connected installation identity.
-    #[garde(range(min = 1, max = i64::MAX as u64))]
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub installation_id: u64,
     /// Repository identity from the signed body.
-    #[garde(range(min = 1, max = i64::MAX as u64))]
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub repository_id: u64,
     /// Exact run head.
     #[garde(length(bytes, min = 40, max = 40), pattern(r"^[0-9a-f]{40}$"))]
     pub head: String,
     /// Native reviewed workflow identity.
-    #[garde(range(min = 1, max = i64::MAX as u64))]
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub workflow_id: u64,
     /// Run identity; attempts never share a completion receipt.
-    #[garde(range(min = 1, max = i64::MAX as u64))]
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub run_id: u64,
     /// Monotonic number within the reviewed workflow.
-    #[garde(range(min = 1, max = i64::MAX as u64))]
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub run_number: u64,
     /// GitHub's actual run attempt.
-    #[garde(range(min = 1, max = i32::MAX as u32))]
+    #[garde(range(min = 1, max = i32::MAX.unsigned_abs()))]
     pub run_attempt: u32,
     /// Bounded provider conclusion; it never completes a task directly.
     #[garde(length(bytes, min = 1, max = 64), pattern(r"^[a-z_]+$"))]
@@ -48,7 +48,7 @@ pub struct VerifiedCompletion {
 }
 
 /// Bounded maintenance result; identities stay in traces, never metric labels.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct WaitMaintenance {
     /// Native status observations attempted.
     pub checked: u32,

@@ -39,7 +39,7 @@ use std::time::Duration;
 /// (role-suffixable as `DATABASE_POOL_SIZE_API`), which is where a real number
 /// belongs: it travels with the Postgres `max_connections` the deployment
 /// actually runs, and that is not a fact this file can know.
-pub(super) fn pool_size_default() -> u32 {
+pub(super) const fn pool_size_default() -> u32 {
     /// Ordinary slots this service may take of a stock hundred-connection
     /// Postgres, after the three superuser reservations and a margin for the
     /// migrator, operator sessions, and monitoring.

@@ -19,7 +19,7 @@ fn principal(credential: PersonCredential, claim: &str) -> Principal {
     ))
 }
 
-fn method(verb: Verb) -> &'static Method {
+const fn method(verb: Verb) -> &'static Method {
     match verb {
         Verb::Get => &Method::GET,
         Verb::Post => &Method::POST,

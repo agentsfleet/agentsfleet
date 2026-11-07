@@ -19,16 +19,6 @@ mod lease_renewal;
 #[path = "support/fleet_setup.rs"]
 mod setup;
 
-#[path = "../../afd_dragonfly/tests/support/fake_redis/mod.rs"]
-#[allow(
-    unused_imports,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::format_push_string,
-    reason = "test support shared with `afd_dragonfly`, which uses the half this suite does not"
-)]
-mod fake_redis;
 #[path = "support/fleet_faulty_biller.rs"]
 mod faulty_biller;
 #[path = "support/fleet_lease_reads.rs"]
@@ -49,8 +39,6 @@ mod requests;
 mod rows;
 #[path = "support/fleet_lease_seed.rs"]
 mod seed;
-#[path = "../../afd_dragonfly/tests/support/subscriber.rs"]
-mod subscriber;
 #[path = "support/fleet_fixtures.rs"]
 mod support;
 #[path = "support/view_heartbeat.rs"]
@@ -86,6 +74,7 @@ mod integration_lease_edges;
 mod integration_lease_expiry_lock;
 #[path = "integration_lease_fairness.rs"]
 mod integration_lease_fairness;
+mod integration_lease_folds;
 mod integration_lease_gates;
 #[path = "integration_lease_history.rs"]
 mod integration_lease_history;

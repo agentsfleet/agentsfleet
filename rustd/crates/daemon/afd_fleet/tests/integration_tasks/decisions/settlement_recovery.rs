@@ -238,7 +238,7 @@ async fn late_usage(
     );
 }
 
-fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64) -> Financials {
+const fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64) -> Financials {
     Financials {
         balance: balance - charged,
         settled_cost: charged,

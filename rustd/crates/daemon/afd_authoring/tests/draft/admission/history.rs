@@ -30,7 +30,7 @@ const CLONE_HISTORY: &str = "INSERT INTO authoring.attempts SELECT r.* FROM auth
 const CUTOFF: &str = "UPDATE authoring.drafts SET last_message_sequence=$2,cancelled_through_sequence=$2 WHERE id=$1::uuid";
 const EXPLAIN: &str = const_format::concatcp!(
     "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ",
-    afd_authoring::Drafts::CURRENT_ATTEMPT_QUERY
+    Drafts::CURRENT_ATTEMPT_QUERY
 );
 
 async fn history(f: &Fixture, draft: &Draft, lease: &Claimed) {

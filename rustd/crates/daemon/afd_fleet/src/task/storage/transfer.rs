@@ -48,7 +48,7 @@ impl StorageSession<'_> {
         bounded::operation("verify_create_only", async {
             self.store
                 .verified
-                .get_or_try_init(|| async {
+                .get_or_try_init(async || {
                     let id = af_crypto::entropy::Entropy::new().uuid7(clock::now())?;
                     let path = Path::from(format!("capability-probes/{}", id.as_str()));
                     let initial = Bytes::from_static(b"create-only-one");
@@ -79,7 +79,12 @@ impl StorageSession<'_> {
                         Err(object_store::Error::AlreadyExists { .. }
                             | object_store::Error::Precondition { .. })
                     );
-                    let bytes = read_bounded(&self.backend, &path, initial.len() as u64).await?;
+                    let bytes = read_bounded(
+                        &self.backend,
+                        &path,
+                        u64::try_from(initial.len()).unwrap_or(u64::MAX),
+                    )
+                    .await?;
                     self.backend.delete(&path).await?;
                     if !rejected
                         || bytes.as_deref() != Some(initial.as_ref())
@@ -199,7 +204,9 @@ impl StorageSession<'_> {
 }
 
 async fn read_bounded(backend: &AmazonS3, path: &Path, length: u64) -> Result<Option<Vec<u8>>> {
-    if length > af_wire::task::CHECKPOINT_OBJECT_BYTES + af_crypto::TAG_LEN as u64 {
+    let tag = u64::try_from(af_crypto::TAG_LEN)
+        .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?;
+    if length > af_wire::task::CHECKPOINT_OBJECT_BYTES + tag {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
     let response = match backend.get(path).await {
@@ -214,12 +221,16 @@ async fn read_bounded(backend: &AmazonS3, path: &Path, length: u64) -> Result<Op
     let mut bytes = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
-        if (bytes.len() as u64).saturating_add(chunk.len() as u64) > length {
+        if u64::try_from(bytes.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(u64::try_from(chunk.len()).unwrap_or(u64::MAX))
+            > length
+        {
             return Err(TaskRefusal::CheckpointIncompatible.into());
         }
         bytes.extend_from_slice(&chunk);
     }
-    if bytes.len() as u64 != length {
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) != length {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
     Ok(Some(bytes))

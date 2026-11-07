@@ -55,7 +55,7 @@ pub struct Parameters {
     /// The longest the contended window may run.
     pub window: Duration,
     /// One simulated turn: how many renewals and activity posts each lease
-    /// sends before its report (`M241_001` §4).
+    /// sends before its report.
     pub turn: Duration,
 }
 

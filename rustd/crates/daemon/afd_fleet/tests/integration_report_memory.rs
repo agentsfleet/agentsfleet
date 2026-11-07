@@ -56,6 +56,7 @@ pub(crate) fn report<'a>(
     memory: Vec<MemoryDelta<'a>>,
 ) -> ReportRequest<'a> {
     ReportRequest {
+        folded_through_sequence: None,
         task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),

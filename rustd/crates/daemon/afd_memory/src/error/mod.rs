@@ -64,7 +64,7 @@ pub(crate) enum ErrorKind {
 
 impl Error {
     /// The code and the sentence, decided together.
-    fn answer(&self) -> (ErrorCode, &'static str) {
+    const fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
             ErrorKind::Datastore { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
@@ -90,19 +90,19 @@ impl Error {
 
     /// The registry code this failure answers with.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         self.answer().0
     }
 
     /// The sentence the caller is told.
     #[must_use]
-    pub fn detail(&self) -> &'static str {
+    pub const fn detail(&self) -> &'static str {
         self.answer().1
     }
 
     /// Whether the datastore could not be reached at all.
     #[must_use]
-    pub fn is_datastore_unavailable(&self) -> bool {
+    pub const fn is_datastore_unavailable(&self) -> bool {
         matches!(self.kind(), ErrorKind::Datastore { .. })
     }
 }

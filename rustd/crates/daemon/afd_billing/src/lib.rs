@@ -27,6 +27,7 @@
 //! be a pure function instead of something buried beside a connection. This
 //! module takes that as the rule rather than the exception.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;

@@ -140,7 +140,7 @@ fn unknown_report(lease: &Claimed) -> Report {
     }
 }
 
-async fn failed(f: &Fixture, draft: &Draft) -> afd_authoring::types::Failure {
+async fn failed(f: &Fixture, draft: &Draft) -> Failure {
     f.drafts
         .messages(
             f.access(),

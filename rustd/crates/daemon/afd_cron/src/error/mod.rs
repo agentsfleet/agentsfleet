@@ -242,7 +242,25 @@ impl Error {
             ErrorKind::TokenMalformed => REASON_TOKEN_MALFORMED,
             ErrorKind::SignatureInvalid => REASON_SIGNATURE_INVALID,
             ErrorKind::BodyMismatch => REASON_BODY_MISMATCH,
-            _operational => REASON_OPERATIONAL,
+            ErrorKind::Patch
+            | ErrorKind::Precondition
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Deleting
+            | ErrorKind::Json { .. }
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Refused { .. }
+            | ErrorKind::Held
+            | ErrorKind::Exhausted
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::UpstreamUnreachable { .. }
+            | ErrorKind::UpstreamRefused { .. }
+            | ErrorKind::RowUnreadable { .. }
+            | ErrorKind::RetireHeld
+            | ErrorKind::DestinationUnusable
+            | ErrorKind::DestinationNotPlainOrigin => REASON_OPERATIONAL,
         }
     }
 

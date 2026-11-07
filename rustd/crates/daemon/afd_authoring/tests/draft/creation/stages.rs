@@ -87,7 +87,8 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
         "RAISE EXCEPTION 'fixture refusal'",
     )
-    .await;
+    .await
+    .expect("the fixture refusal installs");
     c.fund().await;
     c.creations
         .save(c.base.access(), &key, request.clone(), now())

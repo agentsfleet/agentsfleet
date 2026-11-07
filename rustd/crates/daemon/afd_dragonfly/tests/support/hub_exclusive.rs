@@ -89,7 +89,7 @@ pub(crate) async fn owner_of(harness: &DragonflyHarness, slot: u16) -> Node {
             else {
                 return None;
             };
-            let mut owner = std::collections::BTreeSet::new();
+            let mut owner = BTreeSet::new();
             collect_nodes(primary, &mut owner);
             (*start <= i64::from(slot) && i64::from(slot) <= *end)
                 .then(|| owner.into_iter().next())

@@ -117,7 +117,7 @@ mod tests {
         assert_eq!(
             configured
                 .identity_webhook_secret()
-                .map(super::SecretBytes::expose),
+                .map(SecretBytes::expose),
             Some(b"whsec_fixture".as_slice()),
             "a configured deployment hands back the bytes it was given"
         );

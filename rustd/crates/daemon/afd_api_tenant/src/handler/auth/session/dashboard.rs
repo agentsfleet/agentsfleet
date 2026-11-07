@@ -46,12 +46,12 @@ use super::{DETAIL_APPROVE_BODY, DETAIL_VERIFY_BODY, EVENT_APPROVE, EVENT_VERIFY
         "encrypted sign-in data and a six-digit verification code. A second ",
         "approval for the same session returns 409 `UZ-AUTH-015`. ",
     ),
-    request_body = ApproveSessionRequest,
+    request_body = ApproveSessionRequest<'_>,
     params(
         afd_http::openapi::path::Session,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ApproveSessionResponse),
+        (status = 200, description = afd_http::openapi::OK, body = ApproveSessionResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -124,12 +124,12 @@ pub(crate) async fn approve<D: Services>(
         "(`UZ-AUTH-011`), invalid format (`UZ-AUTH-018`), ended session (`UZ-AUTH-013`), ",
         "pending approval (`UZ-AUTH-014`), or five-minute expiry (`UZ-AUTH-006`).",
     ),
-    request_body = VerifySessionRequest,
+    request_body = VerifySessionRequest<'_>,
     params(
         afd_http::openapi::path::Session,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = VerifySessionResponse),
+        (status = 200, description = afd_http::openapi::OK, body = VerifySessionResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::SESSION_EXPIRED),
         (status = 410, description = afd_http::openapi::GONE),

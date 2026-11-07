@@ -26,7 +26,7 @@ impl Fleet {
     }
 
     /// Uses the same wall-clock era as live database expiry checks.
-    pub(crate) const fn at(mut self, now: jiff::Timestamp) -> Self {
+    pub(crate) const fn at(mut self, now: Timestamp) -> Self {
         self.now = now;
         self
     }
@@ -67,7 +67,7 @@ impl Fleet {
 
     /// Runs approval decisions over the live queue paired with `database`.
     pub(crate) fn with_approval_queue(mut self, database: Db, queue: Dragonfly) -> Self {
-        let ledger = super::fleet::admissions(&database, &queue);
+        let ledger = fleet::admissions(&database, &queue);
         self.approvals = Inbox::new(database, queue, ledger);
         self
     }
@@ -192,18 +192,14 @@ impl Fleet {
     /// A lease plane whose memory verbs and mint answer `refusal`, for a case
     /// that proves how those routes render it.
     pub(crate) fn with_lease_refusal(mut self, refusal: fn() -> afd_fleet::Error) -> Self {
-        self.leases = super::NoWork::refusing(refusal);
+        self.leases = NoWork::refusing(refusal);
         self
     }
 
     /// A lease plane whose mint succeeds with `token`, for the case that
     /// proves the route writes it into the body and nowhere else.
-    pub(crate) fn with_lease_minting(
-        mut self,
-        token: &'static str,
-        expires_at: jiff::Timestamp,
-    ) -> Self {
-        self.leases = super::NoWork::minting(token, expires_at);
+    pub(crate) fn with_lease_minting(mut self, token: &'static str, expires_at: Timestamp) -> Self {
+        self.leases = NoWork::minting(token, expires_at);
         self
     }
 
@@ -262,7 +258,7 @@ impl Fleet {
 
     /// The lease plane's poll log, shared with the router this fleet builds,
     /// so a case taken before `router` reads what the handler handed it.
-    pub(crate) fn lease_plane(&self) -> super::NoWork {
+    pub(crate) fn lease_plane(&self) -> NoWork {
         self.leases.clone()
     }
 
@@ -277,7 +273,7 @@ impl Fleet {
     /// Taken BEFORE `router` consumes the fleet: the seam holds an `Arc`, so
     /// the handle a case keeps and the one the handler writes through are the
     /// same log.
-    pub(crate) fn signup_writebacks(&self) -> super::RecordingWriteback {
+    pub(crate) fn signup_writebacks(&self) -> RecordingWriteback {
         self.signup_writeback.clone()
     }
 
@@ -287,7 +283,7 @@ impl Fleet {
     ///
     /// Taken as a value rather than a flag so the log a case reads back is the
     /// one it handed in: build the seam, keep a clone, pass the other here.
-    pub(crate) fn with_signup_writeback(mut self, seam: super::RecordingWriteback) -> Self {
+    pub(crate) fn with_signup_writeback(mut self, seam: RecordingWriteback) -> Self {
         self.signup_writeback = seam;
         self
     }

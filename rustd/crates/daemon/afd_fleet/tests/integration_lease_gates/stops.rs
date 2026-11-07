@@ -138,7 +138,7 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     let claimed = claim(&fixtures, &seeded).await;
     assert!(drive(&fixtures, &seeded, claimed).await.contains(NO_LEASE));
     assert!(parked(&fixtures, &seeded.event_id).await);
-    let workspace = super::seed::workspace_of(&fixtures, &seeded.fleet).await;
+    let workspace = seed::workspace_of(&fixtures, &seeded.fleet).await;
     let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
     fixtures
         .queue()

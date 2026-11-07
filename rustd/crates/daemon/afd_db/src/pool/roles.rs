@@ -28,7 +28,7 @@ impl Pools {
     /// Returns the first role's config or connection error, naming the knob or
     /// the role — no role is silently skipped, because a daemon missing one is
     /// a daemon that fails later and further from the cause.
-    pub async fn connect_all<E: EnvSource + ?Sized>(env: &E) -> Result<Self> {
+    pub async fn connect_all<E: EnvSource + Sync + ?Sized>(env: &E) -> Result<Self> {
         Ok(Self {
             default: Self::open(env, DbRole::Default).await?,
             api: Self::open(env, DbRole::Api).await?,
@@ -36,7 +36,7 @@ impl Pools {
         })
     }
 
-    async fn open<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Db> {
+    async fn open<E: EnvSource + Sync + ?Sized>(env: &E, role: DbRole) -> Result<Db> {
         Db::connect(&PoolConfig::resolve(env, role)?).await
     }
 

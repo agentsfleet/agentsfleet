@@ -140,7 +140,7 @@ fn test_the_warm_floor_is_a_quarter_of_the_ceiling() {
 /// The rule is a share of the DATABASE's capacity and no longer reads the host
 /// at all — a connection costs a Postgres backend, not a local core — so this
 /// derives the same number on every runner.
-fn expected_default_pool_size() -> u32 {
+const fn expected_default_pool_size() -> u32 {
     const SERVICE_CONNECTION_BUDGET: u32 = 80;
     const EXPECTED_REPLICAS: u32 = 4;
     SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS

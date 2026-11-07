@@ -18,7 +18,8 @@ use afd_dragonfly::Dedicated;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use redis::Value;
 
-use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply};
+use af_core::test_util::trace::install_subscriber;
 
 /// The stream the fake is asked about. Any name would do: the fake matches on
 /// the command, and the deadline is a property of the connection.

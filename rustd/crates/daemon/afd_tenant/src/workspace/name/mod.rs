@@ -223,7 +223,8 @@ fn pick<'a>(list: &'a [&'a str], draw: u32) -> &'a str {
     if list.is_empty() {
         return FALLBACK_WORD;
     }
-    let index = draw as usize % list.len();
+    // A `u32` always fits the `usize` of every target this daemon builds for.
+    let index = usize::try_from(draw).unwrap_or(usize::MAX) % list.len();
     list.get(index).copied().unwrap_or(FALLBACK_WORD)
 }
 

@@ -79,7 +79,9 @@ impl Tree {
             .values()
             .try_fold(0_u64, |sum, node| sum.checked_add(node.size))
             .ok_or(TaskRefusal::LimitExhausted)?;
-        if self.nodes.len() != expected_entries as usize || bytes != expected_bytes {
+        if self.nodes.len() != usize::try_from(expected_entries).unwrap_or(usize::MAX)
+            || bytes != expected_bytes
+        {
             return Err(TaskRefusal::CheckpointIncompatible.into());
         }
         let mut cache = BTreeMap::new();
@@ -88,7 +90,7 @@ impl Tree {
             for (position, _separator) in path.match_indices('/') {
                 if self
                     .nodes
-                    .get(&path[..position])
+                    .get(path.split_at(position).0)
                     .is_some_and(|parent| !parent.directory)
                 {
                     return Err(TaskRefusal::CheckpointIncompatible.into());

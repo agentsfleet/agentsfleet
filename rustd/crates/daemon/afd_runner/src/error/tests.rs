@@ -65,6 +65,48 @@ fn stored_and_query_failures_retain_their_causes() -> Result<(), &'static str> {
     Ok(())
 }
 
+/// The API login ends a lock wait or a long statement with these two
+/// SQLSTATEs. The datastore answered "not now", so the runner is told to retry
+/// instead of being handed a failure its client counts toward self-termination.
+#[test]
+fn a_statement_ended_by_the_logins_bound_is_unavailable_and_retryable() {
+    for sqlstate in ["55P03", "57014"] {
+        let error = super::query("lock and count host lease capacity")(
+            afd_db::error::database_answer(sqlstate),
+        );
+
+        assert_eq!(
+            error.code(),
+            error_code::INTERNAL_DB_UNAVAILABLE,
+            "{sqlstate}"
+        );
+        assert_eq!(error.detail(), super::DETAIL_UNAVAILABLE, "{sqlstate}");
+        assert!(error.is_datastore_unavailable(), "{sqlstate}");
+        assert!(!error.is_rejected(), "{sqlstate}");
+        assert!(!error.is_runner_vanished(), "{sqlstate}");
+        assert!(
+            error
+                .to_string()
+                .contains("lock and count host lease capacity"),
+            "{error}"
+        );
+        assert!(error.source().is_some(), "{sqlstate} keeps its cause");
+    }
+}
+
+/// A statement the datastore refused on its own terms is still a defect: only
+/// the login's two bounds read as "try again".
+#[test]
+fn a_statement_refused_for_any_other_reason_stays_a_defect() {
+    for sqlstate in ["23505", "40P01"] {
+        let error = super::query("reading runner")(afd_db::error::database_answer(sqlstate));
+
+        assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY, "{sqlstate}");
+        assert_eq!(error.detail(), super::DETAIL_DATABASE_ERROR, "{sqlstate}");
+        assert!(!error.is_datastore_unavailable(), "{sqlstate}");
+    }
+}
+
 fn assert_database_error(error: &Error) {
     assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(error.detail(), super::DETAIL_DATABASE_ERROR);

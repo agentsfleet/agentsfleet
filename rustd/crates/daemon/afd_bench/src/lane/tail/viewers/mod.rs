@@ -136,7 +136,9 @@ pub(super) async fn rung(
 ) -> Result<Rung> {
     let shared = Arc::new(Shared {
         epoch: Instant::now(),
-        published_at: (0..FRAMES).map(|_| AtomicU64::new(0)).collect(),
+        published_at: std::iter::repeat_with(|| AtomicU64::new(0))
+            .take(usize::try_from(FRAMES).unwrap_or(usize::MAX))
+            .collect(),
         delivered: AtomicU64::new(0),
         ready: AtomicU64::new(0),
         progress: Notify::new(),

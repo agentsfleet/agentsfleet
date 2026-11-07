@@ -158,7 +158,12 @@ impl Error {
     pub fn stale_tag(&self) -> Option<&str> {
         match &self.inner.kind {
             ErrorKind::SourceStale { current } => Some(current),
-            _not_stale => None,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::NotFound
+            | ErrorKind::MustKillFirst
+            | ErrorKind::Shared { .. } => None,
         }
     }
 }

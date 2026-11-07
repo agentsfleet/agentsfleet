@@ -169,7 +169,7 @@ async fn write_message(
         {
             answer.as_deref()
         }
-        _ => None,
+        Report::Terminal { .. } | Report::Accounting { .. } => None,
     };
     sqlx::query(sql::MESSAGE)
         .bind(s.attempt.draft_id.as_str())

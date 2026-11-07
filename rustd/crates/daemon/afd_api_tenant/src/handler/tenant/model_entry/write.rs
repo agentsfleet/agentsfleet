@@ -52,7 +52,7 @@ use super::{
     ),
     request_body = CreateModelEntryRequest,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = StoredModelEntry),
+        (status = 201, description = afd_http::openapi::CREATED, body = StoredModelEntry<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -120,7 +120,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::path::Id,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = StoredModelEntry),
+        (status = 200, description = afd_http::openapi::OK, body = StoredModelEntry<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

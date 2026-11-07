@@ -86,7 +86,7 @@ async fn assert_reclaimed(
     );
 }
 
-fn input<'a>(fleet: &'a str, workspace: &'a str) -> Admission<'a> {
+const fn input<'a>(fleet: &'a str, workspace: &'a str) -> Admission<'a> {
     Admission {
         producer: Producer::Steer,
         key: Key::Unrepeatable,
@@ -107,7 +107,7 @@ const BLOCKED_ON: &str =
     "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
 
 /// A send that waits behind a staged admission's fleet lock draws the later
-/// sequence, and the claim takes the staged row first (`M242_001` Dimension 3.1).
+/// sequence, and the claim takes the staged row first.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {

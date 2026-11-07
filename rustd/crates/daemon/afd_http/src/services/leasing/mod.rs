@@ -3,6 +3,7 @@
 use af_core::id::Uuid7;
 use af_wire::activity::ActivityFrame;
 use af_wire::credentials::MintCredentialRequest;
+use af_wire::fold::{FoldRequest, FoldResponse};
 use af_wire::memory::{
     MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
 };
@@ -228,6 +229,19 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         lease_id: Uuid7,
         request: &MessageRequest<'_>,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send;
+
+    /// The messages `lease_id`'s fleet received after the request's cursor,
+    /// claimed for the run, oldest first; none for a lease this runner does
+    /// not hold live.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn folds(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &Uuid7,
+        request: &FoldRequest,
+    ) -> impl Future<Output = afd_fleet::Result<FoldResponse<'static>>> + Send;
 
     /// `text` with the lease's fleet's declared static secrets masked: what a
     /// schedule the fleet writes stores and hands the scheduler.

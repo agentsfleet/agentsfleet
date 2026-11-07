@@ -38,8 +38,8 @@ async fn a_blocked_authorization_read_closes_at_its_deadline_and_releases_capaci
         "blocked authorization cannot emit buffered text"
     );
     // gstack-timing-ok: checks the real bound after observing Postgres row-lock contention.
-    // The API login's `lock_timeout` (`afd_db::login`, `M242_001` §6) ends the
-    // blocked check before the stream's 10 s deadline would.
+    // The API login's `lock_timeout` (`afd_db::login`) ends the blocked check
+    // before the stream's 10 s deadline would.
     let lock_bound = humantime_ms(afd_db::login::LOCK_TIMEOUT);
     assert!(
         started.elapsed() >= lock_bound,

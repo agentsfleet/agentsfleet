@@ -176,12 +176,12 @@ impl Claim<'_> {
     pub(crate) fn publish(&self, rows: u64, now: Timestamp) {
         let counted = self.counted;
         self.ceiling.sampled.store(rows, Ordering::Relaxed);
-        let _ = self
-            .ceiling
-            .since
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |since| {
-                Some(since.saturating_sub(counted))
-            });
+        let _always_some: Result<u64, u64> =
+            self.ceiling
+                .since
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |since| {
+                    Some(since.saturating_sub(counted))
+                });
         self.ceiling
             .read_at
             .store(now.as_millisecond(), Ordering::Relaxed);

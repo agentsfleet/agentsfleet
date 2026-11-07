@@ -33,7 +33,7 @@ pub const MAX_SCHEDULES_PER_FLEET: usize = 32;
 /// that ceiling too, so a fleet that loops, or is talked into scheduling by
 /// what it reads, can take at most this many of the fleet's slots and always
 /// leaves the other half to the schedules people make.
-pub const FLEET_SCHEDULES_MAX: usize = MAX_SCHEDULES_PER_FLEET / 2;
+pub const FLEET_SCHEDULES_MAX: usize = MAX_SCHEDULES_PER_FLEET.div_euclid(2);
 
 /// The timezone a schedule that named none is interpreted in.
 pub const DEFAULT_TIMEZONE: &str = "UTC";

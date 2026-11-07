@@ -14,7 +14,14 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-test-util = ["af_core/test-util"]
+test-util = [
+    "af_core/test-util",
+    # `test_util::fake_redis` serves plain TCP and reads with deadlines.
+    "tokio/net",
+    "tokio/io-util",
+    "tokio/time",
+    "tokio/macros",
+]
 
 [dependencies]
 jiff.workspace = true

@@ -88,7 +88,7 @@ impl Fixture {
         }
     }
 
-    pub(crate) fn check<'fixture>(
+    pub(crate) const fn check<'fixture>(
         &'fixture self,
         event_id: &'fixture str,
         config: &'fixture FleetConfig,

@@ -178,7 +178,16 @@ impl Error {
         // implies — the borrow has none to run.
         match &self.inner.kind {
             ErrorKind::StillReferenced { count } => Some(*count),
-            _not_referenced => None,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Crypto { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::NameInvalid
+            | ErrorKind::DataInvalid
+            | ErrorKind::DataTooLarge
+            | ErrorKind::NotFound
+            | ErrorKind::NameTaken
+            | ErrorKind::WorkspaceUnknown => None,
         }
     }
 }

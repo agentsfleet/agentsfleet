@@ -3,8 +3,7 @@
 //! A person pressed approve or deny on a Slack message and Slack posted the
 //! interactive payload here; this resolves the gate the fleet is parked on.
 //!
-//! # This route writes a ROW where every other one in this family writes a
-//! stream entry
+//! # This route writes a ROW where every other one in this family writes a stream entry
 //!
 //! The rest of the signed-ingress family appends an event and lets a runner
 //! decide what it means. An approval is already a decision — there is nothing
@@ -102,7 +101,7 @@ struct Answer {
         afd_http::openapi::path::FleetOnly,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = Resolved),
+        (status = 200, description = afd_http::openapi::OK, body = Resolved<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

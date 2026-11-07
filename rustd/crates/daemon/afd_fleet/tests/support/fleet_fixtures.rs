@@ -226,7 +226,7 @@ impl Fixtures {
     }
 
     /// Dragonfly for tests reading activity frames or outbound delivery.
-    pub(crate) fn queue(&self) -> &Dragonfly {
+    pub(crate) const fn queue(&self) -> &Dragonfly {
         self.queue
             .as_ref()
             .expect("this fixture has no queue — build it with Fixtures::create_with_queue")

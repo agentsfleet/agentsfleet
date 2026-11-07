@@ -29,6 +29,7 @@ pub mod envelope;
 pub mod event;
 pub mod fence;
 pub mod finalize;
+pub mod fold;
 pub mod history;
 pub mod installed;
 pub mod issue;

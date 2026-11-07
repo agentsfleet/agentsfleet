@@ -86,7 +86,7 @@ afd_vault.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
 # The daemon's own lease instrument: candidates per poll are READ from
 # `producers::fleet::lease_polled`. Statements come from `pg_stat_statements`,
-# which counts what every crate sends (M241_001 §3).
+# which counts what every crate sends.
 af_observability.workspace = true
 # The manual reader the counters are collected through. Nothing exports
 # anywhere; the provider exists so an in-process reader can be asked for a sum.

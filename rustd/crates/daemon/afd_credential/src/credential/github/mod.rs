@@ -267,6 +267,6 @@ fn installation_id(stored: &Value) -> Option<u64> {
             .and_then(NonZeroU64::new)
             .map(NonZeroU64::get),
         Value::String(text) => text.parse::<NonZeroU64>().ok().map(NonZeroU64::get),
-        _not_an_id => None,
+        _not_an_id @ (Value::Null | Value::Bool(_) | Value::Array(_) | Value::Object(_)) => None,
     }
 }

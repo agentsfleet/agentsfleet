@@ -24,7 +24,7 @@ fn report() -> Report {
     }
 }
 
-fn meter() -> Meter {
+const fn meter() -> Meter {
     Meter {
         knowledge: Knowledge::Known,
         calls: 0,

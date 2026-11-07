@@ -43,7 +43,7 @@ impl KeysetCursor {
 }
 
 /// One operator list row. Authentication material is unrepresentable here.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunnerItem {
     /// Canonical runner identifier.
     id: Uuid7,
@@ -146,7 +146,7 @@ impl RunnerItem {
 }
 
 /// A keyset page of runners.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunnerPage {
     /// Rows in newest-first keyset order.
     items: Vec<RunnerItem>,
@@ -183,7 +183,7 @@ impl RunnerPage {
 }
 
 /// The single-runner read with live and lifetime counters.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunnerDetail {
     /// The same runner shape the list returns.
     item: RunnerItem,
@@ -270,7 +270,7 @@ impl RunnerDetail {
 }
 
 /// A keyset page of append-only runner history.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunnerEventPage {
     /// History rows in newest-first keyset order.
     items: Vec<RunnerEventItem<'static>>,

@@ -50,7 +50,7 @@ fn ask(work: &WorkKey, payer: &Account, next: Nanos) -> Ask {
     }
 }
 
-fn line(seq: u32, charged: Nanos, runtime_ms: u32) -> RatedLine {
+const fn line(seq: u32, charged: Nanos, runtime_ms: u32) -> RatedLine {
     RatedLine {
         usage: UsageLine {
             seq,

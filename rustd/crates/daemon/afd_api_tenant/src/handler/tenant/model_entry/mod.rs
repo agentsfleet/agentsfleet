@@ -155,7 +155,7 @@ impl StructCursor for Cursor {
         afd_http::openapi::query::TenantPage,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ModelEntriesResponse),
+        (status = 200, description = afd_http::openapi::OK, body = ModelEntriesResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

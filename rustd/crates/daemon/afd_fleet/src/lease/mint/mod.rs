@@ -141,7 +141,8 @@ impl Plane {
                     .binding
                     .as_ref()
                     .and_then(|binding| {
-                        repository.and_then(|repository| binding.read_repository(repository))
+                        let repository = repository?;
+                        binding.read_repository(repository)
                     })
                     .ok_or(crate::task::TaskRefusal::InvalidTarget)?,
             );
@@ -155,6 +156,8 @@ impl Plane {
                 .binding
                 .as_ref()
                 .map(af_fleet_runtime::config::RepositoryBinding::read_only);
+        } else {
+            // Every other purpose mints over the binding exactly as stored.
         }
         self.mint_scoped(&scope, &request.integration, now, None)
             .await

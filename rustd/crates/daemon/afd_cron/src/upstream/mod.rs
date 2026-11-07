@@ -44,9 +44,8 @@ pub fn upstream_id(schedule: &Uuid7) -> String {
 /// pick a schedule the signed token says nothing about.
 #[must_use]
 pub fn schedule_of(upstream: &str) -> Option<Uuid7> {
-    upstream
-        .strip_prefix(UPSTREAM_ID_PREFIX)
-        .and_then(|row| Uuid7::parse(row).ok())
+    let row = upstream.strip_prefix(UPSTREAM_ID_PREFIX)?;
+    Uuid7::parse(row).ok()
 }
 
 #[cfg(test)]

@@ -1,9 +1,11 @@
-//! Where an accepted steer went, decided from what the ledger saw (`M242_002`).
+//! Where an accepted steer went, decided from what the ledger saw.
 //!
-//! A live durable-task run claims later messages from a person in its
-//! conversation at its next safe boundary (#803's `pending_inputs.sql`), so
-//! such a send is `folded`. A send with nothing waiting and no live run starts
-//! a run of its own. Anything else waits its turn.
+//! A live run claims the messages its fleet receives at its next model call:
+//! a durable task a person's messages in its conversation
+//! (`pending_inputs.sql`), any other run every message, up to the first parked
+//! or task-bound one (`claim_inputs.sql`). Such a send is `folded`. A send with
+//! nothing waiting and no live run starts a run of its own. Anything else
+//! waits its turn.
 
 pub use af_wire::event::SteerDisposition;
 use afd_admission::RunFacts;
@@ -21,26 +23,41 @@ pub struct Placed {
 
 /// Names where a steer from `actor` went, given the run the ledger saw.
 ///
-/// A person's send is the only kind a run claims mid-run: #803 reads steers
-/// whose actor is a person's, never the machine's, in the run's conversation.
+/// A durable task reads steers whose actor is a person's, never the
+/// machine's, in its conversation. Any other run folds every message unless
+/// one it must not pass waits ahead of it.
+///
+/// `message_id` is the admission this answer is for. A retry of the send that
+/// started the live run meets that run as its head, and a message cannot fold
+/// into the run it began, so it is `started` again. A fresh message never
+/// matches: the run it sees was admitted before it.
 #[must_use]
-pub fn of(run: &RunFacts, actor: &str) -> Placed {
-    let person = is_steer_actor(actor) && actor != ACTOR_MACHINE;
-    if let Some(live) = &run.live_run
-        && person
-        && live.takes_input
-        && live.same_conversation
-    {
-        return Placed {
-            disposition: SteerDisposition::Folded,
-            folded_into_event_id: Some(live.event_id.clone()),
+pub fn of(run: &RunFacts, actor: &str, message_id: &str) -> Placed {
+    if let Some(live) = &run.live_run {
+        if live.event_id == message_id {
+            return without_run(SteerDisposition::Started);
+        }
+        let folds = if live.durable_task {
+            is_steer_actor(actor) && actor != ACTOR_MACHINE && live.same_conversation
+        } else {
+            !run.earlier_waiting
         };
+        if folds {
+            return Placed {
+                disposition: SteerDisposition::Folded,
+                folded_into_event_id: Some(live.event_id.clone()),
+            };
+        }
     }
-    let disposition = if run.live_run.is_none() && !run.earlier_waiting {
+    without_run(if run.live_run.is_none() && !run.earlier_waiting {
         SteerDisposition::Started
     } else {
         SteerDisposition::Queued
-    };
+    })
+}
+
+/// A placement that joins no run.
+const fn without_run(disposition: SteerDisposition) -> Placed {
     Placed {
         disposition,
         folded_into_event_id: None,
@@ -55,12 +72,14 @@ mod tests {
     use crate::steer::{ACTOR_MACHINE, steer_actor};
 
     const RUN_EVENT: &str = "0190d5c2-7e1a-7000-8000-00000000e001";
+    /// A message other than the one that started the run.
+    const LATER: &str = "0190d5c2-7e1a-7000-8000-00000000e002";
 
     fn live_task() -> RunFacts {
         RunFacts {
             live_run: Some(LiveRun {
                 event_id: RUN_EVENT.to_owned(),
-                takes_input: true,
+                durable_task: true,
                 same_conversation: true,
             }),
             earlier_waiting: true,
@@ -75,38 +94,114 @@ mod tests {
         facts
     }
 
-    /// The truth table (`M242_002` Dimension 4.1).
     #[test]
     fn disposition_follows_the_run_state() {
         let person = steer_actor("user_2folder");
-        let folded = of(&live_task(), &person);
+        let folded = of(&live_task(), &person, LATER);
         assert_eq!(folded.disposition, SteerDisposition::Folded);
         assert_eq!(folded.folded_into_event_id.as_deref(), Some(RUN_EVENT));
 
         assert_eq!(
-            of(&RunFacts::default(), &person).disposition,
+            of(&RunFacts::default(), &person, LATER).disposition,
             SteerDisposition::Started
         );
 
-        let plain = with_run(|live| live.takes_input = false);
-        assert_eq!(of(&plain, &person).disposition, SteerDisposition::Queued);
-
         let other_thread = with_run(|live| live.same_conversation = false);
         assert_eq!(
-            of(&other_thread, &person).disposition,
-            SteerDisposition::Queued
+            of(&other_thread, &person, LATER).disposition,
+            SteerDisposition::Queued,
+            "a durable task reads only its own conversation"
         );
 
         assert_eq!(
-            of(&live_task(), ACTOR_MACHINE).disposition,
+            of(&live_task(), ACTOR_MACHINE, LATER).disposition,
             SteerDisposition::Queued,
-            "a machine's send is never claimed mid-run"
+            "a durable task never claims a machine's send"
+        );
+
+        let plain = with_run(|live| live.durable_task = false);
+        let plain_clear = RunFacts {
+            earlier_waiting: false,
+            ..plain.clone()
+        };
+        assert_eq!(
+            of(&plain_clear, ACTOR_MACHINE, LATER).disposition,
+            SteerDisposition::Folded,
+            "any other run folds every send, a machine's included"
+        );
+        assert_eq!(
+            of(
+                &RunFacts {
+                    live_run: plain_clear.live_run.clone().map(|live| LiveRun {
+                        same_conversation: false,
+                        ..live
+                    }),
+                    ..plain_clear
+                },
+                &person,
+                LATER
+            )
+            .disposition,
+            SteerDisposition::Folded,
+            "whatever conversation it came from"
+        );
+        assert_eq!(
+            of(&plain, &person, LATER).disposition,
+            SteerDisposition::Queued,
+            "a parked or task-bound message ahead is never passed"
         );
 
         let waiting = RunFacts {
             earlier_waiting: true,
             ..RunFacts::default()
         };
-        assert_eq!(of(&waiting, &person).disposition, SteerDisposition::Queued);
+        assert_eq!(
+            of(&waiting, &person, LATER).disposition,
+            SteerDisposition::Queued
+        );
+    }
+
+    /// An actor that is not a steer's at all, such as a webhook's, is not a
+    /// person: a durable task leaves its message for a later run even in the
+    /// task's own conversation, where any other run still folds it.
+    #[test]
+    fn a_durable_task_leaves_a_message_whose_actor_is_no_steer() {
+        for actor in ["webhook:github", "cron:nightly", ""] {
+            assert_eq!(
+                of(&live_task(), actor, LATER).disposition,
+                SteerDisposition::Queued,
+                "{actor:?} is not a person"
+            );
+        }
+        let plain_clear = RunFacts {
+            earlier_waiting: false,
+            ..with_run(|live| live.durable_task = false)
+        };
+        assert_eq!(
+            of(&plain_clear, "webhook:github", LATER).disposition,
+            SteerDisposition::Folded
+        );
+    }
+
+    /// A retry of the send that started the live run meets that run as its own
+    /// head. It never folds into the run it began, for whoever sent it and
+    /// whatever kind of run it is.
+    #[test]
+    fn a_retry_of_the_send_that_started_the_run_is_started_again() {
+        let person = steer_actor("user_2folder");
+        let plain_clear = RunFacts {
+            earlier_waiting: false,
+            ..with_run(|live| live.durable_task = false)
+        };
+        for (facts, actor) in [
+            (live_task(), person.as_str()),
+            (live_task(), ACTOR_MACHINE),
+            (plain_clear.clone(), person.as_str()),
+            (plain_clear, ACTOR_MACHINE),
+        ] {
+            let placed = of(&facts, actor, RUN_EVENT);
+            assert_eq!(placed.disposition, SteerDisposition::Started, "{actor}");
+            assert_eq!(placed.folded_into_event_id, None, "{actor}");
+        }
     }
 }

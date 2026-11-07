@@ -30,7 +30,7 @@ use crate::frame::Frame;
 pub fn tail(subscription: Subscription) -> impl Stream<Item = Frame> + Send {
     stream::unfold(
         (subscription, 0_u64),
-        |(mut subscription, seq)| async move {
+        async move |(mut subscription, seq)| {
             match subscription.recv().await {
                 Ok(Received::Message(message)) => {
                     let next = seq.wrapping_add(1);

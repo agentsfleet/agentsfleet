@@ -35,7 +35,7 @@ pub(super) async fn probe(config: &PoolConfig) -> Result<()> {
     .map_err(|source| classify_acquire(role.tag(), config.acquire_timeout(), source))?;
     // A failed close on a connection that already answered proves nothing
     // and is not the caller's problem; the socket goes with the value.
-    let _ = probe.close().await;
+    let _closed: Result<(), sqlx::Error> = probe.close().await;
     Ok(())
 }
 

@@ -147,7 +147,7 @@ pub struct Vault {
 impl Vault {
     /// Binds the vault to an already-connected pool and a resolved key.
     #[must_use]
-    pub fn new(database: Db, kek: Arc<Kek>, entropy: Entropy) -> Self {
+    pub const fn new(database: Db, kek: Arc<Kek>, entropy: Entropy) -> Self {
         Self {
             directory: Directory::new(database),
             activity_streams: None,

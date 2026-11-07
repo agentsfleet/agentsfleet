@@ -89,7 +89,8 @@ async fn run(mut dispatch: Dispatch, mut pushes: mpsc::UnboundedReceiver<PushInf
     dispatch.burst.flush();
     // The control task is gone only when the hub is, and then nobody needs
     // the redial.
-    let _ = dispatch.signals.send(Signal::Redial(loss));
+    let _hub_gone: Result<(), mpsc::error::SendError<Signal>> =
+        dispatch.signals.send(Signal::Redial(loss));
 }
 
 /// Sleeps until `deadline`, or forever when there is none.
@@ -130,11 +131,20 @@ impl Dispatch {
                     let channels = live.len();
                     let window_ms = NODE_REPAIR_WINDOW.as_millis();
                     tracing::info!(channels, window_ms, event = "hub_node_repairing");
-                    let _ = self.signals.send(Signal::Repair(live));
+                    let _hub_gone: Result<(), mpsc::error::SendError<Signal>> =
+                        self.signals.send(Signal::Repair(live));
                 }
                 return loss;
             }
-            _other => {}
+            _other @ (PushKind::Other(_)
+            | PushKind::Invalidate
+            | PushKind::Message
+            | PushKind::PMessage
+            | PushKind::Unsubscribe
+            | PushKind::PUnsubscribe
+            | PushKind::Subscribe
+            | PushKind::PSubscribe
+            | _) => {}
         }
         None
     }
@@ -160,7 +170,8 @@ impl Dispatch {
         let channel_name = channel.as_str();
         tracing::info!(channel = channel_name, event = "hub_subscription_moved");
         self.attribution.moved(channel.clone());
-        let _ = self.signals.send(Signal::Resubscribe(channel));
+        let _hub_gone: Result<(), mpsc::error::SendError<Signal>> =
+            self.signals.send(Signal::Resubscribe(channel));
     }
 
     /// A timer fired. `Some` means the pending loss went unexplained.

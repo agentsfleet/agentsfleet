@@ -152,7 +152,7 @@ const CONCURRENT_SENDS: usize = 64;
 const RACING_REPEATS: usize = 100;
 
 /// 64 unkeyed sends released together each land once, with no per-fleet cap to
-/// refuse any (`M242_001` Dimension 2.2).
+/// refuse any.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
@@ -192,7 +192,7 @@ async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
 }
 
 /// 100 sends of one key released together leave one row, and every answer
-/// names it (`M242_001` Dimension 2.4).
+/// names it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_hundred_racing_repeats_admit_one_row() {

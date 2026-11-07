@@ -77,8 +77,8 @@ pub(crate) struct FleetSourcePath {
         afd_http::openapi::path::FleetSource,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored),
-        (status = 202, description = afd_http::openapi::ACCEPTED, body = webhook::Accepted),
+        (status = 200, description = afd_http::openapi::IGNORED, body = webhook::Ignored<'_>),
+        (status = 202, description = afd_http::openapi::ACCEPTED, body = webhook::Accepted<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

@@ -54,7 +54,7 @@ const EVENT_PROFILE: &str = "caller_profile_unresolved";
     params(
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = CurrentUserResponse),
+        (status = 200, description = afd_http::openapi::OK, body = CurrentUserResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -207,7 +207,7 @@ mod tests {
     fn a_workspace_scoped_session_still_renders_as_a_session() {
         let ceiling = PersonCredential::SessionToken {
             workspace_scope: Some(
-                af_core::id::Uuid7::parse("0193c5e0-0000-7000-8000-000000001234")
+                Uuid7::parse("0193c5e0-0000-7000-8000-000000001234")
                     .expect("the fixture identifier is well formed"),
             ),
         };

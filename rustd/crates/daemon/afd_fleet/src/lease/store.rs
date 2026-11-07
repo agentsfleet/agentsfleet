@@ -39,7 +39,7 @@ impl Leases {
         }
     }
 
-    pub(super) fn with_ticket(
+    pub(super) const fn with_ticket(
         mut self,
         ticket: Option<afd_runner::capacity::choice::Ticket>,
     ) -> Self {

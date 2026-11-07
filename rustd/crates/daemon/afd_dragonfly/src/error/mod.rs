@@ -315,7 +315,19 @@ impl Error {
             | ErrorKind::GroupExists { .. }
             | ErrorKind::WrongType { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Full { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            _ => error_code::STARTUP_DRAGONFLY_CONNECT,
+            ErrorKind::MissingUrl { .. }
+            | ErrorKind::InvalidUrl { .. }
+            | ErrorKind::InvalidNamespace { .. }
+            | ErrorKind::CaCertUnreadable { .. }
+            | ErrorKind::ConfigRejected { .. }
+            | ErrorKind::Unreachable { .. }
+            | ErrorKind::CertificateRejected { .. }
+            | ErrorKind::ConnectTimeout { .. }
+            | ErrorKind::Timeout { .. }
+            | ErrorKind::UnsafeEviction { .. }
+            | ErrorKind::NotACluster { .. }
+            | ErrorKind::MissingCapability { .. }
+            | ErrorKind::HubClosed => error_code::STARTUP_DRAGONFLY_CONNECT,
         }
     }
 }

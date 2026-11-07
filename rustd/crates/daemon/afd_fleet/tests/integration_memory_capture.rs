@@ -302,7 +302,7 @@ async fn stored_window(run: &report_seed::Held, fleet_id: &Uuid7) -> Vec<String>
 }
 
 /// One recall body, matching every entry.
-fn recall(lease_id: &str, fencing_token: u64) -> MemoryRecallRequest<'_> {
+const fn recall(lease_id: &str, fencing_token: u64) -> MemoryRecallRequest<'_> {
     MemoryRecallRequest {
         lease_id: Cow::Borrowed(lease_id),
         fencing_token,

@@ -44,7 +44,7 @@ struct Envelope<'a> {
         ("task_id" = String, Path, description = "Task UUIDv7."),
         ("If-Match" = String, Header, description = "Required current strong resource tag.")),
     request_body = PatchTaskRequest,
-    responses((status = 200, body = afd_api_wire::fleet::TaskResponse, description = "Current task", headers(("ETag" = String))),
+    responses((status = 200, body = afd_api_wire::fleet::TaskResponse<'_>, description = "Current task", headers(("ETag" = String))),
         (status = 400, description = "Invalid task control"), (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"), (status = 404, description = "Task unavailable"),
         (status = 409, description = "Generation or lifecycle refuses mutation"),

@@ -50,7 +50,7 @@ pub(crate) const LEDGER_ROWS_AFTER_SETTLE: i64 = 1;
 /// store the answer and whether the claim can still win. Holding everything
 /// else fixed is what makes the wallet assertions read as one run reported
 /// more than once.
-pub(crate) fn report<'a>(
+pub(crate) const fn report<'a>(
     lease_id: &'a str,
     runner_id: &'a Uuid7,
     lease: &'a Reported,
@@ -60,6 +60,7 @@ pub(crate) fn report<'a>(
 ) -> TerminalReport<'a> {
     let (lease_key, pricing) = priced;
     TerminalReport {
+        folded_through_sequence: None,
         task_settlement: None,
         lease_id,
         runner_id,

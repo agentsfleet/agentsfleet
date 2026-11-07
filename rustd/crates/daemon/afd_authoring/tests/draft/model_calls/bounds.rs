@@ -48,7 +48,7 @@ async fn the_complete_request_including_system_instructions_is_bounded_before_di
         set_context(&f, context).await;
         let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
         let provider = Arc::new(Provider::known());
-        let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+        let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
         assert_eq!(
             calls
                 .call(&f.runner, &attempt.lease, fixture::request(&attempt))
@@ -106,7 +106,7 @@ async fn spent_output_cannot_create_a_dispatch() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     sqlx::query("UPDATE authoring.attempts SET output_token_count=8192 WHERE id=$1::uuid")
         .bind(attempt.id.as_str())
         .execute(&mut *f.connection().await)
@@ -131,7 +131,7 @@ async fn a_missing_wallet_cannot_create_a_dispatch() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     sqlx::query("DELETE FROM billing.wallets WHERE tenant_id=$1::uuid")
         .bind(f.tenant.as_str())
         .execute(&mut *f.connection().await)

@@ -83,7 +83,7 @@ pub(crate) enum ErrorKind {
 impl Error {
     /// The registry code this failure answers with.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
@@ -106,7 +106,7 @@ impl Error {
 
     /// The sentence the caller is told.
     #[must_use]
-    pub fn detail(&self) -> &'static str {
+    pub const fn detail(&self) -> &'static str {
         match self.kind() {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::Datastore { .. } => DETAIL_UNAVAILABLE,
@@ -126,7 +126,11 @@ impl Error {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Credential { source } => source.is_datastore_unavailable(),
             ErrorKind::Billing { source } => source.is_datastore_unavailable(),
-            _served => false,
+            _served @ (ErrorKind::Query { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }) => false,
         }
     }
 
@@ -145,7 +149,13 @@ impl Error {
     pub const fn is_config_permanent(&self) -> bool {
         match self.kind() {
             ErrorKind::Credential { source } => source.is_config_permanent(),
-            _transient => false,
+            _transient @ (ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Billing { .. }) => false,
         }
     }
 }

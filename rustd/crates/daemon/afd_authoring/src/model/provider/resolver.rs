@@ -16,7 +16,8 @@ impl Resolve for Guarded {
             {
                 return Err(std::io::Error::other("authoring destination refused").into());
             }
-            Ok(Box::new(addresses.into_iter()) as Addrs)
+            let resolved: Addrs = Box::new(addresses.into_iter());
+            Ok(resolved)
         })
     }
 }

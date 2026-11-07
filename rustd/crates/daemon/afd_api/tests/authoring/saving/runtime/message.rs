@@ -168,8 +168,7 @@ const STATUS_BLIND_KEY: &str =
 
 /// No status read precedes the admission: with the fleets store unreachable
 /// and the steering ledger live over an active fleet, a steer answers 202. The
-/// route before `M242_001` read the status first and answered 503 here
-/// (Dimension 4.3).
+/// route once read the status first and answered 503 here.
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_steer_reads_no_fleet_status_before_admitting() {

@@ -25,6 +25,7 @@
 //! reason `workspace::Workspaces::authorize` is here and the middleware calling
 //! it is not.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod apikey;

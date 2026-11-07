@@ -12,7 +12,7 @@ pub(super) const DESCRIPTION: &str = "At 9:00 AM (Asia/Kolkata)";
 pub(super) const EXPRESSION: &str = "0 9 * * *";
 pub(super) const ZONE: &str = "Asia/Kolkata";
 
-pub(super) fn new(fleet: &Uuid7) -> NewSchedule<'_> {
+pub(super) const fn new(fleet: &Uuid7) -> NewSchedule<'_> {
     NewSchedule {
         fleet,
         source: Source::Api,

@@ -153,11 +153,11 @@ mod tests {
     /// for a runnable send cannot go stale (`M242_001` Dimension 2.8).
     #[test]
     fn only_active_is_runnable() {
-        let runnable: Vec<super::FleetStatus> = super::FleetStatus::ALL
+        let runnable: Vec<FleetStatus> = FleetStatus::ALL
             .into_iter()
             .filter(|status| status.is_runnable())
             .collect();
-        assert_eq!(runnable, [super::FleetStatus::Active]);
+        assert_eq!(runnable, [FleetStatus::Active]);
     }
 
     use af_observability::metrics::label::fleet::FleetStatusLabel;

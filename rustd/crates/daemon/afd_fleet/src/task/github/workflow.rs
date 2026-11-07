@@ -48,7 +48,9 @@ pub(super) async fn review(
             path(&["repos", owner, name, "actions", "workflows"])?
         ))
         .await?;
-    if listed.total_count != reviewed.len() as u64 || listed.workflows.len() != reviewed.len() {
+    if listed.total_count != u64::try_from(reviewed.len()).unwrap_or(u64::MAX)
+        || listed.workflows.len() != reviewed.len()
+    {
         return Err(TaskRefusal::InvalidTarget.into());
     }
     let mut workflows = Vec::with_capacity(reviewed.len());
@@ -183,7 +185,7 @@ fn has_secrets(value: &Value) -> bool {
         Value::Object(values) => values
             .iter()
             .any(|(key, value)| key.eq_ignore_ascii_case("secrets") || has_secrets(value)),
-        _ => false,
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }
 

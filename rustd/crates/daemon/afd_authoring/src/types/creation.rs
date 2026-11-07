@@ -126,7 +126,7 @@ pub(crate) struct InitialStart {
 }
 
 impl InitialStart {
-    pub(crate) fn new(choice: Start) -> Self {
+    pub(crate) const fn new(choice: Start) -> Self {
         let outcome = match &choice {
             Start::None => StartOutcome::None,
             Start::RunNow { .. } => StartOutcome::RunNow {
@@ -138,7 +138,7 @@ impl InitialStart {
         Self { choice, outcome }
     }
 
-    pub(crate) fn unadmitted(&self) -> bool {
+    pub(crate) const fn unadmitted(&self) -> bool {
         matches!(self.outcome, StartOutcome::RunNow { event_id: None, .. })
     }
 }

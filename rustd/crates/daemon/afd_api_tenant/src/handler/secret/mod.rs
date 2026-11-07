@@ -101,12 +101,12 @@ pub(crate) type StoredSecret = StoredSecretResponse<'static>;
         "creates produce one 201 and one 409. Use the secret's `PUT` endpoint to replace ",
         "it.",
     ),
-    request_body = StoreSecretRequest,
+    request_body = StoreSecretRequest<'_>,
     params(
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = StoredSecretResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = StoredSecretResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -164,7 +164,7 @@ pub(crate) async fn store<D: Services>(
         afd_http::openapi::path::Workspace,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = SecretsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = SecretsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -207,12 +207,12 @@ pub(crate) async fn list<D: Services>(
         "missing name returns `UZ-VAULT-003` without creating it; use `POST` to create a ",
         "secret.",
     ),
-    request_body = ReplaceSecretRequest,
+    request_body = ReplaceSecretRequest<'_>,
     params(
         afd_http::openapi::path::Secret,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = StoredSecretResponse),
+        (status = 200, description = afd_http::openapi::OK, body = StoredSecretResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

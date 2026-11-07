@@ -94,7 +94,7 @@ pub(crate) async fn snapshot<D: Services>(
         afd_http::openapi::query::Page,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ChargesResponse),
+        (status = 200, description = afd_http::openapi::OK, body = ChargesResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),

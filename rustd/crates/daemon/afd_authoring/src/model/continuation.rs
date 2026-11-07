@@ -141,10 +141,7 @@ pub(super) fn restore(
 
 /// Bind native state to the exact daemon-assembled historical prefix before storage.
 pub(super) fn bind(decoded: &mut super::provider::Decoded, digest: &str) {
-    if let Some(serde_json::Value::Object(saved)) = decoded.continuation.as_mut() {
-        saved.insert(
-            "context_digest".into(),
-            serde_json::Value::String(digest.to_owned()),
-        );
+    if let Some(Value::Object(saved)) = decoded.continuation.as_mut() {
+        saved.insert("context_digest".into(), Value::String(digest.to_owned()));
     }
 }

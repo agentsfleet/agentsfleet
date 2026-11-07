@@ -123,11 +123,13 @@ impl Error {
     /// The question the HTTP edge turns on: an outage is this instance's
     /// problem and answers 503, where a statement that would not run is a 500.
     #[must_use]
-    pub fn is_datastore_unavailable(&self) -> bool {
+    pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
-            _reachable => false,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Entropy { .. } => false,
         }
     }
 }

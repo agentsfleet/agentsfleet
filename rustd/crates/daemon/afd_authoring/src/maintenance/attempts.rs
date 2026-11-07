@@ -43,7 +43,7 @@ pub(super) async fn expire(drafts: &Drafts) -> Result<u64> {
 async fn expire_one(drafts: &Drafts, hint: &Hint) -> Result<bool> {
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-    let _: Option<String> = sqlx::query_scalar(sql::DRAFT)
+    let _locked: Option<String> = sqlx::query_scalar(sql::DRAFT)
         .bind(&hint.draft_id)
         .fetch_optional(&mut *tx)
         .await

@@ -8,12 +8,7 @@
 
 use std::sync::Arc;
 
-use afd_api_wire::schedule::Page;
-/// Named only by the `body =` clause of this module's `utoipa::path`
-/// annotations, which the default build compiles away — so the import has to
-/// go with them or the feature-off build fails on an unused name.
-#[cfg(feature = "openapi")]
-use afd_api_wire::schedule::View;
+use afd_api_wire::schedule::{Page, View};
 use afd_http::handler::schedule::not_found;
 use axum::Json;
 use axum::extract::{Path, State};
@@ -29,10 +24,7 @@ use super::support::SchedulePath;
 
 /// Every schedule as the tenant surface renders it, read at one instant so a
 /// page never mixes two readings of the clock.
-pub(crate) fn views(
-    schedules: &[afd_cron::Schedule],
-    now: jiff::Timestamp,
-) -> Vec<afd_api_wire::schedule::View<'_>> {
+pub(crate) fn views(schedules: &[afd_cron::Schedule], now: jiff::Timestamp) -> Vec<View<'_>> {
     schedules
         .iter()
         .map(|schedule| schedule.view(now))
@@ -57,7 +49,7 @@ pub(crate) fn views(
         afd_http::openapi::path::Fleet,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = Page),
+        (status = 200, description = afd_http::openapi::OK, body = Page<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -109,7 +101,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::path::Schedule,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = View),
+        (status = 200, description = afd_http::openapi::OK, body = View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

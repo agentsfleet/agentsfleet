@@ -73,7 +73,7 @@ async fn wallet(f: &Fixture) {
         .unwrap();
 }
 
-fn unsettled(mut line: Line) -> Line {
+const fn unsettled(mut line: Line) -> Line {
     line.settled = None;
     line
 }

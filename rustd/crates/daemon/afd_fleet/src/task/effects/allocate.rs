@@ -76,11 +76,11 @@ pub(super) async fn reserve(
         .bind(lease.lease_id.as_str())
         .bind(lease.runner_id.as_str())
         .bind(owned.current.fence)
-        .bind(crate::task::row::sql_counter(
+        .bind(row::sql_counter(
             owned.snapshot.context.generation,
             "generation",
         )?)
-        .bind(crate::task::row::sql_counter(
+        .bind(row::sql_counter(
             owned.snapshot.context.stop_generation,
             "stop_generation",
         )?)

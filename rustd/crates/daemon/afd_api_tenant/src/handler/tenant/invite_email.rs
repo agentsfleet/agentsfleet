@@ -149,7 +149,7 @@ fn send_of<'a>(invite: &'a Uuid7, attempt: &'a EmailAttempt, link: &'a str) -> I
     ),
     params(afd_http::openapi::path::Invite),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = InviteEmailResponse),
+        (status = 200, description = afd_http::openapi::OK, body = InviteEmailResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

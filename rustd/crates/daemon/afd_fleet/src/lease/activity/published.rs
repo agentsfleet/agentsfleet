@@ -94,7 +94,7 @@ impl<'a> Published<'a> {
     pub(super) fn of(
         target: &'a Target,
         frame: &'a ActivityFrame<'a>,
-    ) -> core::result::Result<Self, serde_json::Error> {
+    ) -> Result<Self, serde_json::Error> {
         let event_id = target.event_id.as_str();
         let call_id = |call: &str| fenced_call_id(target.fence, call);
         Ok(match frame {

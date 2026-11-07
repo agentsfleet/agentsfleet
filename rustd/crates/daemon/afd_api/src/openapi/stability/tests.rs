@@ -63,7 +63,8 @@ fn http_destination_settings_are_published_beta() {
 fn a_field_the_document_lacks_is_answered_not_invented() {
     let object = Object::builder()
         .property("inline", Object::new())
-        .property("unsupported", Array::new(Object::new()))
+        .property("unsupported", Schema::AllOf(AllOf::new()))
+        .property("listed", Array::new(Object::new()))
         .build();
     let mut document = OpenApiBuilder::new()
         .components(Some(
@@ -76,7 +77,7 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
     let missing = declare_beta(
         &mut document,
         &[
-            ("Holder", &["inline", "absent", "unsupported"]),
+            ("Holder", &["inline", "listed", "absent", "unsupported"]),
             ("Listed", &["items"]),
             ("Nowhere", &["field"]),
         ],
@@ -92,6 +93,10 @@ fn a_field_the_document_lacks_is_answered_not_invented() {
     );
     assert_eq!(
         published_class(&document, "Holder", "inline").as_deref(),
+        Some(BETA)
+    );
+    assert_eq!(
+        published_class(&document, "Holder", "listed").as_deref(),
         Some(BETA)
     );
     let mut bare = OpenApiBuilder::new().build();
@@ -126,8 +131,12 @@ fn a_referenced_field_keeps_its_target_and_carries_its_class() {
 }
 
 #[test]
-fn an_object_and_a_nullable_reference_carry_their_class() {
-    let mut shapes = [Schema::Object(Object::new()), Schema::OneOf(OneOf::new())];
+fn an_object_a_nullable_reference_and_an_array_carry_their_class() {
+    let mut shapes = [
+        Schema::Object(Object::new()),
+        Schema::OneOf(OneOf::new()),
+        Schema::Array(Array::new(Object::new())),
+    ];
     for shape in &mut shapes {
         let (extensions, description) =
             parts_of(shape).expect("a field of this shape can carry a class");
@@ -142,11 +151,7 @@ fn an_object_and_a_nullable_reference_carry_their_class() {
             "{value}"
         );
     }
-    for other in [
-        Schema::Array(Array::new(Object::new())),
-        Schema::AllOf(AllOf::new()),
-        Schema::AnyOf(AnyOf::new()),
-    ] {
+    for other in [Schema::AllOf(AllOf::new()), Schema::AnyOf(AnyOf::new())] {
         let mut other = other;
         assert!(parts_of(&mut other).is_none());
     }

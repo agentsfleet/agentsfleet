@@ -130,7 +130,9 @@ impl Scripted {
 
     /// Wait until a settlement is recorded, or the given time passes.
     pub async fn settlement(&self, at_most: Duration) {
-        let _ = tokio::time::timeout(at_most, self.settled_signal.notified()).await;
+        // Elapsed or settled, the caller reads the counters next either way.
+        let _settled: Result<(), tokio::time::error::Elapsed> =
+            tokio::time::timeout(at_most, self.settled_signal.notified()).await;
     }
 
     /// A snapshot of everything seen so far.

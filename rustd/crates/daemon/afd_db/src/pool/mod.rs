@@ -197,7 +197,7 @@ impl Db {
         }
 
         let held = tokio::time::timeout(deadline, async {
-            let mut connections = Vec::with_capacity(target as usize);
+            let mut connections = Vec::with_capacity(usize::try_from(target).unwrap_or_default());
             // Sequential requests for connections that are all held: the pool
             // has to open a new one each time, because none is ever returned.
             for _ in 0..target {

@@ -27,7 +27,7 @@ use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
 use redis::{FromRedisValue as _, ProtocolVersion, PushInfo, Value};
 use tokio::sync::{Mutex, mpsc};
 
-use crate::subscriber::install_subscriber;
+use af_core::test_util::trace::install_subscriber;
 
 /// The knob `make test-integration-rustd` exports the cluster's seed under.
 const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
@@ -208,9 +208,10 @@ impl ClusterHarness {
 
 /// The text of a push's `index`th datum, for the message and channel fields.
 pub(crate) fn push_text(push: &PushInfo, index: usize) -> Option<String> {
-    push.data.get(index).and_then(|value| match value {
+    let value = push.data.get(index)?;
+    match value {
         Value::BulkString(bytes) => String::from_utf8(bytes.clone()).ok(),
         Value::SimpleString(text) => Some(text.clone()),
         _other => None,
-    })
+    }
 }

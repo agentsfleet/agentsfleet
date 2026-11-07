@@ -30,7 +30,7 @@ const CACHE_CONTROL: &str = "private, no-store";
         afd_api_wire::billing::query::ReportKind,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::billing::Report),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::billing::Report<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -80,7 +80,7 @@ pub(crate) async fn report<D: Services>(
         afd_api_wire::billing::query::Filters,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::billing::Page<afd_api_wire::billing::Charge>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::billing::Page<'_, afd_api_wire::billing::Charge<'_>>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

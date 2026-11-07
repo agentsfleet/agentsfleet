@@ -286,7 +286,7 @@ impl Fixture {
     /// settles another test's lines.
     pub(crate) async fn relay(&self, attempt: &str) {
         let work = afd_billing::biller::WorkKey::AuthoringAttempt(
-            af_core::id::Uuid7::parse(attempt).expect("an attempt id"),
+            Uuid7::parse(attempt).expect("an attempt id"),
         );
         let unsettled = afd_billing::ledger::unsettled_work(&mut *self.connection().await, &work)
             .await

@@ -78,7 +78,11 @@ fn sign(id: &str, timestamp: i64, body: &str) -> String {
 }
 
 /// The three headers a Svix delivery carries.
-fn headers<'d>(id: &'d str, timestamp: &'d str, signature: &'d str) -> [(HeaderName, &'d str); 3] {
+const fn headers<'d>(
+    id: &'d str,
+    timestamp: &'d str,
+    signature: &'d str,
+) -> [(HeaderName, &'d str); 3] {
     [
         (HeaderName::from_static(svix::ID_HEADER), id),
         (HeaderName::from_static(svix::TIMESTAMP_HEADER), timestamp),

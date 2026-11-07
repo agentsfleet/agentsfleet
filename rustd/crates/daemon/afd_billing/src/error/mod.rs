@@ -48,6 +48,21 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
+    /// Postgres gave up waiting: a lock held past `lock_timeout` (`55P03`) or a
+    /// statement past `statement_timeout` (`57014`), the API login's bounds
+    /// (`afd_db::login`). Retryable: the statement changed nothing.
+    ///
+    /// Told apart from [`Self::Query`] because a line insert or the wallet
+    /// debit inside a report or renewal transaction waits on rows other
+    /// settlements hold, and a runner counts a 500 toward its self-termination
+    /// ceiling where it retries a 503.
+    #[error("the billing store gave up waiting to {context}")]
+    TimedOut {
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+
     /// A stored value is not a shape this daemon can read.
     ///
     /// Names the table AND the column, because the identifier columns this
@@ -97,7 +112,7 @@ pub(crate) enum ErrorKind {
 
 impl Error {
     /// The code and the sentence, decided together — see the module note.
-    fn answer(&self) -> (ErrorCode, &'static str) {
+    const fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
             // The caller's to correct, unlike everything else here.
             ErrorKind::ChargesCursorInvalid => (error_code::INVALID_REQUEST, DETAIL_CURSOR_INVALID),
@@ -111,7 +126,7 @@ impl Error {
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_OPERATION_FAILED,
             ),
-            ErrorKind::Datastore { .. } => {
+            ErrorKind::Datastore { .. } | ErrorKind::TimedOut { .. } => {
                 (error_code::INTERNAL_DB_UNAVAILABLE, DETAIL_UNAVAILABLE)
             }
         }
@@ -119,7 +134,7 @@ impl Error {
 
     /// The registry code a caller is refused with.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         self.answer().0
     }
 
@@ -129,7 +144,7 @@ impl Error {
     /// the log, and a caller who could read it would learn which statement this
     /// daemon runs.
     #[must_use]
-    pub fn detail(&self) -> &'static str {
+    pub const fn detail(&self) -> &'static str {
         self.answer().1
     }
 
@@ -150,7 +165,12 @@ impl Error {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
             ErrorKind::Query { source, .. } => afd_db::error::is_connection_lost(source),
-            _ => false,
+            ErrorKind::TimedOut { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::WalletMissing
+            | ErrorKind::ChargesCursorInvalid
+            | ErrorKind::ChargeOverflow => false,
         }
     }
 
@@ -161,13 +181,11 @@ impl Error {
     /// Contention, not an outage: the datastore answered, and it answered
     /// "not now". It still leaves the biller without an answer, so
     /// [`Self::is_unanswered`] counts it with an outage, and the outage policy
-    /// decides what the work does.
+    /// decides what the work does. A caller told of it hears the same
+    /// retryable unavailability an outage earns (see [`Self::code`]).
     #[must_use]
-    pub fn is_contended(&self) -> bool {
-        let ErrorKind::Query { source, .. } = self.kind() else {
-            return false;
-        };
-        afd_db::error::is_bound_reached(source)
+    pub const fn is_contended(&self) -> bool {
+        matches!(self.kind(), ErrorKind::TimedOut { .. })
     }
 
     /// Whether the biller could not answer: an outage or contention. What the
@@ -183,7 +201,7 @@ impl Error {
     /// at tenant creation, so its absence is an operator gap, and refusing every
     /// run for it would turn a provisioning defect into an outage.
     #[must_use]
-    pub fn is_wallet_missing(&self) -> bool {
+    pub const fn is_wallet_missing(&self) -> bool {
         matches!(self.kind(), ErrorKind::WalletMissing)
     }
 }

@@ -53,7 +53,7 @@ fn sorted(value: Value) -> Value {
             )
         }
         Value::Array(items) => Value::Array(items.into_iter().map(sorted).collect()),
-        scalar => scalar,
+        scalar @ (Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)) => scalar,
     }
 }
 

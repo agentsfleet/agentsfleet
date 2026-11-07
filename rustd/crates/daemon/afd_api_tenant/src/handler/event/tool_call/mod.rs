@@ -84,7 +84,7 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
         afd_http::openapi::path::ToolCall,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ToolCallDetail),
+        (status = 200, description = afd_http::openapi::OK, body = ToolCallDetail<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

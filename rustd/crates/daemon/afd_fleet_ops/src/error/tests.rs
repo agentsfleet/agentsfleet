@@ -43,7 +43,7 @@ fn database_context_keeps_the_driver_cause() {
 
 fn assert_error(
     error: &Error,
-    code: af_core::error_code::ErrorCode,
+    code: error_code::ErrorCode,
     detail: &'static str,
     unavailable: bool,
 ) {

@@ -267,7 +267,7 @@ impl Connectors for Registry {
         DECLARED
             .iter()
             .find(|declared| declared.name == name)
-            .map(|declared| declared as &dyn Connector)
+            .map(|declared| -> &'static dyn Connector { declared })
     }
 }
 

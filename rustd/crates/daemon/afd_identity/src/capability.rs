@@ -147,7 +147,7 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
 
         self.cache
             .entry(key.clone())
-            .and_compute_with(|entry| async move {
+            .and_compute_with(async move |entry| {
                 if entry.is_some_and(|entry| !self.within(*entry.value(), self.ttl)) {
                     Op::Remove
                 } else {

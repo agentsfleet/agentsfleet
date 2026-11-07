@@ -59,9 +59,9 @@ const EVENT: &str = "runner_heartbeat_failed";
         "the runner on its next heartbeat. An unreadable report is ignored, but the ",
         "heartbeat still counts.",
     ),
-    request_body = Option<HeartbeatRequest>,
+    request_body = Option<HeartbeatRequest<'_>>,
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = HeartbeatResponse),
+        (status = 200, description = afd_http::openapi::OK, body = HeartbeatResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),

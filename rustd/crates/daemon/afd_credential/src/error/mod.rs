@@ -178,7 +178,19 @@ impl Error {
             // make the status depend on which read noticed first, which is not
             // a distinction an operator or a retrying client can use.
             ErrorKind::Directory { source } => source.is_datastore_unavailable(),
-            _otherwise => false,
+            _otherwise @ (ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::ProviderMalformed { .. }
+            | ErrorKind::ProviderSecretMissing
+            | ErrorKind::DecisionCredentialMissing { .. }
+            | ErrorKind::DecisionCredentialInvalid { .. }
+            | ErrorKind::ProviderPlatformKeyMissing
+            | ErrorKind::ProviderNoWorkspace
+            | ErrorKind::ProviderEndpoint { .. }
+            | ErrorKind::Vault { .. }
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::CredentialMissing
+            | ErrorKind::Entropy { .. }) => false,
         }
     }
 

@@ -1,12 +1,11 @@
 //! An admitted message costs one top-level statement, and a repeat costs one
-//! and writes nothing (`M242_001` Dimensions 2.1 and 2.3).
+//! and writes nothing.
 //!
 //! A private database, because `pg_stat_statements` counts per database and a
 //! parallel suite's calls on the shared lane would land in the count.
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
+#![cfg(feature = "test-util")]
+
+use std::error::Error;
 
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, WorkspaceSeed, mint_id};
@@ -30,6 +29,8 @@ const TRANSACTION_CONTROL: &str = "SELECT COALESCE(sum(calls), 0)::bigint FROM p
       AND userid = (SELECT oid FROM pg_roles WHERE rolname = 'agentsfleet_api') \
       AND query ~* '^\\s*(BEGIN|COMMIT|START TRANSACTION)'";
 
+type Outcome = Result<(), Box<dyn Error>>;
+
 /// Sends counted after the warm-up.
 const SENDS: i64 = 10;
 
@@ -48,41 +49,37 @@ struct Private {
 }
 
 impl Private {
-    async fn open() -> Self {
+    async fn open() -> Result<Self, Box<dyn Error>> {
         let (lane, owner, tenant) = private_database().await;
         let (workspace, fleet) = (mint_id(), mint_id());
-        let mut connection = owner.acquire().await.expect("private owner");
+        let mut connection = owner.acquire().await?;
         sqlx::query("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
             .execute(&mut *connection)
-            .await
-            .expect("the statement counter");
+            .await?;
         WorkspaceSeed::new(&workspace, &tenant)
             .insert(&mut *connection)
-            .await
-            .expect("a workspace");
+            .await?;
         FleetSeed::new(&fleet, &workspace, &tenant, "active")
             .native_setup()
             .insert(&mut *connection)
-            .await
-            .expect("an active fleet with a current setup");
+            .await?;
         drop(connection);
         let runtime = lane.open(DbRole::Api, &[]).await;
-        let queue = afd_dragonfly::test_util::connect_live(&EventsLane::redis())
-            .await
-            .expect("the lane's Dragonfly");
+        let queue = afd_dragonfly::test_util::connect_live(&EventsLane::redis()).await?;
         let steer = Steer::new(afd_admission::Admissions::for_tests(runtime.clone(), queue));
-        Self {
+        Ok(Self {
             lane,
             owner,
             runtime,
             steer,
             workspace,
             fleet,
-        }
+        })
     }
 
-    async fn send(&self, operation: Option<&str>) -> String {
-        self.steer
+    async fn send(&self, operation: Option<&str>) -> Result<String, Box<dyn Error>> {
+        let steered = self
+            .steer
             .append(
                 &self.fleet,
                 &self.workspace,
@@ -90,24 +87,23 @@ impl Private {
                 REQUEST_JSON,
                 operation,
             )
-            .await
-            .expect("admitted")
-            .event_id
+            .await?;
+        Ok(steered.event_id)
     }
 
-    async fn scalar(&self, statement: &'static str) -> i64 {
-        sqlx::query_scalar(statement)
-            .fetch_one(&mut *self.owner.acquire().await.expect("owner read"))
-            .await
-            .expect("an owner read")
+    async fn scalar(&self, statement: &'static str) -> Result<i64, Box<dyn Error>> {
+        Ok(sqlx::query_scalar(statement)
+            .fetch_one(&mut *self.owner.acquire().await?)
+            .await?)
     }
 
-    async fn rows(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
-            .bind(&self.fleet)
-            .fetch_one(&mut *self.owner.acquire().await.expect("owner read"))
-            .await
-            .expect("the fleet's rows")
+    async fn rows(&self) -> Result<i64, Box<dyn Error>> {
+        Ok(
+            sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
+                .bind(&self.fleet)
+                .fetch_one(&mut *self.owner.acquire().await?)
+                .await?,
+        )
     }
 
     async fn close(self) {
@@ -120,31 +116,33 @@ impl Private {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_accepted_message_costs_one_statement() {
-    let private = Private::open().await;
-    private.send(None).await;
+async fn an_accepted_message_costs_one_statement() -> Outcome {
+    let private = Private::open().await?;
+    private.send(None).await?;
     let (calls, control) = (
-        private.scalar(API_CALLS).await,
-        private.scalar(TRANSACTION_CONTROL).await,
+        private.scalar(API_CALLS).await?,
+        private.scalar(TRANSACTION_CONTROL).await?,
     );
     for _ in 0..SENDS {
-        private.send(None).await;
+        private.send(None).await?;
     }
-    assert_eq!(private.scalar(API_CALLS).await - calls, SENDS);
-    assert_eq!(private.scalar(TRANSACTION_CONTROL).await, control);
+    assert_eq!(private.scalar(API_CALLS).await? - calls, SENDS);
+    assert_eq!(private.scalar(TRANSACTION_CONTROL).await?, control);
     assert_eq!(control, 0, "no send opened a transaction");
     private.close().await;
+    Ok(())
 }
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_repeat_costs_one_statement_and_writes_nothing() {
-    let private = Private::open().await;
-    let first = private.send(Some(OPERATION)).await;
-    let (calls, rows) = (private.scalar(API_CALLS).await, private.rows().await);
-    let repeat = private.send(Some(OPERATION)).await;
+async fn a_repeat_costs_one_statement_and_writes_nothing() -> Outcome {
+    let private = Private::open().await?;
+    let first = private.send(Some(OPERATION)).await?;
+    let (calls, rows) = (private.scalar(API_CALLS).await?, private.rows().await?);
+    let repeat = private.send(Some(OPERATION)).await?;
     assert_eq!(repeat, first, "the repeat names the first event");
-    assert_eq!(private.scalar(API_CALLS).await - calls, 1);
-    assert_eq!(private.rows().await, rows);
+    assert_eq!(private.scalar(API_CALLS).await? - calls, 1);
+    assert_eq!(private.rows().await?, rows);
     private.close().await;
+    Ok(())
 }

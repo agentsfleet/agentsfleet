@@ -83,7 +83,7 @@ impl Inbox {
         drop(connection);
 
         self.serve(rows.iter().map(Self::swept)).await?;
-        Ok(rows.len() as u64)
+        Ok(u64::try_from(rows.len()).unwrap_or(u64::MAX))
     }
 
     /// Wakes and announces every row that decoded, then answers the first

@@ -94,9 +94,11 @@ impl<'a> Verdict<'a> {
             // NULL rather than an empty string — so a consumer testing
             // `IS NULL` cannot be fooled by a runner that sent `""`.
             Self::Succeeded | Self::Failed { detail: "", .. } => None,
-            Self::Failed { detail, .. } => {
-                Some(&detail[..detail.floor_char_boundary(MAX_FAILURE_DETAIL_BYTES)])
-            }
+            Self::Failed { detail, .. } => Some(
+                detail
+                    .split_at(detail.floor_char_boundary(MAX_FAILURE_DETAIL_BYTES))
+                    .0,
+            ),
         }
     }
 }

@@ -123,8 +123,9 @@ impl Fleets {
             .into_iter()
             .map(FleetRow::try_from)
             .collect::<Result<Vec<_>>>()?;
-        let more = rows.len() > limit as usize;
-        rows.truncate(limit as usize);
+        let kept = usize::try_from(limit).unwrap_or(usize::MAX);
+        let more = rows.len() > kept;
+        rows.truncate(kept);
         Ok(FleetPage { rows, more })
     }
 

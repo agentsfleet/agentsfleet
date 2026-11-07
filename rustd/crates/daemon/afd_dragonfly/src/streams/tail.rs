@@ -58,7 +58,7 @@ impl FleetStreams {
         for payload in payloads {
             pipeline.cmd(CMD_PUBLISH).arg(&channel).arg(payload);
         }
-        let _: Vec<i64> = self
+        let _receivers: Vec<i64> = self
             .redis
             .pipeline(CMD_PUBLISH, &channel, &pipeline)
             .await?;
@@ -75,7 +75,7 @@ impl FleetStreams {
     /// row the frame announces is already durable, and a lost announcement is
     /// what the client's reconnect backfill recovers. Answers whether the
     /// frame landed, for a caller that times the announcement.
-    pub async fn publish_frame<F: Serialize>(&self, fleet_id: &str, frame: &F) -> bool {
+    pub async fn publish_frame<F: Serialize + Sync>(&self, fleet_id: &str, frame: &F) -> bool {
         // Strings and integers cannot fail to serialize; the arm is the
         // signature's, not a path a test could reach.
         let Ok(payload) = serde_json::to_string(frame) else {

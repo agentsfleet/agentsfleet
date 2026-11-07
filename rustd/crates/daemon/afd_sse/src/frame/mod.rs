@@ -224,8 +224,7 @@ const OPENING_BRACE: &str = "{";
 #[must_use]
 pub fn kind_of(payload: &str) -> Option<&str> {
     let rest = payload.strip_prefix(KIND_ANCHOR)?;
-    let close = rest.find('"')?;
-    let kind = &rest[..close];
+    let (kind, _after) = rest.split_once('"')?;
     let printable = !kind.is_empty() && !kind.chars().any(char::is_control);
     printable.then_some(kind)
 }

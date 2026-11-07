@@ -191,7 +191,7 @@ pub(crate) use af_core::spelling::from_spelling as parse_wire;
 ///
 /// `None` on anything that does not parse. The caller decides what that means:
 /// the capability reads as absent, the bind list empties.
-fn parse_json<'a, T: serde::Deserialize<'a>>(raw: &'a str) -> Option<T> {
+fn parse_json<'a, T: Deserialize<'a>>(raw: &'a str) -> Option<T> {
     serde_json::from_str(raw).ok()
 }
 

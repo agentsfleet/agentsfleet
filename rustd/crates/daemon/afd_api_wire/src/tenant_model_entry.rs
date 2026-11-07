@@ -332,7 +332,7 @@ mod tests {
     /// asked for.
     #[test]
     fn a_create_body_refuses_a_field_this_daemon_does_not_know() {
-        let refused = serde_json::from_str::<super::CreateModelEntryRequest>(
+        let refused = serde_json::from_str::<CreateModelEntryRequest>(
             r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod","nickname":"prod"}"#,
         )
         .expect_err("a closed request refuses a key it does not carry");
@@ -347,7 +347,7 @@ mod tests {
     /// is the unknown field and not the shape.
     #[test]
     fn a_create_body_this_daemon_does_carry_still_parses() {
-        let parsed: super::CreateModelEntryRequest =
+        let parsed: CreateModelEntryRequest =
             serde_json::from_str(r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod"}"#)
                 .expect("every field is one this build carries");
 

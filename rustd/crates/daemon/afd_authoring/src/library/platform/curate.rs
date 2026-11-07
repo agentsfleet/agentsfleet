@@ -34,7 +34,7 @@ impl Setup {
             }
             .into());
         }
-        crate::library::read::valid_id(slug)?;
+        read::valid_id(slug)?;
         let expected = expected.ok_or(ErrorKind::Precondition)?;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;

@@ -85,7 +85,7 @@ async fn replacement(
                 instruction_edits: instruction_edits.clone(),
             })?)
         }
-        _ => Err(ErrorKind::Stale {
+        Proposal::Initialize { .. } | Proposal::Edit { .. } => Err(ErrorKind::Stale {
             etag: draft::etag(&draft.id, draft.resource_version),
         }
         .into()),

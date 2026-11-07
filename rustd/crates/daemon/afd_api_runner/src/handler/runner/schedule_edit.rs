@@ -39,10 +39,10 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
         "scheduler. Secret values are masked in the message. User-created schedules return ",
         "`UZ-SCHED-010`. Repeating the same body is safe.",
     ),
-    request_body = SchedulePatchRequest,
+    request_body = SchedulePatchRequest<'_>,
     params(afd_http::openapi::path::LeaseSchedule),
     responses(
-        (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View),
+        (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -113,7 +113,7 @@ pub(crate) async fn update<D: Services>(
     ),
     params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::Fence),
     responses(
-        (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View),
+        (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

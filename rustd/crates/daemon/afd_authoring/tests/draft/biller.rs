@@ -53,7 +53,7 @@ impl Faulty {
         })
     }
 
-    fn pick(&self, fails: bool) -> &LedgerBiller {
+    const fn pick(&self, fails: bool) -> &LedgerBiller {
         if fails { &self.down } else { &self.ledger }
     }
 }

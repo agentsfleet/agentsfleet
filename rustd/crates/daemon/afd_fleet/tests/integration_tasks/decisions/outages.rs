@@ -196,7 +196,7 @@ async fn unconfirmed(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReser
 async fn disabled_after_issue(
     fixture: &mut Decisions<'_>,
     input: &garde::Valid<DecisionReservationInput>,
-    body: &serde_json::Value,
+    body: &Value,
 ) {
     fixture
         .model
@@ -205,7 +205,7 @@ async fn disabled_after_issue(
         .expect("decision model fixture lifecycle");
     let call = body
         .get("call_id")
-        .and_then(serde_json::Value::as_str)
+        .and_then(Value::as_str)
         .expect("one original call");
     let result = fixture.record(call, known(&request(body))).await;
     assert_eq!(

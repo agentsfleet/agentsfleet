@@ -182,7 +182,7 @@ async fn authorize<D: Services>(
 
 /// Serves a request the caller's grant on `workspace` covers, recording the
 /// crossing first and the verdict on both the request and the response.
-async fn serve_owned<D>(
+async fn serve_owned<D: Send + Sync>(
     owner: &Owner<D>,
     mut request: Request,
     next: Next,

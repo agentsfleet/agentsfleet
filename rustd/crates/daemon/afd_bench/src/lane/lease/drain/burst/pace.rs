@@ -45,6 +45,8 @@ pub(in crate::lane::lease::drain) struct Pickups {
     waited: Mutex<Latency>,
     /// Burst events a runner took.
     leased: AtomicU64,
+    /// Of those, the ones a live run folded in rather than leased.
+    folded: AtomicU64,
 }
 
 impl Pickups {
@@ -58,6 +60,7 @@ impl Pickups {
             appended: Mutex::new(HashMap::new()),
             waited: Mutex::new(Latency::new()?),
             leased: AtomicU64::new(0),
+            folded: AtomicU64::new(0),
         })
     }
 
@@ -73,16 +76,39 @@ impl Pickups {
     ///
     /// When the histogram will not hold the wait.
     pub(in crate::lane::lease::drain) async fn leased(&self, event_id: &str) -> Result<()> {
+        self.took(event_id).await.map(|_burst| ())
+    }
+
+    /// A live run folded `event_id` in: a pickup like a lease, counted apart.
+    ///
+    /// # Errors
+    ///
+    /// When the histogram will not hold the wait.
+    pub(in crate::lane::lease::drain) async fn folded(&self, event_id: &str) -> Result<()> {
+        if self.took(event_id).await? {
+            self.folded.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
+    /// Records the pickup of `event_id`; answers whether the burst appended it.
+    async fn took(&self, event_id: &str) -> Result<bool> {
         let Some(at) = self.appended.lock().await.remove(event_id) else {
-            return Ok(());
+            return Ok(false);
         };
         self.leased.fetch_add(1, Ordering::Relaxed);
-        self.waited.lock().await.record(at.elapsed())
+        self.waited.lock().await.record(at.elapsed())?;
+        Ok(true)
     }
 
     /// Burst events a runner took.
     pub(super) fn leased_count(&self) -> u64 {
         self.leased.load(Ordering::Relaxed)
+    }
+
+    /// Of those, the ones a live run folded in.
+    pub(super) fn folded_count(&self) -> u64 {
+        self.folded.load(Ordering::Relaxed)
     }
 
     /// The pickup waits recorded so far.

@@ -22,6 +22,7 @@
 //! cannot read, and never lists. Two failure policies over one table, and
 //! folding them together would mean one of the two losing.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 mod error;

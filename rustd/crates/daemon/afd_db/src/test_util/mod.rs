@@ -63,6 +63,8 @@ mod handle;
 mod identity;
 mod platform_default;
 mod platform_model;
+// A trigger that refuses one fixture fleet's chosen updates, removed on drop.
+pub mod refusal;
 mod rows;
 mod runner;
 mod unreachable;

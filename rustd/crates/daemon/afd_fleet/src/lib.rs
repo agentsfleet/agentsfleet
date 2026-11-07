@@ -32,5 +32,7 @@
 pub mod error;
 pub mod lease;
 pub mod task;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 
 pub use crate::error::{Error, Result};

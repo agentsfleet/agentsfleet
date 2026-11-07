@@ -21,7 +21,7 @@
 //!
 //!   row?                → the stored row, whatever its mode
 //!   no row + default    → the live default, rendered as platform mode
-//!   no row + no default → the empty view — "not configured", never a 404
+//!   no row + no default → the empty view — "not configured", never a 404.
 //!
 //! # The reset answers from what it already read
 //!
@@ -99,7 +99,7 @@ const NOT_CONFIGURED: &str = "";
         "credential reference. Secret values are never returned.",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),
+        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),

@@ -44,7 +44,7 @@ const DETAIL_MODEL_UNKNOWN: &str =
     params(
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = PlatformKeysResponse),
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeysResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -71,9 +71,9 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
     operation_id = "put_platform_key",
     summary = "Set a shared model-provider credential",
     description = "Selects a workspace's stored provider credential for shared use across workspaces.",
-    request_body = PlatformKeyPut,
+    request_body = PlatformKeyPut<'_>,
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = PlatformKeySetResponse),
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeySetResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -149,7 +149,7 @@ pub(crate) async fn set<D: Services>(
         afd_http::openapi::path::Provider,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = PlatformKeyDeactivateResponse),
+        (status = 200, description = afd_http::openapi::OK, body = PlatformKeyDeactivateResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),

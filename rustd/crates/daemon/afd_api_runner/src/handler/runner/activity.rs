@@ -48,7 +48,7 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
         "Publishes live activity to the workspace stream. A 202 response confirms ",
         "acceptance for publication, not delivery to a subscriber.",
     ),
-    request_body = ActivityRequest,
+    request_body = ActivityRequest<'_>,
     params(
         afd_http::openapi::path::Lease,
     ),

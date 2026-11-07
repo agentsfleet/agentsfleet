@@ -29,7 +29,7 @@ impl Trace {
         }
     }
 
-    pub(super) fn published(&mut self) {
+    pub(super) const fn published(&mut self) {
         self.frames = self.frames.saturating_add(1);
     }
 

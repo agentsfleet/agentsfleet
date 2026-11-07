@@ -139,7 +139,7 @@ impl<'a> AppApi<'a> {
     }
 
     /// `POST path` with `body` as JSON, read as `T`.
-    pub(super) async fn post<T: DeserializeOwned, B: Serialize>(
+    pub(super) async fn post<T: DeserializeOwned, B: Serialize + Sync>(
         &self,
         path: &str,
         body: &B,

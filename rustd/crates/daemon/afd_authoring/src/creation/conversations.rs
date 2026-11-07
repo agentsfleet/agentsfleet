@@ -33,7 +33,7 @@ impl Creations {
                 },
             )
             .await?;
-        let items = try_join_all(page.items.iter().map(|card| async {
+        let items = try_join_all(page.items.iter().map(async |card| {
             let mut conversation = self.setup.conversation(access, &card.id).await?;
             conversation.continuation.clone_from(&card.continuation);
             Ok::<_, crate::Error>(conversation)

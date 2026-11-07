@@ -156,7 +156,7 @@ impl MigrationLock {
     }
 
     /// The locked session, for the work that must happen under the lock.
-    pub(crate) fn connection(&mut self) -> &mut PoolConnection<Postgres> {
+    pub(crate) const fn connection(&mut self) -> &mut PoolConnection<Postgres> {
         &mut self.connection
     }
 

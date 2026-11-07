@@ -109,7 +109,7 @@ macro_rules! migration {
 /// context is not const, so this exercises the same body the build does.
 #[cfg(feature = "test-util")]
 #[must_use]
-pub fn version_from_name(name: &str) -> i64 {
+pub const fn version_from_name(name: &str) -> i64 {
     version_of(name)
 }
 

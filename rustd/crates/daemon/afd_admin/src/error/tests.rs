@@ -108,7 +108,7 @@ fn inference_errors_keep_safe_details_and_typed_causes() -> Result<(), &'static 
     Ok(())
 }
 
-fn assert_error(error: &Error, code: af_core::error_code::ErrorCode, detail: &'static str) {
+fn assert_error(error: &Error, code: error_code::ErrorCode, detail: &'static str) {
     assert_eq!(error.code(), code);
     assert_eq!(error.detail(), detail);
     assert!(!error.is_datastore_unavailable());

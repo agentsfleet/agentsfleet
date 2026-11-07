@@ -51,7 +51,7 @@ pub fn admitted(env: &dyn EnvSource) -> Result<(Profile, Target, Provenance)> {
 /// # Errors
 ///
 /// A variable that is unset, or a datastore that would not answer.
-pub async fn datastores(env: &dyn EnvSource) -> Result<Datastores> {
+pub async fn datastores(env: &(dyn EnvSource + Sync)) -> Result<Datastores> {
     Datastores::open(
         &required(env, DATABASE_URL_VARIABLE)?,
         &required(env, DRAGONFLY_URL_VARIABLE)?,

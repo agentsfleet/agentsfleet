@@ -52,7 +52,7 @@ impl Thread for History {
         at: &Cursor,
         limit: i64,
     ) -> afd_events::Result<Vec<EventDetailRow>> {
-        History::finished_before(self, workspace, fleet, at, limit).await
+        Self::finished_before(self, workspace, fleet, at, limit).await
     }
 }
 
@@ -180,7 +180,7 @@ fn turn(row: EventDetailRow) -> Option<(Turn<'static>, bool)> {
 /// `text` within [`TURN_TEXT_BYTES_MAX`], never splitting a character, and
 /// whether it had to be cut.
 fn cut(text: &str) -> (String, bool) {
-    let kept = &text[..text.floor_char_boundary(TURN_TEXT_BYTES_MAX)];
+    let (kept, _rest) = text.split_at(text.floor_char_boundary(TURN_TEXT_BYTES_MAX));
     (kept.to_owned(), kept.len() < text.len())
 }
 

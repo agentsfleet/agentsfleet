@@ -196,7 +196,7 @@ mod tests {
         }
     }
 
-    fn refused(reported: &Meter, authoritative: i64) -> Option<af_core::error_code::ErrorCode> {
+    fn refused(reported: &Meter, authoritative: i64) -> Option<error_code::ErrorCode> {
         check_cost(reported, authoritative)
             .err()
             .map(|error| error.code())

@@ -180,7 +180,8 @@ impl Admissions {
 /// is an incident.
 fn count_refusal(refused: &Error, admission: &Admission<'_>) {
     // A missing or stopped fleet is the caller's answer, not an admission
-    // failure: the route refused both before the ledger saw them until M242.
+    // failure: the ledger's own statement now refuses both, where the route
+    // once did before the ledger saw them.
     if refused.is_fleet_absent() || refused.not_runnable().is_some() {
         return;
     }

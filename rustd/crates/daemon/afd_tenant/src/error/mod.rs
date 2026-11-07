@@ -154,7 +154,40 @@ impl Error {
     pub const fn invite_conflict(&self) -> Option<InviteConflict> {
         match self.inner.kind {
             ErrorKind::InviteConflict { conflict } => Some(conflict),
-            _ => None,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Crypto { .. }
+            | ErrorKind::SessionFieldInvalid { .. }
+            | ErrorKind::SessionMissing
+            | ErrorKind::SessionExpired
+            | ErrorKind::SessionConsumed
+            | ErrorKind::SessionAborted
+            | ErrorKind::SessionRateLimited
+            | ErrorKind::SessionNotApproved
+            | ErrorKind::SessionAlreadyApproved
+            | ErrorKind::SessionCodeRejected
+            | ErrorKind::ApiKeyFieldInvalid { .. }
+            | ErrorKind::ApiKeyNotFound
+            | ErrorKind::ApiKeyNameTaken
+            | ErrorKind::ApiKeyAlreadyRevoked
+            | ErrorKind::ApiKeyReadonlyField
+            | ErrorKind::ApiKeyMustRevokeFirst
+            | ErrorKind::CliCredentialMachineNameInvalid
+            | ErrorKind::CliCredentialNotFound
+            | ErrorKind::CliCredentialMachineCollision
+            | ErrorKind::UnknownSubject
+            | ErrorKind::WorkspaceNameInvalid
+            | ErrorKind::WorkspaceNameTooLong
+            | ErrorKind::WorkspaceNameExists
+            | ErrorKind::WorkspaceTenantVanished
+            | ErrorKind::InviteNotFound
+            | ErrorKind::InviteEmailMismatch
+            | ErrorKind::MemberLastOwner
+            | ErrorKind::EmailInvalid
+            | ErrorKind::LibraryPageUnavailable { .. } => None,
         }
     }
 

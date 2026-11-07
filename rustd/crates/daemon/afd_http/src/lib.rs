@@ -4,6 +4,7 @@
 //! operator domain services. It stays below every handler crate so those crates
 //! remain siblings and `afd_api` can compose them without a dependency cycle.
 
+#![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
 pub mod admission;

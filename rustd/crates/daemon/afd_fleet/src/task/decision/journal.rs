@@ -114,11 +114,11 @@ impl Recording<'_> {
     ) -> Result<jiff::Timestamp> {
         let reason = match self.receipt {
             DecisionReceipt::Unknown { cause } => Some(Json(cause)),
-            _ => None,
+            DecisionReceipt::Provider { .. } | DecisionReceipt::NotSent { .. } => None,
         };
         let model = match self.receipt {
             DecisionReceipt::Provider { result } => result.reported_model.as_deref(),
-            _ => None,
+            DecisionReceipt::Unknown { .. } | DecisionReceipt::NotSent { .. } => None,
         };
         let at: jiff_sqlx::Timestamp = sqlx::query_scalar(sql::RECORD)
             .bind(&self.call.id)

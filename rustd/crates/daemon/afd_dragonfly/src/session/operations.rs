@@ -32,7 +32,7 @@ impl SessionStore {
             serde_json::to_string(state).map_err(|_json| error::unexpected_reply(CMD_SET))?;
         let mut cmd = redis::cmd(CMD_SET);
         cmd.arg(&key).arg(blob).arg("EX").arg(SESSION_TTL.as_secs());
-        let _: String = self.redis.command(CMD_SET, &key, &cmd).await?;
+        let _okay: String = self.redis.command(CMD_SET, &key, &cmd).await?;
         Ok(())
     }
 

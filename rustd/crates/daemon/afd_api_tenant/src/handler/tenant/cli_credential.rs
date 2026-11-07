@@ -57,11 +57,11 @@ const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
         "Requires a fresh browser session. Existing command-line credentials and account ",
         "API keys are refused.",
     ),
-    request_body = MintCliCredentialRequest,
+    request_body = MintCliCredentialRequest<'_>,
     params(
     ),
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = MintedCliCredentialResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = MintedCliCredentialResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),

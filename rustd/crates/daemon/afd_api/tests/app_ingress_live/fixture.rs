@@ -135,7 +135,7 @@ impl Fixture {
     /// Seeds the deployment, the tenant, its fleet, and the install mapping.
     pub(super) async fn seed(&self, mapped: Mapped) {
         self.seed_rows().await;
-        if let Mapped::ToWorkspace = mapped {
+        if matches!(mapped, Mapped::ToWorkspace) {
             self.map_installation().await;
         }
         let text = str::from_utf8(APP_SECRET).expect("the fixture secret is text");

@@ -15,7 +15,7 @@ async fn foreign_host_wrong_capability_and_attempt_binding_create_no_dispatch() 
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     assert_eq!(
         calls
@@ -56,7 +56,7 @@ async fn credential_revocation_denies_completed_result_replay() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     calls
         .call(&f.runner, &attempt.lease, request.clone())

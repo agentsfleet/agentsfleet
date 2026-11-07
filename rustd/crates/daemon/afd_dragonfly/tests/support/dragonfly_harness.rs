@@ -12,7 +12,7 @@ use af_core::env::{EnvSource, ProcessEnv};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
-use crate::subscriber::install_subscriber;
+use af_core::test_util::trace::install_subscriber;
 
 const URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";

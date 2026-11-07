@@ -138,7 +138,7 @@ impl Reservation<'_> {
     async fn admit(
         &self,
         connection: &mut PgConnection,
-        prepared: &super::prepare::Prepared,
+        prepared: &prepare::Prepared,
     ) -> Result<()> {
         if self.tasks.dependencies.admin_workspace.is_none() {
             return Err(TaskRefusal::DecisionUnavailable.into());

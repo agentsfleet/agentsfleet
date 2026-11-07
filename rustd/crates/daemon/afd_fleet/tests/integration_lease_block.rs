@@ -66,7 +66,7 @@ async fn received(fixtures: &Fixtures) -> afd_fleet::lease::Acquired {
         ..
     } = seeded::<1>(fixtures).await;
     let leases = fixtures.leases();
-    let held = crate::seed::select_fleet(&leases, &runner, &fleet)
+    let held = seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
     assert_eq!(

@@ -7,7 +7,7 @@ use super::{
 use af_core::error_code::{AUTHORING_CURSOR, AUTHORING_REPLAY, INVALID_REQUEST};
 use afd_authoring::types::{MessageQuery, MessageState, SendMessage};
 
-fn page(cursor: Option<String>) -> MessageQuery {
+const fn page(cursor: Option<String>) -> MessageQuery {
     MessageQuery {
         limit: 1,
         starting_after: cursor,

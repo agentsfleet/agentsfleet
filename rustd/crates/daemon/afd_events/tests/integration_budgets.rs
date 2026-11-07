@@ -1,7 +1,6 @@
-//! Dimension 3.2 — a full datastore produces classified backpressure and no
-//! silent drop: a deployment holding its budget of unsettled admissions
-//! refuses the producer with the capacity class and commits nothing. No
-//! per-fleet budget exists (`M242_001` §1).
+//! A full datastore produces classified backpressure and no silent drop: a
+//! deployment holding its budget of unsettled admissions refuses the producer
+//! with the capacity class and commits nothing. No per-fleet budget exists.
 //!
 //! The budgets are set small through `Admissions::with_budgets`; the
 //! production numbers are compile-time assertions in `afd_admission::budget`
@@ -69,7 +68,7 @@ fn assert_capacity_refusal(refused: &afd_admission::Error) {
     assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
 }
 
-/// Dimension 3.2, the deployment budget: unsettled rows.
+/// The deployment budget: unsettled rows.
 ///
 /// The budget is a deployment-wide count that other suites in this lane can
 /// raise concurrently, so the refusal is proven with a budget of zero — under

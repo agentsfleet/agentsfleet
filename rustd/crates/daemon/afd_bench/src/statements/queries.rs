@@ -4,8 +4,7 @@
 //! `pg_stat_statements` keeps one row per query id (and per top-level flag,
 //! which this folds together), with the normalized text of its first run.
 //! Transaction control is left out, as the sum leaves it out, and so are the
-//! counter's own reads, which name the statistics views they read
-//! (`M241_001` §4).
+//! counter's own reads, which name the statistics views they read.
 
 use std::collections::BTreeMap;
 

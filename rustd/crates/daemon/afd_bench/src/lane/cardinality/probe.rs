@@ -179,6 +179,6 @@ async fn scalar(database: &afd_db::Db, statement: &'static str) -> Result<i64> {
 pub(crate) fn median_ms(mut samples: Vec<Duration>) -> Option<f64> {
     samples.sort();
     samples
-        .get(samples.len() / 2)
+        .get(samples.len().div_euclid(2))
         .map(|sample| sample.as_secs_f64() * MILLIS_PER_SECOND)
 }

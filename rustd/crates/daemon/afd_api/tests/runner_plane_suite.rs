@@ -3,8 +3,7 @@
 mod harness;
 
 #[cfg(feature = "test-util")]
-#[path = "../../afd_fleet/tests/integration_tasks/decisions/reply.rs"]
-mod decision_reply;
+use afd_fleet::test_util::decision as decision_reply;
 
 #[path = "integration_runner_heartbeat.rs"]
 mod integration_runner_heartbeat;

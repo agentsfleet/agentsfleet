@@ -23,7 +23,7 @@ pub(super) async fn drafts(drafts: &Drafts) -> Result<u64> {
         crate::privacy::purge(&mut tx, &Uuid7::parse(id)?).await?;
     }
     tx.commit().await.map_err(query(CONTEXT))?;
-    Ok(ids.len() as u64)
+    Ok(u64::try_from(ids.len()).unwrap_or(u64::MAX))
 }
 
 pub(super) async fn results(drafts: &Drafts) -> Result<u64> {

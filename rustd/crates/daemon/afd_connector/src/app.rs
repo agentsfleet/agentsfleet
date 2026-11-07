@@ -8,8 +8,7 @@
 //! the admin workspace under `<provider>-app` rather than from the tenant's.
 //! The key is built in exactly one place (RULE UFS): [`Provider::app_key`].
 //!
-//! # Slack's signing secret lives in the same bag, and that is why this is one
-//! module
+//! # Slack's signing secret lives in the same bag, and that is why this is one module
 //!
 //! The Slack events ingress verifies a request signature against a secret that
 //! is a FIELD of this same document — so the read is one read with two callers,

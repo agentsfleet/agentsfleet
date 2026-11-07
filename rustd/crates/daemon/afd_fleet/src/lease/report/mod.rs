@@ -204,12 +204,13 @@ impl Plane {
                 closed,
                 owed,
                 notice,
+                folds,
             } => {
                 if let Some(plan) = &task_plan {
                     plan.announce().await;
                 }
                 let charged = usage::charged(settlement.as_deref());
-                let answer = notice.unwrap_or(request.response_text.as_ref());
+                let answer = notice.unwrap_or_else(|| request.response_text.as_ref());
                 let completed_at = self
                     .announce(
                         runner_id,
@@ -224,6 +225,7 @@ impl Plane {
                 if let Some(owing) = owed {
                     self.queue_owed_answer(&owing, &lease, answer).await;
                 }
+                self.announce_folds(&lease, lease_id, folds, answer).await;
                 let tokens = self.leases.run_tokens(&lease_key).await;
                 Ok(reconciled(lease, charged, false, tokens, completed_at))
             }
@@ -276,6 +278,7 @@ fn terminal<'a>(
         last_response: request.checkpoint.last_response.as_ref(),
         held_until: request.held_until,
         task_settlement: None,
+        folded_through_sequence: request.folded_through_sequence,
         now,
     }
 }

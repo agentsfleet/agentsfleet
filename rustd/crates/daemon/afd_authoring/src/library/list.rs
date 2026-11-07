@@ -75,10 +75,13 @@ impl Setup {
             .await
             .map_err(query(CONTEXT))?;
         tx.commit().await.map_err(query(CONTEXT))?;
-        let more = rows.len() > request.limit as usize;
+        let more = rows.len() > usize::try_from(request.limit).unwrap_or(usize::MAX);
         let mut items = Vec::new();
         let mut next_cursor = None;
-        for row in rows.into_iter().take(request.limit as usize) {
+        for row in rows
+            .into_iter()
+            .take(usize::try_from(request.limit).unwrap_or(usize::MAX))
+        {
             let (at, id, card) = row.card()?;
             next_cursor = Some(paging::cursor(&binding, at, &id));
             items.push(card);

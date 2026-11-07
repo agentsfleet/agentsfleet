@@ -98,7 +98,7 @@ fn validate_known(
     Ok(())
 }
 
-pub(super) fn outcome(value: Outcome) -> &'static str {
+pub(super) const fn outcome(value: Outcome) -> &'static str {
     match value {
         Outcome::Completed => "completed",
         Outcome::Failed => "failed",
@@ -107,7 +107,7 @@ pub(super) fn outcome(value: Outcome) -> &'static str {
     }
 }
 
-pub(crate) fn reason(value: FailureReason) -> &'static str {
+pub(crate) const fn reason(value: FailureReason) -> &'static str {
     match value {
         FailureReason::InsufficientBalance => "insufficient_balance",
         FailureReason::ModelUnavailable => "model_unavailable",

@@ -148,13 +148,13 @@ async fn outbound_isolation(ca: DragonflyConfig, a: Dragonfly, cb: DragonflyConf
         "same-consumer".into(),
     );
     assert!(
-        rb.read_blocking(std::time::Duration::from_millis(10))
+        rb.read_blocking(Duration::from_millis(10))
             .await
             .expect("b empty")
             .is_none()
     );
     assert_eq!(
-        ra.read_blocking(std::time::Duration::from_millis(10))
+        ra.read_blocking(Duration::from_millis(10))
             .await
             .expect("a read")
             .expect("delivery")

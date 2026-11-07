@@ -97,7 +97,7 @@ fn state(row: &Stored) -> &'static str {
     }
 }
 
-fn kind(kind: CheckKind) -> &'static str {
+const fn kind(kind: CheckKind) -> &'static str {
     match kind {
         CheckKind::Definition => "source",
         CheckKind::Policy => KIND_POLICY,

@@ -1,6 +1,6 @@
 //! The deployment ceiling: an estimate of unsettled admissions across every
 //! fleet, sampled on a cadence, refusing new work once it reaches the budget.
-//! No per-fleet cap exists (`M242_001` §1).
+//! No per-fleet cap exists.
 
 use af_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;

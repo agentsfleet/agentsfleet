@@ -156,7 +156,7 @@ pub(super) async fn publish(
         attempt.id.clone(),
     );
     if let Err(error) = task
-        .finish_with(summary, |generation, checkpoint| async move {
+        .finish_with(summary, async move |generation, checkpoint| {
             store.commit(generation, checkpoint).await
         })
         .await
@@ -173,7 +173,7 @@ fn prefix(
     summary: Option<&af_context::Summary>,
     groups: &[af_context::Group],
 ) -> af_context::Result<String> {
-    crate::replay::digest(&(summary, groups)).map_err(af_context::Error::boundary)
+    replay::digest(&(summary, groups)).map_err(af_context::Error::boundary)
 }
 
 fn quoted(

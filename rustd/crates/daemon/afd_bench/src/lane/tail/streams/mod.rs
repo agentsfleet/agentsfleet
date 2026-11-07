@@ -101,9 +101,15 @@ struct Watch {
 
 impl Watch {
     fn new(streams: usize) -> Self {
-        let unset = || (0..streams).map(|_| AtomicU64::new(UNSET)).collect();
+        let unset = || {
+            std::iter::repeat_with(|| AtomicU64::new(UNSET))
+                .take(streams)
+                .collect()
+        };
         Self {
-            heard: (0..streams).map(|_| AtomicBool::new(false)).collect(),
+            heard: std::iter::repeat_with(|| AtomicBool::new(false))
+                .take(streams)
+                .collect(),
             epoch: Instant::now(),
             stamped: unset(),
             arrived: unset(),

@@ -74,31 +74,29 @@ pub(super) fn statement<'a>(
 ) -> EventPage<'a> {
     let since = filter.since().map(Timestamp::to_sqlx);
     let until = filter.until().map(Timestamp::to_sqlx);
-    cursor.map_or(
-        sqlx::query_as(sql::runner_view::LIST_EVENTS_FIRST)
+    match cursor {
+        None => sqlx::query_as(sql::runner_view::LIST_EVENTS_FIRST)
             .bind(runner.as_str())
-            .bind(event_types.clone())
+            .bind(event_types)
             .bind(since)
             .bind(until)
             .bind(i64::from(limit)),
-        |boundary| {
-            sqlx::query_as(sql::runner_view::LIST_EVENTS_AFTER)
-                .bind(runner.as_str())
-                .bind(event_types)
-                .bind(since)
-                .bind(until)
-                .bind(boundary.created_at().to_sqlx())
-                .bind(boundary.id().as_str())
-                .bind(i64::from(limit))
-        },
-    )
+        Some(boundary) => sqlx::query_as(sql::runner_view::LIST_EVENTS_AFTER)
+            .bind(runner.as_str())
+            .bind(event_types)
+            .bind(since)
+            .bind(until)
+            .bind(boundary.created_at().to_sqlx())
+            .bind(boundary.id().as_str())
+            .bind(i64::from(limit)),
+    }
 }
 
 pub(super) fn cursor(
     items: &[RunnerEventItem<'static>],
     limit: u32,
 ) -> Result<Option<KeysetCursor>> {
-    if items.len() != limit as usize {
+    if items.len() != usize::try_from(limit).unwrap_or(usize::MAX) {
         return Ok(None);
     }
     items

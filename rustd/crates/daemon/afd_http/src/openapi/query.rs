@@ -140,7 +140,7 @@ pub struct ConnectorCallback {
 }
 
 /// The fence a lease-addressed read or delete carries, having no body.
-#[derive(Debug, IntoParams)]
+#[derive(Debug, Clone, Copy, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct Fence {
     /// Attempt token returned with the lease. Replaced assignments are refused.

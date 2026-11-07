@@ -31,6 +31,7 @@
 //! crate reads them from there like everybody else, which is what stops a row
 //! one plane writes from being one another cannot recognise.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod activity;
@@ -51,7 +52,7 @@ pub use self::history::{
     Since, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, ToolCallRow, WIDEST_WINDOW, glob_to_like,
     next_cursor, parse_since, prefix_to_like,
 };
-/// Where an accepted steer went (`M242_002`).
+/// Where an accepted steer went.
 pub use self::steer::disposition;
 pub use self::steer::{ACTOR_MACHINE, ACTOR_PREFIX, Steer, Steered, is_steer_actor, steer_actor};
 

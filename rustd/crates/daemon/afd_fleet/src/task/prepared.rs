@@ -34,7 +34,7 @@ impl PreparedItem {
         }
     }
 
-    pub(super) fn existing_task(&self) -> Option<&Uuid7> {
+    pub(super) const fn existing_task(&self) -> Option<&Uuid7> {
         match self {
             Self::Existing { task_id, .. } => task_id.as_ref(),
             Self::New { .. } => None,

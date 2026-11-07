@@ -16,8 +16,9 @@ use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{Doorbell, SubscriptionHub};
 use backon::ExponentialBuilder;
 
-use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply};
 use crate::hub_socket_faults::{BUDGET, pubsub_rules, until};
+use af_core::test_util::trace::install_subscriber;
 
 /// The climbing schedule's first step and ceiling: production's shape,
 /// scaled down eightfold and without jitter so the count is steady.

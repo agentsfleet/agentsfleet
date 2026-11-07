@@ -80,7 +80,7 @@ pub(crate) fn budgeted(daily_nanos: &str) -> FleetConfig {
 
 /// The request the pass is given, for `fleet` in `workspace`, its event created
 /// at `created_at`.
-pub(crate) fn request<'a>(
+pub(crate) const fn request<'a>(
     workspace: &'a Uuid7,
     fleet: &'a Uuid7,
     event: &'a str,

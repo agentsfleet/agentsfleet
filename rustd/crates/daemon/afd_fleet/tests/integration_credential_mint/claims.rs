@@ -120,7 +120,7 @@ async fn mint(
     fixtures: &Fixtures,
     who: &Bound,
     integration: &str,
-) -> (std::result::Result<Minted, ErrorCode>, usize) {
+) -> (Result<Minted, ErrorCode>, usize) {
     let counting = Arc::new(Counting::default());
     let plane = afd_fleet::lease::Plane {
         task_reports: None,

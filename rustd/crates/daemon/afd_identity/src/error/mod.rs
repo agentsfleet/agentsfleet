@@ -92,7 +92,7 @@ pub(crate) enum ErrorKind {
 
 impl Error {
     /// The code and the sentence, decided together — see the module note.
-    fn answer(&self) -> (ErrorCode, &'static str) {
+    const fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
             ErrorKind::BlankSecret => (error_code::STARTUP_ENV_CHECK, DETAIL_BLANK_SECRET),
             ErrorKind::Claim { .. } => (error_code::AUTH_UNAVAILABLE, DETAIL_CLAIM),
@@ -105,7 +105,7 @@ impl Error {
 
     /// The registry code a caller is refused with.
     #[must_use]
-    pub fn code(&self) -> ErrorCode {
+    pub const fn code(&self) -> ErrorCode {
         self.answer().0
     }
 
@@ -115,7 +115,7 @@ impl Error {
     /// the log, and a caller who could read it would learn which provider this
     /// daemon brokers with and how it failed.
     #[must_use]
-    pub fn detail(&self) -> &'static str {
+    pub const fn detail(&self) -> &'static str {
         self.answer().1
     }
 
@@ -124,7 +124,7 @@ impl Error {
     /// An outage answers 503, where a blank secret is a deployment that will
     /// never answer and a best-effort writeback is neither.
     #[must_use]
-    pub fn is_provider_unavailable(&self) -> bool {
+    pub const fn is_provider_unavailable(&self) -> bool {
         matches!(
             self.kind(),
             ErrorKind::Claim {

@@ -51,7 +51,7 @@ const DROPPED_COLUMN: (&str, &str) = (
 
 /// `name: error` for every statement in `statements` that does not prepare.
 async fn refusals(
-    connection: &mut sqlx::PgConnection,
+    connection: &mut PgConnection,
     statements: impl IntoIterator<Item = (String, String)>,
 ) -> Vec<String> {
     let mut refused = Vec::new();

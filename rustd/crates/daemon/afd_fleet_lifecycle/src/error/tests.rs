@@ -52,11 +52,11 @@ fn contextual_errors_preserve_context_without_leaking_it() {
 
 struct Expected {
     error: Error,
-    code: af_core::error_code::ErrorCode,
+    code: error_code::ErrorCode,
     detail: &'static str,
 }
 
-fn expected(error: Error, code: af_core::error_code::ErrorCode, detail: &'static str) -> Expected {
+fn expected(error: Error, code: error_code::ErrorCode, detail: &'static str) -> Expected {
     Expected {
         error,
         code,

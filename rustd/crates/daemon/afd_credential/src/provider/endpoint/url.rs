@@ -30,7 +30,16 @@ pub(crate) fn validate(url: &str) -> Result<Box<str>, Rejection> {
         // forgot the `https://`. The parser calls that a relative URL; the
         // rejection they need to read says the scheme is the problem.
         url::ParseError::RelativeUrlWithoutBase => Rejection::InvalidScheme,
-        _malformed => Rejection::Malformed,
+        _malformed @ (url::ParseError::EmptyHost
+        | url::ParseError::IdnaError
+        | url::ParseError::InvalidPort
+        | url::ParseError::InvalidIpv4Address
+        | url::ParseError::InvalidIpv6Address
+        | url::ParseError::InvalidDomainCharacter
+        | url::ParseError::RelativeUrlWithCannotBeABaseBase
+        | url::ParseError::SetHostOnCannotBeABaseUrl
+        | url::ParseError::Overflow
+        | _) => Rejection::Malformed,
     })?;
     if parsed.scheme() != REQUIRED_SCHEME {
         return Err(Rejection::InvalidScheme);

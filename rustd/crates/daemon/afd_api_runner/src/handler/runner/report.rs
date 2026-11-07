@@ -74,7 +74,7 @@ const DESCRIPTION: &str = const_format::concatcp!(
     operation_id = "runner_report",
     summary = "Report the result of one run",
     description = DESCRIPTION,
-    request_body = ReportRequest,
+    request_body = ReportRequest<'_>,
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ReportResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -351,6 +351,7 @@ mod tests {
     /// A processed report; the totals under test come from the lines, not here.
     fn request() -> ReportRequest<'static> {
         ReportRequest {
+            folded_through_sequence: None,
             task: None,
             lease_id: Cow::Borrowed("01924f4e-0000-7000-8000-00000000fee7"),
             event_id: Cow::Borrowed("event-fixture"),

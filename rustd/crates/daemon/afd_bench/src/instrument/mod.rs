@@ -5,8 +5,8 @@
 //! `afd_fleet`'s `select` publishes how many fleets each poll examined through
 //! `producers::fleet::lease_polled`, so fan-out per poll is the number the
 //! daemon reports about itself. Statements are NOT read here: a poll's
-//! statements run in several crates, and a hand-kept tally missed most of them
-//! (`M241_001` §3). `crate::statements` reads them from `pg_stat_statements`.
+//! statements run in several crates, and a hand-kept tally missed most of them.
+//! `crate::statements` reads them from `pg_stat_statements`.
 //! This module installs a provider that exports nowhere and asks its reader
 //! for the sums.
 //!
@@ -135,12 +135,11 @@ impl CapturingExporter {
                 }
             }
         }
-        let mut latest = self
+        *self
             .sink
             .latest
             .lock()
-            .map_err(|_poisoned| OTelSdkError::InternalFailure(POISONED.to_owned()))?;
-        *latest = captured;
+            .map_err(|_poisoned| OTelSdkError::InternalFailure(POISONED.to_owned()))? = captured;
         Ok(())
     }
 }
@@ -184,7 +183,9 @@ impl LeaseInstrument {
             return Ok(installed.clone());
         }
         let built = Self::build()?;
-        let _ = INSTALLED.set(built);
+        // Under `BUILDING`, after the check above, the slot is empty: nothing
+        // is lost here.
+        let _unset: core::result::Result<(), Self> = INSTALLED.set(built);
         INSTALLED
             .get()
             .cloned()

@@ -89,7 +89,8 @@ async fn a_host_choice_that_cannot_be_recorded_rolls_the_admission_back() {
         &format!("NEW.id='{runner}'::uuid AND NEW.lease_version<>OLD.lease_version"),
         "RETURN NULL",
     )
-    .await;
+    .await
+    .expect("the fixture refusal installs");
     let placed = f
         .drafts
         .claim_queued(&f.runner, &draft.id)

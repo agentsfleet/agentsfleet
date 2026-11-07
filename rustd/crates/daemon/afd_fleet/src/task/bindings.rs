@@ -42,8 +42,8 @@ pub(super) async fn accept(
         if proposed.source_start < end || proposed.source_end <= proposed.source_start {
             return Err(TaskRefusal::InputAmbiguous.into());
         }
-        let span = proposed.source_start.unsigned_abs() as usize
-            ..proposed.source_end.unsigned_abs() as usize;
+        let span = usize::try_from(proposed.source_start.unsigned_abs()).unwrap_or(usize::MAX)
+            ..usize::try_from(proposed.source_end.unsigned_abs()).unwrap_or(usize::MAX);
         let objective = message
             .get(span)
             .ok_or(TaskRefusal::InputAmbiguous)?

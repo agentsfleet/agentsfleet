@@ -43,7 +43,7 @@ struct NewObject {
 pub(in crate::task) async fn register(
     tasks: &Tasks,
     lease: TaskLease<'_>,
-    checkpoint: &af_core::id::Uuid7,
+    checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointObjectsInput>,
 ) -> Result<CheckpointObjectsPage> {
     let storage = guard::storage(tasks)?;
@@ -221,8 +221,12 @@ fn prepare(
             .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
         kind: descriptor.kind.clone(),
         format_version: plan.format_version,
-        accounted_bytes: i64::try_from(descriptor.size + af_crypto::TAG_LEN as u64)
-            .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+        accounted_bytes: i64::try_from(
+            descriptor.size
+                + u64::try_from(af_crypto::TAG_LEN)
+                    .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+        )
+        .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
         dek_ciphertext: pg_bytes(envelope.wrapped_dek()),
         dek_nonce: pg_bytes(envelope.dek_nonce()),
         dek_tag: pg_bytes(envelope.dek_tag()),

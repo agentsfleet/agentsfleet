@@ -26,7 +26,9 @@ impl Inbox {
     pub(super) async fn stood(&self, mut resolved: Resolved) -> Result<Resolved> {
         if leaves_delivery_parked(&resolved.status, resolved.event_id.as_deref()) {
             self.wake_parked_delivery(&resolved.fleet_id).await;
-        } else if resolved.status == status::APPROVED
+            return Ok(resolved);
+        }
+        if resolved.status == status::APPROVED
             && let Some(event_id) = resolved.event_id.clone()
         {
             resolved.continuation_event_id = self.owed_continuation(&resolved, &event_id).await?;

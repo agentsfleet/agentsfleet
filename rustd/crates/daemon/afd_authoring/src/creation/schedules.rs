@@ -27,7 +27,7 @@ impl Creations {
                     &cron.timezone,
                     &cron.message,
                 )),
-                _ => None,
+                Trigger::Webhook(_) | Trigger::Mention(_) => None,
             })
             .collect::<afd_cron::Result<_>>()?;
         Ok(self

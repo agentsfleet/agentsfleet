@@ -38,7 +38,7 @@ fn a_stored_trace_carries_fenced_call_ids_and_nothing_else_changes() {
     let kept = stored_from(&sent.to_string()).expect("a valid trace is kept");
     assert_eq!(kept["calls"][0]["call_id"], json!("7:1"));
     assert_eq!(kept["calls"][1]["call_id"], json!("7:2"));
-    let mut unfenced = kept.clone();
+    let mut unfenced = kept;
     for (n, call) in unfenced["calls"]
         .as_array_mut()
         .expect("calls")

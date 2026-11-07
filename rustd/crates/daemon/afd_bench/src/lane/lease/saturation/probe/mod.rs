@@ -66,7 +66,11 @@ impl Pool for Db {
 
     async fn serves(&self, count: u32) -> bool {
         // Collected before any is dropped, so all `count` are out together.
-        let held = join_all((0..count).map(|_| Self::acquire(self))).await;
+        let held = join_all(
+            std::iter::repeat_with(|| Self::acquire(self))
+                .take(usize::try_from(count).unwrap_or(usize::MAX)),
+        )
+        .await;
         held.iter().all(core::result::Result::is_ok)
     }
 }

@@ -186,7 +186,7 @@ impl Fixtures {
     /// before and just after it: the span a stamp it took from `now()` lies in.
     pub(crate) async fn clock_around<T>(
         &self,
-        write: impl std::future::Future<Output = T>,
+        write: impl Future<Output = T>,
     ) -> (T, std::ops::RangeInclusive<Timestamp>) {
         let before = self.database_now().await;
         let output = write.await;

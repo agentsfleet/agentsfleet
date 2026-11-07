@@ -77,7 +77,7 @@ impl ModelCalls {
         if !profile.capabilities.noul
             || !af_wire::decision::serialized_within(
                 &(&request.state, &request.questions),
-                profile.input_max_bytes as usize,
+                usize::try_from(profile.input_max_bytes).unwrap_or(usize::MAX),
             )
         {
             return Err(ErrorKind::Token.into());

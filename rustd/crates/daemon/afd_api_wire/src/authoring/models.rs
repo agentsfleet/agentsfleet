@@ -4,7 +4,7 @@ use serde::Serialize;
 
 /// Eligibility for each supported purpose is independent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct Eligibility {
     /// Bounded setup authoring is supported.
     pub authoring: bool,

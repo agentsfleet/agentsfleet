@@ -32,10 +32,12 @@ impl Runners {
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_RUNNER_COUNT))?;
-        let statement = cursor.map_or(
-            sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
-                .bind(sql::LEASE_STATUS_ACTIVE)
-                .bind(i64::from(limit)),
+        let statement = cursor.map_or_else(
+            || {
+                sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
+                    .bind(sql::LEASE_STATUS_ACTIVE)
+                    .bind(i64::from(limit))
+            },
             |boundary| {
                 sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_AFTER)
                     .bind(sql::LEASE_STATUS_ACTIVE)
@@ -121,7 +123,7 @@ impl Runners {
 }
 
 fn page_cursor(items: &[RunnerItem], limit: u32) -> Option<KeysetCursor> {
-    (items.len() == limit as usize)
+    (items.len() == usize::try_from(limit).unwrap_or(usize::MAX))
         .then(|| items.last())
         .flatten()
         .map(|item| KeysetCursor::new(item.created_at, item.id.clone()))

@@ -137,7 +137,9 @@ impl Plane {
                 .refused(acquired, label::GRANT_DENIED, runner_id, &reason)
                 .await
                 .map(Step::Stop),
-            waits => no_work(runner_id, &reason).map(|answer| waits.ending(answer)),
+            waits @ (Ungranted::Parks | Ungranted::Retries) => {
+                no_work(runner_id, &reason).map(|answer| waits.ending(answer))
+            }
         }
     }
 
@@ -307,7 +309,7 @@ impl Ungranted {
     /// The step an ungranted delivery takes once its answer is rendered: an
     /// open card parks it, and anything else stops it — for the next poll to
     /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
-    fn ending(self, answer: String) -> Step<Leased> {
+    const fn ending(self, answer: String) -> Step<Leased> {
         match self {
             Self::Parks => Step::Park(answer),
             Self::Retries | Self::Ends => Step::Stop(answer),

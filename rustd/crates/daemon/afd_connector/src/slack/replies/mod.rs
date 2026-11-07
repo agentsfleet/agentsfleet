@@ -4,7 +4,7 @@
 //! page at a time. The fleet needs the parent — in an incident channel that is
 //! the CI announcement carrying the run link — and the latest replies, which
 //! is what the people in the thread have said since. So every page is read and
-//! a bounded window keeps the parent and the newest [`MAX_MESSAGES`]` - 1`
+//! a bounded window keeps the parent and the newest [`MAX_MESSAGES`] minus one
 //! replies; a thread of any length costs the same memory.
 //!
 //! # One deadline for the whole read

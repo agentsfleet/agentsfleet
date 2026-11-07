@@ -153,15 +153,17 @@ async fn allocate(
     repository_target: (String, Option<String>),
 ) -> Result<af_core::id::Uuid7> {
     let (repository, commit) = repository_target;
-    let mut pages = (0..input.page_count)
-        .map(|_page| {
-            tasks
-                .leases
-                .entropy()
-                .uuid7(clock::now())
-                .map(|id| id.as_str().to_owned())
-        })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+    // A `u32` always fits the `usize` of every target this daemon builds for.
+    let page_count = usize::try_from(input.page_count).unwrap_or(usize::MAX);
+    let mut pages = std::iter::repeat_with(|| {
+        tasks
+            .leases
+            .entropy()
+            .uuid7(clock::now())
+            .map(|id| id.as_str().to_owned())
+    })
+    .take(page_count)
+    .collect::<std::result::Result<Vec<_>, _>>()?;
     let base = base(
         tasks,
         connection,

@@ -91,6 +91,9 @@ const RETIRED_WEBHOOK_ROUTES: usize = 1;
 /// Current-work collection/detail and lease-scoped decision reservation/receipt.
 const DURABLE_TASK_ADDITIONS: usize = 16;
 
+/// The lease route a running fleet claims the messages it receives through.
+const FOLD_ADDITIONS: usize = 1;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -100,6 +103,7 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + BILLING_REPORT_ADDITIONS
     + AUTHORING_CONTEXT_ADDITIONS
     + DURABLE_TASK_ADDITIONS
+    + FOLD_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is

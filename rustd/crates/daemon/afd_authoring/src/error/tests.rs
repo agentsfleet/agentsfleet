@@ -54,7 +54,7 @@ fn lifecycle_errors_expose_only_bounded_codes_and_recovery_states() {
 // seam=existing subsystem failure fixtures; no_claim=live datastore outages.
 #[test]
 fn subsystem_failures_retain_their_original_classification_and_typed_cause() {
-    let mut samples: Vec<(Error, af_core::error_code::ErrorCode)> = Vec::new();
+    let mut samples: Vec<(Error, error_code::ErrorCode)> = Vec::new();
     for (_, source) in afd_runner::error::one_of_each_kind() {
         let code = source.code();
         samples.push((source.into(), code));

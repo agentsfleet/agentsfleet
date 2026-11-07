@@ -103,7 +103,8 @@ pub(crate) const DETAIL_EVENT_HEADER: &str =
 /// every caller then treats as absent — see [`verify`]'s own copy of this note
 /// for why the two are not told apart on the signature path.
 pub(crate) fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
-    headers.get(name).and_then(|value| value.to_str().ok())
+    let value = headers.get(name)?;
+    value.to_str().ok()
 }
 
 /// The response bodies these routes answer with.

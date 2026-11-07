@@ -106,18 +106,23 @@ impl<S: KeySetSource> KeyCache<S> {
         self.refresh(reason).await;
 
         // A failed refresh never renews the last confirmation timestamp.
-        let held = self.held.read().await;
-        let Some(entry) = held.as_ref() else {
+        let held = self
+            .held
+            .read()
+            .await
+            .as_ref()
+            .map(|entry| (Arc::clone(&entry.keys), entry.fetched_at));
+        let Some((keys, fetched_at)) = held else {
             return Err(VerifyError::KeySetUnavailable);
         };
         let ceiling = self.ttl.saturating_add(STALE_GRACE);
-        if self.clock.now() > after(entry.fetched_at, ceiling) {
+        if self.clock.now() > after(fetched_at, ceiling) {
             return Err(VerifyError::KeySetUnavailable);
         }
-        if entry.keys.find(kid).is_none() {
+        if keys.find(kid).is_none() {
             return Err(VerifyError::KeyNotFound);
         }
-        Ok(Arc::clone(&entry.keys))
+        Ok(keys)
     }
 
     /// Fetches and installs a key set, or leaves the previous one in place.
@@ -204,8 +209,7 @@ impl<S: KeySetSource> KeyCache<S> {
             );
         }
         let fetched_at = self.clock.now();
-        let mut held = self.held.write().await;
-        *held = Some(Held {
+        *self.held.write().await = Some(Held {
             keys: Arc::new(parsed),
             fetched_at,
         });

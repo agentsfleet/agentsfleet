@@ -18,7 +18,7 @@ use super::refusal::Refusal;
 const REFUSE: &str = "RAISE EXCEPTION 'fixture refusal'";
 
 /// A report proving nothing: enough for the beat to write its verdict.
-fn bare_report() -> CapabilityReport<'static> {
+const fn bare_report() -> CapabilityReport<'static> {
     CapabilityReport {
         durable_tasks_v1: false,
         build_id: None,
@@ -43,7 +43,8 @@ async fn test_a_beat_whose_writes_are_refused_still_answers_and_logs_each() {
         &format!("NEW.id = '{runner}'::uuid"),
         REFUSE,
     )
-    .await;
+    .await
+    .expect("the refusal trigger installs");
     let beat = HeartbeatRequest {
         capability_report: Some(bare_report()),
         selftest: None,

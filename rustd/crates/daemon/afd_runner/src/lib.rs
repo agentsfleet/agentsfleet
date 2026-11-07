@@ -21,6 +21,7 @@
 //! sets and every decode branch in a unit test with no datastore anywhere
 //! near it.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod error;

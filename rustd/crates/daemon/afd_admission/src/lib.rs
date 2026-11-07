@@ -44,7 +44,7 @@ pub struct Admitted {
     /// different payload under one key without a second read.
     pub stored: Repeated,
     /// What the admitting statement saw of the fleet's live run, for the
-    /// disposition a producer names (`M242_002`).
+    /// disposition a producer names.
     pub run: RunFacts,
 }
 
@@ -53,7 +53,9 @@ pub struct Admitted {
 pub struct RunFacts {
     /// The run holding the fleet's slot, when its lease has not expired.
     pub live_run: Option<LiveRun>,
-    /// Whether any unsettled admission was already on the fleet.
+    /// Whether a message waits that this one must not pass: with no live
+    /// run, any unsettled admission; with one, a parked or task-bound one
+    /// after the run's own.
     pub earlier_waiting: bool,
 }
 
@@ -62,9 +64,10 @@ pub struct RunFacts {
 pub struct LiveRun {
     /// The event the run serves.
     pub event_id: String,
-    /// Whether the run is a durable task, which claims later input from a
-    /// person in its conversation at its next safe boundary.
-    pub takes_input: bool,
+    /// Whether the run is a durable task. A durable task claims a person's
+    /// later messages in its conversation; any other run claims every later
+    /// message its fleet receives.
+    pub durable_task: bool,
     /// Whether this message's stated reply matches the run's.
     pub same_conversation: bool,
 }

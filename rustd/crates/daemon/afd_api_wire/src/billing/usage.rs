@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::borrow::Cow;
 
 /// Recorded settled totals over a period, spending group or activity.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(feature = "openapi", schema(as = BillingTotals))]
 pub struct Totals {

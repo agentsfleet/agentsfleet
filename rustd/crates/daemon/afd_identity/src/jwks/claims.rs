@@ -112,7 +112,8 @@ impl Claims {
     /// refusal, and failing the whole verification would report a provisioning
     /// problem as a bad token.
     pub(crate) fn identifier(&self, name: &str) -> Option<Uuid7> {
-        self.raw_claim(name).and_then(|raw| Uuid7::parse(raw).ok())
+        let raw = self.raw_claim(name)?;
+        Uuid7::parse(raw).ok()
     }
 
     /// The workspace ceiling — absent when unset, an ERROR when unreadable.

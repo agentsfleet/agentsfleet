@@ -205,6 +205,7 @@ impl Chat {
         now: Timestamp,
     ) {
         let request = ReportRequest {
+            folded_through_sequence: None,
             task: None,
             lease_id: Cow::Borrowed(&lease.lease_id),
             event_id: Cow::Borrowed(&lease.event_id),

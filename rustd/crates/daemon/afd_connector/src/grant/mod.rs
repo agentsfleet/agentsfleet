@@ -345,7 +345,7 @@ pub async fn link_person(
     team: &str,
     person: &str,
     subject: &str,
-) -> crate::error::Result<u64> {
+) -> Result<u64> {
     sqlx::query(include_str!("sql/link_person.sql"))
         .bind(workspace.as_str())
         .bind(team)

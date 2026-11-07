@@ -94,7 +94,7 @@ fn webhook_urls(deployment: &str, fleet: &Uuid7, config: &FleetConfig) -> Vec<We
                     webhook.source
                 )),
             }),
-            _ => None,
+            Trigger::Cron(_) | Trigger::Mention(_) => None,
         })
         .collect()
 }

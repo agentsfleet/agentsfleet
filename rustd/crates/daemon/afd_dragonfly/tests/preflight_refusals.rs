@@ -22,7 +22,8 @@ use std::time::Duration;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{Dragonfly, preflight};
 
-use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply};
+use af_core::test_util::trace::install_subscriber;
 
 /// How long anything crossing the fake is given before the test fails.
 const BUDGET: Duration = Duration::from_secs(10);

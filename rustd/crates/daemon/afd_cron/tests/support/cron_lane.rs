@@ -142,7 +142,7 @@ impl CronLane {
         &self,
         source_key: &str,
         cron: &str,
-    ) -> core::result::Result<Schedule, Refused> {
+    ) -> Result<Schedule, Refused> {
         self.try_create_with(source_key, cron, &Self::token()).await
     }
 
@@ -151,7 +151,7 @@ impl CronLane {
         source_key: &str,
         cron: &str,
         token: &Uuid7,
-    ) -> core::result::Result<Schedule, Refused> {
+    ) -> Result<Schedule, Refused> {
         let fleet = self.fleet_id();
         self.store
             .create(

@@ -204,7 +204,7 @@ pub async fn dragonfly_calls(queue: &Dragonfly) -> Result<u64> {
         }
     }
     read_any.then_some(total).ok_or_else(|| {
-        crate::error::ErrorKind::CounterUnreadable {
+        ErrorKind::CounterUnreadable {
             datastore: DRAGONFLY,
             field: CALLS_FIELD,
         }
@@ -252,7 +252,7 @@ pub async fn postgres_transactions(database: &Db) -> Result<u64> {
 /// its field, rather than clamped to a zero nobody measured.
 pub(crate) fn postgres_count(value: i64, field: &'static str) -> Result<u64> {
     u64::try_from(value).map_err(|_negative| {
-        crate::error::ErrorKind::CounterUnreadable {
+        ErrorKind::CounterUnreadable {
             datastore: POSTGRES,
             field,
         }
@@ -281,7 +281,7 @@ pub async fn dragonfly_used_memory(queue: &Dragonfly) -> Result<u64> {
         }
     }
     read_any.then_some(total).ok_or_else(|| {
-        crate::error::ErrorKind::CounterUnreadable {
+        ErrorKind::CounterUnreadable {
             datastore: DRAGONFLY,
             field: USED_MEMORY_FIELD,
         }

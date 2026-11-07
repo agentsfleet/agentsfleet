@@ -20,7 +20,7 @@ use axum::Router;
 use crate::harness::{self, Fleet};
 
 /// What a signed-up owner holds: the grant signup writes to the provider.
-pub(crate) fn owner_scopes() -> ScopeSet {
+pub(crate) const fn owner_scopes() -> ScopeSet {
     ScopeSet::from_scopes(&TENANT_OWNER_GRANT)
 }
 

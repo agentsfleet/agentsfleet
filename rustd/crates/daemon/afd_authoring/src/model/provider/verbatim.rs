@@ -99,7 +99,7 @@ impl Folded {
 }
 
 /// Typographic variants a model retypes, folded to one character.
-fn fold(character: char) -> char {
+const fn fold(character: char) -> char {
     match character {
         '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '\u{2032}' => '\'',
         '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' | '\u{2033}' => '"',

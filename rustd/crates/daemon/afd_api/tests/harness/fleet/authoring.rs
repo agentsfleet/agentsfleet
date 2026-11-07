@@ -17,7 +17,7 @@ pub(super) fn stores(
     let drafts = afd_authoring::Drafts::new(
         database.clone(),
         Entropy::new(),
-        std::sync::Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
+        Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
             database.clone(),
         )),
     );

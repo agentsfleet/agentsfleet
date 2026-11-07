@@ -24,6 +24,7 @@
 //! both are reads against a workspace this crate has no business holding a pool
 //! for.
 
+#![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
 pub mod ceiling;

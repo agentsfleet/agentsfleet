@@ -74,7 +74,7 @@ pub(super) async fn remote(
                 .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
         },
     )?;
-    if plaintext.expose().len() as u64 != object.plaintext.size
+    if u64::try_from(plaintext.expose().len()).unwrap_or(u64::MAX) != object.plaintext.size
         || af_core::etag::sha256_hex(plaintext.expose()) != object.plaintext.sha256
     {
         return Err(TaskRefusal::CheckpointIncompatible.into());

@@ -99,7 +99,8 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
         ),
         "RAISE EXCEPTION 'fixture refusal'",
     )
-    .await;
+    .await
+    .expect("the fixture refusal installs");
     let aborted = refused(
         &c,
         &key,
@@ -140,7 +141,8 @@ async fn a_readiness_record_failure_keeps_activation_and_its_run_uncommitted() {
         ),
         "RAISE EXCEPTION 'fixture refusal'",
     )
-    .await;
+    .await
+    .expect("the fixture refusal installs");
     c.fund().await;
     let lost = refused(&c, &key, &request, "the stream record failed to save").await;
     assert_eq!(lost.code(), error_code::INTERNAL_DB_QUERY);
@@ -181,7 +183,8 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run() {
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
         "RAISE EXCEPTION 'fixture refusal'",
     )
-    .await;
+    .await
+    .expect("the fixture refusal installs");
     c.fund().await;
     c.creations
         .save(c.base.access(), &key, request.clone(), now())

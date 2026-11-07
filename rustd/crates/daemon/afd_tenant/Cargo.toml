@@ -21,9 +21,6 @@ workspace = true
 # other: telemetry knows nothing about accounts, and whether a signup opened
 # one is a fact only this crate holds.
 af_observability.workspace = true
-# The charges cursor is base64url on the wire — the whole token, unlike the
-# keyset cursor which encodes only its text half. Same engine as af_core's.
-base64.workspace = true
 # The catalogue cursor is base64url of CANONICAL JSON — a struct with a fixed
 # key order, re-encoded on decode so anything non-canonical is refused. serde
 # derives the struct; the encoding is af_core::paging::struct_cursor's.
@@ -81,6 +78,10 @@ test-util = [
 ]
 
 [dev-dependencies]
+# The cursor's unit tests decode an issued token by hand — the whole token,
+# unlike the keyset cursor which encodes only its text half. Same engine as
+# af_core's.
+base64.workspace = true
 # The device-flow suite needs REAL parallelism: its state races — two approves,
 # a verify against an approve — are worthless on a single-threaded runtime,
 # because the interleaving they exist to force cannot happen.

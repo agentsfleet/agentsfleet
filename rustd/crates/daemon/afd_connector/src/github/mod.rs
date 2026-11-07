@@ -158,7 +158,11 @@ pub(crate) fn parse_listing(body: &Value) -> Option<Found> {
     let id = match only.get(WIRE_ID)? {
         Value::Number(number) => number.as_u64()?.to_string(),
         Value::String(text) if is_installation_id(text) => text.clone(),
-        _unusable => return None,
+        _unusable @ (Value::Null
+        | Value::Bool(_)
+        | Value::String(_)
+        | Value::Array(_)
+        | Value::Object(_)) => return None,
     };
     let account = only
         .get(WIRE_ACCOUNT)

@@ -144,7 +144,7 @@ pub enum RunnerEventType {
 
 /// One row of runner history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerEventItem<'a> {
     /// The row's identifier.
@@ -164,7 +164,7 @@ pub struct RunnerEventItem<'a> {
 
 /// A page of runner history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerEventsResponse<'a> {
     /// The rows in this page.

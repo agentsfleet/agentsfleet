@@ -4,6 +4,7 @@
 //! platform-default metadata. Platform Library curation lives in
 //! `afd_authoring`, beside the native candidates it publishes.
 
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
 pub mod catalogue;

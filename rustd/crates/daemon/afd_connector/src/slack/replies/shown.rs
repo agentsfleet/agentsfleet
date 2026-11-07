@@ -71,7 +71,12 @@ fn collect(value: &Value, lines: &mut Vec<String>) {
                     Value::String(text) if SHOWN_KEYS.contains(&key.as_str()) => {
                         keep(text, lines);
                     }
-                    _ => collect(field, lines),
+                    Value::Null
+                    | Value::Bool(_)
+                    | Value::Number(_)
+                    | Value::String(_)
+                    | Value::Array(_)
+                    | Value::Object(_) => collect(field, lines),
                 }
             }
         }

@@ -32,7 +32,62 @@ impl Error {
             ErrorKind::TaskControlConflict { state }
             | ErrorKind::TaskControlAdmission { state, .. }
             | ErrorKind::TaskMutation { state, .. } => Some(state.as_str()),
-            _ => None,
+            ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
+            | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageDeadline { .. }
+            | ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteDeadline { .. }
+            | ErrorKind::TaskRemoteCooldown { .. }
+            | ErrorKind::DecisionRequest { .. }
+            | ErrorKind::DecisionDeadline { .. }
+            | ErrorKind::TaskReadTimeout { .. }
+            | ErrorKind::TaskStatementCancelled { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskTargetCounter { .. }
+            | ErrorKind::TaskPrecondition { .. }
+            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::Context { .. }
+            | ErrorKind::Authoring { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Gate { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Billing { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
+            | ErrorKind::Outbound { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::SetupUnavailable
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::StaleFence
+            | ErrorKind::LeaseNotFound
+            | ErrorKind::LeaseLost
+            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RenewalNoCredits
+            | ErrorKind::BudgetExhausted
+            | ErrorKind::MessageNoChannel
+            | ErrorKind::MessageLimitReached
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::IntegrationNotConnected
+            | ErrorKind::MintUnconfigured
+            | ErrorKind::GithubReconnectRequired
+            | ErrorKind::GithubMintFailed
+            | ErrorKind::ConnectorReconnectRequired
+            | ErrorKind::ConnectorMintFailed
+            | ErrorKind::GrantRequired
+            | ErrorKind::Memory { .. } => None,
         }
     }
 
@@ -41,7 +96,64 @@ impl Error {
     pub fn task_precondition_tag(&self) -> Option<&str> {
         match &self.inner.kind {
             ErrorKind::TaskPrecondition { current_etag } => Some(current_etag),
-            _ => None,
+            ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
+            | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageDeadline { .. }
+            | ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteDeadline { .. }
+            | ErrorKind::TaskRemoteCooldown { .. }
+            | ErrorKind::DecisionRequest { .. }
+            | ErrorKind::DecisionDeadline { .. }
+            | ErrorKind::TaskReadTimeout { .. }
+            | ErrorKind::TaskStatementCancelled { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskTargetCounter { .. }
+            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskMutation { .. }
+            | ErrorKind::TaskControlConflict { .. }
+            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::Context { .. }
+            | ErrorKind::Authoring { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Gate { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Billing { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
+            | ErrorKind::Outbound { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::SetupUnavailable
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::StaleFence
+            | ErrorKind::LeaseNotFound
+            | ErrorKind::LeaseLost
+            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RenewalNoCredits
+            | ErrorKind::BudgetExhausted
+            | ErrorKind::MessageNoChannel
+            | ErrorKind::MessageLimitReached
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::IntegrationNotConnected
+            | ErrorKind::MintUnconfigured
+            | ErrorKind::GithubReconnectRequired
+            | ErrorKind::GithubMintFailed
+            | ErrorKind::ConnectorReconnectRequired
+            | ErrorKind::ConnectorMintFailed
+            | ErrorKind::GrantRequired
+            | ErrorKind::Memory { .. } => None,
         }
     }
 
@@ -66,17 +178,76 @@ impl Error {
         match self.inner.kind {
             ErrorKind::DecisionRequest { .. } => Some("request_bounds"),
             ErrorKind::DecisionDeadline { .. } => Some("decision_deadline"),
-            _ => None,
+            ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
+            | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageDeadline { .. }
+            | ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteDeadline { .. }
+            | ErrorKind::TaskRemoteCooldown { .. }
+            | ErrorKind::TaskReadTimeout { .. }
+            | ErrorKind::TaskStatementCancelled { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskTargetCounter { .. }
+            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskMutation { .. }
+            | ErrorKind::TaskControlConflict { .. }
+            | ErrorKind::TaskPrecondition { .. }
+            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::Context { .. }
+            | ErrorKind::Authoring { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Gate { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Billing { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
+            | ErrorKind::Outbound { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::SetupUnavailable
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::StaleFence
+            | ErrorKind::LeaseNotFound
+            | ErrorKind::LeaseLost
+            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RenewalNoCredits
+            | ErrorKind::BudgetExhausted
+            | ErrorKind::MessageNoChannel
+            | ErrorKind::MessageLimitReached
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::IntegrationNotConnected
+            | ErrorKind::MintUnconfigured
+            | ErrorKind::GithubReconnectRequired
+            | ErrorKind::GithubMintFailed
+            | ErrorKind::ConnectorReconnectRequired
+            | ErrorKind::ConnectorMintFailed
+            | ErrorKind::GrantRequired
+            | ErrorKind::Memory { .. } => None,
         }
     }
 
-    /// Whether the datastore could not be reached at all.
+    /// Whether the datastore could not be reached, or gave up waiting past the
+    /// API login's lock or statement bound (`afd_db::login`).
     ///
     /// The question the runner plane turns on: a caller answering this `true`
     /// must report a transport failure, never an authentication or a validation
     /// one, because the runner client counts rejections toward a
     /// self-termination ceiling and resets that counter on transport failures
-    /// (RULE ECL, and `docs/AUTH.md` §Runner token).
+    /// (RULE ECL, and `docs/AUTH.md` §Runner token). A wrapped plane's error
+    /// decides for itself whether a reached bound is one, and this table asks
+    /// it: the runner host's capacity lock is where a lease verb waits.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.inner.kind {
@@ -88,7 +259,57 @@ impl Error {
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
-            _ => false,
+            ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
+            | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageDeadline { .. }
+            | ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteDeadline { .. }
+            | ErrorKind::TaskRemoteCooldown { .. }
+            | ErrorKind::DecisionRequest { .. }
+            | ErrorKind::DecisionDeadline { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskTargetCounter { .. }
+            | ErrorKind::TaskControlConflict { .. }
+            | ErrorKind::TaskPrecondition { .. }
+            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::Context { .. }
+            | ErrorKind::Gate { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Billing { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
+            | ErrorKind::Outbound { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::SetupUnavailable
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::StaleFence
+            | ErrorKind::LeaseNotFound
+            | ErrorKind::LeaseLost
+            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RenewalNoCredits
+            | ErrorKind::BudgetExhausted
+            | ErrorKind::MessageNoChannel
+            | ErrorKind::MessageLimitReached
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::IntegrationNotConnected
+            | ErrorKind::MintUnconfigured
+            | ErrorKind::GithubReconnectRequired
+            | ErrorKind::GithubMintFailed
+            | ErrorKind::ConnectorReconnectRequired
+            | ErrorKind::ConnectorMintFailed
+            | ErrorKind::GrantRequired => false,
         }
     }
 
@@ -100,7 +321,61 @@ impl Error {
             ErrorKind::TaskStorageDeadline { .. } => Some("storage_deadline"),
             ErrorKind::TaskRemoteDeadline { .. } => Some("remote_deadline"),
             ErrorKind::TaskRemote { ref source } if source.is_timeout() => Some("remote_deadline"),
-            _ => None,
+            ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
+            | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteCooldown { .. }
+            | ErrorKind::DecisionRequest { .. }
+            | ErrorKind::DecisionDeadline { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskTargetCounter { .. }
+            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskMutation { .. }
+            | ErrorKind::TaskControlConflict { .. }
+            | ErrorKind::TaskPrecondition { .. }
+            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::Context { .. }
+            | ErrorKind::Authoring { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Gate { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Billing { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
+            | ErrorKind::Outbound { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::SetupUnavailable
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::StaleFence
+            | ErrorKind::LeaseNotFound
+            | ErrorKind::LeaseLost
+            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RenewalNoCredits
+            | ErrorKind::BudgetExhausted
+            | ErrorKind::MessageNoChannel
+            | ErrorKind::MessageLimitReached
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::IntegrationNotConnected
+            | ErrorKind::MintUnconfigured
+            | ErrorKind::GithubReconnectRequired
+            | ErrorKind::GithubMintFailed
+            | ErrorKind::ConnectorReconnectRequired
+            | ErrorKind::ConnectorMintFailed
+            | ErrorKind::GrantRequired
+            | ErrorKind::Memory { .. } => None,
         }
     }
 
@@ -108,7 +383,64 @@ impl Error {
     pub(crate) const fn remote_cooldown(&self) -> Option<jiff::Timestamp> {
         match self.inner.kind {
             ErrorKind::TaskRemoteCooldown { until, .. } => Some(until),
-            _ => None,
+            ErrorKind::TaskStorageSigning { .. }
+            | ErrorKind::TaskStorageSigningParameters { .. }
+            | ErrorKind::TaskStorageRequest { .. }
+            | ErrorKind::TaskStorage { .. }
+            | ErrorKind::TaskStorageDeadline { .. }
+            | ErrorKind::TaskRemote { .. }
+            | ErrorKind::TaskRemoteStatus { .. }
+            | ErrorKind::TaskRemoteDeadline { .. }
+            | ErrorKind::DecisionRequest { .. }
+            | ErrorKind::DecisionDeadline { .. }
+            | ErrorKind::TaskReadTimeout { .. }
+            | ErrorKind::TaskStatementCancelled { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::TaskState { .. }
+            | ErrorKind::TaskCounter { .. }
+            | ErrorKind::TaskTargetCounter { .. }
+            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskMutation { .. }
+            | ErrorKind::TaskControlConflict { .. }
+            | ErrorKind::TaskPrecondition { .. }
+            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::Context { .. }
+            | ErrorKind::Authoring { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Gate { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::Billing { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::Events { .. }
+            | ErrorKind::Outbound { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::ConfigUnreadable { .. }
+            | ErrorKind::SetupUnavailable
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::StaleFence
+            | ErrorKind::LeaseNotFound
+            | ErrorKind::LeaseLost
+            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RenewalNoCredits
+            | ErrorKind::BudgetExhausted
+            | ErrorKind::MessageNoChannel
+            | ErrorKind::MessageLimitReached
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::IntegrationNotConnected
+            | ErrorKind::MintUnconfigured
+            | ErrorKind::GithubReconnectRequired
+            | ErrorKind::GithubMintFailed
+            | ErrorKind::ConnectorReconnectRequired
+            | ErrorKind::ConnectorMintFailed
+            | ErrorKind::GrantRequired
+            | ErrorKind::Memory { .. } => None,
         }
     }
 

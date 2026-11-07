@@ -4,7 +4,7 @@
 //! shape answers WHAT it drives there, so the two never share one knob: the
 //! default pair (the drain, then the contended window), saturation — the
 //! production poll with more requesters than the pool has connections — or a
-//! paced burst of steers to fleets whose runners are busy (`M241_001` §5).
+//! paced burst of steers to fleets whose runners are busy.
 
 use core::fmt;
 

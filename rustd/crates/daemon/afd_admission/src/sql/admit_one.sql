@@ -26,12 +26,13 @@ already_sent AS (
     FROM fleet.admissions a, locked_fleet
     WHERE a.producer = $4 AND a.producer_key = $5
 ),
--- 2b. (M242_002) Is a run of this fleet live, does it take mid-run input, and
---     in which conversation? A live durable-task lease claims later messages
---     from a person in the same conversation at its next safe boundary
---     (#803, pending_inputs.sql). Facts only; Rust names the disposition.
+-- 2b. (M242_002) Is a run of this fleet live, and of which kind? A durable-
+--     task run claims a person's later messages in its conversation (#803,
+--     pending_inputs.sql); any other run claims every later message
+--     (claim_inputs.sql). Facts only; Rust names the disposition.
 live_run AS (
-    SELECT l.task_id IS NOT NULL AS takes_input,
+    SELECT l.task_id IS NOT NULL AS durable_task,
+           head.sequence AS head_sequence,
            head.reply_provider, head.reply_address,
            e.event_id AS run_event_id
     FROM locked_fleet
@@ -43,11 +44,16 @@ live_run AS (
     JOIN fleet.admissions head ON head.id = e.event_id::uuid
     WHERE s.lease_expires_at > statement_timestamp()
 ),
--- 2c. (M242_002) Was anything already waiting on this fleet before this message?
+-- 2c. (M242_002) Is a message waiting that this one must not pass? With no
+--     live run, any unsettled message. With one, an unsettled parked or
+--     task-bound message after the run's own: claim_inputs.sql's barrier.
 earlier_waiting AS (
     SELECT EXISTS (
         SELECT 1 FROM fleet.admissions a, locked_fleet
         WHERE a.fleet_id = locked_fleet.id AND a.settled_at IS NULL
+          AND (NOT EXISTS (SELECT 1 FROM live_run)
+               OR (a.sequence > (SELECT head_sequence FROM live_run)
+                   AND (a.parked_at IS NOT NULL OR a.task_id IS NOT NULL)))
     ) AS waiting
 ),
 -- 3 and 4. Write the message only when every check passes. A twin that
@@ -82,7 +88,7 @@ SELECT EXISTS (SELECT 1 FROM locked_fleet) AS fleet_found,
        COALESCE(n.digest, s.digest) AS digest,
        COALESCE(n.fleet, s.fleet) AS fleet,
        COALESCE(n.created_at, s.created_at) AS created_at,
-       COALESCE((SELECT takes_input FROM live_run), false) AS run_takes_input,
+       COALESCE((SELECT durable_task FROM live_run), false) AS run_durable_task,
        COALESCE((SELECT reply_provider IS NOT DISTINCT FROM $12::text
                     AND reply_address IS NOT DISTINCT FROM $13::text FROM live_run), false) AS same_conversation,
        (SELECT run_event_id FROM live_run) AS run_event_id,

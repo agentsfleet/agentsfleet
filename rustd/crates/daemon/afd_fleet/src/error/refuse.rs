@@ -104,5 +104,5 @@ pub(crate) fn grant_required() -> Error {
 pub(crate) fn task_target_counter(
     column: &'static str,
 ) -> impl Fn(std::num::TryFromIntError) -> Error {
-    move |source| Error::from(super::ErrorKind::TaskTargetCounter { column, source })
+    move |source| Error::from(ErrorKind::TaskTargetCounter { column, source })
 }

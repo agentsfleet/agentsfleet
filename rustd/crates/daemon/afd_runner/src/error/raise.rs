@@ -20,8 +20,18 @@ af_core::error_lifts!(Error, ErrorKind:
 );
 
 /// Reports a statement that would not run, naming what it was doing.
+///
+/// A statement the API login's lock or statement bound ended is told apart
+/// here, at the one place every statement failure passes, because the cure is
+/// to retry rather than to treat the runner's request as a defect.
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| ErrorKind::Query { context, source }.into()
+    move |source| {
+        if afd_db::error::is_bound_reached(&source) {
+            ErrorKind::TimedOut { context, source }.into()
+        } else {
+            ErrorKind::Query { context, source }.into()
+        }
+    }
 }
 
 /// Reports a stored value this build cannot read, naming table and column.
@@ -119,6 +129,10 @@ pub(crate) fn runner_still_leased() -> Error {
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     vec![
         ("query", query("enrol a runner")(sqlx::Error::RowNotFound)),
+        (
+            "timed out",
+            query("lock a runner host")(afd_db::error::database_answer("55P03")),
+        ),
         ("runner vanished", runner_vanished()),
         ("runner not found", runner_not_found()),
         ("runner not revoked", runner_not_revoked()),

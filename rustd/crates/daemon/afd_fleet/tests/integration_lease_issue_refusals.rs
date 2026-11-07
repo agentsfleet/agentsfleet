@@ -42,7 +42,7 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
         provider: PROVIDER,
         model: MODEL,
     };
-    let held = crate::seed::select_fleet(&leases, &runner, &fleet)
+    let held = seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
     leases
@@ -94,7 +94,7 @@ async fn an_event_absent_from_the_ledger_cannot_open_history() {
         ..
     } = seeded::<1>(&fixtures).await;
     let leases = fixtures.leases_with_dead_queue();
-    let minted = crate::seed::select_fleet(&leases, &runner, &fleet)
+    let minted = seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("claim");
     let absent = afd_fleet::lease::Acquired {

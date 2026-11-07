@@ -28,8 +28,8 @@ pub(super) struct Handle<'a> {
 
 impl Handle<'_> {
     pub(super) fn integration(&self) -> Option<String> {
-        self.integration
-            .and_then(|raw| serde_json::from_str(raw.get()).ok())
+        let raw = self.integration?;
+        serde_json::from_str(raw.get()).ok()
     }
 
     pub(super) fn connection_id(&self) -> Option<String> {

@@ -23,7 +23,7 @@ use std::sync::Arc;
     post,path="/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",operation_id="apply_fleet_revision",tag=afd_http::openapi::tag::FLEETS,
     summary="Apply a reviewed fleet improvement",params(afd_http::openapi::path::Fleet,
         ("If-Match"=String,Header,description="Current setup tag"),("Idempotency-Key"=String,Header,description="Required UUIDv7 key")),
-    request_body=wire::ApplyRevision,responses((status=201,body=wire::AppliedRevision,description="Accepted setup revision",headers(("ETag"=String),("Location"=String))),
+    request_body=wire::ApplyRevision,responses((status=201,body=wire::AppliedRevision<'_>,description="Accepted setup revision",headers(("ETag"=String),("Location"=String))),
         (status=400,description="Invalid input"),(status=401,description="Unauthorized"),(status=403,description="Forbidden"),(status=404,description="Fleet or private candidate unavailable"),
         (status=409,description="Changed source, review, state or operation"),(status=410,description="Accepted revision purged"),(status=412,description="Stale setup tag"),(status=428,description="Missing setup tag"),
         (status=413,description="Body too large"),(status=429,description="Too many requests"),(status=500,description="Internal failure"),(status=503,description="Dependency unavailable"))

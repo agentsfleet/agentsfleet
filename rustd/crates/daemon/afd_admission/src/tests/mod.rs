@@ -140,7 +140,7 @@ fn a_digest_is_sixty_four_hex_characters() {
 }
 
 /// The production ceiling is the declared constant, and a suite that wants
-/// another has to name it (`M242_001` Dimension 1.2).
+/// another has to name it.
 #[test]
 fn budgets_default_to_the_deployment_ceiling() {
     assert_eq!(

@@ -133,12 +133,16 @@ impl Comparison {
     pub fn render(&self) -> String {
         let mut out = String::new();
         for change in &self.parameters {
-            let _ = writeln!(
+            let _infallible: core::fmt::Result = writeln!(
                 out,
                 "! {:<24} {:>12} -> {:>12}  (different parameters: the deltas below are not a regression)",
                 change.name,
-                change.baseline.map_or(ABSENT.to_owned(), |v| v.to_string()),
-                change.current.map_or(ABSENT.to_owned(), |v| v.to_string()),
+                change
+                    .baseline
+                    .map_or_else(|| ABSENT.to_owned(), |v| v.to_string()),
+                change
+                    .current
+                    .map_or_else(|| ABSENT.to_owned(), |v| v.to_string()),
             );
         }
         for delta in &self.deltas {
@@ -149,17 +153,19 @@ impl Comparison {
                 format!("{:+7.1}%", fraction * 100.0)
             };
             let flag = if delta.is_noteworthy() { "*" } else { " " };
-            let _ = writeln!(
+            let _infallible: core::fmt::Result = writeln!(
                 out,
                 "{flag} {:<24} {:>12.3} -> {:>12.3}  {movement}",
                 delta.name, delta.baseline, delta.current
             );
         }
         for name in &self.added {
-            let _ = writeln!(out, "+ {name:<24} (not in the baseline)");
+            let _infallible: core::fmt::Result =
+                writeln!(out, "+ {name:<24} (not in the baseline)");
         }
         for name in &self.missing {
-            let _ = writeln!(out, "- {name:<24} (this run did not report it)");
+            let _infallible: core::fmt::Result =
+                writeln!(out, "- {name:<24} (this run did not report it)");
         }
         out
     }

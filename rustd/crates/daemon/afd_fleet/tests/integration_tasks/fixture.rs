@@ -90,7 +90,7 @@ impl Case {
         }
     }
 
-    pub(super) fn lease(&self) -> TaskLease<'_> {
+    pub(super) const fn lease(&self) -> TaskLease<'_> {
         TaskLease {
             runner_id: &self.held.runner,
             lease_id: &self.held.lease_key,

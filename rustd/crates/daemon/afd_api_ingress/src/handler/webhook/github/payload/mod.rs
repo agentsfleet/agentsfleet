@@ -215,10 +215,8 @@ impl Delivery {
 
     /// The `owner/name` of the repository the delivery is about.
     pub(crate) fn repository(&self) -> Option<&str> {
-        self.envelope
-            .repository
-            .as_ref()
-            .and_then(|repository| repository.full_name.as_deref())
+        let repository = self.envelope.repository.as_ref()?;
+        repository.full_name.as_deref()
     }
 }
 

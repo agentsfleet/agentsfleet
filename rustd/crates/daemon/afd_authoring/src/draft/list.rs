@@ -68,7 +68,11 @@ impl Drafts {
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        let page = project(rows, request.limit as usize, &binding)?;
+        let page = project(
+            rows,
+            usize::try_from(request.limit).unwrap_or(usize::MAX),
+            &binding,
+        )?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(page)
     }

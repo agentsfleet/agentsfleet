@@ -110,7 +110,8 @@ async fn an_activation_update_that_matches_nothing_rolls_back_as_setup_changed()
         &format!("NEW.id='{fleet}'::uuid AND NEW.status='active'"),
         "RETURN NULL",
     )
-    .await;
+    .await
+    .expect("the fixture refusal installs");
     let refused = c
         .creations
         .save(c.base.access(), &key, request.clone(), now())

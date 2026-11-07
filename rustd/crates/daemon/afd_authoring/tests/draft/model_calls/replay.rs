@@ -15,7 +15,7 @@ async fn exact_model_retry_returns_the_saved_result_without_another_physical_req
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let first = calls
         .call(&f.runner, &attempt.lease, request.clone())
@@ -62,7 +62,7 @@ async fn fractional_nanos_round_per_token_class_and_physical_dispatch() {
         .bind(f.catalogue.first().expect("first owned model").as_str()).execute(&mut *f.connection().await).await.expect("fractional rate");
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let first = fixture::request(&attempt);
     let mut next = first.clone();
     next.dispatch_id = mint().to_string();
@@ -98,7 +98,7 @@ async fn an_unknown_receipt_refuses_a_retry_the_attempt_flags_would_allow() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     calls
         .call(&f.runner, &attempt.lease, request.clone())

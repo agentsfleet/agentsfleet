@@ -37,9 +37,8 @@ const CONTEXT: &str = "seed a fleet";
 
 /// The native setup [`FleetSeed::native_setup`] selects, as stored.
 ///
-/// It is what `af_fleet_runtime`'s `FixtureSetup::default()` writes, which
-/// that crate's suite pins against these four, since this crate cannot parse a
-/// definition.
+/// It is what `af_fleet_runtime`'s `FixtureSetup::default()` writes; this
+/// crate's suite pins these against that parser, which owns the format.
 pub const FIXTURE_SETUP_DEFINITION: &str = "{\"schema_version\":1,\"description\":\"Runtime fixture.\",\"instructions_md\":\"Run the fixture.\",\"config\":{\"name\":\"fixture\",\"x-agentsfleet\":{\"triggers\":[],\"tools\":[],\"budget\":{\"daily_nanos\":\"1000000000\"}}}}";
 
 /// [`FIXTURE_SETUP_DEFINITION`]'s canonical digest.
@@ -101,7 +100,12 @@ impl<'a> FleetSeed<'a> {
     /// A fleet named after its own id, which keeps the name unique within its
     /// workspace without the caller minting one. No setup, no tags, no
     /// memory grants, no setup counters, stamped by the database's `now()`.
-    pub fn new(id: &'a str, workspace_id: &'a str, tenant_id: &'a str, status: &'a str) -> Self {
+    pub const fn new(
+        id: &'a str,
+        workspace_id: &'a str,
+        tenant_id: &'a str,
+        status: &'a str,
+    ) -> Self {
         Self {
             id,
             workspace_id,
@@ -121,19 +125,19 @@ impl<'a> FleetSeed<'a> {
 
     /// Names the fleet, for a suite that asserts on the name or seeds two
     /// fleets it tells apart by it.
-    pub fn name(mut self, name: &'a str) -> Self {
+    pub const fn name(mut self, name: &'a str) -> Self {
         self.name = name;
         self
     }
 
     /// The capability tags a runner must carry to be placed on the fleet.
-    pub fn tags(mut self, tags: &'a [&'a str]) -> Self {
+    pub const fn tags(mut self, tags: &'a [&'a str]) -> Self {
         self.required_tags = tags;
         self
     }
 
     /// The fleet's grants over workspace memory: reading it, and publishing to it.
-    pub fn memory(mut self, reads: bool, publishes: bool) -> Self {
+    pub const fn memory(mut self, reads: bool, publishes: bool) -> Self {
         self.memory_reads_workspace = reads;
         self.memory_publishes_workspace = publishes;
         self
@@ -141,7 +145,7 @@ impl<'a> FleetSeed<'a> {
 
     /// The counters a saved fleet carries: its resource version, and the
     /// number of the setup revision [`FleetSeed::setup`] writes.
-    pub fn versions(mut self, resource: i64, setup: i64) -> Self {
+    pub const fn versions(mut self, resource: i64, setup: i64) -> Self {
         self.resource_version = Some(resource);
         self.setup_revision = Some(setup);
         self
@@ -150,7 +154,7 @@ impl<'a> FleetSeed<'a> {
     /// The setup revision the fleet selects, which admission and the lease
     /// path both require. Numbers it [`FIRST_SETUP_REVISION`] unless
     /// [`FleetSeed::versions`] named one.
-    pub fn setup(mut self, revision: SetupRevision<'a>) -> Self {
+    pub const fn setup(mut self, revision: SetupRevision<'a>) -> Self {
         self.setup = Some(revision);
         self
     }
@@ -159,7 +163,7 @@ impl<'a> FleetSeed<'a> {
     /// triggers, no tools, a budget, on the platform model. A seed that named
     /// no tags takes [`UNPLACED`], so no runner from another suite is handed
     /// its work.
-    pub fn native_setup(self) -> Self {
+    pub const fn native_setup(self) -> Self {
         self.unplaced_setup(SetupRevision {
             definition: FIXTURE_SETUP_DEFINITION,
             digest: FIXTURE_SETUP_DIGEST,
@@ -170,7 +174,7 @@ impl<'a> FleetSeed<'a> {
 
     /// [`FleetSeed::setup`] for a suite's own setup, taking [`UNPLACED`] when
     /// the seed named no tags, as [`FleetSeed::native_setup`] does.
-    pub fn unplaced_setup(mut self, revision: SetupRevision<'a>) -> Self {
+    pub const fn unplaced_setup(mut self, revision: SetupRevision<'a>) -> Self {
         if self.required_tags.is_empty() {
             self.required_tags = UNPLACED;
         }
@@ -179,14 +183,14 @@ impl<'a> FleetSeed<'a> {
 
     /// Stamps `created_at` and `updated_at` with the same instant, for a
     /// suite that orders rows by when they were made.
-    pub fn at(mut self, instant: Timestamp) -> Self {
+    pub const fn at(mut self, instant: Timestamp) -> Self {
         self.created_at = Some(instant);
         self.updated_at = Some(instant);
         self
     }
 
     /// Restamps `updated_at` alone, for a fleet edited after it was created.
-    pub fn updated(mut self, instant: Timestamp) -> Self {
+    pub const fn updated(mut self, instant: Timestamp) -> Self {
         self.updated_at = Some(instant);
         self
     }

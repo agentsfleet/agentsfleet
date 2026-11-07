@@ -67,7 +67,7 @@ const DESCRIPTION: &str = const_format::concatcp!(
     operation_id = "runner_post_message",
     summary = "Post a message to the event's thread",
     description = DESCRIPTION,
-    request_body = MessageRequest,
+    request_body = MessageRequest<'_>,
     params(afd_http::openapi::path::Lease),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = MessagePosted),

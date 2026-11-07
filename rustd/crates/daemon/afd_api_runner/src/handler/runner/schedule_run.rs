@@ -89,7 +89,7 @@ const RUN_KEY_PREFIX: &str = "run:";
     request_body = ScheduleRunRequest,
     params(afd_http::openapi::path::LeaseSchedule),
     responses(
-        (status = 201, description = "The run that was created", body = ScheduleRun),
+        (status = 201, description = "The run that was created", body = ScheduleRun<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -151,7 +151,7 @@ pub(crate) async fn run<D: Services>(
     ),
     params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::ScheduleRunsPage),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = EventsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

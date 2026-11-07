@@ -48,7 +48,7 @@ async fn malformed_proposal_keeps_known_usage_and_replays_a_nonexecutable_refusa
         let mut stub = Provider::known();
         *stub.response.get_mut("output").expect("output") = json!([{"type":"function_call","name":"propose_setup","call_id":"call_bad","arguments":arguments}]);
         let provider = Arc::new(stub);
-        let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+        let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
         let request = fixture::request(&attempt);
         for request in [request.clone(), request] {
             let result = calls
@@ -87,7 +87,7 @@ async fn incomplete_proposals_return_no_executable_changes() {
     *stub.response.get_mut("output").expect("output") =
         json!([{"type":"function_call","arguments":"incomplete JSON"}]);
     let provider = Arc::new(stub);
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let result = calls
         .call(&f.runner, &attempt.lease, fixture::request(&attempt))
         .await

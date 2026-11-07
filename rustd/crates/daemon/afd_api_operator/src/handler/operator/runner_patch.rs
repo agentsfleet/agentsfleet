@@ -57,12 +57,12 @@ enum OrdinaryMutation<'r, 'a> {
         "list clears labels. Revoked runners' labels remain editable. The response includes ",
         "labels when supplied.",
     ),
-    request_body = RunnerAdminPatchRequest,
+    request_body = RunnerAdminPatchRequest<'_>,
     params(
         afd_http::openapi::path::Runner,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse),
+        (status = 200, description = afd_http::openapi::OK, body = RunnerAdminPatchResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

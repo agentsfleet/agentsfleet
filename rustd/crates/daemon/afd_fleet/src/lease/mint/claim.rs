@@ -68,7 +68,8 @@ pub(super) fn claim(connectors: &dyn Connectors, requested: &str, handle: &Value
     match connector.exchange() {
         Exchange::Stored => Ok(Claim::Unowned),
         Exchange::OAuthRefresh { .. } => {
-            filed_as(connector.name(), requested).and_then(|provider| refresh(provider, handle))
+            let provider = filed_as(connector.name(), requested)?;
+            refresh(provider, handle)
         }
         Exchange::GithubApp => filed_as(connector.name(), requested)?
             .zip(github::installation(handle))

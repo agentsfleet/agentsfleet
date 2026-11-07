@@ -3,11 +3,12 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use af_core::clock;
 use af_core::id::Uuid7;
 use af_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
+use af_wire::fold::FoldRequest;
 use af_wire::lease::{LeasePayload, LeaseResponse};
 use af_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_fleet::lease::Plane;
@@ -131,10 +132,10 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
     if let Some(pickups) = &shared.pickups {
         pickups.leased(&lease.event.event_id).await?;
     }
-    run_turn(plane, runner, &lease, shared.turn).await?;
+    let folded_through = run_turn(plane, runner, &lease, shared).await?;
     let reporting = Instant::now();
     plane
-        .report(runner, &processed(&lease), clock::now())
+        .report(runner, &processed(&lease, folded_through), clock::now())
         .await?;
     tally.report_latency.record(reporting.elapsed())?;
     shared.reported.fetch_add(1, Ordering::Relaxed);
@@ -142,13 +143,16 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
 }
 
 /// Send one turn's renewals and activity through the production paths a
-/// runner's routes call, then hold the lease when the turn says to.
+/// runner's routes call, then hold the lease when the turn says to, claiming
+/// the fleet's new messages before each simulated model call the way a
+/// runner does. Answers the last folded message's sequence, when any folded.
 async fn run_turn(
     plane: &Plane,
     runner: &Uuid7,
     lease: &LeasePayload<'_>,
-    turn: Turn,
-) -> Result<()> {
+    shared: &Shared,
+) -> Result<Option<i64>> {
+    let turn = shared.turn;
     for _renewal in 0..turn.renewals {
         let request = RenewRequest {
             requests: af_wire::usage::RequestLines::default(),
@@ -162,14 +166,40 @@ async fn run_turn(
             .activity(runner, &lease.lease_id, &[chunk(seq)])
             .await?;
     }
-    if let Some(hold) = turn.hold {
-        tokio::time::sleep(hold).await;
+    let Some(hold) = turn.hold else {
+        return Ok(None);
+    };
+    let lease_id = Uuid7::parse(&lease.lease_id)?;
+    let mut through: i64 = 0;
+    let ends = Instant::now() + hold;
+    while Instant::now() < ends {
+        let claimed = plane
+            .folds(
+                runner,
+                &lease_id,
+                &FoldRequest {
+                    fencing_token: lease.fencing_token,
+                    after_sequence: through,
+                },
+            )
+            .await?;
+        for input in &claimed.inputs {
+            through = through.max(input.sequence);
+            if let Some(pickups) = &shared.pickups {
+                pickups.folded(&input.event_id).await?;
+            }
+        }
+        tokio::time::sleep(MODEL_CALL.min(ends.saturating_duration_since(Instant::now()))).await;
     }
-    Ok(())
+    Ok((through > 0).then_some(through))
 }
 
+/// How long a simulated model call takes: a held turn claims new messages
+/// before each one, as a runner does before every model call.
+const MODEL_CALL: Duration = Duration::from_millis(500);
+
 /// One answer chunk, as the runner's pump forwards a streamed model output.
-fn chunk(seq: u64) -> ActivityFrame<'static> {
+const fn chunk(seq: u64) -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed(RESPONSE),
         text_kind: StreamTextKind::Answer,
@@ -193,8 +223,9 @@ fn refusal(error: &crate::error::Error) {
 }
 
 /// The report a runner that ran the event and answered sends back.
-fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
+fn processed<'a>(lease: &'a LeasePayload<'a>, folded_through: Option<i64>) -> ReportRequest<'a> {
     ReportRequest {
+        folded_through_sequence: folded_through,
         task: None,
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),

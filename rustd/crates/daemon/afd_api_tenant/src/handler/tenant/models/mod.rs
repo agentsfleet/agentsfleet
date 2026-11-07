@@ -77,7 +77,7 @@ const VARY_VALUE: &str = "Authorization";
         afd_http::openapi::query::CatalogueFilter,
     ),
     responses(
-        (status = 200, description = "One model page with an ETag for cache validation", body = CatalogueResponse),
+        (status = 200, description = "One model page with an ETag for cache validation", body = CatalogueResponse<'_>),
         (status = 304, description = afd_http::openapi::NOT_MODIFIED),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

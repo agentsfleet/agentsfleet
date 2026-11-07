@@ -70,7 +70,7 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
         afd_http::openapi::query::MemoryFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = MemoriesResponse),
+        (status = 200, description = afd_http::openapi::OK, body = MemoriesResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

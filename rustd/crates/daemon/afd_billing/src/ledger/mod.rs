@@ -1,9 +1,11 @@
 //! The built-in biller: wallets and the usage log, both in Postgres.
 //!
 //! A funds check is one read: the balance less every line the payer logged
-//! and was not yet charged for, capped at a second so a slow read refuses
-//! rather than holding the lease path. Charging stamps the lines first and debits the
-//! wallet last, so the wallet row is locked only from the debit to the commit.
+//! and was not yet charged for. It runs under the API login's lock and
+//! statement bounds (`afd_db::login`), so a read stuck behind a lock gives up
+//! unanswered rather than holding the lease path. Charging stamps the lines
+//! first and debits the wallet last, so the wallet row is locked only from the
+//! debit to the commit.
 
 use std::sync::Arc;
 
@@ -106,7 +108,7 @@ struct BalanceRow {
 #[async_trait::async_trait]
 impl Biller for LedgerBiller {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
-        let funds = self.capped_balance(&ask.payer.tenant).await?;
+        let funds = self.pooled_balance(&ask.payer.tenant).await?;
         Ok(Funds::of(funds.left(), ask.next))
     }
 
@@ -126,14 +128,14 @@ impl Biller for LedgerBiller {
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {
-        self.capped_balance(&payer.tenant).await
+        self.pooled_balance(&payer.tenant).await
     }
 }
 
 impl LedgerBiller {
-    /// `tenant`'s balance, read on a connection of its own under the API
-    /// login's bounds (`afd_db::login`).
-    async fn capped_balance(&self, tenant: &Uuid7) -> Result<Balance> {
+    /// `tenant`'s balance, read on a connection of its own taken from the pool,
+    /// under the API login's bounds (`afd_db::login`).
+    async fn pooled_balance(&self, tenant: &Uuid7) -> Result<Balance> {
         let mut connection = self.database.acquire().await?;
         balance(&mut *connection, tenant).await
     }
@@ -145,8 +147,8 @@ impl LedgerBiller {
 /// already inside a transaction reads it on that transaction's connection
 /// rather than taking a second one from the pool: a nested acquire under load
 /// starves the pool, every connection held by a transaction waiting for one
-/// more. Read that way it carries no cap of its own, because a cap set here
-/// would bound the rest of the caller's transaction too.
+/// more. Read that way it sets no bound of its own, because one set here would
+/// bound the rest of the caller's transaction too; the login's bounds apply.
 ///
 /// # Errors
 /// The statement would not run, or the tenant has no wallet.

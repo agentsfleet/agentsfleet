@@ -149,38 +149,55 @@ impl Error {
     /// Capacity answers yes here because the producer's move is the same;
     /// [`Self::is_over_capacity`] is how the two are told apart.
     #[must_use]
-    pub fn is_datastore_unavailable(&self) -> bool {
+    pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. }
             | ErrorKind::OverBudget { .. }
             | ErrorKind::Exhausted { .. }
             | ErrorKind::TimedOut { .. } => true,
-            _reachable => false,
+            ErrorKind::Policy
+            | ErrorKind::FleetAbsent
+            | ErrorKind::NotRunnable { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Entropy { .. } => false,
         }
     }
 
     /// Whether no fleet with the id belongs to the caller's workspace.
     #[must_use]
-    pub fn is_fleet_absent(&self) -> bool {
+    pub const fn is_fleet_absent(&self) -> bool {
         matches!(self.kind(), ErrorKind::FleetAbsent)
     }
 
     /// The status of a fleet that takes no new work, when that is the refusal.
     #[must_use]
-    pub fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
+    pub const fn not_runnable(&self) -> Option<afd_fleet_lifecycle::FleetStatus> {
         match self.kind() {
             ErrorKind::NotRunnable { status } => Some(*status),
-            _other => None,
+            ErrorKind::Policy
+            | ErrorKind::FleetAbsent
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::OverBudget { .. }
+            | ErrorKind::Exhausted { .. }
+            | ErrorKind::TimedOut { .. }
+            | ErrorKind::Entropy { .. } => None,
         }
     }
 
     /// Whether the refusal was capacity: a spent budget, a queue that is
     /// full, or a Postgres out of a resource.
     #[must_use]
-    pub fn is_over_capacity(&self) -> bool {
+    pub const fn is_over_capacity(&self) -> bool {
         match self.kind() {
             ErrorKind::OverBudget { .. } | ErrorKind::Exhausted { .. } => true,
-            _reachable => false,
+            ErrorKind::Policy
+            | ErrorKind::FleetAbsent
+            | ErrorKind::NotRunnable { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::TimedOut { .. }
+            | ErrorKind::Entropy { .. } => false,
         }
     }
 }

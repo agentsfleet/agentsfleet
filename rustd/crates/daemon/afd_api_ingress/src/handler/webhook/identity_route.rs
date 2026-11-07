@@ -109,7 +109,7 @@ const DETAIL_UNVERIFIED_ADDRESS: &str =
         ("svix-signature" = String, Header, description = "Space-separated list of Svix v1 signatures."),
     ),
     responses(
-        (status = 200, description = "The account the event opened or found, or a delivery not acted on", body = afd_api_wire::ingress::IdentityAnswer),
+        (status = 200, description = "The account the event opened or found, or a delivery not acted on", body = IdentityAnswer<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),

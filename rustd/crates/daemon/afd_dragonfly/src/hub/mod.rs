@@ -253,7 +253,7 @@ impl SubscriptionHub {
                     readers: 1,
                     confirmed: false,
                 });
-                let _ = self
+                let _hub_gone: Result<(), mpsc::error::SendError<Command>> = self
                     .commands
                     .send(Command::Subscribe(physical_channel.clone()));
                 drop(held);

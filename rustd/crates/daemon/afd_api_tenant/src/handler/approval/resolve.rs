@@ -47,12 +47,12 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
         "result wins. Other callers receive 409 with the existing result and ",
         "resolver. ",
     ),
-    request_body = ResolveApprovalRequest,
+    request_body = ResolveApprovalRequest<'_>,
     params(
         afd_http::openapi::path::GateDecision,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse),
+        (status = 200, description = afd_http::openapi::OK, body = ResolvedResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

@@ -30,7 +30,7 @@ use self::support::{Fixture, header_str};
 /// that was never open.
 const CEILING: usize = 3;
 
-fn ceiling() -> NonZeroUsize {
+const fn ceiling() -> NonZeroUsize {
     NonZeroUsize::new(CEILING).expect("the test ceiling is not zero")
 }
 

@@ -114,7 +114,7 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
         afd_http::openapi::query::ConnectorCallback,
     ),
     responses(
-        (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_api_wire::connector::Connected),
+        (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_api_wire::connector::Connected<'_>),
         (status = 302, description = afd_http::openapi::FOUND),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

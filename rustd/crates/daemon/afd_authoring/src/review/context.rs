@@ -74,7 +74,7 @@ impl Context {
         }
     }
 
-    pub(super) fn target(&self) -> Option<&Uuid7> {
+    pub(super) const fn target(&self) -> Option<&Uuid7> {
         match &self.source_pin {
             Some(SourcePin::Fleet { fleet_id, .. }) => Some(fleet_id),
             _ => None,

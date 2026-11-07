@@ -150,8 +150,9 @@ impl Leases {
         // nothing. Rendering a `Value` has no failure to absorb.
         let document = serde_json::json!(Checkpoint {
             last_event_id,
-            last_response: &last_response
-                [..last_response.floor_char_boundary(MAX_CHECKPOINT_RESPONSE_BYTES)],
+            last_response: last_response
+                .split_at(last_response.floor_char_boundary(MAX_CHECKPOINT_RESPONSE_BYTES))
+                .0,
         })
         .to_string();
 

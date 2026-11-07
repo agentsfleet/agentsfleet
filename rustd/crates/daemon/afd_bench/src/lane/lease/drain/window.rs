@@ -35,24 +35,30 @@ pub(super) struct Window {
     dragonfly_calls: u64,
 }
 
-/// Drive every runner until `target` events are reported or `length` passes.
-///
-/// Eight arguments, one per thing a window varies; a burst also hands in the
-/// pickups its runners time.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "each argument is one thing a window varies"
-)]
+/// What one window varies: how long it runs, how many events end it, how each
+/// runner's turn behaves, and the pickups a burst's runners time.
+pub(super) struct Shape {
+    pub(super) length: Duration,
+    pub(super) target: Option<u64>,
+    pub(super) turn: Turn,
+    pub(super) pickups: Option<Arc<Pickups>>,
+}
+
+/// Drive every runner until `shape.target` events are reported or
+/// `shape.length` passes.
 pub(super) async fn window(
     plane: &Plane,
     stores: &Datastores,
     runners: &[Uuid7],
-    length: Duration,
-    target: Option<u64>,
-    turn: Turn,
-    pickups: Option<Arc<Pickups>>,
+    shape: Shape,
     abort: &Arc<Abort>,
 ) -> Result<Window> {
+    let Shape {
+        length,
+        target,
+        turn,
+        pickups,
+    } = shape;
     let queries_before = statements::read_queries(&stores.database).await?;
     let before = statements::read(&stores.database).await?;
     let dragonfly_before = dragonfly_calls(&stores.queue).await?;
@@ -162,11 +168,7 @@ impl Window {
     pub(super) fn show_costliest(&self) {
         let leased = self.tally.leased.max(1);
         for cost in paths::costliest(&self.queries, COSTLIEST_SHOWN) {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "statement counts in one window stay far below 2^52"
-            )]
-            let per = cost.calls as f64 / leased as f64;
+            let per = crate::report::ratio(cost.calls, leased);
             let text: String = cost.query.split_whitespace().collect::<Vec<_>>().join(" ");
             // the bench has no subscriber; its stdout is the result summary, so the breakdown goes to stderr.
             eprintln!(

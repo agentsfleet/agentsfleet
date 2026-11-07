@@ -67,7 +67,7 @@ const AFTER: &str = "after-the-kill";
 const CANDIDATES: u32 = 64;
 
 /// A redial schedule a test can wait out.
-fn impatient() -> ExponentialBuilder {
+const fn impatient() -> ExponentialBuilder {
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(20))
         .with_max_delay(Duration::from_millis(100))

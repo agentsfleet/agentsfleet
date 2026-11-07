@@ -51,7 +51,7 @@ pub(super) fn replacement(row: &Schedule, patch: &Patch) -> Result<(Recipe, Opti
     Ok((effective, inherited))
 }
 
-fn empty(overlay: &Override) -> bool {
+const fn empty(overlay: &Override) -> bool {
     overlay.cron.is_none()
         && overlay.timezone.is_none()
         && overlay.message.is_none()

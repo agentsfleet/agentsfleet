@@ -177,6 +177,8 @@ fn completed(swept: &DecisionMaintenance, first_failure: Option<af_core::error_c
             oldest_overdue_ms = swept.oldest_overdue_ms,
             reason = "expired_unissued_reservations"
         );
+    } else {
+        // A pass that scanned nothing and failed nothing has nothing to report.
     }
 }
 

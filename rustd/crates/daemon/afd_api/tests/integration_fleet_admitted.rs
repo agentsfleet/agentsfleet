@@ -82,6 +82,15 @@ async fn test_steer_publishes_admitted_frame() {
 
     let (status, accepted) = steer(&bob, &members, &json!({ "message": MESSAGE })).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{accepted}");
+    assert_eq!(
+        accepted["disposition"],
+        json!("started"),
+        "nothing ran and nothing waited, so the message starts a run"
+    );
+    assert!(
+        accepted.get("folded_into_event_id").is_none(),
+        "a message that joins no run names none: {accepted}"
+    );
 
     let event = next_chunk(&mut johns).await;
     assert!(event.contains(ADMITTED_EVENT), "{event}");

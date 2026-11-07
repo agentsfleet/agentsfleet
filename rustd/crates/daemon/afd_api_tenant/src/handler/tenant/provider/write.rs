@@ -48,7 +48,7 @@ use super::{
         "`platform`. The response records that you explicitly reset the choice.",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),
+        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -70,7 +70,7 @@ pub(crate) async fn reset<D: Services>(
         .map_err(Refusal::at(EVENT_RESET))?
         .ok_or_else(|| {
             Refusal::coded(
-                af_core::error_code::PROVIDER_PLATFORM_KEY_MISSING,
+                error_code::PROVIDER_PLATFORM_KEY_MISSING,
                 DETAIL_PLATFORM_KEY_MISSING,
             )
         })?;
@@ -101,7 +101,7 @@ pub(crate) async fn reset<D: Services>(
     ),
     request_body = TenantProviderRequest,
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse),
+        (status = 200, description = afd_http::openapi::OK, body = TenantProviderResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

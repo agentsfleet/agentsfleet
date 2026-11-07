@@ -19,7 +19,7 @@ pub struct LibraryQuery {
     pub starting_after: Option<String>,
 }
 
-fn page_size() -> u32 {
+const fn page_size() -> u32 {
     super::DEFAULT_PAGE_SIZE
 }
 

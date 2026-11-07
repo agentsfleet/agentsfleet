@@ -121,7 +121,7 @@ fn mounted_routes<D: Serving>(
     let mut mounted = 0usize;
     let mut merged = Vec::with_capacity(Route::all().count());
     for route in Route::all() {
-        let Some(handler) = self::mount::handler_for::<D>(route) else {
+        let Some(handler) = mount::handler_for::<D>(route) else {
             continue;
         };
         // Hoisted for the same reason every other call-bearing log field
@@ -171,7 +171,7 @@ fn mounted_routes<D: Serving>(
 #[cfg(feature = "test-util")]
 #[must_use]
 pub fn unlayered_mount<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
-    self::mount::handler_for::<D>(route)
+    mount::handler_for::<D>(route)
 }
 
 /// Wraps `handler` in exactly the layers its route's row calls for.

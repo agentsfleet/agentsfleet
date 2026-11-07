@@ -28,18 +28,24 @@ pub(super) async fn persist(
     stored: &StoredVerdict,
     verdict: Verdict,
 ) {
-    if let Some(report) = incoming {
-        let report_json = render_object(report);
-        let write = sqlx::query(sql::runner::UPDATE_RUNNER_CAPABILITY_AND_VERDICT)
-            .bind(runner.as_str())
-            .bind(report_json)
-            .bind(verdict.reason());
-        best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
-    } else if stored.differs_from(verdict) {
-        let write = sqlx::query(sql::runner::UPDATE_RUNNER_VERDICT)
-            .bind(runner.as_str())
-            .bind(verdict.reason());
-        best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
+    match incoming {
+        Some(report) => {
+            let report_json = render_object(report);
+            let write = sqlx::query(sql::runner::UPDATE_RUNNER_CAPABILITY_AND_VERDICT)
+                .bind(runner.as_str())
+                .bind(report_json)
+                .bind(verdict.reason());
+            best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
+        }
+        None if stored.differs_from(verdict) => {
+            let write = sqlx::query(sql::runner::UPDATE_RUNNER_VERDICT)
+                .bind(runner.as_str())
+                .bind(verdict.reason());
+            best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
+        }
+        // The stored verdict already says this; a beat that changes nothing
+        // writes nothing.
+        None => {}
     }
     announce(runner, stored, verdict);
 }

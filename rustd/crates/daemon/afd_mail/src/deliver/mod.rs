@@ -129,7 +129,7 @@ pub(crate) async fn send_once_retrying<M: Mailer>(mailer: &M, message: &Message)
             delivery: mailer.deliver(envelope, &raw).await,
             retried: true,
         },
-        delivery => Attempted {
+        delivery @ (Delivery::Accepted { .. } | Delivery::Refused { .. }) => Attempted {
             delivery,
             retried: false,
         },

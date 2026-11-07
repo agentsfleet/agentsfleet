@@ -32,7 +32,7 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
         afd_http::openapi::query::OperatorPage,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = RunnersResponse),
+        (status = 200, description = afd_http::openapi::OK, body = RunnersResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -80,7 +80,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::path::Runner,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = RunnerDetail),
+        (status = 200, description = afd_http::openapi::OK, body = RunnerDetail<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

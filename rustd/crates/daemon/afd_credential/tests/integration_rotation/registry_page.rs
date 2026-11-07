@@ -163,7 +163,7 @@ fn assert_catalogue_evidence(row: &RegistryRow) {
         .expect("a catalogue row exists for this provider and model");
     assert_eq!(rate.context_cap_tokens, u32::try_from(CAP).unwrap_or(0));
     assert_eq!(&rate.metadata.display_name, row.entry.model_name.as_ref());
-    assert_eq!(rate.metadata.context_verified_at, super::NOW);
+    assert_eq!(rate.metadata.context_verified_at, NOW);
     assert_eq!(
         rate.metadata.context_source_url,
         "https://fixtures.agentsfleet.net/models"

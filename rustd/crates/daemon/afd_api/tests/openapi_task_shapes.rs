@@ -104,9 +104,8 @@ fn checkpoint_plan_creation_and_replay_publish_the_same_response_shape() {
         .and_then(|operation| operation.get("responses"))
         .expect("checkpoint plan responses");
     let content = |status| {
-        responses
-            .get(status)
-            .and_then(|response| response.get("content"))
+        let response = responses.get(status)?;
+        response.get("content")
     };
     assert!(content("200").is_some(), "replay is a documented success");
     assert_eq!(content("200"), content("201"));

@@ -115,7 +115,7 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         ("event_type" = Option<String>, Query, description = "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued admissions. Omit for the mixed thread, including queued messages."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = ThreadResponse),
+        (status = 200, description = afd_http::openapi::OK, body = ThreadResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

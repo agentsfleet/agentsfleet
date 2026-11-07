@@ -55,10 +55,13 @@ impl Setup {
             .fetch_all(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        let more = rows.len() > request.limit as usize;
+        let more = rows.len() > usize::try_from(request.limit).unwrap_or(usize::MAX);
         let mut items = Vec::new();
         let mut next_cursor = None;
-        for row in rows.into_iter().take(request.limit as usize) {
+        for row in rows
+            .into_iter()
+            .take(usize::try_from(request.limit).unwrap_or(usize::MAX))
+        {
             let id = Uuid7::parse(&row.id)?;
             next_cursor = Some(paging::cursor(&binding, row.created_at, &id));
             items.push(RevisionSummary {

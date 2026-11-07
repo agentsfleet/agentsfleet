@@ -53,7 +53,7 @@ const STATE_LAST_OWNER: &str = "last_owner";
         "one page: `next_cursor` is null and `total` counts all members.",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<MemberSummary>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<'_, MemberSummary<'_>>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -128,7 +128,7 @@ pub(crate) async fn remove<D: Services>(
     ),
     params(afd_http::openapi::path::Workspace),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<WorkspaceMember>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<'_, WorkspaceMember<'_>>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

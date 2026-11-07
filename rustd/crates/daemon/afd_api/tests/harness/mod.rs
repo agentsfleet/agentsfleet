@@ -150,7 +150,7 @@ const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 const ACQUIRE_TIMEOUT_MS: &str = "50";
 
 /// A fixed instant, so every row a verb writes is stamped predictably.
-const FROZEN: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
+const FROZEN: Timestamp = Timestamp::constant(1_760_000_000, 0);
 
 /// [`FROZEN`] as whole seconds — the unit a signed timestamp header carries.
 ///
@@ -198,7 +198,7 @@ pub(crate) fn task_dependencies(database: Db) -> afd_fleet::task::TaskDependenci
             Entropy::new(),
             Arc::new(af_core::clock::SystemClock),
         )),
-        providers: afd_credential::provider::Providers::new(
+        providers: Providers::new(
             database,
             Arc::new(Kek::from_bytes(FIXTURE_KEK)),
             Entropy::new(),
@@ -276,7 +276,7 @@ pub(crate) struct Fleet {
     /// Opening a personal account, over whatever pool this fixture holds.
     signups: afd_tenant::signup::Signups,
     /// What a signup event is verified against — `None` refuses every one.
-    identity_webhook_secret: Option<af_crypto::secret::SecretBytes>,
+    identity_webhook_secret: Option<SecretBytes>,
     /// The dashboard base a connect relays through, parsed as boot parses it.
     dashboard_base: afd_connector::Dashboard,
     preferences: Preferences,

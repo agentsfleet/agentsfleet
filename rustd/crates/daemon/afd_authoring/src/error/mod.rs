@@ -224,7 +224,39 @@ impl Error {
             ErrorKind::Validation { .. } | ErrorKind::Definition { .. } => {
                 "Setup input violates the supported shape or bounds"
             }
-            _ => af_core::problem::Problem::of(self.code()).title(),
+            ErrorKind::Context { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::NameExists
+            | ErrorKind::Policy
+            | ErrorKind::Fence
+            | ErrorKind::State { .. }
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Replay
+            | ErrorKind::Review { .. }
+            | ErrorKind::Gone
+            | ErrorKind::Model
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Unknown
+            | ErrorKind::Decision { .. }
+            | ErrorKind::Inference { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => af_core::problem::Problem::of(self.code()).title(),
         }
     }
 
@@ -234,7 +266,41 @@ impl Error {
         match self.kind() {
             ErrorKind::Cron { source } => source.etag(),
             ErrorKind::Stale { etag } => Some(etag),
-            _ => None,
+            ErrorKind::Context { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::NameExists
+            | ErrorKind::Policy
+            | ErrorKind::Fence
+            | ErrorKind::State { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Replay
+            | ErrorKind::Review { .. }
+            | ErrorKind::Gone
+            | ErrorKind::Model
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Unknown
+            | ErrorKind::Decision { .. }
+            | ErrorKind::Inference { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => None,
         }
     }
 
@@ -243,13 +309,48 @@ impl Error {
     pub fn review_digest(&self) -> Option<&str> {
         match self.kind() {
             ErrorKind::Review { digest } => Some(digest),
-            _ => None,
+            ErrorKind::Context { .. }
+            | ErrorKind::Cron { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::NameExists
+            | ErrorKind::Policy
+            | ErrorKind::Fence
+            | ErrorKind::State { .. }
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Replay
+            | ErrorKind::Gone
+            | ErrorKind::Model
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Unknown
+            | ErrorKind::Decision { .. }
+            | ErrorKind::Inference { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => None,
         }
     }
 
     /// The bounded state required on a lifecycle conflict.
     #[must_use]
-    pub fn current_state(&self) -> Option<&'static str> {
+    pub const fn current_state(&self) -> Option<&'static str> {
         match self.kind() {
             ErrorKind::Cron { source } => source.current_state(),
             ErrorKind::State { current } => Some(current),
@@ -262,7 +363,30 @@ impl Error {
             | ErrorKind::Transport { .. }
             | ErrorKind::Sdk { .. }
             | ErrorKind::Decision { .. } => Some("awaiting_accounting"),
-            _ => None,
+            ErrorKind::Context { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Gone
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => None,
         }
     }
 

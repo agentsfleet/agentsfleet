@@ -126,7 +126,9 @@ impl Session<'_> {
                 target.head
             ))
             .await?;
-        if runs.total_count > 100 || runs.workflow_runs.len() as u64 != runs.total_count {
+        if runs.total_count > 100
+            || u64::try_from(runs.workflow_runs.len()).unwrap_or(u64::MAX) != runs.total_count
+        {
             return Err(TaskRefusal::InvalidTarget.into());
         }
         let mut latest = BTreeMap::<u64, &Execution>::new();

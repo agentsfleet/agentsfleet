@@ -51,7 +51,7 @@ const RECONCILED: &str = "Saved schedule with its registration status";
         afd_http::openapi::path::Fleet,
     ),
     responses(
-        (status = 201, description = RECONCILED, body = afd_api_wire::schedule::View),
+        (status = 201, description = RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -132,7 +132,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::path::Schedule,
     ),
     responses(
-        (status = 200, description = RECONCILED, body = afd_api_wire::schedule::View),
+        (status = 200, description = RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -261,7 +261,7 @@ pub(crate) async fn purge<D: Services>(
         afd_http::openapi::path::Schedule,
     ),
     responses(
-        (status = 200, description = "The schedule as re-reconciled with the scheduler", body = afd_api_wire::schedule::View),
+        (status = 200, description = "The schedule as re-reconciled with the scheduler", body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

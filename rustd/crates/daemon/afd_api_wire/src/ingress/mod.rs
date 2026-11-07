@@ -48,7 +48,7 @@ pub struct Ignored<'a> {
 
 /// Result of a provider delivery, including how many matching fleets received an event.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct FannedOut {
     /// How many fleets subscribed to this delivery.
     pub matched: usize,

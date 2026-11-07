@@ -15,7 +15,7 @@ const DELIVERY_STAGE: &str = "agentsfleet_fleet_delivery_stage_seconds";
 const STAGES: [&str; 3] = ["event_to_complete", "lease_to_report", "report_to_complete"];
 
 /// When the fixture event was created.
-fn created() -> Timestamp {
+const fn created() -> Timestamp {
     Timestamp::constant(1_767_225_600, 0)
 }
 

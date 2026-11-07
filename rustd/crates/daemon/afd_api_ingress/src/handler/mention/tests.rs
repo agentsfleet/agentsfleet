@@ -134,6 +134,6 @@ fn the_leading_bot_mention_is_removed() {
 fn an_unserialisable_body_is_this_daemons_own_500() {
     assert_eq!(
         unserialisable().status(),
-        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        http::StatusCode::INTERNAL_SERVER_ERROR
     );
 }

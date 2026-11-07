@@ -92,7 +92,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let vault = afd_vault::SecretName::parse("").expect_err("an empty secret name is refused");
     let config =
         af_fleet_runtime::FleetName::parse("").expect_err("an empty fleet name is refused");
-    let identifier = af_core::id::Uuid7::parse("").expect_err("an empty identifier is refused");
+    let identifier = Uuid7::parse("").expect_err("an empty identifier is refused");
     let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
     let entropy = entropy

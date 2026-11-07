@@ -37,13 +37,20 @@ pub fn matches_if_none_match(raw: &str, have: &str) -> bool {
         if !candidate.starts_with('"') {
             return false;
         }
-        let Some(close) = candidate[1..].find('"').map(|at| at + 1) else {
+        let Some(close) = candidate
+            .get(1..)
+            .and_then(|tail| tail.find('"'))
+            .map(|at| at + 1)
+        else {
             return false;
         };
-        if &candidate[..=close] == want {
+        let Some((tag, after)) = candidate.split_at_checked(close + 1) else {
+            return false;
+        };
+        if tag == want {
             return true;
         }
-        rest = candidate[close + 1..].trim_start_matches([' ', '\t']);
+        rest = after.trim_start_matches([' ', '\t']);
         let Some(after_comma) = rest.strip_prefix(',') else {
             return false;
         };

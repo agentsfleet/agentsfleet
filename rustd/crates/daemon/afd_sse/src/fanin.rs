@@ -215,7 +215,7 @@ fn arrivals(
 ) -> impl stream::Stream<Item = Arrival> + Send {
     stream::unfold(
         (subscription, fleet_id, token),
-        |(mut subscription, fleet_id, token)| async move {
+        async move |(mut subscription, fleet_id, token)| {
             let received = tokio::select! {
                 // Detached by a refresh tick: end this stream, which is what
                 // drops the subscription behind it.

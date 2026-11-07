@@ -51,7 +51,7 @@ const DETAIL_IN_USE: &str =
         ("starting_after" = Option<String>, Query, description = "Continuation cursor from this catalogue generation and page size"),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = AdminModelsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = AdminModelsResponse<'_>),
         (status = 400, description = "Invalid page size or malformed, mismatched or stale cursor"),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -100,9 +100,9 @@ pub(crate) async fn list<D: Services>(
         "`model:admin`. To change `provider` or `model_id`, delete the entry and create ",
         "another.",
     ),
-    request_body = AdminModelCreate,
+    request_body = AdminModelCreate<'_>,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = AdminModelCreated),
+        (status = 201, description = afd_http::openapi::CREATED, body = AdminModelCreated<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -162,12 +162,12 @@ pub(crate) async fn create<D: Services>(
         "Updates model rates and inference settings without a restart. Requires ",
         "`model:admin`. The `provider` and `model_id` fields cannot change.",
     ),
-    request_body = AdminModelPatch,
+    request_body = AdminModelPatch<'_>,
     params(
         afd_http::openapi::path::Id,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = AdminModelUpdated),
+        (status = 200, description = afd_http::openapi::OK, body = AdminModelUpdated<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),

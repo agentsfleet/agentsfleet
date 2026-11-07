@@ -16,7 +16,7 @@ struct Input<'a> {
     value: &'a str,
 }
 
-fn is_namespace_char(value: char) -> bool {
+const fn is_namespace_char(value: char) -> bool {
     value.is_ascii_alphanumeric() || matches!(value, '-' | '_')
 }
 

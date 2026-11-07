@@ -65,7 +65,7 @@ async fn later_fleet(case: &Case) {
 async fn held_pass(
     fixture: &Decisions<'_>,
     later: &Decisions<'_>,
-    cursor: &mut afd_fleet::task::DecisionMaintenanceCursor,
+    cursor: &mut DecisionMaintenanceCursor,
 ) -> String {
     let mut connection = fixture
         .case

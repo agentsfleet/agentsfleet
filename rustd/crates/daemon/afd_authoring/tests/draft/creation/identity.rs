@@ -141,7 +141,7 @@ fn unreachable(c: &Case) -> afd_authoring::Creations {
     let queue = afd_dragonfly::Dragonfly::unreachable(&config).expect("lazy manager");
     let admissions = afd_admission::Admissions::new(
         c.base.db.clone(),
-        queue.clone(),
+        queue,
         af_crypto::entropy::Entropy::new(),
     );
     afd_authoring::Creations::new(c.setup.clone(), admissions)

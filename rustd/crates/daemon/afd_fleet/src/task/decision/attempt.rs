@@ -76,7 +76,7 @@ impl Attempt {
         })
     }
 
-    pub(super) fn number(&self) -> i16 {
+    pub(super) const fn number(&self) -> i16 {
         match self {
             Self::Original { .. } => 0,
             Self::Retry { .. } => 1,
@@ -104,7 +104,7 @@ impl Attempt {
         }
     }
 
-    pub(super) fn request<'a>(&'a self, initial: &'a DecisionRequest) -> &'a DecisionRequest {
+    pub(super) const fn request<'a>(&'a self, initial: &'a DecisionRequest) -> &'a DecisionRequest {
         match self {
             Self::Original { .. } => initial,
             Self::Retry { request, .. } => request,

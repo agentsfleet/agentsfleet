@@ -109,7 +109,7 @@ pub(crate) struct EventPath {
         afd_http::openapi::query::EventFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = EventsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -155,7 +155,7 @@ pub(crate) async fn workspace_list<D: Services>(
         afd_http::openapi::query::EventFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventsResponse),
+        (status = 200, description = afd_http::openapi::OK, body = EventsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -203,7 +203,7 @@ pub(crate) async fn fleet_list<D: Services>(
         afd_http::openapi::path::Event,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventDetail),
+        (status = 200, description = afd_http::openapi::OK, body = EventDetail<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

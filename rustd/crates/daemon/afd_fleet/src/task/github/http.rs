@@ -50,7 +50,7 @@ impl<'a> Session<'a> {
     pub(super) async fn post<T: DeserializeOwned>(
         &self,
         path: &str,
-        body: &impl Serialize,
+        body: &(impl Serialize + Sync),
     ) -> Result<T> {
         self.json(Method::POST, path, Some(body)).await
     }
@@ -59,7 +59,7 @@ impl<'a> Session<'a> {
         &self,
         method: Method,
         path: &str,
-        body: Option<&impl Serialize>,
+        body: Option<&(impl Serialize + Sync)>,
     ) -> Result<T> {
         let bytes = self.bytes(method, path, body).await?;
         serde_json::from_slice(&bytes)
@@ -71,7 +71,7 @@ impl<'a> Session<'a> {
         &self,
         method: Method,
         path: &str,
-        body: Option<&impl Serialize>,
+        body: Option<&(impl Serialize + Sync)>,
     ) -> Result<Vec<u8>> {
         let mut url = reqwest::Url::parse("https://api.github.com/")
             .map_err(|_invalid| TaskRefusal::InvalidTarget)?;

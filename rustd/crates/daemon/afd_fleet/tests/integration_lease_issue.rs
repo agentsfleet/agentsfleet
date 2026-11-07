@@ -43,7 +43,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     let leases = fixtures.leases();
     let now = fixtures.enrolled_at();
 
-    let held = crate::seed::select_fleet(&leases, &first, &fleet)
+    let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     // Hot-path write ONE, which the gate pass will own and which does not
@@ -89,7 +89,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed = crate::seed::select_fleet(&leases, &second, &fleet)
+    let reclaimed = seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
 
@@ -150,7 +150,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
         model: MODEL,
     };
 
-    let held = crate::seed::select_fleet(&leases, &first, &fleet)
+    let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     leases
@@ -167,7 +167,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
     fixtures
         .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
         .await;
-    let reclaimed = crate::seed::select_fleet(&leases, &second, &fleet)
+    let reclaimed = seed::select_fleet(&leases, &second, &fleet)
         .await
         .expect("a lapsed claim is winnable");
     assert_eq!(reclaimed.kind, Kind::Reclaim);
@@ -209,7 +209,7 @@ async fn test_a_stale_claim_writes_no_lease() {
         provider: PROVIDER,
         model: MODEL,
     };
-    let held = crate::seed::select_fleet(&leases, &first, &fleet)
+    let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
     // The slot's deadline passes by the database clock, which the fenced

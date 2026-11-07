@@ -117,7 +117,7 @@ impl Fixture {
     /// Seeds the tenant, its workspace, the person, and one fleet.
     pub(super) async fn seed(&self, runnable: Runnable, secret: Secret) {
         self.seed_rows(runnable).await;
-        if let Secret::Stored = secret {
+        if matches!(secret, Secret::Stored) {
             let text = str::from_utf8(SIGNING_SECRET).expect("the fixture secret is text");
             self.seal(
                 CREDENTIAL,

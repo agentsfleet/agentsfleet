@@ -64,9 +64,11 @@ impl Models {
         // Decoded after the fetch rather than by `query_as`, so a row this
         // daemon cannot read reports as that, not as the catalogue being
         // unavailable.
+        // A `u32` always fits the `usize` of every target this daemon builds for.
+        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
         let served = fetched
             .iter()
-            .take(limit as usize)
+            .take(limit)
             .map(|row| CatalogueRow::from_row(row).map_err(unreadable_row))
             .collect::<Result<Vec<_>>>()?;
         let ids: Vec<&str> = served.iter().map(|row| row.id.as_str()).collect();
@@ -95,7 +97,7 @@ impl Models {
             models,
             max_updated,
             boundary,
-            has_more: fetched.len() > limit as usize,
+            has_more: fetched.len() > limit,
         })
     }
 

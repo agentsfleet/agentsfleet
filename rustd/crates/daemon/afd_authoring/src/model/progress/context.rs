@@ -44,7 +44,7 @@ pub(in crate::model) struct ContextPublisher<'a> {
 }
 
 impl<'a> ContextPublisher<'a> {
-    pub(in crate::model) fn new(
+    pub(in crate::model) const fn new(
         streams: &'a FleetStreams,
         drafts: &'a Drafts,
         runner: &'a Uuid7,

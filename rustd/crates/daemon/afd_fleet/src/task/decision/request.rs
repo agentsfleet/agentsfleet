@@ -54,10 +54,12 @@ pub(super) fn compile(
             ..
         } => {
             // Validation proves nonnegative offsets; the width assertion preserves every u32.
-            let span = (source_start.unsigned_abs() as usize)..(source_end.unsigned_abs() as usize);
+            let span = usize::try_from(source_start.unsigned_abs()).unwrap_or(usize::MAX)
+                ..usize::try_from(source_end.unsigned_abs()).unwrap_or(usize::MAX);
             Some(message.get(span).ok_or(TaskRefusal::InvalidTarget)?)
         }
-        _ => None,
+        af_wire::task::DecisionAssessment::Message
+        | af_wire::task::DecisionAssessment::Goal { .. } => None,
     };
     let state = State {
         source_admission_id: &input.source_admission_id,

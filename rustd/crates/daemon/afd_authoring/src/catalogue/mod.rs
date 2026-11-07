@@ -59,15 +59,18 @@ fn boundary(raw: Option<&str>, binding: &str) -> Result<Option<String>> {
     };
     match Cursor::parse(raw).map_err(|_invalid| ErrorKind::Cursor)? {
         Cursor::Text { value, id } if value == binding => Ok(Some(id)),
-        _ => Err(ErrorKind::Cursor.into()),
+        Cursor::Timestamp { .. } | Cursor::Text { .. } => Err(ErrorKind::Cursor.into()),
     }
 }
 
 fn page(rows: Vec<project::Row>, request: &ModelsQuery, binding: &str) -> Page<WorkspaceModel> {
-    let more = rows.len() > request.limit as usize;
+    let more = rows.len() > usize::try_from(request.limit).unwrap_or(usize::MAX);
     let mut items = Vec::new();
     let mut last = None;
-    for row in rows.into_iter().take(request.limit as usize) {
+    for row in rows
+        .into_iter()
+        .take(usize::try_from(request.limit).unwrap_or(usize::MAX))
+    {
         last = Some(
             Cursor::Text {
                 value: binding.to_owned(),

@@ -17,7 +17,7 @@ use std::sync::Arc;
 use afd_fleet::lease::Plane;
 
 use self::turn::Turn;
-use self::window::{Window, window};
+use self::window::{Shape, Window, window};
 use super::Parameters;
 use crate::abort::Abort;
 use crate::datastores::Datastores;
@@ -161,10 +161,12 @@ async fn measure(
             &plane,
             stores,
             &staged.runners,
-            IDLE_WINDOW,
-            None,
-            quiet,
-            None,
+            Shape {
+                length: IDLE_WINDOW,
+                target: None,
+                turn: quiet,
+                pickups: None,
+            },
             &abort,
         )
         .await?;
@@ -186,10 +188,12 @@ async fn drain(
         plane,
         stores,
         &staged.runners,
-        parameters.window,
-        Some(events),
-        Turn::back_to_back(parameters.turn),
-        None,
+        Shape {
+            length: parameters.window,
+            target: Some(events),
+            turn: Turn::back_to_back(parameters.turn),
+            pickups: None,
+        },
         abort,
     )
     .await

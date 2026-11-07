@@ -152,7 +152,7 @@ async fn write_outbound(
     );
     let mut reader = OutboundReader::new(connection, marker.to_owned());
     let delivery = reader
-        .read_blocking(std::time::Duration::from_millis(10))
+        .read_blocking(Duration::from_millis(10))
         .await
         .expect("read outbound")
         .expect("delivery");

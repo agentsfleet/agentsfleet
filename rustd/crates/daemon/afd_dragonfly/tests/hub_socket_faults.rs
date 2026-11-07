@@ -27,7 +27,8 @@ use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use backon::ExponentialBuilder;
 
-use crate::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply, closed_port};
+use af_core::test_util::trace::install_subscriber;
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 pub(crate) const BUDGET: Duration = Duration::from_secs(10);
@@ -40,7 +41,7 @@ pub(crate) const BUDGET: Duration = Duration::from_secs(10);
 /// assertion. No attempt limit, like production: at `backon`'s default of three
 /// the redial reaches `pump.rs`'s unreachable arm and the pump dies, which a
 /// test counting connections would read as a pump that stopped counting.
-fn impatient() -> ExponentialBuilder {
+const fn impatient() -> ExponentialBuilder {
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(5))
         .with_max_delay(Duration::from_millis(20))

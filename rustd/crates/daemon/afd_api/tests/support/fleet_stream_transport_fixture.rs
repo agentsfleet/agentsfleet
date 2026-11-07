@@ -67,7 +67,7 @@ impl Watched {
         }
     }
 
-    pub(super) fn database(&self) -> &afd_db::Db {
+    pub(super) const fn database(&self) -> &afd_db::Db {
         &self.fixture.database
     }
 

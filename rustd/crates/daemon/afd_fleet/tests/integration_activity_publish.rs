@@ -306,7 +306,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
 }
 
 /// One chunk frame, which is the smallest thing the tail carries.
-fn chunk() -> ActivityFrame<'static> {
+const fn chunk() -> ActivityFrame<'static> {
     ActivityFrame::FleetResponseChunk(FleetResponseChunk {
         text: Cow::Borrowed(CHUNK_TEXT),
         text_kind: af_wire::activity::StreamTextKind::Answer,

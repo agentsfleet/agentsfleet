@@ -19,7 +19,46 @@ impl Error {
             }
             ErrorKind::QueueUnavailable { .. } => error_code::STARTUP_DRAGONFLY_CONNECT,
             _ if self.is_pre_flight() => error_code::STARTUP_ENV_CHECK,
-            _ => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::UnknownProfile { .. }
+            | ErrorKind::CapExceeded { .. }
+            | ErrorKind::AcknowledgementMissing { .. }
+            | ErrorKind::SteerPathFaulted { .. }
+            | ErrorKind::LeasePathFaulted { .. }
+            | ErrorKind::LedgerUnreadable { .. }
+            | ErrorKind::CounterUnreadable { .. }
+            | ErrorKind::VariableUnreadable { .. }
+            | ErrorKind::UnknownLane { .. }
+            | ErrorKind::VariableUnset { .. }
+            | ErrorKind::TaskLost { .. }
+            | ErrorKind::BelowFloor { .. }
+            | ErrorKind::WindowTooShort { .. }
+            | ErrorKind::RunnersExceedPool { .. }
+            | ErrorKind::RunnerUnenrollable { .. }
+            | ErrorKind::InstrumentUnavailable { .. }
+            | ErrorKind::InstrumentUnflushable { .. }
+            | ErrorKind::InstrumentPoisoned
+            | ErrorKind::ResultUnrenderable { .. }
+            | ErrorKind::ResultUnwritable { .. }
+            | ErrorKind::ResultUnreadable { .. }
+            | ErrorKind::ResultUnparseable { .. }
+            | ErrorKind::LatencyUnavailable { .. }
+            | ErrorKind::LatencyUnmergeable { .. }
+            | ErrorKind::LatencyUnrecordable { .. }
+            | ErrorKind::TargetMissing { .. }
+            | ErrorKind::PlatformDefaultHeld { .. }
+            | ErrorKind::CredentialUnsealable { .. }
+            | ErrorKind::CredentialUnstorable { .. }
+            | ErrorKind::CredentialMalformed { .. }
+            | ErrorKind::IdentifierRefused { .. }
+            | ErrorKind::CeilingRefused { .. }
+            | ErrorKind::LeaseUnreadable { .. }
+            | ErrorKind::UnknownShape { .. }
+            | ErrorKind::ShapeNeedsRig { .. }
+            | ErrorKind::AuthoringPathFaulted { .. }
+            | ErrorKind::LiveSetFaulted { .. }
+            | ErrorKind::NothingIssued { .. }
+            | ErrorKind::InvariantBroken { .. }
+            | ErrorKind::DrainIncomplete { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

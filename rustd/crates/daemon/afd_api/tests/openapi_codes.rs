@@ -80,7 +80,7 @@ const BEARER_SCHEME: &str = "BearerAuth";
 const RUNNER_SCHEME: &str = "RunnerBearerAuth";
 
 /// The scheme a guard publishes, or `None` for a route that takes no bearer.
-fn scheme_of(guard: Guard) -> Option<&'static str> {
+const fn scheme_of(guard: Guard) -> Option<&'static str> {
     match guard {
         Guard::Bearer => Some(BEARER_SCHEME),
         Guard::RunnerBearer => Some(RUNNER_SCHEME),

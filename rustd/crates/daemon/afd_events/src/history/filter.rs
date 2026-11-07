@@ -83,7 +83,8 @@ pub struct Filter {
 /// caller's check, because only the caller knows whether a cursor also
 /// arrived. Everything this function refuses is an unreadable window value.
 pub fn parse_since(input: &str) -> Result<Since> {
-    let Some(last) = input.chars().last() else {
+    let mut chars = input.chars();
+    let Some(last) = chars.next_back() else {
         return Err(cursor_malformed());
     };
     let unit = match last {
@@ -94,7 +95,7 @@ pub fn parse_since(input: &str) -> Result<Since> {
         _timestamp_form => None,
     };
     match unit {
-        Some(unit) => parse_duration(&input[..input.len() - last.len_utf8()], unit),
+        Some(unit) => parse_duration(chars.as_str(), unit),
         None => parse_rfc3339_z(input),
     }
 }

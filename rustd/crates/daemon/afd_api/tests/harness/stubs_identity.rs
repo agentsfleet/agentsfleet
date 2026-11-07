@@ -75,7 +75,7 @@ impl SignupMetadata for RecordingWriteback {
         subject: &Subject,
         tenant_id: &str,
         scopes: &str,
-    ) -> impl std::future::Future<Output = Result<(), MetadataUnwritten>> + Send {
+    ) -> impl Future<Output = Result<(), MetadataUnwritten>> + Send {
         self.written
             .lock()
             .expect("the writeback log is healthy")

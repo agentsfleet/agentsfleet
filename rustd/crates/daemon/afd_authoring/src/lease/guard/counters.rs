@@ -44,7 +44,7 @@ impl Counters {
         })
     }
 
-    pub(super) fn binds(&self, attempt: &Attempt) -> bool {
+    pub(super) const fn binds(&self, attempt: &Attempt) -> bool {
         self.fence == attempt.fencing_token
     }
 

@@ -231,7 +231,7 @@ async fn a_later_cycle_opens_as_a_repeat() {
     let harness = ready().await;
     let event = "1700000002-9";
     let entry = owe_and_queue(&harness, 9, event).await;
-    super::abandonment::set_attempts(&harness, event, 1).await;
+    abandonment::set_attempts(&harness, event, 1).await;
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let poster = Scripted::answering(&[Verdict::Delivered]);

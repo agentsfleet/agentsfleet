@@ -55,7 +55,7 @@ impl Provider {
         }
     }
 
-    fn failing(reason: ClaimUnavailable) -> Self {
+    const fn failing(reason: ClaimUnavailable) -> Self {
         Self {
             answer: std::sync::Mutex::new(Err(reason)),
             calls: AtomicUsize::new(0),

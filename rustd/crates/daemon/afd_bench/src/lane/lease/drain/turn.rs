@@ -2,9 +2,9 @@
 //!
 //! A drained "chat" that leased and reported at once left out most of a real
 //! one: a runner renews its lease every [`RENEWAL_TICK`] and its activity pump
-//! posts the live tail every [`ACTIVITY_FLUSH`] while the model streams
-//! (`M241_001` §4). The plan counts how many of each one turn of a given
-//! length sends, and whether the runner also holds the lease for that long.
+//! posts the live tail every [`ACTIVITY_FLUSH`] while the model streams. The
+//! plan counts how many of each one turn of a given length sends, and whether
+//! the runner also holds the lease for that long.
 
 use core::time::Duration;
 
@@ -39,7 +39,7 @@ impl Turn {
     }
 
     /// The same sends, and the lease held for the whole turn before the
-    /// report, so a fleet is busy while new messages arrive (§5).
+    /// report, so a fleet is busy while new messages arrive.
     #[must_use]
     pub(in crate::lane::lease) fn held(turn: Duration) -> Self {
         Self {
@@ -55,5 +55,5 @@ fn whole(turn: Duration, every: Duration) -> u64 {
     if every == 0 {
         return 0;
     }
-    u64::try_from(turn.as_millis() / every).unwrap_or(u64::MAX)
+    u64::try_from(turn.as_millis().div_euclid(every)).unwrap_or(u64::MAX)
 }

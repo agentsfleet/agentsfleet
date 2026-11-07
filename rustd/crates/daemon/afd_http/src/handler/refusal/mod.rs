@@ -103,7 +103,7 @@ impl Refusal {
     /// `UZ-REQ-001`, because a dashboard tells "bad cursor" from "bad limit"
     /// by the code and has since those endpoints shipped.
     #[must_use]
-    pub fn coded(code: af_core::error_code::ErrorCode, detail: &'static str) -> Self {
+    pub fn coded(code: error_code::ErrorCode, detail: &'static str) -> Self {
         Self(Box::new(
             ProblemResponse::new(code, detail, RequestId::mint()).into_response(),
         ))
@@ -117,7 +117,7 @@ impl Refusal {
     /// a client branches on without re-reading the resource.
     #[must_use]
     pub fn conflict(
-        code: af_core::error_code::ErrorCode,
+        code: error_code::ErrorCode,
         detail: &'static str,
         current_state: &str,
     ) -> Self {
@@ -173,12 +173,8 @@ impl Refusal {
     #[must_use]
     pub fn forbidden(detail: &'static str) -> Self {
         Self(Box::new(
-            ProblemResponse::new(
-                af_core::error_code::AUTH_FORBIDDEN,
-                detail,
-                RequestId::mint(),
-            )
-            .into_response(),
+            ProblemResponse::new(error_code::AUTH_FORBIDDEN, detail, RequestId::mint())
+                .into_response(),
         ))
     }
 
@@ -191,12 +187,8 @@ impl Refusal {
     #[must_use]
     pub fn unauthorized(detail: &'static str) -> Self {
         Self(Box::new(
-            ProblemResponse::new(
-                af_core::error_code::AUTH_UNAUTHORIZED,
-                detail,
-                RequestId::mint(),
-            )
-            .into_response(),
+            ProblemResponse::new(error_code::AUTH_UNAUTHORIZED, detail, RequestId::mint())
+                .into_response(),
         ))
     }
 
@@ -207,11 +199,7 @@ impl Refusal {
     /// stop retrying, where this hands back the tag an editor needs to
     /// re-apply — so the remedy is one round trip instead of a re-read.
     #[must_use]
-    pub fn preconditioned(
-        code: af_core::error_code::ErrorCode,
-        detail: &'static str,
-        etag: &str,
-    ) -> Self {
+    pub fn preconditioned(code: error_code::ErrorCode, detail: &'static str, etag: &str) -> Self {
         Self(Box::new(
             ProblemResponse::precondition_failed(code, detail, RequestId::mint(), etag)
                 .into_response(),
@@ -225,7 +213,7 @@ impl Refusal {
     /// the resolver belong.
     #[must_use]
     pub fn already_resolved(
-        code: af_core::error_code::ErrorCode,
+        code: error_code::ErrorCode,
         detail: &'static str,
         resolution: crate::envelope::Resolution,
     ) -> Self {

@@ -35,7 +35,7 @@ impl Grants {
     /// naming it is what keeps it from also being the answer for a caller that
     /// never looked.
     #[must_use]
-    pub fn none() -> Self {
+    pub const fn none() -> Self {
         Self(BTreeSet::new())
     }
 

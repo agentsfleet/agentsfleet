@@ -55,9 +55,9 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
         "`agt_r` token securely; it appears once. The runner must apply the assigned ",
         "policy.",
     ),
-    request_body = RegisterRequest,
+    request_body = RegisterRequest<'_>,
     responses(
-        (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse),
+        (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

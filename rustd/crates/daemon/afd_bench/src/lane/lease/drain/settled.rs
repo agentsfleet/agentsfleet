@@ -62,6 +62,6 @@ pub(super) async fn read(stores: &Datastores, fleets: &[SeededFleet]) -> Result<
 }
 
 /// A `count(*)`, which Postgres answers as a non-negative bigint.
-fn count(value: i64) -> u64 {
+const fn count(value: i64) -> u64 {
     value.unsigned_abs()
 }

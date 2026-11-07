@@ -29,6 +29,8 @@ mod integration_intake_cost;
 mod integration_list_plans;
 #[path = "integration_steer.rs"]
 mod integration_steer;
+#[path = "integration_steer_disposition.rs"]
+mod integration_steer_disposition;
 #[path = "integration_steer_insert.rs"]
 mod integration_steer_insert;
 #[path = "integration_steer_races.rs"]

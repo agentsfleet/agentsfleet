@@ -7,7 +7,7 @@ use super::{
 use af_core::error_code::AUTHORING_CURSOR;
 use afd_authoring::types::{DraftState, ListQuery};
 
-fn query(cursor: Option<String>) -> ListQuery {
+const fn query(cursor: Option<String>) -> ListQuery {
     ListQuery {
         limit: 1,
         starting_after: cursor,

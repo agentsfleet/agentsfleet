@@ -167,7 +167,8 @@ pub(crate) struct ProvenApp {
 /// correct: neither is a proof, and telling them apart narrows a forger's
 /// search for no honest sender's benefit.
 pub(super) fn header<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
-    headers.get(name).and_then(|value| value.to_str().ok())
+    let value = headers.get(name)?;
+    value.to_str().ok()
 }
 
 /// The wall's own refusal, rendered.

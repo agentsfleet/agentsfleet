@@ -32,7 +32,7 @@ async fn late_reply(delete: bool) {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(blocked_proposal());
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
         let (runner, lease) = (f.runner.clone(), attempt.lease.clone());

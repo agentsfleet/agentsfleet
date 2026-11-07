@@ -143,7 +143,7 @@ impl Stage {
         response: &str,
         issued_at: Timestamp,
     ) -> afd_fleet::Result<Committed> {
-        let lease_key = af_core::id::Uuid7::parse(lease_id).expect("a lease id is a v7 spelling");
+        let lease_key = Uuid7::parse(lease_id).expect("a lease id is a v7 spelling");
         let pricing = self.fixtures.pricing(lease_id).await;
         self.leases
             .commit_report(report(

@@ -241,7 +241,9 @@ async fn scan_pages(
             .checked_add(bytes.len())
             .ok_or(TaskRefusal::LimitExhausted)?;
         if *manifest_bytes
-            > af_wire::task::CHECKPOINT_PAGE_BYTES * af_wire::task::CHECKPOINT_PAGES as usize
+            > af_wire::task::CHECKPOINT_PAGE_BYTES
+                * usize::try_from(af_wire::task::CHECKPOINT_PAGES)
+                    .map_err(|_overflow| TaskRefusal::LimitExhausted)?
         {
             return Err(TaskRefusal::LimitExhausted.into());
         }

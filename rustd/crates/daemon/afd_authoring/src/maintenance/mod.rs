@@ -7,7 +7,7 @@ mod sql;
 use crate::{Drafts, Result};
 
 /// Bounded counts from one daemon maintenance pass.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Maintenance {
     /// Expired live attempts moved to accounting recovery.
     pub interrupted: u64,

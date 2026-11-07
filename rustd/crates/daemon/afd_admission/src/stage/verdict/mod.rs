@@ -38,7 +38,7 @@ pub(crate) struct Answer {
 pub(crate) struct RunRow {
     /// The live run's event; `None` when no lease holds the slot unexpired.
     pub(crate) run_event_id: Option<String>,
-    pub(crate) run_takes_input: bool,
+    pub(crate) run_durable_task: bool,
     pub(crate) same_conversation: bool,
     pub(crate) earlier_waiting: bool,
 }
@@ -72,7 +72,7 @@ impl Answer {
                 .clone()
                 .map(|event_id| crate::LiveRun {
                     event_id,
-                    takes_input: self.run.run_takes_input,
+                    durable_task: self.run.run_durable_task,
                     same_conversation: self.run.same_conversation,
                 }),
             earlier_waiting: self.run.earlier_waiting,

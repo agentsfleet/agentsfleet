@@ -55,7 +55,7 @@ pub struct Billed<'a> {
 }
 
 /// The issued lease.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Issued {
     /// The lease's durable identifier, which the runner reports against.
     pub lease_id: Uuid7,

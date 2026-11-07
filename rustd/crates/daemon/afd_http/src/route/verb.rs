@@ -41,7 +41,7 @@ impl Verb {
     /// method is matched by the router, and this table is read to BUILD
     /// requests and inventories rather than to classify arriving ones.
     #[must_use]
-    pub fn method(self) -> Method {
+    pub const fn method(self) -> Method {
         match self {
             Self::Get => Method::GET,
             Self::Post => Method::POST,

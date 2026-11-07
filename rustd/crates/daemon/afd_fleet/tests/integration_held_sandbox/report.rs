@@ -23,6 +23,7 @@ use crate::support::Fixtures;
 /// `held_until`.
 pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportRequest<'_> {
     ReportRequest {
+        folded_through_sequence: None,
         task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),
@@ -53,7 +54,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
 /// clock after it.
 async fn window_around<T>(
     fixtures: &Fixtures,
-    write: impl std::future::Future<Output = T>,
+    write: impl Future<Output = T>,
 ) -> (T, std::ops::RangeInclusive<Timestamp>) {
     let (output, clock) = fixtures.clock_around(write).await;
     let idle = |at: &Timestamp| af_core::clock::after(*at, SANDBOX_HOLD_IDLE);

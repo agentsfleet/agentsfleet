@@ -69,7 +69,7 @@ fn test_decode_refuses_every_unreadable_column() {
         (
             AssignmentColumns {
                 registry_allowlist_json: "not-json".to_owned(),
-                ..sound.clone()
+                ..sound
             },
             COLUMN_REGISTRY_ALLOWLIST,
         ),

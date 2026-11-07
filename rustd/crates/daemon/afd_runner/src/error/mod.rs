@@ -69,6 +69,23 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
+    /// Postgres gave up waiting: a lock held past `lock_timeout` (`55P03`) or a
+    /// statement past `statement_timeout` (`57014`), the API login's bounds
+    /// (`afd_db::login`). Retryable: the statement changed nothing.
+    ///
+    /// Told apart from [`Self::Query`] because the host's capacity lock queues
+    /// every lease verb of one runner behind one row, so a wait that outlasts
+    /// the bound is contention the runner retries, not a defect the runner
+    /// counts toward its self-termination ceiling.
+    #[error("the runner store gave up waiting to {context}")]
+    TimedOut {
+        /// What was being attempted, for the operator's log line.
+        context: &'static str,
+        /// The Postgres failure underneath.
+        #[source]
+        source: sqlx::Error,
+    },
+
     /// A stored value is not a shape this daemon can read.
     #[error("{table}.{column} holds a value this build cannot read")]
     RowMalformed {
@@ -218,7 +235,9 @@ impl Error {
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => DETAIL_OPERATION_FAILED,
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => DETAIL_UNAVAILABLE,
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } | ErrorKind::TimedOut { .. } => {
+                DETAIL_UNAVAILABLE
+            }
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
             // constants in `af_core::error` exist to prevent.
@@ -226,19 +245,36 @@ impl Error {
         }
     }
 
-    /// Whether the datastore behind this crate could not be reached.
+    /// Whether the datastore behind this crate could not be reached, or gave
+    /// up waiting on a lock or a statement: the caller retries either the same
+    /// way.
     #[must_use]
-    pub fn is_datastore_unavailable(&self) -> bool {
+    pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => true,
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } | ErrorKind::TimedOut { .. } => {
+                true
+            }
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
-            _reachable => false,
+            ErrorKind::DecisionModelId { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::RunnerVanished
+            | ErrorKind::RunnerNotFound
+            | ErrorKind::RunnerNotRevoked
+            | ErrorKind::RunnerStillLeased
+            | ErrorKind::SelftestRefused
+            | ErrorKind::AdminStateMalformed
+            | ErrorKind::AssignmentMalformed { .. }
+            | ErrorKind::StoredJson { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. } => false,
         }
     }
 
     /// Whether the caller sent something this plane will not accept.
     #[must_use]
-    pub fn is_rejected(&self) -> bool {
+    pub const fn is_rejected(&self) -> bool {
         matches!(
             self.kind(),
             ErrorKind::Rejected { .. } | ErrorKind::DecisionModelId { .. }
@@ -247,7 +283,7 @@ impl Error {
 
     /// Whether an authenticated runner's row has since disappeared.
     #[must_use]
-    pub fn is_runner_vanished(&self) -> bool {
+    pub const fn is_runner_vanished(&self) -> bool {
         matches!(self.kind(), ErrorKind::RunnerVanished)
     }
 
@@ -274,7 +310,9 @@ impl Error {
             // cannot draw random bytes, are both THIS process failing — never
             // the caller's request being wrong.
             ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::TimedOut { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Admission { source } => source.code(),
         }
     }

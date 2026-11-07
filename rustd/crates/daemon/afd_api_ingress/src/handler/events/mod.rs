@@ -164,7 +164,7 @@ fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer
         ("X-Slack-Request-Timestamp" = String, Header, description = "Delivery time in Unix seconds. Values outside 5 minutes are rejected."),
     ),
     responses(
-        (status = 200, description = "A handshake echo, an ignored delivery with its reason, or an accepted mention with its event identifier", body = EventsAnswer),
+        (status = 200, description = "A handshake echo, an ignored delivery with its reason, or an accepted mention with its event identifier", body = EventsAnswer<'_>),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),

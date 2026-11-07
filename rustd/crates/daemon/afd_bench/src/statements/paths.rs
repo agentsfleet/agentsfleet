@@ -1,4 +1,4 @@
-//! Which part of a chat each statement belongs to (`M241_001` §4).
+//! Which part of a chat each statement belongs to.
 //!
 //! The product's statement constants are private to their crates, so the
 //! bench cannot ask which file a `pg_stat_statements` row came from. It
@@ -38,7 +38,7 @@ pub enum Path {
     /// Settling the run: result, slot release, obligation.
     Report,
     /// Durable-task reads every verb sends: the lease's task, its generation
-    /// and its execution deadline (PR #803).
+    /// and its execution deadline.
     Task,
     /// Statements several paths send: billing's per-transaction timeouts,
     /// foreign-key checks and the event counters trigger.
@@ -88,9 +88,9 @@ impl Path {
 
 /// Fragments of normalized statement text, first match wins.
 ///
-/// Read off a `bench-lease` drain on `main` `14539a73e` (`M241_001` §4): each
-/// fragment is the shortest text that names one product statement. When a
-/// statement changes, its row lands in `other` until its fragment follows.
+/// Read off a `bench-lease` drain on `main` `14539a73e`: each fragment is the
+/// shortest text that names one product statement. When a statement changes,
+/// its row lands in `other` until its fragment follows.
 const FRAGMENTS: &[(&str, Path)] = &[
     // Claim: the candidate scan, the slot-and-head claim, and the delivery
     // that follows it: received event, stamp, admission lock, counters read.
@@ -191,7 +191,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Report,
     ),
     ("INSERT INTO runner.events (id, runner_id", Path::Report),
-    // Task: the durable-task reads PR #803 added to issue, renewal and report.
+    // Task: the durable-task reads that issue, renewal and report each send.
     (
         "SELECT task_id::text, fleet_id::text, workspace_id::text FROM runner.leases",
         Path::Task,
@@ -254,13 +254,9 @@ pub fn per_lease(totals: &BTreeMap<Path, u64>, leases: u64) -> Option<BTreeMap<P
     if leases == 0 {
         return None;
     }
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "statement counts in one window stay far below 2^52"
-    )]
     let per = totals
         .iter()
-        .map(|(path, calls)| (*path, *calls as f64 / leases as f64))
+        .map(|(path, calls)| (*path, crate::report::ratio(*calls, leases)))
         .collect();
     Some(per)
 }

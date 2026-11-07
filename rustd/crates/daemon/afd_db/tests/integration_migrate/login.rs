@@ -1,5 +1,4 @@
-//! The API login carries the intake bounds its role was provisioned with
-//! (`M242_001` Dimension 6.1).
+//! The API login carries the intake bounds its role was provisioned with.
 
 use afd_db::login::{LOCK_TIMEOUT, STATEMENT_TIMEOUT};
 

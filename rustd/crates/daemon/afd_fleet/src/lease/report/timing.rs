@@ -29,7 +29,7 @@ pub(super) fn completed(lease: &Reported, received: Timestamp, completed_at: Opt
 }
 
 /// Each stage with the two instants it spans.
-fn stages(
+const fn stages(
     lease: &Reported,
     received: Timestamp,
     completed: Timestamp,

@@ -53,7 +53,7 @@ impl Platform {
     /// default, and waiting does not set one.
     pub(super) fn prepare(default: Option<PlatformDefault>) -> Result<Strategy> {
         default
-            .map(|row| Box::new(Self(row)) as Strategy)
+            .map(|row| -> Strategy { Box::new(Self(row)) })
             .ok_or_else(provider_platform_key_missing)
     }
 }

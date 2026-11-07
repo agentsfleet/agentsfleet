@@ -48,13 +48,13 @@ impl JwkKeySet {
 
     /// How many usable keys the set carries.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.keys.len()
     }
 
     /// Whether the set carries no usable key.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.keys.is_empty()
     }
 
@@ -65,7 +65,7 @@ impl JwkKeySet {
     /// three keys and this daemon can use none of them", which is a different
     /// operator problem from "the issuer published nothing".
     #[must_use]
-    pub fn rejected(&self) -> usize {
+    pub const fn rejected(&self) -> usize {
         self.rejected
     }
 
@@ -75,7 +75,7 @@ impl JwkKeySet {
     /// configuration failure that must refuse startup, not a per-request 401
     /// that looks like every user's token going bad at once.
     #[must_use]
-    pub fn usable(&self) -> bool {
+    pub const fn usable(&self) -> bool {
         !self.is_empty()
     }
 

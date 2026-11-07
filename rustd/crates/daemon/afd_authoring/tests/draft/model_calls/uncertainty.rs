@@ -16,7 +16,7 @@ async fn a_lost_usage_reply_never_redispatches_and_fences_private_proposals() {
     let mut stub = Provider::known();
     *stub.response.get_mut("usage").expect("usage field") = serde_json::Value::Null;
     let provider = Arc::new(stub);
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     assert_eq!(
         calls
@@ -67,7 +67,7 @@ async fn competing_dispatch_and_same_intent_retry_cannot_duplicate_an_inflight_e
     let mut stub = Provider::known();
     stub.blocked = true;
     let provider = Arc::new(stub);
-    let calls = fixture::calls(&f, &attempt, std::sync::Arc::clone(&provider)).await;
+    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
     let request = fixture::request(&attempt);
     let task = tokio::spawn({
         let (calls, runner, lease, request) = (

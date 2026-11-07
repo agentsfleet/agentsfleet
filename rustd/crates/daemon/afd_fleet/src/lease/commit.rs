@@ -12,7 +12,8 @@ use jiff::Timestamp;
 use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query};
-use crate::lease::obligation::Owing;
+use crate::lease::fold::Folds;
+use crate::lease::obligation::{Owing, ReplyDestination};
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::sql::meter::Metering;
 use crate::lease::store::Leases;
@@ -55,6 +56,9 @@ pub struct TerminalReport<'a> {
     pub held_until: Option<Timestamp>,
     /// Native task participant, prepared before taking report locks.
     pub task_settlement: Option<crate::task::TaskSettlement<'a>>,
+    /// The last folded message a completed model call read; its messages
+    /// settle with this answer when the run succeeded.
+    pub folded_through_sequence: Option<i64>,
     /// The instant every row this transaction writes is stamped with.
     pub now: Timestamp,
 }
@@ -97,6 +101,8 @@ pub enum Committed {
         owed: Option<Owing>,
         /// Native replacement for a stale or unverified completion claim.
         notice: Option<&'static str>,
+        /// The messages the run folded and read, settled with its answer.
+        folds: Folds,
     },
     /// This runner already settled this lease and the earlier report committed
     /// everything below. Nothing was written and nothing logged; what the
@@ -180,7 +186,7 @@ impl Leases {
                 });
             }
         };
-        let (closed, owed, notice) = self.record_settled(&mut transaction, report).await?;
+        let (closed, owed, notice, folds) = self.record_settled(&mut transaction, report).await?;
 
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {
@@ -188,6 +194,7 @@ impl Leases {
             closed,
             owed,
             notice,
+            folds,
         })
     }
 
@@ -199,14 +206,21 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         report: TerminalReport<'_>,
-    ) -> Result<(Option<Box<Closed>>, Option<Owing>, Option<&'static str>)> {
+    ) -> Result<(
+        Option<Box<Closed>>,
+        Option<Owing>,
+        Option<&'static str>,
+        Folds,
+    )> {
         let TerminalReport {
+            lease_id,
             lease,
             mut outcome,
             last_event_id,
             last_response,
             held_until,
             task_settlement,
+            folded_through_sequence,
             lease_key,
             runner_id,
             now,
@@ -224,6 +238,7 @@ impl Leases {
             outcome.response_text = notice;
         }
         let answer = outcome.response_text;
+        let succeeded = outcome.verdict.succeeded();
         let last_response = notice.unwrap_or(last_response);
 
         let closed = self
@@ -237,25 +252,54 @@ impl Leases {
             .await?;
         self.release_through(connection, &lease.fleet_id, lease.fence, held_until)
             .await?;
-        // The fifth write, and the one that closes 7.6's window: the answer is
-        // owed before anything tries to send it, so a process that dies between
-        // here and the queue append leaves a record rather than a charged run
-        // whose answer exists nowhere. The append itself is NOT here — see
-        // `obligation` for why it cannot be.
-        //
-        // Owed only to where the question came from. The lease's own
-        // `provider` is the MODEL provider billing resolved, and it has no path
-        // in here: `Delivery` takes a connector type, which only the event's
-        // recorded destination supplies.
+        let (destination, owed) = self.owe_answer(connection, lease, answer, now).await?;
+        // A failed or stopped run's folds settle nothing: each message stays
+        // for the fleet's next run, in order.
+        let read_through = folded_through_sequence.filter(|_| succeeded);
+        let folds = self
+            .settle_folds(
+                connection,
+                lease,
+                lease_id,
+                read_through,
+                answer,
+                destination.as_ref(),
+            )
+            .await?;
+        Ok((closed, owed, notice, folds))
+    }
+
+    /// Owes the run's answer to where its question came from.
+    ///
+    /// The fifth write, and the one that closes the window between the charge
+    /// and the send: the answer is owed before anything tries to send it, so a
+    /// process that dies in between leaves a record rather than a charged run
+    /// whose answer exists nowhere. The append itself is NOT here — see
+    /// `obligation` for why it cannot be.
+    ///
+    /// The lease's own `provider` is the MODEL provider billing resolved, and
+    /// it has no path in here: `Delivery` takes a connector type, which only
+    /// the event's recorded destination supplies. Answers that destination,
+    /// and the obligation newly owed to it.
+    async fn owe_answer(
+        &self,
+        connection: &mut PgConnection,
+        lease: &Reported,
+        answer: &str,
+        now: Timestamp,
+    ) -> Result<(Option<ReplyDestination>, Option<Owing>)> {
         let destination =
-            Leases::reply_destination(connection, lease.fleet_id.as_str(), &lease.event_id).await?;
-        let owed = match destination {
+            Self::reply_destination(connection, lease.fleet_id.as_str(), &lease.event_id).await?;
+        let owed = match &destination {
             Some(reply) => self
                 .owe_delivery(connection, reply.delivery(lease, answer), now)
                 .await?
-                .map(|obligation| Owing { obligation, reply }),
+                .map(|obligation| Owing {
+                    obligation,
+                    reply: reply.clone(),
+                }),
             None => None,
         };
-        Ok((closed, owed, notice))
+        Ok((destination, owed))
     }
 }

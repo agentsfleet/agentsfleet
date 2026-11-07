@@ -79,6 +79,25 @@ pub const RELEASE_FLEET_SLOT: &str = include_str!("release_fleet_slot.sql");
 /// unhinted as before, so the starvation guard still covers it.
 pub const RELEASE_UNLEASED_SLOT: &str = include_str!("release_unleased_slot.sql");
 
+/// Claims for a live run's lease the messages its fleet received after the
+/// run's own, oldest first.
+///
+/// It stops at the first parked or task-bound message. `$1` lease, `$2`
+/// runner, `$3` fence, `$4` active status, `$5` read-after sequence, `$6`
+/// limit.
+///
+/// One statement: it proves the lease and its fence itself, so a claim before
+/// every model call costs one round trip. Idempotent for its lease, so a
+/// claim whose answer was lost reads the same messages again.
+pub const CLAIM_INPUTS: &str = include_str!("claim_inputs.sql");
+
+/// Settles the messages a lease claimed and a completed model call read.
+///
+/// It runs in a succeeded report's transaction: `$1` fleet, `$2` lease, `$3`
+/// fence, `$4` read-through sequence. Answers each one, so its own event and
+/// reply can be written; a claimed message nobody read stays for the next run.
+pub const SETTLE_FOLDS: &str = include_str!("settle_folds.sql");
+
 /// What one lease authorises a mint to reach.
 ///
 /// Every clause in the `WHERE` is an authorisation, and the reason they are all

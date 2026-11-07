@@ -160,7 +160,7 @@ pub(super) async fn validate(
             CheckpointEntry::Remove { .. } if plan.mode()? == CheckpointMode::RetainBase => {
                 return Err(TaskRefusal::CheckpointIncompatible.into());
             }
-            _ => {}
+            CheckpointEntry::Directory { .. } | CheckpointEntry::Remove { .. } => {}
         }
     }
     // One set read covers every file/history object in this bounded page.

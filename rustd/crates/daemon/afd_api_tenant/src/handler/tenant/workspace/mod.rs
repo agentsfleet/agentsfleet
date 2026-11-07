@@ -73,7 +73,7 @@ const EMPTY_OBJECT: &[u8] = b"{}";
         afd_http::openapi::query::WorkspaceFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::workspace::WorkspacesResponse),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::workspace::WorkspacesResponse<'_>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -127,9 +127,9 @@ pub(crate) async fn list<D: Services>(
     // an empty body is read as `{}` and an absent name means "name it for me".
     // The hand-written contract declared this required, which is the defect the
     // generated document exists to stop repeating.
-    request_body = Option<CreateWorkspaceRequest>,
+    request_body = Option<CreateWorkspaceRequest<'_>>,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = afd_api_wire::workspace::CreatedWorkspaceResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = afd_api_wire::workspace::CreatedWorkspaceResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
