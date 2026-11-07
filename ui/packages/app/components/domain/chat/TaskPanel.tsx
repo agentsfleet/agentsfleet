@@ -6,7 +6,7 @@ import type { TaskResource } from "./use-task-read";
 import type { TaskDetails } from "./use-task-details";
 import type { FleetTaskProps } from "./FleetTaskProvider";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Section, SignalSpinner } from "@agentsfleet/design-system";
-import { CircleDot, Clock3, ListTodo, TriangleAlert } from "lucide-react";
+import { CircleDot, Clock3, TriangleAlert } from "lucide-react";
 import { taskActivityLabel } from "@/lib/task-activity";
 import { TaskDetailView } from "./TaskDetail";
 import { confirmed } from "./use-task-read";
@@ -35,7 +35,7 @@ function CurrentWork() {
   const tasks = page?.items ?? EMPTY_TASKS;
   return <Section asChild className="block gap-0"><section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-lg">
     <WorkReadStatus resource={resource} retry={retry} />
-    {page ? <><WorkSection title="Durable tasks" icon={<ListTodo size={16} aria-hidden="true" />}>
+    {page ? <><WorkSection title="Durable tasks">
       {!tasks.length ? <p className="text-eyebrow text-muted-foreground">No unfinished tasks.</p> : <TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={details} events={events} retry={retry} retryDetails={retryDetails} />}
     </WorkSection><WorkOutputs details={details} /><WorkChanges events={events} /><WorkSources sources={sources} /></> : null}
   </section></Section>;
