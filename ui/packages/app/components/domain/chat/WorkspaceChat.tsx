@@ -1,7 +1,6 @@
 "use client";
 import { ChatSummaryProvider } from "./ChatSummary";
 import { FleetConversationLayout } from "../FleetWorkSidebar";
-import { SetupSummary } from "./SetupSummary";
 
 import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
 import type { Source } from "@/lib/api/draft-types";
@@ -31,6 +30,7 @@ type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "r
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
 const LOADING_SETUP_CHAT = "Loading setup chat";
+const SetupSummary = nextDynamic(() => import("./SetupSummary").then(module => module.SetupSummary), {ssr: false});
 const DraftConversation = nextDynamic(() => import("./DraftConversation").then((module) => module.DraftConversation), {
   ssr: false,
   loading: () => <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label="Loading conversation" />,
