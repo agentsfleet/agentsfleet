@@ -196,6 +196,8 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     const panel = page.getByRole("region", {name: "Current work"});
     await expect(panel.getByRole("heading", {name: "Durable tasks"})).toBeVisible();
     for (const section of ["Outputs", "Changes", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
+    await expectSourceHierarchy(panel);
+    if (window.height === 800) await page.screenshot({path: info.outputPath("context-sidebar-desktop.png")});
     const repair = panel.getByRole("button", {name: /PR #123 repair/});
     if (await repair.getAttribute("aria-expanded") !== "true") {await repair.focus(); await page.keyboard.press("Enter");}
     const selectedDetail = panel.getByLabel("PR #123 repair details", {exact: true});
@@ -283,4 +285,20 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
   expect(verb).not.toBeNull(); expect(target).not.toBeNull();
   if (mobile) expect(target!.y).toBeGreaterThan(verb!.y);
   else expect(Math.abs(target!.y + target!.height / 2 - verb!.y - verb!.height / 2)).toBeLessThan(1);
+}
+
+async function expectSourceHierarchy(panel: Locator) {
+  const sourcesHeading = panel.getByRole("heading", {name: "Sources", exact: true});
+  expect(await sourcesHeading.locator("svg").count()).toBe(0);
+  const source = panel.getByRole("link", {name: "linkwarden/linkwarden", exact: true});
+  const metrics = await source.evaluate(node => {
+    const heading = node.closest("section")!.querySelector("h2")!;
+    return {heading: parseFloat(getComputedStyle(heading).fontSize), row: parseFloat(getComputedStyle(node).fontSize),
+      icon: node.querySelector("svg")!.getBoundingClientRect().width,
+      gap: node.getBoundingClientRect().top - heading.getBoundingClientRect().bottom};
+  });
+  expect(metrics.heading).toBeGreaterThan(metrics.row);
+  expect(metrics.icon).toBe(12);
+  expect(metrics.gap).toBeGreaterThanOrEqual(0);
+  expect(metrics.gap).toBeLessThanOrEqual(4);
 }

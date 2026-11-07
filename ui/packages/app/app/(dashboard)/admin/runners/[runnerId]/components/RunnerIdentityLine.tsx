@@ -50,6 +50,7 @@ export function RunnerIdentityLine({
             <CircleHelpIcon size={HELP_ICON_SIZE} aria-hidden="true" />
           </a>
         </span>
+        <span>Durable tasks: {runner.assigned_policy.durable_tasks_enabled ? "On" : "Off"}</span>
         <span data-testid="runner-labels" className="inline-flex flex-wrap items-center gap-sm">
           {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
           {runner.labels.map((label) => (
