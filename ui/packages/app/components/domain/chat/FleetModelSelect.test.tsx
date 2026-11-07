@@ -158,7 +158,9 @@ it("loads more runtime choices and leaves the list open without another initial 
   await userEvent.click(screen.getByRole("combobox"));
   await screen.findByRole("option", {name: MODEL.label});
   fireEvent.keyDown(screen.getByRole("listbox"), {key: "Escape"});
-  await userEvent.click(screen.getByRole("button", {name: "Load more models"}));
+  await userEvent.tab({shift: true});
+  expect(document.activeElement).toBe(screen.getByRole("button", {name: "Load more models"}));
+  await userEvent.keyboard("{Enter}");
   await waitFor(() => expect(screen.queryByRole("button", {name: "Load more models"})).toBeNull());
   await userEvent.click(screen.getByRole("combobox"));
   expect(await screen.findByRole("option", {name: RUNTIME_MODEL.label})).toBeTruthy();

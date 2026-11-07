@@ -2,7 +2,6 @@
 
 import { z } from "zod";
 import type { Control } from "react-hook-form";
-import { Globe2Icon, LayersIcon, ListRestartIcon, SlidersHorizontalIcon } from "lucide-react";
 import {
   DEFAULT_ASSIGNED_NETWORK_POLICY,
   DEFAULT_DURABLE_TASKS_ENABLED,
@@ -146,19 +145,19 @@ export function PolicyFields({ control, onDecisionPendingChange }: {
   onDecisionPendingChange: (pending: boolean) => void;
 }) {
   return <div className="divide-y divide-border">
-    <PolicySection title="Execution" icon={<LayersIcon size={14} className="text-info" aria-hidden="true" />}>
+    <PolicySection title="Execution">
       <PolicyEngineField />
       <PolicyIsolationField control={control} />
       <PolicyWorkerField control={control} />
     </PolicySection>
-    <PolicySection title="Network access" icon={<Globe2Icon size={14} className="text-pulse" aria-hidden="true" />}>
+    <PolicySection title="Network access">
       <PolicyNetworkFields control={control} />
     </PolicySection>
-    <PolicySection title="Durable work" icon={<ListRestartIcon size={14} className="text-success" aria-hidden="true" />}>
+    <PolicySection title="Durable work">
       <PolicyDurableTasksField control={control} />
       <PolicyDecisionField control={control} onPendingChange={onDecisionPendingChange} />
     </PolicySection>
-    <PolicySection title="Advanced" icon={<SlidersHorizontalIcon size={14} className="text-evidence" aria-hidden="true" />}>
+    <PolicySection title="Advanced">
       <PolicyBindsField control={control} />
     </PolicySection>
   </div>;

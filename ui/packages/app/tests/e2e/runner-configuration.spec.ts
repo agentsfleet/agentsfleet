@@ -16,12 +16,13 @@ for (const theme of ["dark", "light"]) {
     const dialog = page.getByRole("dialog", {name: "Edit runner"});
     const save = dialog.getByRole("button", {name: "Save", exact: true});
     await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveCSS("opacity", "1");
     await expect(save).toBeInViewport();
     const initial = info.outputPath(`runner-editor-${theme}.png`);
     await page.screenshot({path: initial});
     await info.attach(`runner-editor-${theme}`, {path: initial, contentType: "image/png"});
     await dialog.getByLabel("Workers", {exact: true}).fill("12");
-    await dialog.getByRole("radio", {name: /^Approved destinations only/}).click();
+    await dialog.getByRole("switch", {name: "Enable all public internet access"}).click();
     await dialog.getByRole("switch", {name: "Durable tasks"}).click();
     await dialog.getByLabel("Labels", {exact: true}).fill("linux, eu-west, ci");
     await expect(save).toBeInViewport();

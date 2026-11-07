@@ -221,7 +221,8 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     if (window.width < 1024) await page.getByRole("button", {name: "Work context", exact: true}).click();
     const panel = page.getByRole("region", {name: "Current work"});
     await expect(panel.getByRole("heading", {name: "Durable tasks"})).toBeVisible();
-    for (const section of ["Outputs", "Changes", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
+    for (const section of ["Outputs", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
+    await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
     await expectSourceHierarchy(panel);
     if (window.height === 800) await page.screenshot({path: info.outputPath("context-sidebar-desktop.png")});
     const repair = panel.getByRole("button", {name: /PR #123 repair/});

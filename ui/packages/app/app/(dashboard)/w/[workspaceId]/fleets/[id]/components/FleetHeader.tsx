@@ -1,4 +1,6 @@
-import { Badge, PageTitle } from "@agentsfleet/design-system";
+import Link from "next/link";
+import { ArrowLeftIcon } from "lucide-react";
+import { Badge, Button, PageTitle } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
@@ -6,6 +8,7 @@ import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
 import { EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
+import { ChatSummaryToggle } from "@/components/domain/chat/ChatSummary";
 import { MemoryMenu } from "./MemoryMenu";
 
 export function FleetHeader({
@@ -21,7 +24,8 @@ export function FleetHeader({
 }) {
   return (
     <div className="fleet-chat-heading flex shrink-0 items-center justify-between gap-md px-xl pb-sm pt-5 sm:px-chat-inset">
-      <div className="min-w-0">
+      <Button asChild variant="ghost" size="icon" aria-label="Back to your fleets" title="Your fleets"><Link href={`/w/${workspaceId}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button>
+      <div className="min-w-0 flex-1">
         <PageTitle size="chat" className="truncate">{fleet.name}</PageTitle>
         <p className="mt-xs truncate text-eyebrow text-muted-foreground">{agentDisplayName(fleet.id)}</p>
       </div>
@@ -33,6 +37,7 @@ export function FleetHeader({
           <ExhaustionBadge exhaustedAt={exhaustedAt} />
         ) : null}
         <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} />
+        <ChatSummaryToggle />
         {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
           <FleetConfig
             workspaceId={workspaceId}

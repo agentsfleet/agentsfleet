@@ -1,4 +1,7 @@
 "use client";
+import { ChatSummaryProvider } from "./ChatSummary";
+import { FleetConversationLayout } from "../FleetWorkSidebar";
+import { SetupSummary } from "./SetupSummary";
 
 import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
 import type { Source } from "@/lib/api/draft-types";
@@ -98,17 +101,17 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
     void client.refreshFleetSetup().catch(ignore);
   }, [client, source, opening, turnPending, view.busy, view.pending, view.error, view.draft, view.inaccessible, view.savedSetupRevision, view.preview]);
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
-  return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
+  return <ChatSummaryProvider><div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
     {view.error ? <ChatError client={client} view={view} source={source} workspace={workspace} reload={reload} onStartOver={() => setInstructionsDirty(false)} /> : null}
     {view.notice && view.notice !== appliedNotice([]) && view.notice !== PUBLISHED_NOTICE ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
-    <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
+    <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
     <ChatModelAvailability canManagePlatformModels={canManagePlatformModels} client={client} view={view} workspace={workspace} />
-    <DraftConversation client={client} view={view} workspace={workspace} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <FleetConversationLayout work={<SetupSummary definition={view.draft?.candidate?.definition ?? view.preview?.definition ?? view.fleet?.definition} requirements={view.draft?.review?.requirements} />}><DraftConversation client={client} view={view} workspace={workspace} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       <FleetSetup client={client} view={view} workspace={workspace} />
-    </DraftConversation>
+    </DraftConversation></FleetConversationLayout>
     </>}
-  </div>;
+  </div></ChatSummaryProvider>;
 }
 
 function useSavedSetupUrl(workspace: string, source: Source | undefined, view: DraftView, opening: boolean, fleetPage?: boolean): void {

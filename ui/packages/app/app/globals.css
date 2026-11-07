@@ -180,3 +180,18 @@ code, pre, kbd { font-family: var(--ff-mono); }
     border-left: 1px solid var(--border);
   }
 }
+
+/* Chat owns its header; the back action keeps fleet navigation within reach. */
+@media (min-width: 48rem) {
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > header,
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > .app-sidebar { display: none; }
+  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > main {
+    grid-column: 1;
+    grid-row: 1;
+    border-left: 0;
+  }
+}

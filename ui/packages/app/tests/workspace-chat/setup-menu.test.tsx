@@ -212,3 +212,10 @@ it("keeps edited instructions when discard is refused and closes only after conf
   expect(confirm).toHaveBeenCalledTimes(2);
   expect(fixture.writes()).toEqual([]);
 });
+
+it("opens instructions directly from the header pencil without creating a revision", async () => {
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
+  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
+  expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
+  expect(fixture.writes()).toEqual([]);
+});
