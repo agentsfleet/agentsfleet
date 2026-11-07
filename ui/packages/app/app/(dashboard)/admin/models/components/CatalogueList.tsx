@@ -45,7 +45,7 @@ function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey |
   return (
     <span className="flex min-w-0 items-center gap-sm">
       {isDefault(model, active) ? <TooltipButton variant="ghost" size="icon-sm" aria-label={DEFAULT_MODEL_LABEL}
-        tooltip={`${DEFAULT_MODEL_LABEL}. You can edit it here.`}><LockIcon aria-hidden="true" /></TooltipButton> : null}
+        tooltip={`${DEFAULT_MODEL_LABEL}. You can edit it here.`}><LockIcon className="text-pulse" aria-hidden="true" /></TooltipButton> : null}
       <ModelName copyable={false} modelId={model.model_id} displayName={model.metadata.display_name} />
     </span>
   );
@@ -101,7 +101,7 @@ function RowActions({
         onClick={() => onDelete(model)}
         label={`Delete ${model.model_id}`}
       >
-        {busy ? <Spinner size="sm" srLabel="Deleting" /> : <Trash2Icon size={14} />}
+        {busy ? <Spinner size="sm" className="text-info" srLabel="Deleting" /> : <Trash2Icon size={14} />}
       </IconAction>
     </div>
   );
@@ -233,7 +233,7 @@ export default function CatalogueList({
         caption="Model library"
         empty={
           <EmptyState
-            icon={<CoinsIcon size={28} />}
+            icon={<CoinsIcon size={28} className="text-evidence" />}
             title="No models yet"
             description="Add a model to price it and make it the platform default."
           />

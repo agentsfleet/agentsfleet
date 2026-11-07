@@ -33,7 +33,7 @@ export function SetupChecks({checks, label, workspace, definition, onRefresh}: {
       const Icon = ready ? CircleCheckIcon : check.state === BLOCKED ? CircleAlertIcon : CircleIcon;
       const href = credential ? null : safeActionHref(check.next_action?.href);
       const status = <span className={`inline-flex items-center gap-xs text-label ${ready ? "text-muted-foreground" : "text-warning"}`} title={check.state}>
-          <Icon className={`size-3.5 shrink-0 ${ready ? "text-success" : ""}`} aria-hidden="true" />
+          <Icon className={`size-3.5 shrink-0 ${ready ? "text-success" : check.state === BLOCKED ? "text-destructive" : "text-warning"}`} aria-hidden="true" />
           <span>{text}{ready || grant ? "" : " needed"}</span><span className="sr-only">: {check.state}</span>
         </span>;
       return <ListItem key={`${check.kind}:${check.subject}`} className="flex items-center gap-xs p-0">

@@ -137,14 +137,14 @@ export type NetworkPolicy = (typeof NETWORK_POLICIES)[number];
 export const NETWORK_POLICY_LABELS: Record<NetworkPolicy, string> = {
   allow_all: "Public internet access",
   deny_all_egress: "No internet access",
-  allow_list_egress: "Restricted access",
+  allow_list_egress: "Approved destinations only",
 };
 
 // A runner must satisfy the assigned policy before it can receive work.
 export const NETWORK_POLICY_DESCRIPTIONS: Record<NetworkPolicy, string> = {
   allow_all: "Outbound connections are allowed. Each fleet keeps its own access rules.",
   deny_all_egress: "Outbound network connections are blocked.",
-  allow_list_egress: "Only approved destinations are allowed. The runner must report egress enforcement or it receives no work.",
+  allow_list_egress: "Allow each fleet’s approved websites and package download sites. Requires network enforcement on the host.",
 };
 
 // Enrollment defaults for the policy fields. Network defaults to the explicit

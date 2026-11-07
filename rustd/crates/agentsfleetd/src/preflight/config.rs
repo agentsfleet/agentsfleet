@@ -31,6 +31,8 @@ pub struct IdentityConfig {
     pub api_base: Box<str>,
     /// The secret that authorises that read.
     pub secret: ProviderSecret,
+    /// The explicit identity route; direct unless a trusted proxy was configured.
+    pub transport: afd_identity::Transport,
 }
 
 /// What boot needs resolved before it opens anything.

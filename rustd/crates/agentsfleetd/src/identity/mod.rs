@@ -153,7 +153,7 @@ fn resolve_with<C, K, M>(
 ) -> (Capabilities, Sessions, SignupWriteback)
 where
     C: FnOnce(&IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable>,
-    K: FnOnce(String, Duration) -> Result<HttpKeySet, VerifyError>,
+    K: FnOnce(&IdentityConfig, String, Duration) -> Result<HttpKeySet, VerifyError>,
     M: FnOnce(&IdentityConfig) -> Result<ProviderMetadata, MetadataUnwritten>,
 {
     (
@@ -168,6 +168,7 @@ fn build_claims(identity: &IdentityConfig) -> Result<ProviderClaims, ClaimUnavai
         identity.api_base.clone(),
         identity.secret.clone(),
         PROVIDER_TIMEOUT,
+        &identity.transport,
     )
 }
 
@@ -176,6 +177,7 @@ fn build_metadata(identity: &IdentityConfig) -> Result<ProviderMetadata, Metadat
         identity.api_base.clone(),
         identity.secret.clone(),
         PROVIDER_TIMEOUT,
+        &identity.transport,
     )
 }
 
@@ -206,8 +208,12 @@ where
     }
 }
 
-fn build_key_set(url: String, timeout: Duration) -> Result<HttpKeySet, VerifyError> {
-    HttpKeySet::new(url, timeout)
+fn build_key_set(
+    identity: &IdentityConfig,
+    url: String,
+    timeout: Duration,
+) -> Result<HttpKeySet, VerifyError> {
+    HttpKeySet::new(url, timeout, &identity.transport)
 }
 
 /// The capability seam for a configured provider.
@@ -238,14 +244,14 @@ where
 /// The session seam for a configured issuer.
 fn sessions<K>(identity: &IdentityConfig, build: K) -> Sessions
 where
-    K: FnOnce(String, Duration) -> Result<HttpKeySet, VerifyError>,
+    K: FnOnce(&IdentityConfig, String, Duration) -> Result<HttpKeySet, VerifyError>,
 {
     // The key-set URL is DERIVED from the issuer unless overridden, so the two
     // can never name different providers — the property `jwks_url` exists for.
     let Some(url) = jwks_url(identity.jwks_url.as_deref(), Some(&identity.issuer)) else {
         return Sessions::Unconfigured(NoVerifier);
     };
-    match build(url, KEY_SET_TIMEOUT) {
+    match build(identity, url, KEY_SET_TIMEOUT) {
         Ok(key_set) => Sessions::Jwks(Arc::new(JwksVerifier::new(
             key_set,
             VerifierConfig::new(identity.issuer.clone(), identity.audience.clone()),

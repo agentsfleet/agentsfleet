@@ -61,9 +61,9 @@ export function Waiting({ queued, startedAtMs }: { queued: boolean; startedAtMs:
       aria-label={label}
       data-testid="fleet-working"
     >
-      <SignalSpinner className="text-pulse" />
+      <SignalSpinner className={queued ? "text-warning" : "text-info"} />
       <span className="sr-only">{label}</span>
-      <span aria-hidden="true" data-waiting-verb="">{label}…</span>
+      <span aria-hidden="true" data-waiting-verb="" data-chat-loading={!queued}>{label}…</span>
       <ElapsedClock startedAtMs={startedAtMs} />
     </output>
   );

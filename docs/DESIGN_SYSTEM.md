@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-11-01
+**Direction:** Clear Signal · **Updated:** 2026-11-07
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -301,6 +301,14 @@ Activity and Approvals belong in workspace navigation. Keep Approvals available 
 
 ### Forms and popups
 
+Runner configuration uses a full-height right panel with a fixed header and save footer.
+Only the field area scrolls; save feedback stays beside the actions.
+Execution, network access, durable work, and advanced settings share the same field composition in enrollment and editing.
+Network choices reflect the three supported policies.
+Package download sites apply only to approved destinations; custom hosts replace the standard list.
+Isolation choices describe assigned enforcement, rather than selectable engines.
+The panel uses shared dialog motion and honors Reduce Motion.
+
 Inputs have a visible resting boundary, a mint hover boundary, and a two-pixel focus ring.
 Pointer hover must preserve the focus ring on an already focused input.
 
@@ -426,6 +434,11 @@ narrow screens, and loading, empty, error, selected, and disabled states. Static
 cannot determine whether arbitrary prose is a technical value; that remains a review duty.
 
 ## Motion
+
+Fleet setup and Fleet conversation share a moving text highlight for active progress labels.
+Use the existing `tool-shimmer` timing and `data-chat-loading` selector in `interactions.css`.
+Animate paint without changing text geometry, and remove the loading state when work settles.
+Reduced-motion and forced-color preferences show static, readable text.
 
 Make movement explain arrival, focus, selection, and disclosure. A finished interface should feel fluid when the person moves through it.
 
@@ -648,6 +661,7 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-10-15 | Shared table hierarchy and Runner navigation | Live visual approval covers sentence-case table headings, readable rows, shared pagination, dialogs, Runner cards and controls, and workspace Activity placement. Table colors, spacing, and elevations remain shared tokens. |
 | 2026-10-18 | Fluid, visually rich app surfaces within the approved identity | Indy authorized modernizing this guidance, deliberate gradients and motion, and an app-wide browser review. Branding, font families, and the PR #752 / M227 palette stay unchanged. Shared components own visual behavior; app widgets own product composition. |
 | 2026-11-01 | Animate ongoing work and keep chat state ownership explicit | Indy confirmed normal animation with the OS Reduce Motion preference respected. Chat uses assistant-ui, native API operations, scoped caches and local interaction state; progress icons reflect actual work. |
+| 2026-11-07 | Group runner configuration in a right panel | Execution, network access, durable work, and advanced settings share readable field groups. Editing keeps Save visible while fields scroll. |
 
 ### Recoverable chat failures and tool summaries
 

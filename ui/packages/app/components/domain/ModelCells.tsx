@@ -42,7 +42,7 @@ export function ProviderBadge({ provider }: { provider: string | undefined }) {
 
 /** The lock a platform-managed model carries; the label is its whole meaning. */
 export function PlatformManagedMark() {
-  return <LockIcon size={LOCK_ICON_SIZE} className={cn("shrink-0", MUTED)} aria-label={PLATFORM_MANAGED_LABEL} />;
+  return <LockIcon size={LOCK_ICON_SIZE} className="shrink-0 text-evidence" aria-label={PLATFORM_MANAGED_LABEL} />;
 }
 
 /**

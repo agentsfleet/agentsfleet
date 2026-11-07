@@ -12,6 +12,8 @@
 
 use std::time::Duration;
 
+use afd_auth::verifier::VerifyError;
+use afd_identity::{HttpKeySet, KeySetSource as _, Transport};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 /// How long a request waits before giving up: short, because the control
@@ -93,5 +95,27 @@ fn a_direct_client_ignores_an_environment_proxy() {
 
         assert_eq!(reached.status(), reqwest::StatusCode::OK);
         assert!(rerouted.is_err(), "the control went through the dead proxy");
+        explicitly_routed(&url).await;
     });
+}
+
+/// An explicit proxy reaches an otherwise unresolvable host; a failed proxy
+/// cannot fall back to a reachable origin.
+async fn explicitly_routed(proxy_url: &str) {
+    let live = Transport::TrustedProxy(Box::new(
+        reqwest::Proxy::all(proxy_url).expect("a loopback proxy"),
+    ));
+    let source = HttpKeySet::new("http://identity.invalid/keys", TIMEOUT, &live)
+        .expect("an explicitly routed client");
+    assert_eq!(source.fetch().await.expect("the proxy answers"), b"ok");
+
+    let dead = Transport::TrustedProxy(Box::new(
+        reqwest::Proxy::all(DEAD_PROXY).expect("a valid proxy URL"),
+    ));
+    let source = HttpKeySet::new(proxy_url, TIMEOUT, &dead).expect("a client");
+    assert_eq!(
+        source.fetch().await,
+        Err(VerifyError::KeySetUnavailable),
+        "a dead trusted proxy must not fall back to direct"
+    );
 }

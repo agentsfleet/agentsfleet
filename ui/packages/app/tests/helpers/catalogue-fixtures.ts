@@ -19,6 +19,11 @@ export const ADMIN_MODEL: AdminModel = {
   id: "u1", provider: "fireworks", model_id: "glm-5.2", metadata: METADATA, prices: [PRICE],
   inference: { api: INFERENCE_API.chat, base_url: "https://models.example.com/v1", max_output_tokens: 8192 },
 };
+export const JEV_MODEL: AdminModel = {
+  ...ADMIN_MODEL, id: "0199f0c0-0000-7000-8000-000000000003", provider: "typesafe", model_id: "jev-latest",
+  metadata: {...METADATA, display_name: "TypeSafe Jev"}, prices: [],
+  decision: {enabled: true, profile: {revision: "reviewed-1", api: "typesafe"}},
+};
 export const ADMIN_CATALOGUE: AdminModel[] = [
   ADMIN_MODEL,
   { ...ADMIN_MODEL, id: "u2", provider: "anthropic", model_id: "claude-opus-4-8",

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EVENTS } from "../lib/analytics/events";
+import { JEV_MODEL } from "./helpers/catalogue-fixtures";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 // Only the server-action module is stubbed; lib/api/runners (HOST_ID_REGEX,
@@ -16,6 +17,7 @@ vi.mock("@/app/(dashboard)/admin/runners/actions", () => ({
   listRunnersAction: vi.fn(),
   createRunnerAction: createRunnerActionMock,
 }));
+vi.mock("@/app/(dashboard)/admin/models/actions", () => ({listAdminModelsAction: async () => ({ok: true, data: {models: [JEV_MODEL]}})}));
 
 vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: captureProductEventMock,
@@ -107,6 +109,7 @@ describe("AddRunnerDialog component", () => {
     expect(createRunnerActionMock).toHaveBeenCalledWith({
       host_id: "web-prod-1",
       assigned_policy: { durable_tasks_enabled: true,
+        decision_model_id: JEV_MODEL.id,
         sandbox_tier: "landlock_full",
         network_policy: "allow_all",
         registry_allowlist: [],
@@ -152,11 +155,9 @@ describe("AddRunnerDialog component", () => {
   it("isolation renders one OptionCard per assignable tier; picking one rides the assignment envelope", async () => {
     createRunnerActionMock.mockResolvedValue(MINTED);
     const { user } = await openDialog();
-    const allRadios = screen.getAllByRole("radio");
-    // Three assignable tiers (M148 §6 removed the never-enforced Seatbelt one).
+    const allRadios = within(screen.getByRole("radiogroup", {name: /^isolation$/i})).getAllByRole("radio");
     expect(allRadios).toHaveLength(3);
-    // Length just asserted above — the indexed access is safe.
-    expect(allRadios[0]!.getAttribute("data-state")).toBe("checked"); // default: landlock_full
+    expect(allRadios[0]?.getAttribute("data-state")).toBe("checked");
 
     await user.click(screen.getByText("Nested container"));
     expect(screen.getByText("Nested container").closest('[role="radio"]')?.getAttribute("data-state")).toBe(
@@ -169,6 +170,7 @@ describe("AddRunnerDialog component", () => {
       host_id: "web-prod-1",
       assigned_policy: { durable_tasks_enabled: true,
         sandbox_tier: "container_nested",
+        decision_model_id: JEV_MODEL.id,
         network_policy: "allow_all",
         registry_allowlist: [],
         worker_count: 1,

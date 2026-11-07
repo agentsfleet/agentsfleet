@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { KeyRoundIcon } from "lucide-react";
 import {
   Badge,
   Dialog,
@@ -41,6 +42,7 @@ function Details({ target }: { target: TenantModelEntry }) {
             Added <Time value={new Date(target.created_at)} format="relative" />
           </DialogDescription>
           <Badge variant={target.has_key ? "green" : "default"}>
+            <KeyRoundIcon size={12} aria-hidden="true" />
             {target.has_key ? "In vault" : "Keyless endpoint"}
           </Badge>
         </div>

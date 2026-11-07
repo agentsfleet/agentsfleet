@@ -63,6 +63,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
   const [created, setCreated] = useState<CreatedRunner | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [decisionPending, setDecisionPending] = useState(true);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: FORM_DEFAULTS,
@@ -74,6 +75,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
   function handleOpenChange(next: boolean) {
     if (pending && created === null) return;
     if (next) {
+      setDecisionPending(true);
       setOpen(true);
       return;
     }
@@ -197,6 +199,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
             <Form {...form}>
               <ActionForm
                 onSubmit={(e) => {
+                  if (pending || decisionPending) { e.preventDefault(); return; }
                   void form.handleSubmit(onSubmit)(e);
                 }}
                 className="space-y-4"
@@ -217,7 +220,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                 />
                 {/* One boundary cast: FormValues extends PolicyFormValues, but
                     react-hook-form's Control generic is invariant. */}
-                <PolicyFields control={form.control as unknown as Control<PolicyFormValues>} />
+                <PolicyFields control={form.control as unknown as Control<PolicyFormValues>} onDecisionPendingChange={setDecisionPending} />
                 <FormField
                   control={form.control}
                   name="labels"
@@ -242,7 +245,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                   >
                     Cancel
                   </Button>
-                  <TooltipButton type="submit" disabled={pending} tooltip={CREATE_RUNNER_TOOLTIP}>
+                  <TooltipButton type="submit" disabled={pending || decisionPending} tooltip={CREATE_RUNNER_TOOLTIP}>
                     {pending ? <Spinner size="sm" srLabel="Enrolling" /> : null}
                     Create
                   </TooltipButton>

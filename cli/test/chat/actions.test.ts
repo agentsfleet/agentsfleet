@@ -10,7 +10,7 @@ import { ACCEPTED, DRAFT, DRAFT_ID, REVIEW, FLEET, FLEET_ID, MODEL, MESSAGE, PRI
 function capture() {
   const rendered: string[] = [];
   const emit = (text: string) => Effect.sync(() => { rendered.push(text); });
-  return {rendered, output: {...outputDouble(), info: emit, warn: emit, success: emit}};
+  return {rendered, output: {...outputDouble(), info: emit, warn: emit, success: emit, printSection: emit}};
 }
 
 test("Save, Apply, and publication require a displayed review and ordinary chat performs none of them", async () => {

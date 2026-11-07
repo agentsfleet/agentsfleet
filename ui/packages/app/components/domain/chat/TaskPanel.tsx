@@ -79,5 +79,5 @@ function TaskAction({task, details, events}: Pick<RowsProps, "details" | "events
 function TaskIcon({task}: {task: TaskSummary}) {
   if (task.status === "running") return <CircleDot size={14} className="shrink-0 text-info" aria-label="In progress" />;
   if (task.status === "blocked" || task.status === "exhausted") return <TriangleAlert size={14} className="shrink-0 text-warning" aria-label="Needs attention" />;
-  return <Clock3 size={14} className="shrink-0 text-muted-foreground" aria-label={task.status === "waiting" ? "Waiting" : task.status === "paused" ? "Paused" : "Queued"} />;
+  return <Clock3 size={14} className={`shrink-0 ${task.status === "waiting" || task.status === "paused" ? "text-warning" : "text-muted-foreground"}`} aria-label={task.status === "waiting" ? "Waiting" : task.status === "paused" ? "Paused" : "Queued"} />;
 }
