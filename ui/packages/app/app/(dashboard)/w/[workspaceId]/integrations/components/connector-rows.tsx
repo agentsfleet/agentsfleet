@@ -158,11 +158,13 @@ export function OAuthConnectorRow({
         ? `${INSTALLED_ON_PREFIX}${identity}`
         : CONNECTED_DESCRIPTION
       : "Choose Connect to authorize access with your provider.";
+  const iconColor = error ? "text-destructive" : connecting || disconnecting ? "text-info"
+    : isConnected ? "text-success" : !entry.configured ? "text-warning" : "text-muted-foreground";
 
   return <DashboardPanel data-testid={`integration-${entry.id}`} className="flex flex-col gap-xl p-2xl">
     <DashboardPanelHeader className="md:items-center">
       <div className="flex min-w-0 items-center gap-lg">
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-secondary text-foreground" aria-hidden="true"><Icon size={22} /></span>
+        <span className={`grid size-10 shrink-0 place-items-center rounded-lg bg-secondary transition-colors motion-reduce:transition-none ${iconColor}`} aria-hidden="true"><Icon size={22} /></span>
         <DashboardPanelTitle>{entry.display_name}</DashboardPanelTitle>
       </div>
       {entry.configured ? <StatusPill variant={pill.variant} dot={pill.variant !== "neutral"}>{pill.label}</StatusPill>
@@ -181,11 +183,11 @@ export function OAuthConnectorRow({
       {isConnected ? <Button variant="ghost" size="sm"
         aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`}
         disabled={disconnecting} aria-busy={disconnecting} onClick={() => void disconnect()}>
-        {disconnecting ? <Spinner size="sm" /> : <UnplugIcon size={16} aria-hidden="true" />}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
+        {disconnecting ? <Spinner size="sm" className="text-info" /> : <UnplugIcon size={16} aria-hidden="true" />}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
       </Button> : <Button variant="secondary" size="sm"
         aria-label={connecting ? CONNECTING_LABEL : `${CONNECT_LABEL} ${entry.display_name}`}
         disabled={connecting} aria-busy={connecting} onClick={() => void connect()}>
-        {connecting ? <Spinner size="sm" /> : <PlugIcon size={16} aria-hidden="true" />}{connecting ? CONNECTING_LABEL : CONNECT_LABEL}
+        {connecting ? <Spinner size="sm" className="text-info" /> : <PlugIcon size={16} className="text-pulse" aria-hidden="true" />}{connecting ? CONNECTING_LABEL : CONNECT_LABEL}
       </Button>}
     </div> : null}
   </DashboardPanel>;

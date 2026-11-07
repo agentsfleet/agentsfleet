@@ -43,6 +43,40 @@ describe("scriptable chat output", () => {
   });
 });
 
+describe("readable setup review", () => {
+  test("renders complete nested configuration and access as readable sections", async () => {
+    const {output, stdout} = streams(OUTPUT_FORMAT.text);
+    const review = {...REVIEW, effective: {...REVIEW.effective, definition: {...REVIEW.effective.definition,
+      config: {network: {http_egress: "restricted", package_manager_domains: true}}}},
+      requirements: {repositories: ["agentsfleet/linkwarden"], credentials: ["github"]}};
+    await Effect.runPromise(renderReview(output, review));
+    const text = stdout.join("");
+    expect(text).toContain("network:\n  http_egress: restricted\n  package_manager_domains: true");
+    expect(text).toContain("repositories:\n  - agentsfleet/linkwarden");
+    expect(text).toContain("credentials:\n  - github");
+    expect(text).not.toContain('"http_egress":');
+    expect(text).toContain("Review digest: reviewed-setup");
+  });
+
+  test("shows empty settings without an empty JSON object", async () => {
+    const {output, stdout} = streams(OUTPUT_FORMAT.text);
+    await Effect.runPromise(renderReview(output, REVIEW));
+    const text = stdout.join("");
+    expect(text.match(/None\./gu)).toHaveLength(2);
+    expect(text).not.toContain("{}");
+  });
+
+  test("escapes terminal control sequences in configuration values", async () => {
+    const {output, stdout} = streams(OUTPUT_FORMAT.text);
+    const review = {...REVIEW, effective: {...REVIEW.effective, definition: {...REVIEW.effective.definition,
+      config: {note: "\u001b[2Jhidden"}}}};
+    await Effect.runPromise(renderReview(output, review));
+    const text = stdout.join("");
+    expect(text).not.toContain("\u001b[2J");
+    expect(text).toContain('note: "\\e[2Jhidden"');
+  });
+});
+
 describe("schedule registration outcomes", () => {
   // The published `View` carries more than the client consumes; the outcome fields must survive decoding.
   const view = {...FAILED_SCHEDULE, cron: "0 9 * * *", timezone: "UTC", message: "triage", source: "trigger",

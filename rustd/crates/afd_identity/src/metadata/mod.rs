@@ -21,7 +21,7 @@
 
 use afd_auth::principal::Subject;
 
-use crate::error::MetadataUnwritten;
+use crate::error::{MetadataUnwritten, Result};
 use crate::provider::{JSON_MEDIA_TYPE, ProviderSecret};
 use crate::users::UsersEndpoint;
 
@@ -48,11 +48,19 @@ struct PublicMetadata<'a> {
 }
 
 /// Writes account metadata to the identity provider's backend API.
-#[derive(Debug)]
 pub struct ProviderMetadata {
     client: reqwest::Client,
     users: UsersEndpoint,
     secret: ProviderSecret,
+}
+
+impl std::fmt::Debug for ProviderMetadata {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProviderMetadata")
+            .field("users", &self.users)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProviderMetadata {
@@ -65,9 +73,11 @@ impl ProviderMetadata {
         api_base: impl Into<Box<str>>,
         secret: ProviderSecret,
         timeout: std::time::Duration,
+        transport: &crate::Transport,
     ) -> Result<Self, MetadataUnwritten> {
         let users = UsersEndpoint::parse(&api_base.into()).ok_or(MetadataUnwritten::Unreachable)?;
-        let client = crate::direct(timeout)
+        let client = transport
+            .builder(timeout)
             .build()
             .map_err(|_unbuildable| MetadataUnwritten::Unreachable)?;
         Ok(Self {

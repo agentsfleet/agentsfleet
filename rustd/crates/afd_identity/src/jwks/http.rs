@@ -11,6 +11,7 @@
 
 use afd_auth::verifier::VerifyError;
 
+use crate::Result;
 use crate::capped::{CapBreak, read_capped};
 use crate::jwks::source::{KeySetSource, MAX_REDIRECTS, MAX_RESPONSE_BYTES};
 
@@ -52,10 +53,18 @@ pub fn jwks_url(override_url: Option<&str>, issuer: Option<&str>) -> Option<Stri
 }
 
 /// Fetches a key set over HTTPS.
-#[derive(Debug)]
 pub struct HttpKeySet {
     client: reqwest::Client,
     url: String,
+}
+
+impl std::fmt::Debug for HttpKeySet {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HttpKeySet")
+            .field("url", &self.url)
+            .finish_non_exhaustive()
+    }
 }
 
 impl HttpKeySet {
@@ -66,8 +75,13 @@ impl HttpKeySet {
     /// The provider is not among the reasons: this crate selects ring at
     /// compile time (see the `reqwest` note in the workspace manifest), so
     /// there is no process-default to be missing.
-    pub fn new(url: impl Into<String>, timeout: std::time::Duration) -> Result<Self, VerifyError> {
-        let client = crate::direct(timeout)
+    pub fn new(
+        url: impl Into<String>,
+        timeout: std::time::Duration,
+        transport: &crate::Transport,
+    ) -> Result<Self, VerifyError> {
+        let client = transport
+            .builder(timeout)
             .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS))
             .build()
             .map_err(|_unbuildable| VerifyError::KeySetUnavailable)?;

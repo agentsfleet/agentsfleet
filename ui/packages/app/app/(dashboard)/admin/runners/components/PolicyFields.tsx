@@ -1,25 +1,8 @@
 "use client";
 
-import { useId } from "react";
 import { z } from "zod";
 import type { Control } from "react-hook-form";
-import { CircleHelpIcon } from "lucide-react";
-import {
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  Input,
-  OptionCard,
-  RadioGroup,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@agentsfleet/design-system";
+import { Globe2Icon, LayersIcon, ListRestartIcon, SlidersHorizontalIcon } from "lucide-react";
 import {
   DEFAULT_ASSIGNED_NETWORK_POLICY,
   DEFAULT_DURABLE_TASKS_ENABLED,
@@ -27,11 +10,7 @@ import {
   MAX_WORKER_COUNT,
   MIN_WORKER_COUNT,
   NETWORK_POLICIES,
-  NETWORK_POLICY_DESCRIPTIONS,
-  NETWORK_POLICY_LABELS,
   SANDBOX_TIERS,
-  SANDBOX_TIER_DESCRIPTIONS,
-  SANDBOX_TIER_LABELS,
   parseRegistryAllowlist,
   type AssignedPolicy,
   type SandboxTier,
@@ -48,30 +27,15 @@ import { PolicyBindsField } from "./PolicyBindsField";
 import { PolicyDecisionField } from "./PolicyDecisionField";
 import { PolicyDurableTasksField } from "./PolicyDurableTasksField";
 
-// The ASSIGNMENT section, shared verbatim by AddRunnerDialog (enrollment) and
-// EditPolicyDialog (re-assignment) so the two surfaces can never drift on what
-// a policy is. Every description reads as an assignment the host must satisfy —
-// the host applies exactly this and reports what it can actually enforce; it
-// never declares its own policy.
-//
-// The bind list rides here rather than in its own dialog because PATCH replaces
-// the WHOLE assignment: a form that edits four fields and omits the fifth sends
-// `extra_binds: []` and wipes the operator's mounts.
+import { PolicyIsolationField } from "./PolicyIsolationField";
+import { PolicyNetworkFields } from "./PolicyNetworkFields";
+import { PolicySection } from "./PolicySection";
+import { PolicyWorkerField } from "./PolicyWorkerField";
+import { PolicyEngineField } from "./PolicyEngineField";
 
+// PATCH replaces the whole assignment, so enrollment and editing share the
+// schema and conversion. Every field survives an edit to another setting.
 export const DEFAULT_ASSIGNED_SANDBOX_TIER: SandboxTier = "landlock_full";
-
-export const ISOLATION_ASSIGNMENT_DESCRIPTION =
-  "A host that cannot enforce the assigned tier is degraded and receives no work.";
-// Every field below is an assignment with a default and a range an operator has
-// to choose within, and the degraded verdict is the consequence of choosing
-// wrong. That belongs on a page, not in five form descriptions.
-const RUNNER_POLICY_DOC_URL = "https://docs.agentsfleet.net/runners";
-const NETWORK_ASSIGNMENT_LABEL = "Network policy";
-const REGISTRY_ASSIGNMENT_LABEL = "Allowed registry domains (optional)";
-const REGISTRY_ASSIGNMENT_DESCRIPTION = "Registry hosts the sandbox may reach. Separate hosts with commas.";
-const WORKERS_ASSIGNMENT_LABEL = "Workers";
-const WORKERS_ASSIGNMENT_DESCRIPTION = `Concurrent workers on the host (${MIN_WORKER_COUNT}–${MAX_WORKER_COUNT}).`;
-
 // worker_count stays a STRING in the form (what a text field holds) and
 // becomes a number only in `policyFromForm` — no coercion inside the schema,
 // so the form's input and output types stay identical for react-hook-form.
@@ -135,7 +99,7 @@ export type PolicyFormValues = z.infer<typeof policyFormSchema>;
 
 export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
   durable_tasks_enabled: DEFAULT_DURABLE_TASKS_ENABLED,
-  decision_model_id: "",
+  decision_model_id: undefined,
   sandbox_tier: DEFAULT_ASSIGNED_SANDBOX_TIER,
   network_policy: DEFAULT_ASSIGNED_NETWORK_POLICY,
   registry_allowlist: "",
@@ -168,7 +132,7 @@ export function policyFromForm(values: PolicyFormValues): {
 export function formFromPolicy(policy: AssignedPolicy): PolicyFormValues {
   return {
     durable_tasks_enabled: policy.durable_tasks_enabled,
-    decision_model_id: policy.decision_model_id ?? "",
+    decision_model_id: policy.decision_model_id,
     sandbox_tier: policy.sandbox_tier,
     network_policy: policy.network_policy,
     registry_allowlist: policy.registry_allowlist.join(", "),
@@ -177,139 +141,25 @@ export function formFromPolicy(policy: AssignedPolicy): PolicyFormValues {
   };
 }
 
-export function PolicyFields({
-  control,
-}: {
+export function PolicyFields({ control, onDecisionPendingChange }: {
   control: Control<PolicyFormValues>;
+  onDecisionPendingChange: (pending: boolean) => void;
 }) {
-  const c = control;
-  const isolationModeLabelId = useId();
-  return (
-    <>
-      <FormField
-        control={c}
-        name="sandbox_tier"
-        render={({ field }) => (
-          <FormItem>
-            {/* RadioGroup's root renders a <div role="radiogroup">, not a
-                labelable HTML element — FormLabel's htmlFor (built for a
-                single input/button/select) can't auto-focus it, so the
-                group is named directly via aria-labelledby instead. */}
-            <FormLabel id={isolationModeLabelId}>Isolation</FormLabel>
-            <FormControl>
-              <RadioGroup
-                value={field.value}
-                onValueChange={field.onChange}
-                aria-labelledby={isolationModeLabelId}
-                // One column per tier. Two columns wrapped the third onto a row
-                // of its own, which reads as an afterthought rather than a peer
-                // of the other two — and the tiers are a single choice set.
-                className="sm:grid-cols-3"
-              >
-                {SANDBOX_TIERS.map((t) => (
-                  <OptionCard
-                    key={t}
-                    value={t}
-                    label={SANDBOX_TIER_LABELS[t]}
-                    description={SANDBOX_TIER_DESCRIPTIONS[t]}
-                  />
-                ))}
-              </RadioGroup>
-            </FormControl>
-            <FormDescription>
-              {ISOLATION_ASSIGNMENT_DESCRIPTION}{" "}
-              <a
-                href={RUNNER_POLICY_DOC_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
-              >
-                <CircleHelpIcon size={13} aria-hidden="true" />
-                Learn more<span className="sr-only"> about runner policy (opens in a new tab)</span>
-              </a>
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={c}
-        name="network_policy"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{NETWORK_ASSIGNMENT_LABEL}</FormLabel>
-            <Select value={field.value} onValueChange={field.onChange}>
-              <FormControl>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-              </FormControl>
-              <SelectContent>
-                {NETWORK_POLICIES.map((p) => (
-                  <SelectItem key={p} value={p}>
-                    {NETWORK_POLICY_LABELS[p]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <FormDescription>
-              {NETWORK_POLICY_DESCRIPTIONS[field.value]}
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      {/* The two single-line fields sit side by side from `sm` up. Stacked,
-          each contributed a label + input + description band to a dialog that
-          was already reaching the full viewport height. */}
-      <div className="grid gap-md sm:grid-cols-2">
-        <FormField
-          control={c}
-          name="registry_allowlist"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{REGISTRY_ASSIGNMENT_LABEL}</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="registry.npmjs.org, pypi.org"
-                  autoComplete="off"
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>
-                {REGISTRY_ASSIGNMENT_DESCRIPTION}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={c}
-          name="worker_count"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{WORKERS_ASSIGNMENT_LABEL}</FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={MIN_WORKER_COUNT}
-                  max={MAX_WORKER_COUNT}
-                  autoComplete="off"
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>
-                {WORKERS_ASSIGNMENT_DESCRIPTION}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-      <PolicyBindsField control={c} />
-      <PolicyDurableTasksField control={c} />
-      <PolicyDecisionField control={c} />
-    </>
-  );
+  return <div className="divide-y divide-border">
+    <PolicySection title="Execution" icon={<LayersIcon size={14} className="text-info" aria-hidden="true" />}>
+      <PolicyEngineField />
+      <PolicyIsolationField control={control} />
+      <PolicyWorkerField control={control} />
+    </PolicySection>
+    <PolicySection title="Network access" icon={<Globe2Icon size={14} className="text-pulse" aria-hidden="true" />}>
+      <PolicyNetworkFields control={control} />
+    </PolicySection>
+    <PolicySection title="Durable work" icon={<ListRestartIcon size={14} className="text-success" aria-hidden="true" />}>
+      <PolicyDurableTasksField control={control} />
+      <PolicyDecisionField control={control} onPendingChange={onDecisionPendingChange} />
+    </PolicySection>
+    <PolicySection title="Advanced" icon={<SlidersHorizontalIcon size={14} className="text-evidence" aria-hidden="true" />}>
+      <PolicyBindsField control={control} />
+    </PolicySection>
+  </div>;
 }

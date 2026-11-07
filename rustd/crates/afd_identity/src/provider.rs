@@ -100,11 +100,19 @@ const INITIAL_BODY_BYTES: usize = 4 * 1024;
 const SCOPES_KEY: &str = "scopes";
 
 /// Reads capability claims from the identity provider's backend API.
-#[derive(Debug)]
 pub struct ProviderClaims {
     client: reqwest::Client,
     users: UsersEndpoint,
     secret: ProviderSecret,
+}
+
+impl std::fmt::Debug for ProviderClaims {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProviderClaims")
+            .field("users", &self.users)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProviderClaims {
@@ -117,9 +125,11 @@ impl ProviderClaims {
         api_base: impl Into<Box<str>>,
         secret: ProviderSecret,
         timeout: std::time::Duration,
+        transport: &crate::Transport,
     ) -> Result<Self, ClaimUnavailable> {
         let users = UsersEndpoint::parse(&api_base.into()).ok_or(ClaimUnavailable::Unreachable)?;
-        let client = crate::direct(timeout)
+        let client = transport
+            .builder(timeout)
             .build()
             .map_err(|_unbuildable| ClaimUnavailable::Unreachable)?;
         Ok(Self {

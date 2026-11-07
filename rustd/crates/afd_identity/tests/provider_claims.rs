@@ -14,6 +14,8 @@ use afd_identity::error::ClaimUnavailable;
 use afd_identity::provider::{ProviderClaims, UNPROVISIONED_CLAIM, USER_MAX_RESPONSE_BYTES};
 use afd_identity::{ProviderClaims as _Reexported, ProviderSecret};
 
+const DIRECT: &afd_identity::Transport = &afd_identity::Transport::Direct;
+
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// What the fake server's request buffer starts at before the read grows it.
@@ -130,7 +132,7 @@ fn test_a_provisioned_claim_is_read_from_public_metadata() {
         )
         .await;
 
-        let claim = ProviderClaims::new(base, secret(), TIMEOUT)
+        let claim = ProviderClaims::new(base, secret(), TIMEOUT, DIRECT)
             .expect("a client")
             .claim(&subject())
             .await
@@ -175,7 +177,7 @@ fn test_every_unusable_metadata_shape_grants_nothing() {
             &br#"{"public_metadata":null}"#[..],
         ] {
             let (base, server) = serve_once(200, document.to_vec()).await;
-            let claim = ProviderClaims::new(base, secret(), TIMEOUT)
+            let claim = ProviderClaims::new(base, secret(), TIMEOUT, DIRECT)
                 .expect("a client")
                 .claim(&subject())
                 .await
@@ -204,7 +206,7 @@ fn test_a_body_that_is_not_a_user_document_is_an_outage() {
             &b"42"[..],
         ] {
             let (base, server) = serve_once(200, document.to_vec()).await;
-            let refused = ProviderClaims::new(base, secret(), TIMEOUT)
+            let refused = ProviderClaims::new(base, secret(), TIMEOUT, DIRECT)
                 .expect("a client")
                 .claim(&subject())
                 .await
@@ -226,7 +228,7 @@ fn test_a_404_is_the_person_being_gone() {
     afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let (base, server) = serve_once(404, b"{}".to_vec()).await;
-        let refused = ProviderClaims::new(base, secret(), TIMEOUT)
+        let refused = ProviderClaims::new(base, secret(), TIMEOUT, DIRECT)
             .expect("a client")
             .claim(&subject())
             .await
@@ -242,7 +244,7 @@ fn test_a_user_document_past_the_cap_is_refused() {
     afd_core::test_util::trace::install_subscriber();
     block_on(async {
         let (base, server) = serve_once(200, vec![b'x'; USER_MAX_RESPONSE_BYTES + 1]).await;
-        let refused = ProviderClaims::new(base, secret(), TIMEOUT)
+        let refused = ProviderClaims::new(base, secret(), TIMEOUT, DIRECT)
             .expect("a client")
             .claim(&subject())
             .await
@@ -267,6 +269,7 @@ fn test_an_unreachable_provider_is_an_outage() {
             format!("http://{addr}"),
             secret(),
             std::time::Duration::from_millis(500),
+            DIRECT,
         )
         .expect("a client")
         .claim(&subject())
@@ -284,7 +287,7 @@ fn test_a_subject_with_url_syntax_reaches_the_provider_as_one_segment() {
     block_on(async {
         let (base, server) = serve_once(404, b"{}".to_vec()).await;
         let odd = Subject::new("a/b?c%d").expect("a non-blank subject");
-        let refused = ProviderClaims::new(base, secret(), TIMEOUT)
+        let refused = ProviderClaims::new(base, secret(), TIMEOUT, DIRECT)
             .expect("a client")
             .claim(&odd)
             .await
@@ -304,7 +307,7 @@ fn test_a_subject_with_url_syntax_reaches_the_provider_as_one_segment() {
 fn test_a_dot_segment_subject_is_refused_before_any_request() {
     block_on(async {
         let (base, listener) = silent_listener();
-        let reader = ProviderClaims::new(base, secret(), TIMEOUT).expect("a client");
+        let reader = ProviderClaims::new(base, secret(), TIMEOUT, DIRECT).expect("a client");
         for dots in [".", ".."] {
             let subject = Subject::new(dots).expect("a non-blank subject");
             let refused = reader.claim(&subject).await.expect_err("names no person");
@@ -331,7 +334,8 @@ fn silent_listener() -> (String, std::net::TcpListener) {
 /// An API base no person's resource can hang off is refused at construction.
 #[test]
 fn test_an_api_base_that_is_not_a_url_is_refused_at_construction() {
-    let refused = ProviderClaims::new("not a url", secret(), TIMEOUT).expect_err("not a URL");
+    let refused =
+        ProviderClaims::new("not a url", secret(), TIMEOUT, DIRECT).expect_err("not a URL");
     assert_eq!(refused, ClaimUnavailable::Unreachable);
 }
 

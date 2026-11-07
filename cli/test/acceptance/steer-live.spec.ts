@@ -169,6 +169,15 @@ if (!isLive) {
       assertSteerProcessed(result, diagnostics);
     }, STEER_TIMEOUT_MS);
 
+    it("steer without the JSON flag renders a readable fleet conversation", async () => {
+      assert.ok(fleetId, "fleet was not installed in beforeAll");
+      const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE]);
+      assert.equal(result.code, 0, `conversation failed: stdout=${result.stdout} stderr=${result.stderr}`);
+      assert.match(result.stdout, /Final reply:\s*\S/u, "the terminal must show the fleet's answer");
+      assert.match(result.stdout, /event [\da-f-]+ processed/u, "the terminal must confirm the completed turn");
+      assert.doesNotMatch(result.stdout, /"event_id"\s*:/u, "ordinary conversation must not print the machine envelope");
+    }, STEER_TIMEOUT_MS);
+
     it("steer <id> with a whitespace-only message is rejected client-side", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
       const result = await runWithEnv([STEER_COMMAND, fleetId, WHITESPACE_MESSAGE, JSON_FLAG]);
