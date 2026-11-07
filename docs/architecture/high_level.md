@@ -337,7 +337,7 @@ The common architecture pages own this sequence:
 | Setup and revisions | [Fleet definitions](fleet_definitions.md#validated-definition) |
 | Activation, admission and recovery | [Data flow](data_flow.md#fleet-setup-and-runtime-sequence) |
 | Leasing and scoped dispatch | [Runner protocol](runner_fleet.md#authoring-leases) |
-| Private copies | [Runner execution](runner_execution.md#private-content-and-report-retention) |
+| Private copies | [Runner runtime](runner_execution.md#private-content-and-report-retention) |
 | Money | [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) |
 | Interface | [Web app](web_app.md#workspace-setup-and-runtime-subjects) |
 | Wire shapes | [API resources](api_resources.md) |

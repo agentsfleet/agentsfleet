@@ -1,4 +1,4 @@
-# Runner execution: a trusted supervisor, a sandbox per lease, a workspace that outlives the lease
+# Runner runtime: a trusted supervisor, a sandbox per lease, a workspace that outlives the lease
 
 > Scope: how `agentsfleet-runner` runs one lease, where its agent loop runs and what its sandbox is made of. The page also covers how a fleet's code and files survive from one lease to the next. It covers how credentials and repository writes cross the sandbox wall too.
 

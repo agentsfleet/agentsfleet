@@ -164,10 +164,12 @@ there is no generic repository trait.
   platform default and otherwise reference a `model.tenant_models` row of the same tenant. The wire
   keeps today's string: `platform-default` maps to NULL, a tenant model id maps to the row.
 - **Chat save intent.** `messages.save_requested` records the accepted request to save after a completed turn. The report writer saves the setup with the answer. A checked save refusal keeps the answer and records its safe code in `save_error_code`.
-- **Source and publication are separate facts**: `source_type` (blank, definition, library, fleet)
+- **Source and publication are separate facts**. `source_type` (blank, definition, library, fleet)
   plus `source_library_revision_id` or `source_fleet_revision_id` record where the chat started.
-  `library_revision_id` records what it published; a draft can start from Library revision A and
-  publish revision B. All three references are `ON DELETE SET NULL`, so deleting a card or purging
+  `library_revision_id` records what it published. A draft can start from Library revision A and
+  publish revision B.
+
+  All three references are `ON DELETE SET NULL`, so deleting a card or purging
   a fleet never blocks on, or deletes, someone's private draft.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
   field); the sweeper deletes past `expires_at`. The sweep cascades messages, candidates and answer
