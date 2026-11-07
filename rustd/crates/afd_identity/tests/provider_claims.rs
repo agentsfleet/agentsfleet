@@ -342,5 +342,6 @@ fn test_an_api_base_that_is_not_a_url_is_refused_at_construction() {
 /// The type is reachable from the crate root, which is how a host wires it.
 #[test]
 fn test_the_claim_reader_is_exported_from_the_crate_root() {
-    let _: fn(String, ProviderSecret, std::time::Duration) -> _ = _Reexported::new;
+    let _: fn(String, ProviderSecret, std::time::Duration, &afd_identity::Transport) -> _ =
+        _Reexported::new;
 }

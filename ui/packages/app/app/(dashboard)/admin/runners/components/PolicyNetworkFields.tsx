@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { useWatch, type Control } from "react-hook-form";
+import type { Control } from "react-hook-form";
 import { Globe2Icon, ShieldCheckIcon, UnplugIcon } from "lucide-react";
 import {
   FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
@@ -15,7 +15,6 @@ const NETWORK_COLORS = { allow_all: "text-info", allow_list_egress: "text-pulse"
 
 export function PolicyNetworkFields({ control }: { control: Control<PolicyFormValues> }) {
   const labelId = useId();
-  const network = useWatch({control, name: "network_policy"});
   return <>
     <FormField control={control} name="network_policy" render={({ field }) => (
       <FormItem>
@@ -37,7 +36,7 @@ export function PolicyNetworkFields({ control }: { control: Control<PolicyFormVa
     <FormField control={control} name="registry_allowlist" render={({ field }) => (
       <FormItem>
         <FormLabel>Package download sites (optional)</FormLabel>
-        <FormControl><Input placeholder="registry.npmjs.org, pypi.org" autoComplete="off" {...field} disabled={network !== "allow_list_egress"} /></FormControl>
+        <FormControl><Input placeholder="registry.npmjs.org, pypi.org" autoComplete="off" {...field} /></FormControl>
         <FormDescription>Used only with approved destinations. Blank uses the standard package sites. Custom hosts replace that list.</FormDescription>
         <FormMessage />
       </FormItem>

@@ -293,7 +293,7 @@ it.each([
   render(<EditPolicyDialog runnerId="network" current={CURRENT} onSaved={saved} />);
   fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
   await userEvent.setup().click(screen.getByRole("radio", {name: new RegExp(`^${label}`)}));
-  expect(screen.getByLabelText(/package download sites/i)).toHaveProperty("disabled", policy !== "allow_list_egress");
+  expect(screen.getByLabelText(/package download sites/i)).toHaveProperty("disabled", false);
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
   expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("network", {
@@ -331,4 +331,19 @@ it("cannot save an unassigned decision model until its configured default resolv
   fireEvent.click(save);
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
   expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("runner", {assigned_policy: CURRENT});
+});
+it("keeps invalid package sites editable after leaving approved destinations", async () => {
+  updateRunnerActionMock.mockResolvedValue({ok: true});
+  const saved = vi.fn();
+  render(<EditPolicyDialog runnerId="network" current={CURRENT} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  fireEvent.click(screen.getByRole("radio", {name: /^Approved destinations only/}));
+  const sites = screen.getByLabelText(/package download sites/i);
+  fireEvent.change(sites, {target: {value: "https://registry.npmjs.org"}});
+  fireEvent.click(screen.getByRole("radio", {name: /^Public internet access/}));
+  expect(sites).toHaveProperty("disabled", false);
+  fireEvent.change(sites, {target: {value: "registry.npmjs.org"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("network", {assigned_policy: {...CURRENT, registry_allowlist: ["registry.npmjs.org"]}});
 });
