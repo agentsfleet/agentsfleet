@@ -1,14 +1,15 @@
 # Workspace root for the Rust daemon port.
 #
 # Every crate sits in one layer folder under `crates/`, with the directory name
-# equal to the crate name (Indy, Nov 07, 2026, superseding the flat
-# M-CRATES-FLAT-FOLDER layout of Aug 23, 2026):
+# equal to the crate name, except a layer's binary, whose folder is `main`
+# (Indy, Nov 07, 2026, superseding the flat M-CRATES-FLAT-FOLDER layout of
+# Aug 23, 2026):
 #
 #   foundation/  no product knowledge: errors, validation, crypto
 #   protocol/    the types both binaries speak
 #   harness/     the agent harness and the model, secret and egress seams it uses
-#   runner/      `agentsfleet-runner` and the crates only it links
-#   daemon/      `agentsfleetd` and the crates only it links
+#   runner/      `agentsfleet-runner` (`runner/main`) and the crates only it links
+#   daemon/      `agentsfleetd` (`daemon/main`) and the crates only it links
 #
 # A crate depends on its own layer or a lower one, and `runner/` and `daemon/`
 # never on each other. This root is a VIRTUAL manifest: no `[package]`, so it
@@ -22,10 +23,68 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/daemon/afd_admin", "crates/daemon/afd_admission", "crates/daemon/afd_api", "crates/daemon/afd_api_ingress", "crates/daemon/afd_api_operator", "crates/daemon/afd_api_runner", "crates/daemon/afd_api_tenant", "crates/daemon/afd_api_wire", "crates/daemon/afd_approval", "crates/daemon/afd_auth", "crates/daemon/afd_authoring", "crates/daemon/afd_bench", "crates/daemon/afd_billing", "crates/daemon/afd_connector", "crates/protocol/af_context", "crates/foundation/af_core", "crates/daemon/afd_credential", "crates/daemon/afd_cron", "crates/foundation/af_crypto", "crates/daemon/afd_db", "crates/daemon/afd_dragonfly", "crates/daemon/afd_events", "crates/daemon/afd_fleet", "crates/daemon/afd_fleet_lifecycle", "crates/daemon/afd_fleet_ops", "crates/protocol/af_fleet_runtime", "crates/daemon/afd_gate", "crates/daemon/afd_http", "crates/daemon/afd_identity", "crates/protocol/af_inference", "crates/daemon/afd_ingress", "crates/daemon/afd_mail", "crates/daemon/afd_memory", "crates/protocol/af_observability", "crates/protocol/af_otlp", "crates/daemon/afd_outbound", "crates/daemon/afd_runner", "crates/daemon/afd_sse", "crates/daemon/afd_state", "crates/daemon/afd_tenant", "crates/foundation/af_validate", "crates/daemon/afd_vault", "crates/protocol/af_webhook", "crates/protocol/af_wire", "crates/runner/afr_agent", "crates/harness/af_egress", "crates/runner/afr_executor", "crates/runner/afr_memory", "crates/harness/af_providers", "crates/runner/afr_sandbox", "crates/harness/af_secrets", "crates/runner/afr_supervisor", "crates/runner/afr_telemetry", "crates/runner/afr_tools", "crates/runner/agentsfleet_runner", "crates/daemon/agentsfleetd"]
+members = [
+    "crates/daemon/afd_admin",
+    "crates/daemon/afd_admission",
+    "crates/daemon/afd_api",
+    "crates/daemon/afd_api_ingress",
+    "crates/daemon/afd_api_operator",
+    "crates/daemon/afd_api_runner",
+    "crates/daemon/afd_api_tenant",
+    "crates/daemon/afd_api_wire",
+    "crates/daemon/afd_approval",
+    "crates/daemon/afd_auth",
+    "crates/daemon/afd_authoring",
+    "crates/daemon/afd_bench",
+    "crates/daemon/afd_billing",
+    "crates/daemon/afd_connector",
+    "crates/protocol/af_context",
+    "crates/foundation/af_core",
+    "crates/daemon/afd_credential",
+    "crates/daemon/afd_cron",
+    "crates/foundation/af_crypto",
+    "crates/daemon/afd_db",
+    "crates/daemon/afd_dragonfly",
+    "crates/daemon/afd_events",
+    "crates/daemon/afd_fleet",
+    "crates/daemon/afd_fleet_lifecycle",
+    "crates/daemon/afd_fleet_ops",
+    "crates/protocol/af_fleet_runtime",
+    "crates/daemon/afd_gate",
+    "crates/daemon/afd_http",
+    "crates/daemon/afd_identity",
+    "crates/protocol/af_inference",
+    "crates/daemon/afd_ingress",
+    "crates/daemon/afd_mail",
+    "crates/daemon/afd_memory",
+    "crates/protocol/af_observability",
+    "crates/protocol/af_otlp",
+    "crates/daemon/afd_outbound",
+    "crates/daemon/afd_runner",
+    "crates/daemon/afd_sse",
+    "crates/daemon/afd_state",
+    "crates/daemon/afd_tenant",
+    "crates/foundation/af_validate",
+    "crates/daemon/afd_vault",
+    "crates/protocol/af_webhook",
+    "crates/protocol/af_wire",
+    "crates/runner/afr_agent",
+    "crates/harness/af_egress",
+    "crates/runner/afr_executor",
+    "crates/runner/afr_memory",
+    "crates/harness/af_providers",
+    "crates/runner/afr_sandbox",
+    "crates/harness/af_secrets",
+    "crates/harness/guffbolt",
+    "crates/runner/afr_supervisor",
+    "crates/runner/afr_telemetry",
+    "crates/runner/afr_tools",
+    "crates/runner/main",
+    "crates/daemon/main",
+]
 
 [workspace.package]
-version = "0.73.0"
+version = "0.75.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
@@ -177,6 +236,9 @@ af_egress = { path = "crates/harness/af_egress" }
 afr_executor = { path = "crates/runner/afr_executor" }
 afr_memory = { path = "crates/runner/afr_memory" }
 af_providers = { path = "crates/harness/af_providers" }
+# The agent harness: one loop's order of turns over the embedder's
+# conversation, and what a run of one kind adds as an extension.
+guffbolt = { path = "crates/harness/guffbolt" }
 afr_sandbox = { path = "crates/runner/afr_sandbox" }
 af_secrets = { path = "crates/harness/af_secrets" }
 afr_supervisor = { path = "crates/runner/afr_supervisor" }
@@ -199,7 +261,7 @@ csv = "1.4.0"
 serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
 # Test-only Rust tokenization and literal decoding for the compiled-prompt guard.
 proc-macro2 = "=1.0.107"
-syn = { version = "=2.0.119", default-features = false, features = ["parsing"] }
+syn = { version = "=3.0.9", default-features = false, features = ["parsing"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
@@ -291,7 +353,7 @@ url = { version = "2.5.8", default-features = false }
 # Return completed SQL sessions to the pool; detach cancelled task transactions.
 scopeguard = "1.2.0"
 
-uuid = { version = "1.29.0", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.1", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -358,7 +420,7 @@ jiff-sqlx = { version = "0.2.1", default-features = false, features = ["postgres
 # twice a day — there is no throughput here to trade the posture for.
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 # Bounded YAML decoding for native GitHub validation-workflow inspection.
-serde-saphyr = { version = "2.1.0", default-features = false, features = ["deserialize"] }
+serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize"] }
 # Immutable private checkpoint objects and native SigV4 transfer authorizations.
 object_store = { version = "0.14.2", default-features = false, features = ["aws"] }
 aws-sigv4 = "=1.6.4"
@@ -406,7 +468,7 @@ rustls-pki-types = { version = "1.15.1", default-features = false, features = ["
 
 # Product analytics: the async client only. It still compiles reqwest's
 # blocking client and chrono, which nothing here calls.
-posthog-rs = { version = "0.30.0", default-features = false, features = ["async-client"] }
+posthog-rs = { version = "0.31.2", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
@@ -907,6 +969,52 @@ missing_docs = "deny"
 # an external API root (bun's rationale, Cargo.toml:~350).
 unreachable_pub = "deny"
 
+# Every stable allow-by-default lint that finds nothing here today, and the
+# ones that catch real bugs, so new code cannot bring them back. `linker_info`
+# stays off: it reports the linker's own chatter. A lint that still fires
+# anywhere, tests included, is commented out with its count below.
+absolute_paths_not_starting_with_crate = "deny"
+# closure_returning_async_block = "deny"  # off until fixed: 44 findings today
+deprecated_in_future = "deny"
+deprecated_safe_2024 = "deny"
+deref_into_dyn_supertrait = "deny"
+edition_2024_expr_fragment_specifier = "deny"
+# elided_lifetimes_in_paths = "deny"  # off until fixed: 2 findings today
+explicit_outlives_requirements = "deny"
+ffi_unwind_calls = "deny"
+if_let_rescope = "deny"
+impl_trait_overcaptures = "deny"
+impl_trait_redundant_captures = "deny"
+keyword_idents_2018 = "deny"
+keyword_idents_2024 = "deny"
+# let_underscore_drop = "deny"  # off until fixed: 48 findings today
+macro_use_extern_crate = "deny"
+meta_variable_misuse = "deny"
+# missing_copy_implementations = "deny"  # off until fixed: 2 findings today
+missing_unsafe_on_extern = "deny"
+non_ascii_idents = "deny"
+raw_borrows_via_references = "deny"
+rust_2021_incompatible_closure_captures = "deny"
+rust_2021_incompatible_or_patterns = "deny"
+rust_2021_prefixes_incompatible_syntax = "deny"
+rust_2021_prelude_collisions = "deny"
+rust_2024_guarded_string_incompatible_syntax = "deny"
+rust_2024_incompatible_pat = "deny"
+rust_2024_prelude_collisions = "deny"
+# single_use_lifetimes = "deny"  # off until fixed: 170 findings today
+tail_expr_drop_order = "deny"
+# trivial_casts = "deny"  # off until fixed: 77 findings today
+unit_bindings = "deny"
+unnameable_types = "deny"
+unsafe_attr_outside_unsafe = "deny"
+# unsafe_code = "deny"  # off until fixed: 24 findings today
+unstable_features = "deny"
+unused_extern_crates = "deny"
+unused_import_braces = "deny"
+unused_macro_rules = "deny"
+# unused_qualifications = "deny"  # off until fixed: 17 findings today
+# variant_size_differences = "deny"  # off until fixed: 8 findings today
+
 [workspace.lints.clippy]
 # All major categories (M-STATIC-VERIFICATION).
 cargo = { level = "deny", priority = -1 }
@@ -979,6 +1087,118 @@ unnecessary_safety_doc = "deny"
 unneeded_field_pattern = "deny"
 unused_result_ok = "deny"
 too_long_first_doc_paragraph = "deny"
+
+# Every restriction and nursery lint that finds nothing here today, and the
+# bug-catching ones, chosen one by one. The groups themselves stay off:
+# `restriction` holds pairs that contradict each other and this table
+# (`implicit_return` against `needless_return`, `mod_module_files` against
+# `self_named_module_files`), and clippy refuses it as a group
+# (`blanket_clippy_restriction_lints`).
+# `allow_attributes` stays off: a macro expanded in many crates needs `allow`,
+# because its lint fires in some of them and not others, and an `expect`
+# fails wherever it does not. `allow_attributes_without_reason` still binds.
+alloc_instead_of_core = "deny"
+# as_conversions = "deny"  # off until fixed: 187 findings today
+as_ptr_cast_mut = "deny"
+as_underscore = "deny"
+branches_sharing_code = "deny"
+cfg_not_test = "deny"
+clear_with_drain = "deny"
+coerce_container_to_any = "deny"
+# collection_is_never_read = "deny"  # off until fixed: 1 findings today
+# create_dir = "deny"  # off until fixed: 52 findings today
+debug_assert_with_mut_call = "deny"
+default_union_representation = "deny"
+derive_partial_eq_without_eq = "deny"
+doc_include_without_cfg = "deny"
+doc_link_code = "deny"
+# doc_paragraphs_missing_punctuation = "deny"  # off until fixed: 6 findings today
+# else_if_without_else = "deny"  # off until fixed: 7 findings today
+empty_enums = "deny"
+equatable_if_let = "deny"
+exit = "deny"
+fallible_impl_from = "deny"
+# filetype_is_file = "deny"  # off until fixed: 3 findings today
+# float_cmp_const = "deny"  # off until fixed: 1 findings today
+# future_not_send = "deny"  # off until fixed: 42 findings today
+# get_unwrap = "deny"  # off until fixed: 10 findings today
+host_endian_bytes = "deny"
+imprecise_flops = "deny"
+infinite_loop = "deny"
+inline_asm_x86_att_syntax = "deny"
+inline_asm_x86_intel_syntax = "deny"
+# integer_division = "deny"  # off until fixed: 71 findings today
+iter_on_empty_collections = "deny"
+# iter_on_single_items = "deny"  # off until fixed: 3 findings today
+# iter_over_hash_type = "deny"  # off until fixed: 8 findings today
+iter_with_drain = "deny"
+large_include_file = "deny"
+large_stack_frames = "deny"
+# let_underscore_must_use = "deny"  # off until fixed: 43 findings today
+# let_underscore_untyped = "deny"  # off until fixed: 55 findings today
+# literal_string_with_formatting_args = "deny"  # off until fixed: 10 findings today
+lossy_float_literal = "deny"
+# map_with_unused_argument_over_ranges = "deny"  # off until fixed: 49 findings today
+mem_forget = "deny"
+# missing_asserts_for_indexing = "deny"  # off until fixed: 3 findings today
+# missing_const_for_fn = "deny"  # off until fixed: 1 findings today
+mixed_read_write_in_expression = "deny"
+modulo_arithmetic = "deny"
+multiple_unsafe_ops_per_block = "deny"
+mutex_atomic = "deny"
+mutex_integer = "deny"
+# needless_collect = "deny"  # off until fixed: 3 findings today
+# needless_pass_by_ref_mut = "deny"  # off until fixed: 7 findings today
+needless_type_cast = "deny"
+non_send_fields_in_send_ty = "deny"
+non_zero_suggestions = "deny"
+# or_fun_call = "deny"  # off until fixed: 3 findings today
+# panic_in_result_fn = "deny"  # off until fixed: 167 findings today
+path_buf_push_overwrite = "deny"
+pathbuf_init_then_push = "deny"
+pointer_format = "deny"
+precedence_bits = "deny"
+pub_without_shorthand = "deny"
+# rc_buffer = "deny"  # off until fixed: 3 findings today
+rc_mutex = "deny"
+read_zero_byte_vec = "deny"
+redundant_clone = "deny"
+rest_pat_in_fully_bound_structs = "deny"
+return_and_then = "deny"
+search_is_some = "deny"
+set_contains_or_insert = "deny"
+significant_drop_in_scrutinee = "deny"
+# significant_drop_tightening = "deny"  # off until fixed: 299 findings today
+single_option_map = "deny"
+str_to_string = "deny"
+# string_add = "deny"  # off until fixed: 2 findings today
+string_lit_as_bytes = "deny"
+string_lit_chars_any = "deny"
+# string_slice = "deny"  # off until fixed: 28 findings today
+# suboptimal_flops = "deny"  # off until fixed: 1 findings today
+# suspicious_operation_groupings = "deny"  # off until fixed: 2 findings today
+suspicious_xor_used_as_pow = "deny"
+trailing_empty_array = "deny"
+trait_duplication_in_bounds = "deny"
+transmute_undefined_repr = "deny"
+# trivial_regex = "deny"  # off until fixed: 2 findings today
+try_err = "deny"
+# tuple_array_conversions = "deny"  # off until fixed: 4 findings today
+type_repetition_in_bounds = "deny"
+uninhabited_references = "deny"
+unnecessary_rest_pattern = "deny"
+unnecessary_self_imports = "deny"
+unnecessary_struct_initialization = "deny"
+# unreachable = "deny"  # off until fixed: 80 findings today
+unused_peekable = "deny"
+unused_rounding = "deny"
+# unwrap_in_result = "deny"  # off until fixed: 29 findings today
+# use_debug = "deny"  # off until fixed: 2 findings today
+use_self = "deny"
+verbose_file_reads = "deny"
+volatile_composites = "deny"
+while_float = "deny"
+# wildcard_enum_match_arm = "deny"  # off until fixed: 118 findings today
 
 [profile.dev]
 # Line tables only, not full DWARF. The default (debug = 2) at 357 locked
