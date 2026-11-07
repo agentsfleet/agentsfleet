@@ -7,6 +7,7 @@ import { NANOS_PER_USD } from "@/lib/types";
 import { FleetTriggerSchema } from "@/lib/api/fleet-trigger";
 import { FleetTriggerSummary } from "@/components/domain/FleetTriggerSummary";
 import { SetupQuestions } from "./SetupQuestions";
+import { Clock3Icon, ShieldCheckIcon, TargetIcon } from "lucide-react";
 
 const ConfigSchema = z.object({"x-agentsfleet": z.object({triggers: z.array(FleetTriggerSchema).optional()})});
 const AmountSchema = z.string().regex(/^[1-9][0-9]*$/);
@@ -28,11 +29,11 @@ export function SetupSummary({definition, requirements}: {definition?: Definitio
   const triggers = config.success ? config.data["x-agentsfleet"].triggers ?? [] : null;
   return <div className="space-y-lg">
     <Section className="gap-sm" aria-label="Fleet purpose">
-      <h3 className="text-sm font-semibold text-primary">What this fleet does</h3>
+      <h3 className="flex items-center gap-sm text-sm font-semibold text-primary"><TargetIcon size={14} className="text-pulse" aria-hidden="true" />What this fleet does</h3>
       <p className="break-words text-heading font-semibold">{definition?.description ?? "Open the fleet to see its saved instructions."}</p>
     </Section>
     <Section className="gap-sm" aria-label="How runs start">
-      <h3 className="font-semibold">When it runs</h3>
+      <h3 className="flex items-center gap-sm font-semibold"><Clock3Icon size={14} className="text-info" aria-hidden="true" />When it runs</h3>
       {triggers === null ? <p className="text-sm">Automatic triggers could not be confirmed. Check the fleet’s Setup before relying on automatic runs.</p>
         : triggers.length === 0 ? <p className="text-sm">When you send it a message. No automatic triggers are configured.</p>
         : <><p className="text-sm">When you send it a message, or automatically:</p><List variant="plain" className="space-y-sm">
@@ -49,7 +50,7 @@ function AccessSummary({requirements}: {requirements: Review["requirements"]}) {
   if (!parsed.success) return <p className="text-sm text-muted-foreground">Access and spending limits could not be summarized. Resolve the setup checks before saving.</p>;
   const {credentials, repositories, tools, network, budget} = parsed.data;
   return <Section className="gap-sm" aria-label="Access and spending limits">
-    <h3 className="font-semibold">Access and spending limits</h3>
+    <h3 className="flex items-center gap-sm font-semibold"><ShieldCheckIcon size={14} className="text-evidence" aria-hidden="true" />Access and spending limits</h3>
     <List variant="plain" className="space-y-sm text-sm">
       <ListItem><span className="font-medium">Tools: </span>{tools.length ? tools.join(", ") : "No tools requested."}</ListItem>
       <ListItem><span className="font-medium">Connected accounts: </span>{credentials.length ? credentials.join(", ") : "None requested."}</ListItem>

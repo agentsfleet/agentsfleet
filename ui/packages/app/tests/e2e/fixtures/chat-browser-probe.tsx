@@ -29,7 +29,7 @@ createRoot(root).render(query.has("starters") ? <main className="flex h-dvh flex
   <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
 </main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Typography fixture · deterministic conversation</p>
-  <DraftConversation client={client} view={view} workspace={WORKSPACE} />
+  <DraftConversation client={client} view={query.has("loading") ? {...view, busy: true, messages: [{...MESSAGE, state: "running"}]} : view} workspace={WORKSPACE} />
 </main>);
 window.addEventListener("pagehide", () => client.dispose(), {once: true});
 

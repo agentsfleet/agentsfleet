@@ -6,7 +6,7 @@ import { MESSAGE_ROLE, MESSAGE_STATE, SCHEDULE_SYNC, type Applied, type Message,
   type Schedule } from "./protocol.ts";
 import { remainingConfig, renderQuestions } from "./questions.ts";
 
-const JSON_INDENT = 2;
+const SETTINGS_INDENT = 2;
 export const FLEET_ACTIVE = "active";
 const INITIAL_RUN_PENDING = "pending";
 const INITIAL_RUN_BLOCKED = "blocked";
@@ -34,13 +34,19 @@ export function renderReview(output: Output, review: Review): Effect.Effect<void
     yield* output.info(`Purpose: ${definition.description}`);
     yield* output.info(`Instructions\n${definition.instructions_md || "No instructions configured."}`);
     yield* renderQuestions(output, definition.config);
-    yield* output.info(`Configuration: ${JSON.stringify(remainingConfig(definition.config), null, JSON_INDENT)}`);
-    yield* output.info(`Required access: ${JSON.stringify(review.requirements, null, JSON_INDENT)}`);
+    yield* renderSettings(output, "Configuration", remainingConfig(definition.config));
+    yield* renderSettings(output, "Required access", review.requirements);
     for (const check of review.readiness) {
       yield* output.info(`${check.kind} ${check.subject}: ${check.state}${check.next_action?.href ? ` → ${check.next_action.href}` : ""}`);
     }
     yield* output.info(`Review digest: ${review.review_digest}`);
   });
+}
+
+function renderSettings(output: Output, title: string, settings: Readonly<Record<string, unknown>>) {
+  return output.printSection(title).pipe(Effect.andThen(output.info(
+    Object.keys(settings).length ? Bun.YAML.stringify(settings, null, SETTINGS_INDENT).trimEnd() : "None.",
+  )));
 }
 
 export function renderFleet(output: Output, fleet: Fleet): Effect.Effect<void> {

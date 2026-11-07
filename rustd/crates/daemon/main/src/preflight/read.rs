@@ -15,11 +15,11 @@ use afd_identity::ProviderSecret;
 use url::Host;
 
 use super::knobs::{
-    APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB,
-    OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB,
+    APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB, OIDC_AUDIENCE_KNOB,
+    OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB,
     PROVIDER_SECRET_KNOB, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB,
-    WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_APP_URL, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK,
-    WHY_PLATFORM_ADMIN, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
+    WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_APP_URL, WHY_AUDIENCE, WHY_IDENTITY_PROXY, WHY_ISSUER,
+    WHY_KEK, WHY_PLATFORM_ADMIN, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
 };
 use super::{Fault, IdentityConfig};
 
@@ -51,6 +51,7 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
     let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE)
         .and_then(|raw| provider_api_base(raw, faults));
     let raw_secret = required(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
+    let transport = identity_transport(env, faults);
 
     let secret = raw_secret.and_then(|raw| {
         classify(
@@ -62,8 +63,8 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
         )
     });
 
-    let (Some(issuer), Some(audience), Some(api_base), Some(secret)) =
-        (issuer, audience, api_base, secret)
+    let (Some(issuer), Some(audience), Some(api_base), Some(secret), Some(transport)) =
+        (issuer, audience, api_base, secret, transport)
     else {
         return None;
     };
@@ -76,7 +77,36 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
         jwks_url: optional(env, OIDC_JWKS_URL_KNOB),
         api_base: api_base.into(),
         secret,
+        transport,
     })
+}
+
+/// Reads the explicit identity route once; ordinary proxy variables do not opt in.
+pub(super) fn identity_transport<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<afd_identity::Transport> {
+    let Some(raw) = optional(env, IDENTITY_HTTP_PROXY_URL_KNOB) else {
+        return Some(afd_identity::Transport::Direct);
+    };
+    let proxy = reqwest::Url::parse(&raw)
+        .ok()
+        .filter(|url| {
+            matches!(url.scheme(), "http" | "https")
+                && url.host_str().is_some()
+                && url.path() == "/"
+                && url.query().is_none()
+                && url.fragment().is_none()
+        })
+        .and_then(|url| reqwest::Proxy::all(url).ok());
+    if let Some(proxy) = proxy {
+        return Some(afd_identity::Transport::TrustedProxy(Box::new(proxy)));
+    }
+    faults.push(Fault::Invalid {
+        knob: IDENTITY_HTTP_PROXY_URL_KNOB,
+        why: WHY_IDENTITY_PROXY.to_owned(),
+    });
+    None
 }
 
 /// The provider API base, refused unless the provider secret can travel to it

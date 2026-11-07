@@ -11,10 +11,6 @@ const ASSIGNMENT_UNMET_PREFIX = "assignment unmet: ";
 const ACHIEVABLE_PREFIX = "host reports";
 const MECHANISM_YES = "available";
 const MECHANISM_NO = "unavailable";
-// Whether this host takes durable-task work: the claim gives a task lease only
-// to a runner assigned `durable_tasks_enabled` (claim_admission_head.sql).
-export const DURABLE_TASKS_ON_LABEL = "Durable tasks on";
-export const DURABLE_TASKS_OFF_LABEL = "Durable tasks off";
 
 // The host's own report, rendered verbatim beside the assignment it failed —
 // what the kernel can actually enforce, mechanism by mechanism. No derived
@@ -54,11 +50,9 @@ export function RunnerIdentityLine({
             <CircleHelpIcon size={HELP_ICON_SIZE} aria-hidden="true" />
           </a>
         </span>
+        <span>Durable tasks: {runner.assigned_policy.durable_tasks_enabled ? "On" : "Off"}</span>
         <span data-testid="runner-labels" className="inline-flex flex-wrap items-center gap-sm">
           {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}
-          <Badge data-testid="runner-durable-tasks">
-            {runner.assigned_policy.durable_tasks_enabled ? DURABLE_TASKS_ON_LABEL : DURABLE_TASKS_OFF_LABEL}
-          </Badge>
           {runner.labels.map((label) => (
             <Badge key={label}>{label}</Badge>
           ))}

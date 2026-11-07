@@ -7,6 +7,7 @@ Indy approved implementation on November 3, 2026, and default-on runner support 
 Supported runners advertise `durable_tasks_v1` on every heartbeat.
 
 The saved runner assignment includes **Durable tasks**, On by default, as `durable_tasks_enabled`.
+The runner detail page shows the saved assignment as **Durable tasks: On** or **Durable tasks: Off**.
 The daemon checks both configuration and software capability before issuing a new durable lease.
 
 Turning the setting Off preserves the authority and accounting duties of existing leases.

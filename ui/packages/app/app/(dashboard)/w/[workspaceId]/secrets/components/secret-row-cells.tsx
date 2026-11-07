@@ -1,5 +1,5 @@
 import { CopyButton, IconAction, Time } from "@agentsfleet/design-system";
-import { PencilIcon, Trash2Icon } from "lucide-react";
+import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import type { Secret } from "@/lib/api/secrets";
 
 type SecretActionProps = {
@@ -45,6 +45,7 @@ export function SecretNameCell({ secret }: {secret: Secret}) {
           way and the name takes what the row has left, or the row would push
           its actions behind a horizontal scroll. */}
       <div className="flex min-w-0 items-center gap-1">
+        <KeyRoundIcon size={14} className="shrink-0 text-evidence" aria-hidden="true" />
         <span className="block min-w-0 truncate font-mono text-mono leading-mono sm:min-w-trim sm:max-w-trim" title={secret.name}>
           {secret.name}
         </span>

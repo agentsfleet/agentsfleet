@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AssignedPolicy } from "@/lib/api/runners-types";
+import { JEV_MODEL } from "@/tests/helpers/catalogue-fixtures";
 
 const updateRunnerActionMock = vi.fn();
+const {catalogue} = vi.hoisted(() => ({catalogue: vi.fn()}));
 vi.mock("../actions", () => ({
   updateRunnerAction: (...args: unknown[]) => updateRunnerActionMock(...args),
 }));
+vi.mock("../../models/actions", () => ({listAdminModelsAction: catalogue}));
 
 import { EditPolicyDialog } from "./EditPolicyDialog";
 import { EDIT_POLICY_LABEL } from "./RunnerListCells";
@@ -14,9 +17,11 @@ import { EDIT_POLICY_LABEL } from "./RunnerListCells";
 afterEach(() => cleanup());
 beforeEach(() => {
   updateRunnerActionMock.mockReset();
+  catalogue.mockReset().mockResolvedValue({ok: true, data: {models: [JEV_MODEL]}});
 });
 
 const CURRENT: AssignedPolicy = { durable_tasks_enabled: true,
+  decision_model_id: "0199f0c0-0000-7000-8000-000000000003",
   sandbox_tier: "container_nested",
   network_policy: "allow_all",
   registry_allowlist: ["pypi.org"],
@@ -33,6 +38,10 @@ describe("EditPolicyDialog", () => {
     fireEvent.change(screen.getByLabelText("Workers"), {target: {value: "4"}});
     fireEvent.click(screen.getByRole("button", {name: "Save"}));
     await waitFor(() => expect(screen.getByRole("button", {name: "Cancel"})).toHaveProperty("disabled", true));
+    const form = screen.getByLabelText("Workers").closest("form");
+    if (!form) throw new Error("Runner policy form is missing");
+    fireEvent.submit(form);
+    expect(updateRunnerActionMock).toHaveBeenCalledOnce();
     await userEvent.setup().keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeTruthy();
     await act(async () => pending.reject(new Error("private-response-marker")));
@@ -85,7 +94,7 @@ describe("EditPolicyDialog", () => {
     render(<EditPolicyDialog runnerId="r-edit-1" current={CURRENT} onSaved={onSaved} />);
 
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    expect((screen.getByLabelText(/allowed registry domains/i) as HTMLInputElement).value).toBe("pypi.org");
+    expect((screen.getByLabelText(/package download sites/i) as HTMLInputElement).value).toBe("pypi.org");
     expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe("2");
 
     fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "4" } });
@@ -129,7 +138,8 @@ describe("EditPolicyDialog", () => {
     const onSaved = vi.fn();
     render(<EditPolicyDialog runnerId="r-edit-3" current={CURRENT} onSaved={onSaved} />);
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    fireEvent.change(screen.getByLabelText(/allowed registry domains/i), {
+    fireEvent.click(screen.getByRole("radio", {name: /^Approved destinations only/}));
+    fireEvent.change(screen.getByLabelText(/package download sites/i), {
       target: { value: "http://not a host" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -154,7 +164,7 @@ describe("EditPolicyDialog", () => {
       ok: false,
       error: "Runner not found",
       status: 404,
-      errorCode: "UZ-RUN-002",
+      errorCode: "UZ-RUN-014",
     });
     const onSaved = vi.fn();
     render(<EditPolicyDialog runnerId="r-edit-2" current={CURRENT} onSaved={onSaved} />);
@@ -171,6 +181,20 @@ describe("EditPolicyDialog", () => {
 });
 
 const LABELS = "Labels";
+it("keeps a default preselection out of a label-only edit on an unassigned runner", async () => {
+  updateRunnerActionMock.mockResolvedValue({ok: true});
+  const saved = vi.fn();
+  render(<EditPolicyDialog runnerId="revoked" current={{...CURRENT, decision_model_id: undefined}} currentLabels={["linux"]} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  await waitFor(() => expect(screen.getByRole("combobox", {name: "Decision model"}).textContent).toBe("TypeSafe Jev"));
+  fireEvent.change(screen.getByLabelText("Workers"), {target: {value: "4"}});
+  fireEvent.change(screen.getByLabelText("Workers"), {target: {value: "2"}});
+  fireEvent.change(screen.getByLabelText(LABELS), {target: {value: "linux, ci"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("revoked", {labels: ["linux", "ci"]});
+});
+
 it.each([{currentLabels: ["gpu,linux"]}, {currentLabels: ["東京", " has spaces "]}, {currentLabels: [""]}, {currentLabels: ["gpu"]}])("keeps unchanged stored labels $currentLabels out of a policy-only save", async ({currentLabels}) => {
   updateRunnerActionMock.mockResolvedValue({ok: true});
   const saved = vi.fn();
@@ -257,4 +281,69 @@ it("saves disabling durable tasks and reopens the stored disabled assignment", a
   view.rerender(<EditPolicyDialog runnerId="durable-runner" current={disabled} onSaved={saved} />);
   fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
   expect(screen.getByRole("switch", {name: "Durable tasks"}).getAttribute("aria-checked")).toBe("false");
+});
+
+it.each([
+  {label: "Public internet access", policy: "allow_all"},
+  {label: "No internet access", policy: "deny_all_egress"},
+  {label: "Approved destinations only", policy: "allow_list_egress"},
+])("saves each supported network policy: $policy", async ({label, policy}) => {
+  updateRunnerActionMock.mockResolvedValue({ok: true});
+  const saved = vi.fn();
+  render(<EditPolicyDialog runnerId="network" current={CURRENT} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  await userEvent.setup().click(screen.getByRole("radio", {name: new RegExp(`^${label}`)}));
+  expect(screen.getByLabelText(/package download sites/i)).toHaveProperty("disabled", false);
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("network", {
+    assigned_policy: {...CURRENT, network_policy: policy},
+  });
+});
+
+it.each(["0", "65", "", "1.5"])("rejects worker counts outside the supported range: %s", async value => {
+  const saved = vi.fn();
+  render(<EditPolicyDialog runnerId="workers" current={CURRENT} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  fireEvent.change(screen.getByLabelText("Workers"), {target: {value}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  expect(await screen.findByText("Between 1 and 64 workers")).toBeTruthy();
+  expect(screen.getByLabelText("Workers")).toHaveProperty("value", value);
+  expect(updateRunnerActionMock).not.toHaveBeenCalled();
+  expect(saved).not.toHaveBeenCalled();
+});
+
+it("cannot save an unassigned decision model until its configured default resolves", async () => {
+  const response = Promise.withResolvers<{ok: true; data: {models: typeof JEV_MODEL[]}}>();
+  catalogue.mockReturnValue(response.promise);
+  updateRunnerActionMock.mockResolvedValue({ok: true});
+  const saved = vi.fn();
+  render(<EditPolicyDialog runnerId="runner" current={{...CURRENT, decision_model_id: undefined}} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  const save = screen.getByRole("button", {name: "Save"});
+  const form = save.closest("form");
+  if (!form) throw new Error("Runner policy form is missing");
+  expect(save).toHaveProperty("disabled", true);
+  fireEvent.submit(form);
+  expect(updateRunnerActionMock).not.toHaveBeenCalled();
+  await act(async () => response.resolve({ok: true, data: {models: [JEV_MODEL]}}));
+  expect(save).toHaveProperty("disabled", false);
+  fireEvent.click(save);
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("runner", {assigned_policy: CURRENT});
+});
+it("keeps invalid package sites editable after leaving approved destinations", async () => {
+  updateRunnerActionMock.mockResolvedValue({ok: true});
+  const saved = vi.fn();
+  render(<EditPolicyDialog runnerId="network" current={CURRENT} onSaved={saved} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  fireEvent.click(screen.getByRole("radio", {name: /^Approved destinations only/}));
+  const sites = screen.getByLabelText(/package download sites/i);
+  fireEvent.change(sites, {target: {value: "https://registry.npmjs.org"}});
+  fireEvent.click(screen.getByRole("radio", {name: /^Public internet access/}));
+  expect(sites).toHaveProperty("disabled", false);
+  fireEvent.change(sites, {target: {value: "registry.npmjs.org"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+  expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("network", {assigned_policy: {...CURRENT, registry_allowlist: ["registry.npmjs.org"]}});
 });

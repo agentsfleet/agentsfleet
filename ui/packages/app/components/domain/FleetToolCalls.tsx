@@ -19,7 +19,7 @@ export function ToolCallList({children, activity}: {children: ReactNode; activit
       <AccordionTrigger className={TRIGGER_CLASS} aria-label={`${TOOL_CALLS_LABEL}: ${label}`} title={label}>
         <span aria-hidden="true" className={cn("inline-flex size-3.5 shrink-0 items-center justify-center", CELL_COPY[activity.state].tone)}>{running ? <SignalSpinner className="size-3.5 text-current" /> : <Icon className="size-3.5 shrink-0" />}</span>
         <span className="min-w-0 flex-1 text-left sm:truncate" role={running ? "status" : undefined}>
-          <span className="block sm:inline">{activity.label}</span>{activity.target ? <> <span className="block truncate text-label text-text-dim sm:inline sm:text-inherit">{activity.target}</span></> : null}
+          <span className="block sm:inline" data-chat-loading={running}>{activity.label}</span>{activity.target ? <> <span className="block truncate text-label text-text-dim sm:inline sm:text-inherit">{activity.target}</span></> : null}
         </span>
       </AccordionTrigger>
       <AccordionContent className="pb-0"><List variant="plain" aria-label={TOOL_CALLS_LABEL} className="flex flex-col gap-xs space-y-0">{children}</List></AccordionContent>

@@ -23,6 +23,7 @@ fn configured() -> IdentityConfig {
         jwks_url: None,
         api_base: "https://api.example.test".into(),
         secret: ProviderSecret::new("fixture-secret").expect("fixture secret is valid"),
+        transport: afd_identity::Transport::Direct,
     }
 }
 
@@ -50,7 +51,7 @@ fn each_unbuildable_client_degrades_only_its_own_seam() {
     let (capabilities, sessions, writeback) = resolve_with(
         &identity,
         build_claims,
-        |_url, _timeout| Err(VerifyError::KeySetUnavailable),
+        |_identity, _url, _timeout| Err(VerifyError::KeySetUnavailable),
         build_metadata,
     );
     assert!(matches!(capabilities, Capabilities::Provider(_)));

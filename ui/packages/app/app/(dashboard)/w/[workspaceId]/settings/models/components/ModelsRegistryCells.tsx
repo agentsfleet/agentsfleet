@@ -6,7 +6,7 @@ import {
   CopyButton,
   IconAction,
 } from "@agentsfleet/design-system";
-import { ArrowLeftRightIcon, EyeIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { ArrowLeftRightIcon, CircleCheckIcon, EyeIcon, KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { OLLAMA_PROVIDER, type LibraryModel } from "@/lib/api/model-library-types";
 import {
   EMPTY_VALUE,
@@ -143,10 +143,10 @@ export function RatesCell({
 }
 
 export function StatusCell({ row, isDefaultLive }: { row: RegistryRow; isDefaultLive: boolean }) {
-  if (row.kind === "default") return isDefaultLive ? <Badge variant="green">Active</Badge> : null;
+  if (row.kind === "default") return isDefaultLive ? <Badge variant="green"><CircleCheckIcon size={12} aria-hidden="true" />Active</Badge> : null;
   const { entry } = row;
-  if (entry.active) return <Badge variant="green">Active</Badge>;
-  if (!entry.has_key) return <Badge variant="default">no key · local</Badge>;
+  if (entry.active) return <Badge variant="green"><CircleCheckIcon size={12} aria-hidden="true" />Active</Badge>;
+  if (!entry.has_key) return <Badge variant="default"><KeyRoundIcon size={12} aria-hidden="true" />no key · local</Badge>;
   return null;
 }
 
