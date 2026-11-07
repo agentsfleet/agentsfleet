@@ -1,6 +1,5 @@
 import { DraftConversation } from "@/components/domain/chat/DraftConversation";
 import { DraftChatHeading } from "@/components/domain/chat/DraftChatHeading";
-import { SetupSummary } from "@/components/domain/chat/SetupSummary";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { useState } from "react";
@@ -56,8 +55,6 @@ export function SetupAlignmentFixture() {
     ])};
   return <AppRouterContext value={router}><ChatSummaryProvider><main className="flex h-dvh flex-col bg-background text-foreground">
     <DraftChatHeading client={setupClient} view={view} workspace={WORKSPACE} onDirtyChange={() => {}} />
-    <FleetConversationLayout work={<SetupSummary definition={DRAFT.candidate?.definition} />}>
       <DraftConversation client={setupClient} view={view} workspace={WORKSPACE} />
-    </FleetConversationLayout>
   </main></ChatSummaryProvider></AppRouterContext>;
 }

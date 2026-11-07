@@ -1,6 +1,5 @@
 "use client";
 import { ChatSummaryProvider } from "./ChatSummary";
-import { FleetConversationLayout } from "../FleetWorkSidebar";
 
 import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
 import type { Source } from "@/lib/api/draft-types";
@@ -30,7 +29,6 @@ type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "r
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
 const LOADING_SETUP_CHAT = "Loading setup chat";
-const SetupSummary = nextDynamic(() => import("./SetupSummary").then(module => module.SetupSummary), {ssr: false});
 const DraftConversation = nextDynamic(() => import("./DraftConversation").then((module) => module.DraftConversation), {
   ssr: false,
   loading: () => <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label="Loading conversation" />,
@@ -107,9 +105,9 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
     <ChatModelAvailability canManagePlatformModels={canManagePlatformModels} client={client} view={view} workspace={workspace} />
-    <FleetConversationLayout work={<SetupSummary definition={view.draft?.candidate?.definition ?? view.preview?.definition ?? view.fleet?.definition} requirements={view.draft?.review?.requirements} />}><DraftConversation client={client} view={view} workspace={workspace} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <DraftConversation client={client} view={view} workspace={workspace} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       <FleetSetup client={client} view={view} workspace={workspace} />
-    </DraftConversation></FleetConversationLayout>
+    </DraftConversation>
     </>}
   </div></ChatSummaryProvider>;
 }

@@ -7,6 +7,9 @@ import type { ReactNode } from "react";
 import { useMemo, useState, useCallback } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import Link from "next/link";
+import nextDynamic from "next/dynamic";
+import { useChatSummary } from "./ChatSummary";
+import { FleetConversationLayout } from "../FleetWorkSidebar";
 import { BrandMark, Button, PageTitle } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -17,6 +20,8 @@ import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
 import { setupActivity } from "@/lib/api/draft-activity";
 import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
 import { DraftMessage, DraftRetryProvider } from "./DraftMessage";
+
+const SetupSummary = nextDynamic(() => import("./SetupSummary").then(module => module.SetupSummary), {ssr: false});
 
 export function DraftConversation({client, view, workspace, children, unfinished, instructionsDirty = false, onOpenFleet}: {client: DraftClient; view: DraftView; workspace: string; children?: ReactNode; unfinished?: ReactNode; instructionsDirty?: boolean; onOpenFleet?: () => void}) {
   const recovery = chatRecovery(view);
@@ -38,7 +43,7 @@ export function DraftConversation({client, view, workspace, children, unfinished
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <DraftRetryProvider client={client} disabled={view.busy || view.pending || recovery.pending || view.inaccessible || !view.model}>
-      <ChatThread label="Fleet setup conversation" autoScroll={!empty}
+      <SetupConversationLayout view={view}><ChatThread label="Fleet setup conversation" autoScroll={!empty}
         footer={<ChatComposer client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} canStop={recovery.canStop} blocked={instructionsDirty} dirty={instructionsDirty} />}>
         <div role="log" aria-live="off" className="mx-auto flex w-full max-w-chat flex-1 flex-col py-3xl">
           {empty ? <><ChatEntrance /><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} />{unfinished}</> : null}
@@ -50,11 +55,19 @@ export function DraftConversation({client, view, workspace, children, unfinished
           {anchor === null ? children : null}
           <ThreadPrimitive.Messages>{renderMessage}</ThreadPrimitive.Messages>
         </div>
-      </ChatThread>
+      </ChatThread></SetupConversationLayout>
       </DraftRetryProvider>
     </AssistantRuntimeProvider>
   );
 }
+function SetupConversationLayout({view, children}: {view: DraftView; children: ReactNode}) {
+  const summary = useChatSummary();
+  if (!summary) return children;
+  return <FleetConversationLayout work={<SetupSummary definition={view.draft?.candidate?.definition ?? view.preview?.definition ?? view.fleet?.definition} requirements={view.draft?.review?.requirements} />}>
+    {children}
+  </FleetConversationLayout>;
+}
+
 function setupAnchor(view: DraftView): string | null {
   const saved = (view.activities ?? []).find(row => {
     const activity = setupActivity(row);
