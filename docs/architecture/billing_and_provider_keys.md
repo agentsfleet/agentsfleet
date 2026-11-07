@@ -202,7 +202,9 @@ When `balance_nanos` cannot cover the next event's estimated cost, the gate trip
 
 ### 2.3 Free usage is a balance, never a window
 
-**There is no promotional window, and there is no mechanism for one.** A tenant's free usage is the starter grant and nothing else. It drains, and `exhausted_at` marks when it reaches zero. Pricing consults the model catalogue and the posture.
+**There is no promotional window, and there is no mechanism for one.** A tenant's free usage is the starter grant and nothing else.
+
+The grant drains, and `exhausted_at` marks when it reaches zero. Pricing consults the model catalogue and the posture.
 
 The clock enters pricing in one way only. The price row is chosen by the instant of the request it prices (`model.platform_model_prices` is effective-dated, §4.1), clamped to the work's own window. No price is waived by date.
 
@@ -276,11 +278,15 @@ If a renewal fails mid-flush, the lines past the report's 512 are logged as `usa
 
 A runner still sending cumulative totals can never have a line recorded, so its renewal is refused rather than extended. Renewing would only run it unbilled to a report refused for the same field.
 
-**Measuring run time.** `METER_LEASE` (`meter_lease.sql` in `afd_fleet`) keeps its fence, its two deadlines and its lifetime tally, and moves no money. It answers the run time since the lease's own `last_metered_at`, on the database's clock and never past the granted deadline. It then advances that cursor.
+**Measuring run time.** `METER_LEASE` (`meter_lease.sql` in `afd_fleet`) keeps its fence, its two deadlines and its lifetime tally, and moves no money.
+
+`METER_LEASE` answers the run time since the lease's own `last_metered_at`, on the database's clock and never past the granted deadline. It then advances that cursor.
 
 Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` serialises every pass on one lease.
 
-**Logging the lines.** The lease path prices every request line and the runtime line through the `Rater`. It logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing.
+**Logging the lines.** The lease path prices every request line and the runtime line through the `Rater`.
+
+The lease path logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing.
 
 Runtime lines take numbers from `af_wire::usage::DAEMON_SEQ_BASE`, after the runtime lines the lease already logged, read under its row lock. A runner line and a daemon line never share a number, and two passes never take one (`afd_fleet`'s lease billing races suite).
 
@@ -288,7 +294,9 @@ Runtime lines take numbers from `af_wire::usage::DAEMON_SEQ_BASE`, after the run
 
 `settle` keys on `(work, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
 
-**Charges history.** `GET /v1/tenants/me/billing/charges` reads `billing.usage_lines`, newest first, one row per line, whether a fleet run (`charge_type: stage`) or a setup chat (`charge_type: authoring`) logged it. The page is cut by the `(tenant_id, created_at, id)` index before any join, under one descending `(created_at, id)` cursor. Reading history never changes the wallet.
+**Charges history.** `GET /v1/tenants/me/billing/charges` reads `billing.usage_lines`, newest first, one row per line, whether a fleet run (`charge_type: stage`) or a setup chat (`charge_type: authoring`) logged it.
+
+The page is cut by the `(tenant_id, created_at, id)` index before any join, under one descending `(created_at, id)` cursor. Reading history never changes the wallet.
 
 Setup rows have `charge_type: authoring` and `authoring_attempt_id`; `event_id` is null. A retained private draft supplies only its public saved-fleet link and current public fleet name. No draft title, instructions, messages, answers, or credential metadata enters the billing response.
 
@@ -339,7 +347,9 @@ The issue-time floor (`Accounts::estimate`) prices `ESTIMATE_FLOOR_INPUT_TOKENS`
 
 A model with no price covering the instant is `Estimate::Unpriceable`. The gate admits against a floor of zero, because an estimate is not a charge.
 
-**There is no rate cache.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows. The lease path reads it once per pass, before the transaction opens, so no catalogue read waits while the lease is locked. A cache would add a version check and an eviction path to save that one read.
+**There is no rate cache.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows.
+
+The lease path reads it once per pass, before the transaction opens, so no catalogue read waits while the lease is locked. A cache would add a version check and an eviction path to save that one read.
 
 **A catalogue that cannot be read** still logs every request line, with its tokens counted as unpriced and the run fee charged (`lease_tokens_unpriced`). Nothing is held for a later pass, because each request is priced on its own line.
 
@@ -417,7 +427,9 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
 | Source of truth | `Biller::balance` | the fleet's `billing.usage_lines`, summed by `afd_billing::limits::fleet_spend` |
 
-**Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance`, before the lease is issued. Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick, whatever the fleet's status (`afd_fleet`'s lease coverage module). Applying a revision that lowers a runaway fleet's `daily_nanos` therefore bites at its next tick, not only at its next run.
+**Where it fires.** `money_gates` runs `gates::fleet_budget` after `gates::balance`, before the lease is issued.
+
+Mid-run, the renewal re-reads the ceiling live from the fleet's selected setup revision on every tick, whatever the fleet's status (`afd_fleet`'s lease coverage module). Applying a revision that lowers a runaway fleet's `daily_nanos` therefore bites at its next tick, not only at its next run.
 
 **Windows.** `daily_nanos` is a **rolling 24 hours** and `monthly_nanos` the **UTC calendar month**. Both open from one `now()` in the same statement (`select_fleet_spend.sql` in `afd_billing`), so the two windows can never straddle a tick.
 
@@ -425,7 +437,9 @@ A line counts in a window when it was written inside it. Each line is one slice 
 
 The read is served by `idx_usage_lines_fleet_id_created_at`, and a planner probe in `afd_fleet`'s ledger-reads suite pins that. `monthly_nanos` is optional; absent means no monthly ceiling.
 
-**Spend means what the fleet's usage cost.** A line that took the balance below zero counts at its price like any other. The ceiling bounds what a fleet uses; the debt is the balance gate's concern. The setup chat that authored a fleet does not count against its budget; whether it should is open (§11).
+**Spend means what the fleet's usage cost.** A line that took the balance below zero counts at its price like any other.
+
+The ceiling bounds what a fleet uses; the debt is the balance gate's concern. The setup chat that authored a fleet does not count against its budget; whether it should is open (§11).
 
 **Overshoot is bounded, not zero.** The ceiling is a floor-check: a run is admitted while `spend < cap`. An already-running run may exceed its cap by at most one renewal window's worth of usage before its next `/renew` refuses it. Enforcing a *predicted* end-of-run cost would refuse runs that would have finished under budget.
 
@@ -550,11 +564,15 @@ model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_
   UNIQUE (tenant_id, model_name, secret_ref)
 ```
 
-**Entries reference keys; they never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns. `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time, the same projection §8.3's credential list already uses. `api_key` is structurally absent from the join, not filtered out.
+**Entries reference keys; they never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns.
+
+`GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time, the same projection §8.3's credential list already uses. `api_key` is structurally absent from the join, not filtered out.
 
 A keyless endpoint stores an empty `api_key` in the secret body, so the activate/resolve chain in §9 stays uniform whether or not a key exists. Runner auth behaviour is unchanged.
 
-**Activation upserts the entry, so the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`. The selection write in `afd_credential` upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case.
+**Activation upserts the entry, so the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`.
+
+The selection write in `afd_credential` upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case.
 
 So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent).
 
@@ -621,7 +639,9 @@ A repeated unchanged apply writes nothing.
 
 Their identifiers, credentials, prices and runner wires stay separate. Display names never replace API identifiers.
 
-**Exact provider evidence is required.** A context integer comes from that provider's models API. Where that API needs a key or omits the limit, OpenRouter's public endpoints list supplies it. The provider's standard endpoint is named by its exact tag.
+**Exact provider evidence is required.** A context integer comes from that provider's models API.
+
+Where that API needs a key or omits the limit, OpenRouter's public endpoints list supplies it. The provider's standard endpoint is named by its exact tag.
 
 Either carries its source and verification time. An unreadable limit produces a `NOT SEEDED` report, never an assumed integer from a marketing label.
 
@@ -676,7 +696,9 @@ A biller in another process never joins or delays our transaction, and the lease
 
 A `Settlement` carries each line's raw usage and the daemon's price. A biller that prices for itself may ignore our price, and `LedgerBiller` charges it.
 
-**Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`. The tier comes from the request's whole prompt (uncached input, cache reads and cache writes together). The date range comes from the request's `at`, clamped by the daemon to the work's own window so a runner cannot backdate.
+**Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`.
+
+The tier comes from the request's whole prompt (uncached input, cache reads and cache writes together). The date range comes from the request's `at`, clamped by the daemon to the work's own window so a runner cannot backdate.
 
 Self-managed work charges runtime only.
 
@@ -684,7 +706,9 @@ Cache writes reach the line apart from uncached input. The runner takes them out
 
 A write the provider names no lifetime for bills at the tier's unspecified-lifetime rate, and a tier that publishes none leaves it unpriced, never free. Each token category rounds **up** per line, so the platform never under-bills and over-bills by at most one nano per category per request.
 
-**Outage policy.** `WithOutagePolicy<B>` wraps any biller. Under `OutagePolicy::Open`, a `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` reads the policy; a failed `settle` leaves the lines for the relay's next pass.
+**Outage policy.** `WithOutagePolicy<B>` wraps any biller.
+
+Under `OutagePolicy::Open`, a `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` reads the policy; a failed `settle` leaves the lines for the relay's next pass.
 
 A biller with no answer (`Error::is_unanswered`) is either an outage or contention. An outage is a pool with no connection to hand out, or a connection lost mid-statement, as `afd_db::error::is_connection_lost` decides.
 
@@ -716,7 +740,9 @@ For each, one transaction moves the lease's cursor to its deadline and logs the 
 
 **Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller moves the money. It counts the fleet's own lines. Setup-chat lines name no fleet; whether a fleet's budget should count the setup chat that authored it is Indy's call.
 
-**The relay and metrics.** `sweeper:billing` runs every 2 seconds, and up to ten passes back to back while a pass fills its batch. It bills expired leases' last slices, then settles every unsettled line (`afd_billing::ledger::resettle`). A balance trails the charges a person reads by about one pass.
+**The relay and metrics.** `sweeper:billing` runs every 2 seconds, and up to ten passes back to back while a pass fills its batch.
+
+The sweeper bills expired leases' last slices, then settles every unsettled line (`afd_billing::ledger::resettle`). A balance trails the charges a person reads by about one pass.
 
 Each pass resumes after the last line the previous one read, across ticks, so a refused backlog never blocks newer charges. Every 30 ticks the read restarts at the oldest line, so a refused line is retried.
 
@@ -736,7 +762,7 @@ The lease `metered_*` token cursors and the slot's runtime cursor are gone: runn
 - **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
 - **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in the charge functions.
 - **Refund-on-actual-tokens.** **Superseded by M80_010** (incremental per-renewal metering). The run debit follows the real run via per-`/renew` deltas plus a settle at report. The credit drained equals actual runtime × rate plus actual tokens, so there is nothing to reconcile or refund after the fact.
-- **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3; needs a new gate at the workspace level.
+- **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). This is v3 and needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.
 - **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.
 - **Auto-fallback from self-managed to platform on provider error.** Errors surface to the user; no silent fallback (it would charge them without consent).

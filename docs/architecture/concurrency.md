@@ -68,7 +68,7 @@ Each trap is enforced in its owner section; this list is the index.
    make progress. Lock state is an explicit parameter, not an ambient assumption.
 4. **C4: one documented lock per shared aggregate.** Each shared aggregate has
    exactly one lock whose doc comment states precisely what it protects and any
-   ordering constraint, and the guard's scope is visible where it is taken.
+   ordering constraint. The guard's scope is visible where it is taken.
 5. **C5: confined by default.** State touched by one task or thread carries no
    lock but says so; on both planes an exclusive borrow is the statement.
 
@@ -239,8 +239,8 @@ that a teardown had to hold by hand.
 1. **Decide why.** `Daemon::run` awaits whichever of the server or the signal
    finishes first, and names it `Signalled` or `ServerStopped`. Both are
    modelled because a daemon that waits solely for a signal hangs when its
-   listener dies of something else: a lost bind, an accept loop that returned,
-   a runtime that shut its I/O driver.
+   listener dies of something else. That includes a lost bind, an accept loop
+   that returned and a runtime that shut its I/O driver.
 
    That process is unkillable except by SIGKILL and reports nothing on its way
    out. The `select!` is `biased`, so the answer is a fact about the futures

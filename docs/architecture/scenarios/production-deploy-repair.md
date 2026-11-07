@@ -8,8 +8,8 @@
 
 **Proof boundary:** HTTP policy bounds the repairer’s repository writes. Historical M157 specifications describe durable linkage and verification that the current daemon does not implement. Live provider delivery remains separately unproven.
 
-> **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification: the App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs`), and the storage and dispatcher those would feed were retired (Indy, Oct 15, 2026).
->
+> **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification. The App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs`); the storage and dispatcher those would feed were retired (Indy, Oct 15, 2026).
+
 > A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §"7. Four stages, four authorities".
 
 ```text
@@ -44,7 +44,7 @@ Trigger wiring determines which Fleet runs. No model chooses a crew member, and 
 
 ## 2. Approve before repository write access exists
 
-There is no per-event approval card and no request ceiling. M202 retired both: the `github` grant a person approves while the fleet is set up authorises a write, and the grant, the fleet's `budget.daily_nanos` and `agentsfleet grant delete` bound it (`rustd/crates/daemon/afd_gate/src/gate/first.rs:8-17`).
+There is no per-event approval card and no request ceiling, and M202 retired both. The `github` grant a person approves while the fleet is set up authorises a write. That grant, the fleet's `budget.daily_nanos` and `agentsfleet grant delete` bound it (`rustd/crates/daemon/afd_gate/src/gate/first.rs:8-17`).
 
 The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission (`WRITE_REACH` in `rustd/crates/daemon/afd_credential/src/credential/github/request.rs:23-26`). The daemon verifies the token returned by GitHub before exposing it to the run.
 

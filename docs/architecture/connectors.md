@@ -124,13 +124,15 @@ credential object (`afd_connector`'s grant parser).
 | `oauth2` | authorize-redirect → code exchange (deadline-armed) → the provider's `complete::read` arm parses, then the grant is sealed | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector.installs`) | `slack`, `zoho` (multi-data-center: the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
 | `app_install` | user authorization → discover or verify App installation → `complete::read` (GitHub arm); zero reachable installations REFUSE with `UZ-CONN-008` (no install-page continuation in this tree, see §GitHub App) | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
 
-**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector. It never had a connect/callback round-trip or a platform app secret to protect.
+**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002).
+
+A static vendor key is a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector. It never had a connect/callback round-trip or a platform app secret to protect.
 
 Those three providers are plain `agentsfleet secret create` entries, never registry entries. The `catalogue!` macro declares five variants: five Open Authorization (OAuth) or app-install connectors, not eight.
 
 ## Trust anchors
 
-1. **The signed single-use `state` binds workspace intent and starter identity.** It is keyed with the approval signing secret, carries a keyed identity tag instead of a raw subject, verifies in constant time, and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state.
+1. **The signed single-use `state` binds workspace intent and starter identity.** It is keyed with the approval signing secret and carries a keyed identity tag instead of a raw subject. It verifies in constant time and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state.
 
    Forged, expired, replayed, or identity-mismatched state returns 400 `UZ-CONN-002`. State does not prove ownership of a provider installation.
 
@@ -325,7 +327,9 @@ Multiple fleets may intentionally subscribe to the same repository and event. Re
 
 If one fan-out leg fails before its admission commits, redelivery retries that leg. Fleets already admitted answer `replayed`; redelivery admits only the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`afd_ingress`'s App routing).
 
-**That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries". A delivery fails when the receiver is down or takes longer than **ten seconds** to answer. Recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries.
+**That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries".
+
+A delivery fails when the receiver is down or takes longer than **ten seconds** to answer. Recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries.
 
 This page previously credited the recovery to "GitHub's retry", which does not exist. The correction moves the boundary of what is recoverable:
 
@@ -390,10 +394,10 @@ An unknown provider (`UZ-CONN-004`) and a registry id with no `<provider>-app` b
 
 ## Adding a provider (the recipe)
 
-1. One `Provider` variant in the `catalogue!` macro, with its id and display name (RULE UFS). The id is at once the route segment, the vault-key stem (`<provider>-app` for the platform app, the bare `<provider>` for the workspace grant: `Provider::app_key` and `Provider::grant_key`), and the registry id.
+1. One `Provider` variant in the `catalogue!` macro, with its id and display name (RULE UFS). The id is at once the route segment, the vault-key stem and the registry id. The vault-key stem is `<provider>-app` for the platform app and the bare `<provider>` for the workspace grant (`Provider::app_key` and `Provider::grant_key`).
 2. One arm in `Provider::archetype()`, either `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints), plus arms in `state_binding()` and `event_ingress()`.
 3. The provider's arm in `complete::read`, which is where its answer is parsed into a grant. The registry holds no per-provider hook functions: it dispatches on the archetype enum and matches per provider.
-4. Create the `<provider>-app` bag in the admin vault. An operator-supplied vendor key with no browser round-trip (Datadog/Grafana/Fly's shape) is not a connector at all; it is a plain workspace secret, `agentsfleet secret create`, never a registry entry.
+4. Create the `<provider>-app` bag in the admin vault. An operator-supplied vendor key with no browser round-trip (Datadog/Grafana/Fly's shape) is not a connector at all. It is a plain workspace secret, `agentsfleet secret create`, never a registry entry.
 5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/save deltas.
 
 No route, matcher, scope, invoke, or OpenAPI edit: the `{provider}` form already covers the new id.

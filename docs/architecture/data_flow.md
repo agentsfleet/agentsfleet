@@ -256,7 +256,9 @@ A page never reads them: "show all" reads one call through `GET …/events/{even
 
 Runner leases keep no duplicate request body. Claim and reclaim read the payload from the admission row and join fleet events to identify prior leases. Settled leases can outlive deleted fleets or events; their identifiers then stay opaque history.
 
-**Partitioning is not done here.** A usage line's arbiter is `(work_type, work_id, seq)`, written once. A later partition key by `created_at` therefore never splits a line from its own conflict target. The machinery waits for a measurement that demands it.
+**Partitioning is not done here.** A usage line's arbiter is `(work_type, work_id, seq)`, written once.
+
+A later partition key by `created_at` therefore never splits a line from its own conflict target. The machinery waits for a measurement that demands it.
 
 ## Two streams + one pub/sub channel — and the one that retired
 
@@ -271,7 +273,9 @@ The admissions queue lives in Postgres. Dragonfly carries outbound delivery, liv
 
 Activity and wake notifications are ephemeral. Their loss cannot remove accepted work from the ledger.
 
-**Client-side gap recovery (M122).** The channel has no resume. So a dashboard tab that drops its SSE connection misses every frame published during the reconnect window. The app's stream registry (`ui/packages/app`, `lib/streaming`) closes that gap client-side.
+**Client-side gap recovery (M122).** The channel has no resume.
+
+So a dashboard tab that drops its SSE connection misses every frame published during the reconnect window. The app's stream registry (`ui/packages/app`, `lib/streaming`) closes that gap client-side.
 
 The registry fetches the bounded `fleet.events` list on every reconnect open, never on the SSR-seeded initial connect. The fetch is keyed `since` the last server-delivered event minus a 2-second overlap, and the registry merges by event id.
 
@@ -618,7 +622,9 @@ The lease call prepares work for the runner. The report call commits its termina
 10. Commit the report under the host, slot, lease and admission guards. One transaction records usage, terminal history, the checkpoint, admission settlement, slot release and any outbound obligation.
 11. After commit, publish terminal activity and attempt outbound delivery.
 
-**Folded messages.** A message admitted while the fleet's run is live answers `folded` with `folded_into_event_id`. At its next model call the running lease claims every later unsettled message its fleet received, whatever sent it. The claim stops at the first parked or task-bound message and stamps `input_claim_lease_id` and `input_claim_fence` on each row.
+**Folded messages.** A message admitted while the fleet's run is live answers `folded` with `folded_into_event_id`.
+
+At its next model call the running lease claims every later unsettled message its fleet received, whatever sent it. The claim stops at the first parked or task-bound message and stamps `input_claim_lease_id` and `input_claim_fence` on each row.
 
 A durable-task run claims only a person's later messages in its own conversation.
 

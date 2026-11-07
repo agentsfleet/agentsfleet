@@ -80,7 +80,9 @@ Three shapes, and the tier is readable without opening the file.
 | `<subject>.rs` | no | `make test-unit-rustd` | on nothing in the file |
 | `*_suite.rs` | — | — | declares `#[path]` modules only, holds no test of its own |
 
-**The filename and the attribute must agree.** `cargo test` runs the non-ignored tests, and the integration target passes `-- --ignored` to run the rest. A live test without its `#[ignore]` runs in the unit lane and fails the moment Docker is closed. That is the one failure this rule prevents outright.
+**The filename and the attribute must agree.** `cargo test` runs the non-ignored tests, and the integration target passes `-- --ignored` to run the rest.
+
+A live test without its `#[ignore]` runs in the unit lane and fails the moment Docker is closed. That is the one failure this rule prevents outright.
 
 **The naming rule is not a safety property.** `#[ignore]` alone decides which lane runs a test; the filename decides nothing. An `#[ignore]`d test in a file with no `integration_` prefix still runs under `-- --ignored`.
 
@@ -108,11 +110,15 @@ From 08-27 onward the practice inverts, at 14%, 0%, 31% and 9% across 411 tests.
 
 **This rule is no licence to rename.** The prefixed crates are internally consistent, and their names are not wrong, only older. Touching one test in `af_crypto` does not oblige renaming its neighbours, and a crate converts, if ever, in one deliberate commit of its own.
 
-**A new test in an existing file follows that file.** A mixed file is worse than either convention held whole. So the rule binds new files and new crates. Adding `the_thing_it_proves` beside four `test_`-prefixed neighbours makes the new test the odd one out.
+**A new test in an existing file follows that file.** A mixed file is worse than either convention held whole.
+
+So the rule binds new files and new crates. Adding `the_thing_it_proves` beside four `test_`-prefixed neighbours makes the new test the odd one out.
 
 M180 added `test_the_tag_type_offers_no_short_circuiting_comparison` to `af_crypto` for exactly this reason. That name follows the rule's second clause, and is no exception to it.
 
-**Where a spec and this rule disagree, the spec is amended.** A spec names a Dimension's proving test so readers can find it. A name the codebase does not use fails at exactly that job. M180 amended seventeen Dimensions rather than rename fourteen tests into a convention the repository had already left.
+**Where a spec and this rule disagree, the spec is amended.** A spec names a Dimension's proving test so readers can find it.
+
+A name the codebase does not use fails at exactly that job. M180 amended seventeen Dimensions rather than rename fourteen tests into a convention the repository had already left.
 
 ## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 

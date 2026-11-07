@@ -319,7 +319,9 @@ The other `x-agentsfleet.context.*` settings keep their authored values or use t
 
 The lease reads saved catalogue metadata instead of querying the inference provider for limits. Updating provider configuration is an explicit settings change; it does not require a deployment or a JSON routing file ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10).
 
-**Dashboard equivalent: the Models page (`/w/{workspace_id}/settings/models`).** A browser user can use the platform default or connect a provider through the owner registry. The draft's model picker lists eligible configured models and selects a default. The platform administrator manages the shared catalogue and default; users manage their own registrations and credentials.
+**Dashboard equivalent: the Models page (`/w/{workspace_id}/settings/models`).** A browser user can use the platform default or connect a provider through the owner registry.
+
+The draft's model picker lists eligible configured models and selects a default. The platform administrator manages the shared catalogue and default; users manage their own registrations and credentials.
 
 Saved credentials are never returned to the browser. The former `/credentials` page stays removed; custom secrets live on `/secrets`.
 

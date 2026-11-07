@@ -41,14 +41,15 @@ those calling the macro. An alias that only appears after macro expansion is one
 a reader cannot see, which is the thing rule 1 exists to prevent.
 
 **Not every crate takes the hull**, and the test is a property of the error
-rather than a list of names — see §"The shared hull" below for which crates are
+rather than a list of names. See §"The shared hull" below for which crates are
 on each side and why a fieldless refusal vocabulary stays a plain enum.
 
 **One deliberate exception, and it is security not style.** `af_crypto`'s
 `ErrorKind::OpenFailed` declines to wrap the Authenticated Encryption with
-Associated Data (AEAD) library's reason: a wrong key, a tampered tag and
-mismatched associated data all answer `UZ-INTERNAL-003`. Telling a caller which
-one it was would hand it a decryption oracle.
+Associated Data (AEAD) library's reason. A wrong key, a tampered tag and
+mismatched associated data all answer `UZ-INTERNAL-003`.
+
+Telling a caller which one it was would hand it a decryption oracle.
 
 ## What changed under this standard (M176)
 
@@ -80,33 +81,40 @@ BEFORE                              AFTER
 
 ## The shared hull: `error_shell!` and `error_lifts!`
 
-Rules 1, 2 and 4 describe scaffolding every crate-level error repeats — the
-boxed `struct Error` with its captured backtrace, the `From<ErrorKind>` that is
-the one place a kind becomes an error, the `Display` rendering `[CODE]
-message`, and the `source()` that skips the kind. None of it depends on what
-went wrong, so `af_core::error_shell!` generates it and
+Rules 1, 2 and 4 describe scaffolding that every crate-level error repeats:
+
+- the boxed `struct Error` with its captured backtrace
+- the `From<ErrorKind>` that is the one place a kind becomes an error
+- the `Display` rendering `[CODE] message`
+- the `source()` that skips the kind
+
+None of it depends on what went wrong, so `af_core::error_shell!` generates it.
 `af_core::error_lifts!` generates the per-source `From` impls rule 2 asks for.
 
 **Applies wherever a crate's error COMPOSES a source or CARRIES data.** That is
-the test, and it is a property of the error rather than a list of crate names —
-the previous wording named crates, which let a crate keep a plain enum by having
-been on the list rather than by earning it. If any kind holds a `#[source]`, a
-`#[from]`, or a bound field, the crate calls both macros. The hull exists to stop
-nine crates hand-writing the same boxed struct, captured backtrace, `[CODE]`
-`Display` and self-skipping `source()`, and an error with a cause or a payload
-has all four to share.
+the test, and it is a property of the error rather than a list of crate names.
+The previous wording named crates, which let a crate keep a plain enum by having
+been on the list rather than by earning it.
+
+If any kind holds a `#[source]`, a `#[from]`, or a bound field, the crate calls
+both macros. The hull exists to stop nine crates hand-writing the same boxed
+struct, captured backtrace, `[CODE]` `Display` and self-skipping `source()`. An
+error with a cause or a payload has all four to share.
 
 **A fieldless refusal vocabulary keeps its plain enum**, and this is a
 performance rule, not an exemption. `afd_auth::Error` is seven fieldless
-variants — `Copy`, `const fn code()`, `const fn detail()`, `pub const ALL` — and
-`afd_http`'s guard returns it on every request that fails to authenticate. It has
-no source to skip and no backtrace to box, so the hull would add a heap
+variants (`Copy`, `const fn code()`, `const fn detail()`, `pub const ALL`).
+`afd_http`'s guard returns it on every request that fails to authenticate.
+
+It has no source to skip and no backtrace to box. The hull would add a heap
 allocation and a `Backtrace::capture()` to the hottest refusal path in the
-product, buy nothing, and cost the exhaustive `ALL` walk that pins each
-client-visible detail string byte-for-byte
-(`rustd/crates/daemon/afd_auth/tests/auth_error_taxonomy.rs`). `afd_sse::Error` is the same shape
-for the same reason. A crate on THIS side of the line must say which property put
-it there, in its own module note — being a plain enum today is not the argument.
+product, and buy nothing. It would also cost the exhaustive `ALL` walk that pins
+each client-visible detail string byte-for-byte
+(`rustd/crates/daemon/afd_auth/tests/auth_error_taxonomy.rs`).
+
+`afd_sse::Error` is the same shape for the same reason. A crate on THIS side of
+the line must say which property put it there, in its own module note. Being a
+plain enum today is not the argument.
 
 **`afd_state` inherits rather than declares.** It implements `afd_auth`'s
 `CredentialDirectory` and `CapabilitySource`, whose signatures mandate
@@ -114,8 +122,9 @@ it there, in its own module note — being a plain enum today is not the argumen
 foreign trait does not choose the trait's error type.
 
 **A finer-grained type still lifts.** The carve-out below lets a crate keep a
-second type where a caller DISCRIMINATES on it — and that type still composes
-into the crate's `Error`, through `error_lifts!` or a hand-written `From`, so a
+second type where a caller DISCRIMINATES on it.
+
+That type still composes into the crate's `Error`, through `error_lifts!` or a hand-written `From`, so a
 caller that only propagates keeps writing `Result<T>`.
 
 ## Conformance, crate by crate
@@ -162,23 +171,26 @@ property their row names.
 ### Where rule 1 is deliberately not met, and why
 
 **`agentsfleetd` has two error types.** They cannot be merged. Both compose
-`afd_db::Error` by `#[from]` — boot's when the API pool will not open,
-migrate's when the schema will not apply — and one enum cannot carry two
-variants deriving `From<afd_db::Error>`, because that is two `From` impls for
-one pair of types. Collapsing them into a single variant would be worse than
-the duplication: "the API database would not answer" and "the schema was not
-applied" are different incidents with different fixes, and `serve` and
-`migrate` are different processes that never run at once. The crate therefore
-carries no `Result` alias either: it would have to default to one of the two,
-and a reader seeing the short spelling would have to check which — the exact
-thing rule 1 exists to prevent.
+`afd_db::Error` by `#[from]` (boot's when the API pool will not open, migrate's
+when the schema will not apply).
+
+One enum cannot carry two variants deriving `From<afd_db::Error>`, because that
+is two `From` impls for one pair of types. Collapsing them into a single variant
+would be worse than the duplication. "The API database would not answer" and
+"the schema was not applied" are different incidents with different fixes.
+
+`serve` and `migrate` are different processes that never run at once. The crate
+therefore carries no `Result` alias either, since it would have to default to
+one of the two. A reader seeing the short spelling would have to check which,
+and rule 1 exists to prevent exactly that.
 
 **A crate may keep a second, finer-grained type where a caller
 DISCRIMINATES on it.** `afd_auth::VerifyError` is finer than what a client is
-told, on purpose, and `afd_identity::ClaimUnavailable::UnknownSubject` is
-deliberately not an outage — the caller matches on it and answers with the
-empty capability set. Both compose into their crate's `Error` by `From`, so a
-caller that only propagates still writes `Result<T>`. A type that nothing
-discriminates on has not earned this: `afd_identity`'s `BlankSecret` was a unit
-struct exactly one function returned and nothing matched on, and it is a
-variant of `Error` now.
+told, on purpose. `afd_identity::ClaimUnavailable::UnknownSubject` is
+deliberately not an outage, and the caller matches on it and answers with the
+empty capability set.
+
+Both compose into their crate's `Error` by `From`, so a caller that only
+propagates still writes `Result<T>`. A type that nothing discriminates on has
+not earned this. `afd_identity`'s `BlankSecret` was a unit struct exactly one
+function returned and nothing matched on, and it is a variant of `Error` now.

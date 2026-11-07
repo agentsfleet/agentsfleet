@@ -170,7 +170,9 @@ async fn run_task<C: Conversation>(conversation: &mut C) -> Ending<C::Failure> {
 | `after_group` | after a turn's tool calls ran | check the goal after each batch of work |
 | `budget_spent` | when the budget runs out | drop what the run can no longer finish |
 
-The agentsfleet runner installs its own `Task` extension on every durable task. It reads the task's inputs before each model call, checks the goal after each batch of tool calls, and bounds a task that acts by its execution slice. Every other run installs `Plain`.
+The agentsfleet runner installs its own `Task` extension on every durable task. It reads the task's inputs before each model call and checks the goal after each batch of tool calls.
+
+The extension also bounds a task that acts by its run slice. Every other run installs `Plain`.
 
 ## Media
 

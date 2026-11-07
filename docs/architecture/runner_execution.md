@@ -115,7 +115,9 @@ agentsfleet-runner (one binary; a VM or a bare-metal host)
 
 Workspace restore and save, and the supervisor's push, are drawn as the target; neither is built (the Workspace and Repository writes rows above).
 
-**The agent loop runs outside the sandbox.** No model key ever enters a sandbox, so a prompt-injected command cannot read one. The sandbox is a plain executor, so bubblewrap and a microVM sit behind one interface. A model call needs nothing from the sandbox, so once workspace restore exists (not built yet), a call will start during the restore.
+**The agent loop runs outside the sandbox.** No model key ever enters a sandbox, so a prompt-injected command cannot read one.
+
+The sandbox is a plain executor, so bubblewrap and a microVM sit behind one interface. A model call needs nothing from the sandbox, so once workspace restore exists (not built yet), a call will start during the restore.
 
 **The executor is small and ours.** One process per lease inside the sandbox serves spawn, write, read and kill for processes on pseudo-terminals. It also serves the file calls (read, write, append, delete and list) that the supervisor's file tools and `apply_patch` edit through.
 
@@ -149,7 +151,9 @@ Each worker polls for a lease while the last assignment says to take work. It ru
         renewal ticks alongside from the lease's start until the report is answered
 ```
 
-**One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy (`afr_supervisor/src/turns/mod.rs`). A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's affinity slot already admits one live lease per fleet across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane").
+**One run per fleet per runner.** `FleetTurns` is a coordinator task that owns which fleets are busy (`afr_supervisor/src/turns/mod.rs`).
+
+A worker waits for its fleet's turn without a lock, and dropping the turn frees the fleet. The daemon's affinity slot already admits one live lease per fleet across runners ([Runner Fleet](./runner_fleet.md) §"Memory continuity — durable fleet memory rides the trusted plane").
 
 **A refusal ends the lease with a report.** It ends as `startup_posture` before the turn runs (`afr_supervisor/src/lease_loop/refusal.rs`). Refusals cover an unhosted tool or provider, unreadable memory, a size past the wire's bounds, unresolvable egress and a binding no checkout serves.
 
@@ -177,7 +181,9 @@ The cap binds both bodies, and the daemon answers a body past it differently for
 
 [Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
 
-**A backlog past one body is renewed away before the report.** Failed renewals or a request burst can leave over 512 unrecorded lines. Before its report, the settle renews with the oldest 512 until one body holds the rest (`flush` in `afr_supervisor/src/renew/mod.rs`). Each answer's `recorded_through` forgets the lines that renewal recorded.
+**A backlog past one body is renewed away before the report.** Failed renewals or a request burst can leave over 512 unrecorded lines.
+
+Before its report, the settle renews with the oldest 512 until one body holds the rest (`flush` in `afr_supervisor/src/renew/mod.rs`). Each answer's `recorded_through` forgets the lines that renewal recorded.
 
 A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, seq)`.
 
@@ -349,7 +355,9 @@ The release record pins:
 
 Two builds of one record are byte-identical. A changed dependency is a new release, never an edit to an old one. Rebuilding proves we can build a release again; it does not prove an upstream binary came from its claimed source.
 
-**Signed and scanned.** The CI host installs Syft, Grype and cosign after the immutable image is built. They never enter the toolbox. Syft scans a read-only mount and writes the SBOM outside it.
+**Signed and scanned.** The CI host installs Syft, Grype and cosign after the immutable image is built.
+
+Syft, Grype and cosign never enter the toolbox. Syft scans a read-only mount and writes the SBOM outside it.
 
 Syft and Grype use separate caches under the job's temporary directory, so a privileged scan cannot block the unprivileged database reader. Findings in Debian packages are reconciled against Debian's security tracker. A backported fix keeps a version number that a version-only scanner calls vulnerable.
 
@@ -357,7 +365,9 @@ A fixable Critical blocks signing and deployment. cosign signs the release manif
 
 The amd64 build refuses an image above 262,848,512 bytes, the existing image measured in dev run 38072785909. Vulnerabilities are evaluated daily and the snapshot is refreshed weekly. An actively exploited vulnerability with a usable fix gets a new release within 24 hours.
 
-**Downloaded before any lease.** The image is published apart from the runner binary, with an offline bundle carrying both. A host downloads it at install or by background reconciliation, never at lease time. The host keeps the current and previous images, plus any image a lease still holds.
+**Downloaded before any lease.** The image is published apart from the runner binary, with an offline bundle carrying both.
+
+A host downloads it at install or by background reconciliation, never at lease time. The host keeps the current and previous images, plus any image a lease still holds.
 
 A 1 GiB image at 100 Mbit/s is about 86 seconds of transfer. That cost lands at host setup. Every byte a lease needs is local before the host takes the lease.
 
@@ -389,15 +399,21 @@ The existing signed release JSON records retained package versions, archive dige
 
 The build scanner verifies image identity and that commitment, reconstructs records in a temporary OverlayFS upper layer, and scans the complete view. The shipped image has no package database; runner admission keeps its existing signature, byte, digest, architecture and filesystem-feature checks (`scripts/toolbox/build.sh`, `.github/actions/build-toolbox/action.yml`).
 
-**Tools a fleet adds.** A self-contained tool ships as a prebuilt pack at `/opt/tools/<digest>`, mounted before the sandbox is made. The pack carries its own dependency closure, an explicit `PATH` entry and the toolbox digests it works with. A tool that changes system libraries gets a complete image profile instead.
+**Tools a fleet adds.** A self-contained tool ships as a prebuilt pack at `/opt/tools/<digest>`, mounted before the sandbox is made.
+
+The pack carries its own dependency closure, an explicit `PATH` entry and the toolbox digests it works with. A tool that changes system libraries gets a complete image profile instead.
 
 Project dependencies install into `/workspace` with locked versions and tenant-scoped caches, charged to the lease's time and disk. No package is installed at lease admission. Packs are built when a fleet first needs one.
 
 Trees that must merge use a read-only OverlayFS with several `lowerdir` entries and no `upperdir` or `workdir`. Two Debian installations assembled apart are never overlaid, because apt has not resolved the combination.
 
-**Format.** EROFS with LZ4HC stays the default, with its features pinned at build. A switch to zstd (Linux 6.10 and later), an uncompressed image or SquashFS must make the image at least 20% smaller. It may cost at most a 10% p99 regression in first use, on the same package tree and workload.
+**Format.** EROFS with LZ4HC stays the default, with its features pinned at build.
 
-**Under Firecracker.** The same EROFS bytes become the guest's read-only virtio root disk. The host's bind of `agentsfleet-runner` cannot reach a guest. So the binary and a small init travel inside the image or on a second read-only disk.
+A switch to zstd (Linux 6.10 and later), an uncompressed image or SquashFS must make the image at least 20% smaller. It may cost at most a 10% p99 regression in first use, on the same package tree and workload.
+
+**Under Firecracker.** The same EROFS bytes become the guest's read-only virtio root disk.
+
+The host's bind of `agentsfleet-runner` cannot reach a guest. So the binary and a small init travel inside the image or on a second read-only disk.
 
 The workspace disk is a separate ext4 data disk, never mounted by the host and a guest at once; ownership passes between them. A pack becomes another guest disk or is flattened into a profile at build.
 
@@ -485,7 +501,9 @@ Three questions have no signal yet. Nothing times an event's wait for its lease,
 | Processes | the lease's memory cgroup, no swap | 2 GiB | one command, unless it leaves the shell's process group; exec sessions close at run end | `afr_sandbox/src/cgroup/mod.rs`, `afr_executor/src/server/process/mod.rs`, `afr_agent/src/loop/finish.rs` |
 | Report spool, repository mirrors, lease sandboxes | the storage home's `spool/`, `git/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config/mod.rs`, `afr_supervisor/src/storage_home/mod.rs` |
 
-**What bounds a runner host.** The image does not, because its blocks sit in shared page cache that memory pressure evicts. The lease limits bound memory, summed over the host's workers. A sandbox gets 2 GiB by default and up to 64 GiB when its lease names a size.
+**What bounds a runner host.** The image does not, because its blocks sit in shared page cache that memory pressure evicts.
+
+The lease limits bound memory, summed over the host's workers. A sandbox gets 2 GiB by default and up to 64 GiB when its lease names a size.
 
 The worker count defaults to 1 and caps at 64 (`af_core/src/limits.rs`). So default limits reach 128 GiB at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease by default and up to 256 GiB for a sized one, sparse, with no headroom reserved.
 

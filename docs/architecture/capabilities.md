@@ -1,8 +1,10 @@
 # Capabilities (what the fleet has, what the platform guarantees)
 
 > Parent: [`README.md`](./README.md). User-facing: [docs.agentsfleet.net/fleets/tools](https://docs.agentsfleet.net/fleets/tools) (the tool inventory) and [docs.agentsfleet.net/concepts/context-lifecycle](https://docs.agentsfleet.net/concepts/context-lifecycle) (§4 as a user reads it).
->
-> **Scope:** the platform *guarantees* below are binding. The *mechanism* runs on the split. `agentsfleetd` (control plane) assigns work and resolves policy on `lease`. The host-resident `agentsfleet-runner` enforces the hard layer in its supervisor and the lease's sandbox ([`runner_execution.md`](./runner_execution.md#process-model)). See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
+
+> **Scope:** the platform *guarantees* below are binding. The *mechanism* runs on the split. `agentsfleetd` (control plane) assigns work and resolves policy on `lease`.
+
+> The host-resident `agentsfleet-runner` enforces the hard layer in its supervisor and the lease's sandbox ([`runner_execution.md`](./runner_execution.md#process-model)). See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
 
 A Fleet's capabilities split into two layers. The soft layer is what the language model is told it can do, which the model can ignore or get wrong. The hard layer is what the platform enforces, which the model cannot escape from inside the sandbox.
 

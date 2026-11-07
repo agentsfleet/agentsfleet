@@ -301,7 +301,9 @@ deleted once it had served its purpose. This section is what survives it,
 because one half of the move is finished and the other has not started.
 
 **Development: retired.** `agentsfleetd-dev` has served on the `dragonfly-dev`
-cluster since Sep 17, 2026. The `upstash-dev` vault item was archived out of
+cluster since Sep 17, 2026.
+
+The `upstash-dev` vault item was archived out of
 `ZMB_CD_DEV` the same day on Indy's named approval. Indy deleted the hosted
 Upstash database itself from the provider console.
 

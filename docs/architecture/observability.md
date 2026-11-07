@@ -386,14 +386,18 @@ agentsfleetd (built)
 ```
 
 **Why raw runner logs bypass `agentsfleetd`.** A log line is an unbounded byte
-stream; heartbeat and report are bounded semantic messages. Routing logs
+stream; heartbeat and report are bounded semantic messages.
+
+Routing logs
 through the control plane would tie request and database capacity to log
 volume. It would also make the control plane the failure point for the
 diagnostics you need when that plane is unhealthy.
 
 **Runner collector rules (fail-closed on privacy).** It forwards only
 single-line logfmt records after an allowlist: `ts_ms`, `level`, `scope`,
-`event`, registered `error_code`, reviewed bounded metadata. It drops
+`event`, registered `error_code`, reviewed bounded metadata.
+
+It drops
 prompts, response bodies, tokens, credentials, environment values, arbitrary
 `msg` text, and anything it cannot parse. Sampling is level- or rate-based
 after redaction; it never reads payload content or tenant identity.
@@ -491,7 +495,9 @@ Correlation identity is allowed on a span because each span is a bounded per-eve
 A metric label creates a series that outlives the process, so metrics exclude correlation identity.
 Prompt and response content never becomes a span attribute.
 
-**Route policy.** None yet. The daemon traces every matched request. It has no
+**Route policy.** None yet.
+
+The daemon traces every matched request. It has no
 head sampler and no per-class span budget, so nothing is suppressed and no
 family counts suppression.
 
@@ -657,12 +663,15 @@ without teaching the daemon about both.
 
 **The collector is a Fly app per environment, reached only on the private
 network.** `otelcol-{dev,prod}` hold the vendor credential and export upstream.
+
 The daemon's endpoint names them instead of the vendor, and it still posts to
 `{endpoint}/v1/{logs,traces,metrics}`. Only the host on the front changed, so
 the repoint is one staged string and no daemon source edit.
 
 **Its receiver requires a credential, and that is not optional.** The private
-network spans the whole organisation rather than this app pair. An
+network spans the whole organisation rather than this app pair.
+
+An
 unauthenticated receiver in front of the vendor key would be a relay any
 workload on that network can post through. The daemon already sends a Basic
 pair on every export; the collector checks it, which keeps the boundary where
