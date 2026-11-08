@@ -12,6 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+afd_bus.workspace = true
 # THE dependency that makes this a measurement rather than a model: the lanes
 # drive `Leases::select`, the real assignment pass, not a copy of it. A
 # reimplementation would not compile against these signatures (Invariant 2).

@@ -140,11 +140,7 @@ async fn submit(
     let slices = partition(fleets, parameters.concurrency);
     let stop = CancellationToken::new();
     let sampler = tokio::spawn(sample_depth(
-        Admissions::new(
-            stores.database.clone(),
-            stores.queue.clone(),
-            Entropy::new(),
-        ),
+        Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new()),
         stop.clone(),
     ));
     let dragonfly_before = dragonfly_calls(&stores.queue).await?;
@@ -183,7 +179,7 @@ async fn append_all(
     for mine in slices {
         let steer = Steer::new(Admissions::new(
             stores.database.clone(),
-            stores.queue.clone(),
+            stores.bus.clone(),
             Entropy::new(),
         ));
         let abort = Arc::clone(abort);

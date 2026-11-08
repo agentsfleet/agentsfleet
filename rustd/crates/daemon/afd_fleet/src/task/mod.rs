@@ -115,7 +115,7 @@ impl Tasks {
         };
         self.leases
             .streams()
-            .publish_frame(scope.fleet_id.as_str(), &frame)
+            .publish_frame(&afd_bus::Subject::FleetTail(scope.fleet_id.clone()), &frame)
             .await;
     }
 }

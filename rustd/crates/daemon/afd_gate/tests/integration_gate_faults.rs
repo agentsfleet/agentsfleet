@@ -36,7 +36,11 @@ async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");
-    let gates = Gates::new(fixture.database.clone(), dead_queue, Entropy::new());
+    let gates = Gates::new(
+        fixture.database.clone(),
+        afd_bus::dragonfly::publisher(dead_queue),
+        Entropy::new(),
+    );
     let policy_kill = config_gates(KILL_EVERY_CHAT);
 
     let event = mint_id();
@@ -59,7 +63,11 @@ fn gates_without_a_queue(database: afd_db::Db) -> Gates {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");
-    Gates::new(database, dead_queue, Entropy::new())
+    Gates::new(
+        database,
+        afd_bus::dragonfly::publisher(dead_queue),
+        Entropy::new(),
+    )
 }
 
 #[tokio::test]

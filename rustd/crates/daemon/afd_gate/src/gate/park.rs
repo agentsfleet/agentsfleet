@@ -29,7 +29,6 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_dragonfly::streams::FleetStreams;
 use jiff::Timestamp;
 
 use super::sql;
@@ -148,8 +147,11 @@ impl Gates {
             pending_approvals: recorded.pending_approvals,
             counters: recorded.counters,
         };
-        FleetStreams::new(self.queue().clone())
-            .publish_frame(request.fleet_id.as_str(), &frame)
+        self.bus()
+            .publish_frame(
+                &afd_bus::Subject::FleetTail(request.fleet_id.clone()),
+                &frame,
+            )
             .await;
     }
 

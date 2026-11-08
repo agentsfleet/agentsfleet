@@ -131,8 +131,12 @@ async fn test_fleet_stream_opens_with_hello_before_any_activity() {
     let mut primer = hub.subscribe(&activity);
     prime(&publisher, &activity, &mut primer).await;
 
-    let live = Live::new(hub, Ceiling::new(1));
-    let mut stream = Box::pin(live.tail_of(&fleet));
+    let live = Live::new(
+        afd_bus::test_util::with_hub(hub).expect("fixture bus"),
+        Ceiling::new(1),
+    );
+    let fleet_id = af_core::id::Uuid7::parse(&fleet).expect("canonical fixture fleet");
+    let mut stream = Box::pin(live.tail_of(&fleet_id).await);
 
     // Nothing is published before this read. The frame must arrive anyway --
     // that IS the claim, and a test that published first would pass on the
@@ -167,7 +171,7 @@ async fn test_fleet_stream_opens_with_hello_before_any_activity() {
 }
 
 async fn assert_ordered_frames(publisher: &FleetStreams, hub: &SubscriptionHub, activity: &str) {
-    let mut first = Box::pin(tail(hub.subscribe(activity)));
+    let mut first = Box::pin(tail(subscription(hub, activity)));
 
     for n in 0..ORDERED_FRAMES {
         publisher
@@ -206,7 +210,7 @@ async fn assert_reconnect_starts_over(
 
     drain_until(primer, missed).await;
 
-    let mut second = Box::pin(tail(hub.subscribe(activity)));
+    let mut second = Box::pin(tail(subscription(hub, activity)));
     let resumed = payload(0);
     publisher
         .publish(activity, &resumed)
@@ -293,4 +297,14 @@ async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_dragon
             "the subscription never went live on {activity}"
         );
     }
+}
+
+fn subscription(hub: &SubscriptionHub, channel: &str) -> afd_bus::Subscription {
+    let fleet = channel
+        .strip_prefix("fleet:")
+        .and_then(|name| name.strip_suffix(":activity"))
+        .expect("fleet activity address");
+    let subject =
+        afd_bus::Subject::FleetTail(af_core::id::Uuid7::parse(fleet).expect("canonical fleet"));
+    afd_bus::test_util::subscription(hub.subscribe(channel), subject)
 }

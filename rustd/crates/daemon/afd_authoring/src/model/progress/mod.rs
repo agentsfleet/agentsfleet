@@ -21,12 +21,6 @@ pub(super) const DELTA_BYTES: usize = 4096;
 /// Private answer event name, shared by the publisher and HTTP adapter.
 pub const DELTA_EVENT: &str = "message.delta";
 
-/// The subject is private; no workspace or fleet activity channel carries it.
-#[must_use]
-pub fn draft_channel(draft: &Uuid7) -> String {
-    format!("draft:{draft}:events")
-}
-
 /// Only answer text is eligible for a private preview.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

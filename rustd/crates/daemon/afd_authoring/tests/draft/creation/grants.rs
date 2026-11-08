@@ -91,8 +91,12 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
     assert_eq!(pending[0].1, "pending");
     let inbox = Inbox::new(
         c.base.db.clone(),
-        c.queue.clone(),
-        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()),
+        afd_bus::dragonfly::publisher(c.queue.clone()),
+        Admissions::new(
+            c.base.db.clone(),
+            afd_bus::dragonfly::publisher(c.queue.clone()),
+            Entropy::new(),
+        ),
     );
     let resolved = inbox
         .resolve(
@@ -124,8 +128,12 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
     assert_eq!(pending.len(), 1);
     let inbox = Inbox::new(
         c.base.db.clone(),
-        c.queue.clone(),
-        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()),
+        afd_bus::dragonfly::publisher(c.queue.clone()),
+        Admissions::new(
+            c.base.db.clone(),
+            afd_bus::dragonfly::publisher(c.queue.clone()),
+            Entropy::new(),
+        ),
     );
     let resolved = inbox
         .resolve(

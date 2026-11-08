@@ -52,7 +52,11 @@ fn unreachable_gates() -> Gates {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");
-    Gates::new(afd_db::test_util::unreachable_db(), queue, Entropy::new())
+    Gates::new(
+        afd_db::test_util::unreachable_db(),
+        afd_bus::dragonfly::publisher(queue),
+        Entropy::new(),
+    )
 }
 
 /// The `reason` an event carried, proven free of a code prefix and of a

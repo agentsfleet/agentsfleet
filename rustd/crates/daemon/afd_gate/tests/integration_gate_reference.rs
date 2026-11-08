@@ -21,7 +21,11 @@ async fn a_reencountered_event_keeps_its_deadline_and_late_answer() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let queue = connect_redis().await;
-    let gates = Gates::new(fixture.database.clone(), queue, Entropy::new());
+    let gates = Gates::new(
+        fixture.database.clone(),
+        afd_bus::dragonfly::publisher(queue),
+        Entropy::new(),
+    );
     let ruled = config_gates(APPROVE_CHAT);
     let event = &mint_id();
     assert_eq!(

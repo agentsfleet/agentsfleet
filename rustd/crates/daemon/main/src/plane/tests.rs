@@ -55,6 +55,7 @@ fn plane() -> ServingPlane {
         authoring_transport: afd_authoring::Network::new()
             .expect("fixed transport builds without a network request"),
         database,
+        bus: afd_bus::dragonfly::publisher(queue.clone()),
         queue,
         kek: Arc::new(Kek::from_bytes([0x2a; 32])),
         capabilities: Capabilities::Unconfigured(NoCapabilitySource),
@@ -167,18 +168,22 @@ async fn production_plane_hands_each_route_its_deployment_facts() {
 /// lease store; that hand-off is one line beside it in `plane/mod.rs`.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn test_the_daemon_doorbell_hears_its_hub() {
+async fn test_the_wake_queue_hears_the_shared_bus() {
     use af_core::id::Uuid7;
-    use afd_dragonfly::SubscriptionHub;
+    use afd_bus::{Subject, wake::Wake};
 
     /// Long enough for the listener task to hear a frame the server pushed.
     const HEARD_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
-    let (hub, server) = SubscriptionHub::detached();
-    let live = Live::new(hub, Ceiling::new(1));
-    let doorbell = super::listening_doorbell(&live);
+    let (bus, server) = afd_bus::test_util::detached().expect("fixture bus");
+    let doorbell = Wake::default();
+    let stop = tokio_util::sync::CancellationToken::new();
+    let _listeners = doorbell
+        .listen(&bus, &stop)
+        .await
+        .expect("wake subscriptions");
     let rung = Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").expect("fleet");
-    server.publish("fleet:wake:{6}", rung.as_str());
+    server.publish(&Subject::Wake(6), rung.as_str());
 
     let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
     let mut taken = None;

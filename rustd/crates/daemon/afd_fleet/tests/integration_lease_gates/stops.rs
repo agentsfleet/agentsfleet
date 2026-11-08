@@ -91,10 +91,10 @@ async fn test_approval_resolution_leases_next_poll() {
 
     let resolved = Inbox::new(
         fixtures.database.clone(),
-        fixtures.queue().clone(),
+        afd_bus::dragonfly::publisher(fixtures.queue().clone()),
         Admissions::new(
             fixtures.database.clone(),
-            fixtures.queue().clone(),
+            afd_bus::dragonfly::publisher(fixtures.queue().clone()),
             Entropy::new(),
         ),
     )

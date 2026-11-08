@@ -38,6 +38,7 @@ async fn test_concurrent_claims_lease_one_row() {
     let replica = Leases::new(
         fixtures.open(DbRole::Api).await,
         crate::queue::unreachable(),
+        afd_bus::dragonfly::publisher(crate::queue::unreachable()),
         af_crypto::entropy::Entropy::new(),
     );
     let replicas = [fixtures.leases_with_dead_queue(), replica];

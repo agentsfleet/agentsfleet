@@ -173,7 +173,10 @@ impl crate::lease::Leases {
                 resource_version: super::row::counter(version, "resource_version")?,
             };
             self.streams()
-                .publish_frame(acquired.fleet_id.as_str(), &frame)
+                .publish_frame(
+                    &afd_bus::Subject::FleetTail(acquired.fleet_id.clone()),
+                    &frame,
+                )
                 .await;
             tracing::info!(
                 event = "dt_transition",

@@ -51,7 +51,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     fixture.seed().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let hub = SubscriptionHub::start(dragonfly_config())

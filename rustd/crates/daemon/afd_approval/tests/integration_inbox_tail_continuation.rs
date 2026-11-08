@@ -109,7 +109,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(
         lane.pool.clone(),
-        dead_queue(),
+        afd_bus::dragonfly::publisher(dead_queue()),
         Admissions::for_tests(lane.pool.clone(), dead_queue()),
     );
     let action = lane.seed_gate(Window::Open).await;
