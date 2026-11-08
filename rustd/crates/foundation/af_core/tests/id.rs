@@ -267,10 +267,10 @@ fn should_equal_its_canonical_text_from_either_side() {
     let text = "0197a4ba-8d3a-7f13-8abc-123456789abc";
     let id = Uuid7::parse(text).expect("the fixture is a v7 spelling");
     let owned = text.to_owned();
-    assert!(id == *text);
-    assert!(*text == id);
-    assert!(text == id);
-    assert!(id == owned);
-    assert!(owned == id);
-    assert!(id != *"0197a4ba-8d3a-7f13-8abc-123456789abd");
+    assert_eq!(id, *text);
+    assert_eq!(*text, id);
+    assert_eq!(text, id);
+    assert_eq!(id, owned);
+    assert_eq!(owned, id);
+    assert_ne!(id, *"0197a4ba-8d3a-7f13-8abc-123456789abd");
 }
