@@ -57,8 +57,11 @@ pub(crate) async fn open<D: Services>(
         person.subject().to_owned(),
         draft,
         view.generation,
-        slot,
-        subscription,
+        body::Feed {
+            slot,
+            live: live.clone(),
+            subscription,
+        },
     );
     Ok(Sse::new(stream).into_response())
 }

@@ -5,10 +5,9 @@
 //!
 //! `afd_fleet::bundle::Bundles::unconfigured` is the shape this follows. An
 //! instance with no pub/sub connection still SERVES the stream routes: the
-//! connection opens, the ceiling is charged, the heartbeat runs, and no frame
-//! ever arrives. That is the honest behaviour — the events list is still there
-//! and a client polls it — where a 500 would take the dashboard down over a
-//! surface that is by construction best-effort.
+//! connection opens, the ceiling is charged and the heartbeat runs. A fleet
+//! tail tells the viewer it is catching up rather than going silent, so the
+//! UI backfills from Postgres (M244 §6).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,23 +18,38 @@ use futures_util::stream::{self, BoxStream};
 use crate::ceiling::{Ceiling, Slot};
 use crate::fanin::FanIn;
 use crate::frame::Frame;
-use crate::tail::tail;
+use crate::resubscribe::{Resubscribe, resilient};
 
 /// What the two stream routes act through.
 #[derive(Debug, Clone)]
 pub struct Live {
     bus: Option<Handle>,
     ceiling: Ceiling,
+    resubscribe: Resubscribe,
 }
 
 impl Live {
     /// The live surface of an instance holding a pub/sub connection.
     #[must_use]
-    pub const fn new(bus: Handle, ceiling: Ceiling) -> Self {
+    pub fn new(bus: Handle, ceiling: Ceiling) -> Self {
         Self {
             bus: Some(bus),
             ceiling,
+            resubscribe: Resubscribe::default(),
         }
+    }
+
+    /// Replaces how a lost tail retries, such as from a configuration file.
+    #[must_use]
+    pub const fn with_resubscribe(mut self, resubscribe: Resubscribe) -> Self {
+        self.resubscribe = resubscribe;
+        self
+    }
+
+    /// How a lost tail retries.
+    #[must_use]
+    pub const fn resubscribe(&self) -> &Resubscribe {
+        &self.resubscribe
     }
 
     /// The live surface of an instance with no pub/sub connection.
@@ -43,8 +57,12 @@ impl Live {
     /// Its streams open, count against the ceiling, and stay silent. See the
     /// module header for why that is the behaviour rather than a refusal.
     #[must_use]
-    pub const fn detached(ceiling: Ceiling) -> Self {
-        Self { bus: None, ceiling }
+    pub fn detached(ceiling: Ceiling) -> Self {
+        Self {
+            bus: None,
+            ceiling,
+            resubscribe: Resubscribe::default(),
+        }
     }
 
     /// The hub behind this surface, for the shutdown that closes it.
@@ -73,17 +91,20 @@ impl Live {
         self.ceiling.capacity()
     }
 
-    /// Subscribe before announcing a live fleet stream.
+    /// Subscribe before announcing a live fleet stream, then tell the viewer
+    /// to backfill once: frames published before the interest reached the
+    /// publisher's node are only in Postgres. A failed subscribe still opens
+    /// the stream and keeps retrying, so the viewer is never left with only
+    /// heartbeats.
     pub async fn tail_of(&self, fleet: &af_core::id::Uuid7) -> BoxStream<'static, Frame> {
-        let Some(subscription) = self
-            .subscribe(&afd_bus::Subject::FleetTail(fleet.clone()))
-            .await
-        else {
-            return stream::pending().boxed();
-        };
-        let opening = Frame::hello(&[fleet.to_string()], &BTreeMap::new());
-        stream::once(async move { opening })
-            .chain(tail(subscription))
+        let subject = afd_bus::Subject::FleetTail(fleet.clone());
+        let first = self.subscribe(&subject).await;
+        let opening = [
+            Frame::hello(&[fleet.to_string()], &BTreeMap::new()),
+            Frame::catching_up(0),
+        ];
+        stream::iter(opening)
+            .chain(resilient(self.clone(), subject, first))
             .boxed()
     }
 
@@ -139,7 +160,7 @@ mod tests {
     use crate::ceiling::Ceiling;
 
     #[tokio::test]
-    async fn detached_live_streams_are_admitted_but_stay_silent() {
+    async fn detached_live_streams_are_admitted_and_announce_the_gap() {
         let live = Live::detached(Ceiling::new(2));
         assert!(live.bus().is_none());
         assert_eq!(live.capacity(), 2);
@@ -152,9 +173,16 @@ mod tests {
                     .expect("canonical fleet"),
             )
             .await;
+        for kind in ["hello", "catching_up"] {
+            let frame = tail.next().await.expect("the detached tail opens");
+            assert_eq!(
+                frame.kind, kind,
+                "a detached tail announces it cannot follow"
+            );
+        }
         tokio::time::timeout(Duration::from_millis(1), tail.next())
             .await
-            .expect_err("a detached tail must remain pending");
+            .expect_err("then a detached tail retries quietly");
 
         let mut multiplex = live
             .multiplex_of(&BTreeSet::from(["fleet-a".to_owned()]))

@@ -48,6 +48,8 @@ async fn watch(members: &Members) -> (BodyDataStream, SubscriptionHub) {
     assert_eq!(response.status(), StatusCode::OK, "{path} opens");
     let mut body = response.into_body().into_data_stream();
     assert!(next_chunk(&mut body).await.contains("event: hello"));
+    // One backfill prompt after subscribing (M244 §6).
+    assert!(next_chunk(&mut body).await.contains("event: catching_up"));
     (body, hub)
 }
 

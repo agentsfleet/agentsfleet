@@ -22,7 +22,24 @@ struct Watch {
     delay: Duration,
     done: bool,
     subscription: Option<afd_bus::Subscription>,
+    /// Where a lost subscription is reopened.
+    live: afd_sse::Live,
+    /// A subscription was lost and the viewer is not yet told to resync.
+    lost: bool,
+    /// The viewer was told; a further loss before any delivery is the same
+    /// outage and is not announced again.
+    resynced: bool,
     _slot: afd_sse::Slot,
+}
+
+/// What a draft stream reads live progress through.
+pub(super) struct Feed {
+    /// This stream's place under the instance's ceiling.
+    pub(super) slot: afd_sse::Slot,
+    /// Where a lost subscription is reopened.
+    pub(super) live: afd_sse::Live,
+    /// The subscription the handler confirmed before answering, if any.
+    pub(super) subscription: Option<afd_bus::Subscription>,
 }
 
 pub(super) fn frames(
@@ -31,9 +48,13 @@ pub(super) fn frames(
     subject: String,
     draft: Uuid7,
     generation: i64,
-    slot: afd_sse::Slot,
-    subscription: Option<afd_bus::Subscription>,
+    feed: Feed,
 ) -> impl Stream<Item = Result<Event, Infallible>> + Send + 'static {
+    let Feed {
+        slot,
+        live,
+        subscription,
+    } = feed;
     stream::unfold(
         Watch {
             drafts,
@@ -44,7 +65,10 @@ pub(super) fn frames(
             seen: HashMap::new(),
             delay: Duration::ZERO,
             done: false,
+            lost: false,
+            resynced: false,
             subscription,
+            live,
             _slot: slot,
         },
         step,
@@ -54,6 +78,16 @@ pub(super) fn frames(
 async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
     let heartbeat_at = tokio::time::Instant::now() + afd_sse::HEARTBEAT_INTERVAL;
     while !watch.done {
+        if watch.subscription.is_none() {
+            let subject = afd_bus::Subject::DraftEvents(watch.draft.clone());
+            watch.subscription = watch.live.subscribe(&subject).await;
+        }
+        if watch.lost {
+            // A lost subscription may have dropped progress; the viewer reloads.
+            watch.lost = false;
+            watch.resynced = true;
+            return Some((Ok(resync()), watch));
+        }
         let pending = receive(&mut watch).await;
         let access = Access {
             workspace: &watch.workspace,
@@ -102,6 +136,10 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
     None
 }
 
+fn resync() -> Event {
+    Event::default().event("draft.resync").data("{}")
+}
+
 fn deleted(draft: &Uuid7) -> Option<Event> {
     Event::default()
         .event("draft.deleted")
@@ -121,9 +159,11 @@ async fn receive(watch: &mut Watch) -> Option<afd_bus::Received> {
     tokio::select! {
         () = tokio::time::sleep(watch.delay) => None,
         received = subscription.recv() => if let Ok(received) = received {
+            watch.resynced = false;
             Some(received)
         } else {
             watch.subscription = None;
+            watch.lost = !watch.resynced;
             None
         },
     }
@@ -142,9 +182,7 @@ fn preview(
 ) -> Option<Event> {
     use afd_bus::Received;
     match received {
-        Received::Gap | Received::Lagged(_) => {
-            Some(Event::default().event("draft.resync").data("{}"))
-        }
+        Received::Gap | Received::Lagged(_) => Some(resync()),
         Received::Message(message) => {
             let bounded = garde::Unvalidated::new(Payload {
                 value: &message.payload,

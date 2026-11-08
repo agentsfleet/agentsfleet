@@ -104,10 +104,16 @@ async fn subscription_gap_and_lag_request_resync_without_private_text() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn stopped_hub_falls_back_to_durable_notices_then_closes() {
+async fn draft_stream_resyncs_when_its_subscription_ends() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
     live.hub.shutdown();
+    let resync = tokio::time::timeout(super::DELIVERY, body.next())
+        .await
+        .expect("a lost subscription is announced")
+        .expect("the running draft stays open")
+        .expect("infallible body");
+    assert_eq!(resync.as_ref(), b"event: draft.resync\ndata: {}\n\n");
     let heartbeat =
         tokio::time::timeout(afd_sse::HEARTBEAT_INTERVAL + super::DELIVERY, body.next())
             .await

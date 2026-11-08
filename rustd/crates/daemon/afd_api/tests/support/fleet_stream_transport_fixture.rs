@@ -130,8 +130,15 @@ impl Watched {
                 HELLO_SEQ,
                 &json!({"kind":"hello","fleet_ids":[&self.fixture.fleet],"counters":{}}),
             );
-            // Still sequence zero: `hello` is the server talking about the
-            // stream, so it spends no activity number.
+            // Then one `catching_up`, so the client backfills whatever was
+            // published before its interest reached the publisher (M244 §6).
+            assert_frame(
+                &next_frame(body).await,
+                HELLO_SEQ,
+                &json!({"kind":"catching_up","dropped":0}),
+            );
+            // Still sequence zero: control frames are the server talking about
+            // the stream, so they spend no activity number.
             assert_frame(&next_frame(body).await, 0, &payload);
         }
     }
