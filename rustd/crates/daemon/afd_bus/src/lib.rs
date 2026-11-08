@@ -10,6 +10,7 @@ use serde::Serialize;
 mod command;
 pub mod dragonfly;
 pub mod error;
+pub mod nats;
 mod subject;
 mod subscription;
 #[cfg(any(test, feature = "test-util"))]
