@@ -1,0 +1,37 @@
+[package]
+name = "afd_bus"
+description = "Typed ephemeral signals with one replaceable broker adapter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+test-util = ["afd_dragonfly/test-util"]
+
+[dependencies]
+af_core.workspace = true
+af_observability.workspace = true
+afd_dragonfly.workspace = true
+async-trait.workspace = true
+crc16.workspace = true
+futures-util.workspace = true
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }

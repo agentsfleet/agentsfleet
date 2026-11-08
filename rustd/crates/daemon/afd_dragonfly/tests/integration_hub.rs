@@ -54,7 +54,7 @@ async fn test_runner_activity_batch_reaches_the_hub_in_order() {
         else {
             panic!("a batch frame, not a lag notice");
         };
-        assert_eq!(message.payload, expected);
+        assert_eq!(message.payload.as_str(), expected);
     }
 }
 
@@ -108,7 +108,7 @@ async fn test_hub_refcount_single_connection() {
         let Received::Message(message) = received else {
             panic!("a message, not a lag notice");
         };
-        assert_eq!(message.payload, "hello");
+        assert_eq!(message.payload.as_str(), "hello");
         assert_eq!(message.channel, channel);
     }
 
@@ -163,7 +163,7 @@ async fn publish_until_delivered(
             .expect("publish succeeds");
 
         match tokio::time::timeout(Duration::from_millis(100), reader.recv()).await {
-            Ok(Ok(Received::Message(message))) if message.payload == payload => return,
+            Ok(Ok(Received::Message(message))) if message.payload.as_str() == payload => return,
             Ok(Ok(_)) => {}
             Ok(Err(failure)) => panic!("the hub closed: {failure}"),
             Err(_elapsed) => {}

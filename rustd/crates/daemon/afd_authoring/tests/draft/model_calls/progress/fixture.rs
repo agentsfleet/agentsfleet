@@ -132,7 +132,7 @@ impl Live {
             if let Ok(Ok(Received::Message(message))) =
                 tokio::time::timeout(Duration::from_millis(100), self.reader.recv()).await
             {
-                assert_eq!(message.payload, HELLO);
+                assert_eq!(message.payload.as_str(), HELLO);
                 return;
             }
         }
@@ -177,10 +177,10 @@ impl Live {
         tokio::time::timeout(WAIT, async {
             loop {
                 let message = message(self.reader.recv().await.expect("bus stays live"));
-                if message.payload == HELLO {
+                if message.payload.as_str() == HELLO {
                     continue;
                 }
-                return message.payload.clone();
+                return message.payload.as_ref().clone();
             }
         })
         .await
@@ -198,7 +198,8 @@ impl Live {
             .expect("live bus");
         let message = message(received);
         assert_eq!(
-            message.payload, BARRIER,
+            message.payload.as_str(),
+            BARRIER,
             "no unauthorized text before the bus barrier"
         );
     }

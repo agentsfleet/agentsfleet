@@ -7,6 +7,8 @@
 //! of its own choosing would make [`crate::runner::MAX_SERIES`] a suggestion.
 
 use af_wire::report::{FailureClass, Outcome};
+
+pub mod stream;
 use opentelemetry::KeyValue;
 
 use crate::producers::fleet::UNMODELLED_REASON;

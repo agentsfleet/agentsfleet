@@ -246,7 +246,7 @@ async fn drain_until(reader: &mut afd_dragonfly::Subscription, payload: &str) {
     loop {
         match tokio::time::timeout(DELIVERY_BUDGET, reader.recv()).await {
             Ok(Ok(afd_dragonfly::hub::Received::Message(message)))
-                if message.payload == payload =>
+                if message.payload.as_str() == payload =>
             {
                 return;
             }
@@ -278,7 +278,9 @@ async fn prime(publisher: &FleetStreams, activity: &str, reader: &mut afd_dragon
             .expect("the publish reaches Dragonfly");
 
         match tokio::time::timeout(Duration::from_millis(100), reader.recv()).await {
-            Ok(Ok(afd_dragonfly::hub::Received::Message(message))) if message.payload == marker => {
+            Ok(Ok(afd_dragonfly::hub::Received::Message(message)))
+                if message.payload.as_str() == marker =>
+            {
                 return;
             }
             Ok(Ok(_other)) => {}

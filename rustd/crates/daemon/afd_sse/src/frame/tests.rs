@@ -28,7 +28,7 @@ const CHUNK: &str = r#"{"kind":"chunk","text":"hi"}"#;
 fn published(payload: &str) -> Arc<Message> {
     Arc::new(Message {
         channel: format!("fleet:{FLEET}:activity"),
-        payload: payload.to_owned(),
+        payload: Arc::new(payload.to_owned()),
     })
 }
 

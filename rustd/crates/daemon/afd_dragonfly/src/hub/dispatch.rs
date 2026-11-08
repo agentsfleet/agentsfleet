@@ -188,7 +188,10 @@ fn message_of(data: Vec<Value>) -> Option<Message> {
     let mut fields = data.into_iter();
     let channel = text(&fields.next()?)?;
     let payload = text(&fields.next()?).unwrap_or_default();
-    Some(Message { channel, payload })
+    Some(Message {
+        channel,
+        payload: std::sync::Arc::new(payload),
+    })
 }
 
 /// An `ssubscribe` or `sunsubscribe` push carries `[channel, remaining]`.
