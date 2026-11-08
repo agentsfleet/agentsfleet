@@ -17,6 +17,7 @@
 //! non-decision occupy a series.
 
 pub mod billing;
+pub mod bus;
 pub mod cost;
 pub mod database;
 pub mod fleet;

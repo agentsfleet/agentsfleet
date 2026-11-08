@@ -28,7 +28,6 @@ use tokio::{sync::RwLock, task::JoinHandle};
 use crate::{Bus, Handle, Result, Subject, Subscription, error::ErrorKind};
 
 pub use config::{Config, NAMESPACE_ENV, URL_ENV};
-pub use signals::Cause;
 pub use tuning::Tuning;
 
 use self::{hub::Channels, signals::Signals};

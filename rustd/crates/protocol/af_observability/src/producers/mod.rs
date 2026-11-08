@@ -31,6 +31,7 @@
 //! the HTTP shell.
 
 pub mod billing;
+pub mod bus;
 pub mod cost;
 pub mod database;
 pub mod fleet;
@@ -62,6 +63,7 @@ pub struct Producers {
     pub(crate) cost: cost::Handles,
     pub(crate) billing: billing::Handles,
     pub(crate) task: task::Handles,
+    pub(crate) bus: bus::Handles,
 }
 
 impl Producers {
@@ -86,6 +88,7 @@ impl Producers {
             cost: cost::Handles::claim(instruments)?,
             billing: billing::Handles::claim(instruments)?,
             task: task::Handles::claim(instruments)?,
+            bus: bus::Handles::claim(instruments)?,
         })
     }
 }

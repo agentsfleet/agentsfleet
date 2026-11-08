@@ -5,8 +5,9 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use crate::metrics::declared::{billing, database, fleet, http, library, scheduler, task};
+use crate::metrics::declared::{billing, bus, database, fleet, http, library, scheduler, task};
 use crate::metrics::label::billing as billing_labels;
+use crate::metrics::label::bus as bus_labels;
 use crate::metrics::label::database as database_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
@@ -39,6 +40,7 @@ fn label_products() -> Vec<(&'static str, usize)> {
     let mut products = pool_schedule_products();
     products.extend(fold_products());
     products.extend(stream_products());
+    products.push((bus::GAPS.wire_name(), bus_labels::GapCause::ALL.len()));
     products.extend([
         (
             task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
@@ -245,6 +247,7 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         }};
     }
     vec![
+        set!(crate::metrics::label::bus::GapCause),
         set!(crate::metrics::label::fleet::StreamPacket),
         set!(crate::metrics::label::fleet::StreamTransport),
         set!(crate::metrics::label::fleet::StreamOutcome),

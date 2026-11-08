@@ -249,6 +249,9 @@ pub const LABEL_RUNNER_ID: &str = "runner_id";
 /// How an operation ended.
 pub const LABEL_OUTCOME: &str = "outcome";
 
+/// What caused a bus gap, from its closed cause set.
+pub const LABEL_CAUSE: &str = "cause";
+
 /// The native runner connection protocol, from its closed transport set.
 pub const LABEL_TRANSPORT: &str = "transport";
 
@@ -302,6 +305,7 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_ATTRIBUTE,
     LABEL_RUNNER_ID,
     LABEL_OUTCOME,
+    LABEL_CAUSE,
     LABEL_TRANSPORT,
     LABEL_OPERATION,
     LABEL_SURFACE,

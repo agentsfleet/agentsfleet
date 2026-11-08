@@ -22,6 +22,7 @@
 //! four files, and nothing reads them that way.
 
 pub mod billing;
+pub mod bus;
 pub mod cost;
 pub mod database;
 pub mod fleet;
