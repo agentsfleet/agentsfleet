@@ -2,9 +2,15 @@ use tokio_quiche::{quiche, settings::QuicSettings};
 
 use crate::{Result, tls::Trust};
 
-pub(super) fn client(trust: &Trust) -> Result<quiche::Config> {
-    let mut config =
-        quiche::Config::with_boring_ssl_ctx_builder(quiche::PROTOCOL_VERSION, trust.h3()?)?;
+pub(super) struct Configured {
+    pub(super) config: quiche::Config,
+    pub(super) key_exchange: tokio::sync::watch::Receiver<Option<crate::tls::KeyExchange>>,
+}
+
+pub(super) fn client(trust: &Trust) -> Result<Configured> {
+    let mut tls = trust.h3()?;
+    let key_exchange = crate::tls::key_exchange::observe(&mut tls);
+    let mut config = quiche::Config::with_boring_ssl_ctx_builder(quiche::PROTOCOL_VERSION, tls)?;
     config.set_application_protos(&[b"h3"])?;
     config.set_initial_max_data(u64::from(crate::CONNECTION_WINDOW));
     config.set_initial_max_stream_data_bidi_local(u64::from(crate::STREAM_WINDOW));
@@ -15,7 +21,10 @@ pub(super) fn client(trust: &Trust) -> Result<quiche::Config> {
     config.set_max_stream_window(u64::from(crate::STREAM_WINDOW));
     config.set_max_connection_window(u64::from(crate::CONNECTION_WINDOW));
     config.set_max_idle_timeout(30_000);
-    Ok(config)
+    Ok(Configured {
+        config,
+        key_exchange,
+    })
 }
 
 pub(super) fn server() -> QuicSettings {

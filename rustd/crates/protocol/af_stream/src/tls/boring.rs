@@ -24,7 +24,8 @@ impl Identity {
     }
 
     pub(crate) fn h2(&self) -> Result<SslAcceptor> {
-        let mut context = SslAcceptor::mozilla_modern(SslMethod::tls())?;
+        let mut context = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
+        super::key_exchange::prefer(&mut context)?;
         context.set_certificate_chain_file(&self.chain)?;
         context.set_private_key_file(&self.key, SslFiletype::PEM)?;
         context.check_private_key()?;
@@ -52,6 +53,7 @@ impl Trust {
     }
 
     fn configure(&self, context: &mut SslContextBuilder) -> Result<()> {
+        super::key_exchange::prefer(context)?;
         context.set_verify(SslVerifyMode::PEER);
         context.set_default_verify_paths()?;
         if let Some(roots) = &self.roots {
