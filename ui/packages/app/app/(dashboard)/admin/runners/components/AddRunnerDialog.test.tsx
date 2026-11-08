@@ -13,9 +13,10 @@ vi.mock("@/lib/analytics/posthog", () => ({
   captureProductEvent: vi.fn(),
 }));
 
+import * as policyFields from "./PolicyFields";
 import AddRunnerDialog from "./AddRunnerDialog";
 import { DEFAULT_ASSIGNED_SANDBOX_TIER } from "./PolicyFields";
-import { DEFAULT_ASSIGNED_NETWORK_POLICY, DEFAULT_WORKER_COUNT, NETWORK_POLICY_LABELS, SANDBOX_TIER_LABELS } from "@/lib/api/runners-types";
+import { DEFAULT_WORKER_COUNT, SANDBOX_TIER_LABELS } from "@/lib/api/runners-types";
 
 afterEach(() => cleanup());
 beforeEach(() => {
@@ -52,11 +53,11 @@ describe("AddRunnerDialog assigns policy", () => {
   it("refuses a bad registry entry in-form and never calls the action", async () => {
     await openDialog();
     fireEvent.change(screen.getByLabelText(/host name/i), { target: { value: "web-prod-1" } });
-    fireEvent.click(screen.getByRole("radio", {name: /^Approved destinations only/}));
-    fireEvent.change(screen.getByLabelText(/package download sites/i), {
+    fireEvent.click(screen.getByRole("button", {name: "Edit additional allowed domains"}));
+    fireEvent.change(screen.getByRole("textbox", {name: "Additional allowed domains"}), {
       target: { value: "http://not a host" },
     });
-    fireEvent.submit(screen.getByLabelText(/host name/i).closest("form") as HTMLFormElement);
+    fireEvent.click(screen.getByRole("button", {name: /^Save$/}));
     await waitFor(() => expect(screen.getByText(/must be a host name/i)).toBeTruthy());
     expect(createRunnerActionMock).not.toHaveBeenCalled();
   });
@@ -70,8 +71,8 @@ describe("AddRunnerDialog assigns policy", () => {
 
     // All four assignment fields render.
     expect(screen.getByText("Isolation")).toBeTruthy();
-    expect(screen.getByText("Network policy")).toBeTruthy();
-    expect(screen.getByLabelText(/package download sites/i)).toBeTruthy();
+    expect(screen.getByRole("switch", {name: "Enable all public internet access"})).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Edit additional allowed domains"})).toBeTruthy();
     expect(screen.getByLabelText("Workers")).toBeTruthy();
 
     // Isolation defaults to the strongest tier.
@@ -82,10 +83,10 @@ describe("AddRunnerDialog assigns policy", () => {
 
     // Network defaults to the open interim posture, rendered by its label
     // (twice: the visible trigger value + the hidden native option).
-    expect(screen.getAllByText(NETWORK_POLICY_LABELS[DEFAULT_ASSIGNED_NETWORK_POLICY]).length).toBeGreaterThan(0);
+    expect(screen.getByRole("switch", {name: "Enable all public internet access"}).getAttribute("aria-checked")).toBe("true");
 
     // Registry starts empty; workers start at the shared default.
-    expect((screen.getByLabelText(/package download sites/i) as HTMLInputElement).value).toBe("");
+    expect(screen.getByText("No additional domains")).toBeTruthy();
     expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe(String(DEFAULT_WORKER_COUNT));
     expect(screen.getByText("Bubblewrap")).toBeTruthy();
     expect(screen.getByRole("radio", {name: /^Landlock/}).getAttribute("aria-checked")).toBe("true");
@@ -143,4 +144,15 @@ it("allows explicit enrollment without a decision model when catalogue access is
   await user.click(screen.getByRole("button", {name: /^Create$/}));
   await waitFor(() => expect(createRunnerActionMock).toHaveBeenCalledExactlyOnceWith({host_id: "build-host", labels: [],
     assigned_policy: {durable_tasks_enabled: true, sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []}}));
+});
+
+it("reports a refused native policy conversion without enrolling a runner", async () => {
+  await openDialog();
+  fireEvent.change(screen.getByLabelText(/host name/i), {target: {value: "guarded-host"}});
+  const conversion = vi.spyOn(policyFields, "policyFromForm").mockReturnValueOnce({policy: null, error: "The network assignment needs correction"});
+  try {
+    fireEvent.click(screen.getByRole("button", {name: "Create"}));
+    expect((await screen.findByRole("alert")).textContent).toContain("The network assignment needs correction");
+    expect(createRunnerActionMock).not.toHaveBeenCalled();
+  } finally {conversion.mockRestore();}
 });

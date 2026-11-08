@@ -212,3 +212,32 @@ it("keeps edited instructions when discard is refused and closes only after conf
   expect(confirm).toHaveBeenCalledTimes(2);
   expect(fixture.writes()).toEqual([]);
 });
+
+it.each([false, true])("opens instructions from the pencil and keeps Back in standalone setup only (fleet page: %s)", async fleetPage => {
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} fleetPage={fleetPage} />);
+  if (fleetPage) expect(screen.queryByRole("link", {name: /Back to/})).toBeNull();
+  else expect(screen.getByRole("link", {name: /Back to/})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
+  expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
+  expect(fixture.writes()).toEqual([]);
+});
+
+it("keeps the editor closed and records a failed saved-setup refresh from the pencil", async () => {
+  await client.save();
+  const writes = fixture.writes().length;
+  fixture.fetch.mockRejectedValueOnce(new TypeError("network interrupted"));
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
+  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
+  await waitFor(() => expect(client.getSnapshot().error).toBeTruthy());
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(fixture.writes()).toHaveLength(writes);
+});
+
+it("loads setup inspection when the summary is opened while preserving the draft", async () => {
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  const input = await screen.findByRole("textbox", {name: CHAT_PLACEHOLDER});
+  fireEvent.change(input, {target: {value: "Preserve this unsent setup request"}});
+  fireEvent.click(screen.getByRole("button", {name: "Toggle fleet summary"}));
+  expect(await screen.findByRole("region", {name: "Fleet purpose"})).toBeTruthy();
+  expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER, hidden: true})).toHaveProperty("value", "Preserve this unsent setup request");
+});

@@ -32,6 +32,7 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   const view = render(<TaskPanel {...SCOPE} events={events} />);
   await screen.findByRole("region", {name: "Outputs"});
   const outputs = () => within(screen.getByRole("region", {name: "Outputs"}));
+  await screen.findByRole("region", {name: "Outputs"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(network).toHaveBeenCalledTimes(2);
   view.rerender(<TaskPanel {...SCOPE} events={events.map(event => ({...event, reply: "More streamed words"}))} />);
@@ -44,6 +45,7 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   view.unmount();
   render(<TaskPanel {...SCOPE} events={events} />);
   await screen.findByText("No unfinished tasks.");
+  await screen.findByRole("region", {name: "Outputs"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(screen.queryByRole("button", {name: /PR #123 repair/})).toBeNull();
   expect(network).toHaveBeenCalledTimes(6);

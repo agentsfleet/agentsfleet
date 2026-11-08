@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button, SignalSpinner } from "@agentsfleet/design-system";
+import { Button } from "@agentsfleet/design-system";
 import { controlTask, type TaskChange, type TaskControl, type TaskDetail } from "@/lib/api/tasks";
 
 type Props = {workspaceId: string; fleetId: string; detail: TaskDetail; enabled: boolean; onChanged: () => void};
@@ -35,7 +35,7 @@ export function TaskControls({workspaceId, fleetId, detail, enabled, onChanged}:
     <div className="flex flex-wrap items-center gap-xs">
       {actions.map(action => <Button key={action.state} variant="ghost" size="sm"
         disabled={!enabled || !detail.etag || status.kind !== "idle"} onClick={() => {void change(action);}}>{action.label}</Button>)}
-      {status.kind === "sending" ? <output className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground"><SignalSpinner aria-hidden="true" />{status.label}…</output> : null}
+      {status.kind === "sending" ? <output data-chat-loading="true" className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground">{status.label}…</output> : null}
       {status.kind === "failed" || !detail.etag ? <Button variant="ghost" size="sm" onClick={onChanged}>Refresh progress</Button> : null}
     </div>
     {status.kind === "failed" ? <output className="block text-eyebrow text-muted-foreground">{status.message}</output> : null}

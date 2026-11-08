@@ -30,7 +30,16 @@ function ModelPicker({owner, label, disabled, model}: {owner: FleetModelOwner; l
     const saved = await (ref === undefined ? model.retry() : model.select(ref));
     if (saved) router.refresh();
   };
-  return <div className="flex min-w-0 flex-1 flex-wrap items-center gap-sm">
+  return <div className="flex min-w-0 flex-wrap items-center justify-end gap-sm">
+
+    {model.saving || model.confirmed ? <output className="text-eyebrow text-muted-foreground">{model.saving ? SAVING : SAVED}</output> : null}
+    {model.error ? <Alert variant="destructive" className="w-full">{model.error}
+      {!model.inaccessible ? <Button variant="outline" size="sm" disabled={model.saving || model.loading} onClick={() => {
+        if (model.reloadRequired) {try {router.refresh(); model.resetRefusal();} catch {ignore();}}
+        else if (model.retryable) void save().catch(ignore); else void model.load();
+      }}>{model.reloadRequired ? RELOAD_FLEET : model.retryable ? RETRY : RELOAD}</Button> : null}
+    </Alert> : null}
+    {model.more && !model.inaccessible ? <Button variant="ghost" size="sm" disabled={model.loading || model.locked || disabled} onClick={() => {void model.load(true);}}>{MORE}</Button> : null}
     <Select value={model.confirmed?.ref ?? owner.model} disabled={disabled || model.locked}
       onOpenChange={open => {if (open && !model.ready) void model.load();}} onValueChange={ref => {void save(ref).catch(ignore);}}>
       <ChatComposerModel select aria-label={MODEL_LABEL} title={MODEL_HINT}><SelectValue>{model.confirmed?.label ?? label}</SelectValue></ChatComposerModel>
@@ -39,13 +48,5 @@ function ModelPicker({owner, label, disabled, model}: {owner: FleetModelOwner; l
         {!model.models.length ? <SelectItem value="unavailable" disabled>{model.error ?? (model.loading ? LOADING : EMPTY)}</SelectItem> : null}
       </SelectContent>
     </Select>
-    {model.more && !model.inaccessible ? <Button variant="ghost" size="sm" disabled={model.loading || model.locked || disabled} onClick={() => {void model.load(true);}}>{MORE}</Button> : null}
-    {model.saving || model.confirmed ? <output className="text-eyebrow text-muted-foreground">{model.saving ? SAVING : SAVED}</output> : null}
-    {model.error ? <Alert variant="destructive" className="w-full">{model.error}
-      {!model.inaccessible ? <Button variant="outline" size="sm" disabled={model.saving || model.loading} onClick={() => {
-        if (model.reloadRequired) {try {router.refresh(); model.resetRefusal();} catch {ignore();}}
-        else if (model.retryable) void save().catch(ignore); else void model.load();
-      }}>{model.reloadRequired ? RELOAD_FLEET : model.retryable ? RETRY : RELOAD}</Button> : null}
-    </Alert> : null}
   </div>;
 }
