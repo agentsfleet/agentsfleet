@@ -3,6 +3,7 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 use async_nats::HeaderMap;
 use bytes::Bytes;
+use tokio::sync::oneshot;
 
 use super::{Channels, Delivery, GAP_HEADER, GAP_VALUE, classify};
 use crate::{Message, Received, Subject};
@@ -26,6 +27,16 @@ fn native(payload: &'static [u8], headers: Option<HeaderMap>) -> async_nats::Mes
         description: None,
         length: payload.len(),
     }
+}
+
+/// A pump stand-in whose cancellation the test can observe.
+fn pending_pump() -> (tokio::task::JoinHandle<()>, oneshot::Receiver<()>) {
+    let (alive, stopped) = oneshot::channel::<()>();
+    let pump = tokio::spawn(async move {
+        let _alive = alive;
+        std::future::pending::<()>().await;
+    });
+    (pump, stopped)
 }
 
 fn marked() -> HeaderMap {
@@ -94,18 +105,23 @@ async fn the_last_reader_stops_the_pump() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let opened = channels.open(PHYSICAL);
     let (_sender, generation) = opened.pump.ok_or("opened")?;
-    let pump = tokio::spawn(std::future::pending::<()>());
-    channels.started(PHYSICAL, generation, pump.abort_handle());
+    let (pump, mut stopped) = pending_pump();
+    channels.started(PHYSICAL, generation, pump);
     let joined = channels.open(PHYSICAL).reader;
     drop(opened.reader);
     assert_eq!(channels.readers(PHYSICAL), 1);
-    assert!(!pump.is_finished(), "a reader remains");
+    tokio::task::yield_now().await;
+    assert!(
+        stopped
+            .try_recv()
+            .is_err_and(|e| e == oneshot::error::TryRecvError::Empty),
+        "a reader remains"
+    );
     drop(joined);
     assert_eq!(channels.readers(PHYSICAL), 0);
-    let Err(stopped) = pump.await else {
+    let Err(_) = stopped.await else {
         return Err("the pump must be aborted".into());
     };
-    assert!(stopped.is_cancelled());
     Ok(())
 }
 
@@ -115,12 +131,11 @@ async fn a_pump_started_after_its_readers_left_stops_at_once() -> TestResult {
     let opened = channels.open(PHYSICAL);
     let (_sender, generation) = opened.pump.ok_or("opened")?;
     drop(opened.reader);
-    let pump = tokio::spawn(std::future::pending::<()>());
-    channels.started(PHYSICAL, generation, pump.abort_handle());
-    let Err(stopped) = pump.await else {
+    let (pump, stopped) = pending_pump();
+    channels.started(PHYSICAL, generation, pump);
+    let Err(_) = stopped.await else {
         return Err("a late pump must be aborted".into());
     };
-    assert!(stopped.is_cancelled());
     Ok(())
 }
 
@@ -207,18 +222,21 @@ async fn close_ends_every_channel() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let opened = channels.open(PHYSICAL);
     let (sender, generation) = opened.pump.ok_or("opened")?;
-    let pump = tokio::spawn(std::future::pending::<()>());
-    channels.started(PHYSICAL, generation, pump.abort_handle());
-    channels.close();
+    let (pump, _stopped) = pending_pump();
+    channels.started(PHYSICAL, generation, pump);
+    let pumps = channels.close();
     drop(sender);
     let mut reader = opened.reader;
     let Err(_) = reader.recv().await else {
         return Err("a closed hub ends its readers".into());
     };
-    let Err(stopped) = pump.await else {
-        return Err("close aborts every pump".into());
-    };
-    assert!(stopped.is_cancelled());
+    assert_eq!(pumps.len(), 1, "close hands back every pump to join");
+    for pump in pumps {
+        let Err(stopped) = pump.await else {
+            return Err("close aborts every pump".into());
+        };
+        assert!(stopped.is_cancelled());
+    }
     assert_eq!(channels.readers(PHYSICAL), 0);
     Ok(())
 }
