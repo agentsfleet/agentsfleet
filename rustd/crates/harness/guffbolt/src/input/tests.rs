@@ -76,3 +76,16 @@ fn a_media_part_debugs_as_its_size_not_its_bytes() {
     assert!(shown.contains("bytes: 2048"), "{shown}");
     assert!(!shown.contains("[0, 0"), "{shown}");
 }
+
+#[test]
+fn every_media_kind_is_named_to_the_model_in_its_own_word() {
+    let named: Vec<&str> = [
+        MediaKind::Image,
+        MediaKind::Audio,
+        MediaKind::Video,
+        MediaKind::Document,
+    ]
+    .map(MediaKind::as_str)
+    .into();
+    assert_eq!(named, ["image", "audio", "video", "document"]);
+}

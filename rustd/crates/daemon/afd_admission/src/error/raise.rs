@@ -198,7 +198,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
 
 #[cfg(all(test, feature = "test-util"))]
 mod tests {
-    use super::DiskFull;
+    use super::{DiskFull, LockWaitExpired};
 
     /// The disk-full fixture answers the whole `DatabaseError` contract, not
     /// only the two accessors a rendered chain happens to read.
@@ -225,6 +225,28 @@ mod tests {
         let owned = boxed.into_error();
         assert!(
             owned.source().is_none(),
+            "a leaf fault has no cause of its own"
+        );
+    }
+
+    /// The lock-timeout fixture answers every accessor `sqlx` reaches for, and
+    /// `afd_db` reads its state as a bound reached, which is what makes the
+    /// admission error a retryable `TimedOut`.
+    #[test]
+    fn the_lock_wait_fixture_answers_every_accessor_and_reads_as_a_bound_reached() {
+        let mut boxed: Box<dyn sqlx::error::DatabaseError> = Box::new(LockWaitExpired);
+
+        assert_eq!(boxed.message(), "canceling statement due to lock timeout");
+        assert!(boxed.as_error().to_string().contains("lock timeout"));
+        assert!(boxed.as_error_mut().to_string().contains("lock timeout"));
+        assert!(matches!(boxed.kind(), sqlx::error::ErrorKind::Other));
+        assert!(afd_db::error::is_bound_reached(&sqlx::Error::Database(
+            boxed
+        )));
+
+        let owned: Box<dyn sqlx::error::DatabaseError> = Box::new(LockWaitExpired);
+        assert!(
+            owned.into_error().source().is_none(),
             "a leaf fault has no cause of its own"
         );
     }
