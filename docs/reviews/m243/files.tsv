@@ -87,6 +87,8 @@ CREATE	docs/reviews/m243/transport-and-toon-research.md	absent	Indy sign-off pac
 CREATE	playbooks/operations/runner_stream_tls/001_playbook.md	absent	Owner-requested morning certificate generation and 1Password setup instructions
 CREATE	rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs	absent	Stream opening route
 CREATE	rustd/crates/daemon/afd_authoring/src/creation/sql/mark_leases_cancel_requested.sql	absent	Durable kill marker in existing transaction
+CREATE	rustd/crates/daemon/afd_authoring/tests/draft/creation/running_cancellation/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_authoring/tests/draft/creation/running_cancellation/probe.rs	absent	Runner ownership, durable cancellation and matching regression verification
 CREATE	rustd/crates/daemon/afd_bus/Cargo.toml	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_bus/src/command.rs	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_bus/src/dragonfly/mod.rs	absent	Neutral broker boundary and Dragonfly adapter
@@ -107,8 +109,13 @@ CREATE	rustd/crates/daemon/afd_bus/tests/commands.rs	absent	Neutral broker bound
 CREATE	rustd/crates/daemon/afd_bus/tests/gaps.rs	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_bus/tests/wake.rs	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_fleet/src/lease/rebuild.rs	absent	Live lease rebuild and per-replica fallback probe
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/renew/extend.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_cancelled.sql	absent	Runner ownership, durable cancellation and matching regression verification
 CREATE	rustd/crates/daemon/afd_fleet/src/lease/sql/select_runner_live_leases.sql	absent	Live lease rebuild and per-replica fallback probe
 CREATE	rustd/crates/daemon/afd_fleet/src/lease/sql/select_waiting_admission.sql	absent	Live lease rebuild and per-replica fallback probe
+CREATE	rustd/crates/daemon/afd_fleet/src/task/sql/lock_issue_scope.sql	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_fleet/tests/issue_lifecycle.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_fleet/tests/lease_renewal/cancellation.rs	absent	Runner ownership, durable cancellation and matching regression verification
 CREATE	rustd/crates/daemon/afd_gateway/Cargo.toml	absent	Concrete daemon session owner; domain decisions remain in existing owners
 CREATE	rustd/crates/daemon/afd_gateway/src/authority.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
 CREATE	rustd/crates/daemon/afd_gateway/src/connection.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
@@ -127,8 +134,14 @@ CREATE	rustd/crates/daemon/afd_gateway/src/session/mod.rs	absent	Concrete daemon
 CREATE	rustd/crates/daemon/afd_gateway/src/session/recheck.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
 CREATE	rustd/crates/daemon/afd_gateway/src/session/renew.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
 CREATE	rustd/crates/daemon/afd_gateway/src/session/reports.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/acquire.sql	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/check.sql	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
 CREATE	rustd/crates/daemon/afd_runner/src/sql/runner/clear_runner_connection.sql	absent	Guarded connection ownership writes; no UUID casts
 CREATE	rustd/crates/daemon/afd_runner/src/sql/runner/write_runner_connection.sql	absent	Guarded connection ownership writes; no UUID casts
+CREATE	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/connections/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/connections/races.rs	absent	Runner ownership, durable cancellation and matching regression verification
 CREATE	rustd/crates/daemon/main/src/preflight/runner_stream.rs	absent	Direct native listener and validated configuration; deployment file approval separate
 CREATE	rustd/crates/daemon/main/src/serve/runner_stream.rs	absent	Direct native listener and validated configuration; deployment file approval separate
 CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authority.rs	absent	Native carrier and cross-replica failure evidence
@@ -285,7 +298,11 @@ EDIT	rustd/crates/daemon/afd_approval/tests/support/gate_lane.rs	present	Complet
 EDIT	rustd/crates/daemon/afd_authoring/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_authoring/src/creation/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/creation/patch.rs	present	Mark leases before cancel notification
+EDIT	rustd/crates/daemon/afd_authoring/src/creation/sql/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_authoring/src/draft/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_authoring/src/error/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/claim/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/renew.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_authoring/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_authoring/src/model/dispatch/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/model/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
@@ -298,6 +315,7 @@ EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/confirmation.rs	pres
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/fixture.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/grants.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/identity.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/stages.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/model_calls/progress/fixture.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/model_calls/progress/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
@@ -354,10 +372,19 @@ EDIT	rustd/crates/daemon/afd_events/src/steer/mod.rs	present	Inject bus handle; 
 EDIT	rustd/crates/daemon/afd_events/tests/error_surface.rs	present	Complete typed bus injection and matching caller, error and ownership checks
 EDIT	rustd/crates/daemon/afd_events/tests/integration_backfill.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_fleet/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/afd_fleet/src/error/classify.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/error/detail.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/error/kind.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/error/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/error/permanence.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/error/refuse.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/error/tests.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/activity/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/answer/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/bracket.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/claim.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/coverage.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/issue.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/claimed.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
@@ -370,15 +397,19 @@ EDIT	rustd/crates/daemon/afd_fleet/src/lease/store.rs	present	Typed offered clai
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/test_dead.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/src/task/lease.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/src/task/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/src/task/sql.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/tests/fleet_suite.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/faults/parking.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/stops.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/contention.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/deadlines.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/parking.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/parking_commit.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_renew_clamp.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/decisions/timeouts.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/fixture.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/read_deadline.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/replica.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/support/fleet_fixtures.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
@@ -408,6 +439,7 @@ EDIT	rustd/crates/daemon/afd_runner/src/capacity/sql/mod.rs	present	Credential a
 EDIT	rustd/crates/daemon/afd_runner/src/heartbeat/mod.rs	present	Credential and connection authority under host lock
 EDIT	rustd/crates/daemon/afd_runner/src/sql/runner/mod.rs	present	Credential and connection authority under host lock
 EDIT	rustd/crates/daemon/afd_runner/src/sql/runner/select_runner_assigned_policy.sql	present	Credential and connection authority under host lock
+EDIT	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_sse/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_sse/src/ceiling.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_sse/src/fanin.rs	present	Inject bus handle; hide backend-specific pub/sub types
@@ -489,6 +521,7 @@ EDIT	rustd/crates/runner/afr_supervisor/src/worker_pool/tests.rs	present	Consume
 EDIT	rustd/crates/runner/main/tests/fake_daemon.rs	present	Native stream fake daemon interfaces
 EDIT	schema/20261108123100_runner_runners.sql	present	Only connection_id and cancel_requested_at; no new table or ALTER file
 EDIT	schema/20261108123200_runner_leases.sql	present	Only connection_id and cancel_requested_at; no new table or ALTER file
+EDIT	ui/packages/app/tests/approvals-list/resolve.test.ts	present	Runner ownership, durable cancellation and matching regression verification
 MOVE_FROM	docs/v2/pending/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md	present	Spec opened on this branch
 MOVE_TO	docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md	absent	Active spec and Discovery
 PROPOSE	deploy/fly/agentsfleetd-dev/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery

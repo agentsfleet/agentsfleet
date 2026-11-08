@@ -99,6 +99,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted

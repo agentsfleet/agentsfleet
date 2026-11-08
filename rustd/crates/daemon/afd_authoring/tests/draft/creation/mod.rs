@@ -21,6 +21,7 @@ mod race;
 mod refusals;
 mod retries;
 mod rollback;
+mod running_cancellation;
 mod stages;
 mod stopped;
 mod stored;

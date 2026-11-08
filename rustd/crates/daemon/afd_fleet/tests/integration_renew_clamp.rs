@@ -53,7 +53,7 @@ async fn extend(
 const fn deadline(renewed: &Renewed) -> Option<Timestamp> {
     match renewed {
         Renewed::Extended { expires_at, .. } => Some(*expires_at),
-        Renewed::MaxRuntime | Renewed::Lost | Renewed::Stopped { .. } => None,
+        Renewed::MaxRuntime | Renewed::Lost | Renewed::Stopped { .. } | Renewed::Cancelled => None,
     }
 }
 
