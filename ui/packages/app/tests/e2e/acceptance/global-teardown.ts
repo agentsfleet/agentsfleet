@@ -16,7 +16,7 @@
  *    previous crashed one. Deleting the Clerk user does NOT remove its
  *    bootstrapped tenant: the daemon answers `user.deleted` as an ignored
  *    event and tears nothing down
- *    (rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs), so
+ *    (rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs), so
  *    the swept user's tenant and workspace rows stay in Postgres.
  *
  * 3. Leaked-fleet and leaked-library sweeps. Per-spec afterEach cleanup misses whenever a run

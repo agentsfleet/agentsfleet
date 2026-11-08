@@ -1,0 +1,77 @@
+[package]
+name = "afd_dragonfly"
+# One aggregated test binary; see tests/datastore_suite.rs for why.
+autotests = false
+description = "Fleet event streams, the subscription hub, and the CLI session store, on one Redis connection per process."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+test-util = [
+    "af_core/test-util",
+    # `test_util::fake_redis` serves plain TCP and reads with deadlines.
+    "tokio/net",
+    "tokio/io-util",
+    "tokio/time",
+    "tokio/macros",
+]
+
+[dependencies]
+jiff.workspace = true
+# The families this crate produces. The dependency points this way and not the
+# other: telemetry knows nothing about Redis, and the one thing this crate can
+# say that nothing else can is that its pub/sub connection was re-established.
+af_observability.workspace = true
+af_core.workspace = true
+af_validate.workspace = true
+garde.workspace = true
+# The reconnect loop AND its schedule — see `hub::pump`, which used to carry a
+# hand-rolled `Backoff` beside a jitter source of its own.
+backon.workspace = true
+# Fleet wake channels are assigned by hash.
+crc16.workspace = true
+# The hub's channel table, keyed by channel: one shard per subscribe,
+# release or dispatch rather than the whole map — see `hub`.
+dashmap.workspace = true
+futures-util.workspace = true
+# The outbound consumer name, which has to survive a restart — see
+# `outbound::outbound_consumer`.
+hostname.workspace = true
+redis.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "rt"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# The `tracing` capture the suites read their log lines back through
+# (`af_core::test_util::trace`). A dev-dependency feature only.
+af_core = { workspace = true, features = ["test-util"] }
+# The metric capture the doorbell's suites read their counters back through
+# (`af_observability::test_util`). A dev-dependency feature only.
+af_observability = { workspace = true, features = ["test-util"] }
+# The reconnect schedule the suites configure and assert on; the library half
+# is a regular dependency.
+backon.workspace = true
+# The refcount and race proofs need real parallelism, not a current-thread
+# runtime interleaving two futures politely.
+# `net` and `io-util` are the fault-injection harness's, not the library's:
+# `tests/support/fake_redis/mod.rs` is a TCP server that answers wrongly on purpose,
+# which is the only way to reach the reply-shape and dropped-socket branches a
+# correctly-behaving Redis never produces.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "datastore_suite"
+path = "tests/datastore_suite.rs"

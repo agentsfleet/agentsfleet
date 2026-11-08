@@ -1,0 +1,381 @@
+//! One lease, end to end.
+//!
+//! ```text
+//!   admit ─► turn ─► memory (the lease's window, or read) ─► [size, egress, checkout plan] ─► run
+//!                                  └─► [take hold or prepare ─► checkout] ─┘ beside it
+//!   ─► [hold frozen, or kill] ─► [no window: memory push] ─► report spooled ─► report posted
+//!   ─► [release the killed sandbox's disk ∥ activity drained]
+//!   └──────────── renewal alongside, until the report is answered ─────────┘
+//! ```
+//!
+//! The engine admits the lease first: a policy naming a tool it cannot host is
+//! refused before anything is prepared. A lease whose tools all run in the
+//! supervisor starts no sandbox; any other builds one beside its turn, and a
+//! build that fails leaves the turn going without it. A sandbox that was built is held
+//! for the fleet's next lease when the run ended processed (`crate::holds`) and
+//! destroyed exactly once otherwise — the type consumes it — and an engine that
+//! panics is caught so the teardown still runs. The report settles before the live tail
+//! is waited on, and that wait is bounded: the tail is best-effort, the report
+//! is the record.
+
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_wire::lease::LeasePayload;
+use af_wire::memory::MemoryHydrateResponse;
+use af_wire::report::FailureClass;
+use afr_agent::Meter;
+use afr_executor::{ExecutorSlot, Unavailable};
+use afr_memory::Seed;
+use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
+use tracing::Instrument as _;
+
+use crate::activity::{self, ActivitySink};
+use crate::egress::Egress;
+use crate::error::Result;
+use crate::identity::lease_span;
+use crate::memory;
+use crate::renew::Renewal;
+use crate::report::Ending;
+use crate::turns::FleetTurns;
+
+mod build;
+mod checkout;
+mod drive;
+mod hold;
+mod lessee;
+mod recovery;
+mod refusal;
+mod segments;
+mod settle;
+mod workspace;
+
+use self::hold::{Fate, Kept, Worked};
+pub(crate) use self::lessee::Lessee;
+use self::refusal::failed;
+use self::segments::{Segment, Timeline};
+
+/// How long a settled lease waits for its live tail to finish posting.
+pub(crate) const ACTIVITY_DRAIN_WAIT: Duration = Duration::from_secs(5);
+const DETAIL_TURN: &str = "the worker pool was shutting down when the lease arrived";
+const DETAIL_MEMORY: &str = "the fleet's memory could not be read";
+const DETAIL_UNHOSTED: &str = "the fleet names a tool this runner cannot host";
+const DETAIL_UNHOSTED_PROVIDER: &str = "the selected model has no saved inference settings";
+const DETAIL_CONFIGURATION: &str =
+    "the fleet execution configuration cannot be admitted by this runner";
+const DETAIL_RENEWAL: &str = "the daemon ended the lease while it ran";
+const DETAIL_STOPPED: &str = "this runner was told to stop while the run went on";
+const EVENT_ACQUIRED: &str = "lease_acquired";
+const EVENT_COMPLETED: &str = "lease_completed";
+const EVENT_FAILED: &str = "lease_failed";
+/// A fixed spelling, because dashboards and alerts match on it.
+const EVENT_UNHOSTED: &str = "tool_refused_not_hosted";
+const EVENT_UNHOSTED_PROVIDER: &str = "provider_refused_not_hosted";
+const EVENT_HYDRATE_FAILED: &str = "memory_hydrate_failed";
+const EVENT_DRAIN_ABANDONED: &str = "activity_drain_abandoned";
+
+/// One lease's identifiers, parsed once.
+pub(super) struct Ids {
+    lease: Uuid7,
+    fleet: Uuid7,
+}
+
+/// One lease while it runs: what it was given, its identifiers, and the token
+/// that ends it early. Each step of the lease is a method on it, so none
+/// passes them along by hand.
+pub(super) struct LeaseRun<'a> {
+    lessee: &'a Lessee,
+    lease: &'a LeasePayload<'a>,
+    /// The egress the runner was assigned when the lease arrived.
+    egress: &'a Egress,
+    ids: Ids,
+    interrupt: CancellationToken,
+    /// What the run has spent so far, read into every renewal, its lines
+    /// stamped by the lessee's clock.
+    meter: Meter,
+    /// When the lease began, for its wall time.
+    started: Instant,
+    /// Where the lease's time went, for its last line.
+    timeline: Timeline,
+}
+
+/// Which of a lease's side tasks are still going.
+struct Live {
+    renewing: bool,
+    pumping: bool,
+}
+
+impl Lessee {
+    /// Runs `lease` to its report under `egress`, inside the span naming this
+    /// runner and the lease.
+    ///
+    /// # Errors
+    /// Identifiers that are not canonical; nothing has started then. Every
+    /// failure after that ends in a report, spooled or posted.
+    pub(crate) async fn run(
+        &self,
+        turns: &FleetTurns,
+        lease: &LeasePayload<'_>,
+        egress: &Egress,
+    ) -> Result<()> {
+        let identity = self.whoami.get(&self.plane).await;
+        let span = lease_span(identity, lease);
+        Box::pin(self.run_lease(turns, lease, egress).instrument(span)).await
+    }
+
+    async fn run_lease(
+        &self,
+        turns: &FleetTurns,
+        lease: &LeasePayload<'_>,
+        egress: &Egress,
+    ) -> Result<()> {
+        let run = LeaseRun {
+            lessee: self,
+            lease,
+            egress,
+            ids: Ids {
+                lease: Uuid7::parse(&lease.lease_id)?,
+                fleet: Uuid7::parse(&lease.event.fleet_id)?,
+            },
+            interrupt: CancellationToken::new(),
+            meter: Meter::new(Arc::clone(&self.clock)),
+            started: Instant::now(),
+            timeline: Timeline::default(),
+        };
+        let _busy = self.holds.occupy(run.ids.fleet.clone());
+        let lease_id = run.ids.lease.as_str();
+        let event = EVENT_ACQUIRED;
+        tracing::info!(lease_id, event);
+        let ending = Box::pin(run.lease(turns)).await;
+        run.conclude(&ending);
+        Ok(())
+    }
+}
+
+impl LeaseRun<'_> {
+    /// The run, its renewal and its live tail, then the settle.
+    async fn lease(&self, turns: &FleetTurns) -> Ending {
+        let lessee = self.lessee;
+        let (sink, mut pump) = activity::channel(&lessee.plane, &self.ids.lease);
+        let renewal = Renewal::new(
+            &lessee.plane,
+            &self.ids.lease,
+            self.lease.lease_expires_at,
+            lessee.clock.as_ref(),
+            &self.meter,
+        );
+        let pumping = pump.run();
+        let renewal = renewal.keep();
+        let work = self.work(turns, sink);
+        tokio::pin!(pumping, renewal, work);
+        let mut live = Live {
+            renewing: true,
+            pumping: true,
+        };
+        let mut cut = None;
+        let worked = loop {
+            tokio::select! {
+                biased;
+                worked = &mut work => break worked,
+                class = &mut renewal, if live.renewing => {
+                    live.renewing = false;
+                    self.interrupt.cancel();
+                    cut.get_or_insert((class, DETAIL_RENEWAL));
+                }
+                () = lessee.halt.running().cancelled(), if !self.interrupt.is_cancelled() => {
+                    self.interrupt.cancel();
+                    cut.get_or_insert((FailureClass::RenewalTerminate, DETAIL_STOPPED));
+                }
+                () = &mut pumping, if live.pumping => live.pumping = false,
+            }
+        };
+        // A cut keeps what the run handed back, its tokens and memory with it,
+        // and reports the cut as the reason it ended.
+        let Worked { ending: ran, kept } = worked;
+        let ending = match cut {
+            Some((class, detail)) => ran.cut(class, detail),
+            None => ran,
+        };
+        self.settle_and_drain(kept, ending, renewal, pumping, live)
+            .await
+    }
+
+    /// The hold or the kill, and the report, with the renewal and the live
+    /// tail still polled beside them; then the release of a killed sandbox's
+    /// disk beside the wait the tail gets to drain. Timed as the report
+    /// segment up to the release.
+    async fn settle_and_drain(
+        &self,
+        kept: Option<Kept>,
+        mut ending: Ending,
+        mut renewal: Pin<&mut impl Future<Output = FailureClass>>,
+        mut pumping: Pin<&mut impl Future<Output = ()>>,
+        mut live: Live,
+    ) -> Ending {
+        let reporting = self.timeline.start(Segment::Report);
+        let fate: Fate = {
+            let settle = async {
+                let fate = self.keep(kept, &mut ending).await;
+                let superseded = self.settle(&mut ending, &fate, &reporting).await;
+                if superseded && fate.held_until().is_some() {
+                    self.lessee.holds.supersede(self.ids.lease.clone());
+                }
+                fate
+            };
+            tokio::pin!(settle);
+            loop {
+                tokio::select! {
+                    biased;
+                    fate = &mut settle => break fate,
+                    _class = &mut renewal, if live.renewing => live.renewing = false,
+                    () = &mut pumping, if live.pumping => live.pumping = false,
+                }
+            }
+        };
+        reporting.stop();
+        // The disk goes after the report, beside the tail's drain, so neither
+        // waits on the other; the lease returns only once both are done.
+        let drained = async {
+            !live.pumping
+                || tokio::time::timeout(ACTIVITY_DRAIN_WAIT, &mut pumping)
+                    .await
+                    .is_ok()
+        };
+        let ((), drained) = tokio::join!(self.release(fate), drained);
+        if !drained {
+            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let lease_id = self.ids.lease.as_str();
+            let event = EVENT_DRAIN_ABANDONED;
+            tracing::warn!(
+                error_code = code,
+                lease_id,
+                event,
+                "the live tail did not drain; the report already settled"
+            );
+        }
+        ending
+    }
+
+    /// Everything that holds the fleet's turn: setup and the run. The sandbox
+    /// the run used comes back with its ending, for the lease to hold or
+    /// destroy once the cut and the report decide.
+    ///
+    /// The interrupt ends the run early, and the caller's ending replaces
+    /// whatever this returns.
+    async fn work(&self, turns: &FleetTurns, sink: ActivitySink) -> Worked {
+        let lessee = self.lessee;
+        let needs = match lessee.agent.admit(&self.lease.policy) {
+            Ok(needs) => needs,
+            Err(refusal) => return self.unhosted(&refusal).into(),
+        };
+        let claimed = tokio::select! {
+            turn = turns.claim(&self.ids.fleet) => turn,
+            () = self.interrupt.cancelled() => {
+                return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL).into();
+            }
+        };
+        let Some(_turn) = claimed else {
+            return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
+        };
+        let verbs = crate::verbs::FencedVerbs::new(
+            &lessee.plane,
+            &self.ids.lease,
+            self.lease.fencing_token,
+            &lessee.spool,
+            &lessee.held,
+            &self.interrupt,
+        );
+        let prepared = match lessee
+            .agent
+            .prepare_task(self.lease, &verbs, &self.meter, &self.interrupt)
+            .await
+        {
+            Ok(prepared) => prepared,
+            Err(failure) => {
+                return self
+                    .fail(
+                        &failure,
+                        FailureClass::StartupPosture,
+                        "task_preparation_failed",
+                        "native task intent could not be established",
+                    )
+                    .into();
+            }
+        };
+        // The window rides the lease from a daemon at this release; only a
+        // lease without one costs the memory read, and only that read is timed.
+        let read;
+        let decoded;
+        let memory = if let Some(window) = self.lease.memory.as_ref() {
+            afr_telemetry::record::memory_source(afr_telemetry::labels::MemorySource::Inline);
+            window
+        } else {
+            afr_telemetry::record::memory_source(afr_telemetry::labels::MemorySource::Fallback);
+            let hydrating = self.timeline.start(Segment::Memory);
+            read = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
+                Ok(read) => read,
+                Err(failure) => {
+                    return self
+                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                        .into();
+                }
+            };
+            decoded = match read.decode::<MemoryHydrateResponse<'_>>() {
+                Ok(decoded) => decoded,
+                Err(failure) => {
+                    return self
+                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                        .into();
+                }
+            };
+            hydrating.stop();
+            &decoded
+        };
+        let recaller = memory::Recaller::new(&lessee.plane, &self.ids.fleet, self.lease);
+        let seed = Seed {
+            window: &memory.memory,
+            shared: &memory.shared,
+            publish: memory.publish,
+            recall: Some(&recaller),
+        };
+        if needs.sandbox
+            && prepared
+                .as_ref()
+                .is_none_or(|prepared| prepared.allow_actions)
+        {
+            self.sandboxed(seed, sink, prepared.as_ref()).await
+        } else {
+            let none = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+            let recovered = match self.recover_without_sandbox(prepared.as_ref()).await {
+                Ok(recovered) => recovered,
+                Err(failure) => {
+                    return self
+                        .refuse(
+                            &failure,
+                            "task_restore_failed",
+                            "durable task recovery could not be established",
+                        )
+                        .into();
+                }
+            };
+            self.drive(seed, &none, sink, prepared.as_ref(), recovered.as_ref())
+                .await
+                .into()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests/admission.rs"]
+mod admit_tests;
+
+#[cfg(test)]
+#[path = "tests/records.rs"]
+mod records_tests;

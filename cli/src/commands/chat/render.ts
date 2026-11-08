@@ -73,7 +73,7 @@ export function renderApplied(output: Output, applied: Applied): Effect.Effect<v
 // (docs/architecture/data_flow.md, "CLI partial success"). Every schedule not
 // `synced` is owed a push: `failed` carries the scheduler's reason, and
 // `syncing` after the response means the daemon's bounded wait gave up
-// (rustd/crates/afd_api_tenant/src/handler/fleet/native/schedules.rs) and no
+// (rustd/crates/daemon/afd_api_tenant/src/handler/fleet/native/schedules.rs) and no
 // background sweep finishes it. Each one names the `schedule sync` command
 // (cli/src/program/tree/schedule.command.ts) that retries the push.
 function renderScheduleOwed(output: Output, schedules: ReadonlyArray<Schedule>): Effect.Effect<void> {

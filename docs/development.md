@@ -353,11 +353,13 @@ follows is the repo-workflow half that page does not carry.
   - `SOAK_CHECKPOINT_DIR` keeps a checkpoint per turn, `SOAK_RESUME` continues
     from one, and `SOAK_KEEP=1` keeps passing fleets for review.
 
-- **Runner execute-loop without a language model:** `afr_agent`'s scripted
-  engine (`rustd/crates/afr_agent/src/scripted.rs`) runs a fixed turn of tool
+- **Runner run-loop without a language model**. `afr_agent`'s scripted
+  engine (`rustd/crates/runner/afr_agent/src/scripted.rs`) runs a fixed turn of tool
   calls, streamed text and memory items. So a sandbox or wire fault cannot hide
-  behind a model's choices. It sits behind the crate's `test-util` feature,
-  which only dev-dependencies enable (`afr_supervisor`, `afr_providers`,
+  behind a model's choices.
+
+  It sits behind the crate's `test-util` feature,
+  which only dev-dependencies enable (`afr_supervisor`, `af_providers`,
   `agentsfleetd`), so no shipped binary carries it.
 
 ## Runner kernel lane on Debian 13

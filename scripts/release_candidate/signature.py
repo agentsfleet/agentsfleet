@@ -9,7 +9,7 @@ from .model import toolbox_digest
 
 def verify(root: Path) -> None:
     digest = toolbox_digest(root)
-    source = Path("rustd/crates/afr_sandbox/src/toolbox/manifest/mod.rs").read_text(encoding="utf-8")
+    source = Path("rustd/crates/runner/afr_sandbox/src/toolbox/manifest/mod.rs").read_text(encoding="utf-8")
     key = re.search(r"-----BEGIN PUBLIC KEY-----.*?-----END PUBLIC KEY-----", source, re.DOTALL)
     public = (root / "toolbox" / "release.pub").read_text(encoding="utf-8")
     if key is None or "".join(key[0].split()) != "".join(public.split()):

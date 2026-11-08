@@ -17,7 +17,7 @@
 // a named provider but OPTIONAL for openai-compatible (a keyless gateway dials
 // with no key); openai-compatible ⇔ base_url present.
 // Full SSRF validation stays server-side in `validate`,
-// rustd/crates/afd_credential/src/provider/endpoint/url.rs (typed UZ-* error).
+// rustd/crates/daemon/afd_credential/src/provider/endpoint/url.rs (typed UZ-* error).
 
 import { Effect } from "effect";
 import { ConfigError, ValidationError, type CliError } from "../errors/index.ts";

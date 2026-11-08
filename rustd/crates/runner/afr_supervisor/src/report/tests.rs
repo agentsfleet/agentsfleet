@@ -1,0 +1,251 @@
+use std::time::Duration;
+
+use af_wire::report::{FailureClass, Outcome};
+use afr_agent::{ExecutionResult, Failure, ResultOutcome};
+
+use af_providers::Usage;
+use afr_agent::Meter;
+
+use super::{Ending, narrow, report};
+use crate::test_support::{FENCING, FLEET_ID, LEASE_ID, answer, lease};
+
+/// Each request line's fresh input, cached input and output.
+fn requests(report: &af_wire::report::ReportRequest<'_>) -> Vec<(u32, u32, u32)> {
+    report
+        .requests
+        .0
+        .iter()
+        .map(|line| {
+            (
+                line.input_tokens,
+                line.cached_input_tokens,
+                line.output_tokens,
+            )
+        })
+        .collect()
+}
+
+/// A meter that counted `input` fresh, `cached_input` cached and `output`.
+fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
+    let meter = Meter::default();
+    meter.add(Usage {
+        input,
+        cached_input,
+        cache_write: 0,
+        cache_write_5m: 0,
+        cache_write_1h: 0,
+        output,
+    });
+    meter
+}
+
+#[test]
+fn a_completed_run_reports_its_answer_tokens_and_timings() {
+    let lease = lease(LEASE_ID, FLEET_ID);
+    let ending = Ending::Ran {
+        output: Box::new(answer()),
+        first_chunk: Some(Duration::from_millis(120)),
+    };
+
+    let report = report(
+        &lease,
+        &ending,
+        &spent(3, 1, 4),
+        Duration::from_secs(2),
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::Processed);
+    assert_eq!(report.failure_reason, None);
+    assert_eq!(report.fencing_token, FENCING);
+    assert_eq!(report.response_text, "done");
+    assert_eq!(report.checkpoint.last_response, "done");
+    assert_eq!(report.checkpoint.last_event_id, lease.event.event_id);
+    assert_eq!(report.tokens, 8, "the result's total, for the history");
+    assert_eq!(
+        requests(&report),
+        [(3, 1, 4)],
+        "the meter's one request line"
+    );
+    assert_eq!(report.telemetry.time_to_first_token_ms, 120);
+    assert_eq!(report.telemetry.wall_ms, 2_000);
+}
+
+#[test]
+fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
+    let lease = lease(LEASE_ID, FLEET_ID);
+    let mut output = answer();
+    output.result = ExecutionResult {
+        outcome: ResultOutcome::Failed(Failure {
+            class: Some(FailureClass::PolicyDeny),
+            detail: "denied".into(),
+        }),
+        ..output.result
+    };
+    let ending = Ending::Ran {
+        output: Box::new(output),
+        first_chunk: None,
+    };
+
+    let report = report(
+        &lease,
+        &ending,
+        &Meter::default(),
+        Duration::ZERO,
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::FleetError);
+    assert_eq!(report.failure_reason, Some(FailureClass::PolicyDeny));
+    assert_eq!(report.failure_detail, "denied");
+    assert_eq!(report.telemetry.time_to_first_token_ms, 0);
+}
+
+#[test]
+fn a_run_that_never_finished_still_reports_what_it_spent() {
+    let lease = lease(LEASE_ID, FLEET_ID);
+    let ending = Ending::Failed {
+        class: FailureClass::RunnerCrash,
+        detail: "the engine broke mid-run",
+    };
+
+    let report = report(
+        &lease,
+        &ending,
+        &spent(7, 2, 3),
+        Duration::from_millis(5),
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::FleetError);
+    assert_eq!(report.failure_reason, Some(FailureClass::RunnerCrash));
+    assert_eq!(report.failure_detail, "the engine broke mid-run");
+    assert_eq!(report.response_text, "");
+    assert_eq!(report.tokens, 12);
+    assert_eq!(
+        requests(&report),
+        [(7, 2, 3)],
+        "the turns the meter counted before the break are billed"
+    );
+}
+
+#[test]
+fn a_run_that_never_started_reports_zero_usage() {
+    let lease = lease(LEASE_ID, FLEET_ID);
+    let ending = Ending::Failed {
+        class: FailureClass::StartupPosture,
+        detail: "no sandbox",
+    };
+
+    let report = report(
+        &lease,
+        &ending,
+        &Meter::default(),
+        Duration::from_millis(5),
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::FleetError);
+    assert_eq!(report.failure_reason, Some(FailureClass::StartupPosture));
+    assert_eq!(report.failure_detail, "no sandbox");
+    assert_eq!((report.tokens, report.response_text.as_ref()), (0, ""));
+}
+
+#[test]
+fn a_count_past_the_wire_width_saturates() {
+    assert_eq!(narrow(u64::MAX), u32::MAX);
+    assert_eq!(narrow(9), 9);
+}
+
+#[test]
+fn a_finished_run_bills_its_requests_and_reports_its_result_total() {
+    let lease = lease(LEASE_ID, FLEET_ID);
+    let ending = Ending::Ran {
+        output: Box::new(answer()),
+        first_chunk: None,
+    };
+
+    let report = report(
+        &lease,
+        &ending,
+        &spent(100, 50, 25),
+        Duration::ZERO,
+        None,
+        None,
+    );
+
+    assert_eq!(
+        report.tokens, 8,
+        "the history shows what the engine handed back"
+    );
+    assert_eq!(
+        requests(&report),
+        [(100, 50, 25)],
+        "billing charges each request the meter saw, never the result's sum"
+    );
+}
+
+/// A run the engine finished, having read messages up to `sequence`.
+fn ran_through(sequence: i64) -> Ending {
+    let mut output = answer();
+    output.folded_through_sequence = Some(sequence);
+    Ending::Ran {
+        output: Box::new(output),
+        first_chunk: None,
+    }
+}
+
+/// The folded-through sequence a report of `ending` carries.
+fn folded_through(ending: &Ending) -> Option<i64> {
+    report(
+        &lease(LEASE_ID, FLEET_ID),
+        ending,
+        &Meter::default(),
+        Duration::ZERO,
+        None,
+        None,
+    )
+    .folded_through_sequence
+}
+
+#[test]
+fn a_processed_run_reports_the_last_message_it_read() {
+    assert_eq!(folded_through(&ran_through(7)), Some(7));
+}
+
+#[test]
+fn a_run_cut_after_reading_a_message_reports_none_so_the_message_runs_next() {
+    let cut = ran_through(7).cut(FailureClass::RenewalTerminate, "renewal refused");
+
+    assert_eq!(folded_through(&cut), None);
+}
+
+#[test]
+fn a_fleet_failure_after_reading_a_message_reports_none() {
+    let mut output = answer();
+    output.folded_through_sequence = Some(7);
+    output.result.outcome = ResultOutcome::Failed(Failure {
+        class: Some(FailureClass::PolicyDeny),
+        detail: "denied".into(),
+    });
+    let failed = Ending::Ran {
+        output: Box::new(output),
+        first_chunk: None,
+    };
+
+    assert_eq!(folded_through(&failed), None);
+}
+
+#[test]
+fn a_run_that_never_finished_reports_no_message_read() {
+    let never = Ending::Failed {
+        class: FailureClass::RunnerCrash,
+        detail: "the engine broke mid-run",
+    };
+
+    assert_eq!(folded_through(&never), None);
+}

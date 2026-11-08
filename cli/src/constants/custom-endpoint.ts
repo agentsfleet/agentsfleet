@@ -2,7 +2,7 @@
  * Custom OpenAI-compatible endpoint constants for the CLI.
  *
  * The `provider` id below mirrors the backend resolver
- * (`rustd/crates/afd_credential/src/provider/endpoint/mod.rs` →
+ * (`rustd/crates/daemon/afd_credential/src/provider/endpoint/mod.rs` →
  * `OPENAI_COMPATIBLE`): a self-managed secret whose JSON carries this provider
  * opts into a custom endpoint, where `base_url` is required (and
  * forbidden for every named provider). The CLI re-states the literal once here
@@ -12,7 +12,7 @@
  * command, the option validator, and the tests — imports from here (RULE UFS).
  *
  * The secret JSON field keys match the `FIELD_API_KEY` / `FIELD_BASE_URL`
- * extraction in `rustd/crates/afd_vault/src/projection/mod.rs` (`api_key` /
+ * extraction in `rustd/crates/daemon/afd_vault/src/projection/mod.rs` (`api_key` /
  * `base_url`); the `custom`-flow flags compose a `{ provider, api_key,
  * base_url, model? }` object posted to the vault, so a non-https
  * `base_url` is rejected by a flag validator (exit 4, no

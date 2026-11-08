@@ -1,12 +1,20 @@
 # Workspace root for the Rust daemon port.
 #
-# Layout follows Microsoft's M-CRATES-FLAT-FOLDER: every crate is a sibling in
-# one direct subdirectory, `crates/`, with the directory name equal to the crate
-# name. This root is a VIRTUAL manifest — no `[package]`, so it builds no library
-# or binary of its own and no crate is nested inside another crate's source tree.
-# The workspace mechanics (virtual root, explicit member list, the lint
-# rationale below) come from ~/Projects/oss/bun; its `src/<name>/` crate
-# directory does not, by Indy's call on Aug 23, 2026.
+# Every crate sits in one layer folder under `crates/`, with the directory name
+# equal to the crate name, except a layer's binary, whose folder is `main`
+# (Indy, Nov 07, 2026, superseding the flat M-CRATES-FLAT-FOLDER layout of
+# Aug 23, 2026):
+#
+#   foundation/  no product knowledge: errors, validation, crypto
+#   protocol/    the types both binaries speak
+#   harness/     the agent harness and the model, secret and egress seams it uses
+#   runner/      `agentsfleet-runner` (`runner/main`) and the crates only it links
+#   daemon/      `agentsfleetd` (`daemon/main`) and the crates only it links
+#
+# A crate depends on its own layer or a lower one, and `runner/` and `daemon/`
+# never on each other. This root is a VIRTUAL manifest: no `[package]`, so it
+# builds no library or binary of its own. The workspace mechanics (virtual root,
+# explicit member list, the lint rationale below) come from ~/Projects/oss/bun.
 #
 # Every setting a member could restate lives here instead (M-CARGO-WORKSPACE):
 # members inherit package metadata via `.workspace = true`, dependency versions
@@ -15,10 +23,68 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_api_wire", "crates/afd_approval", "crates/afd_auth", "crates/afd_authoring", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_context", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_inference", "crates/afd_ingress", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = [
+    "crates/daemon/afd_admin",
+    "crates/daemon/afd_admission",
+    "crates/daemon/afd_api",
+    "crates/daemon/afd_api_ingress",
+    "crates/daemon/afd_api_operator",
+    "crates/daemon/afd_api_runner",
+    "crates/daemon/afd_api_tenant",
+    "crates/daemon/afd_api_wire",
+    "crates/daemon/afd_approval",
+    "crates/daemon/afd_auth",
+    "crates/daemon/afd_authoring",
+    "crates/daemon/afd_bench",
+    "crates/daemon/afd_billing",
+    "crates/daemon/afd_connector",
+    "crates/protocol/af_context",
+    "crates/foundation/af_core",
+    "crates/daemon/afd_credential",
+    "crates/daemon/afd_cron",
+    "crates/foundation/af_crypto",
+    "crates/daemon/afd_db",
+    "crates/daemon/afd_dragonfly",
+    "crates/daemon/afd_events",
+    "crates/daemon/afd_fleet",
+    "crates/daemon/afd_fleet_lifecycle",
+    "crates/daemon/afd_fleet_ops",
+    "crates/protocol/af_fleet_runtime",
+    "crates/daemon/afd_gate",
+    "crates/daemon/afd_http",
+    "crates/daemon/afd_identity",
+    "crates/protocol/af_inference",
+    "crates/daemon/afd_ingress",
+    "crates/daemon/afd_mail",
+    "crates/daemon/afd_memory",
+    "crates/protocol/af_observability",
+    "crates/protocol/af_otlp",
+    "crates/daemon/afd_outbound",
+    "crates/daemon/afd_runner",
+    "crates/daemon/afd_sse",
+    "crates/daemon/afd_state",
+    "crates/daemon/afd_tenant",
+    "crates/foundation/af_validate",
+    "crates/daemon/afd_vault",
+    "crates/protocol/af_webhook",
+    "crates/protocol/af_wire",
+    "crates/runner/afr_agent",
+    "crates/harness/af_egress",
+    "crates/runner/afr_executor",
+    "crates/runner/afr_memory",
+    "crates/harness/af_providers",
+    "crates/runner/afr_sandbox",
+    "crates/harness/af_secrets",
+    "crates/harness/guffbolt",
+    "crates/runner/afr_supervisor",
+    "crates/runner/afr_telemetry",
+    "crates/runner/afr_tools",
+    "crates/runner/main",
+    "crates/daemon/main",
+]
 
 [workspace.package]
-version = "0.73.0"
+version = "0.75.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
@@ -47,137 +113,140 @@ aho-corasick = { version = "1.1.5", default-features = false, features = ["std",
 memmap2 = { version = "0.9.12", default-features = false }
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
-afd_admin = { path = "crates/afd_admin" }
+afd_admin = { path = "crates/daemon/afd_admin" }
 # The admission ledger: the Postgres row that IS a producer's acceptance, and
 # the queue entry that is only its receipt. Its own crate for the reason
 # `afd_events` gives for existing — one owner per table — and because every
 # producer crate (`afd_events`, `afd_ingress`, `afd_cron`, `afd_approval`,
 # `afd_runner`) admits through it while none of them may depend on another.
-afd_admission = { path = "crates/afd_admission" }
-afd_api = { path = "crates/afd_api" }
-afd_api_ingress = { path = "crates/afd_api_ingress" }
-afd_api_operator = { path = "crates/afd_api_operator" }
-afd_api_runner = { path = "crates/afd_api_runner" }
-afd_api_tenant = { path = "crates/afd_api_tenant" }
-afd_approval = { path = "crates/afd_approval" }
-afd_auth = { path = "crates/afd_auth" }
-afd_authoring = { path = "crates/afd_authoring" }
+afd_admission = { path = "crates/daemon/afd_admission" }
+afd_api = { path = "crates/daemon/afd_api" }
+afd_api_ingress = { path = "crates/daemon/afd_api_ingress" }
+afd_api_operator = { path = "crates/daemon/afd_api_operator" }
+afd_api_runner = { path = "crates/daemon/afd_api_runner" }
+afd_api_tenant = { path = "crates/daemon/afd_api_tenant" }
+afd_approval = { path = "crates/daemon/afd_approval" }
+afd_auth = { path = "crates/daemon/afd_auth" }
+afd_authoring = { path = "crates/daemon/afd_authoring" }
 # What a lease costs and what a tenant has. Split out of `afd_fleet` because it
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
 # calls it — the runner plane's other 23,000 lines never ask about money.
-afd_billing = { path = "crates/afd_billing" }
+afd_billing = { path = "crates/daemon/afd_billing" }
 # Connecting a workspace to a third party: the signed install state, the
 # code-for-token exchange, and the grant that lands in the vault. Its own crate
 # rather than a module in `afd_api` for the reason `afd_ingress` is one — the
 # state machine and the vendor conversation are decided with no router in
 # sight, and `afd_api` is already the workspace's largest crate.
-afd_connector = { path = "crates/afd_connector" }
-afd_core = { path = "crates/afd_core" }
-afd_context = { path = "crates/afd_context" }
+afd_connector = { path = "crates/daemon/afd_connector" }
+af_core = { path = "crates/foundation/af_core" }
+af_context = { path = "crates/protocol/af_context" }
 # What a run may USE: the declared secret, the vault that opens it, the provider
 # it dials, the token a broker mints. Split from afd_fleet once the one misfiled
 # file (an `impl Plane` living under credential/) stopped tying it to the lease.
-afd_credential = { path = "crates/afd_credential" }
-afd_crypto = { path = "crates/afd_crypto" }
-afd_db = { path = "crates/afd_db" }
+afd_credential = { path = "crates/daemon/afd_credential" }
+af_crypto = { path = "crates/foundation/af_crypto" }
+afd_db = { path = "crates/daemon/afd_db" }
 # `fleet.events` and its live tail. A crate of its own because the table
 # had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
 # plane, so `afd_approval` copied the insert rather than depend on leases,
 # money, policy and four sweepers to reuse ten lines of SQL.
-afd_events = { path = "crates/afd_events" }
-afd_fleet = { path = "crates/afd_fleet" }
+afd_events = { path = "crates/daemon/afd_events" }
+afd_fleet = { path = "crates/daemon/afd_fleet" }
 # What a fleet is ALLOWED to do, and the gate a run stops at when the answer
 # needs a person. The lease plane calls down into it at two moments and it
 # calls back at none, which is what let it out.
-afd_gate = { path = "crates/afd_gate" }
-afd_http = { path = "crates/afd_http" }
-afd_inference = { path = "crates/afd_inference" }
+afd_gate = { path = "crates/daemon/afd_gate" }
+afd_http = { path = "crates/daemon/afd_http" }
+af_inference = { path = "crates/protocol/af_inference" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
 # that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and
 # login modules would then rebuild behind a configuration parser and a Redis
 # stream client they never call.
-afd_fleet_lifecycle = { path = "crates/afd_fleet_lifecycle" }
+afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
 # is the host's own plane and WRITES it — a lease-history join reaching for
 # `fleet.fleets` and `fleet.events` would put both on the heartbeat path.
-afd_fleet_ops = { path = "crates/afd_fleet_ops" }
-afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
-afd_identity = { path = "crates/afd_identity" }
+afd_fleet_ops = { path = "crates/daemon/afd_fleet_ops" }
+af_fleet_runtime = { path = "crates/protocol/af_fleet_runtime" }
+afd_identity = { path = "crates/daemon/afd_identity" }
 # What a signed delivery is resolved against. Not folded into `afd_events`,
 # which owns the same table's reads: this needs the vault and the config
 # parser, and adding them there would put AES-GCM and a configuration
 # document reader behind every history page the dashboard asks for. The same argument
 # `afd_vault` makes for not living in `afd_fleet`.
-afd_cron = { path = "crates/afd_cron" }
-afd_ingress = { path = "crates/afd_ingress" }
+afd_cron = { path = "crates/daemon/afd_cron" }
+afd_ingress = { path = "crates/daemon/afd_ingress" }
 # Product email: the invite rendered from templates kept in this repository and
 # sent over SMTP through the relay the `smtp-relay` platform bag names. Its own
 # crate so the transport, its TLS posture and the templates have one owner, and
 # the tenant store never links a mail client.
-afd_mail = { path = "crates/afd_mail" }
+afd_mail = { path = "crates/daemon/afd_mail" }
 # Fleet memory behind one store trait. Its own crate so the lease plane and both
 # route families reach memory through the trait, and a store for another vendor
 # is a new implementation rather than an edit to the runner plane.
-afd_memory = { path = "crates/afd_memory" }
-afd_observability = { path = "crates/afd_observability" }
+afd_memory = { path = "crates/daemon/afd_memory" }
+af_observability = { path = "crates/protocol/af_observability" }
 # The OTLP transport both binaries build their pipelines through: the knobs,
-# the exporters inside `afd_observability`'s counting wrappers, the globals.
-afd_otlp = { path = "crates/afd_otlp" }
-afd_outbound = { path = "crates/afd_outbound" }
-afd_dragonfly = { path = "crates/afd_dragonfly" }
+# the exporters inside `af_observability`'s counting wrappers, the globals.
+af_otlp = { path = "crates/protocol/af_otlp" }
+afd_outbound = { path = "crates/daemon/afd_outbound" }
+afd_dragonfly = { path = "crates/daemon/afd_dragonfly" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
-afd_runner = { path = "crates/afd_runner" }
+afd_runner = { path = "crates/daemon/afd_runner" }
 # One SSE connection's frames and the fan-in behind a workspace stream. Its own
 # crate rather than a module in `afd_api`: the frame shapes, the sequence
 # discipline and the concurrent-stream ceiling are decided with no router in
 # sight, and `afd_api` is already the workspace's largest crate.
-afd_sse = { path = "crates/afd_sse" }
-afd_state = { path = "crates/afd_state" }
-afd_tenant = { path = "crates/afd_tenant" }
+afd_sse = { path = "crates/daemon/afd_sse" }
+afd_state = { path = "crates/daemon/afd_state" }
+afd_tenant = { path = "crates/daemon/afd_tenant" }
 # The bounds every crate declares on untrusted input and cannot get from garde
 # alone: the custom rules (finite, NUL-free, digits, a charset), a `?limit`
 # proved against its route's ceiling, and the table from a reported path to a
-# route's fixed sentence. A leaf beside `afd_core` rather than a module in it
+# route's fixed sentence. A leaf beside `af_core` rather than a module in it
 # (M-SMALLER-CRATES): it depends on garde and nothing of ours.
-afd_validate = { path = "crates/afd_validate" }
+af_validate = { path = "crates/foundation/af_validate" }
 # The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
 # `vault` module is the RUNNER plane's reader — it opens a declared credential
 # for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,
 # which is the credential directory the authentication path cannot start
 # without and would then rebuild every login when a projection column moved.
-afd_vault = { path = "crates/afd_vault" }
+afd_vault = { path = "crates/daemon/afd_vault" }
 # The signature wall: what an unauthenticated delivery must prove before
 # anything reads its body. Its own crate rather than a module in `afd_auth`,
 # which answers a different question — who a CALLER is and what they may do.
 # A signed delivery has no principal, and the wall must be provable with no
 # datastore, no runtime and no router.
-afd_webhook = { path = "crates/afd_webhook" }
-afd_wire = { path = "crates/afd_wire" }
+af_webhook = { path = "crates/protocol/af_webhook" }
+af_wire = { path = "crates/protocol/af_wire" }
 # The daemon's own API types: every admin, tenant, operator and ingress shape
-# no runner speaks. Split from `afd_wire` so an edit here rebuilds no runner
+# no runner speaks. Split from `af_wire` so an edit here rebuilds no runner
 # crate.
-afd_api_wire = { path = "crates/afd_api_wire" }
+afd_api_wire = { path = "crates/daemon/afd_api_wire" }
 # The Rust runner: the supervisor outside every sandbox, the sandbox engines,
 # the executor that runs inside each one, and the agent-engine seam. They depend
-# on `afd_wire`, `afd_core` and `afd_observability` and on nothing else from the
+# on `af_wire`, `af_core` and `af_observability` and on nothing else from the
 # daemon (`docs/architecture/runner_execution.md` §Crates).
-afr_agent = { path = "crates/afr_agent" }
-afr_egress = { path = "crates/afr_egress" }
-afr_executor = { path = "crates/afr_executor" }
-afr_memory = { path = "crates/afr_memory" }
-afr_providers = { path = "crates/afr_providers" }
-afr_sandbox = { path = "crates/afr_sandbox" }
-afr_secrets = { path = "crates/afr_secrets" }
-afr_supervisor = { path = "crates/afr_supervisor" }
+afr_agent = { path = "crates/runner/afr_agent" }
+af_egress = { path = "crates/harness/af_egress" }
+afr_executor = { path = "crates/runner/afr_executor" }
+afr_memory = { path = "crates/runner/afr_memory" }
+af_providers = { path = "crates/harness/af_providers" }
+# The agent harness: one loop's order of turns over the embedder's
+# conversation, and what a run of one kind adds as an extension.
+guffbolt = { path = "crates/harness/guffbolt" }
+afr_sandbox = { path = "crates/runner/afr_sandbox" }
+af_secrets = { path = "crates/harness/af_secrets" }
+afr_supervisor = { path = "crates/runner/afr_supervisor" }
 # The runner's telemetry: the credential-free endpoint, the span budget and
 # the runner's own metric families. Every runner crate that measures records
 # through it; it depends on none of them but the tool catalog.
-afr_telemetry = { path = "crates/afr_telemetry" }
-afr_tools = { path = "crates/afr_tools" }
+afr_telemetry = { path = "crates/runner/afr_telemetry" }
+afr_tools = { path = "crates/runner/afr_tools" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
@@ -192,7 +261,7 @@ csv = "1.4.0"
 serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
 # Test-only Rust tokenization and literal decoding for the compiled-prompt guard.
 proc-macro2 = "=1.0.107"
-syn = { version = "=2.0.119", default-features = false, features = ["parsing"] }
+syn = { version = "=3.0.9", default-features = false, features = ["parsing"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
@@ -202,7 +271,7 @@ schemars = { version = "1.2.3", default-features = false, features = ["derive", 
 # `serde_json::Value` per tool call. A feature on a dependency
 # already resolved in the lock, not a new crate.
 # The OpenAPI document generator, and the reason it is `optional` at every
-# member that names it. `afd_wire` carries serde and serde_json deliberately
+# member that names it. `af_wire` carries serde and serde_json deliberately
 # and nothing else; a schema compiler is a BUILD-time tool, so it is reachable
 # only under the non-default `openapi` feature and the shipped daemon resolves
 # a graph without it. The pattern is the one `json-patch`, `compact_str`,
@@ -264,15 +333,15 @@ getrandom = { version = "0.4.3", default-features = false }
 
 # Version-7 identifier construction. ALREADY in the lock at this version via
 # moka, so this is a feature flag on a compiled crate rather than a new
-# dependency — and it is not on `afd_core`'s FORBIDDEN list, which polices
+# dependency — and it is not on `af_core`'s FORBIDDEN list, which polices
 # runtimes, datastores and transports.
 #
 # Only `Builder::from_unix_timestamp_millis` is used: it takes the 48-bit
 # millisecond field and ten caller-supplied entropy bytes and sets the version
-# and variant nibbles. The entropy is still drawn by `afd_crypto`, so the "one
+# and variant nibbles. The entropy is still drawn by `af_crypto`, so the "one
 # system call" claim holds — nothing here asks uuid for randomness.
 #
-# The PARSE side stays hand-written in `afd_core::id`, and that is not
+# The PARSE side stays hand-written in `af_core::id`, and that is not
 # duplication: `Uuid::parse_str` is case-INSENSITIVE and normalises, while this
 # product rejects uppercase outright so one entity cannot have two spellings.
 # A crate that cannot express the invariant is not a shortcut to it.
@@ -284,7 +353,7 @@ url = { version = "2.5.8", default-features = false }
 # Return completed SQL sessions to the pool; detach cancelled task transactions.
 scopeguard = "1.2.0"
 
-uuid = { version = "1.29.0", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.1", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -351,7 +420,7 @@ jiff-sqlx = { version = "0.2.1", default-features = false, features = ["postgres
 # twice a day — there is no throughput here to trade the posture for.
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 # Bounded YAML decoding for native GitHub validation-workflow inspection.
-serde-saphyr = { version = "2.1.0", default-features = false, features = ["deserialize"] }
+serde-saphyr = { version = "2.1.1", default-features = false, features = ["deserialize"] }
 # Immutable private checkpoint objects and native SigV4 transfer authorizations.
 object_store = { version = "0.14.2", default-features = false, features = ["aws"] }
 aws-sigv4 = "=1.6.4"
@@ -399,7 +468,7 @@ rustls-pki-types = { version = "1.15.1", default-features = false, features = ["
 
 # Product analytics: the async client only. It still compiles reqwest's
 # blocking client and chrono, which nothing here calls.
-posthog-rs = { version = "0.30.0", default-features = false, features = ["async-client"] }
+posthog-rs = { version = "0.31.2", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
@@ -666,7 +735,7 @@ dashmap = { version = "6.2.1", default-features = false }
 # own `serde` types, so no GitHub SDK sits between this crate and its caller.
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 
-# OpenTelemetry, for the push-only export `afd_otlp` builds. The SDK alone:
+# OpenTelemetry, for the push-only export `af_otlp` builds. The SDK alone:
 # it re-exports the API types the
 # exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
 # an endpoint — a transport built here for nobody would be a dependency with no
@@ -740,7 +809,7 @@ opentelemetry_sdk = { version = "0.33.1", default-features = false, features = [
     # trait live behind it, and both were reaching this workspace only because
     # `opentelemetry-otlp`'s own `logs` feature happened to turn it on — so
     # `cargo` unified it into the binary's graph and NOT into a crate built on
-    # its own. `cargo test -p afd_observability` is where that showed up.
+    # its own. `cargo test -p af_observability` is where that showed up.
     "logs",
 ] }
 
@@ -831,7 +900,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 
 # The keys a derive skipped, with their dotted path: the strict reader a
 # person-written request goes through when it embeds a lenient runner-bound
-# type (`afd_core::json::strict_object_from_slice`).
+# type (`af_core::json::strict_object_from_slice`).
 serde_ignored = { version = "0.1.14", default-features = false }
 # The runner's kernel surface, Linux only, each the crate Codex's own sandbox
 # uses (`codex-rs/linux-sandbox/Cargo.toml`): safe system calls for process
@@ -899,6 +968,52 @@ missing_docs = "deny"
 # `pub(crate)` and keep it under dead-code analysis instead of exempting it as
 # an external API root (bun's rationale, Cargo.toml:~350).
 unreachable_pub = "deny"
+
+# Every stable allow-by-default lint that finds nothing here today, and the
+# ones that catch real bugs, so new code cannot bring them back. `linker_info`
+# stays off: it reports the linker's own chatter. A lint that still fires
+# anywhere, tests included, is commented out with its count below.
+absolute_paths_not_starting_with_crate = "deny"
+# closure_returning_async_block = "deny"  # off until fixed: 44 findings today
+deprecated_in_future = "deny"
+deprecated_safe_2024 = "deny"
+deref_into_dyn_supertrait = "deny"
+edition_2024_expr_fragment_specifier = "deny"
+# elided_lifetimes_in_paths = "deny"  # off until fixed: 2 findings today
+explicit_outlives_requirements = "deny"
+ffi_unwind_calls = "deny"
+if_let_rescope = "deny"
+impl_trait_overcaptures = "deny"
+impl_trait_redundant_captures = "deny"
+keyword_idents_2018 = "deny"
+keyword_idents_2024 = "deny"
+# let_underscore_drop = "deny"  # off until fixed: 48 findings today
+macro_use_extern_crate = "deny"
+meta_variable_misuse = "deny"
+# missing_copy_implementations = "deny"  # off until fixed: 2 findings today
+missing_unsafe_on_extern = "deny"
+non_ascii_idents = "deny"
+raw_borrows_via_references = "deny"
+rust_2021_incompatible_closure_captures = "deny"
+rust_2021_incompatible_or_patterns = "deny"
+rust_2021_prefixes_incompatible_syntax = "deny"
+rust_2021_prelude_collisions = "deny"
+rust_2024_guarded_string_incompatible_syntax = "deny"
+rust_2024_incompatible_pat = "deny"
+rust_2024_prelude_collisions = "deny"
+# single_use_lifetimes = "deny"  # off until fixed: 170 findings today
+tail_expr_drop_order = "deny"
+# trivial_casts = "deny"  # off until fixed: 77 findings today
+unit_bindings = "deny"
+unnameable_types = "deny"
+unsafe_attr_outside_unsafe = "deny"
+# unsafe_code = "deny"  # off until fixed: 24 findings today
+unstable_features = "deny"
+unused_extern_crates = "deny"
+unused_import_braces = "deny"
+unused_macro_rules = "deny"
+# unused_qualifications = "deny"  # off until fixed: 17 findings today
+# variant_size_differences = "deny"  # off until fixed: 8 findings today
 
 [workspace.lints.clippy]
 # All major categories (M-STATIC-VERIFICATION).
@@ -972,6 +1087,118 @@ unnecessary_safety_doc = "deny"
 unneeded_field_pattern = "deny"
 unused_result_ok = "deny"
 too_long_first_doc_paragraph = "deny"
+
+# Every restriction and nursery lint that finds nothing here today, and the
+# bug-catching ones, chosen one by one. The groups themselves stay off:
+# `restriction` holds pairs that contradict each other and this table
+# (`implicit_return` against `needless_return`, `mod_module_files` against
+# `self_named_module_files`), and clippy refuses it as a group
+# (`blanket_clippy_restriction_lints`).
+# `allow_attributes` stays off: a macro expanded in many crates needs `allow`,
+# because its lint fires in some of them and not others, and an `expect`
+# fails wherever it does not. `allow_attributes_without_reason` still binds.
+alloc_instead_of_core = "deny"
+# as_conversions = "deny"  # off until fixed: 187 findings today
+as_ptr_cast_mut = "deny"
+as_underscore = "deny"
+branches_sharing_code = "deny"
+cfg_not_test = "deny"
+clear_with_drain = "deny"
+coerce_container_to_any = "deny"
+# collection_is_never_read = "deny"  # off until fixed: 1 findings today
+# create_dir = "deny"  # off until fixed: 52 findings today
+debug_assert_with_mut_call = "deny"
+default_union_representation = "deny"
+derive_partial_eq_without_eq = "deny"
+doc_include_without_cfg = "deny"
+doc_link_code = "deny"
+# doc_paragraphs_missing_punctuation = "deny"  # off until fixed: 6 findings today
+# else_if_without_else = "deny"  # off until fixed: 7 findings today
+empty_enums = "deny"
+equatable_if_let = "deny"
+exit = "deny"
+fallible_impl_from = "deny"
+# filetype_is_file = "deny"  # off until fixed: 3 findings today
+# float_cmp_const = "deny"  # off until fixed: 1 findings today
+# future_not_send = "deny"  # off until fixed: 42 findings today
+# get_unwrap = "deny"  # off until fixed: 10 findings today
+host_endian_bytes = "deny"
+imprecise_flops = "deny"
+infinite_loop = "deny"
+inline_asm_x86_att_syntax = "deny"
+inline_asm_x86_intel_syntax = "deny"
+# integer_division = "deny"  # off until fixed: 71 findings today
+iter_on_empty_collections = "deny"
+# iter_on_single_items = "deny"  # off until fixed: 3 findings today
+# iter_over_hash_type = "deny"  # off until fixed: 8 findings today
+iter_with_drain = "deny"
+large_include_file = "deny"
+large_stack_frames = "deny"
+# let_underscore_must_use = "deny"  # off until fixed: 43 findings today
+# let_underscore_untyped = "deny"  # off until fixed: 55 findings today
+# literal_string_with_formatting_args = "deny"  # off until fixed: 10 findings today
+lossy_float_literal = "deny"
+# map_with_unused_argument_over_ranges = "deny"  # off until fixed: 49 findings today
+mem_forget = "deny"
+# missing_asserts_for_indexing = "deny"  # off until fixed: 3 findings today
+# missing_const_for_fn = "deny"  # off until fixed: 1 findings today
+mixed_read_write_in_expression = "deny"
+modulo_arithmetic = "deny"
+multiple_unsafe_ops_per_block = "deny"
+mutex_atomic = "deny"
+mutex_integer = "deny"
+# needless_collect = "deny"  # off until fixed: 3 findings today
+# needless_pass_by_ref_mut = "deny"  # off until fixed: 7 findings today
+needless_type_cast = "deny"
+non_send_fields_in_send_ty = "deny"
+non_zero_suggestions = "deny"
+# or_fun_call = "deny"  # off until fixed: 3 findings today
+# panic_in_result_fn = "deny"  # off until fixed: 167 findings today
+path_buf_push_overwrite = "deny"
+pathbuf_init_then_push = "deny"
+pointer_format = "deny"
+precedence_bits = "deny"
+pub_without_shorthand = "deny"
+# rc_buffer = "deny"  # off until fixed: 3 findings today
+rc_mutex = "deny"
+read_zero_byte_vec = "deny"
+redundant_clone = "deny"
+rest_pat_in_fully_bound_structs = "deny"
+return_and_then = "deny"
+search_is_some = "deny"
+set_contains_or_insert = "deny"
+significant_drop_in_scrutinee = "deny"
+# significant_drop_tightening = "deny"  # off until fixed: 299 findings today
+single_option_map = "deny"
+str_to_string = "deny"
+# string_add = "deny"  # off until fixed: 2 findings today
+string_lit_as_bytes = "deny"
+string_lit_chars_any = "deny"
+# string_slice = "deny"  # off until fixed: 28 findings today
+# suboptimal_flops = "deny"  # off until fixed: 1 findings today
+# suspicious_operation_groupings = "deny"  # off until fixed: 2 findings today
+suspicious_xor_used_as_pow = "deny"
+trailing_empty_array = "deny"
+trait_duplication_in_bounds = "deny"
+transmute_undefined_repr = "deny"
+# trivial_regex = "deny"  # off until fixed: 2 findings today
+try_err = "deny"
+# tuple_array_conversions = "deny"  # off until fixed: 4 findings today
+type_repetition_in_bounds = "deny"
+uninhabited_references = "deny"
+unnecessary_rest_pattern = "deny"
+unnecessary_self_imports = "deny"
+unnecessary_struct_initialization = "deny"
+# unreachable = "deny"  # off until fixed: 80 findings today
+unused_peekable = "deny"
+unused_rounding = "deny"
+# unwrap_in_result = "deny"  # off until fixed: 29 findings today
+# use_debug = "deny"  # off until fixed: 2 findings today
+use_self = "deny"
+verbose_file_reads = "deny"
+volatile_composites = "deny"
+while_float = "deny"
+# wildcard_enum_match_arm = "deny"  # off until fixed: 118 findings today
 
 [profile.dev]
 # Line tables only, not full DWARF. The default (debug = 2) at 357 locked

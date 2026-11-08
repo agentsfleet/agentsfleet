@@ -2,35 +2,68 @@
 
 > Parent: [`README.md`](./README.md)
 
-The design constants. Every spec under `docs/v2/` lives inside the constraints below. When a spec proposes something that conflicts with these constants, the spec gets amended — not the constants.
+The design constants. Every spec under `docs/v2/` lives inside the constraints below. When a spec proposes something that conflicts with these constants, the spec gets amended, not the constants.
 
 The architecture optimises for one generic operational runtime, not bespoke typed flows per use case.
 
-Principles. Each links to where it's enforced — when a spec contradicts one of these, the spec is wrong:
+Principles. Each links to where it's enforced; when a spec contradicts one of these, the spec is wrong:
 
-- **One Fleet is a durable runtime, not a one-shot prompt.** Enforced by the lease model: `agentsfleetd` hands a runner one event at a time, and Fleet state survives runner restarts in the fleet's memory, hydrated at each lease ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"). See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The coding fleet and the Fleet runtime".
+- **One Fleet is a durable runtime, not a one-shot prompt.** The lease model enforces it. `agentsfleetd` hands a runner one event at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each lease ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
+
+  See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The coding fleet and the Fleet runtime".
+
 - **All trigger sources enter the same event-processing path.** Webhook, cron, steer, and continuation all commit to `fleet.admissions`; the lease/run path treats every actor alike. See the [admission and run flows](./data_flow.md).
-- **Behaviour is primarily defined in natural language, through chat, into one reviewed Definition.** The Definition holds a one-line `description`, `instructions_md`, and a `config` policy document (`rustd/crates/afd_fleet_runtime/src/definition/mod.rs`). One parser turns `config` into `FleetConfig`: triggers, tools, credentials, network, budget, gates, repository binding, model, and context (`rustd/crates/afd_fleet_runtime/src/config/mod.rs`). The instructions are advisory prose the fleet reads at run open. See [`capabilities.md`](./capabilities.md) §1.
-- **Secrets are injected at execution time, never embedded in prompt text or written into the fleet's context.** The runner's supervisor substitutes `${secrets.NAME.FIELD}` at send time, outside the sandbox, and the activity frame carries `args_redacted`, never the bytes ([`runner_execution.md`](./runner_execution.md#credentials)). See [`data_flow.md`](./data_flow.md) §"C. EXECUTE", [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
-- **History is durable with actor provenance.** Every event lands in the Fleet event store (`fleet.events`) with `actor=(steer:<user>|webhook:<source>|github-app|cron:<schedule>|continuation:<original>|slack:<user>)`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
+
+- **Behaviour is defined mainly in natural language, through chat, into one reviewed Definition**. It holds a one-line `description`, `instructions_md` and a `config` policy document.
+
+  `af_fleet_runtime` owns the Definition type and the one parser that turns `config` into `FleetConfig`. That covers triggers, tools, credentials, network, budget, gates, repository binding, model and context. The instructions are advisory prose the fleet reads at run open.
+
+  See [`capabilities.md`](./capabilities.md) §1.
+
+- **Secrets are injected at run time, never embedded in prompt text or fleet context**. The supervisor substitutes `${secrets.NAME.FIELD}` at send time, outside the sandbox. The activity frame carries `args_redacted`, never the bytes ([`runner_execution.md`](./runner_execution.md#credentials)).
+
+  See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`, [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
+
+- **History is durable with actor provenance.** Every event lands in the Fleet event store (`fleet.events`) with its actor. Actors read `steer:<user>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
+
 - **Conversation checkpoints preserve current working notes.** Private setup and runtime share [conversation compaction](./context_lifecycle.md). Semantic memory supplies facts for later runs; see [semantic memory](./capabilities.md#semantic-memory-remains-separate).
+
 - **Context follows the selected model's working window.** Before a request reaches its limit, shared compaction summarizes older groups and retains current instructions and tools. Money, output and time budgets still bound each run; see [context limits](./capabilities.md#limits-and-defaults).
-- **Approvals are first-class.** Risky actions block at the gate; state machine survives runner restarts. See [`capabilities.md`](./capabilities.md) §3 "Approval gating" row and [`data_flow.md`](./data_flow.md) §"C. EXECUTE".
-- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`; `agentsfleetd` enforces it when it issues the lease, before the run starts (`rustd/crates/afd_fleet/src/lease/pull/mod.rs`). The instructions may ask for approval explicitly. See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
-- **Fleet-memory recall has no search infrastructure — the language model is the search engine.** Memory list/recall returns raw entries; the model reads them and decides relevance. No vector search, embeddings, pgvector, pg_trgm, or full-text indexes for memory — a plain case-insensitive substring match on key and content, with no index behind it, is the ceiling. Sequential scans over one Fleet's rows are not a reason to add search infrastructure; a spec or review proposing it gets amended. See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
+
+- **Approvals are first-class.** Risky actions block at the gate; the state machine survives runner restarts. See [`capabilities.md`](./capabilities.md) §3 "Approval gating" row and [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
+
+- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the lease, before the run starts (`afd_fleet`'s lease pull). The instructions may ask for approval explicitly.
+
+  See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
+
+- **Fleet-memory recall has no search infrastructure; the language model is the search engine**. Memory list/recall returns raw entries; the model reads and decides relevance. No vector search, embeddings, pgvector, pg_trgm, or full-text indexes for memory.
+
+  The ceiling is a plain case-insensitive substring match on key and content, with no index behind it. Sequential scans over one Fleet's rows are not a reason to add search infrastructure; a spec or review proposing it gets amended.
+
+  See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
+
 - **Slack uses the existing runtime.** Configured fleet subscriptions select the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns admission and fixed notices.
 
 The runtime keeps only a thin typed envelope:
 
-- trigger source + actor
-- Fleet id / workspace id, with `fleet_id` as the canonical Fleet identifier
+- trigger source and actor
+
+- Fleet id and workspace id, with `fleet_id` as the canonical Fleet identifier
+
 - timestamps
+
 - idempotency key
+
 - raw payload
+
 - approval state
+
 - execution state
+
 - context budget knobs (defaults inherited from the active model's tier; user-overridable in `x-agentsfleet.context`)
 
 Everything else stays prompt-driven and is iterated in chat, then applied as a reviewed setup revision.
 
-A Library entry is reusable setup above the runtime, not a second runtime entity: an immutable revision a person explicitly published, which a new fleet pins at Save. Prose cannot grant capabilities. Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on lease. Runners remain infrastructure capacity; they execute Fleets but are not child resources of a customer Fleet.
+A Library entry is reusable setup above the runtime, not a second runtime entity. It is an immutable revision a person explicitly published, which a new fleet pins at Save. Prose cannot grant capabilities.
+
+Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on lease. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.

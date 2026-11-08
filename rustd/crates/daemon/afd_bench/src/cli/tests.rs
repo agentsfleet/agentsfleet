@@ -1,0 +1,113 @@
+//! What the shared preamble admits, and which failure it reports first.
+
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking on an unmet precondition"
+)]
+
+use af_core::env::MapEnv;
+
+use super::{Provenance, admitted, finish};
+use crate::error::{Error, ErrorKind};
+use crate::profile::{PROFILE_VARIABLE, Profile, Target};
+use crate::report::provenance::{
+    DATASTORE_IMAGE_VARIABLE, OWNED_VALUE, OWNED_VARIABLE, REVISION_VARIABLE,
+};
+use crate::report::{Lane, Report};
+
+/// The provenance variables every run supplies, which say nothing about the
+/// profile. Spread into a case so a test about profile resolution is not also
+/// a test of whether provenance is required — `provenance::tests` owns that.
+const DESCRIBED: [(&str, &str); 3] = [
+    (REVISION_VARIABLE, "0000000"),
+    (DATASTORE_IMAGE_VARIABLE, "dragonfly:test"),
+    (OWNED_VARIABLE, OWNED_VALUE),
+];
+
+fn env_of(pairs: &[(&str, &str)]) -> MapEnv {
+    MapEnv::from_pairs(pairs.iter().copied())
+}
+
+#[test]
+fn test_an_absent_profile_is_the_rig() {
+    let (profile, target, _provenance) =
+        admitted(&env_of(&DESCRIBED)).expect("the rig needs no profile variable");
+    assert_eq!(profile, Profile::Rig);
+    assert_eq!(target, Target::Rig);
+}
+
+#[test]
+fn test_a_run_that_cannot_describe_itself_is_refused_before_its_profile_resolves() {
+    // The rig needs no profile variable and still needs provenance: a result
+    // file nobody can date or attribute grades nothing, whatever it ran
+    // against. Refused in the preamble, so no datastore is opened.
+    let refused = admitted(&env_of(&[])).expect_err("an undescribed run refuses");
+    assert!(
+        matches!(refused.kind(), ErrorKind::VariableUnset { variable } if *variable == REVISION_VARIABLE),
+        "got {refused}"
+    );
+}
+
+#[test]
+fn test_a_named_profile_is_admitted_through_its_own_checks() {
+    let mut environment = DESCRIBED.to_vec();
+    environment.push((PROFILE_VARIABLE, "prod"));
+    let refused =
+        admitted(&env_of(&environment)).expect_err("prod without its acknowledgement refuses");
+    assert!(
+        matches!(refused.kind(), ErrorKind::AcknowledgementMissing { .. }),
+        "got {refused}"
+    );
+}
+
+#[test]
+fn test_the_lanes_error_is_reported_before_the_sweeps() {
+    let lane_failed: Result<Report, Error> = Err(ErrorKind::TaskLost { role: "runner" }.into());
+    let sweep_failed: Result<u64, Error> = Err(ErrorKind::InstrumentPoisoned.into());
+
+    let refused = finish(Lane::Lease, Profile::Rig, lane_failed, sweep_failed)
+        .expect_err("two failures still refuse");
+
+    assert!(
+        matches!(refused.kind(), ErrorKind::TaskLost { .. }),
+        "the measurement's failure is the one a reader needs, got {refused}"
+    );
+}
+
+#[test]
+fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
+    let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
+    report.fixture.created = 3;
+
+    let refused = finish(
+        Lane::Lease,
+        Profile::Rig,
+        Ok(report),
+        Err(ErrorKind::InstrumentPoisoned.into()),
+    )
+    .expect_err("a run whose fixtures may be left behind is not a clean result");
+
+    assert!(matches!(refused.kind(), ErrorKind::InstrumentPoisoned));
+}
+
+#[test]
+fn test_the_callers_sweep_adds_to_what_the_lane_swept_itself() {
+    let mut report = Report::new(Lane::Outbound, Profile::Rig, Provenance::for_test());
+    report.fixture.created = 200;
+    report.fixture.swept = 200;
+    let scratch = std::env::temp_dir().join(format!("afd-bench-finish-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&scratch);
+    let previous = std::env::current_dir().expect("a cwd");
+    std::env::set_current_dir(&scratch).expect("scratch is enterable");
+
+    let written = finish(Lane::Outbound, Profile::Rig, Ok(report), Ok(0));
+
+    std::env::set_current_dir(previous).expect("cwd restored");
+    let path = written.expect("a finished run writes");
+    let read = Report::read(std::path::Path::new(&scratch).join(path).as_path()).expect("readable");
+    let _ = std::fs::remove_dir_all(&scratch);
+    assert_eq!(
+        read.fixture.swept, 200,
+        "a fallback that found nothing must not erase what the lane swept"
+    );
+}

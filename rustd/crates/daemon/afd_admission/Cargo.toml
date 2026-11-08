@@ -1,0 +1,76 @@
+[package]
+name = "afd_admission"
+description = "Durable admission, ordering and backlog budgets for the Postgres work queue."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the instant a row is stamped with, and the registry codes.
+af_core.workspace = true
+# The row identifier's entropy. Held by the ledger rather than drawn per call
+# — see `Admissions`.
+af_crypto.workspace = true
+# The Postgres pool the ledger lives on.
+afd_db.workspace = true
+# The semantics marker accepted by the same validator that runtime leases use.
+af_fleet_runtime.workspace = true
+# The fleet status a runnable admission binds, and the one a refusal names.
+afd_fleet_lifecycle.workspace = true
+# The live lease status the disposition facts read.
+afd_state.workspace = true
+# Best-effort notification transport.
+afd_dragonfly.workspace = true
+# Admission outcome counters.
+af_observability.workspace = true
+# Event types accepted by producers.
+af_wire.workspace = true
+# The payload digest a producer key is checked against on a retry, and its
+# rendering. `hex::encode` rather than a `{:02x}` loop, for the reason
+# `afd_auth::directory` gives.
+hex.workspace = true
+sha2.workspace = true
+# Database timestamp bridge.
+jiff.workspace = true
+jiff-sqlx.workspace = true
+# `derive` for the typed rows every statement decodes into.
+sqlx = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a
+# router suite reaches this crate's seam with no datastore behind it.
+test-util = [
+    "af_core/test-util",
+    "af_crypto/test-util",
+    "afd_db/test-util",
+    "afd_dragonfly/test-util",
+]
+
+[dev-dependencies]
+# The `tracing` capture the failure-line suites read a `reason` back through.
+af_core = { workspace = true, features = ["test-util"] }
+# `net`, `io-util` and `sync` serve the fake queue `tests/receipt_faults.rs`
+# borrows from `afd_dragonfly`'s support tree.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }
+# The lane fixture: the shared test database and the identifier minting the
+# seeded rows are addressed by.
+afd_db = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
+af_crypto = { workspace = true, features = ["test-util"] }
+# The error surface reaches THROUGH the chain to the driver's own
+# `DatabaseError`, which is the only way to grade what the exhausted-disk
+# sample claims to be. A dev-dependency on a crate this one already depends
+# on, for a type only the suite names.
+sqlx.workspace = true

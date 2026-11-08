@@ -1,0 +1,45 @@
+//! Every `afd_events` test file, in one test binary.
+//!
+//! cargo runs test BINARIES serially and the tests inside one in parallel, so
+//! each extra binary was a serial stretch re-paying process start and its own
+//! datastore connections. The audit preceding every aggregation on this branch
+//! ran here too: no suite asserts over global state — no `total()`, `COUNT(`
+//! or unfiltered listing over a shared table — so concurrency between these
+//! suites has nothing to race on. The support module is declared once and
+//! reached as `crate::support`.
+
+#[path = "support/events_lane.rs"]
+mod support;
+
+// No datastore: a source scan over the workspace, so it carries no `#[ignore]`
+// and runs in the unit lane (`docs/architecture/testing.md`, filename rule).
+#[path = "counters_refused.rs"]
+mod counters_refused;
+
+#[path = "integration_admission_history.rs"]
+mod integration_admission_history;
+#[path = "integration_backfill.rs"]
+mod integration_backfill;
+#[path = "integration_budgets.rs"]
+mod integration_budgets;
+#[path = "integration_continuation_lineage.rs"]
+mod integration_continuation_lineage;
+#[path = "integration_intake_cost.rs"]
+mod integration_intake_cost;
+mod integration_list_plans;
+#[path = "integration_steer.rs"]
+mod integration_steer;
+#[path = "integration_steer_disposition.rs"]
+mod integration_steer_disposition;
+#[path = "integration_steer_insert.rs"]
+mod integration_steer_insert;
+#[path = "integration_steer_races.rs"]
+mod integration_steer_races;
+#[path = "integration_steer_replay.rs"]
+mod integration_steer_replay;
+#[path = "integration_steer_retry.rs"]
+mod integration_steer_retry;
+mod queued;
+
+#[path = "error_surface.rs"]
+mod error_surface;

@@ -1,0 +1,420 @@
+#![expect(
+    clippy::unwrap_used,
+    reason = "test target: a fixture that cannot be built is a broken test"
+)]
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use af_wire::lease::{LeaseResponse, TaggedLease};
+use af_wire::runner::HeartbeatStatus;
+use bytes::Bytes;
+use tokio::sync::watch;
+
+use super::{MIN_POLL_PAUSE, first_poll_offset, serve};
+use crate::client::Verb;
+use crate::error;
+use crate::heartbeat::Assignment;
+use crate::test_support::{
+    Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Rig, daemon, json, lease,
+};
+
+const FIRST_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8060";
+const SECOND_LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a8061";
+
+/// A daemon whose n-th lease poll is answered by `polls(n)`.
+fn polling(polls: impl Fn(usize) -> Answer + Send + Sync + 'static) -> Rig {
+    polling_with(polls, FakeEngine::default())
+}
+
+fn polling_with(
+    polls: impl Fn(usize) -> Answer + Send + Sync + 'static,
+    engine: FakeEngine,
+) -> Rig {
+    let polled = AtomicUsize::new(0);
+    let answer = daemon(move |call| {
+        (call.verb == Verb::Lease).then(|| polls(polled.fetch_add(1, Ordering::SeqCst)))
+    });
+    Rig::new(answer, engine, FakeAgent::new(Behaviour::Answer))
+}
+
+fn granted(lease_id: &str) -> Answer {
+    json(&LeaseResponse::<serde_json::Value> {
+        lease: Some(TaggedLease::Fleet(Box::new(lease(lease_id, FLEET_ID)))),
+        retry_after_ms: None,
+    })
+}
+
+fn idle(retry_after_ms: Option<u32>) -> Answer {
+    json(&LeaseResponse::<serde_json::Value> {
+        lease: None,
+        retry_after_ms,
+    })
+}
+
+fn assigned(workers: u32) -> Assignment {
+    Assignment {
+        workers,
+        ..Assignment::initial()
+    }
+}
+
+async fn until(count: &AtomicUsize, at_least: usize) {
+    while count.load(Ordering::SeqCst) < at_least {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_worker_pool_runs_distinct_fleets() {
+    let rig = polling(|polled| match polled {
+        0 => granted(FIRST_LEASE),
+        1 => granted(SECOND_LEASE),
+        _ => idle(Some(500)),
+    });
+    let (_published, watching) = watch::channel(assigned(2));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    until(&rig.runs, 2).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(
+        rig.runs.load(Ordering::SeqCst),
+        2,
+        "both of the fleet's events ran"
+    );
+    assert_eq!(rig.peak.load(Ordering::SeqCst), 1, "never at the same time");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refused_token_stops_the_pool() {
+    let rig = polling(|_| Answer::Fail(error::refused(Verb::Lease, 401, None)));
+    let (_published, watching) = watch::channel(assigned(1));
+
+    serve(Arc::clone(&rig.lessee), watching).await;
+
+    assert!(rig.lessee.halt.token_refused());
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_polls_back_off_and_a_zero_hint_is_floored() {
+    let polls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&polls);
+    let rig = polling(move |polled| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        match polled {
+            0..=5 => Answer::Fail(error::unavailable(Verb::Lease, 503)),
+            6 => Answer::Reply(Bytes::from_static(b"[")),
+            7 => granted("nope"),
+            _ => idle(Some(0)),
+        }
+    });
+    let (published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let early = polls.load(Ordering::SeqCst);
+    until(&polls, 9).await;
+    let floored = polls.load(Ordering::SeqCst);
+    tokio::time::sleep(MIN_POLL_PAUSE * 4).await;
+    let later = polls.load(Ordering::SeqCst);
+    published.send_replace(Assignment {
+        status: HeartbeatStatus::Drain,
+        ..assigned(2)
+    });
+    drop(published);
+    pool.await.unwrap();
+
+    assert!(
+        early < 6,
+        "six blips took longer than two seconds to spend: {early}"
+    );
+    assert!(
+        later - floored <= 5,
+        "a zero hint polls at most every {MIN_POLL_PAUSE:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_worker_that_panics_is_started_again() {
+    let engine = FakeEngine {
+        panic_once: true,
+        ..FakeEngine::default()
+    };
+    let rig = polling_with(
+        |polled| match polled {
+            0 => granted(FIRST_LEASE),
+            1 => granted(SECOND_LEASE),
+            _ => idle(Some(500)),
+        },
+        engine,
+    );
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    until(&rig.runs, 1).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        2,
+        "the second lease ran on a fresh worker"
+    );
+}
+
+/// Four workers on a one-second hint make their first polls a quarter second
+/// apart, so fresh work waits for the next poll rather than the next second.
+#[tokio::test(start_paused = true)]
+async fn test_workers_stagger_first_poll() {
+    let polled_at = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&polled_at);
+    let rig = polling(move |_polled| {
+        seen.lock().unwrap().push(tokio::time::Instant::now());
+        idle(Some(10_000))
+    });
+    let started = tokio::time::Instant::now();
+    let (_published, watching) = watch::channel(assigned(4));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    let mut offsets: Vec<u128> = polled_at
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|at| at.duration_since(started).as_millis())
+        .collect();
+    offsets.sort_unstable();
+    assert_eq!(offsets, [0, 250, 500, 750], "one poll per quarter second");
+    assert_eq!(
+        first_poll_offset(5, 4),
+        Duration::from_millis(250),
+        "a worker past the count takes its place in the rotation"
+    );
+    assert_eq!(
+        first_poll_offset(0, 0),
+        Duration::ZERO,
+        "no workers, no wait"
+    );
+}
+
+/// A pool shut down while its workers wait out their offsets polls no more:
+/// only the worker with no offset has polled, and the pool joins at once
+/// rather than after the offsets run out.
+#[tokio::test(start_paused = true)]
+async fn test_a_worker_cancelled_during_its_offset_never_polls() {
+    const CANCEL_AFTER: Duration = Duration::from_millis(100);
+    let polls = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&polls);
+    let rig = polling(move |_polled| {
+        seen.fetch_add(1, Ordering::SeqCst);
+        idle(Some(10_000))
+    });
+    let (_published, watching) = watch::channel(assigned(4));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(CANCEL_AFTER).await;
+    let cancelled_at = tokio::time::Instant::now();
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(
+        polls.load(Ordering::SeqCst),
+        1,
+        "only the zero-offset worker polled"
+    );
+    assert!(
+        cancelled_at.elapsed() < first_poll_offset(1, 4).saturating_sub(CANCEL_AFTER),
+        "the pool did not wait out the offsets: {:?}",
+        cancelled_at.elapsed()
+    );
+}
+
+/// Once a lease leaves its sandbox held, the next poll names that fleet, so
+/// the daemon offers the fleet's next event here first.
+#[tokio::test(start_paused = true)]
+async fn test_a_poll_after_a_park_names_the_held_fleet() {
+    const HOLDS: &str = "holds";
+    let polls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&polls);
+    let mut rig = polling(move |polled| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        match polled {
+            0 => granted(FIRST_LEASE),
+            _ => idle(Some(500)),
+        }
+    });
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    until(&polls, 2).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    let held: Vec<Option<serde_json::Value>> = rig
+        .calls()
+        .iter()
+        .filter(|call| call.verb == Verb::Lease)
+        .take(2)
+        .map(|call| {
+            let body = call.body.as_ref().unwrap();
+            let sent: serde_json::Value = serde_json::from_slice(body).unwrap();
+            sent.get(HOLDS).cloned()
+        })
+        .collect();
+    assert_eq!(
+        held,
+        [
+            Some(serde_json::json!([])),
+            Some(serde_json::json!([FLEET_ID]))
+        ],
+        "nothing held before the first lease, its fleet after"
+    );
+}
+
+/// A worker that panics after leasing stopped is not started again: the
+/// restart is for a pool still serving, and this one is on its way out.
+#[tokio::test(start_paused = true)]
+async fn a_worker_that_panics_after_leasing_stopped_stays_down() {
+    let engine = FakeEngine {
+        panic_once: true,
+        ..FakeEngine::default()
+    };
+    let halt = Arc::clone(&engine.halt_before_panic);
+    let rig = polling_with(
+        |polled| match polled {
+            0 => granted(FIRST_LEASE),
+            _ => granted(SECOND_LEASE),
+        },
+        engine,
+    );
+    halt.set(rig.shutdown.clone()).unwrap();
+    let (_published, watching) = watch::channel(assigned(1));
+
+    serve(Arc::clone(&rig.lessee), watching).await;
+
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        1,
+        "no worker came back for the second lease"
+    );
+}
+
+/// A poll that hands out setup work authors it: no sandbox is prepared and no
+/// fleet turn runs for it.
+#[tokio::test(start_paused = true)]
+async fn an_authoring_lease_is_authored_rather_than_run() {
+    let polled = AtomicUsize::new(0);
+    let answer = daemon(move |call| match call.verb {
+        Verb::Lease => Some(if polled.fetch_add(1, Ordering::SeqCst) == 0 {
+            json(&LeaseResponse::<serde_json::Value> {
+                lease: Some(TaggedLease::Authoring(Box::new(
+                    crate::authoring::tests::lease(),
+                ))),
+                retry_after_ms: None,
+            })
+        } else {
+            idle(Some(500))
+        }),
+        Verb::AuthoringModel => Some(crate::authoring::tests::result(
+            call,
+            &serde_json::json!([]),
+            false,
+        )),
+        _ => None,
+    });
+    let mut rig = Rig::new(
+        answer,
+        FakeEngine::default(),
+        FakeAgent::new(Behaviour::Answer),
+    );
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    let authored = loop {
+        let call = tokio::time::timeout(Duration::from_secs(5), rig.calls.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        if call.verb == Verb::AuthoringModel {
+            break call;
+        }
+    };
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert!(
+        authored.body.is_some(),
+        "the model route was asked for the turn"
+    );
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        0,
+        "no sandbox for setup work"
+    );
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "no fleet turn ran");
+}
+
+/// Every poll's offset from `started`, in milliseconds, in order.
+fn offsets(
+    polled_at: &Mutex<Vec<tokio::time::Instant>>,
+    started: tokio::time::Instant,
+) -> Vec<u128> {
+    let mut offsets: Vec<u128> = polled_at
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|at| at.duration_since(started).as_millis())
+        .collect();
+    offsets.sort_unstable();
+    offsets
+}
+
+/// A woken beat ends exactly one idle worker's pause: it polls at once and
+/// the other three keep their staggered pauses.
+#[tokio::test(start_paused = true)]
+async fn test_woken_beat_polls_one_worker_at_once() {
+    let polled_at = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&polled_at);
+    let rig = polling(move |_polled| {
+        seen.lock().unwrap().push(tokio::time::Instant::now());
+        idle(Some(10_000))
+    });
+    let started = tokio::time::Instant::now();
+    let (_published, watching) = watch::channel(assigned(4));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    rig.lessee.wake.one();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(offsets(&polled_at, started), [0, 250, 500, 750, 900]);
+}
+
+/// With no wake, an idle worker polls on the daemon's hint and nothing sooner.
+#[tokio::test(start_paused = true)]
+async fn test_lost_ring_falls_back_to_the_hint() {
+    let polled_at = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&polled_at);
+    let rig = polling(move |_polled| {
+        seen.lock().unwrap().push(tokio::time::Instant::now());
+        idle(Some(1_000))
+    });
+    let started = tokio::time::Instant::now();
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(Duration::from_millis(2_500)).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(offsets(&polled_at, started), [0, 1_000, 2_000]);
+}

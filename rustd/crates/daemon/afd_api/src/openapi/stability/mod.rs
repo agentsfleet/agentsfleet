@@ -1,0 +1,144 @@
+//! Each response field's stability class, as `x-stability` (REST §9).
+//!
+//! `utoipa` field extensions do not survive a reference-valued field. The
+//! table keeps field classes together and tests every declared property in
+//! the published document. A field left out is `stable`, which is the
+//! guidelines' binding default.
+
+use utoipa::openapi::extensions::Extensions;
+use utoipa::openapi::schema::OneOf;
+use utoipa::openapi::{OpenApi, RefOr, Schema};
+
+/// The extension a field's class is published under.
+const STABILITY: &str = "x-stability";
+
+/// May change shape or go away without the deprecation clock.
+const BETA: &str = "beta";
+
+/// What a `beta` field's description says, so a reader of the rendered
+/// reference sees the class the extension carries (REST §9).
+const BETA_NOTE: &str = "Beta: this field may change shape before it is stable.";
+
+/// The response fields published `beta`: each schema, with its properties.
+///
+/// The tool-call fields are read by the chat while its rendering is still
+/// being built, and the runner that fills them is new; both may reshape them.
+pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
+    ("NetworkPolicy", &["http_egress", "package_manager_domains"]),
+    (
+        "DefinitionNetwork",
+        &["http_egress", "package_manager_domains"],
+    ),
+    ("EventDetail", &["tool_calls"]),
+    (
+        "ToolCallDetail",
+        &[
+            "call_id",
+            "arguments",
+            "truncated_arguments",
+            "output",
+            "output_line_count",
+            "truncated",
+        ],
+    ),
+    ("ToolCallRecordsStored", &["stored_count", "skipped_count"]),
+    // The runner's schedules and messages verbs are new, and so is the Rust
+    // runner that reads them; either may reshape what a reply carries.
+    ("ScheduleRun", &["event_id"]),
+    ("MessagePosted", &["delivered"]),
+    // A schedule's view gained who made it and whether it retires after one
+    // fire. `source` grew a third value with the fleet as an author, and both
+    // are read by that same new runner.
+    ("View", &["source", "once"]),
+    // The held heartbeat and the memory window on the lease are new, and so
+    // is the runner release that reads them.
+    ("HeartbeatResponse", &["woken"]),
+    ("LeasePayload", &["memory"]),
+    // Where a steer went is new, and folding may reshape it.
+    ("SteerAccepted", &["disposition", "folded_into_event_id"]),
+    // A run claiming the messages its fleet receives is new, and so is the
+    // runner release that reads the claim.
+    ("FoldResponse", &["inputs"]),
+    ("FoldedInput", &["event_id", "sequence", "text"]),
+];
+
+/// Publishes `fields` as `beta`, answering the entries the document lacks.
+pub(super) fn declare_beta<'a>(
+    document: &mut OpenApi,
+    fields: &[(&'a str, &[&'a str])],
+) -> Vec<(&'a str, &'a str)> {
+    let mut missing = Vec::new();
+    for &(schema, properties) in fields {
+        for &property in properties {
+            if !property_of(document, schema, property).is_some_and(publish_beta) {
+                missing.push((schema, property));
+            }
+        }
+    }
+    missing
+}
+
+/// One property of one named object schema.
+fn property_of<'d>(
+    document: &'d mut OpenApi,
+    schema: &str,
+    property: &str,
+) -> Option<&'d mut RefOr<Schema>> {
+    let components = document.components.as_mut()?;
+    let RefOr::T(Schema::Object(object)) = components.schemas.get_mut(schema)? else {
+        return None;
+    };
+    object.properties.get_mut(property)
+}
+
+/// A reference needs an inline wrapper to publish field metadata beside its target.
+fn publish_beta(field: &mut RefOr<Schema>) -> bool {
+    match field {
+        RefOr::T(schema) => annotate_beta(schema),
+        RefOr::Ref(reference) => {
+            let mut reference = reference.clone();
+            let description = (!reference.description.is_empty())
+                .then(|| std::mem::take(&mut reference.description));
+            let mut wrapper = Schema::OneOf(
+                OneOf::builder()
+                    .item(reference)
+                    .description(description)
+                    .build(),
+            );
+            let published = annotate_beta(&mut wrapper);
+            *field = wrapper.into();
+            published
+        }
+    }
+}
+
+fn annotate_beta(schema: &mut Schema) -> bool {
+    let Some((extensions, description)) = parts_of(schema) else {
+        return false;
+    };
+    extensions
+        .get_or_insert_with(Extensions::default)
+        .insert(STABILITY.to_owned(), BETA.into());
+    *description = Some(match description.take() {
+        Some(text) => format!("{text} {BETA_NOTE}"),
+        None => BETA_NOTE.to_owned(),
+    });
+    true
+}
+
+/// Where a field's schema keeps its extensions and its description.
+///
+/// The three shapes a response field takes here: an inline object, the
+/// `oneOf` a nullable reference becomes, and an array. Any other shape is
+/// answered as missing, so the test naming every declared field fails on it.
+const fn parts_of(schema: &mut Schema) -> Option<(&mut Option<Extensions>, &mut Option<String>)> {
+    match schema {
+        Schema::Object(object) => Some((&mut object.extensions, &mut object.description)),
+        Schema::OneOf(one_of) => Some((&mut one_of.extensions, &mut one_of.description)),
+        Schema::Array(array) => Some((&mut array.extensions, &mut array.description)),
+        Schema::AllOf(_) | Schema::AnyOf(_) | _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests;

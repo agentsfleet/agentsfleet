@@ -1,0 +1,75 @@
+//! Lease issue: the claim, the gates, the money, and the row.
+//!
+//! The `lease` verb performs the pre-execution control-plane work and hands a
+//! self-contained `ExecutionPolicy` to the runner. Split by concern:
+//! [`affinity`] is the atomic claim and the fence it
+//! mints — the only place a [`affinity::Fence`] comes from — and the modules
+//! beside it add the gates and the row.
+//!
+//! # Where the modules split
+//!
+//! The split falls on what the code DOES — claim, gate, issue — rather than on
+//! where a file grew too long, so no module needs a re-export to stay findable.
+
+pub mod activity;
+pub mod admit;
+pub mod affinity;
+mod answer;
+pub mod assign;
+pub mod billing_sweep;
+pub mod bracket;
+mod claim;
+pub mod commit;
+mod context;
+pub mod coverage;
+pub(crate) mod deadline;
+mod decision;
+mod deliver;
+pub mod envelope;
+pub mod event;
+pub mod fence;
+pub mod finalize;
+pub mod fold;
+pub mod history;
+pub mod installed;
+pub mod issue;
+pub mod memory;
+pub mod message;
+pub mod mint;
+pub mod obligation;
+mod park;
+pub mod pull;
+pub mod reclaim;
+pub mod renew;
+pub mod report;
+pub mod scope;
+pub mod settle;
+pub mod sql;
+pub mod standing;
+pub mod store;
+#[cfg(all(test, feature = "test-util"))]
+mod test_dead;
+mod tool_detail;
+mod tool_trace;
+pub mod usage;
+pub mod verdict;
+pub mod write_fence;
+
+pub use self::activity::Target;
+pub use self::affinity::{Claimed, Fence};
+pub use self::commit::{Committed, TerminalReport};
+pub use self::envelope::{Acquired, Kind};
+pub use self::event::{Delivery, Ended, Received};
+pub use self::history::Thread;
+pub use self::installed::{FRESH_CONTEXT, Installed};
+pub use self::issue::{Billed, Issued};
+pub use self::obligation::{Owing, ReplyDestination};
+pub use self::pull::Plane;
+pub use self::reclaim::Reused;
+pub use self::renew::{Renewed, Renewing};
+pub use self::scope::MintScope;
+pub use self::settle::{Reported, Settled};
+pub use self::standing::Standing;
+pub use self::store::Leases;
+pub use self::verdict::{Terminal, Verdict};
+pub use afd_dragonfly::doorbell::Waited;

@@ -5,7 +5,7 @@
 // stream routes use event-stream-proxy.ts instead, because an EventSource
 // needs its own headers and refusal frame.
 //
-// See docs/AUTH.md "SSE stream — Next Route Handler injects Bearer" for the
+// See docs/AUTH.md "SSE stream: Next Route Handler injects Bearer" for the
 // auth sequence.
 
 import { credential } from "@/lib/auth/credential";
