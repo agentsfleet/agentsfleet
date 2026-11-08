@@ -36,7 +36,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** NATS tail and wake p99 stay within Dragonfly's plus 10% on the same laptop, killing one of three NATS nodes sends every viewer `catching_up` and recovers within 10 s, and no Dragonfly code, service or rule remains.
+**Goal (testable):** NATS tail and wake p99 stay within the greater of Dragonfly's plus 10% and Dragonfly's plus 1 ms on the same laptop, killing one of three NATS nodes sends every viewer `catching_up` and recovers within 10 s, and no Dragonfly code, service or rule remains.
 
 **Problem:**
 - Both Fly configurations run all four Dragonfly processes on one machine (`docs/architecture/datastore_scaling.md:55`), and self-hosted multi-shard Dragonfly manages no failover (`:36`).
@@ -68,7 +68,7 @@ gate reference ─► fleet.approval_gates · anomaly brake ─► per-replica m
 - **Authoring handshake:** Indy agreed to core NATS on condition it is measurably no worse, and asked that M241's tail, wake and kill measurements run here, on this milestone's code, Dragonfly first. M243 builds the Bus seam with a Dragonfly implementation; this milestone adds NATS behind it, moves the durable jobs to Postgres and deletes Dragonfly. ASSUMPTIONS I'M MAKING:
   1. M243 merged with every publish and subscribe going through `afd_bus::Bus`, its `Received` carrying `Message`, `Lagged` and `Gap`, and the doorbell and runner commands riding it. CHORE(open) checks this on `origin/main` and amends Interfaces if the shape differs. **Amended at CHORE(open), Nov 08, 2026:** M243 has not merged. Indy authorised parallel work against its draft (#819), so this branch adopts M243 checkpoints by merge and tracks interface changes in #818. At checkpoint `55a6e51fd` the Bus has `publish`, `publish_batch`, `subscribe` and an asynchronous, idempotent `shutdown`; production publishers and subscribers are not yet migrated.
   2. The rig is Indy's laptop, three interleaved runs per lane, as in M241.
-  3. Pre-production, so in-flight device logins and OAuth connects may restart across the cutover, if Indy agrees (Open blockers).
+  3. Pre-production, so in-flight device logins and OAuth connects may restart across the cutover, as Indy accepted at CHORE(open) (Open blockers, item 3).
   4. The daemon reaches NATS over Fly's private network in plaintext with credentials in the URL, as it reaches Dragonfly today.
 - **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
 
@@ -156,7 +156,7 @@ Hits kept as records, apart from the table: `docs/v2/**`, `docs/reviews/**`, `pl
 - **Reference:** `afd_dragonfly/src/hub/` — one connection per process, local fan-out, `Received::Gap` after a lost subscription. The NATS hub keeps the shape; the client's own reconnect replaces the redial and repair code.
 - **Reference:** `fleet.admissions` claiming (`afd_fleet/src/lease/assign/`) — `FOR UPDATE SKIP LOCKED` over a partial index, the pattern §4's lane-head claim follows.
 - **Reference:** `afd_dragonfly/src/session/verify_consume.lua` — the transitions §5 ports verbatim, as one locked transaction.
-- **Reference:** https://docs.rs/async-nats/0.51.0/async_nats/ — `ServerInfo` exposes `cluster`, `jetstream`, `max_payload` and `headers`; `Event` carries `Connected`, `Disconnected` and `SlowConsumer(u64)`; a `Subscriber`'s sid is private.
+- **Reference:** https://docs.rs/async-nats/0.52.0/async_nats/ — `ServerInfo` exposes `cluster`, `jetstream`, `max_payload` and `headers`; `Event` carries `Connected`, `Disconnected` and `SlowConsumer(u64)`; a `Subscriber`'s sid is private.
 
 ## Sections (implementation slices)
 
@@ -171,7 +171,7 @@ This Section carries M241's old §6 and §7 as its own, on this milestone's star
 4. Record each viewer's frames (`event_admitted`, `catching_up`, or only heartbeats), whether each steer was accepted in Postgres, and the seconds until frames flow again.
 
 §Baselines then gains `### Broker pass bar`, judged on per-rung medians:
-- NATS tail p99 and wake p99 no worse than Dragonfly's plus 10%;
+- NATS tail p99 and wake p99 no worse than the greater of Dragonfly's plus 10% and Dragonfly's plus 1 ms, per rung;
 - after one of three NATS nodes is killed, every viewer receives `catching_up` and resumes within 10 s with no person acting;
 - no lost frame passes without a gap signal.
 
@@ -185,7 +185,7 @@ This Section carries M241's old §6 and §7 as its own, on this milestone's star
 
 ### §2 — Core NATS behind the Bus, and three nodes in compose
 
-`afd_bus::nats` implements M243's Bus over `async-nats` 0.51.0 with default features off. It keeps one connection per process and fans out locally, as the Dragonfly hub does. Gaps come from three sources:
+`afd_bus::nats` implements M243's Bus over `async-nats` 0.52.0 with default features off. It keeps one connection per process and fans out locally, as the Dragonfly hub does. Gaps come from three sources:
 - after `Event::Connected` follows a `Disconnected`, every subscription receives `Gap` once;
 - `Event::SlowConsumer` names a private sid, so every subscription on that client receives `Gap`;
 - a publish that fails records a debt for its subject, and so does every subject published in the 2 s before a disconnect, the frames that may have died with the node. On reconnect each indebted subject gets one empty message with header `Af-Gap: 1`, which subscribers read as `Gap`.
@@ -385,7 +385,7 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   - The gate response mirror has no production writer; only `afd_gate/tests/integration_gate_faults.rs:160` writes it.
   - Both prod and dev daemons deploy with `release_command = "/usr/local/bin/agentsfleetd migrate"`, prod with `strategy = "rolling"` (`deploy/fly/agentsfleetd-prod/fly.toml:68-70`).
   - `datastore_scaling.md:27` requires an explicit user decision to change the datastore destination.
-  - async-nats 0.51.0 on docs.rs: `ServerInfo` has `cluster`, `jetstream`, `headers` and `max_payload`; `Subscriber`'s fields are private. SPEC-PIN: the crate version and the `nats` image tag are pinned at §2's first commit; `node_kill_gaps_viewers_and_resumes` and `every_lost_frame_follows_a_gap` rerun when either changes.
+  - async-nats 0.51.0 on docs.rs (0.52.0 re-checked at CHORE(open), same fields): `ServerInfo` has `cluster`, `jetstream`, `headers` and `max_payload`; `Subscriber`'s fields are private. SPEC-PIN: the crate version and the `nats` image tag are pinned at §2's first commit; `node_kill_gaps_viewers_and_resumes` and `every_lost_frame_follows_a_gap` rerun when either changes.
   - Unverified: `nats-server` accepts `--no_advertise` and `--cluster_name` as flags on the pinned tag; §2's compose commit settles it.
   - Active M233_002 edits `deploy/fly/dragonfly-dev/fly.toml`; CHORE(open) checks whether it merged before §8 deletes that file.
 - **SPEC-BOUNDARY consult** — device sessions move inside this spec, because Dragonfly cannot be deleted while they live there. Endpoints, codes and the flow are unchanged; §5 lands as its own commit so its review reads `docs/AUTH.md` and the threat table against one diff.
@@ -400,11 +400,20 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands in `pending/` with M241.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
 - **Model reviews** — none yet. The EGM spec review runs before this spec leaves `pending/`.
-- **Open blockers** — the spec stays in `pending/` until Indy answers each:
+- **Open blockers** — answered at CHORE(open) except item 2, which is Indy's action:
   1. Approve, at CHORE(open), edits to `deploy/fly/*` (new `nats-dev` and `nats-prod`, three machines each; `dragonfly-*` deleted) and to `.github/workflows/{deploy-dev-fly,release,test-integration-rustd,test-unit-rustd}.yml`.
   2. Create the 1Password items `nats-dev/api-url` and `nats-prod/api-url` in each runtime vault; §8 and the founding preflight checks read them.
   3. Accept that a device login or OAuth connect in flight across the cutover fails as missing and must be restarted.
   4. Accept that the anomaly brake counts per replica and resets on restart: a runaway spread over R replicas can repeat up to R times its threshold before a pause.
   5. Authorise destroying the `dragonfly-dev` and `dragonfly-prod` Fly apps once no old daemon machine runs (Dimension 8.3).
-- **CHORE(open), Nov 08, 2026** — Indy's start instruction: "start M244_001 with the orly-build skill", with parallel work authorised while M243 changes (#818). Open blockers 1, 2 and 5 gate only §8; blockers 3 and 4 gate §5's cutover behaviour, not its code. They stay open, and §5 and §8 do not finish until Indy answers them. `afd_bus` starts from M243 checkpoint `55a6e51fd`.
+- **CHORE(open), Nov 08, 2026** — Indy's start instruction: "start M244_001 with the orly-build skill", with parallel work authorised while M243 changes (#818). `afd_bus` starts from M243 checkpoint `55a6e51fd`.
+- **CHORE(open) owner decisions** —
+  > Indy (Nov 08, 2026: 11:52 PM): "I see 0.52.0 for async-nats" then "so use that" — context: SPEC-PIN moves to `async-nats` 0.52.0; its `ServerInfo` and `Event` match the fields §2 reads.
+  > Indy (Nov 08, 2026: 11:58 PM), on blocker 3: "Yes i accept the reset, its no big deal. We just did one in PR#817 where the db was cleaned. So you are free to do so." — context: no bridge for in-flight device logins or OAuth connects.
+  > Indy (Nov 08, 2026: 11:58 PM), on blocker 4: chose "Per-replica memory" — context: the brake counts per replica, one window per rule, fails open.
+  > Indy (Nov 08, 2026: 11:58 PM), on blockers 1 and 5: chose "Edits and destroy" — context: §8 may edit `deploy/fly/*` and the four workflows after §3 passes; Indy runs the app destroy (Dimension 8.3).
+  > Indy (Nov 08, 2026: 11:58 PM), on the pass bar: "I think review the numbers of dragonfly now, with the current leve of af_bus:Bus adaptor or Dragonfly in local mac." Then he chose "Plan + 1 ms floor" — context: Dimension 1.7's bar is signed off as written in §1, with a 1 ms floor. Dragonfly is measured now through the checkpoint's Bus adapter, recorded as a checkpoint baseline, not as completed M243. The verdict rests on §3's interleaved pairs on one build.
+  > Indy (Nov 09, 2026: 12:02 AM): chose "Core cluster, JS off" — context: `nats:2.15.2`, three nodes clustered by routes, JetStream off in development and production; Invariant 1 stands. Clustering is core NATS, so the A/B compares clustered Pub/Sub with clustered core NATS.
+  > Indy (Nov 09, 2026: 12:04 AM): "If NATS is a winner then you will proceed on a PR, if not you need to prepare me a report with a rubric pros and cons for indy to signoff nats." — context: §3's failing-rung path produces that report before any deletion.
+  > Indy (Nov 09, 2026: 12:05 AM): chose "Run when adapter ready" — context: §3's verdict runs on this branch's Bus-level tail lane once the NATS adapter is ready, with `BENCH_BUS` swapping only the adapter. One interleaved pair reruns after M243 merges, before the Pull Request leaves draft.
 - **Deferrals and transfers** — none. M241_001 §6 and the drill half of its §7 arrive here as §1, mapped Dimension for Dimension (M241 6.1-6.4 → 1.1, 1.3-1.5; 7.2-7.3 → 1.6), under Indy's 02:13 PM quote above.

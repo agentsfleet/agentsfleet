@@ -13,7 +13,7 @@ executable: false
 Indy approved replacing Dragonfly with core NATS on Nov 06, 2026.
 He said, “Yes i agree on NATS.”
 
-The [M244 decision and acceptance criteria](../v2/pending/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md#discovery-consult-log) record that approval and the required measurements.
+The [M244 decision and acceptance criteria](../v2/active/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md#discovery-consult-log) record that approval and the required measurements.
 The [scheduler decisions](push_scheduler.md#decisions) define the resulting responsibilities.
 
 Postgres will own every durable fact and atomic state transition, including delivery obligations, login sessions and single-use authorization state.
