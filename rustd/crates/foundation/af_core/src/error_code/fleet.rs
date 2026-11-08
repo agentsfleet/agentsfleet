@@ -120,6 +120,15 @@ pub const MESSAGE_NO_CHANNEL: ErrorCode = ErrorCode::declare("UZ-RUN-019");
 /// reclaimed lease starts its own count.
 pub const MESSAGE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-RUN-020");
 
+/// A newer connection owns this runner; the superseded process must halt.
+pub const RUN_STREAM_SUPERSEDED: ErrorCode = ErrorCode::declare("UZ-RUN-021");
+
+/// An operator durably cancelled this lease.
+pub const RUN_LEASE_CANCELLED: ErrorCode = ErrorCode::declare("UZ-RUN-022");
+
+/// Runner and daemon do not speak the same application protocol.
+pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023");
+
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it

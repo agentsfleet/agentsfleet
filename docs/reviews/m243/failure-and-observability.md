@@ -99,6 +99,7 @@ Transport activity without an application answer does not refresh an answer dead
 | Full activity queue | Drop excess live activity, increment its drop counter, preserve task-history writes required by the spec |
 | Lost broker ring | The replica's next admission probe runs an offer pass |
 | Lost cancellation push | Renewal and reconnect read the committed cancel marker |
+| Cancellation overtakes its offer | Remember the cancellation in bounded session state; a delayed offer must never start that lease; exhaustion closes the session |
 | Broker `Gap` or `Lagged` | Recheck connection authority and cancellation, or run an offer pass for a wake subject |
 | Token rotation or new session wins | Old grants and renewals fail their transactional authority check; old teardown cannot clear the new owner |
 | Database unavailable | Issue no new authority, do not extend an unconfirmed lease, expose database failure separately from transport health |

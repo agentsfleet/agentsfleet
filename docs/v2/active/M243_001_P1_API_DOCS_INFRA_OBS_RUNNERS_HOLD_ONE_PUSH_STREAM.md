@@ -113,6 +113,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `docs/AUTH.md` | EDIT | §7: auth once per connection, revocation pushed with its backstop, the grant re-check |
 | `docs/metrics.census.tsv` | EDIT | §4, §7: stream health, fallback and recovery families in; wake answers out |
 | `public/openapi.json` | EDIT | §7: regenerated from `rustd/` with `--no-banner` |
+| `ui/packages/app/tests/approvals-list/resolve.test.ts` | EDIT | Fix the reported CI race by awaiting the visible error before asserting its content |
 | `schema/20261108123200_runner_leases.sql`, `schema/20261108123100_runner_runners.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | §3: edit table files for the cancel marker and owning connection; recheck names after the data-layer follow-up lands |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/daemon/afd_bus/**` | EDIT, CREATE | §2: bus, wake and Dragonfly adapter; §1, §6: native HTTP/3 and HTTP/2 carrier dependencies |
 | `rustd/crates/daemon/afd_dragonfly/src/lib.rs`, `doorbell/**` | EDIT, DELETE | §2: the doorbell moves to `afd_bus::wake` |
@@ -126,6 +127,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/afd_fleet/src/lease/claim.rs`, `activity/mod.rs`, `store.rs`, `answer/mod.rs`, `renew/mod.rs`, `rebuild.rs`, `sql/select_runner_live_leases.sql`, `sql/select_waiting_admission.sql`, `sql/select_lease_for_renew.sql`, `sql/activity.rs` | EDIT, CREATE | §4: claim answers its target; rebuild read; the fallback probe; §5: renewal reads the cancel marker |
 | `rustd/crates/daemon/afd_runner/src/heartbeat/mod.rs`, `sql/runner/select_runner_assigned_policy.sql`, `sql/runner/write_runner_connection.sql`, `sql/runner/mod.rs` | EDIT, CREATE | §4, §5: the beat's read carries status, token-hash match and `connection_id`; connect writes it |
 | `rustd/crates/daemon/afd_authoring/src/creation/patch.rs`, `creation/sql/mark_leases_cancel_requested.sql`, `afd_api_tenant/src/handler/fleet/native/patch.rs` | EDIT, CREATE | §5: the kill marks running leases in its transaction; the handler publishes `Cancel` after commit |
+| `rustd/crates/daemon/afd_fleet/src/task/lease.rs`, `task/sql.rs`, `task/sql/lock_issue_scope.sql`, `afd_fleet/tests/issue_lifecycle.rs` | EDIT, CREATE | §5: issuance rechecks active fleet state after waiting behind Kill; reports retain their settlement path |
 | `rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_patch.rs`, `runner_delete.rs` | EDIT | §5: publish `Recheck` after every runner-row write |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `rustd/crates/protocol/af_observability/src/metrics/label/fleet.rs`, `rustd/crates/protocol/af_observability/src/producers/fleet/mod.rs`, `rustd/crates/protocol/af_observability/src/producers/fleet/runner/stream.rs` | EDIT, CREATE | §4, §6, §7: stream health, carrier fallback, recovery, queue pressure and offer outcomes; wake answers out |
 | `rustd/crates/daemon/main/src/plane/mod.rs`, `serve/mod.rs`, `serve/runtime.rs`, `serve/optional.rs`, `serve/drain/mod.rs`, `serve/drain/tests.rs` | EDIT | §2, §4: build the bus and gateway once; `go_away` on drain; the doorbell close goes |
@@ -239,6 +241,13 @@ The kill transaction writes the cancellation marker; renewal and reconnect read 
 Connect writes connection ownership; rechecks compare it.
 Existing lease indexes support those reads, subject to verification after the data-layer follow-up lands.
 
+The control request includes its previous owner in `agentsfleet-runner-session` after a successful welcome.
+Automatic reconnect compares that owner inside acquisition; a newer owner causes UZ-RUN-021 and a halt.
+A fresh process omits it and may supersede the previous process.
+
+The marker remains after disconnect, while the local registry and heartbeat track serving and liveness.
+Clearing it on ordinary disconnect would erase the evidence needed to refuse a superseded reconnect.
+
 Timing constants and assertions live in `af_core/src/timing.rs`.
 UZ-RUN-021, -022 and -023 land with their registry rows and problem entries.
 The architecture decision lands before gateway code.
@@ -246,7 +255,7 @@ The architecture decision lands before gateway code.
 - **Dimension 3.1** — an up frame with an unknown field is refused → Test `an_up_frame_with_an_unknown_field_is_refused` (unit): a `renew_batch` frame with `"extra":1` fails to decode; the same frame without it decodes.
 - **Dimension 3.2** — bounds hold → Test `a_renew_batch_past_max_workers_is_refused` (unit): `MAX_WORKERS + 1` entries are refused naming the bound; `MAX_WORKERS` entries pass.
 - **Dimension 3.3** — the timings leave a full renewal window after a reconnect → Test `stream_timings_leave_a_renewal_window_after_reconnect` (unit): asserts each Interfaces relation against the production constants (TFX), and fails if `STREAM_ANSWER_TIMEOUT` is raised to 15 s.
-- **Dimension 3.4** — statements prepare against the edited table definitions → Test `test_every_sql_file_prepares` (integration, `afd_db/tests/integration_migrate/statements.rs`): passes with native UUIDv7 bindings and the cancellation and connection columns.
+- **Dimension 3.4 — DONE** — statements prepare against the edited table definitions → Test `test_every_sql_file_prepares` (integration, `afd_db/tests/integration_migrate/statements.rs`): passes with native UUIDv7 bindings and the cancellation and connection columns.
 
 ### §4 — The gateway serves the stream
 
@@ -298,6 +307,7 @@ Each push names its Postgres authority, so pub/sub's at-most-once delivery costs
 - **Dimension 5.5** — rotation closes the stream on the old token → Test `rotating_a_token_closes_the_stream_on_the_old_token` (integration): after `rotate`, the old stream closes with UZ-RUN-001 and the new token connects.
 - **Dimension 5.6** — a second connection supersedes the first → Test `a_second_connection_supersedes_the_first` (integration, two replicas): the first stream gets `go_away` UZ-RUN-021 and closes, and only the second receives offers.
 - **Dimension 5.7** — lost ownership notifications cannot grant authority → Test `a_stale_session_cannot_issue_or_renew_after_rotation_or_supersession` (integration): pause an old claim at the host lock, rotate or acquire a new connection, drop recheck notifications, and resume. The old transaction grants no lease or renewal; the current owner still succeeds.
+- **Dimension 5.8 — DONE** — Kill invalidates an already selected admission. Tests `a_kill_committed_after_selection_prevents_a_later_issue` and `an_issue_waiting_on_a_kill_rechecks_the_committed_fleet_state` cover committed Kill and issuance waiting behind Kill. Rejected issuance writes no lease; reports retain their settlement path.
 
 ### §6 — The runner takes work from the stream
 
@@ -344,6 +354,7 @@ Every answer echoes the session-local request identifier; disconnect fails and c
 - **Dimension 6.9** — usage acknowledgements survive carrier changes → Test `renewal_batches_acknowledge_usage_independently_across_reconnect` (integration): several leases each produce more than `LINES_MAX` records. Lose an answer, reconnect, replay and report. Each lease advances its own `recorded_through`; each provider request settles once.
 - **Dimension 6.10** — delayed answers cannot reach another caller → Test `late_replies_do_not_complete_cancelled_or_reconnected_calls` (unit): cancel folds and renewal waits, deliver their answers late, and reconnect. New request identifiers and the new session's map retain the correct callers and bounds.
 - **Dimension 6.11** — HTTP/3 returns on normal reconnect without a hot switch → Test `http3_is_reselected_only_when_the_http2_session_ends` (native integration): establish HTTP/2 with UDP blocked, restore UDP and keep the healthy session on HTTP/2; end it and prove the next permitted connection selects HTTP/3.
+- **Dimension 6.12** — cancellation may overtake a work-lane offer. Test `a_cancel_received_before_its_offer_prevents_execution` delivers that ordering and asserts zero executions. Full cancellation state closes the session safely.
 
 ### §7 — The pull path is deleted, and the docs describe the stream
 

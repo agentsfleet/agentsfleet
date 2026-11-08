@@ -48,16 +48,19 @@ The [failure design](failure-and-observability.md) defines recovery and verifica
 |---|---|
 | Worktree | `/workspace/agentsfleet-m243`, branch `feat/m243-runner-push-stream` |
 | Fetched base | `origin/main` at `61820b66a`, merged normally after #817; #816's native UUIDv7 changes remain included |
-| Existing commits | Draft [#819](https://github.com/agentsfleet/agentsfleet/pull/819), published bus checkpoint `471c63d09`; main merge `bafef4bbe` |
-| Written code | Transport foundations and shared bus injection are written; gateway and runner session wiring remain due |
+| Existing commits | Draft [#819](https://github.com/agentsfleet/agentsfleet/pull/819), published hybrid checkpoint `b1a606840`; main merge `bafef4bbe` |
+| Written code | Transport and bus foundations; backend ownership and durable cancellation verified by focused tests; gateway and runner session wiring remain due |
 | Package evidence | Earlier `cargo test -p af_wire --all-features`: 78 unit tests and 96 wire-suite tests passed |
 | HTTP/3 scratch evidence | Verified CA chain, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings, raw client worker exit after explicit close |
 | HTTP/2 scratch evidence | BoringSSL certificate verification, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings and client/server task exit |
 | Production adapter evidence | Bus migration passed 3,525 daemon-library tests and 158 daemon tests; live integration and final coverage remain due |
 | Hybrid key exchange | Real HTTP/3 and HTTP/2 peers negotiated X25519MLKEM768; classical TLS 1.3 peers remain identified; TLS 1.2 is refused |
+| Kill and issue ordering | Two new regressions reproduced issuance after Kill; the issue-only parent lock now requires active fleet state after waiting |
+| Backend focused live run | `cargo test --workspace --exclude afd_bench --all-features --test '*' -- connections:: lease_renewal::cancellation draft::creation::running_cancellation issue_lifecycle test_every_sql_file_prepares --ignored`: 11 passed, zero failed, after Make reset and migration |
+| Reported API failure | `test_admitted_publish_failure_still_accepts` passed against live datastores after restoring fleet context in the dropped-frame observation |
 | Dependencies | Indy approved `libc = 0.2.189`; the workspace uses published `tokio-quiche 0.20.1` without a scratch override |
 | Current lint checkpoint | `make lint-all` passed, including rustfmt, workspace Clippy with all features and targets, dependency checks and the remaining repository linters |
-| Unit checkpoint | Runner checkpoint passed 1,749 tests; bus migration passed 3,525 library and 158 daemon tests; complete repository lane remains due |
+| Unit checkpoint | Runner checkpoint passed 1,749 tests; backend Make shards passed 3,529 library and 158 daemon tests; complete repository lane remains due |
 | Unverified | Complete gateway/runner cancellation and fallback matrix, fault timing, linked static targets, Fly deployment, coverage and remaining repository gates |
 
 The wire draft does not establish a working runner session.
@@ -87,7 +90,7 @@ The gateway, runner integration and remaining milestone gates stay open.
 | Capacity and configuration | Validated `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`; startup wiring remains due; runner concurrency retains its existing server-owned policy |
 | Wake naming and environment prefix | `WakeQueue`, matching queue metrics and `AGENTSFLEET_` settings replace the newly introduced names; no aliases |
 | A thousand fleets and fairness | Buffer pressure test is written; unconditional database discovery and end-to-end fairness proof remain due |
-| UUIDv7 main changes | Rebased onto merged #816; new data access must retain native identifiers and table ownership |
+| UUIDv7 main changes | Merged #816 and #817 normally; new data access retains native identifiers and table ownership |
 | Traces, logs and coverage | Finite metric declarations, structured operation observations and export/redaction tests are written; final coverage measurement remains due |
 
 ### Early draft requested for M244
@@ -132,7 +135,8 @@ Indy's approval includes the additional shared carrier crate.
 | `af_wire` | `Up<'a>`, `Down<'a>`, `Answer<'a, T>`, `Lane::{Control,Work,Reports,Activity}`, `Renewal`, `RenewalAnswer`; values and validation without Tokio, SQL or native transport |
 | **New `af_stream`**, under `protocol/` | `Transport`, `Endpoint`, `Trust`, `Incoming`, `OwnedFrame`, `Connection`, `ConnectionInfo`; native transport and framing, without SQL or authentication decisions |
 | **New `afd_bus`**, under `daemon/` | Object-safe `Bus`, cloneable `Handle`, `Subject`, `Command`, `Subscription`, `Received`; Dragonfly adapter and wake notifications |
-| **New `afd_gateway`**, under `daemon/` | Concrete `Gateway`, `ConnectionContext`, `Authority`, `Session`, `LiveLease`, `Registry`; owns session decisions over existing services |
+| **New `afd_gateway`**, under `daemon/` | Concrete `Gateway`, `ConnectionContext`, `Session`, `LiveLease`, `Registry`; consumes the domain's proven authority |
+| Existing `afd_runner` | `capacity::authority::{Authority, Decision, Refusal}`; guarded acquisition and grant-time credential checks |
 | `afr_supervisor` | `Downlink`, cloneable `StreamHandle`, `Pending`, `Uplink`; offers feed existing workers, reports retain their durable spool |
 | Existing domain crates | Host locks, claim, renewal, billing, task activity, authoring and reports retain their owning services |
 
@@ -264,6 +268,7 @@ Dropping an individual subscription releases only that consumer, rather than clo
 | `Registry` | `register`, `offer_pass`, `probe` | Find eligible sessions and run one fallback admission probe per replica |
 | Existing `Plane` | `claim` returning `Claimed`, `rebuild`, cached-target activity publishing | Preserve payload assembly and return the lease's target without another target read |
 | Existing host capacity | `lock` with expected authority, ticket propagation | Compare connection ownership and credential digest inside issue and renewal transactions |
+| Existing `Runners` | `acquire_connection`, `check_connection` | Acquire a fresh owner or classify refusal; prevent a replaced automatic resume |
 | `StreamHandle` | `renew_batch`, `report`, `folds`, `activity`, `credits`, `heartbeat` | Typed runner-facing operations over channels; no raw socket sharing |
 | `Downlink` | `run`, `connect`, `rebuild`, `dispatch` | Own carrier recovery, pending requests, offers and cancellation |
 | `Uplink` | `run`, `send_control`, `send_work`, `send_report`, `try_activity` | Independent bounded writers; expendable activity drops at its cap |
@@ -277,7 +282,7 @@ Dropping an individual subscription releases only that consumer, rather than clo
 | `Connection` | Client carrier sender, native driver lifecycle and cancellation owner; dropping it signals close |
 | `ConnectionInfo` | Server-created carrier metadata and native cancellation handle; service factories receive metadata while the server retains driver ownership |
 | `Budget` | Weighted byte permits shared across the replica, with separate control and data capacity |
-| `Authority` | `runner_id: Uuid7`, `connection_id: Uuid7`, `credential: afd_auth::directory::Digest`; derives from the authenticated bearer |
+| `Authority` | Private `runner: Uuid7`, `connection: Uuid7`, `digest: afd_auth::directory::Digest`; database acquisition constructs the proof; debug output omits its digest |
 | `ConnectionContext` | `OnceLock<Binding>`, lane-claim bits, cancellation token; one `Arc` per native connection, shared only by its requests |
 | `Binding` | `Authority` and bounded session channel handles; written once after the guarded database transaction |
 | `Gateway` | Shared existing domain services, bus handle, registry and clock; cloneable handles, no socket ownership |
@@ -331,7 +336,7 @@ Repeated reports retain existing lease-keyed billing idempotence and complete us
 `EDIT` and `DELETE` paths were checked against the fetched tree; `CREATE` paths are explicitly new.
 `AUDIT` rows name source hits whose dependent callers require review before implementation is complete.
 
-The inventory contains 495 paths: 116 creations, 274 edits, 20 deletions, one move, 80 audit paths and 3 deployment/build proposals.
+The inventory contains 528 paths: 129 creations, 294 edits, 20 deletions, one move, 80 audit paths and 3 deployment/build proposals.
 The two deployment paths and builder-image path require separate approval before edits.
 These are scope counts, not completed implementation changes.
 

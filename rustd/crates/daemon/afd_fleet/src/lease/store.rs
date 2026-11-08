@@ -26,6 +26,7 @@ pub struct Leases {
     entropy: Entropy,
     doorbell: Doorbell,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
+    authority: Option<afd_runner::capacity::authority::Authority>,
 }
 
 impl Leases {
@@ -39,7 +40,26 @@ impl Leases {
             entropy,
             doorbell: Doorbell::new(),
             ticket: None,
+            authority: None,
         }
+    }
+
+    /// Bind streamed lease operations to the credential and owner acquired at opening.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.authority = Some(authority);
+        self
+    }
+
+    pub(crate) async fn lock_capacity(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Capacity>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::lock(tx, runner).await?,
+        })
     }
 
     pub(super) const fn with_ticket(
