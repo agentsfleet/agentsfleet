@@ -114,8 +114,18 @@ jobs:
       # `_reset-test-db` brings compose up, waits for healthchecks, drops
       # schemas and flushes Dragonfly. KEEP_TEST_STATE is never set here: a
       # green run under it would prove nothing about a clean checkout.
+      # The memory line is the headroom any change to CARGO_BUILD_JOBS is
+      # judged against: the whole runner, Postgres and Dragonfly included,
+      # sampled every five seconds while the shard builds and runs.
       - name: Measure shard ${{ matrix.shard }} against live datastores
-        run: make test-coverage-rustd RUSTD_SHARD=${{ matrix.shard }}
+        run: |
+          ( while true; do free -m | awk '/^Mem:/ {print $3}'; sleep 5; done ) > "$RUNNER_TEMP/memory.log" &
+          sampler=$!
+          status=0
+          make test-coverage-rustd RUSTD_SHARD=${{ matrix.shard }} || status=$?
+          kill "$sampler"
+          echo "Peak memory in use on the runner: $(sort -n "$RUNNER_TEMP/memory.log" | tail -1) MiB of $(free -m | awk '/^Mem:/ {print $2}') MiB"
+          exit "$status"
       - name: Keep the shard's report for the merge
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

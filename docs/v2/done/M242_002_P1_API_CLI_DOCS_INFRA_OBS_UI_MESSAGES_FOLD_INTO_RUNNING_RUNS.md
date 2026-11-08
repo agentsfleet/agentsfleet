@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, a burst of chat messages today becomes a queue of separate runs, and every person waits for runs they did not start
 
@@ -41,19 +41,19 @@ SPEC AUTHORING RULES (the one comment that survives):
 - A person who adds a sentence mid-reply waits a full run, then pays for another.
 - The 202 said only `accepted`, so neither the command-line interface (CLI) nor the chat could say where a message went.
 
-**Solution summary:** The agent loop moves into its own crate, `guffbolt`, which takes input before every model call and once more after an answer, as Codex drains its turn input. A live run that is not a durable task claims every message its fleet receives, oldest first, up to the first parked or task-bound one. Its report settles what a completed model call read, each message with its own event and its own reply.
+**Solution summary:** The agent loop moves into its own crate, `guffbolt`, which takes input before every model call and once more after an answer, as Codex drains its turn input. A live run that is not a durable task claims a person's later messages in its conversation, oldest first, up to the first message it must not fold: a parked one, a task-bound one, or one no person sent. Its report settles what a completed model call read, each message with its own event.
 
 **Design flow:**
 
 ```
-POST /messages ─► admit_one.sql ─► 202 {event_id, disposition, folded_into_event_id}
+POST /messages ─► admit_one.sql, then run_facts.sql ─► 202 {event_id, disposition, folded_into_event_id}
 runner root loop (guffbolt::drive), before every model call and once after an answer
   Conversation::take_input ─► Inbox::claim ─► POST /folds {fencing_token, after_sequence}
-       claim_inputs.sql: lease, runner and fence proven; later messages claimed in order
+       claim_inputs.sql: lease, runner and fence proven; a person's later messages in the run's conversation, claimed in order
        joined onto the waiting user message ─► the model call reads them
 report {folded_through_sequence} ─► meter_lease.sql settles the run's own message
-       settle_folds.sql settles what was read ─► each folded message:
-       its event opened and closed with the answer, its reply owed once per destination
+       settle_folds.sql settles what was read ─► every folded message:
+       its event opened and closed with the answer, in three statements in all
 ```
 
 ## PR Intent & comprehension handshake
@@ -89,22 +89,24 @@ report {folded_through_sequence} ─► meter_lease.sql settles the run's own me
 | `rustd/crates/runner/afr_agent/tests/providers/**` | MOVE | §7: the provider suite drives the runner's loop, so it lives here |
 | `rustd/crates/runner/afr_supervisor/src/{client/verb,client/lease_verbs/mod,verbs/mod,lease_loop/drive,report/mod,test_util}.rs` | EDIT | §3: the `Folds` verb, the inbox over the daemon, the report's cursor |
 | `rustd/crates/protocol/af_wire/src/fold/**`, `src/{lib,paths}.rs`, `src/report/mod.rs` | CREATE, EDIT | §3, §4: the folds route's types and path; the report's cursor |
-| `rustd/crates/daemon/afd_fleet/src/lease/fold.rs`, `sql/lease/{claim_inputs,settle_folds}.sql`, `sql/lease/mod.rs` | CREATE, EDIT | §3, §4: the claim and the settle |
+| `rustd/crates/daemon/afd_fleet/src/lease/fold.rs`, `finalize.rs`, `sql/lease/{claim_inputs,settle_folds}.sql`, `sql/lease/mod.rs` | CREATE, EDIT | §3, §4: the conversation-scoped claim and the three-statement settle |
+| `rustd/crates/daemon/afd_events/src/sql/{open,close}_folded_events.sql`, `sql/mod.rs` | CREATE, EDIT | §4: one event open and one event close for all the folded messages |
 | `rustd/crates/daemon/afd_fleet/src/lease/{commit,mod}.rs`, `report/{mod,steps}.rs` | EDIT | §4: the settle inside the report's transaction, announced after it |
 | `rustd/crates/daemon/afd_fleet/tests/integration_lease_folds.rs`, `fleet_suite.rs` | CREATE, EDIT | §3, §4: the claim and settle proofs against live Postgres |
 | `rustd/crates/daemon/afd_http/src/{route/runner,services/leasing/mod,services/leasing/plane}.rs` | EDIT | §3: `RunnerRoute::Folds` and the leasing seam |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/folds.rs`, `handler/runner/mod.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §3: the handler, its mount and its annotation |
 | `rustd/crates/daemon/afd_api/tests/{route_meta_total.rs,harness/stubs_runner.rs}`, `src/openapi/stability/mod.rs`, `public/openapi.json` | EDIT | §3: the pinned count, the stub, the `beta` fields, the regenerated document |
-| `rustd/crates/daemon/afd_admission/src/sql/admit_one.sql`, `src/lib.rs`, `src/stage/verdict/mod.rs` | EDIT | §5: the run's kind and the barrier as disposition facts |
+| `rustd/crates/daemon/afd_admission/src/sql/{admit_one,run_facts}.sql`, `src/{lib,run_facts}.rs`, `src/stage/**` | EDIT, CREATE | §5: the disposition facts leave the admission statement for a bounded read of their own |
 | `rustd/crates/daemon/afd_events/src/steer/disposition.rs` | EDIT | §5: the fold rule and its truth table |
 | `rustd/crates/protocol/af_observability/src/{metrics/declared/fleet,metrics/label/fleet,producers/fleet/mod,producers/fleet/fold}.rs`, `tests/producers_drive.rs`, `docs/metrics.census.tsv`, `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs` | EDIT, CREATE | §5, §4: the disposition and fold counters |
-| `rustd/crates/daemon/afd_bench/src/lane/lease/drain/{runner,burst/mod,burst/pace}.rs` | EDIT | §8: the burst claims folds before each simulated model call and reports `burst_folded` |
+| `rustd/crates/daemon/afd_bench/src/lane/lease/drain/{runner,burst/mod,burst/pace}.rs`, `lane/lease/seed/mod.rs` | EDIT | §8: the burst claims folds before each simulated model call and reports `burst_folded`; its steers carry a person's actor, because only a person's message folds |
 | `cli/src/commands/fleet_steer.ts`, `cli/test/fleet-steer-fold.integration.test.ts` | EDIT | §6: a folded send waits on its own event |
 | `ui/packages/app/lib/streaming/{fleet-stream-registry,fleet-stream-row}.ts`, `fleet-stream-registry-optimistic.test.ts` | EDIT | §6: a folded send's own reply is watched |
 | `rustd/crates/harness/af_providers/src/{observe,testing}/**`, `rustd/crates/runner/afr_telemetry/src/**` | CREATE, EDIT | §7: the provider measurement port, so the harness depends on no runner crate |
 | `rustd/crates/*/*` (every crate), `.ast-grep/rules/**`, `make/{test-unit,test-integration-rustd}.mk`, `scripts/rustd_coverage{,_test}.py` | MOVE, EDIT | §7: five layer folders, the `af_` prefix, and each binary in its layer's `main/` |
 | `rustd/crates/{harness/af_egress,daemon/afd_dragonfly,daemon/afd_db,daemon/afd_fleet,runner/afr_supervisor}` `test_util`/`testing` | CREATE | §7: shared fakes live with the crate whose seam they fake |
 | `.orly/LOCAL.md` | EDIT | §7: the crate layout rule, and new scripts need Indy's sign-off |
+| `make/test-integration-rustd.mk`, `.github/workflows/test-integration-rustd.yml` | EDIT | Follow-up: each coverage step prints its time, and each shard its runner's peak memory (Indy, Discovery, Nov 08) |
 
 ## Applicable Rules
 
@@ -134,7 +136,7 @@ report {folded_through_sequence} ─► meter_lease.sql settles the run's own me
 
 - **Reference:** Codex, `~/Projects/oss/rs/codex/codex-rs/core/src`. Pending input is drained before every sampling request (`session/turn.rs:424-446`), another turn runs while input waits (`turn.rs:574`, `tasks/regular.rs:120`), and run kinds are `SessionTask`s over one session (`tasks/mod.rs:180,222`). `guffbolt` mirrors all three: `drive`, the final take, and `Extension`.
 - **Reference:** Codex's `UserInput` (`protocol/src/user_input.rs:16`): text, images and audio. `guffbolt::input` adds video and documents behind one `MediaReader` port.
-- **Reference:** `afd_fleet/src/task/input_receipt/answer.rs:38-132`, a durable fold's event opened and closed with the answer and its reply owed. The plain fold runs the same two event statements.
+- **Reference:** `afd_fleet/src/task/input_receipt/answer.rs:38-132`, a durable fold's event opened and closed with the answer. The plain fold does the same for all its messages in two statements.
 
 ## Sections (implementation slices)
 
@@ -159,27 +161,32 @@ report {folded_through_sequence} ─► meter_lease.sql settles the run's own me
 
 ### §3 — A live run claims what its fleet receives
 
-Before each model call the root claims through `Inbox`; the supervisor's inbox posts `POST /v1/runners/me/leases/{lease_id}/folds`. `claim_inputs.sql` proves the lease, its runner and its fence, then claims every unsettled message after the run's own, oldest first, up to the first parked or task-bound one. A durable task's root claims nothing here; #803 reads its inputs.
+Before each model call the root claims through `Inbox`; the supervisor's inbox posts `POST /v1/runners/me/leases/{lease_id}/folds`. `claim_inputs.sql` proves the lease, its runner and its fence, then reads one claim's worth of the run's conversation after the cursor, oldest first, and claims the person's messages up to the first one it must not fold: a parked one, a task-bound one, or one no person sent, such as a webhook, a schedule fire or a gate's continuation. Another conversation's messages are neither claimed nor in the way. The walk stops at the claim's size, so its cost does not grow with the backlog. A durable task's root claims nothing here; #803 reads its inputs.
 
-- **Dimension 3.1** — every later message folds, whatever sent it, in order → `test_a_live_run_claims_every_later_message_oldest_first` (integration)
+- **Dimension 3.1** — a person's later messages in the run's conversation fold, in order → `test_a_live_run_claims_a_persons_messages_oldest_first` (integration)
 - **Dimension 3.2** — a parked message stops the fold → `test_a_parked_message_stops_the_fold` (integration)
 - **Dimension 3.3** — another runner or a superseded fence claims nothing → `test_another_runner_or_a_superseded_fence_claims_nothing` (integration)
 - **Dimension 3.4** — a repeated claim answers the same messages → `test_a_repeated_claim_answers_the_same_messages` (integration)
 - **Dimension 3.5** — the root joins a claimed message onto its opening or next user turn, and the cursor moves past it → `afr_agent` `fold_tests` (unit, six cases)
+- **Dimension 3.6** — a message no person sent stops the fold and is never passed → `test_a_message_no_person_sent_stops_the_fold` (integration: webhook, gate continuation, machine steer)
+- **Dimension 3.7** — another conversation is neither claimed nor in the way, and a Slack thread's run folds its linked people only → `test_another_conversation_is_neither_claimed_nor_in_the_way`, `test_a_slack_thread_run_folds_its_threads_linked_people_only` (integration)
+- **Dimension 3.8** — a claim never replaces a later fence's stamp → `test_a_claim_never_replaces_a_later_fences_stamp` (integration)
 
 ### §4 — Each folded message settles once, with its own reply
 
-A succeeded report carries `folded_through_sequence`. Inside the report's transaction `settle_folds.sql` settles the messages this lease claimed through it. Each one's event is opened and closed with the run's answer, and its reply is owed to its own destination unless the run's or an earlier fold's reply already reaches it. A failed or stopped run settles none; each message runs next, in order.
+A succeeded report carries `folded_through_sequence`. Inside the report's transaction `settle_folds.sql` settles the messages this lease claimed through it, and `open_folded_events.sql` and `close_folded_events.sql` open and close each one's event with the run's answer: three statements however many messages there are. A folded message is in the run's conversation, so the run's own reply reaches it and it owes none. A failed or stopped run settles none; each message runs next, in order.
 
 - **Dimension 4.1** — what a completed call read settles with the answer and names the run; an unread claim stays → `test_a_succeeded_report_settles_what_the_run_read` (integration)
 - **Dimension 4.2** — a failed run settles no fold → `test_a_failed_report_settles_no_fold` (integration)
+- **Dimension 4.3** — a burst past one claim settles whole, each message with its own closed event → `test_a_burst_past_one_claim_settles_whole` (integration)
 
 ### §5 — The send answers its disposition
 
-`admit_one.sql` returns the run's kind and whether a message waits that this send must not pass. `afd_events::steer::disposition::of` names `started`, `folded` or `queued`: a durable task folds a person's send in its conversation; any other live run folds every send unless a barrier waits ahead.
+After a steer's admission commits, `run_facts.sql` returns the run's kind, whether the steer is in its conversation and whether a message the claim stops at waits within the next two claims' worth. `afd_events::steer::disposition::of` names `started`, `folded` or `queued`: a live run folds a person's send in its conversation, a plain run only when no barrier waits ahead. A steer costs its admission and this read; every other producer costs the admission.
 
 - **Dimension 5.1** — the truth table holds → `disposition_follows_the_run_state` (unit)
 - **Dimension 5.2** — a send behind a parked message answers that it waits → `test_a_parked_message_stops_the_fold` (integration)
+- **Dimension 5.3** — an accepted steer costs its admission and one read, and a repeat writes nothing → `an_accepted_steer_costs_its_admission_and_one_read`, `a_repeat_costs_the_same_and_writes_nothing` (integration)
 
 ### §6 — The CLI and the chat wait for the message's own reply
 
@@ -211,6 +218,7 @@ The burst bench's simulated runner claims folds before each model call, and its 
 - **Harness:** `guffbolt::{drive, Conversation, Extension, Plain, ModelTurn, Ending, Answer, Budget, Prepared, Sampled}` and `guffbolt::input::{Part, Media, MediaKind, MediaReader, Unread, Unreadable, render}`.
 - **Runner port:** `afr_agent::Inbox::claim(after_sequence) -> Vec<Folded>`; `AgentRun.inbox`; `RunOutput.folded_through_sequence`.
 - **Daemon seam:** `Leasing::folds(runner, lease, &FoldRequest) -> Result<FoldResponse>`; `Leases::claim_folds`.
+- **Run facts:** `Admissions::run_facts(fleet, admission, PersonSteer) -> Result<RunFacts>`, read by `Steer::append` after the admission commits.
 
 ## Failure Modes
 
@@ -223,14 +231,17 @@ The burst bench's simulated runner claims folds before each model call, and its 
 | Parked message ahead | failure | an open approval gate | nothing after it folds; the send answers `queued` | `test_a_parked_message_stops_the_fold` |
 | Run fails after folding | failure | provider failure, stop | no fold settles; each message runs next | `test_a_failed_report_settles_no_fold`, `a_failed_run_reports_no_cursor_so_its_folds_run_again` |
 | Claimed, never read | failure | input claimed after the last call | it stays unsettled and runs next | `test_a_succeeded_report_settles_what_the_run_read` |
-| Two folds, one thread | failure | a Slack thread sends twice | one reply reaches the thread | `test_folds_from_one_thread_owe_it_one_reply` |
+| Another thread's message | security | a Slack mention in a thread the run did not start | neither claimed nor in the way; the run's answer never reaches that thread | `test_another_conversation_is_neither_claimed_nor_in_the_way` |
+| Gate continuation behind a live run | failure | an approval resumes while another run is live | it is a barrier, never folded as text, and runs as a run of its own | `test_a_message_no_person_sent_stops_the_fold` |
+| Stale claim on a locked row | failure | a claim blocked behind a newer lease's | it leaves the newer stamp | `test_a_claim_never_replaces_a_later_fences_stamp` |
 | Message sent mid-call | failure | arrives during streaming | the call in flight is not cut; the next reads it | `a_message_sent_mid_stream_is_read_by_the_next_call_and_never_cuts_this_one` |
 
 ## Invariants
 
 1. A claim writes only for the runner holding the lease under its live fence — `claim_inputs.sql`'s `run` step; `test_another_runner_or_a_superseded_fence_claims_nothing`.
 2. A fold settles only with a succeeded report, under the fence that claimed it, at or below the reported cursor — `settle_folds.sql` and `commit.rs`; `test_a_failed_report_settles_no_fold`.
-3. No message passes one sent before it — the claim's barrier step; `test_a_parked_message_stops_the_fold`.
+3. No message passes one sent before it — the claim's running AND; `test_a_parked_message_stops_the_fold`, `test_a_message_no_person_sent_stops_the_fold`.
+3a. A run folds only a person's message in its own conversation — `claim_inputs.sql`'s `ahead` and `judged` steps; `test_another_conversation_is_neither_claimed_nor_in_the_way`.
 4. Input reaches a model call at one place — `guffbolt::drive`; `no_answer_ignores_input_that_arrived_before_it`.
 5. The harness depends on no runner or daemon crate — §7's layer rule.
 
@@ -239,7 +250,6 @@ The burst bench's simulated runner claims folds before each model call, and its 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
 | `fold_claim_failed` (runner log, `warn`) | operator | a claim goes unanswered | `error_code`, `after_sequence` | no message text | `afr_supervisor` inbox (S2) |
-| `queue_fold_delivery` report step | operator | a folded reply's queue append fails | the step's own fields | no message text | report steps (S3) |
 | `agentsfleet_steer_dispositions_total` | operator | a steer is answered | `outcome`: `started`, `folded`, `queued` | no fleet, actor or text | `test_every_fleet_producer_runs_its_body` |
 | `agentsfleet_lease_folds_total` | operator | a claim takes messages, or a report answers them | `outcome`: `claimed`, `settled` | no fleet, actor or text | `test_every_fleet_producer_runs_its_body` |
 | `folds_claimed` (`debug`), `folds_settled` (`info`) | operator | a claim answers; a report settles folds | lease, counts, cursor | no message text | S3 |
@@ -249,16 +259,16 @@ The burst bench's simulated runner claims folds before each model call, and its 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Burst pickup p95 is under 1 s (§8) | `jq -e '.measurements.burst_pickup_p95_ms < 1000' bench/baselines/lease-burst.rig.json` | `true`, exit 0 | P0 | |
-| R2 | The send publishes its disposition (§5) | `jq -e '.components.schemas.SteerAccepted.properties.disposition' public/openapi.json` | exit 0 | P0 | |
-| R3 | The folds route is published (§3) | `jq -e '.paths["/v1/runners/me/leases/{lease_id}/folds"].post' public/openapi.json` | exit 0 | P0 | |
-| R4 | The fold proofs sit in the integration lane (§3, §4) | `git grep -n -w -e test_a_succeeded_report_settles_what_the_run_read -e test_a_parked_message_stops_the_fold -- rustd/crates/daemon/afd_fleet/tests` | two hits; S3 runs them | P0 | |
-| R5 | No page says a steer waits for the run (§8) | `git grep -n -e "The current run finishes first; the steer runs next" -- docs/architecture` | no output | P1 | |
-| S1 | Lint | `make lint-all` | exit 0 | P0 | |
-| S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Version | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| R1 | Burst pickup p95 is under 1 s (§8) | `jq -e '.measurements.burst_pickup_p95_ms < 1000' bench/baselines/lease-burst.rig.json` | `true`, exit 0 | P0 | ✅ `true`: p95 491.5 ms, median of three (picked-up messages only; see Discovery) |
+| R2 | The send publishes its disposition (§5) | `jq -e '.components.schemas.SteerAccepted.properties.disposition' public/openapi.json` | exit 0 | P0 | ✅ exit 0 |
+| R3 | The folds route is published (§3) | `jq -e '.paths["/v1/runners/me/leases/{lease_id}/folds"].post' public/openapi.json` | exit 0 | P0 | ✅ exit 0 |
+| R4 | The fold proofs sit in the integration lane (§3, §4) | `git grep -n -w -e test_a_succeeded_report_settles_what_the_run_read -e test_a_parked_message_stops_the_fold -- rustd/crates/daemon/afd_fleet/tests` | two hits; S3 runs them | P0 | ✅ two hits; S3 ran them |
+| R5 | No page says a steer waits for the run (§8) | `git grep -n -e "The current run finishes first; the steer runs next" -- docs/architecture` | no output | P1 | ✅ no output |
+| S1 | Lint | `make lint-all` | exit 0 | P0 | ✅ exit 0 |
+| S2 | Unit | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 (732 s) |
+| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | ✅ exit 0: 1,662 passed, exclusive 3 passed |
+| S4 | Version | `make check-version` | exit 0 | P0 | ✅ exit 0 |
+| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | ✅ exit 0 |
 
 ## Dead Code Sweep
 
@@ -416,5 +426,18 @@ The burst bench's simulated runner claims folds before each model call, and its 
   - Answered, SQL-TIMEOUT: the runtime bounds are the API login's `ALTER ROLE` values (`afd_db::login`), with no in-code override and no boot check.
   > Indy (Nov 07, 2026: 04:35 PM): "Cut this bootcheck crap. I dont need additional verification. This is stupid." — context: the proposed boot check that `SHOW lock_timeout` / `statement_timeout` match `afd_db::login` is not built.
 - **Model reviews** — skipped on Indy's call: chose "Skip it (Recommended)" (Nov 06, 2026: 11:41 PM), as for M242_001.
-- **Open blockers (Nov 08, 2026):** one. A read-only review of the branch found that a gate approval's continuation (`Producer::GateContinuation`, event type `continuation`) is foldable under the signed-off `claim_inputs.sql`: a live run that is not a durable task can claim it as chat text, and that run's succeeded report settles it as processed, so the approved action never resumes. Only a change to `claim_inputs.sql` and `admit_one.sql` fixes it, and Indy's gate allows no product SQL without his line-by-line approval. The patch is written, not applied, in the PR description and the closing report. The PR is opened and babysat to green, and **the merge waits for Indy's approval of that patch**, which supersedes his "merge when green" for this PR only. Indy answered the two Nov 06 blockers (above).
+- **Blocker closed (Nov 08, 2026):** a gate approval's continuation was foldable under the claim signed off on Nov 07 and, once settled, never resumed. Plain runs now take the durable task's rule (a person's message in the run's conversation), so a continuation, a webhook and a machine's steer are barriers, and another thread's message is neither claimed nor in the way. Indy chose the scope (below); the SQL below awaits his line-by-line approval.
+- **Follow-up patch (Nov 08, 2026), facts** — measured over 200,000 settled rows and a backlog of 10,000 and of 100,000 unsettled, on a plan run under `api_runtime` with `EXPLAIN (ANALYZE, BUFFERS)` after `ANALYZE`:
+  - `claim_inputs.sql` read the whole backlog on every model call: 4.8 ms at 10,000 rows, 51 to 60 ms at 100,000. It now reads one claim's worth through `idx_admissions_pending_conversation`: 0.7 to 0.9 ms either way, and 0.12 ms when a barrier leads.
+  - `admit_one.sql` with the disposition facts cost 0.97 ms and 395 buffers under the fleet lock. Without them it costs 0.11 ms and 32 buffers. `run_facts.sql` reads the facts after the commit, bounded to two claims' worth: 0.09 ms at 100,000 rows (9.2 ms unbounded).
+  - The settle ran 1 + 4 statements per folded message under the runner's host lock. It now runs 3 in all. At 500 messages the execution is 7 ms, 28 ms and 12 ms; the saving is round trips (2,001 to 3), not execution time.
+  - The burst bench steered as `bench:steer`, which is no person's actor, so under the person rule nothing in its burst could fold. It now steers as `steer:bench`.
+  - `make bench-lease PROFILE=rig BENCH_SHAPE=burst`, three runs: pickup p95 491.5 ms (489.0 to 491.8), against 54.2 s before folding; 4,564 of 30,000 folded and 25,212 still waited at the close, because 8 runners serve 50 fleets. The percentiles count only messages a run picked up.
+  - Known limit of R1: the burst's pickup percentiles count only messages a run picked up, as the 54.2 s baseline did. Picked up within the window: 224 of 29,953 before, 4,788 of 30,000 now. The remaining wait is 8 runners for 50 fleets, not the claim.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
+
+> Owner (Indy, Nov 08, 2026: 09:10 AM): chose "R1 + B + R2 + R3" — context: R1 plain runs take the durable task's claim rule (a person's message in the run's conversation); B the stale-claim fence guard in `claim_inputs.sql`; R2 the set-based settle (`settle_folds.sql` plus `open_folded_events.sql` and `close_folded_events.sql`); R3 the disposition facts leave `admit_one.sql` for `run_facts.sql`. No settle cap and no claim byte cap: the recorded "no fold cap" (Nov 06, 2026: 10:43 AM) stands, and a person's 8 KiB steer bounds a claim at 256 KiB.
+> Owner (Indy, Nov 08, 2026: 09:11 AM): "docs/v2/active/M242_002_…md will this move to done in this PR?" — context: it moves when its rubric is graded, including R1, the burst's pickup p95 under 1 s.
+> Owner (Indy, Nov 08, 2026: 09:37 AM): "also why do test-integration-rustd take like 20mins or above in github CIs, how can we bring it down this is causing a lot of agony to merge a PR." — context: not in this spec's scope; the profile and the options are in the Pull Request notes.
+> Owner (Indy, Nov 08, 2026: 10:22 AM): "Yes signed off and approved for the sql changes and the CI tuneup. But avoid this change - 5. Raise timeout-minutes to 30. This stops cancellations, not slowness. keep timeout at 20 so i can find ways to bring this down." — context: the follow-up SQL (`claim_inputs.sql`, `settle_folds.sql`, `admit_one.sql`, `run_facts.sql`, `open_folded_events.sql`, `close_folded_events.sql`) as drafted, R3's two statements per steer included; the CI tune-up is its own Pull Request, with `timeout-minutes` left at 20.
+> Owner (Indy, Nov 08, 2026: 10:48 AM): "well all must go in 1 worktree in your database sql change PR this is not separate" — context: the CI tune-up rides this follow-up Pull Request. The shard split is #814's (Codex, issue #813), so this one carries the per-step timing, the per-shard peak memory, and the measured cause of the duplicate instrumented build: dev-dependency features (`tokio`'s `process` and `test-util`) that a `cargo run` build never enables.
