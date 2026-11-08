@@ -107,7 +107,7 @@ async fn test_an_internal_setup_event_is_not_an_admission_head() -> Checked {
     .execute(&mut *held.fixtures.database.acquire().await?)
     .await?;
     assert_eq!(changed.rows_affected(), 1);
-    assert!(claim_as_holder(&held, 0).await?.is_empty());
+    assert_eq!(claim_as_holder(&held, 0).await?, Vec::new());
     let after = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert!(after.run.live_run.is_none());
     assert!(after.run.earlier_waiting);
