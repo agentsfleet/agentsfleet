@@ -31,13 +31,15 @@ it.each(["reading", "sending", "saving", "publishing"] as const)("shows %s only 
 });
 
 it.each([
-  {patch: {saveOperation: "accepted-save"}, label: "Saving"},
-  {patch: {optimistic: {operation: "pending", text: "Refine", createdAt: MESSAGE.created_at}}, label: "Sending request"},
-  {patch: {messages: [{...MESSAGE, state: "queued" as const}]}, label: "Waiting to refine setup"},
-  {patch: {messages: [{...MESSAGE, state: "running" as const}]}, label: "Refining setup"},
-])("preserves the actual pending state: $label", ({patch, label}) => {
+  {patch: {saveOperation: "accepted-save"}, label: "Saving", animated: true},
+  {patch: {optimistic: {operation: "pending", text: "Refine", createdAt: MESSAGE.created_at}}, label: "Sending request", animated: true},
+  {patch: {messages: [{...MESSAGE, state: "queued" as const}]}, label: "Waiting to refine setup", animated: false},
+  {patch: {messages: [{...MESSAGE, state: "running" as const}]}, label: "Refining setup", animated: true},
+])("preserves the actual pending state: $label", ({patch, label, animated}) => {
   render(<SetupStatusFlap view={{...EMPTY_DRAFT_VIEW, draft: DRAFT, ...patch}} workspace={WORKSPACE} />);
   expect(screen.getByRole("status").textContent).toBe(label);
+  expect(screen.getByText(label).getAttribute("data-chat-loading")).toBe(String(animated));
+  expect(screen.getByRole("status").getAttribute("data-setup-status")).toBe("working");
   expect(screen.queryByRole("link")).toBeNull();
 });
 

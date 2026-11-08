@@ -3,7 +3,7 @@
 import type { TaskSummary, TaskDetail as NativeTaskDetail } from "@/lib/api/tasks";
 import type { TaskResource } from "./use-task-read";
 import { useCallback } from "react";
-import { Button, SignalSpinner } from "@agentsfleet/design-system";
+import { Button } from "@agentsfleet/design-system";
 import { readTask } from "@/lib/api/tasks";
 import { TaskNextStep } from "./TaskNextStep";
 import { TaskGoalAdoption } from "./TaskGoalAdoption";
@@ -24,7 +24,7 @@ export function TaskDetail({workspaceId, fleetId, task, onChanged}: Props) {
 export function TaskDetailView({workspaceId, fleetId, task, onChanged, resource, retry}: Props & {resource: TaskResource<NativeTaskDetail>; retry: () => void}) {
   const detail = confirmed(resource);
   return <div className="space-y-md pb-md text-body-sm" aria-label={`${task.title} details`}>
-    {resource.kind === "loading" ? <output className="inline-flex items-center gap-xs text-muted-foreground"><SignalSpinner aria-hidden="true" />Reading saved progress…</output> : null}
+    {resource.kind === "loading" ? <output data-chat-loading="true" className="inline-flex items-center gap-xs text-muted-foreground">Reading saved progress…</output> : null}
     {resource.kind === "failed" ? <div className="flex items-center justify-between gap-sm text-muted-foreground">
       <p>{detail ? "Progress couldn’t be refreshed. Last confirmed details are shown." : "Saved progress is unavailable."}</p>
       <Button variant="ghost" size="sm" onClick={retry}>Retry details</Button>

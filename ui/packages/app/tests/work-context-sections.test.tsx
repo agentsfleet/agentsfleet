@@ -37,7 +37,7 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   const events = [evt({tools: [tool({}), tool({name: "file_edit", args: {path: "src/test.ts"}, done: false, status: undefined}), tool({})]})];
   expect(recordedChanges(events)).toEqual([{path: "src/repair.ts", running: false}, {path: "src/test.ts", running: true}]);
   const view = render(<WorkChanges events={[]} />);
-  expect(screen.getByText("No recorded file changes.")).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Changes"})).toBeNull();
   view.rerender(<WorkChanges events={events} />);
   fireEvent.click(screen.getByText("2 recorded files"));
   expect(screen.getByText("Write in progress")).toBeTruthy();
@@ -50,7 +50,7 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
 it("outputs use saved native target links, never objective prose or local edits as publication proof", () => {
   const value = detail();
   const view = render(<WorkOutputs details={new Map([["task", {kind: "ready", value}]])} />);
-  expect(screen.getByText("No saved outputs.")).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Outputs"})).toBeNull();
   const target = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
   const saved = {...value, context: {...value.context, target}};
   view.rerender(<WorkOutputs details={new Map([["task", {kind: "ready", value: saved}], ["same-pr", {kind: "ready", value: saved}]])} />);

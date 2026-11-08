@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Button, DescriptionDetails, DescriptionList, DescriptionTerm, Popover, PopoverContent,
-  PopoverTrigger, SignalSpinner,
+  PopoverTrigger,
 } from "@agentsfleet/design-system";
 
 import { formatDollars } from "@/lib/money";
@@ -61,7 +61,6 @@ export function Waiting({ queued, startedAtMs }: { queued: boolean; startedAtMs:
       aria-label={label}
       data-testid="fleet-working"
     >
-      <SignalSpinner className={queued ? "text-warning" : "text-info"} />
       <span className="sr-only">{label}</span>
       <span aria-hidden="true" data-waiting-verb="" data-chat-loading={!queued}>{label}…</span>
       <ElapsedClock startedAtMs={startedAtMs} />

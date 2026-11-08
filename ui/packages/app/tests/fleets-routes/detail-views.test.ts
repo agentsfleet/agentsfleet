@@ -137,7 +137,7 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
-    expect(markup).toContain(">Edit setup</a>");
+    expect(markup).toContain('aria-label="Edit setup"');
     expect(markup).toContain(`/fleets/new?fleet=${FLEET_ID}&amp;setup_revision=1`);
     expect(markup).not.toContain("?view=setup");
   });
@@ -152,7 +152,7 @@ describe("fleets routes — detail views", () => {
     const {default: Page} = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const markup = renderToStaticMarkup(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
     expect(markup).not.toContain('aria-label="Fleet sections"');
-    expect(markup).toContain(">Edit setup</a>");
+    expect(markup).toContain('aria-label="Edit setup"');
     expect(markup).toContain(`/fleets/new?fleet=${FLEET_ID}`);
   });
 });
