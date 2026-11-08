@@ -121,6 +121,15 @@ pub const UPDATE_FLEET_EVENT_FAILURE: &str = include_str!("update_fleet_event_fa
 /// pending, `$11` the run's tool trace as JSON text, or NULL.
 pub const UPDATE_FLEET_EVENT_RESULT: &str = include_str!("update_fleet_event_result.sql");
 
+/// Open, as received, the event of each message a run folded, in one
+/// statement: `$1` fleet, `$2` the messages' ids, `$3` the run's event, `$4`
+/// [`status::RECEIVED`]. See [`INSERT_LEASED_FLEET_EVENT`] for one message.
+pub const OPEN_FOLDED_EVENTS: &str = include_str!("open_folded_events.sql");
+
+/// [`UPDATE_FLEET_EVENT_RESULT`] for many events in one statement: `$2` is
+/// the list of event ids, every other parameter as there.
+pub const CLOSE_FOLDED_EVENTS: &str = include_str!("close_folded_events.sql");
+
 /// A fleet's activity counters as the database has them, by primary key.
 ///
 /// Answers exactly one row for any fleet id, zeros for a fleet with no counter

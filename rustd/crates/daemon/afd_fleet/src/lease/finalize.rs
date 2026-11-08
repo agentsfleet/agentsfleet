@@ -126,6 +126,56 @@ impl Leases {
         Ok(Some(Closed::read(&row)?))
     }
 
+    /// [`Self::mark_terminal`] for every event in `event_ids` at once, each
+    /// closed with the same `outcome`: the folded messages a run answered.
+    /// Answers each event it closed; one already terminal keeps its result
+    /// and is left out.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a closing this daemon
+    /// cannot read.
+    pub(crate) async fn mark_terminal_each(
+        &self,
+        connection: &mut PgConnection,
+        fleet_id: &Uuid7,
+        event_ids: &[String],
+        outcome: Terminal<'_>,
+    ) -> Result<Vec<Closed>> {
+        let Terminal {
+            verdict,
+            response_text,
+            tokens,
+            wall_ms,
+            tool_calls,
+        } = outcome;
+        let rows = sqlx::query(afd_events::sql::CLOSE_FOLDED_EVENTS)
+            .bind(fleet_id.as_str())
+            .bind(event_ids)
+            .bind(verdict.status())
+            .bind(response_text)
+            .bind(tokens)
+            .bind(wall_ms)
+            .bind(verdict.label())
+            .bind(af_core::event::status::RECEIVED)
+            .bind(verdict.detail())
+            .bind(afd_api_wire::approval::status::PENDING)
+            .bind(tool_calls)
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(crate::error::query(CONTEXT_TERMINAL))?;
+        let skipped = event_ids.len().saturating_sub(rows.len());
+        if skipped > 0 {
+            let fleet = fleet_id.as_str();
+            tracing::warn!(
+                fleet_id = fleet,
+                skipped,
+                event = "terminal_write_skipped_nonreceived",
+                "folded events were already terminal; their settled results stand"
+            );
+        }
+        rows.iter().map(|row| Ok(Closed::read(row)?)).collect()
+    }
+
     /// Record where this fleet's session resumes.
     ///
     /// Runs on the caller's connection, inside the settle's transaction: a

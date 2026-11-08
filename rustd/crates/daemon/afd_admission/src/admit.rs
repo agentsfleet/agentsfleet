@@ -48,8 +48,6 @@ impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
 pub(crate) struct Ledger {
     /// The row the key holds, this statement's or an earlier one's.
     pub(crate) stored: Repeated,
-    /// What the statement saw of the fleet's live run.
-    pub(crate) run: crate::RunFacts,
     /// Whether THIS statement created the row.
     pub(crate) inserted: bool,
 }
@@ -136,7 +134,6 @@ impl Admissions {
         Ok(Admitted {
             replayed,
             stored: ledger.stored,
-            run: ledger.run,
         })
     }
 

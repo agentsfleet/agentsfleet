@@ -14,6 +14,7 @@ pub mod budget;
 mod confirm;
 pub mod error;
 mod repeat;
+mod run_facts;
 pub mod sql;
 mod stage;
 mod wake;
@@ -31,6 +32,7 @@ use self::budget::Ceiling;
 pub use self::confirm::Confirmation;
 pub use self::error::{Error, Result};
 pub use self::repeat::Repeated;
+pub use self::run_facts::PersonSteer;
 pub use self::stage::PreparedAdmission;
 
 /// What an admission decided.
@@ -43,19 +45,16 @@ pub struct Admitted {
     /// the event's, and its digest and fleet let a producer tell a retry from a
     /// different payload under one key without a second read.
     pub stored: Repeated,
-    /// What the admitting statement saw of the fleet's live run, for the
-    /// disposition a producer names.
-    pub run: RunFacts,
 }
 
-/// What the admitting statement saw of the fleet, under the fleet lock.
+/// What a steer's disposition is named from: [`Admissions::run_facts`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunFacts {
     /// The run holding the fleet's slot, when its lease has not expired.
     pub live_run: Option<LiveRun>,
     /// Whether a message waits that this one must not pass: with no live
-    /// run, any unsettled admission; with one, a parked or task-bound one
-    /// after the run's own.
+    /// run, any earlier unsettled admission; with one, an earlier message in
+    /// the run's conversation that the run's claim stops at.
     pub earlier_waiting: bool,
 }
 
@@ -64,11 +63,10 @@ pub struct RunFacts {
 pub struct LiveRun {
     /// The event the run serves.
     pub event_id: String,
-    /// Whether the run is a durable task. A durable task claims a person's
-    /// later messages in its conversation; any other run claims every later
-    /// message its fleet receives.
+    /// Whether the run is a durable task.
     pub durable_task: bool,
-    /// Whether this message's stated reply matches the run's.
+    /// Whether this message is in the run's conversation: the same reply
+    /// destination, or none on both.
     pub same_conversation: bool,
 }
 

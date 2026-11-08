@@ -33,8 +33,9 @@ pub const ROWS_PER_RUNNER: u64 = 1;
 /// The actor every bench-written event carries, seeded or steered.
 ///
 /// One spelling, so a reader grepping a stream for bench entries has one
-/// thing to grep for.
-pub const BENCH_ACTOR: &str = "bench:steer";
+/// thing to grep for. It is a person's steer actor (`steer:<subject>`), because
+/// a live run folds only a person's messages, and the burst measures folds.
+pub const BENCH_ACTOR: &str = "steer:bench";
 
 /// The event type every seeded event carries: a steer is a chat.
 const EVENT_TYPE: EventType = EventType::Chat;

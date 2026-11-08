@@ -7,7 +7,7 @@
 use std::error::Error;
 
 use af_core::id::Uuid7;
-use afd_admission::{Admission, Admissions, Key, Producer, Reply, RunFacts};
+use afd_admission::{Admission, Admissions, Key, PersonSteer, Producer, Reply, RunFacts};
 use afd_fleet::lease::fold::Folds;
 use afd_fleet::lease::{Committed, Verdict};
 
@@ -31,7 +31,7 @@ pub(super) struct Sent {
     pub(super) id: String,
     /// Its place in the fleet's order.
     pub(super) sequence: i64,
-    /// What the ledger said of the live run when it was admitted.
+    /// What a steer meets of the live run (default for any other producer).
     pub(super) run: RunFacts,
 }
 
@@ -88,7 +88,13 @@ pub(super) async fn workspace_of(held: &Held) -> Checked<String> {
     Ok(workspace)
 }
 
-/// Admits one message from `producer` to the held fleet.
+/// The actor a person's steer to the held fleet records.
+pub(super) fn person() -> String {
+    afd_events::steer_actor("fixture-person")
+}
+
+/// Admits one message from `producer` to the held fleet: a steer from a
+/// person, anything else from the fixture's own actor.
 pub(super) async fn send(
     held: &Held,
     workspace: &str,
@@ -106,6 +112,23 @@ pub(super) async fn send_to(
     request_json: &str,
     reply: Reply<'_>,
 ) -> Checked<Sent> {
+    let actor = if producer == Producer::Steer {
+        person()
+    } else {
+        crate::seed::ACTOR.to_owned()
+    };
+    send_as(held, workspace, producer, &actor, request_json, reply).await
+}
+
+/// [`send_to`], recording `actor`.
+pub(super) async fn send_as(
+    held: &Held,
+    workspace: &str,
+    producer: Producer,
+    actor: &str,
+    request_json: &str,
+    reply: Reply<'_>,
+) -> Checked<Sent> {
     let admissions =
         Admissions::for_tests(held.fixtures.database.clone(), crate::queue::unreachable());
     let admitted = admissions
@@ -114,12 +137,25 @@ pub(super) async fn send_to(
             key: Key::Unrepeatable,
             fleet: &held.fleet,
             workspace,
-            actor: crate::seed::ACTOR,
+            actor,
             event_type: af_wire::event::EventType::Chat,
             request_json,
             reply,
         })
         .await?;
+    let pattern = format!("{}%", afd_events::ACTOR_PREFIX);
+    let person = PersonSteer {
+        machine_actor: afd_events::ACTOR_MACHINE,
+        actor_pattern: &pattern,
+    };
+    // The facts are a steer's: only a steer reads them.
+    let run = if producer == Producer::Steer {
+        admissions
+            .run_facts(&held.fleet, &admitted.stored.id, person)
+            .await?
+    } else {
+        RunFacts::default()
+    };
     let mut connection = held.fixtures.database.acquire().await?;
     let sequence = sqlx::query_scalar("SELECT sequence FROM fleet.admissions WHERE id = $1::uuid")
         .bind(&admitted.stored.id)
@@ -128,8 +164,20 @@ pub(super) async fn send_to(
     Ok(Sent {
         id: admitted.stored.id,
         sequence,
-        run: admitted.run,
+        run,
     })
+}
+
+/// Stamps `admission` as claimed under `fence`, as a later lease's claim
+/// would have.
+pub(super) async fn stamp_claim(held: &Held, admission: &str, fence: i64) -> Checked {
+    let mut connection = held.fixtures.database.acquire().await?;
+    sqlx::query("UPDATE fleet.admissions SET input_claim_fence = $2 WHERE id = $1::uuid")
+        .bind(admission)
+        .bind(fence)
+        .execute(&mut *connection)
+        .await?;
+    Ok(())
 }
 
 /// Runs one statement that names one admission and changes it.
@@ -157,16 +205,6 @@ pub(super) async fn settle_directly(held: &Held, admission: &str) -> Checked {
     change(
         held,
         "UPDATE fleet.admissions SET settled_at = now() WHERE id = $1::uuid",
-        admission,
-    )
-    .await
-}
-
-/// Gives `admission` a new row version, the newest in the table's storage.
-pub(super) async fn touch(held: &Held, admission: &str) -> Checked {
-    change(
-        held,
-        "UPDATE fleet.admissions SET updated_at = now() WHERE id = $1::uuid",
         admission,
     )
     .await
@@ -257,5 +295,63 @@ pub(super) async fn report_read_through(
         Committed::AlreadySettled | Committed::Fenced { .. } => {
             Err("the only holder of this fleet cannot be fenced out".into())
         }
+    }
+}
+
+/// Makes the held run's own message a reply in `address`, a Slack thread.
+pub(super) async fn address_head(held: &Held, address: &str) -> Checked {
+    let mut connection = held.fixtures.database.acquire().await?;
+    sqlx::query(
+        "UPDATE fleet.admissions SET reply_provider = $2, reply_address = $3 WHERE id = $1::uuid",
+    )
+    .bind(&held.event_id)
+    .bind(afd_connector::Provider::Slack.id())
+    .bind(address)
+    .execute(&mut *connection)
+    .await?;
+    Ok(())
+}
+
+/// Installs Slack team `team` in the held fleet's workspace and links `person`
+/// to a member of its tenant, as the OAuth callback would.
+pub(super) async fn link_slack_person(
+    held: &Held,
+    workspace: &str,
+    team: &str,
+    person: &str,
+) -> Checked {
+    let user = afd_db::test_util::mint_id();
+    let subject = format!("person-{user}");
+    let mut connection = held.fixtures.database.acquire().await?;
+    afd_db::test_util::UserSeed::new(
+        &user,
+        &held.tenant,
+        &subject,
+        &format!("{user}@example.test"),
+    )
+    .insert(&mut *connection)
+    .await?;
+    sqlx::query(
+        "INSERT INTO connector.installs (id, provider, external_account_id, workspace_id, scopes, created_at, updated_at) \
+         VALUES ($1::uuid, $2, $3, $4::uuid, '{}', now(), now())",
+    )
+    .bind(afd_db::test_util::mint_id())
+    .bind(afd_connector::Provider::Slack.id())
+    .bind(team)
+    .bind(workspace)
+    .execute(&mut *connection)
+    .await?;
+    let linked = afd_connector::grant::link_person(
+        &mut connection,
+        &Uuid7::parse(workspace)?,
+        team,
+        person,
+        &subject,
+    )
+    .await?;
+    if linked == 1 {
+        Ok(())
+    } else {
+        Err("the person's link was not written".into())
     }
 }

@@ -63,7 +63,7 @@
 
 use af_core::error_code;
 use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer, Repeated, Reply};
+use afd_admission::{Admission, Admissions, Key, PersonSteer, Producer, Repeated, Reply, RunFacts};
 use afd_api_wire::tail::TailFrame;
 
 use crate::error::{Result, operation_conflict};
@@ -198,7 +198,8 @@ impl Steer {
             // The insert met a row already under this key: a retry, or a send
             // with the same id that won the race to the insert. Its event is
             // this caller's answer only if the row holds this caller's payload.
-            let placed = disposition::of(&admitted.run, actor, &admitted.stored.id);
+            let run = self.run_facts(fleet, &admitted.stored.id).await;
+            let placed = disposition::of(&run, actor, &admitted.stored.id);
             return answer_repeat(&admission, admitted.stored)
                 .map(|event_id| Steered::repeat(event_id, placed));
         }
@@ -214,11 +215,41 @@ impl Steer {
             event_id = id,
             event = "steer_appended",
         );
+        let run = self.run_facts(fleet, &admitted.stored.id).await;
         Ok(Steered {
-            placed: disposition::of(&admitted.run, actor, &admitted.stored.id),
+            placed: disposition::of(&run, actor, &admitted.stored.id),
             event_id: admitted.stored.id,
             admitted_at: Some(admitted.stored.created_at),
         })
+    }
+
+    /// What the steer `admission` meets on `fleet`, for its disposition.
+    ///
+    /// Best-effort, as the label is advisory: the message is already
+    /// committed, so a read that fails answers `queued`, which the message
+    /// then is or does better than, and is logged rather than refused.
+    async fn run_facts(&self, fleet: &str, admission: &str) -> RunFacts {
+        let pattern = format!("{ACTOR_PREFIX}%");
+        let person = PersonSteer {
+            machine_actor: ACTOR_MACHINE,
+            actor_pattern: &pattern,
+        };
+        match self.admissions.run_facts(fleet, admission, person).await {
+            Ok(facts) => facts,
+            Err(unread) => {
+                let error_code = unread.code().as_str();
+                tracing::warn!(
+                    fleet_id = fleet,
+                    event_id = admission,
+                    error_code,
+                    event = "steer_run_facts_unread",
+                );
+                RunFacts {
+                    live_run: None,
+                    earlier_waiting: true,
+                }
+            }
+        }
     }
 
     /// Puts `frame` on `fleet`'s live tail, best-effort: a queue that will
