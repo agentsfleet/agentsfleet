@@ -160,6 +160,7 @@ Provider registration pages use this after Indy creates the provider app.
 | `github-app` | `github-app`: `app_id`, `app_slug`, `client_id`, `client_secret`, `private_key_pem`, `webhook_secret` | At startup; restart |
 | `slack-app` | `slack-app`: `client_id`, `client_secret`, `signing_secret` | Per request |
 | `linear-app`, `jira-app`, `zoho-app` | Same-named item: `client_id`, `client_secret` | Refresh uses the startup copy; restart |
+| `approval-signing` | `approval-signing-secret`: `credential`, which the bag stores as `webhook_secret` | Per request |
 | `qstash` | `qstash`: `token`, `current-signing-key`, `next-signing-key`, `url` | At startup; restart |
 | `smtp-relay` | `smtp-relay`: `host`, `port`, `username`, `password`, `from_address` | Per send |
 
