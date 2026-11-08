@@ -1,0 +1,60 @@
+//! The daemon's own crate: what it does before it serves, and after it stops.
+//!
+//! A library beside the binary because a binary crate's internals cannot be
+//! linked by an integration suite, and every interesting thing here is a
+//! SEQUENCE — boot order, cancellation, the order pools close in — which is
+//! exactly what wants testing and exactly what a `main` hides.
+#![forbid(unsafe_code)]
+#![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
+
+// `unused_crate_dependencies` is a crate attribute, so it also grades the lib's
+// own test target — and fires there for a dev-dependency only the suites in
+// `tests/` import, since those are separate crates it cannot see. Naming them
+// here is the lint's own documented remedy, and keeps the deny in force for
+// everything else. The first three belong to the end-to-end suite; the runner
+// crates, `tempfile` and `async-trait` drive the Rust runner through a lease
+// against it; the egress, provider and tool crates, `futures-util` and the
+// three TLS crates carry the corpus suite's real loop to its HTTPS fakes.
+#[cfg(test)]
+use {
+    af_context as _, af_egress as _, af_fleet_runtime as _, af_providers as _, af_webhook as _,
+    af_wire as _, afr_agent as _, afr_executor as _, afr_sandbox as _, afr_supervisor as _,
+    afr_telemetry as _, afr_tools as _, async_trait as _, futures_util as _, jiff_sqlx as _,
+    rcgen as _, rustls as _, serde_json as _, sqlx as _, tempfile as _, tokio_rustls as _,
+};
+
+pub mod banner;
+pub mod billing;
+pub mod cli;
+pub mod credentials;
+pub mod daemon;
+pub mod error;
+pub mod fatal;
+pub mod identity;
+pub mod inventory;
+pub mod logs;
+pub mod migrate;
+pub mod nameplate;
+pub mod outbound;
+pub mod plane;
+pub mod preflight;
+pub mod probes;
+pub mod serve;
+pub mod supervisor;
+pub mod sweepers;
+pub mod telemetry;
+pub mod tty;
+
+pub use self::cli::{Cli, Command};
+pub use self::daemon::{Daemon, Outcome, StopCause};
+pub use self::error::{BootFailure, Fault, MigrateFailure, Refusal};
+pub use self::identity::{Capabilities, Sessions};
+pub use self::inventory::{
+    ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT, OUTBOUND_WORKER,
+};
+pub use self::migrate::migrate;
+pub use self::plane::{Authenticator, ServingPlane, Shared};
+pub use self::preflight::{BootConfig, IdentityConfig, preflight};
+pub use self::probes::{LiveDependencies, PROBE_TIMEOUT};
+pub use self::supervisor::{JOIN_TIMEOUT, ShutdownReport, Supervisor};

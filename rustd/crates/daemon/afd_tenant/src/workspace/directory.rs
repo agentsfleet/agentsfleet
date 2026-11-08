@@ -1,0 +1,260 @@
+//! The tenant's workspace directory: the list, and the create beside it.
+//!
+//! # Why the list is two statements
+//!
+//! The tenant resolve could be folded into the page select with a lateral join
+//! and a marker row, so a tenant with zero workspaces still answers its own
+//! identifier. Here the resolve is [`super::Workspaces::
+//! tenant_of`] — the ONE statement every tenant route shares — and the page
+//! select takes the resolved tenant as a bind. A second spelling of the
+//! authority order to save one round trip would be two places for that order
+//! to drift apart, and the wire answer is byte-identical either way.
+
+use af_core::id::Uuid7;
+use afd_db::constraint::violates_unique;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+
+use crate::sql::workspace as sql;
+use crate::{Result, error, stored};
+
+use super::Workspaces;
+use super::name::{self, Chosen};
+
+/// The context a datastore failure on the page walk reports under.
+const CONTEXT_PAGE: &str = "list tenant workspaces";
+
+/// The context the create's insert reports under.
+const CONTEXT_CREATE: &str = "create workspace";
+
+/// The context the tenant-existence read reports under.
+const CONTEXT_TENANT: &str = "check tenant exists";
+
+/// The index that arbitrates a per-tenant name.
+///
+/// Must equal the name in `schema/1110_identity_workspaces.sql`, because classification
+/// is by exact constraint: a rename landing on one side turns a duplicate-name
+/// conflict into a 500.
+const NAME_CONSTRAINT: &str = "uq_workspaces_tenant_id_name";
+
+/// How many generated names the create tries before reporting the collision.
+///
+/// The suffix makes a collision roughly one in a million per attempt, so a
+/// third loss in a row is evidence of something broken — an entropy source
+/// gone flat — and worth surfacing rather than retrying forever.
+const GENERATED_ATTEMPTS: u32 = 3;
+
+/// One workspace as the list shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceRow {
+    /// The workspace's identifier.
+    pub id: String,
+    /// Its name — `NULL` on rows older than naming, and serialized as null.
+    pub name: Option<String>,
+    /// When it was created; the walk's sort key.
+    pub created_at: Timestamp,
+    /// The account it belongs to, one of those the page was asked for.
+    pub tenant_id: Uuid7,
+}
+
+/// One page of the walk, and whether a row exists beyond it.
+///
+/// `more` is decided by fetching one row past the limit, so the cursor is
+/// emitted only when a next page actually has something on it, not merely
+/// when this one is full.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspacePage {
+    /// The rows on this page, oldest first.
+    pub rows: Vec<WorkspaceRow>,
+    /// Whether the walk continues past the last row here.
+    pub more: bool,
+}
+
+/// A decoded `starting_after` boundary: the last row the previous page showed.
+///
+/// The identifier is a parsed [`Uuid7`], not a string — the handler refuses a
+/// malformed one before a connection is drawn, which is `isSupportedWorkspaceId`
+/// as a type rather than a call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct After {
+    /// The boundary row's `created_at`.
+    pub created_at: Timestamp,
+    /// The boundary row's identifier, breaking ties within one instant.
+    pub id: Uuid7,
+}
+
+/// What a create answers with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Created {
+    /// The new workspace's identifier.
+    pub id: Uuid7,
+    /// Its name — chosen or generated, as stored.
+    pub name: String,
+}
+
+impl Workspaces {
+    /// One page of the workspaces across `tenants`, oldest first.
+    ///
+    /// `tenants` is bound as one array, borrowed as
+    /// [`super::accounts::Accounts::tenants`] lends it, so the walk copies no
+    /// identifier.
+    ///
+    /// `filter` holds the walk to an exact name; `after` is the decoded
+    /// cursor when the caller is resuming.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a row this daemon
+    /// cannot read.
+    pub async fn page(
+        &self,
+        tenants: &[&str],
+        filter: Option<&str>,
+        after: Option<&After>,
+        limit: u32,
+    ) -> Result<WorkspacePage> {
+        // One past the limit, so `more` is a fact about the walk rather than
+        // a guess about a full page.
+        let fetch = i64::from(limit).saturating_add(1);
+        let mut connection = self.database.acquire().await?;
+        let query = match (filter, after) {
+            (None, None) => sqlx::query_as::<_, PageRow>(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST)
+                .bind(tenants)
+                .bind(fetch),
+            (None, Some(boundary)) => sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER)
+                .bind(tenants)
+                .bind(boundary.created_at.to_sqlx())
+                .bind(boundary.id.as_str())
+                .bind(fetch),
+            (Some(name), None) => sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME)
+                .bind(tenants)
+                .bind(name)
+                .bind(fetch),
+            (Some(name), Some(boundary)) => {
+                sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME)
+                    .bind(tenants)
+                    .bind(name)
+                    .bind(boundary.created_at.to_sqlx())
+                    .bind(boundary.id.as_str())
+                    .bind(fetch)
+            }
+        };
+        let fetched = query
+            .fetch_all(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_PAGE))?;
+
+        let mut rows = fetched
+            .into_iter()
+            .map(PageRow::parse)
+            .collect::<Result<Vec<WorkspaceRow>>>()?;
+        // A `u32` always fits the `usize` of every target this daemon builds for.
+        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+        let more = rows.len() > limit;
+        rows.truncate(limit);
+        Ok(WorkspacePage { rows, more })
+    }
+
+    /// Creates one workspace, naming it when the caller did not.
+    ///
+    /// `now` mints the identifier; the creation stamp is the database clock's.
+    ///
+    /// # Errors
+    /// Refuses a session whose tenant has no row behind it, and a chosen name
+    /// this tenant already uses. A GENERATED name that collides is retried
+    /// with a fresh draw instead — the caller never chose it, so "taken" would
+    /// name a conflict they cannot see. Also reports a host that cannot draw
+    /// entropy and a datastore that would not answer.
+    pub async fn create(
+        &self,
+        tenant: &Uuid7,
+        chosen: Option<Chosen>,
+        now: Timestamp,
+    ) -> Result<Created> {
+        let mut connection = self.database.acquire().await?;
+        // Asked before the insert because a stale session can name a deleted
+        // tenant, and this sentence beats the foreign key's 500. The race
+        // between check and insert stays, and loses only a clearer refusal.
+        let exists: Option<i32> = sqlx::query_scalar(sql::SELECT_TENANT_EXISTS)
+            .bind(tenant.as_str())
+            .fetch_optional(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_TENANT))?;
+        if exists.is_none() {
+            return Err(error::workspace_tenant_vanished());
+        }
+
+        if let Some(name) = chosen {
+            let id = self.entropy.uuid7(now)?;
+            return match self
+                .insert(&mut connection, &id, tenant, name.as_str())
+                .await
+            {
+                Ok(()) => Ok(Created {
+                    id,
+                    name: name.as_str().to_owned(),
+                }),
+                Err(source) if violates_unique(&source, NAME_CONSTRAINT) => {
+                    Err(error::workspace_name_exists())
+                }
+                Err(source) => Err(error::query(CONTEXT_CREATE)(source)),
+            };
+        }
+
+        let mut attempt = 0;
+        loop {
+            let name = name::generate(&self.entropy)?;
+            let id = self.entropy.uuid7(now)?;
+            match self.insert(&mut connection, &id, tenant, &name).await {
+                Ok(()) => return Ok(Created { id, name }),
+                Err(source)
+                    if violates_unique(&source, NAME_CONSTRAINT)
+                        && attempt + 1 < GENERATED_ATTEMPTS =>
+                {
+                    attempt += 1;
+                }
+                // Exhausted, or broken some other way. Either way the chain
+                // is the log's; the caller hears the datastore refused.
+                Err(source) => return Err(error::query(CONTEXT_CREATE)(source)),
+            }
+        }
+    }
+
+    /// One insert, answering the driver's own error for the caller to classify.
+    async fn insert(
+        &self,
+        connection: &mut sqlx::pool::PoolConnection<sqlx::Postgres>,
+        id: &Uuid7,
+        tenant: &Uuid7,
+        name: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query(sql::INSERT_WORKSPACE)
+            .bind(id.as_str())
+            .bind(tenant.as_str())
+            .bind(name)
+            .execute(connection.as_mut())
+            .await
+            .map(|_outcome| ())
+    }
+}
+
+/// One page row, by column name.
+#[derive(Debug, sqlx::FromRow)]
+struct PageRow {
+    id: String,
+    name: Option<String>,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    tenant_id: String,
+}
+
+impl PageRow {
+    /// The workspace this row stores; its tenant parses here.
+    fn parse(self) -> Result<WorkspaceRow> {
+        Ok(WorkspaceRow {
+            id: self.id,
+            name: self.name,
+            created_at: self.created_at,
+            tenant_id: stored::tenant(&self.tenant_id)?,
+        })
+    }
+}

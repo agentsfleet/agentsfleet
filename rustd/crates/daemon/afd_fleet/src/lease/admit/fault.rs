@@ -1,0 +1,180 @@
+//! What a gate's own failure decides, as data rather than as control flow.
+//!
+//! # Named for the fault, not for the posture
+//!
+//! `Posture` is already taken, and by the money path: [`afd_billing::Posture`]
+//! is who supplies the provider key, which is the spelling
+//! `billing.usage_lines.posture` uses and therefore the one that keeps its
+//! name. A module called `posture` beside it meant [`super`] imported
+//! `posture::PAYER` and `Posture` on adjacent lines for two unrelated
+//! questions — who pays, and what a dead datastore means.
+//!
+//! `balanceCoversEstimate` contains three separate `catch return true` — on the
+//! acquire, on the wallet load, and on the rate lookup. Each is a fail-open
+//! decision a reviewer has to notice individually, and a fourth statement added
+//! later inherits nothing from the three above it.
+//!
+//! Here the posture is a field on a [`Gate`] value, declared beside the gate's
+//! name, and [`Gate::absorb`] is the only code that acts on it. Adding a gate
+//! means stating a posture; changing a posture means editing one line that
+//! reads like the sentence it enforces.
+
+use af_core::error_code::{self, Coded as _, Logged};
+
+use crate::lease::admit::{Declined, Transient};
+
+/// What a gate's own failure decides.
+///
+/// Two arms and not three: a DATASTORE fault never ends an event permanently.
+/// Permanence comes from verdicts — an exhausted wallet, a breached ceiling, a
+/// workspace naming no tenant — and those arrive as `Ok`, not as `Err`. That
+/// split is RULE ECL held at the type level rather than in a comment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum OnFault {
+    /// Admit the event. The two MONEY gates take this posture: a metering
+    /// outage must not halt every fleet on the platform, and a gate stricter
+    /// than the platform's own credit pool would be an inconsistent guarantee.
+    Admit,
+    /// Answer no-work. The delivery stays leasable and the next poll retries.
+    Retry,
+}
+
+/// One gate, and what its failure means.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Gate {
+    /// The `event` a fault at this gate logs under.
+    pub(super) event: &'static str,
+    /// What a fault here decides.
+    pub(super) on_fault: OnFault,
+}
+
+/// The tenant's credit pool. Fails OPEN.
+pub(super) const BALANCE: Gate = Gate {
+    event: "lease_balance_unavailable",
+    on_fault: OnFault::Admit,
+};
+
+/// The fleet's own declared ceiling. Fails OPEN, mirroring [`BALANCE`] — a
+/// budget gate stricter than the credit gate above it would be an inconsistent
+/// guarantee.
+pub(super) const BUDGET: Gate = Gate {
+    event: "lease_budget_unavailable",
+    on_fault: OnFault::Admit,
+};
+
+/// Resolving who pays. Fails to RETRY.
+pub(super) const PAYER: Gate = Gate {
+    event: "lease_tenant_lookup_failed",
+    on_fault: OnFault::Retry,
+};
+
+impl Gate {
+    /// Apply this gate's declared posture to a fault, logging it once.
+    ///
+    /// `None` means the pass continues — which for [`OnFault::Admit`] IS the
+    /// fail-open decision, taken here rather than by a `catch` returning a bare
+    /// `true` eight frames down.
+    ///
+    /// A caller at a [`OnFault::Retry`] gate knows this answers `Some` and
+    /// spells that `absorb(&fault).ok_or(fault)`: one expression, and if the
+    /// posture is ever changed to `Admit` the gate propagates the error instead
+    /// of silently admitting — which is the right way for that edit to fail.
+    pub(super) fn absorb(self, fault: &afd_billing::Error) -> Option<Declined> {
+        // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
+        // scores the dead copy.
+        let code = error_code::INTERNAL_DB_QUERY.as_str();
+        let Logged {
+            error_code: cause_error_code,
+            reason,
+        } = fault.logged();
+        let event = self.event;
+        match self.on_fault {
+            OnFault::Admit => {
+                tracing::warn!(
+                    error_code = code,
+                    cause_error_code,
+                    event,
+                    reason,
+                    "a money gate could not be read; the event is admitted rather than \
+                     halting every fleet on the platform"
+                );
+                None
+            }
+            OnFault::Retry => {
+                tracing::warn!(
+                    error_code = code,
+                    cause_error_code,
+                    event,
+                    reason,
+                    "the pass ended early; the delivery stays leasable and the next poll retries"
+                );
+                Some(Declined::Retry(Transient { at: event }))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BALANCE, BUDGET, OnFault, PAYER};
+    use crate::lease::admit::{Declined, Transient};
+    use std::collections::BTreeSet;
+
+    /// A billing failure to absorb.
+    ///
+    /// Which kind is immaterial — `absorb` reads the posture beside the gate's
+    /// name, never the fault. Built by LIFTING a datastore refusal, which is
+    /// total: the billing kinds are private to their crate, and a sample picked
+    /// out of a list would need an arm for the list being empty.
+    fn fault() -> afd_billing::Error {
+        afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into()
+    }
+
+    #[test]
+    fn the_two_money_gates_fail_open_and_the_payer_gate_does_not() {
+        // The asymmetry stated as a test rather than left to a reader
+        // collecting `catch` sites: a metering outage admits, an unresolvable
+        // payer does not.
+        assert_eq!(BALANCE.on_fault, OnFault::Admit);
+        assert_eq!(BUDGET.on_fault, OnFault::Admit);
+        assert_eq!(PAYER.on_fault, OnFault::Retry);
+    }
+
+    #[test]
+    fn every_gate_logs_under_a_distinct_event() {
+        // Two gates sharing an event name would make a dashboard unable to say
+        // WHICH read failed, which is the only thing the line is for.
+        let events = [BALANCE.event, BUDGET.event, PAYER.event];
+        let distinct: BTreeSet<_> = events.iter().collect();
+        assert_eq!(
+            distinct.len(),
+            events.len(),
+            "two gates share an event name: {events:?}"
+        );
+        assert!(events.iter().all(|event| !event.is_empty()));
+    }
+
+    /// A fail-open gate absorbs its fault and lets the pass continue.
+    ///
+    /// `None` IS the fail-open decision. Asserting the CONSTANT alone would
+    /// still pass if `absorb` ignored the posture it was given, which is the
+    /// one thing this module exists to make impossible: a metering outage must
+    /// not halt every fleet on the platform.
+    #[test]
+    fn a_money_gate_absorbs_its_fault_and_the_pass_continues() {
+        assert_eq!(BALANCE.absorb(&fault()), None);
+        assert_eq!(BUDGET.absorb(&fault()), None);
+    }
+
+    /// A fail-closed gate answers a retry naming itself.
+    ///
+    /// The gate NAME rides the answer because it is all a runner is told — the
+    /// cause stays in the line the gate logged.
+    #[test]
+    fn the_payer_gate_answers_a_retry_that_names_itself() {
+        assert_eq!(
+            PAYER.absorb(&fault()),
+            Some(Declined::Retry(Transient { at: PAYER.event }))
+        );
+    }
+}

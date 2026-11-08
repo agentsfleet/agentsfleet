@@ -4,11 +4,12 @@
 and swaps the vault; 🦉 Orly checks, copies, verifies and redeploys.
 **Scope:** exactly one of development or production per run.
 
-A PlanetScale branch's region is fixed at creation. Moving a database is a
-new branch in the target region, a migrated schema, a data copy, a
-verification, and a credential swap — with writes stopped from the copy to
-the swap. This playbook is that sequence, and the scripts refuse to run it
-against both environments at once.
+A PlanetScale branch's region is fixed at creation. A move is a new branch in
+the target region, a migrated schema, a data copy, a verification, and a
+credential swap. Writes stay stopped from the copy to the swap.
+
+This playbook is that sequence, and the scripts refuse to run it against both
+environments at once.
 
 ## Why `us-east`
 
@@ -25,12 +26,14 @@ For the environment being moved:
 2. Open the new branch → **Connect** and copy its connection details. The
    host differs from the live one; the credentials are the branch's own.
 3. Open the new branch → **Clusters → Parameters** and read
-   `max_connections` (25 on the current cluster size, 3 reserved, 3 held by
-   PlanetScale's own admin and exporter roles). Then **PgBouncers →** the
+   `max_connections`. It is 25 on the current cluster size, with 3 reserved and
+   3 held by PlanetScale's own admin and exporter roles. Then **PgBouncers →** the
    local bouncer and set `default_pool_size` so that it, those three, and the
-   migrator at release all fit — 16 leaves room on a 25-connection cluster.
+   migrator at release all fit.
+
+   A pool of 16 leaves room on a 25-connection cluster.
    Raise the cluster size instead if the pool must stay at 20.
-4. Stage the new strings in the vault beside the live ones — do not overwrite
+4. Stage the new strings in the vault beside the live ones, and do not overwrite
    the live fields yet:
 
    | Vault | Item | New field | Port |
@@ -39,14 +42,24 @@ For the environment being moved:
    | `ZMB_CD_DEV` / `ZMB_CD_PROD` | `planetscale-dev` / `planetscale-prod` | `next-migrator-connection-string` | `5432` |
 
    The API string is the same host and credentials with the port changed to
-   `6432` — PlanetScale's PgBouncer, which every branch ships. The migrator
+   `6432`, PlanetScale's PgBouncer, which every branch ships. The migrator
    stays on `5432`; a transaction pooler cannot hold its session advisory
    lock. The login roles the strings name are branch credentials created in
-   the console. The migrator's creates every schema, so it needs what the
-   live one has; the API's must be a member of `api_runtime`
-   (`schema/1010_roles_and_privileges.sql`) — and of nothing else:
+   the console.
+
+   The migrator's creates every schema, so it needs what the live one has.
+   The API's must be a member of `api_runtime`
+   (`schema/1010_roles_and_privileges.sql`) and of nothing else:
 
        pscale role create <db> <branch> <name> --inherited-roles api_runtime
+
+   Then give the API login the bounds every request runs under, from a session on `5432`:
+
+       ALTER ROLE <name> SET lock_timeout = '2000ms';
+       ALTER ROLE <name> SET statement_timeout = '5000ms';
+
+   The values are `afd_db::login`'s `LOCK_TIMEOUT` and `STATEMENT_TIMEOUT`.
+   Postgres applies a role's settings only to the role that logs in, so the API login carries them, not `api_runtime`.
 
    Verify the target login's role memberships before copying.
    `schema/1010_roles_and_privileges.sql` defines the role hierarchy; each table's slot owns its grants.
@@ -133,8 +146,8 @@ Truncate and restore run in one `psql --single-transaction` invocation.
 A failure restores the target's preceding contents; fix the blocker before retrying.
 Do not exclude additional application tables to work around duplicate rows.
 
-`03_verify.sh` counts every user table on both branches from the catalog —
-never from a hand-kept list — and diffs the two censuses with the ledger
+`03_verify.sh` counts every user table on both branches from the catalog,
+never from a hand-kept list. It diffs the two censuses with the ledger
 version. Any difference fails the run.
 
 ## Required result

@@ -1,0 +1,35 @@
+//! Reads share the schedule decoder and never reach the external scheduler.
+
+use super::{CONTEXT_READ, Schedules};
+use crate::{Result, Schedule, error, sql};
+use af_core::id::Uuid7;
+
+impl Schedules {
+    /// This fleet's schedules, oldest first.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and a row this build cannot
+    /// read.
+    pub async fn list(&self, fleet: &Uuid7) -> Result<Vec<Schedule>> {
+        let mut connection = self.database.acquire().await?;
+        sqlx::query_as::<_, Schedule>(sql::LIST_FOR_FLEET)
+            .bind(fleet.as_str())
+            .fetch_all(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_READ))
+    }
+
+    /// One schedule of this fleet's.
+    ///
+    /// # Errors
+    /// As [`Self::list`].
+    pub async fn one(&self, fleet: &Uuid7, schedule: &Uuid7) -> Result<Option<Schedule>> {
+        let mut connection = self.database.acquire().await?;
+        sqlx::query_as::<_, Schedule>(sql::SELECT_ONE)
+            .bind(schedule.as_str())
+            .bind(fleet.as_str())
+            .fetch_optional(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_READ))
+    }
+}

@@ -1,0 +1,228 @@
+//! The HTTP seam the event-history routes act through.
+//!
+//! One trait over both listings and the single read, because they are one
+//! store and a suite that stubbed them apart would be stubbing an
+//! implementation detail.
+//!
+//! # Why the workspace listing takes an optional fleet
+//!
+//! The console's Live Wall drills from a workspace into one fleet without
+//! changing endpoint, and the per-fleet route answers the same question with
+//! the fleet fixed. Both bind the same argument to one statement, so the two
+//! cannot disagree about a fleet's history — which two statements would
+//! eventually do.
+
+use af_core::id::Uuid7;
+use afd_api_wire::tail::TailFrame;
+use afd_events::{
+    CallAddress, Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer,
+    Steered, ToolCallRow,
+};
+
+/// Everything the event-history routes act through.
+pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
+    /// One page of a workspace's history, newest first.
+    ///
+    /// `fleet` narrows the page to one fleet without changing the statement.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, or a row this build cannot
+    /// read. The cursor and the window are resolved by the handler, so nothing
+    /// here is the caller's fault.
+    fn page_for_workspace(
+        &self,
+        workspace: &Uuid7,
+        fleet: Option<&Uuid7>,
+        filter: &Filter,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
+
+    /// One page of a single fleet's history, newest first.
+    ///
+    /// # Errors
+    /// As [`Self::page_for_workspace`].
+    fn page_for_fleet(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        filter: &Filter,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
+
+    /// One page of `actor`'s events in a single fleet, newest first, matched
+    /// exactly: a schedule's runs, under `cron:<schedule_id>`.
+    ///
+    /// # Errors
+    /// As [`Self::page_for_workspace`].
+    fn page_of_actor(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        actor: &str,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
+
+    /// One page of a fleet's chat thread, newest first, bodies included.
+    ///
+    /// The caller asks for one row more than it will serve — see
+    /// [`afd_events::History::thread_page`] on why has-more is a fact here and
+    /// not a guess.
+    ///
+    /// # Errors
+    /// As [`Self::page_for_fleet`].
+    fn thread_for_fleet(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        cursor: Option<&Cursor>,
+        limit: i64,
+        event_type: Option<&str>,
+    ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send;
+
+    /// One event, inside this workspace and fleet, bodies included.
+    ///
+    /// [`EventDetailRow`] rather than the listing's row, because this is the
+    /// only read that carries `request_json` and `response_text`. A page of up
+    /// to two hundred rows would pay for both on every one of them; an expanded
+    /// row is asked for one.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer. An event belonging to
+    /// another workspace is `Ok(None)`, indistinguishable from one that never
+    /// existed — the scope is an authorization, not a filter.
+    fn one(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        event_id: &str,
+    ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send;
+
+    /// One tool call's kept record, inside this workspace, fleet and event.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer. A record of another
+    /// workspace's fleet is `Ok(None)`, as an unknown call is.
+    fn tool_call(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        event_id: &str,
+        call: CallAddress,
+    ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send;
+}
+
+/// The production reader answers each directly.
+impl WorkspaceEvents for History {
+    fn page_for_workspace(
+        &self,
+        workspace: &Uuid7,
+        fleet: Option<&Uuid7>,
+        filter: &Filter,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
+        Self::page_for_workspace(self, workspace, fleet, filter, cursor, limit)
+    }
+
+    fn page_for_fleet(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        filter: &Filter,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
+        Self::page_for_fleet(self, workspace, fleet, filter, cursor, limit)
+    }
+
+    fn page_of_actor(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        actor: &str,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
+        Self::page_of_actor(self, workspace, fleet, actor, cursor, limit)
+    }
+
+    fn thread_for_fleet(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        cursor: Option<&Cursor>,
+        limit: i64,
+        event_type: Option<&str>,
+    ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send {
+        Self::filtered_thread_page(self, workspace, fleet, cursor, limit, event_type)
+    }
+
+    fn one(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        event_id: &str,
+    ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send {
+        Self::detail(self, workspace, fleet, event_id)
+    }
+
+    fn tool_call(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        event_id: &str,
+        call: CallAddress,
+    ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send {
+        Self::tool_call(self, workspace, fleet, event_id, call)
+    }
+}
+
+/// What the steer verb acts through.
+///
+/// Its own trait rather than a method on [`WorkspaceEvents`], because it is
+/// its own store: the reads hold a Postgres pool, and this holds a Dragonfly
+/// connection opened by CONNECTING — which is exactly the seam a suite proving
+/// the refusal matrix must not have to construct.
+pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
+    /// Puts one message on the fleet's stream, answering with its event id and
+    /// whether an earlier send of the same operation id already admitted it.
+    ///
+    /// `operation_id` is the CALLER's name for this operation, repeated across
+    /// its retries, or `None` when it has none — see [`afd_events::Steer`].
+    ///
+    /// # Errors
+    /// Reports a queue that would not take the append.
+    fn append(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        actor: &str,
+        request_json: &str,
+        operation_id: Option<&str>,
+    ) -> impl Future<Output = EventResult<Steered>> + Send;
+
+    /// Puts `frame` on `fleet`'s live tail, best-effort — no answer, because
+    /// a frame the queue refuses must not change the steer's.
+    fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send;
+}
+
+/// The production ingress answers directly.
+impl FleetSteering for Steer {
+    fn append(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        actor: &str,
+        request_json: &str,
+        operation_id: Option<&str>,
+    ) -> impl Future<Output = EventResult<Steered>> + Send {
+        Self::append(self, fleet, workspace, actor, request_json, operation_id)
+    }
+
+    fn announce(&self, fleet: &str, frame: &TailFrame<'_>) -> impl Future<Output = ()> + Send {
+        Self::announce(self, fleet, frame)
+    }
+}

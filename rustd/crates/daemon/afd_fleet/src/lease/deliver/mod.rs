@@ -1,0 +1,366 @@
+//! The delivery half: what an admitted claim becomes.
+//!
+//! Split from [`super::pull`] at the seam the verb itself has. Everything up
+//! to admission is a sequence of REFUSALS — money, gates, spellings — and
+//! everything after it is a construction. The two halves fail differently
+//! enough that reading them together obscures both: a refusal writes a
+//! terminal row and answers no-work, while a construction failure here means
+//! the fleet's own configuration cannot be enforced.
+
+use std::time::Instant;
+
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_fleet_runtime::FleetConfig;
+use af_fleet_runtime::config::Access;
+use af_wire::policy::ExecutionPolicy;
+use futures_util::future;
+use jiff::Timestamp;
+
+use afd_approval::{Origin, Requested, Wanted};
+
+use crate::error::Result;
+use crate::lease::answer::{Context, EVENT_LEASED, no_work, render};
+use crate::lease::envelope::Acquired;
+use crate::lease::history;
+use crate::lease::issue::Billed;
+use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
+use af_core::event::label;
+use afd_gate::policy::build::{self, Assembled};
+use afd_gate::policy::repair;
+
+impl Plane {
+    /// Assemble the policy and write the row that makes this runner the holder.
+    ///
+    /// Named `deliver` rather than `issue`: `Leases::issue` writes the ROW, and
+    /// this is the whole delivery around it. Answers [`Step::Go`] only when
+    /// that row was written.
+    pub(super) async fn deliver(
+        &self,
+        runner_id: &Uuid7,
+        admitted: Admission2,
+        now: Timestamp,
+        began: Instant,
+    ) -> Result<Step<Leased>> {
+        let declared = self
+            .vault
+            .declared(
+                &admitted.acquired.workspace_id,
+                &admitted.installed.credential_names(),
+                self.broker.connectors(),
+            )
+            .await?;
+        let branch = Self::repair_branch(&admitted.acquired.event_id, &admitted.installed.config);
+        let granted = self
+            .gates
+            .approved_integrations(&admitted.acquired.fleet_id)
+            .await?;
+
+        let policy = match build::assemble(
+            build::Inputs {
+                config: &admitted.installed.config,
+                provider: &admitted.resolved,
+                declared: &declared,
+                repair_branch: branch.as_deref(),
+            },
+            &granted,
+        ) {
+            Ok(Assembled::Ready(policy)) => policy,
+            Ok(Assembled::Ungranted {
+                credential,
+                integration,
+            }) => {
+                return self
+                    .ungranted(runner_id, &admitted.acquired, credential, integration, now)
+                    .await;
+            }
+            // A fleet author's mistake, not an operational fault: nothing about
+            // the next poll will be different, so the event ends. Its detail is
+            // stored, never the `[CODE]` rendering.
+            Err(misconfigured) if misconfigured.is_rejected() => {
+                let reason = misconfigured.detail();
+                return self
+                    .refused(
+                        &admitted.acquired,
+                        label::BINDING_UNENFORCEABLE,
+                        runner_id,
+                        reason,
+                    )
+                    .await
+                    .map(Step::Stop);
+            }
+            // Anything else is a fault the next poll may not meet, so it is
+            // raised rather than ending the event for good.
+            Err(fault) => return Err(fault.into()),
+        };
+        self.issue_ready(runner_id, &admitted, *policy, now, began)
+            .await
+    }
+
+    /// Ask for the grant this delivery needs, and say what the poll answers.
+    ///
+    /// The backstop, not the design: a fleet installed after M194 leaves
+    /// install with this card already raised, and reaching here means the fleet
+    /// predates that or the install-time request could not be written. Asking
+    /// again is what makes the invariant unconditional — a park is a question,
+    /// never a silent loop — and the request is idempotent, so the one-second
+    /// redelivery cadence raises one card rather than sixty a minute.
+    ///
+    /// A DENIED grant ends the event. The gate that denied it carries no
+    /// `event_id` and so could not end anything itself; this is where a
+    /// person's no stops the redelivery. An open card parks the delivery, and
+    /// anything else stops it for the next poll to ask again.
+    async fn ungranted(
+        &self,
+        runner_id: &Uuid7,
+        acquired: &Acquired,
+        credential: &str,
+        integration: &str,
+        now: Timestamp,
+    ) -> Result<Step<Leased>> {
+        let asked = self
+            .grants
+            .request(
+                &acquired.workspace_id,
+                &acquired.fleet_id,
+                Wanted {
+                    service: integration,
+                    credential,
+                    origin: Origin::Park,
+                },
+                now,
+            )
+            .await;
+        let reason = format!("{credential} needs a grant for {integration}");
+        match answers(written(asked, &acquired.fleet_id, integration)) {
+            Ungranted::Ends => self
+                .refused(acquired, label::GRANT_DENIED, runner_id, &reason)
+                .await
+                .map(Step::Stop),
+            waits @ (Ungranted::Parks | Ungranted::Retries) => {
+                no_work(runner_id, &reason).map(|answer| waits.ending(answer))
+            }
+        }
+    }
+
+    async fn issue_ready(
+        &self,
+        runner_id: &Uuid7,
+        admitted: &Admission2,
+        policy: ExecutionPolicy<'_>,
+        now: Timestamp,
+        began: Instant,
+    ) -> Result<Step<Leased>> {
+        // LAST, and only once everything above succeeded.
+        let Some(issued) = self
+            .leases
+            .issue_for_revision(
+                runner_id,
+                &admitted.acquired,
+                Billed {
+                    tenant_id: &admitted.billed.tenant_id,
+                    posture: admitted.billed.posture.as_str(),
+                    provider: &admitted.billed.provider,
+                    model: &admitted.billed.model,
+                },
+                now,
+                admitted.installed.issue_revision.as_ref(),
+            )
+            .await?
+        else {
+            return claim_lost(runner_id, &admitted.acquired);
+        };
+        // Here, and not at the claim: a claim is an affinity token, and the
+        // dozen refusals between it and this line — a stopped fleet, an
+        // unparseable event, a denied budget, an unauthorised branch — end
+        // without a lease row. Counting one there would make the gauge climb
+        // on requests that were refused.
+        af_observability::producers::fleet::runner::lease_taken(runner_id.as_str());
+        let issued_at = queue_wait::issued_at(now, began);
+        log_issued(runner_id, &issued.lease_id, &admitted.acquired, issued_at);
+        // Two independent reads, overlapped: the thread's turns and the
+        // fleet's memory window.
+        let (history, memory) = future::join(
+            history::turns(
+                self.thread.as_ref(),
+                &admitted.acquired,
+                admitted.event_type,
+            ),
+            self.window_for(&admitted.acquired.fleet_id),
+        )
+        .await;
+        render(
+            &issued.lease_id,
+            &admitted.acquired,
+            admitted.event_type,
+            &admitted.installed,
+            policy,
+            Context {
+                history,
+                memory,
+                decision: issued.decision,
+                task: issued.task,
+                expires_at: Some(issued.expires_at),
+                execution_deadline: Some(issued.execution_deadline),
+            },
+        )
+        .map(|answer| Step::Go(Leased(answer)))
+    }
+
+    /// The branch a write-bound lease may author on.
+    ///
+    /// `None` for a read binding, which needs none, and `None` for an event
+    /// whose identifier is not one this daemon minted — which the assembly then
+    /// refuses, because a write binding that cannot name its branch cannot be
+    /// turned into rules that bound anything.
+    ///
+    /// Takes the two values it reads rather than the two structs holding them.
+    /// It stopped needing a datastore when the gate lookup went, so the only
+    /// thing standing between it and a unit test was a signature asking for
+    /// more than it used.
+    ///
+    /// # The branch names the EVENT, and the grant is what authorises it
+    ///
+    /// It named the approved repository-write gate until that gate was retired.
+    /// The grant could not take its place: `uq_integration_grants_fleet_id_service`
+    /// makes it one row for the fleet's whole life, so every event would author
+    /// on one branch and a second run would force-update the first run's head.
+    ///
+    /// So the two questions are answered by two sources. Authority is the
+    /// standing grant, read at the mint, which is the only path to a token.
+    /// Identity is the event, which is unique per run — and that is all the
+    /// branch has to carry, because `policy::egress` locks whatever name comes
+    /// back as the one ref the run may create.
+    ///
+    /// Still no fleet and no workspace in the name: an identifier read off a
+    /// public repository says when, never whose.
+    fn repair_branch(event_id: &str, config: &FleetConfig) -> Option<String> {
+        let binding = config.repository_binding()?;
+        if binding.access() != Access::Write {
+            return None;
+        }
+        // The identifier is passed WHOLE. It used to be parsed as a `Uuid7`
+        // first, which could not succeed: `afd_admission::admit` is the only
+        // thing that mints one and it spells `<millis>-<sequence>`, so every
+        // write-bound delivery lost its branch and the assembly refused the
+        // event.
+        Some(repair::branch_for(event_id))
+    }
+}
+
+/// A park could not raise its card, and the write failed rather than the human.
+const EVENT_REQUEST_FAILED: &str = "park_grant_request_failed";
+
+/// The request's answer, with a failure to write one REPORTED before it is dropped.
+///
+/// The error dies here either way — [`answers`] never ends a delivery on an
+/// unwritten request, because a datastore that would not answer is this
+/// instance's problem and reading its silence as a refusal would end deliveries
+/// on an outage. What it must not do is die QUIETLY. A park that could not raise
+/// its card answers the same `no_work` with the same reason as a park waiting on
+/// a person, so without this line the two are indistinguishable in the log while
+/// the delivery redelivers every second — which is precisely the failure with no
+/// error that this milestone exists to end, reproduced on the path that ends it.
+///
+/// [`crate::lease::pull::Plane::refused`] already reports the denial and
+/// `IntegrationGrants::request` reports what it wrote; the error was the one
+/// outcome nothing spoke for. The install path says the same thing at its own
+/// call site (`afd_fleet_lifecycle::install::grants`).
+fn written(
+    asked: Result<Requested, afd_approval::Error>,
+    fleet: &Uuid7,
+    service: &str,
+) -> Option<Requested> {
+    match asked {
+        Ok(answer) => Some(answer),
+        Err(unwritten) => {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let Logged { error_code, reason } = unwritten.logged();
+            let fleet_id = fleet.as_str();
+            tracing::warn!(
+                error_code,
+                event = EVENT_REQUEST_FAILED,
+                fleet_id,
+                service,
+                reason,
+                "the delivery parked without raising its grant card; the next poll asks again"
+            );
+            None
+        }
+    }
+}
+
+/// What an ungranted delivery does once the grant has been asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ungranted {
+    /// A card is open and a person owes the answer, which re-marks the fleet:
+    /// the delivery parks until then.
+    Parks,
+    /// Nobody owes an answer — the grant just landed, or its card could not
+    /// be written — so the delivery stays leasable and the next poll asks
+    /// again.
+    Retries,
+    /// The event ends: nothing about the next poll would be different.
+    Ends,
+}
+
+impl Ungranted {
+    /// The step an ungranted delivery takes once its answer is rendered: an
+    /// open card parks it, and anything else stops it — for the next poll to
+    /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
+    const fn ending(self, answer: String) -> Step<Leased> {
+        match self {
+            Self::Parks => Step::Park(answer),
+            Self::Retries | Self::Ends => Step::Stop(answer),
+        }
+    }
+}
+
+/// Whether an ungranted delivery parks, retries, or ends on an answer
+/// already given.
+///
+/// A person's NO is the only outcome that makes the next poll pointless — every
+/// other reading leaves a question a human can still answer, and ending an
+/// event on any of them would throw away work nobody refused.
+///
+/// Only an OPEN card parks, because parking clears the fleet's mark and only
+/// an answer or an expiry puts it back. A grant approved since the assembly
+/// read has no answer left to wait for, and `None` — a request that could not
+/// be WRITTEN — has no card anyone could answer; either would wait forever on
+/// a park, so both retry on the next poll. Fail-closed here means keeping the
+/// event alive: a datastore that would not answer is this instance's problem,
+/// and reading its silence as a refusal would end deliveries on an outage.
+const fn answers(asked: Option<Requested>) -> Ungranted {
+    match asked {
+        Some(Requested::Denied) => Ungranted::Ends,
+        Some(Requested::Raised | Requested::Pending) => Ungranted::Parks,
+        Some(Requested::Approved) | None => Ungranted::Retries,
+    }
+}
+
+mod queue_wait;
+mod window;
+
+/// The `runner_lease_issued` line, with how long the event waited for a runner.
+fn log_issued(runner_id: &Uuid7, lease_id: &Uuid7, acquired: &Acquired, issued_at: Timestamp) {
+    // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
+    // scores the dead copy.
+    let runner_id = runner_id.as_str();
+    let lease_id = lease_id.as_str();
+    let fleet_id = acquired.fleet_id.as_str();
+    let agentsfleet_event_id = acquired.event_id.as_str();
+    let queue_wait_ms = queue_wait::of(acquired, issued_at);
+    tracing::info!(
+        event = EVENT_LEASED,
+        runner_id,
+        lease_id,
+        fleet_id,
+        agentsfleet_event_id,
+        queue_wait_ms,
+        "a lease was issued"
+    );
+}
+
+#[cfg(test)]
+mod tests;

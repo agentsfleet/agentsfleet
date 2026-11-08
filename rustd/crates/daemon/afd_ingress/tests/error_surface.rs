@@ -1,0 +1,168 @@
+//! Every accessor, code, sentence, rendering and source on the error type.
+//!
+//! These paths are what a person reads at three in the morning, and they are
+//! the easiest to leave untested because the happy path never touches them.
+//! `afd_connector`, `afd_cron`, `afd_db` and `afd_dragonfly` each carry the same
+//! suite over the same sample seam; this crate had neither.
+//!
+//! # The distinction this crate must not lose
+//!
+//! Nothing a SENDER did wrong is an error here. A delivery with no signature, a
+//! stale timestamp, a fleet whose workspace configured no secret — none of them
+//! reach this type, because nothing failed: the wall did its job and the
+//! ingress answered a refusal. What lives here is the other half, THIS side
+//! being broken, and keeping them apart is what stops an operator's alert
+//! firing every time a scanner probes `/v1/webhooks/{id}` (RULE ECL).
+//!
+//! # A queue outage and a queue that answered are not the same failure
+//!
+//! `is_datastore_unavailable` is the question the HTTP edge turns on: an outage
+//! is a 503 that a sender should retry, and every other failure here is a 500
+//! that retrying will not fix. Both halves of that decision live behind the one
+//! `Queue` variant, so the sample carries one of each and the tests below read
+//! them apart.
+
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use af_core::test_util::error_surface::{Expect, grade};
+
+use af_core::error_code;
+use afd_ingress::error::{detail, one_of_each_kind};
+
+/// The labels the sample gives the failures a retry could plausibly fix.
+///
+/// Named here rather than derived from the errors themselves: a test that asked
+/// the type which kinds are outages and then asserted the answer would agree
+/// with any answer. This is the list a person maintains, so a variant that
+/// changes sides has to be moved by hand.
+/// The kinds a sender should retry against.
+///
+/// `admission unreachable` is one of them: the acceptance could not be written
+/// because the ledger's datastore was gone, which is the same incident as this
+/// crate's own pool being gone and earns the same answer. It replaced
+/// `queue unreachable` when the append stopped being this crate's to make.
+/// `obligation unreachable` is the same incident for a notice's ledger.
+const OUTAGES: &[&str] = &[
+    "datastore",
+    "admission unreachable",
+    "obligation unreachable",
+];
+
+/// Everything every error surface owes, graded once by
+/// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
+/// rendering, no kind repeating its cause, and these measured counts. The
+/// sample count is pinned exactly, so a kind added without a sample fails.
+#[test]
+fn the_error_surface_holds() {
+    let samples = one_of_each_kind();
+    assert_eq!(
+        samples.len(),
+        12,
+        "a kind was added or dropped without its sample"
+    );
+    grade(
+        &samples,
+        Expect {
+            with_source: 10,
+            distinct_codes: 3,
+        },
+    );
+}
+
+#[test]
+fn only_a_datastore_that_could_not_be_reached_reports_an_outage() {
+    // The 503-versus-500 decision, and the reason `Queue` is sampled twice. A
+    // queue that is GONE is the outage a sender retries against; a queue that
+    // answered and refused will answer the same way forever, and telling a
+    // sender to retry it is outbound load with no end.
+    for (label, error) in one_of_each_kind() {
+        let expected = OUTAGES.contains(&label);
+        assert_eq!(
+            error.is_datastore_unavailable(),
+            expected,
+            "{label} is on the wrong side of the retry decision"
+        );
+    }
+}
+
+#[test]
+fn an_outage_answers_the_unavailable_code_and_everything_else_does_not() {
+    for (label, error) in one_of_each_kind() {
+        if OUTAGES.contains(&label) {
+            assert_eq!(
+                error.code(),
+                error_code::INTERNAL_DB_UNAVAILABLE,
+                "{label} is an outage and must answer the code a retry reads"
+            );
+            assert_eq!(error.detail(), detail::DATABASE_UNAVAILABLE);
+        } else {
+            assert_ne!(
+                error.code(),
+                error_code::INTERNAL_DB_UNAVAILABLE,
+                "{label} is not an outage and must not invite a retry"
+            );
+        }
+    }
+}
+
+#[test]
+fn no_sentence_names_which_internal_failure_it_was() {
+    // Three different internal failures share one sentence on purpose. Naming
+    // which of them it was would tell whoever provoked it something about this
+    // deployment's stored state, and a webhook sender is exactly the caller who
+    // must not learn it — the endpoint is public and unauthenticated until the
+    // signature passes.
+    let opaque: Vec<&'static str> = one_of_each_kind()
+        .into_iter()
+        .filter(|(label, _error)| {
+            ["vault", "admission answered", "config unreadable"].contains(label)
+        })
+        .map(|(_label, error)| error.detail())
+        .collect();
+
+    assert_eq!(
+        opaque.len(),
+        3,
+        "the sample lost one of the opaque failures"
+    );
+    let distinct: std::collections::BTreeSet<&&str> = opaque.iter().collect();
+    assert_eq!(
+        distinct.len(),
+        1,
+        "three internal failures must be indistinguishable to a sender: {opaque:?}"
+    );
+    assert_eq!(
+        opaque.first().copied(),
+        Some(detail::OPERATION_FAILED),
+        "and the one sentence they share is the generic one"
+    );
+}
+
+#[test]
+fn a_row_this_build_cannot_read_names_the_column_to_an_operator_only() {
+    // Both halves matter and they point opposite ways. The operator needs to
+    // know WHICH column to go and look at, so the rendering carries it; the
+    // sender must not, so the sentence does not.
+    for (label, error) in one_of_each_kind() {
+        if !label.starts_with("row unreadable") {
+            continue;
+        }
+        let column = label
+            .strip_prefix("row unreadable ")
+            .expect("the sample labels each column");
+        assert!(
+            error.to_string().contains(column),
+            "{label} does not name its column to the operator: {error}"
+        );
+        assert!(
+            !error.detail().contains(column),
+            "{label} leaks its column into the sender's sentence: {}",
+            error.detail()
+        );
+        assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY);
+    }
+}

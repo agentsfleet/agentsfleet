@@ -6,7 +6,7 @@
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 # The commit, computed once and EXPORTED. It tags the image below, and
-# `rustd/crates/afd_api/build.rs` reads it for the commit `/healthz` reports —
+# `rustd/crates/daemon/afd_api/build.rs` reads it for the commit `/healthz` reports —
 # so the tag on an image and the field inside it come from one variable rather
 # than from two that can disagree. Before the export, a container build tagged
 # `:VERSION-abc1234` and served `"commit":"unknown"`: the build context carries

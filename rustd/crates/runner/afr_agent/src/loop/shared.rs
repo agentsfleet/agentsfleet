@@ -1,0 +1,125 @@
+//! What every loop of one run shares.
+//!
+//! The root loop and every child a nested tool starts read the same lease,
+//! ledger, meter, provider and system prompt, so a child holds nothing of its
+//! own but its conversation and its selection, and the report, the fence and
+//! the sandbox stay single (`docs/architecture/runner_execution.md` §"Tool
+//! catalog").
+
+use std::time::Instant;
+
+use af_core::clock::SystemClock;
+use af_egress::Egress;
+use af_providers::Provider;
+use af_providers::observe::labels::Provider as ProviderLabel;
+use af_secrets::Scrub;
+use af_wire::policy::ContextBudget;
+use afr_executor::ExecutorSource;
+use afr_memory::Hydrated;
+use afr_tools::sandbox::checkouts;
+use afr_tools::{Lease, Selection};
+use tokio_util::sync::CancellationToken;
+
+use crate::engine::{AgentRun, Checkpoint, EventSink, Meter};
+use crate::ledger::Ledger;
+use crate::nested::Registry;
+
+/// One run's state, as every loop of it sees it.
+pub(crate) struct Shared<'run> {
+    pub(crate) payload: &'run af_wire::lease::LeasePayload<'run>,
+    pub(crate) recovered_task: Option<&'run crate::TaskRecovery>,
+    pub(crate) prepared_task: Option<&'run crate::PreparedTask>,
+    pub(crate) decision: Option<&'run af_wire::decision::DecisionAssignment>,
+    pub(crate) fencing_token: u64,
+    pub(crate) lease_id: &'run str,
+    /// The fleet the lease runs, which keys the provider's prompt cache.
+    pub(crate) fleet_id: &'run str,
+    pub(crate) model: &'run str,
+    /// The provider, as the turn-duration family labels it.
+    pub(crate) provider_label: ProviderLabel,
+    pub(crate) provider: &'run dyn Provider,
+    /// Cancelled when the lease ends early; every child's token descends
+    /// from it.
+    pub(crate) stop: &'run CancellationToken,
+    pub(crate) checkpoint: &'run dyn Checkpoint,
+    pub(crate) context_checkpoints: &'run dyn crate::ContextCheckpoints,
+    /// Where the root takes the messages a person sends while it works.
+    pub(crate) inbox: &'run dyn crate::Inbox,
+    pub(crate) model_context_tokens: u32,
+    pub(crate) output_tokens: u32,
+    pub(crate) inference: Option<&'run af_wire::inference::ModelInference>,
+    pub(crate) context: &'run ContextBudget<'run>,
+    /// Every tool the lease was offered; a child's selection narrows it.
+    pub(crate) selection: &'run Selection<'run>,
+    pub(crate) executor: &'run dyn ExecutorSource,
+    pub(crate) scrub: &'run Scrub,
+    pub(crate) events: &'run dyn EventSink,
+    /// What every call of the lease shares.
+    pub(crate) lease: Lease<'run>,
+    /// Every call of the run, the children's included.
+    pub(crate) ledger: Ledger<'run>,
+    pub(crate) meter: &'run Meter,
+    /// Every child of the run: its state, its inbox and its stop.
+    pub(crate) registry: Registry<'run>,
+    /// The system prompt every loop of the run opens with.
+    pub(crate) instructions: String,
+    pub(crate) started: Instant,
+}
+
+impl<'run> Shared<'run> {
+    /// What `run` shares between its loops, driving `provider` over the
+    /// tools `selection` offers under `instructions`, masking through
+    /// `scrub`.
+    pub(crate) fn new(
+        run: &AgentRun<'run>,
+        selection: &'run Selection<'run>,
+        provider: &'run dyn Provider,
+        scrub: &'run Scrub,
+        registry: Registry<'run>,
+        instructions: String,
+    ) -> Self {
+        let policy = &run.lease.policy;
+        let started = Instant::now();
+        Self {
+            payload: run.lease,
+            recovered_task: run.recovered_task,
+            prepared_task: run.prepared_task,
+            decision: run.lease.decision.as_deref(),
+            fencing_token: run.lease.fencing_token,
+            lease_id: &run.lease.lease_id,
+            fleet_id: &run.lease.event.fleet_id,
+            model: &policy.context.model,
+            provider_label: ProviderLabel::of(&policy.provider),
+            provider,
+            stop: run.stop,
+            checkpoint: run.checkpoint,
+            context_checkpoints: run.context_checkpoints,
+            inbox: run.inbox,
+            model_context_tokens: policy.model_context_tokens,
+            output_tokens: policy
+                .inference
+                .as_ref()
+                .map_or(1, |settings| settings.max_output_tokens),
+            inference: policy.inference.as_ref(),
+            context: &policy.context,
+            selection,
+            executor: run.executor,
+            scrub,
+            events: run.events,
+            // The supervisor refused a lease whose binding does not parse
+            // before this turn began, so none reaches here.
+            lease: Lease::new(
+                Box::new(Hydrated::new(run.memory)),
+                Egress::new(&run.lease.lease_id, policy, run.mint, &SystemClock),
+                run.verbs,
+            )
+            .with_checkouts(checkouts(policy).unwrap_or_default())
+            .with_image_input(provider.accepts_images()),
+            ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
+            meter: run.meter,
+            registry,
+            instructions,
+            started,
+        }
+    }
+}

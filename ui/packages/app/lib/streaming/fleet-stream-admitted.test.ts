@@ -5,7 +5,8 @@ import { ACTOR } from "@/lib/events/event-summary";
 import { convertEvent } from "@/components/domain/useFleetEventStream";
 import { toReplyMessage } from "@/components/domain/fleetReplyMessage";
 import { applyLiveFrame } from "./fleet-stream-frames";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { foldRow, optimisticRow } from "./fleet-stream-optimistic";
+import { AGENTSFLEET_EVENT_STATUS, FOLDED_OUTCOME, type FleetEvent } from "./fleet-stream-row";
 
 const EVENT_ID = "1725000000000-3";
 const TEAMMATE = `${ACTOR.STEER_PREFIX}user_bob`;
@@ -98,5 +99,30 @@ describe("a message waiting for a runner", () => {
     const { created_at: _dropped, ...undated } = admitted() as Extract<LiveFrame, { created_at?: string }>;
     const [row] = fold([undated as LiveFrame]);
     expect(row?.createdAt.getTime()).toBeGreaterThanOrEqual(before);
+  });
+});
+
+// The 202 named a live run, which ended before it claimed the message; the
+// fleet's next run starts the message under its own event.
+describe("a send labelled folded whose run never took it", () => {
+  function labelled(): FleetEvent[] {
+    return foldRow([optimisticRow("temp", TYPED, TEAMMATE)], "temp", EVENT_ID);
+  }
+
+  it("starts on its received frame and drops the label", () => {
+    const rows = labelled();
+    expect(rows[0]).toMatchObject({ status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME });
+
+    const [started, ...rest] = applyLiveFrame(rows, received());
+
+    expect(rest).toEqual([]);
+    expect(started).toMatchObject({ id: EVENT_ID, text: TYPED, status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(started?.outcome).not.toBe(FOLDED_OUTCOME);
+  });
+
+  it("reads as a running reply once its own run starts", () => {
+    const [started] = applyLiveFrame(labelled(), received());
+    const row = started as FleetEvent;
+    expect(toReplyMessage(convertEvent(row), row).status).toEqual({ type: "running" });
   });
 });

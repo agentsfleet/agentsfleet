@@ -1,0 +1,329 @@
+//! The classification decisions, against deliveries GitHub actually sends.
+//!
+//! Drives the fixture corpus rather than hand-built JSON: the point of the
+//! digest is that it reads a real eighty-field payload, and a fixture written
+//! to match the reader proves nothing about that.
+
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::needless_pass_by_value,
+    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+)]
+
+use super::{Ingest, Policy, REASON_MISSING_REPOSITORY, classify};
+
+/// The header GitHub names a workflow run in.
+const EVENT_WORKFLOW_RUN: &str = "workflow_run";
+
+/// The header GitHub names a pull request in.
+const EVENT_PULL_REQUEST: &str = "pull_request";
+
+/// A fixed receipt instant, so a digest is byte-comparable across runs.
+///
+/// 2026-08-26T12:00:00Z.
+const RECEIVED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_787_745_600, 0);
+
+/// A failed run — the delivery that wakes a fleet.
+const RUN_FAILURE: &str =
+    include_str!("../../../../../../../../tests/fixtures/webhooks/github_run_failure.json");
+
+/// A `ping` — the delivery GitHub sends when a hook is first created.
+const PING_DELIVERY: &str =
+    include_str!("../../../../../../../../tests/fixtures/webhooks/github_ping.json");
+
+/// The same run, green.
+const RUN_SUCCESS: &str =
+    include_str!("../../../../../../../../tests/fixtures/webhooks/github_run_success.json");
+
+fn accepted(ingest: Ingest) -> String {
+    match ingest {
+        Ingest::Accept(body) => body,
+        Ingest::Ignore(reason) => panic!("classified as ignored ({reason}), not accepted"),
+        Ingest::Unsupported => panic!("classified as unsupported, not accepted"),
+    }
+}
+
+fn ignored(ingest: Ingest) -> &'static str {
+    match ingest {
+        Ingest::Ignore(reason) => reason,
+        Ingest::Accept(_) => panic!("classified as accepted, not ignored"),
+        Ingest::Unsupported => panic!("classified as unsupported, not ignored"),
+    }
+}
+
+#[test]
+fn a_failed_run_becomes_the_digest_a_fleet_reasons_over() {
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_WORKFLOW_RUN,
+        RUN_FAILURE.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("a delivery GitHub sent");
+
+    let digest: serde_json::Value =
+        serde_json::from_str(&accepted(ingest)).expect("the digest is JSON");
+
+    // Field NAMES are the contract a fleet's prose reads.
+    assert_eq!(digest["conclusion"], "failure");
+    assert_eq!(digest["repo"], "example/platform");
+    assert_eq!(digest["head_branch"], "main");
+    assert_eq!(digest["received_at"], "2026-08-26T12:00:00Z");
+    assert!(digest.get("run_url").is_some());
+    assert!(digest.get("head_sha").is_some());
+    assert!(digest.get("workflow_name").is_some());
+    assert!(digest.get("run_id").is_some());
+    assert!(digest.get("attempt").is_some());
+}
+
+#[test]
+fn the_run_digest_carries_nine_fields_and_no_more() {
+    // A digest that grew a field would be an eighty-field payload leaking into
+    // a prompt one release at a time. The count is the guard.
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_WORKFLOW_RUN,
+        RUN_FAILURE.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("readable");
+    let digest: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&accepted(ingest)).expect("an object");
+
+    assert_eq!(
+        digest.len(),
+        9,
+        "keys: {:?}",
+        digest.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_green_run_is_dropped_rather_than_woken_on() {
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_WORKFLOW_RUN,
+        RUN_SUCCESS.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("readable");
+
+    assert_eq!(ignored(ingest), "non_failure_conclusion");
+}
+
+#[test]
+fn a_run_on_the_repairers_own_branch_is_dropped_before_its_conclusion_is_read() {
+    // Ordering is the point: a failed run on a repair branch reports the LOOP,
+    // not the failure, or the fleet investigates what it just wrote.
+    let body = RUN_FAILURE.replace("\"main\"", "\"agentsfleet-repair/run-1\"");
+
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_WORKFLOW_RUN,
+        body.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("readable");
+
+    assert_eq!(ignored(ingest), "repair_branch");
+}
+
+#[test]
+fn an_in_progress_run_is_dropped_as_an_action_rather_than_a_conclusion() {
+    let body = RUN_FAILURE.replace("\"completed\"", "\"in_progress\"");
+
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_WORKFLOW_RUN,
+        body.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("readable");
+
+    assert_eq!(ignored(ingest), "non_completed_action");
+}
+
+#[test]
+fn an_event_this_daemon_serves_no_rule_for_is_unsupported_not_malformed() {
+    // A `ping` is a real delivery GitHub sends on every hook creation.
+    // Answering it as a bad body would make an operator think their signature
+    // was wrong.
+    let ingest = classify(
+        Policy::Manual,
+        "ping",
+        PING_DELIVERY.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("a ping is readable");
+
+    assert!(matches!(ingest, Ingest::Unsupported));
+}
+
+#[test]
+fn a_body_that_is_not_the_event_its_header_claims_is_an_error() {
+    // Never silently unsupported: one is the sender's fault and answers
+    // UZ-WH-002, the other is this daemon having no rule.
+    let failed = classify(
+        Policy::Manual,
+        EVENT_PULL_REQUEST,
+        b"{\"nonsense\":true}",
+        RECEIVED_AT,
+    );
+
+    assert!(
+        failed.is_err(),
+        "a body that is not the event its header claims is the sender's own \
+         bug, and must surface as UZ-WH-002 rather than as an unsupported event"
+    );
+}
+
+#[test]
+fn the_two_policies_differ_only_on_the_pull_request_action() {
+    // The divergence `Policy` names. A `labeled` pull request is noise to a
+    // directly-addressed fleet and is real traffic to a subscription that
+    // asked for pull_request events.
+    let body = pull_request_body("labeled");
+
+    assert_eq!(
+        ignored(
+            classify(
+                Policy::Manual,
+                EVENT_PULL_REQUEST,
+                body.as_bytes(),
+                RECEIVED_AT
+            )
+            .expect("readable")
+        ),
+        "uninteresting_action"
+    );
+    let widened = classify(
+        Policy::AppIngress,
+        EVENT_PULL_REQUEST,
+        body.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("readable");
+    assert!(matches!(widened, Ingest::Accept(_)));
+}
+
+#[test]
+fn both_policies_drop_a_pull_request_from_the_repairers_own_branch() {
+    let body = pull_request_body("opened").replace("\"feature\"", "\"agentsfleet-repair/run-1\"");
+
+    for policy in [Policy::Manual, Policy::AppIngress] {
+        let ingest =
+            classify(policy, EVENT_PULL_REQUEST, body.as_bytes(), RECEIVED_AT).expect("readable");
+        assert_eq!(ignored(ingest), "repair_branch", "{policy:?}");
+    }
+}
+
+#[test]
+fn an_opened_pull_request_carries_the_twelve_field_digest() {
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_PULL_REQUEST,
+        pull_request_body("opened").as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("readable");
+    let digest: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&accepted(ingest)).expect("an object");
+
+    assert_eq!(
+        digest.len(),
+        12,
+        "keys: {:?}",
+        digest.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(digest["action"], "opened");
+    assert_eq!(digest["repo"], "example/platform");
+    assert_eq!(digest["number"], 7);
+    assert_eq!(digest["head_ref"], "feature");
+    assert_eq!(digest["base_ref"], "main");
+    assert_eq!(digest["state"], "open");
+    assert_eq!(digest["author"], "octocat");
+    assert_eq!(digest["draft"], false);
+}
+
+/// A pull-request delivery shaped exactly as github.com sends one.
+///
+/// Every field GitHub populates is present, including the ones no reader
+/// declares: the digest is only reachable if a REAL delivery deserializes, so
+/// an abridged fixture would prove the reader works on input GitHub never
+/// sends.
+const PULL_REQUEST_DELIVERY: &str =
+    include_str!("../../../../../../../../tests/fixtures/webhooks/github_pull_request.json");
+
+/// That delivery at `action`.
+fn pull_request_body(action: &str) -> String {
+    PULL_REQUEST_DELIVERY.replace("__ACTION__", action)
+}
+
+#[test]
+fn a_delivery_shaped_as_github_sends_it_deserializes() {
+    // The claim this fixture exists to settle: the full eighty-field payload
+    // reads through types declaring only the fields a decision uses.
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_PULL_REQUEST,
+        pull_request_body("opened").as_bytes(),
+        RECEIVED_AT,
+    );
+
+    assert!(ingest.is_ok(), "a real delivery must read: {ingest:?}");
+}
+
+#[test]
+fn an_actor_missing_a_field_no_reader_declares_still_reads() {
+    // The retired risk. The SDK this replaced typed the actor with nine
+    // required `*_url` fields, so a correctly-signed delivery omitting ONE
+    // earned a 4xx. The actor's type now declares `login` alone, and the
+    // delivery reads with its author intact.
+    let body = pull_request_body("opened").replace(
+        "\"gists_url\": \"https://api.github.com/users/octocat/gists{/gist_id}\",\n      ",
+        "",
+    );
+    assert!(!body.contains("gists_url"), "the fixture lost the field");
+
+    let ingest = classify(
+        Policy::Manual,
+        EVENT_PULL_REQUEST,
+        body.as_bytes(),
+        RECEIVED_AT,
+    )
+    .expect("an unread field cannot refuse a delivery");
+    let digest: serde_json::Value =
+        serde_json::from_str(&accepted(ingest)).expect("the digest is JSON");
+
+    assert_eq!(digest["author"], "octocat");
+}
+
+/// A run with no stated attempt is its first.
+///
+/// The serde default behind `run_attempt`. One rather than zero because GitHub
+/// numbers attempts from one, so a zero here would make the first delivery of a
+/// workflow run look like a retry of something that never ran.
+#[test]
+fn an_unstated_run_attempt_defaults_to_the_first() {
+    assert_eq!(super::payload::one(), 1);
+}
+
+#[test]
+fn a_delivery_naming_no_repository_is_ignored_under_either_policy() {
+    // A subscription is keyed on the repository and a digest names it, so a
+    // run that names none has nothing to route or to reason over.
+    let mut body: serde_json::Value =
+        serde_json::from_str(RUN_FAILURE).expect("the fixture is JSON");
+    body.as_object_mut()
+        .expect("a delivery is an object")
+        .remove("repository");
+    let bytes = serde_json::to_vec(&body).expect("the edited delivery encodes");
+
+    for policy in [Policy::Manual, Policy::AppIngress] {
+        let ingest = classify(policy, EVENT_WORKFLOW_RUN, &bytes, RECEIVED_AT)
+            .expect("a delivery that still reads");
+        assert_eq!(ignored(ingest), REASON_MISSING_REPOSITORY, "{policy:?}");
+    }
+}

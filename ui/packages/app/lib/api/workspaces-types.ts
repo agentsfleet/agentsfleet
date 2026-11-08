@@ -25,7 +25,7 @@ export function isWorkspaceNameSafe(name: string): boolean {
 }
 
 /** The caller's role in a workspace's account. Mirrors `ROLE_OWNER` and
- * `ROLE_MEMBER` in `rustd/crates/afd_tenant/src/workspace/access.rs`. */
+ * `ROLE_MEMBER` in `rustd/crates/daemon/afd_tenant/src/workspace/access.rs`. */
 export const ACCOUNT_ROLE = {
   owner: "owner",
   member: "member",

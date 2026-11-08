@@ -1,0 +1,295 @@
+//! Platform model catalogue and default-key lifecycles over live Postgres.
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "integration preconditions should fail the test loudly"
+)]
+use self::harness::{Fleet, json_body, send};
+use crate::harness;
+use afd_auth::scope::{Scope, ScopeSet};
+use afd_db::test_util::{PlatformDefault, mint_id};
+use futures_util::FutureExt as _;
+use http::{Method, StatusCode};
+use serde_json::Value;
+use std::panic::AssertUnwindSafe;
+const SUBJECT: &str = "user_live_platform_catalogue";
+const MODEL_CREATE: &str = r#"{"provider":"fixture","model_id":"fixture-model","metadata":{"display_name":"Fixture model","context_cap_tokens":200000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"5","cached_input_nanos_per_mtok":"1","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"25","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+const MODEL_UPDATE: &str = r#"{"metadata":{"display_name":"Fixture model","context_cap_tokens":250000,"context_source_url":"https://fixtures.agentsfleet.net/models","context_verified_at":"2026-10-18T00:00:00Z","advanced":false},"prices":[{"effective_from":"2026-10-01T00:00:00Z","effective_until":null,"prompt_tokens_above":0,"input_nanos_per_mtok":"6","cached_input_nanos_per_mtok":"2","cache_write_nanos_per_mtok":null,"cache_write_5m_nanos_per_mtok":null,"cache_write_1h_nanos_per_mtok":null,"output_nanos_per_mtok":"30","source_url":"https://fixtures.agentsfleet.net/pricing","verified_at":"2026-10-18T00:00:00Z","conditions":""}]}"#;
+#[path = "integration_admin/fixture.rs"]
+mod fixture;
+use fixture::Fixture;
+#[path = "integration_admin/decision_models.rs"]
+mod decision_models;
+#[path = "integration_admin/model_pages.rs"]
+mod model_pages;
+#[path = "integration_admin/model_refusals.rs"]
+mod model_refusals;
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn platform_models_and_keys_complete_real_http_lifecycles() {
+    let fixture = Fixture::create().await;
+    let result = AssertUnwindSafe(exercise_admin(&fixture))
+        .catch_unwind()
+        .await;
+    fixture.cleanup().await;
+    if let Err(failure) = result {
+        std::panic::resume_unwind(failure);
+    }
+}
+
+async fn exercise_admin(fixture: &Fixture) {
+    fixture.seed().await;
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .router();
+    exercise_models(&router, &fixture.token).await;
+    decision_models::lifecycle(&router, fixture).await;
+    // The platform-key route creates this provider's default through the
+    // product; the hold removes it even when an assertion fails first.
+    let platform_default =
+        PlatformDefault::adopt(&fixture.database, &fixture.provider, &fixture.workspace).await;
+    exercise_platform_keys(&router, fixture).await;
+    drop(platform_default);
+
+    // The platform library list answers over the live authoring store; what
+    // it holds is every suite's, so the claim is the shape, not the rows.
+    let libraries = send(
+        &router,
+        Method::GET,
+        "/v1/admin/fleet-libraries",
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    assert_eq!(libraries.status(), StatusCode::OK);
+    assert!(
+        json_body(libraries)
+            .await
+            .get("entries")
+            .is_some_and(Value::is_array),
+        "the list carries an entries array"
+    );
+}
+
+async fn exercise_platform_keys(router: &axum::Router, fixture: &Fixture) {
+    let collection = "/v1/admin/platform-keys";
+    an_absent_source_workspace_is_named_as_absent(router, fixture, collection).await;
+    a_model_outside_the_catalogue_is_named_as_absent(router, fixture, collection).await;
+
+    let set = send(
+        router,
+        Method::PUT,
+        collection,
+        Some(&fixture.token),
+        &fixture.platform_key_body(),
+    )
+    .await;
+    assert_eq!(set.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(set).await.get("active").and_then(Value::as_bool),
+        Some(true)
+    );
+    let listed = send(router, Method::GET, collection, Some(&fixture.token), "").await;
+    model_refusals::in_use(router, fixture).await;
+    assert_eq!(listed.status(), StatusCode::OK);
+    assert!(contains_provider(
+        &json_body(listed).await,
+        &fixture.provider
+    ));
+
+    deactivation_answers_inactive_every_time(router, fixture, collection).await;
+}
+
+/// A source workspace id that parses but names nothing is refused with its own
+/// code, not as a malformed body.
+async fn an_absent_source_workspace_is_named_as_absent(
+    router: &axum::Router,
+    fixture: &Fixture,
+    collection: &str,
+) {
+    let unknown = send(
+        router,
+        Method::PUT,
+        collection,
+        Some(&fixture.token),
+        &serde_json::json!({
+            "provider": fixture.provider,
+            "source_workspace_id": mint_id(),
+            "model": fixture.platform_model,
+        })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
+    // The status alone never distinguished this from a malformed body. An id
+    // that parses but names no workspace is not the caller mistyping something,
+    // and telling them to re-check their input sends them looking at a value
+    // that was already correct.
+    assert_eq!(
+        json_body(unknown)
+            .await
+            .get("error_code")
+            .and_then(Value::as_str),
+        Some("UZ-PROVIDER-011"),
+        "an absent workspace must not read back as an invalid request"
+    );
+}
+
+/// A model the catalogue does not list for the provider is refused with its
+/// own code: there is nothing to price a default against.
+async fn a_model_outside_the_catalogue_is_named_as_absent(
+    router: &axum::Router,
+    fixture: &Fixture,
+    collection: &str,
+) {
+    let unknown = send(
+        router,
+        Method::PUT,
+        collection,
+        Some(&fixture.token),
+        &serde_json::json!({
+            "provider": fixture.provider,
+            "source_workspace_id": fixture.workspace,
+            "model": format!("not-in-the-catalogue-{}", mint_id()),
+        })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(unknown)
+            .await
+            .get("error_code")
+            .and_then(Value::as_str),
+        Some(af_core::error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE.as_str())
+    );
+}
+
+/// Deactivating the provider's key answers inactive, and a second deactivation
+/// answers the same rather than a refusal.
+async fn deactivation_answers_inactive_every_time(
+    router: &axum::Router,
+    fixture: &Fixture,
+    collection: &str,
+) {
+    for _attempt in 0..2 {
+        let deactivated = send(
+            router,
+            Method::DELETE,
+            &format!("{collection}/{}", fixture.provider),
+            Some(&fixture.token),
+            "",
+        )
+        .await;
+        assert_eq!(deactivated.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(deactivated)
+                .await
+                .get("active")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+}
+
+async fn exercise_models(router: &axum::Router, token: &str) {
+    let id = a_model_is_created_once(router, token).await;
+
+    model_pages::check(router, token).await;
+    assert!(
+        model_pages::all(router, token)
+            .await
+            .iter()
+            .any(|row| row["id"] == id)
+    );
+
+    let updated = send(
+        router,
+        Method::PATCH,
+        &format!("/v1/admin/models/{id}"),
+        Some(token),
+        MODEL_UPDATE,
+    )
+    .await;
+    assert_eq!(updated.status(), StatusCode::OK);
+
+    a_deleted_model_is_gone(router, token, &id).await;
+    model_refusals::missing(router, token, &id).await;
+}
+
+/// The model is created and answers its id; the same model again conflicts.
+async fn a_model_is_created_once(router: &axum::Router, token: &str) -> String {
+    let created = send(
+        router,
+        Method::POST,
+        "/v1/admin/models",
+        Some(token),
+        MODEL_CREATE,
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created = json_body(created).await;
+    let id = created
+        .get("id")
+        .and_then(Value::as_str)
+        .expect("the created model returns its id")
+        .to_owned();
+
+    let duplicate = send(
+        router,
+        Method::POST,
+        "/v1/admin/models",
+        Some(token),
+        MODEL_CREATE,
+    )
+    .await;
+    assert_eq!(duplicate.status(), StatusCode::CONFLICT);
+    id
+}
+
+/// A delete answers no content, and a second delete of the same model finds
+/// nothing.
+async fn a_deleted_model_is_gone(router: &axum::Router, token: &str, id: &str) {
+    let deleted = send(
+        router,
+        Method::DELETE,
+        &format!("/v1/admin/models/{id}"),
+        Some(token),
+        "",
+    )
+    .await;
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+    let missing = send(
+        router,
+        Method::DELETE,
+        &format!("/v1/admin/models/{id}"),
+        Some(token),
+        "",
+    )
+    .await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+fn contains_id(document: &Value, collection: &str, expected: &str) -> bool {
+    document
+        .get(collection)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| item.get("id").and_then(Value::as_str) == Some(expected))
+        })
+}
+
+fn contains_provider(document: &Value, expected: &str) -> bool {
+    document
+        .get("keys")
+        .and_then(Value::as_array)
+        .is_some_and(|keys| {
+            keys.iter()
+                .any(|key| key.get("provider").and_then(Value::as_str) == Some(expected))
+        })
+}

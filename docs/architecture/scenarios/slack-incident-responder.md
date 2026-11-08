@@ -88,8 +88,8 @@ The route does not use historical channel fleets as fallback responders.
 | No matching name, several eligible unaddressed subscribers | `Choose` notice; ask which fleet should receive the request. |
 
 Addressed-only repairers require their configured name even when they are the channel's only subscriber.
-The [native route](../../../rustd/crates/afd_ingress/src/slack/route.rs) owns eligibility and name matching.
-The [mention handler](../../../rustd/crates/afd_api_ingress/src/handler/mention/mod.rs) owns admission and the unconfigured outcome.
+The [native route](../../../rustd/crates/daemon/afd_ingress/src/slack/route.rs) owns eligibility and name matching.
+The [mention handler](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/mod.rs) owns admission and the unconfigured outcome.
 
 Fixed ambiguity, paused and addressing notices use the existing outbound ledger and Slack poster.
 The existing `connector.channels` row supplies a stable notice-only owner.
@@ -99,7 +99,7 @@ The binding must match the current workspace and installed team.
 Deleted owners and moved-team bindings cannot supply stale authority; a killed owner cannot acquire another outbound obligation.
 Concurrent notices converge on the channel's existing unique binding.
 
-[Notice ownership](../../../rustd/crates/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
+[Notice ownership](../../../rustd/crates/daemon/afd_api_ingress/src/handler/mention/notice.rs) owns those checks and the recorded thread destination.
 Slack retries reuse the existing deterministic notice identity.
 No second outbound path or new schema is required.
 
@@ -115,7 +115,9 @@ Connecting Slack or saving a notice binding proves no memory capture or recall.
 
 Slack's mention event carries the mention and nothing else. The daemon re-reads the thread before admitting the event: `conversations.replies` for the thread root, parent first, then the latest replies, at most 20 messages, each capped, under a 1.5 second deadline, with the bot token loaded and the pool connection released before the call (`afd_connector/src/slack/replies/mod.rs`). The parent is the GitHub announcement, so it carries the run link. Attachment and block text are flattened into the message so the link survives.
 
-The runner reads the request's `message` string and falls back to the whole body (`afd_wire/src/event/message.rs:14-24`). The daemon therefore composes one `message`: the mention text, then the thread under a fixed heading that labels it untrusted data. A failed or forbidden re-read (a private channel needs `groups:history`, which the app does not request) degrades to the mention alone, and the message says so.
+The runner reads the request's `message` string and falls back to the whole body (`af_wire/src/event/message.rs:14-24`). The daemon therefore composes one `message`: the mention text, then the thread under a fixed heading that labels it untrusted data. A failed or forbidden re-read degrades to the mention alone, and the message says so.
+
+A private channel needs `groups:history`, which the app does not request.
 
 ## 6. How the answer comes back
 
@@ -123,7 +125,9 @@ The producer that owns a reply surface records the reply destination on the admi
 
 The report parses the recorded connector once, so the lease's **model** provider never reaches the delivery ledger (`afd_fleet/src/lease/obligation.rs`). A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned, and no scan offers it again (`afd_outbound/src/abandon.rs`).
 
-A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/leases/{lease_id}/messages` (`MESSAGES_PER_RUN_MAX`, `afd_wire/src/message_verb/mod.rs`). The lease plane fences each line and counts it in `runner.leases.posted_message_count` (`schema/1810_runner_leases.sql`), so a reclaimed lease starts a new count. The daemon posts every Slack text, interim line and answer alike, as literal text, with `&`, `<` and `>` sent as Slack entities (`afd_outbound/src/slack/escape/mod.rs`, called from `SlackPoster::post`). Each line is stamped `agentsfleet_interim` with `{lease_id, line}` (`afd_connector/src/slack/answered/mod.rs`), so a repeat finds only its own line and never silences the answer.
+A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/leases/{lease_id}/messages` (`MESSAGES_PER_RUN_MAX`, `af_wire/src/message_verb/mod.rs`). The lease plane fences each line and counts it in `runner.leases.posted_message_count` (`schema/1810_runner_leases.sql`), so a reclaimed lease starts a new count.
+
+The daemon posts every Slack text, interim line and answer alike, as literal text. It sends `&`, `<` and `>` as Slack entities (`afd_outbound/src/slack/escape/mod.rs`, called from `SlackPoster::post`). Each line is stamped `agentsfleet_interim` with `{lease_id, line}` (`afd_connector/src/slack/answered/mod.rs`), so a repeat finds only its own line and never silences the answer.
 
 ## 7. Four stages, four authorities
 
@@ -139,7 +143,7 @@ The repairer targets one daemon-issued branch in `agentsfleet/linkwarden` and on
 Its event-owned ref permits bounded corrections through PATCH with `force:false`.
 
 Other ref updates, merge, deletion and GraphQL remain refused.
-The runner rejects unmatched requests on ruled hosts (`origin_admits` in `afr_egress/src/admission/mod.rs`), and its token has no workflow permission.
+The runner rejects unmatched requests on ruled hosts (`origin_admits` in `af_egress/src/admission/mod.rs`), and its token has no workflow permission.
 Write-bound fleets never receive unaddressed mentions.
 
 A branch push runs repository workflows, so the drill audits secret paths for `agentsfleet-repair/*` branches.
@@ -150,7 +154,7 @@ The installed grant bounds writes as described in [trust anchors](../connectors.
 | Source | How a fleet reads it | Known gaps |
 |---|---|---|
 | GitHub run | the fleet reads the linked run, failed jobs, steps and annotations through `http_request` under the repository's read prefix, as its instructions direct (M206_003 §2); it also reads commits and compare there (`rules`, `afd_gate/src/policy/egress/read.rs:21-30`) | A mint reads the installation's permissions first and asks for `contents` read plus whichever of `actions` and `checks` read it holds (`for_binding`, `afd_credential/src/credential/github/request.rs:85-96`). The App registration lists Checks: read-only and each installation accepts it before the drill (`playbooks/operations/github_app_registration/001_playbook.md:38-43`); until one does, the mint succeeds without it and the fleet's annotation read answers 403. Job logs can redirect to storage. The tool follows at most three guarded bodyless GET redirects, readmitting each destination and stripping modeled headers on an origin change. The reviewed HTTP destination policy must admit the storage host; a denied or truncated required log still produces a named source gap. See [guarded downloads](../runner_fleet.md#guarded-tool-downloads). |
-| Grafana | workspace secret `grafana = {host, token}`; `Bearer ${secrets.grafana.token}`; Loki and alert reads over GET | No connector, by design ([connector archetypes](../connectors.md#archetypes)). The host must resolve publicly, because the tool rejects private addresses. Read-only is enforced by `network.read_only`, which is otherwise off by default (`afd_fleet_runtime/src/config/policy/mod.rs:202`). |
+| Grafana | workspace secret `grafana = {host, token}`; `Bearer ${secrets.grafana.token}`; Loki and alert reads over GET | No connector, by design ([connector archetypes](../connectors.md#archetypes)). The host must resolve publicly, because the tool rejects private addresses. Read-only is enforced by `network.read_only`, which is otherwise off by default (`af_fleet_runtime/src/config/policy/mod.rs:202`). |
 | Memory | the fleet's own namespace, hydrated only under a live lease for that fleet that no reclaim has moved past (`Plane::hydrate` in `afd_fleet/src/lease/memory.rs`) | none for this journey |
 
 ## 9. Integration map

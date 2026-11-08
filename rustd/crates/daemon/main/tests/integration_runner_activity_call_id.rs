@@ -1,0 +1,115 @@
+//! A runner tool frame's required call id and outcome, on their way to the
+//! live tail.
+//!
+//! Split from `integration_runner_activity.rs` at the length cap, and shares
+//! its [`Tailed`] fixture: the property is a publish, so it needs a subscriber
+//! running while the request is in flight.
+//!
+//! Marked `#[ignore]` like the rest of the live-service suite; run by
+//! `make test-integration-rustd`.
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
+)]
+
+use af_wire::activity::CALL_ID_MAX_BYTES;
+use af_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES;
+use agentsfleetd::supervisor::Supervisor;
+use serde_json::json;
+
+use crate::integration_runner_activity::{TOOL_NAME, Tailed, code_of};
+use crate::tail::{next_frame, silence};
+use crate::wire::field;
+
+/// The call id every frame of one tool call carries.
+const CALL_ID: &str = "3";
+
+/// A tool frame's `call_id` is required, bounded, and republished scoped to its
+/// lease as `{fence}:{call_id}`; a frame without one, or with any unknown
+/// field, refuses the batch.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_activity_carries_a_required_call_id() {
+    let mut supervisor = Supervisor::new();
+    let mut tailed = Tailed::open(&mut supervisor).await;
+
+    let named = json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "status": "succeeded"}}]});
+    assert_eq!(tailed.forward(&named).await.status().as_u16(), 202);
+    let frame = next_frame(&mut tailed.tail)
+        .await
+        .expect("the named frame publishes");
+    assert_eq!(
+        field(&frame, "call_id"),
+        &json!(format!("{}:{CALL_ID}", tailed.fence)),
+        "the runner's id, scoped to the lease that sent it"
+    );
+
+    for refused in [
+        json!({"frames": [{"tool_call_progress": {"name": TOOL_NAME, "elapsed_ms": 5}}]}),
+        json!({"frames": [{"tool_call_started": {"name": TOOL_NAME, "args_redacted": "{}", "call_id": ""}}]}),
+        json!({"frames": [{"tool_call_started": {"name": TOOL_NAME, "args_redacted": "{}", "call_id": "c".repeat(CALL_ID_MAX_BYTES + 1)}}]}),
+        json!({"frames": [{"tool_call_completed": {"name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "status": "succeeded", "retries": 1}}]}),
+    ] {
+        let answer = tailed.forward(&refused).await;
+        assert_eq!(answer.status().as_u16(), 400, "{refused}");
+        assert_eq!(
+            code_of(answer).await,
+            af_core::error_code::INVALID_REQUEST.as_str()
+        );
+    }
+    assert_eq!(
+        silence(&mut tailed.tail).await,
+        None,
+        "no refused batch published"
+    );
+
+    drop(tailed.tail);
+    supervisor.shutdown().await;
+    tailed.run.cleanup().await;
+}
+
+/// A completion's outcome reaches a subscriber field for field; an edge past
+/// its bound refuses the batch and publishes nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_activity_tool_outcome_reaches_channel() {
+    let mut supervisor = Supervisor::new();
+    let mut tailed = Tailed::open(&mut supervisor).await;
+
+    let outcome = json!({"frames": [{"tool_call_completed": {
+        "name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "status": "failed",
+        "output_head": "error: denied", "output_tail": "exit 2",
+        "output_line_count": 40, "exit_code": 2,
+    }}]});
+    assert_eq!(tailed.forward(&outcome).await.status().as_u16(), 202);
+    let frame = next_frame(&mut tailed.tail)
+        .await
+        .expect("the completion publishes");
+    assert_eq!(field(&frame, "kind"), &json!("tool_call_completed"));
+    assert_eq!(field(&frame, "status"), &json!("failed"));
+    assert_eq!(field(&frame, "output_head"), &json!("error: denied"));
+    assert_eq!(field(&frame, "output_tail"), &json!("exit 2"));
+    assert_eq!(field(&frame, "output_line_count"), &json!(40));
+    assert_eq!(field(&frame, "exit_code"), &json!(2));
+
+    let oversized = json!({"frames": [{"tool_call_completed": {
+        "name": TOOL_NAME, "ms": 5, "call_id": CALL_ID, "status": "failed",
+        "output_tail": "a".repeat(OUTPUT_EDGE_MAX_BYTES + 1),
+    }}]});
+    let answer = tailed.forward(&oversized).await;
+    assert_eq!(answer.status().as_u16(), 400);
+    assert_eq!(
+        code_of(answer).await,
+        af_core::error_code::INVALID_REQUEST.as_str()
+    );
+    assert_eq!(
+        silence(&mut tailed.tail).await,
+        None,
+        "no oversized edge published"
+    );
+
+    drop(tailed.tail);
+    supervisor.shutdown().await;
+    tailed.run.cleanup().await;
+}

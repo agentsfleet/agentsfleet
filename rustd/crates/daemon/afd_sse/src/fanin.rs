@@ -1,0 +1,323 @@
+//! Many fleets' activity on one connection.
+//!
+//! The wall used to open a stream per tile, so L live fleets watched by V
+//! operators cost L×V connections and L×V slots. This carries the whole
+//! workspace on one.
+//!
+//! # Isolation is by construction, never by filtering
+//!
+//! Only the fleets the caller may read are ever subscribed, so a frame from
+//! another workspace is not delivered and then discarded — it never arrives.
+//! There is deliberately no pattern subscribe: `PSUBSCRIBE fleet:*` would put
+//! every tenant's frames on one firehose and make tenant isolation a matter of
+//! discipline rather than of what is attached.
+//!
+//! # The set changes while the connection is open
+//!
+//! A fleet installed after a tab was opened has to appear in it. The caller
+//! ticks [`FanIn::sync_to`] with the fleets it currently authorizes, and this
+//! attaches and detaches to match. Detaching cancels that channel's own stream,
+//! which drops its subscription — so the hub unsubscribes when the last viewer
+//! of a channel goes, with no bookkeeping here.
+//!
+//! # What this does NOT do
+//!
+//! Enumerate fleets, and re-authorize the caller. Both are reads against a
+//! workspace, both belong to the handler that holds the pool, and both are
+//! per-tick decisions this type is TOLD the answer to.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+
+use afd_dragonfly::hub::Received;
+use afd_dragonfly::{Message, Subscription, SubscriptionHub};
+use futures_util::StreamExt as _;
+use futures_util::stream::{self, BoxStream, SelectAll};
+use tokio_util::sync::CancellationToken;
+
+use crate::error::Error;
+use crate::frame::Frame;
+use afd_dragonfly::fleet_activity_channel;
+
+/// One arrival on the shared consumer, before it becomes a frame.
+///
+/// Both halves are shared: the message with every other viewer of the
+/// channel, the fleet id with every other arrival on it.
+#[derive(Debug)]
+enum Arrival {
+    /// A payload published on one fleet's channel.
+    Published {
+        fleet_id: Arc<str>,
+        message: Arc<Message>,
+    },
+    /// This connection fell behind and missed messages on one channel.
+    Missed(u64),
+}
+
+/// What one [`FanIn::sync_to`] changed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Delta {
+    /// Channels attached this tick.
+    pub attached: usize,
+    /// Channels detached this tick.
+    pub detached: usize,
+}
+
+impl Delta {
+    /// Whether the attached set moved at all.
+    #[must_use]
+    pub const fn is_change(self) -> bool {
+        self.attached > 0 || self.detached > 0
+    }
+}
+
+/// One frame and the fleet it came from, as the caller sees it.
+pub type Tagged = Frame;
+
+/// The channels behind one workspace stream.
+pub struct FanIn {
+    /// `None` on a deployment with no pub/sub connection. The connection still
+    /// opens and still heartbeats — it simply carries no channels — because a
+    /// stream surface that 500s when the queue is absent would take the whole
+    /// dashboard down with it.
+    hub: Option<SubscriptionHub>,
+    /// The fleets currently attached, and the token that detaches each.
+    ///
+    /// A map rather than a `Vec` of pairs: `sync_to` asks "is this one already
+    /// attached?" once per wanted fleet, which over a wall of tiles is a linear
+    /// scan per tile. It also keeps [`fleets`](FanIn::fleets) free — the client
+    /// is announced a LIST, and a set whose order changed between ticks would
+    /// read to it as a set that changed, so the order has to be stable either
+    /// way and a `BTreeMap` is already in it.
+    attached: BTreeMap<String, CancellationToken>,
+    /// Every attached channel, polled as one stream.
+    arrivals: SelectAll<BoxStream<'static, Arrival>>,
+    /// This CONNECTION's counter — not any channel's.
+    seq: u64,
+}
+
+impl std::fmt::Debug for FanIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FanIn")
+            .field("attached", &self.attached.len())
+            .field("seq", &self.seq)
+            .finish_non_exhaustive()
+    }
+}
+
+impl FanIn {
+    /// A fan-in carrying nothing yet.
+    ///
+    /// Nothing is subscribed until the first [`sync_to`]: a stream that is
+    /// refused before it starts costs no wire traffic.
+    ///
+    /// [`sync_to`]: FanIn::sync_to
+    #[must_use]
+    pub fn new(hub: Option<SubscriptionHub>) -> Self {
+        Self {
+            hub,
+            attached: BTreeMap::new(),
+            arrivals: SelectAll::new(),
+            seq: 0,
+        }
+    }
+
+    /// The fleets currently carried, in a stable order.
+    #[must_use]
+    pub fn fleets(&self) -> Vec<String> {
+        self.attached.keys().cloned().collect()
+    }
+
+    /// Aligns the attached channels with `wanted`.
+    pub fn sync_to(&mut self, wanted: &BTreeSet<String>) -> Delta {
+        let detached = self.detach_absent(wanted);
+        let attached = self.attach_missing(wanted);
+        Delta { attached, detached }
+    }
+
+    /// Detaches every attached fleet no longer in `wanted`.
+    fn detach_absent(&mut self, wanted: &BTreeSet<String>) -> usize {
+        let before = self.attached.len();
+        self.attached.retain(|fleet_id, token| {
+            let keep = wanted.contains(fleet_id);
+            if !keep {
+                // Ends that channel's stream, which drops its subscription —
+                // the hub unsubscribes when its last viewer goes.
+                token.cancel();
+            }
+            keep
+        });
+        before - self.attached.len()
+    }
+
+    /// Attaches every fleet in `wanted` that is not attached yet.
+    fn attach_missing(&mut self, wanted: &BTreeSet<String>) -> usize {
+        let Some(hub) = self.hub.clone() else {
+            return 0;
+        };
+        let mut added = 0;
+        for fleet_id in wanted {
+            if self.attached.contains_key(fleet_id) {
+                continue;
+            }
+            let token = CancellationToken::new();
+            let subscription = hub.subscribe(&fleet_activity_channel(fleet_id));
+            self.arrivals
+                .push(arrivals(subscription, Arc::from(fleet_id.as_str()), token.clone()).boxed());
+            self.attached.insert(fleet_id.clone(), token);
+            added += 1;
+        }
+        added
+    }
+
+    /// The next frame this connection should send.
+    ///
+    /// Never returns: a workspace whose fleets have all been detached still has
+    /// a live connection, and a stream that ended here would close a tab whose
+    /// workspace merely has nothing running. The caller races this against its
+    /// refresh tick and the heartbeat.
+    pub async fn next_frame(&mut self) -> Tagged {
+        loop {
+            let Some(arrival) = self.arrivals.next().await else {
+                // Nothing attached. Park until the caller's next `sync_to`
+                // gives us a channel; polling an empty set would spin.
+                return std::future::pending().await;
+            };
+            match arrival {
+                // A control frame, so it spends no sequence number.
+                Arrival::Missed(missed) => return Frame::catching_up(missed),
+                Arrival::Published { fleet_id, message } => {
+                    match Frame::tagged(self.seq, &fleet_id, message) {
+                        Ok(frame) => {
+                            self.seq = self.seq.wrapping_add(1);
+                            return frame;
+                        }
+                        // Publisher shape drift. Dropped rather than guessed:
+                        // routing it to the wrong tile is worse than losing it.
+                        Err(Error::Untaggable) => {
+                            af_observability::producers::http::frame_dropped();
+                            let reason = Error::Untaggable.to_string();
+                            let fleet_id = &*fleet_id;
+                            tracing::debug!(fleet_id, reason, event = "sse_fanin_frame_dropped");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One channel's arrivals, ending when `token` is cancelled or the hub closes.
+fn arrivals(
+    subscription: Subscription,
+    fleet_id: Arc<str>,
+    token: CancellationToken,
+) -> impl stream::Stream<Item = Arrival> + Send {
+    stream::unfold(
+        (subscription, fleet_id, token),
+        async move |(mut subscription, fleet_id, token)| {
+            let received = tokio::select! {
+                // Detached by a refresh tick: end this stream, which is what
+                // drops the subscription behind it.
+                () = token.cancelled() => return None,
+                received = subscription.recv() => received,
+            };
+            match received {
+                Ok(Received::Message(message)) => Some((
+                    Arrival::Published {
+                        fleet_id: Arc::clone(&fleet_id),
+                        message,
+                    },
+                    (subscription, fleet_id, token),
+                )),
+                Ok(Received::Lagged(missed)) => {
+                    Some((Arrival::Missed(missed), (subscription, fleet_id, token)))
+                }
+                // The hub lost and restored this channel's subscription: no
+                // count, because nobody saw what was published meanwhile.
+                Ok(Received::Gap) => Some((Arrival::Missed(0), (subscription, fleet_id, token))),
+                Err(_closed) => None,
+            }
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a timeout completing would violate the parking invariant under test"
+    )]
+
+    use std::collections::BTreeSet;
+
+    use afd_dragonfly::fleet_activity_channel;
+
+    use super::FanIn;
+
+    /// The channel a fan-in subscribes to is the one the publisher writes:
+    /// both read the name from the queue crate, and its bytes are pinned here
+    /// because a drift would leave every tile silent with nothing failing.
+    #[test]
+    fn a_fleets_activity_channel_is_its_id_between_the_two_affixes() {
+        // pin test: literal is the contract
+        assert_eq!(fleet_activity_channel("a"), "fleet:a:activity");
+    }
+
+    #[test]
+    fn a_detached_fan_in_stays_empty_and_debug_hides_transport_details() {
+        let mut fan_in = FanIn::new(None);
+        let wanted = BTreeSet::from(["fleet-a".to_owned(), "fleet-b".to_owned()]);
+
+        assert_eq!(fan_in.sync_to(&wanted).attached, 0);
+        assert_eq!(fan_in.fleets(), [] as [String; 0]);
+        assert_eq!(format!("{fan_in:?}"), "FanIn { attached: 0, seq: 0, .. }");
+    }
+
+    /// A fleet whose subscription was lost and restored is announced as
+    /// `catching_up` with nothing counted, like the per-fleet tail.
+    #[tokio::test]
+    async fn a_gap_on_one_fleet_is_catching_up_with_nothing_counted() {
+        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
+        let mut fan_in = FanIn::new(Some(hub));
+        assert_eq!(
+            fan_in.sync_to(&BTreeSet::from(["a".to_owned()])).attached,
+            1
+        );
+        let channel = fleet_activity_channel("a");
+        server.confirm(&channel);
+        server.confirm(&channel);
+
+        let frame = fan_in.next_frame().await;
+        assert_eq!(frame.kind, crate::frame::KIND_CATCHING_UP);
+        assert_eq!(frame.data, r#"{"kind":"catching_up","dropped":0}"#);
+    }
+
+    /// A hub that closes ends each channel's stream but not the connection:
+    /// the fan-in parks, as it does with nothing attached, rather than
+    /// ending a tab's stream or spinning on channels that will say nothing.
+    #[tokio::test]
+    async fn a_closed_hub_parks_the_fan_in_instead_of_ending_it() {
+        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
+        let mut fan_in = FanIn::new(Some(hub.clone()));
+        fan_in.sync_to(&BTreeSet::from(["a".to_owned()]));
+        hub.shutdown();
+        server.publish(&fleet_activity_channel("a"), r#"{"kind":"chunk"}"#);
+        tokio::time::timeout(std::time::Duration::from_millis(20), fan_in.next_frame())
+            .await
+            .expect_err("a closed hub leaves nothing to send and nothing to end");
+        assert_eq!(
+            fan_in.fleets(),
+            ["a"],
+            "the set stays what the caller attached"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_fan_in_parks_instead_of_spinning_or_ending() {
+        let mut fan_in = FanIn::new(None);
+        tokio::time::timeout(std::time::Duration::from_millis(1), fan_in.next_frame())
+            .await
+            .expect_err("an empty fan-in must remain pending");
+    }
+}

@@ -11,7 +11,7 @@ export const MESSAGE_STATE = {
   queued: "queued", running: "running", completed: "completed", cancelled: "cancelled",
   failed: FAILED_STATE, timedOut: "timed_out",
 } as const;
-/** `SyncStatus` in rustd/crates/afd_cron/src/model.rs: anything short of `synced` is retried by the schedule's `:sync` action. */
+/** `SyncStatus` in rustd/crates/daemon/afd_cron/src/model.rs: anything short of `synced` is retried by the schedule's `:sync` action. */
 export const SCHEDULE_SYNC = { syncing: "syncing", synced: "synced", failed: FAILED_STATE } as const;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
 /** A daemon counter or revision: a decimal string, because nanos outgrow a JavaScript number. */

@@ -11,7 +11,7 @@ import { APPROVAL_DECISION } from "./approvals-types";
 import type { ApprovalDecision } from "./approvals-types";
 
 // Mirrors the server's inbox gate row
-// (`GateRow` in rustd/crates/afd_approval/src/inbox/row.rs)
+// (`GateRow` in rustd/crates/daemon/afd_approval/src/inbox/row.rs)
 // verbatim — no shim, no rename. Renders the same shape the dashboard queries.
 
 export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "auto_killed";
@@ -123,7 +123,7 @@ async function resolveAction(
   // `/decision` as its own segment, not `:decision`. The daemon's router binds
   // one parameter per path segment and refuses a literal after it, so the
   // custom verb cannot ride the gate identifier — see `WorkspaceRoute::
-  // ApprovalResolve` in `rustd/crates/afd_api`, which is the served spelling.
+  // ApprovalResolve` in `rustd/crates/daemon/afd_api`, which is the served spelling.
   const url = `/v1/workspaces/${workspaceId}/approvals/${gateId}/${decision}`;
   // Bypass `request()` so a 409 returns a body instead of throwing — but not
   // the transport's timeout. Without one a hung resolve never settles: the

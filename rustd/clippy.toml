@@ -4,9 +4,9 @@
 # The owner itself, and a caller kept on purpose, carries
 # `#[expect(clippy::disallowed_methods, reason = "...")]` saying why.
 disallowed-methods = [
-    { path = "std::time::SystemTime::now", reason = "read the wall clock through afd_core::clock::now" },
-    { path = "std::env::var", reason = "read a knob through afd_core::env (optional, or an EnvSource)" },
-    { path = "std::env::var_os", reason = "read a knob through afd_core::env (optional, or an EnvSource)" },
+    { path = "std::time::SystemTime::now", reason = "read the wall clock through af_core::clock::now" },
+    { path = "std::env::var", reason = "read a knob through af_core::env (optional, or an EnvSource)" },
+    { path = "std::env::var_os", reason = "read a knob through af_core::env (optional, or an EnvSource)" },
     { path = "reqwest::Client::new", reason = "build a client that must ignore an environment proxy with afd_identity::direct; any other client names its bounds on a builder" },
     { path = "reqwest::Client::builder", reason = "build a client that must ignore an environment proxy with afd_identity::direct" },
 ]

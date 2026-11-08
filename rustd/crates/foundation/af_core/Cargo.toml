@@ -1,0 +1,79 @@
+[package]
+name = "af_core"
+# One aggregated test binary; see tests/core_suite.rs for why.
+autotests = false
+description = "Domain primitives shared by every agentsfleetd crate: identity, error codes, bounded values."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL: the map-backed environment source, and the `tracing` capture
+# every crate's suites assert log lines through. Behind a flag because a
+# production binary reads the process environment and nothing else, and
+# emits through the subscriber boot installs, never through a test's.
+test-util = ["dep:tracing", "dep:tracing-subscriber"]
+# `signal::shutdown`, the stop both binaries wait on. Behind a flag so the
+# value layer links no runtime for the crates that never stop a process.
+signal = ["dep:tokio"]
+
+[dependencies]
+# `paging::Page::parse` reads `?limit` through `af_validate::Limit` with the
+# route's ceiling, the one spelling every list route shares.
+af_validate.workspace = true
+serde.workspace = true
+# The strong `ETag` digest (`crate::etag`). A wire encoding rather than a
+# transport concern: a client cache holds a tag across requests, and
+# both the HTTP edge and the store that compares one inside a row lock have to
+# spell it the same way.
+sha2.workspace = true
+# The text-boundary keyset cursor: a sort key that is text is base64url-encoded
+# so a value containing the separator cannot corrupt the boundary. Both binaries
+# issue and read these strings, so the encoding is a DATA FORMAT rather than a
+# choice — and an encoder is a value-layer concern, which is why the cursor
+# lives here rather than beside the handlers that parse one out of a query.
+base64.workspace = true
+# The object-shape gate every trust boundary deserializes through
+# (`crate::json`). A library dependency rather than a dev one since that gate
+# shipped: the crates it guards — the runner enrolment body, the JWT header,
+# the JWKS document — call it from production paths.
+serde_json.workspace = true
+# `json::strict_object_from_slice`: the keys a derive skipped, so a request a
+# person writes refuses a misspelled key inside a runner-bound shape that is
+# itself lenient.
+serde_ignored.workspace = true
+# `bundle::BundleDigest`'s hex name, the spelling the importer stores and the
+# runner fetches by.
+hex.workspace = true
+thiserror.workspace = true
+# Every instant is a `jiff::Timestamp` (`crate::clock`): the database stores
+# `TIMESTAMPTZ(3)` and the API writes RFC 3339, and jiff is the one type both
+# edges read and write without a hand conversion.
+jiff.workspace = true
+# `test_util::trace` only: the capture is a `tracing` layer. Optional, so the
+# value layer links neither outside `test-util`.
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+# Version-7 construction only; the canonical-spelling PARSE stays here, because
+# `Uuid::parse_str` normalises case and this product rejects it. See the
+# workspace manifest for the full rationale.
+uuid.workspace = true
+# `signal` only: SIGTERM and SIGINT through the runtime both binaries run.
+tokio = { workspace = true, optional = true, features = ["signal"] }
+
+[dev-dependencies]
+# The degraded-stop suite drives `signal::stop_on_kind` on a runtime of its own.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "core_suite"
+path = "tests/core_suite.rs"

@@ -1,0 +1,174 @@
+//! A lease's sandbox size: each bound at its limit and one past it, and the
+//! field's decoding when a daemon sends none.
+//!
+//! The rule of `validation.rs` holds: the bounds are enumerable, so each row
+//! is the pair at the limit and one past it. The runner's call to `validate`
+//! is the runner's own test (`afr_supervisor`'s `lease_loop::workspace`).
+#![expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test target: a lease that will not decode is an unmet precondition"
+)]
+
+use af_wire::lease::{
+    LeasePayload, SANDBOX_CPU_MILLIS_MAX, SANDBOX_CPU_MILLIS_MIN, SANDBOX_DISK_BYTES_MAX,
+    SANDBOX_DISK_BYTES_MIN, SANDBOX_MEMORY_BYTES_MAX, SANDBOX_MEMORY_BYTES_MIN, SandboxLimits,
+};
+use garde::Validate as _;
+
+/// One gibibyte.
+const GIB: u64 = 1 << 30;
+
+/// The smallest size every bound admits.
+const SMALLEST: SandboxLimits = SandboxLimits {
+    cpu_millis: SANDBOX_CPU_MILLIS_MIN,
+    memory_bytes: SANDBOX_MEMORY_BYTES_MIN,
+    disk_bytes: SANDBOX_DISK_BYTES_MIN,
+};
+
+/// The largest size every bound admits.
+const LARGEST: SandboxLimits = SandboxLimits {
+    cpu_millis: SANDBOX_CPU_MILLIS_MAX,
+    memory_bytes: SANDBOX_MEMORY_BYTES_MAX,
+    disk_bytes: SANDBOX_DISK_BYTES_MAX,
+};
+
+#[test]
+fn a_size_at_every_bound_is_accepted() {
+    SMALLEST.validate().unwrap();
+    LARGEST.validate().unwrap();
+}
+
+#[test]
+fn a_size_one_past_any_bound_is_refused() {
+    let past = [
+        SandboxLimits {
+            cpu_millis: SANDBOX_CPU_MILLIS_MIN - 1,
+            ..SMALLEST
+        },
+        SandboxLimits {
+            cpu_millis: SANDBOX_CPU_MILLIS_MAX + 1,
+            ..LARGEST
+        },
+        SandboxLimits {
+            memory_bytes: SANDBOX_MEMORY_BYTES_MIN - 1,
+            ..SMALLEST
+        },
+        SandboxLimits {
+            memory_bytes: SANDBOX_MEMORY_BYTES_MAX + 1,
+            ..LARGEST
+        },
+        SandboxLimits {
+            disk_bytes: SANDBOX_DISK_BYTES_MIN - 1,
+            ..SMALLEST
+        },
+        SandboxLimits {
+            disk_bytes: SANDBOX_DISK_BYTES_MAX + 1,
+            ..LARGEST
+        },
+    ];
+    for size in past {
+        assert!(size.validate().is_err(), "{size:?} must be refused");
+    }
+}
+
+/// The lease the daemon sends today, carrying `limits` as given.
+fn lease(limits: &str) -> String {
+    format!(
+        r#"{{"lease_id":"l","fencing_token":1,"lease_expires_at":"1970-01-01T00:00:00.000Z","secret_delivery":"inline",
+        "event":{{"event_id":"e","fleet_id":"f","workspace_id":"w","actor":"a",
+        "event_type":"chat","request_json":"{{}}","created_at":"1970-01-01T00:00:00.000Z"}},
+        "policy":{{"network_policy":{{"allow":[],"read_only":true,"read_post_paths":[]}},
+        "tools":[],"secrets_map":null,"mintable":[],"provider":"p","api_key":"k",
+        "inference_host":"h","base_url":null,"repository_binding":null,
+        "http_origin_policies":[],"context":{{"tool_window":1,"memory_checkpoint_every":1,
+        "stage_chunk_threshold":0.5,"model":"m","context_cap_tokens":0}}}},
+        "instructions":"","limits":{limits},"history":[],"resume_hold":false}}"#
+    )
+}
+
+/// Null limits run at this runner's configured defaults, and re-encode null.
+#[test]
+fn a_lease_with_null_limits_decodes_as_none() {
+    let text = lease("null");
+    let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    assert_eq!(payload.limits, None);
+    let encoded = serde_json::to_value(&payload).unwrap();
+    assert_eq!(encoded["limits"], serde_json::Value::Null);
+}
+
+#[test]
+fn a_lease_with_a_size_carries_it() {
+    let text = lease(r#"{"cpu_millis":4000,"memory_bytes":8589934592,"disk_bytes":21474836480}"#);
+    let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    assert_eq!(
+        payload.limits,
+        Some(SandboxLimits {
+            cpu_millis: 4_000,
+            memory_bytes: 8 * GIB,
+            disk_bytes: 20 * GIB,
+        })
+    );
+}
+
+/// The published schema states the same bounds garde enforces. utoipa takes
+/// only literals for them, so this is what keeps the two spellings one.
+#[cfg(feature = "openapi")]
+#[test]
+fn the_published_bounds_are_the_enforced_ones() {
+    let schema = serde_json::to_value(<SandboxLimits as utoipa::PartialSchema>::schema()).unwrap();
+    for (field, min, max) in [
+        (
+            "cpu_millis",
+            u64::from(SANDBOX_CPU_MILLIS_MIN),
+            u64::from(SANDBOX_CPU_MILLIS_MAX),
+        ),
+        (
+            "memory_bytes",
+            SANDBOX_MEMORY_BYTES_MIN,
+            SANDBOX_MEMORY_BYTES_MAX,
+        ),
+        ("disk_bytes", SANDBOX_DISK_BYTES_MIN, SANDBOX_DISK_BYTES_MAX),
+    ] {
+        let property = &schema["properties"][field];
+        assert_eq!(property["minimum"].as_u64(), Some(min), "{field} minimum");
+        assert_eq!(property["maximum"].as_u64(), Some(max), "{field} maximum");
+    }
+}
+
+/// The daemon always names the fleet's history and whether the held sandbox
+/// resumes; a lease missing either is refused rather than read as a default.
+#[test]
+fn a_lease_must_name_its_history_and_resume_hold() {
+    let text = lease("null");
+    for key in [r#","history":[]"#, r#","resume_hold":false"#] {
+        let missing = text.replace(key, "");
+        assert_ne!(missing, text, "{key} is in the fixture");
+        assert!(
+            serde_json::from_str::<LeasePayload<'_>>(&missing).is_err(),
+            "a lease without {key} must be refused"
+        );
+    }
+}
+
+/// Earlier turns round-trip in order.
+#[test]
+fn test_lease_history_round_trips() {
+    let turns = serde_json::json!([{"message": "m1", "answer": "a1"}]);
+    let carried = lease("null").replace(r#""history":[]"#, &format!(r#""history":{turns}"#));
+    let payload: LeasePayload<'_> = serde_json::from_str(&carried).unwrap();
+    assert_eq!(serde_json::to_value(&payload).unwrap()["history"], turns);
+}
+
+/// A lease that resumes the held sandbox says so, and round-trips.
+#[test]
+fn test_lease_resume_hold_round_trips() {
+    let text = lease("null");
+    let fresh: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    let resumed = text.replace(r#""resume_hold":false"#, r#""resume_hold":true"#);
+    let present: LeasePayload<'_> = serde_json::from_str(&resumed).unwrap();
+
+    assert!(!fresh.resume_hold);
+    assert!(present.resume_hold);
+    assert_eq!(serde_json::to_value(&present).unwrap()["resume_hold"], true);
+}

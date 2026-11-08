@@ -1,0 +1,226 @@
+//! The two writes: claiming a name, and replacing a body.
+//!
+//! Both seal through the same [`Vault::seal`] and differ only in the statement
+//! and in what zero affected rows MEANS — a name already taken on one, a name
+//! never held on the other. That difference is the whole reason they are two
+//! verbs rather than one with a flag.
+//!
+//! # No read precedes either write
+//!
+//! Not for speed. `PATCH {api_key}` used to load the stored body, merge one
+//! hard-coded field, and re-store through an upsert — two autocommit statements
+//! with nothing held between them, so a delete committing in the gap left the
+//! upsert with no row to conflict against and it re-INSERTED the credential
+//! that had just been removed. A single statement has no such gap. Replacement
+//! is total for the same reason it is safe: a stored secret is never readable,
+//! so a partial write is one the caller cannot reason about.
+
+use af_core::id::Uuid7;
+use af_crypto::aad::Aad;
+use af_crypto::envelope::Envelope;
+use jiff::Timestamp;
+
+use sqlx::Transaction;
+
+use crate::error::{ErrorKind, Result, query};
+use crate::secret::{SecretBody, SecretName};
+use crate::{Vault, sql};
+
+/// The context a failed create reports under.
+const CONTEXT_CREATE: &str = "claim a secret name";
+
+/// The context a failed replace reports under.
+const CONTEXT_REPLACE: &str = "replace a secret body";
+
+impl Vault {
+    /// Stores `body` under a name this workspace does not yet hold.
+    ///
+    /// # Errors
+    /// Refuses a name the workspace already holds — nothing is written, and the
+    /// decision is Postgres's, so two concurrent creates on one name resolve to
+    /// one success and one refusal rather than to a silent overwrite. Reports a
+    /// datastore that would not answer, an envelope that would not seal, and a
+    /// host short of the entropy an identifier is minted from.
+    pub async fn create(
+        &self,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+        now: Timestamp,
+    ) -> Result<()> {
+        let mut transaction = Transaction::begin(self.directory.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
+        let fleets = self
+            .create_in(&mut transaction, workspace, name, body, now)
+            .await?;
+        self.commit_activity(transaction, fleets)
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
+        Ok(())
+    }
+
+    /// [`Self::create`], inside a transaction the CALLER owns.
+    ///
+    /// The seam exists because a connect writes two rows that must agree — the
+    /// sealed grant and the routing row naming the account it belongs to — and
+    /// they live in different crates over the same Postgres. Committed
+    /// separately, a failure between them leaves routing describing one
+    /// installation while the vault holds another's credential, which reads as
+    /// connected and is not. See `afd_connector::grant`.
+    /// Returns the receipt announcement for [`Self::commit_activity`].
+    ///
+    /// # Errors
+    /// As [`Self::create`]. The transaction is the caller's to commit; dropping
+    /// it rolls back, which is the property this seam is for.
+    pub async fn create_in(
+        &self,
+        transaction: &mut Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+        now: Timestamp,
+    ) -> Result<afd_events::activity::Announcement> {
+        let envelope = self.seal(workspace, name, body)?;
+        let id = self.entropy.uuid7(now)?;
+        let projection = body.projection();
+
+        let written = sqlx::query(sql::INSERT_SECRET_IF_ABSENT)
+            .bind(id.as_str())
+            .bind(workspace.as_str())
+            .bind(name.as_str())
+            .bind(envelope.wrapped_dek())
+            .bind(envelope.dek_nonce().as_slice())
+            .bind(envelope.dek_tag().as_slice())
+            .bind(envelope.payload_nonce().as_slice())
+            .bind(envelope.payload_ciphertext())
+            .bind(envelope.payload_tag().as_slice())
+            .bind(envelope.kek_version())
+            .bind(projection.kind.as_str())
+            .bind(projection.provider.as_deref())
+            .bind(projection.base_url.as_deref())
+            .bind(projection.has_key)
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
+
+        // Zero rows is the `ON CONFLICT DO NOTHING` arm: somebody holds the
+        // name and no ciphertext was written.
+        if written.rows_affected() == 0 {
+            return Err(ErrorKind::NameTaken.into());
+        }
+        let fleets = afd_events::activity::record_access_on(transaction, workspace, name.as_str())
+            .await
+            .map_err(query(CONTEXT_CREATE))?;
+        let workspace_id = workspace.as_str();
+        let secret_name = name.as_str();
+        let secret_kind = projection.kind.as_str();
+        tracing::debug!(
+            workspace = workspace_id,
+            name = secret_name,
+            kind = secret_kind,
+            event = "secret_created",
+        );
+        Ok(fleets)
+    }
+
+    /// Replaces the whole body of a secret this workspace already holds.
+    ///
+    /// A field absent from `body` is absent from the stored secret afterwards.
+    /// That is the point of the verb, and it is why no caller needs to read a
+    /// secret back in order to change it.
+    ///
+    /// # Errors
+    /// Refuses a name this workspace does not hold — the statement is an
+    /// UPDATE, so it creates nothing and a replace racing a delete cannot
+    /// resurrect the row. Reports a datastore that would not answer and an
+    /// envelope that would not seal.
+    pub async fn replace(
+        &self,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+    ) -> Result<()> {
+        let mut transaction = Transaction::begin(self.directory.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
+        let fleets = self
+            .replace_in(&mut transaction, workspace, name, body)
+            .await?;
+        self.commit_activity(transaction, fleets)
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
+        Ok(())
+    }
+
+    /// [`Self::replace`], inside a transaction the CALLER owns.
+    ///
+    /// Same seam and same reason as [`Self::create_in`]: a reconnect replaces
+    /// the stored grant AND moves the routing row, and the two have to land or
+    /// fail together. A replace that committed alone would leave the newer
+    /// credential under the older routing.
+    /// Returns the receipt announcement for [`Self::commit_activity`].
+    ///
+    /// # Errors
+    /// As [`Self::replace`].
+    pub async fn replace_in(
+        &self,
+        transaction: &mut Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        name: &SecretName,
+        body: &SecretBody,
+    ) -> Result<afd_events::activity::Announcement> {
+        let envelope = self.seal(workspace, name, body)?;
+        let projection = body.projection();
+
+        let written = sqlx::query(sql::UPDATE_SECRET)
+            .bind(workspace.as_str())
+            .bind(name.as_str())
+            .bind(envelope.wrapped_dek())
+            .bind(envelope.dek_nonce().as_slice())
+            .bind(envelope.dek_tag().as_slice())
+            .bind(envelope.payload_nonce().as_slice())
+            .bind(envelope.payload_ciphertext())
+            .bind(envelope.payload_tag().as_slice())
+            .bind(envelope.kek_version())
+            .bind(projection.kind.as_str())
+            .bind(projection.provider.as_deref())
+            .bind(projection.base_url.as_deref())
+            .bind(projection.has_key)
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
+
+        // Zero rows means this workspace holds no such name. Nothing was
+        // written and nothing was created.
+        if written.rows_affected() == 0 {
+            return Err(ErrorKind::NotFound.into());
+        }
+        let fleets = afd_events::activity::record_access_on(transaction, workspace, name.as_str())
+            .await
+            .map_err(query(CONTEXT_REPLACE))?;
+        let workspace_id = workspace.as_str();
+        let secret_name = name.as_str();
+        let secret_kind = projection.kind.as_str();
+        tracing::debug!(
+            workspace = workspace_id,
+            name = secret_name,
+            kind = secret_kind,
+            event = "secret_replaced",
+        );
+        Ok(fleets)
+    }
+
+    /// Seals `body` for the row at `(workspace, name)`.
+    ///
+    /// The associated data binds both, so a row lifted into another workspace
+    /// or renamed fails its authentication tag instead of decrypting — the
+    /// ciphertext columns are not portable on their own.
+    fn seal(&self, workspace: &Uuid7, name: &SecretName, body: &SecretBody) -> Result<Envelope> {
+        Ok(self.sealer.seal(
+            &self.kek,
+            &Aad::new(workspace.as_str(), name.as_str()),
+            body.plaintext(),
+        )?)
+    }
+}

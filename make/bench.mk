@@ -153,7 +153,7 @@ BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_
 # oversubscribed host or a pool that did not recover exits non-zero.
 BENCH_SHAPE ?= default
 
-bench-lease: _ensure-test-infra $(BENCH_MIGRATE)  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statements per poll (PROFILE=rig [BENCH_SHAPE=default|saturation] [BENCH_FLEETS=n] [BENCH_RUNNERS=n])
+bench-lease: _ensure-test-infra $(BENCH_MIGRATE)  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statements per poll (PROFILE=rig [BENCH_SHAPE=default|saturation|burst] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
 	@echo "→ [bench-lease] profile=$(PROFILE) shape=$(BENCH_SHAPE)"
 	@BENCH_SHAPE="$(BENCH_SHAPE)" $(BENCH_LANE_ENV) $(BENCH_LANE_RUN) lease
 

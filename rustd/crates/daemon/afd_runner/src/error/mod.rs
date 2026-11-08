@@ -1,0 +1,346 @@
+//! What this crate refuses, and what it reports.
+//!
+//! One error type with `pub type Result<T, E = Error>` beside it, under the
+//! `af_core::error_shell!` hull its sibling crates carry — so the boxed kind
+//! keeps `Result` pointer-sized on the `Ok` path, and the captured backtrace,
+//! the `[CODE]` rendering and the self-skipping `source()` are generated rather
+//! than written here again. `error_lifts!` composes the sources, so `?` lifts a
+//! datastore failure without restating it.
+//! Nothing here maps another crate's error to a string: the `source()` chain
+//! is what an operator follows from "the enrolment did not land" to the
+//! Postgres detail that says why.
+
+use af_core::error_code::{self, ErrorCode};
+
+/// The sentence an out-of-bounds host identifier earns.
+pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
+
+/// The sentence a malformed registry allowlist earns.
+pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be host[:port] names";
+/// The optional selection uses the same canonical identity as the catalogue.
+pub const DETAIL_DECISION_MODEL_ID: &str =
+    "decision_model_id must be a canonical version-7 UUID or null";
+
+/// The sentence a vanished runner earns.
+pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
+
+/// The refusal a self-test ask earns when its runner is terminal.
+pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
+/// The refusal a delete of a runner still in service earns.
+pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked before deletion";
+/// The refusal a delete of a runner still holding a lease earns.
+pub const DETAIL_RUNNER_STILL_LEASED: &str =
+    "runner still holds an active lease; retry once it is released";
+
+mod raise;
+
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
+pub(crate) use self::raise::{
+    admin_state_malformed, assignment_malformed, decision_model_id, query, rejected, row_malformed,
+    runner_not_found, runner_not_revoked, runner_still_leased, runner_vanished, selftest_refused,
+    stored_json,
+};
+
+af_core::error_shell!(
+    /// A runner-plane failure, with the backtrace of where it was raised.
+    pub struct Error(ErrorKind);
+);
+
+/// Every way enrolling, proving or sweeping a runner can fail.
+///
+/// Crate-visible so a raise site can name the variant.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ErrorKind {
+    /// The operator's optional catalogue identifier did not parse canonically.
+    #[error("the assigned decision model identifier is malformed")]
+    DecisionModelId {
+        /// The identifier parser's value-free rejection.
+        #[source]
+        source: af_core::error::Error,
+    },
+    /// A statement would not run.
+    #[error("the runner store could not {context}")]
+    Query {
+        /// What was being attempted, for the operator's log line.
+        context: &'static str,
+        /// The Postgres failure underneath.
+        #[source]
+        source: sqlx::Error,
+    },
+
+    /// Postgres gave up waiting: a lock held past `lock_timeout` (`55P03`) or a
+    /// statement past `statement_timeout` (`57014`), the API login's bounds
+    /// (`afd_db::login`). Retryable: the statement changed nothing.
+    ///
+    /// Told apart from [`Self::Query`] because the host's capacity lock queues
+    /// every lease verb of one runner behind one row, so a wait that outlasts
+    /// the bound is contention the runner retries, not a defect the runner
+    /// counts toward its self-termination ceiling.
+    #[error("the runner store gave up waiting to {context}")]
+    TimedOut {
+        /// What was being attempted, for the operator's log line.
+        context: &'static str,
+        /// The Postgres failure underneath.
+        #[source]
+        source: sqlx::Error,
+    },
+
+    /// A stored value is not a shape this daemon can read.
+    #[error("{table}.{column} holds a value this build cannot read")]
+    RowMalformed {
+        /// Which table the column belongs to.
+        table: &'static str,
+        /// Which column refused.
+        column: &'static str,
+        /// The parse failure underneath.
+        #[source]
+        source: af_core::error::Error,
+    },
+
+    /// An authenticated runner's row has since disappeared.
+    ///
+    /// Its own variant rather than a rejection because the remedy differs: the
+    /// token is real and the enrolment is gone, so the host must be
+    /// re-enrolled rather than retried.
+    #[error("the presented runner token proved a row that no longer exists")]
+    RunnerVanished,
+
+    /// No runner row matches the id an operator addressed.
+    ///
+    /// Distinct from [`Error::RunnerVanished`], which is the same absence
+    /// reached through a runner's OWN authenticated token: that one says the
+    /// host must re-enrol, and this one says the operator typed an id nothing
+    /// holds. They answer different registry codes for that reason.
+    #[error("no runner matches the operator-supplied id")]
+    RunnerNotFound,
+
+    /// A runner still in service was asked to retire its record.
+    ///
+    /// The revoke is the destructive step and the delete only retires a row
+    /// the revoke already made inert, so a delete that arrives first is a
+    /// refusal the operator resolves by revoking, never an escalation.
+    #[error("a runner still in service cannot have its record retired")]
+    RunnerNotRevoked,
+
+    /// A revoked runner still holds an active lease and was asked to retire.
+    ///
+    /// The lease row is what the liveness sweep releases the fleet's slot
+    /// through; retiring the runner under it would strand the slot until the
+    /// lease's own expiry. The sweep clears it on its next pass.
+    #[error("a runner still holding an active lease cannot have its record retired")]
+    RunnerStillLeased,
+
+    /// A revoked runner was asked to collect a self-test.
+    ///
+    /// Revocation is terminal, so the ask can never be collected — a refusal
+    /// rather than a retry.
+    #[error("a revoked runner cannot collect a self-test request")]
+    SelftestRefused,
+
+    /// A runner row holds an `admin_state` outside the wire enum.
+    #[error("a runner row holds an unknown admin state")]
+    AdminStateMalformed,
+
+    /// A runner row's assignment holds a spelling outside its wire enum.
+    #[error("a runner row's {column} holds a spelling this build cannot read")]
+    AssignmentMalformed {
+        /// Which assignment column refused.
+        column: &'static str,
+    },
+
+    /// Stored JSONB did not survive decoding into its wire value.
+    #[error("{table}.{column} holds JSON this build cannot read")]
+    StoredJson {
+        /// Which table the column belongs to.
+        table: &'static str,
+        /// Which column refused.
+        column: &'static str,
+        /// The decode failure underneath.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// The caller sent something this plane will not accept.
+    ///
+    /// The only variant whose sentence is written FOR the caller; every other
+    /// answers a fixed registry sentence and keeps its detail in the log.
+    #[error("{detail}")]
+    Rejected {
+        /// The sentence the caller is told.
+        detail: &'static str,
+    },
+
+    /// The entropy a runner credential is minted from could not be drawn.
+    #[error(transparent)]
+    Entropy {
+        /// The entropy failure underneath.
+        #[from]
+        source: af_crypto::error::Error,
+    },
+
+    /// An identifier could not be minted from the current instant.
+    #[error(transparent)]
+    Identifier {
+        /// The identifier failure underneath.
+        #[from]
+        source: af_core::error::Error,
+    },
+
+    /// The queue would not take the repaired delivery.
+    #[error("the fleet's stream could not be reached")]
+    Queue {
+        /// The queue failure underneath.
+        #[from]
+        source: afd_dragonfly::Error,
+    },
+
+    /// The pool would not give a connection.
+    #[error("the runner store's datastore is unavailable")]
+    Datastore {
+        /// The pool failure underneath.
+        #[from]
+        source: afd_db::Error,
+    },
+
+    /// A sweeper's event could not be admitted, or a replay could not run.
+    #[error("the event could not be admitted")]
+    Admission {
+        /// The ledger failure underneath.
+        #[from]
+        source: afd_admission::Error,
+    },
+}
+
+impl Error {
+    /// The sentence a caller is told.
+    #[must_use]
+    pub fn detail(&self) -> &'static str {
+        match self.kind() {
+            ErrorKind::DecisionModelId { .. } => DETAIL_DECISION_MODEL_ID,
+            ErrorKind::Rejected { detail } => detail,
+            ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
+            ErrorKind::RunnerNotRevoked => DETAIL_RUNNER_NOT_REVOKED,
+            ErrorKind::RunnerStillLeased => DETAIL_RUNNER_STILL_LEASED,
+            ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,
+            // The five datastore-shaped failures — a statement that reached
+            // Postgres, and four rows this build cannot read — all answer
+            // `INTERNAL_DB_QUERY`, so they share the datastore sentence. The
+            // rest keep this plane's generic one: a sentence has to be true of
+            // every variant mapped to it, and naming one verb makes it false
+            // for the others.
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::StoredJson { .. }
+            | ErrorKind::AdminStateMalformed
+            | ErrorKind::AssignmentMalformed { .. } => DETAIL_DATABASE_ERROR,
+            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => DETAIL_OPERATION_FAILED,
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } | ErrorKind::TimedOut { .. } => {
+                DETAIL_UNAVAILABLE
+            }
+            // The ledger already decided what a caller is told, and answering
+            // a second sentence for one condition is the drift the shared
+            // constants in `af_core::error` exist to prevent.
+            ErrorKind::Admission { source } => source.detail(),
+        }
+    }
+
+    /// Whether the datastore behind this crate could not be reached, or gave
+    /// up waiting on a lock or a statement: the caller retries either the same
+    /// way.
+    #[must_use]
+    pub const fn is_datastore_unavailable(&self) -> bool {
+        match self.kind() {
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } | ErrorKind::TimedOut { .. } => {
+                true
+            }
+            ErrorKind::Admission { source } => source.is_datastore_unavailable(),
+            ErrorKind::DecisionModelId { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::RunnerVanished
+            | ErrorKind::RunnerNotFound
+            | ErrorKind::RunnerNotRevoked
+            | ErrorKind::RunnerStillLeased
+            | ErrorKind::SelftestRefused
+            | ErrorKind::AdminStateMalformed
+            | ErrorKind::AssignmentMalformed { .. }
+            | ErrorKind::StoredJson { .. }
+            | ErrorKind::Rejected { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Identifier { .. } => false,
+        }
+    }
+
+    /// Whether the caller sent something this plane will not accept.
+    #[must_use]
+    pub const fn is_rejected(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::Rejected { .. } | ErrorKind::DecisionModelId { .. }
+        )
+    }
+
+    /// Whether an authenticated runner's row has since disappeared.
+    #[must_use]
+    pub const fn is_runner_vanished(&self) -> bool {
+        matches!(self.kind(), ErrorKind::RunnerVanished)
+    }
+
+    /// The registry code a caller is refused with.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        match self.kind() {
+            ErrorKind::Rejected { .. } | ErrorKind::DecisionModelId { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
+            ErrorKind::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
+            ErrorKind::RunnerNotRevoked | ErrorKind::RunnerStillLeased => {
+                error_code::RUNNER_MUST_REVOKE_FIRST
+            }
+            ErrorKind::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::StoredJson { .. }
+            // A stored `admin_state` or assignment outside the wire enum is a
+            // ROW this build cannot read, not an operator's request being
+            // wrong — same family as a column that will not decode.
+            | ErrorKind::AdminStateMalformed
+            | ErrorKind::AssignmentMalformed { .. } => error_code::INTERNAL_DB_QUERY,
+            // A daemon whose clock cannot name an instant, and a host that
+            // cannot draw random bytes, are both THIS process failing — never
+            // the caller's request being wrong.
+            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Datastore { .. }
+            | ErrorKind::Queue { .. }
+            | ErrorKind::TimedOut { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Admission { source } => source.code(),
+        }
+    }
+}
+
+/// The sentence a statement that would not run earns.
+///
+/// Names the DATASTORE rather than the verb, because every verb in this crate
+/// reaches the same one and a caller cannot act on which of them was running.
+/// The sentence a failure carries has to be true of every variant mapped to it
+/// — `detail()` maps four here — and a verb-shaped sentence is true of at most
+/// one.
+pub use af_core::error::DETAIL_DATABASE_ERROR;
+
+/// The sentence this plane's non-statement failures earn.
+///
+/// Entropy that could not be drawn, an instant that could not name an id, and
+/// a stored credential body that is not a readable shape. It reads "runner"
+/// rather than "registration" because this crate is the runner plane, not the
+/// enrolment verb: it also serves the operator views, so a sentence naming one
+/// of its verbs would be wrong for the rest.
+const DETAIL_OPERATION_FAILED: &str = "The runner operation could not be completed";
+
+/// The sentence an unreachable datastore earns.
+use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DETAIL_UNAVAILABLE;
+
+/// This crate's result, defaulting to its own error.
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[cfg(test)]
+mod tests;

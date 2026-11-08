@@ -1,0 +1,46 @@
+[package]
+name = "afd_state"
+description = "The Postgres reads the rest of the daemon is built on, starting with the three credential directories."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the map-backed environment source the suites open pools
+# with, through the crates that own it.
+test-util = ["afd_auth/test-util", "af_core/test-util", "afd_db/test-util"]
+
+[dependencies]
+# The trait implemented here, and the record it answers with. `afd_auth` cannot
+# name `sqlx` — that is the portability wall this crate exists on the far side
+# of.
+afd_auth.workspace = true
+af_core.workspace = true
+# The pool. A directory holds one and runs three statements against it.
+afd_db.workspace = true
+# `derive` for the typed credential rows.
+sqlx = { workspace = true, features = ["derive"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# The runner-status vocabulary the sibling test pins these binds against. A
+# dev-dependency and not a dependency: this crate WRITES the words and the enum
+# READS them, and the test is what keeps the two from drifting apart.
+afd_api_wire.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# The suites drive a real pool, so they need the subscriber that makes event
+# macros evaluate their fields at all — see `install_subscriber`.
+tracing-subscriber.workspace = true
+# The unreachable pool a lookup fails against, and the trace capture its line
+# is read back through.
+afd_db = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,79 @@
+[package]
+name = "afd_approval"
+# One aggregated test binary; see tests/approval_suite.rs for why.
+autotests = false
+description = "The operator's side of an approval gate: the queue, the one decision Postgres admits, and the continuation an approval lands."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock a decision is stamped with, and the registry codes.
+# Where an approved gate's continuation is accepted before anything is
+# queued. Its unique index on the gate's action is what makes a retried
+# resolve continue the run exactly once.
+afd_admission.workspace = true
+af_core.workspace = true
+# Entropy for the identifiers a grant request mints — the grant row, its gate,
+# and the action a person answers about.
+af_crypto.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# `fleet.events`. The continuation insert this crate used to carry a
+# byte-identical COPY of — the copy existed only because reaching the original
+# meant depending on the whole runner plane, and `afd_events` is that reason
+# removed.
+afd_events.workspace = true
+# An approved gate CONTINUES the run it blocked, which is a stream append —
+# the one reason this crate touches the queue at all.
+afd_dragonfly.workspace = true
+# The stored status spellings and the event type a continuation carries. Shared
+# with the runner plane rather than copied: two crates read this one column.
+afd_api_wire.workspace = true
+# The fleet status a setup request must find (`installing`), spelled where the
+# fleet's lifecycle declares it rather than again here.
+afd_fleet_lifecycle.workspace = true
+af_wire.workspace = true
+# Instants: `TIMESTAMPTZ(3)` columns decode to `jiff::Timestamp` through
+# jiff-sqlx.
+jiff.workspace = true
+jiff-sqlx.workspace = true
+# The live-tail frames a resolve and a sweep announce are built as values and
+# rendered once; nothing here parses JSON.
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
+# suite reaches this crate's seam with no datastore behind it.
+test-util = [
+    "afd_admission/test-util",
+    "af_core/test-util",
+    "afd_db/test-util",
+    "afd_dragonfly/test-util",
+]
+
+[dev-dependencies]
+# The `tracing` capture, and the pool and queue that refuse every call, the
+# wake's failure-line test reads its `reason` back through.
+af_core = { workspace = true, features = ["test-util"] }
+afd_db = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
+# The race the resolve exists to decide is worthless single-threaded: the
+# interleaving two operators produce cannot happen without threads under it.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[test]]
+name = "approval_suite"
+path = "tests/approval_suite.rs"

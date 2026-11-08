@@ -1,0 +1,69 @@
+//! A resolve that finds the gate already answered, and what the standing
+//! answer still owes.
+//!
+//! Split from [`super`] at the 350-line cap, along the seam between the
+//! answer that wins the row and a retry that reads it: the winner does the
+//! wake or the continuation once, and a retry redoes whichever the first
+//! call may have lost.
+
+use afd_api_wire::approval::status;
+
+use super::super::{Inbox, Resolved};
+use crate::Result;
+
+impl Inbox {
+    /// What a gate answered before this call still owes, settled now.
+    ///
+    /// A retry is the one caller left to notice the first answer's wake or
+    /// continuation never landed, so it redoes whichever the stored answer
+    /// owes: a wake for the original delivery, or a continuation for an
+    /// approved run. The continuation is keyed on the gate's action, and a
+    /// repeated wake changes no durable queue state.
+    ///
+    /// # Errors
+    /// Reports a ledger that would not answer, and a continuation that would
+    /// not land.
+    pub(super) async fn stood(&self, mut resolved: Resolved) -> Result<Resolved> {
+        if leaves_delivery_parked(&resolved.status, resolved.event_id.as_deref()) {
+            self.wake_parked_delivery(&resolved.fleet_id).await;
+            return Ok(resolved);
+        }
+        if resolved.status == status::APPROVED
+            && let Some(event_id) = resolved.event_id.clone()
+        {
+            resolved.continuation_event_id = self.owed_continuation(&resolved, &event_id).await?;
+        }
+        Ok(resolved)
+    }
+
+    /// The continuation an approved run is owed: the one the ledger already
+    /// holds, or one landed now because the answer that won the row failed
+    /// before it could.
+    ///
+    /// The ledger is read first so a settled gate costs one read and writes
+    /// nothing. An admission that landed while its event row did not is left
+    /// to the lease, which writes that row on the same conflict arm.
+    async fn owed_continuation(
+        &self,
+        resolved: &Resolved,
+        event_id: &str,
+    ) -> Result<Option<String>> {
+        let landed = self
+            .admissions
+            .find_repeated(
+                afd_admission::Producer::GateContinuation,
+                &resolved.action_id,
+            )
+            .await?;
+        match landed {
+            Some(admitted) => Ok(Some(admitted.id)),
+            None => self.continue_from(resolved, event_id).await,
+        }
+    }
+}
+
+/// Whether the next poll reads the original delivery: a gate that held no
+/// run, or a run the answer ended. An approved run lands a continuation.
+pub(super) fn leaves_delivery_parked(answer: &str, event_id: Option<&str>) -> bool {
+    event_id.is_none() || answer == status::DENIED || answer == status::TIMED_OUT
+}

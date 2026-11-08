@@ -43,7 +43,13 @@ export const AGENTSFLEET_EVENT_STATUS = {
   QUEUED: THREAD_STATUS.QUEUED,
   RECORDED: FLEET_ACTIVITY.status,
   OPTIMISTIC: "optimistic",
+  // A send the fleet's live run took at its next model call. Its own event is
+  // answered when that run reports, with the run's reply.
+  FOLDED: "folded",
 } as const;
+
+/** What a folded send shows until the run it joined answers it. */
+export const FOLDED_OUTCOME = "Added to the current run";
 
 export type FleetEventStatus =
   (typeof AGENTSFLEET_EVENT_STATUS)[keyof typeof AGENTSFLEET_EVENT_STATUS];

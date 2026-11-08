@@ -1,0 +1,126 @@
+//! The correlation token every HTTP response carries.
+//!
+//! `req_` followed by twelve lowercase hex characters. The shape is not an
+//! internal detail: it is short enough for a person to read one off a browser
+//! screenshot and type it into a support ticket, which is most of what it is
+//! for. Lengthening it, or swapping it for a UUID, would break that use before
+//! it broke any code.
+//!
+//! # Why an id is minted per response, not stamped per request
+//!
+//! Because that is where the daemon's ids come from, and pretending otherwise
+//! was a real bug in this module's first draft: it read the id out of a
+//! [`tower_http`]-stamped request extension, so an id was present only if a
+//! layer nobody had written yet was mounted, and its absence degraded silently
+//! to the sentinel. That made [`UNKNOWN_REQUEST_ID`] mean three different
+//! things — nothing stamped, non-ASCII stamped, or the layer simply missing —
+//! and coupled the refusal path to a foreign crate's newtype over a value this
+//! product defines.
+//!
+//! Minting here restores the sentinel's single meaning: entropy failed. If a
+//! request-scoped id is later wanted — echoed in a response header, threaded
+//! through a span — that is a deliberate change with one minter, and this is
+//! the minter.
+//!
+//! [`tower_http`]: https://docs.rs/tower-http
+
+use std::fmt::{self, Display, Formatter};
+
+use af_core::error_code;
+use af_crypto::entropy::Entropy;
+
+/// The prefix that makes an id recognisable in a log line or a ticket.
+const PREFIX: &str = "req_";
+
+/// Random bytes behind one id: six, which hex-encode to exactly the twelve
+/// characters after `PREFIX`.
+const ENTROPY_BYTES: usize = 6;
+
+/// The id used when entropy is unavailable.
+///
+/// A response is already being written when this is reached and an envelope
+/// without a `request_id` would be a shape change, so the field says plainly
+/// that there is no id rather than carrying an invented one that support would
+/// then fail to find.
+pub const UNKNOWN_REQUEST_ID: &str = "req_unknown";
+
+/// One request's correlation token.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RequestId(String);
+
+impl RequestId {
+    /// A fresh id, drawing from the operating system.
+    #[must_use]
+    pub fn mint() -> Self {
+        Self::mint_from(&Entropy::new())
+    }
+
+    /// A fresh id, drawing from `entropy`.
+    ///
+    /// Infallible on purpose. The caller is mid-response — there is nothing to
+    /// return an error TO — so an entropy failure degrades to
+    /// [`UNKNOWN_REQUEST_ID`].
+    #[must_use]
+    pub fn mint_from(entropy: &Entropy) -> Self {
+        let mut bytes = [0u8; ENTROPY_BYTES];
+        if entropy.fill(&mut bytes).is_err() {
+            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            // Logged at `error` on purpose. A host that cannot produce six
+            // random bytes cannot seal a secret either, so the unnamed request
+            // this degrades to is the least of what is about to go wrong — and
+            // it is the first symptom that surfaces.
+            tracing::error!(
+                error_code = code,
+                event = "request_id_entropy_unavailable",
+                "entropy unavailable — this request is unidentified, and \
+                 anything that needs a key is about to fail"
+            );
+            return Self(UNKNOWN_REQUEST_ID.to_owned());
+        }
+        Self(format!("{PREFIX}{}", hex::encode(bytes)))
+    }
+
+    /// The id as it appears on the wire.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Display for RequestId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<RequestId> for String {
+    fn from(id: RequestId) -> Self {
+        id.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use af_crypto::entropy::Entropy;
+
+    use super::{RequestId, UNKNOWN_REQUEST_ID};
+
+    /// The six bytes render in order, two lowercase digits each.
+    #[test]
+    fn the_id_is_its_entropy_in_byte_order() {
+        let (entropy, control) = Entropy::new_mocked();
+        control.push_bytes(&[0x01, 0x02, 0x03, 0x04, 0x05, 0xab]);
+
+        // pin test: literal is the contract
+        assert_eq!(RequestId::mint_from(&entropy).as_str(), "req_0102030405ab");
+    }
+
+    /// No entropy is an unidentified request, never a refused one.
+    #[test]
+    fn an_entropy_failure_is_the_unknown_id() {
+        let (entropy, control) = Entropy::new_mocked();
+        control.fail_next();
+
+        assert_eq!(RequestId::mint_from(&entropy).as_str(), UNKNOWN_REQUEST_ID);
+    }
+}

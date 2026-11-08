@@ -1,0 +1,30 @@
+//! What a credential lookup says when the pool gives it no connection.
+
+use af_core::test_util::trace::Capture;
+use afd_auth::credential::CredentialKind;
+use afd_auth::directory::{CredentialDirectory as _, Digest};
+
+use super::Credentials;
+use crate::error::Unavailable;
+
+/// A lookup with no connection answers unavailable, and its line says why
+/// without repeating the code the line already carries, or a backtrace.
+#[tokio::test]
+async fn an_unavailable_credential_lookup_reason_carries_no_code_prefix() {
+    let capture = Capture::install();
+    let credentials = Credentials::new(afd_db::test_util::unreachable_db());
+
+    let answered = credentials
+        .resolve(CredentialKind::TenantApiKey, &Digest::of_minted("agt_t0"))
+        .await;
+
+    assert_eq!(answered.err(), Some(Unavailable));
+    let logged = capture.only("credential_lookup_unavailable");
+    logged.assert_uncoded_reason();
+    assert_eq!(logged.field("error_code"), Some("UZ-INTERNAL-001"));
+    assert_eq!(
+        logged.field("cause_error_code"),
+        Some(af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
+        "the refused acquire's own code rides `cause_error_code`"
+    );
+}

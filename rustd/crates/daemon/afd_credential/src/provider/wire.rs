@@ -1,0 +1,126 @@
+//! Selected model identity and validated endpoint travel together on the lease.
+
+use std::borrow::Cow;
+
+use super::resolved::Resolved;
+
+/// What the lease tells the engine to dial.
+///
+/// Three fields that must agree, so they are produced together by one function
+/// rather than read off three call sites.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Wire<'a> {
+    /// The provider name the engine classifies on.
+    pub provider: Cow<'a, str>,
+    /// The URL override, for a custom endpoint.
+    pub base_url: Option<&'a str>,
+    /// The host the egress allowlist admits, empty for a named provider.
+    pub inference_host: &'a str,
+}
+
+impl Resolved {
+    /// Preserves model identity while carrying the endpoint admitted by credential resolution.
+    #[must_use]
+    pub fn wire(&self) -> Wire<'_> {
+        Wire {
+            provider: Cow::Borrowed(&self.provider),
+            base_url: self
+                .endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.base_url.as_ref()),
+            inference_host: self
+                .endpoint
+                .as_ref()
+                .map_or("", |endpoint| endpoint.inference_host.as_ref()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Resolved;
+    use crate::provider::resolved::Dialled;
+    use af_crypto::secret::SecretString;
+    use afd_billing::rates::Posture;
+
+    fn resolved(endpoint: Option<Dialled>) -> Resolved {
+        Resolved::new(
+            Posture::SelfManaged,
+            "openai-compatible".into(),
+            "some-model".into(),
+            0,
+            endpoint,
+            SecretString::new("k".to_owned()),
+        )
+    }
+
+    #[test]
+    fn a_named_provider_passes_through_with_nothing_added() {
+        let named = Resolved::new(
+            Posture::Platform,
+            "anthropic".into(),
+            "some-model".into(),
+            0,
+            None,
+            SecretString::new("k".to_owned()),
+        );
+        let wire = named.wire();
+
+        assert_eq!(wire.provider, "anthropic");
+        assert_eq!(wire.base_url, None);
+        // Empty rather than the built-in host: the allowlist has nothing extra
+        // to admit, and inventing one here would be a second source of truth
+        // about where a named provider lives.
+        assert_eq!(wire.inference_host, "");
+    }
+
+    #[test]
+    fn a_configured_endpoint_preserves_the_selected_provider_name() {
+        // The undefined route this exists to prevent: `openai-compatible`
+        // paired with a URL classifies as no documented provider at all.
+        let custom = resolved(Some(Dialled {
+            base_url: "https://vllm.corp/v1".into(),
+            inference_host: "vllm.corp".into(),
+        }));
+        let wire = custom.wire();
+
+        assert_eq!(wire.provider, "openai-compatible");
+        assert_eq!(wire.base_url, Some("https://vllm.corp/v1"));
+        assert_eq!(wire.inference_host, "vllm.corp");
+    }
+
+    #[test]
+    fn configured_urls_do_not_replace_provider_identity() {
+        // One function produces all three, so a URL paired with an unprefixed
+        // name is unrepresentable. Asserted as the relationship rather than the
+        // literal.
+        for url in [
+            "https://vllm.corp/v1",
+            "https://gw.example.com:8443/openai/v1",
+            "https://[2606:4700:4700::1111]/v1",
+        ] {
+            let wire = resolved(Some(Dialled {
+                base_url: url.into(),
+                inference_host: "irrelevant".into(),
+            }));
+            let wire = wire.wire();
+
+            assert_eq!(wire.base_url, Some(url));
+            assert_eq!(wire.provider, "openai-compatible");
+        }
+    }
+
+    #[test]
+    fn a_host_is_announced_only_alongside_the_url_it_was_validated_from() {
+        // The allowlist admits `inference_host`; the run dials `base_url`. If
+        // one could appear without the other the run would reach a host nothing
+        // cleared, or be refused a host it was cleared for.
+        assert_eq!(resolved(None).wire().inference_host, "");
+        let paired = resolved(Some(Dialled {
+            base_url: "https://vllm.corp/v1".into(),
+            inference_host: "vllm.corp".into(),
+        }));
+        let wire = paired.wire();
+        assert!(wire.base_url.is_some() && !wire.inference_host.is_empty());
+    }
+}
