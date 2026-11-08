@@ -266,11 +266,13 @@ async fn scan_pages(
             tree.apply(entry)?;
         }
         manifest.pages.push((page.id.into(), digest));
-        for object in &contents.history_objects {
-            manifest
-                .history
-                .push(Uuid7::parse(object).map_err(|_text| TaskRefusal::CheckpointIncompatible)?);
-        }
+        let history = contents
+            .history_objects
+            .iter()
+            .map(|object| Uuid7::parse(object))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|_text| TaskRefusal::CheckpointIncompatible)?;
+        manifest.history.extend(history);
     }
     if manifest.pages.len() != ids.len() {
         return Err(TaskRefusal::CheckpointIncompatible.into());
