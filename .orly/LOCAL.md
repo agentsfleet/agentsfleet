@@ -93,12 +93,21 @@ repository:
   runner-only `afr_*`. A layer's binary sits in `main/` (`daemon/main` is
   `agentsfleetd`, `runner/main` is `agentsfleet_runner`); every other folder
   is its crate's name.
-- **SQL:** schema slots are `schema/*.sql`; statement files are
-  `rustd/crates/**/src/**/*.sql`; the migration list is
+- **SQL:** schema files are `schema/<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, one
+  per table, holding its whole `CREATE` — every column, constraint, index, grant,
+  function and trigger. The only `ALTER` is a foreign key that closes a cycle, in
+  the later table's file. Until the first production deploy a change to a table
+  edits its file; after it, a change is a new `<UTC>_<schema>_<table>_<what>.sql`,
+  and `version_of` refuses any other name (Indy, Nov 08, 2026). Statement files
+  are `rustd/crates/**/src/**/*.sql`; the migration list is
   `rustd/crates/daemon/afd_db/src/migration.rs`; a foreign-key violation is read with
   `afd_db::constraint::violates_foreign_key`.
 - **Identifiers and secrets:** identifiers come from `af_core::id`, secret
   bytes from `af_crypto::entropy`.
+  Every column, parameter and array that holds an identifier this system mints
+  is a Postgres `uuid`, bound and read as `Uuid7`. `TEXT` holds only external
+  identifiers, keys and digests, and no statement casts an identifier between
+  the two (Indy, Nov 08, 2026).
 - **HTTP:** wire types live in `af_wire`; routes in
   `rustd/crates/daemon/afd_http/src/route/*.rs`; handlers in
   `rustd/crates/daemon/afd_api_*/src/**`; bounds and paging in `af_validate` and

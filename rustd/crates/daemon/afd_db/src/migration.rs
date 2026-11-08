@@ -1,12 +1,13 @@
 //! The canonical migration list, and what one migration is.
 //!
-//! # The version IS the slot number
+//! # The version IS the file's timestamp
 //!
-//! `1610_connector_installs.sql` applies as version 1610. [`version_of`] derives
-//! the number from the filename during constant evaluation, so a version that
-//! disagrees with the file it names is not a mistake anyone can make. A
-//! filename that is not `<digits>_<name>.sql` fails the build. Slot files are
-//! named `NNNN_<schema>_<table>.sql`.
+//! `20261108122200_connector_installs.sql` applies as version 20261108122200. [`version_of`]
+//! derives the number from the filename during constant evaluation, so a
+//! version that disagrees with the file it names is not a mistake anyone can
+//! make. A filename that does not open with a UTC `yyyymmddHHMMSS` timestamp
+//! and `_` fails the build. A table's file is `<UTC>_<schema>_<table>.sql`; a
+//! later change to it is `<UTC>_<schema>_<table>_<what>.sql`.
 //!
 //! # sqlx applies them
 //!
@@ -116,142 +117,99 @@ pub const fn version_from_name(name: &str) -> i64 {
 /// Every migration this binary knows, in application order.
 ///
 /// Order is ascending version, which is also foreign-key order: a table follows
-/// every table it references, across schemas, and a foreign key that closes a
-/// cycle (a head pointer) has its own slot after both of its tables.
+/// every table it references, across schemas. A foreign key that closes a
+/// cycle (a head pointer) is the one `ALTER` a file holds, in the file of the
+/// cycle's later table.
 pub static MIGRATIONS: &[Migration] = &[
-    // 10xx substrate — runs before any table exists
-    migration!("1000_schemas.sql"),
-    migration!("1010_roles_and_privileges.sql"),
-    // 11xx identity — the tenant root and everything that authenticates
-    migration!("1100_identity_tenants.sql"),
-    migration!("1110_identity_workspaces.sql"),
-    migration!("1120_identity_users.sql"),
-    migration!("1130_identity_memberships.sql"),
-    migration!("1140_identity_invites.sql"),
-    migration!("1150_identity_api_keys.sql"),
-    migration!("1160_identity_cli_credentials.sql"),
-    migration!("1170_identity_user_preferences.sql"),
-    // 12xx vault
-    migration!("1200_vault_secrets.sql"),
-    // 13xx model catalogue and tenant models
-    migration!("1300_model_platform_models.sql"),
-    migration!("1305_model_platform_model_prices.sql"),
-    migration!("1310_model_catalogue_version.sql"),
-    migration!("1320_model_platform_defaults.sql"),
-    migration!("1330_model_tenant_models.sql"),
-    migration!("1340_model_tenant_selections.sql"),
-    // 14xx authoring Library — cards and their frozen revisions
-    migration!("1400_authoring_library_entries.sql"),
-    migration!("1410_authoring_library_revisions.sql"),
-    migration!("1420_authoring_library_entries_head_revision.sql"),
-    // 15xx fleets and their frozen setup history
-    migration!("1500_fleet_fleets.sql"),
-    migration!("1510_fleet_revisions.sql"),
-    migration!("1520_fleet_fleets_head_revision.sql"),
-    // 16xx connector — grants, outside accounts, channels
-    migration!("1600_connector_integration_grants.sql"),
-    migration!("1610_connector_installs.sql"),
-    migration!("1620_connector_channels.sql"),
-    // 17xx fleet work — events, admissions, gates, obligations, schedules
-    migration!("1700_fleet_events.sql"),
-    migration!("1710_fleet_tool_calls.sql"),
-    migration!("1720_fleet_admissions.sql"),
-    migration!("1730_fleet_approval_gates.sql"),
-    migration!("1740_fleet_obligations.sql"),
-    migration!("1750_fleet_schedules.sql"),
-    migration!("1760_fleet_sessions.sql"),
-    migration!("1770_fleet_activity_counters.sql"),
-    // 18xx runner control plane
-    migration!("1800_runner_runners.sql"),
-    migration!("1810_runner_leases.sql"),
-    migration!("1820_runner_fleet_slots.sql"),
-    migration!("1830_runner_events.sql"),
-    migration!("1840_runner_lifetime_counters.sql"),
-    // 19xx authoring chat — drafts, turns, attempts, receipts
-    migration!("1900_authoring_drafts.sql"),
-    migration!("1910_authoring_candidates.sql"),
-    migration!("1920_authoring_drafts_head_candidate.sql"),
-    migration!("1930_authoring_messages.sql"),
-    migration!("1940_authoring_attempts.sql"),
-    migration!("1950_authoring_dispatches.sql"),
-    migration!("1960_authoring_activity_receipts.sql"),
-    migration!("1970_authoring_answer_receipts.sql"),
-    migration!("1980_authoring_replay_receipts.sql"),
-    // 20xx billing — the wallet and every charge
-    migration!("2000_billing_wallets.sql"),
-    migration!("2030_billing_authoring_report_receipts.sql"),
-    migration!("2040_billing_usage_lines.sql"),
-    migration!("2050_billing_holds.sql"),
-    // 21xx memory
-    migration!("2100_memory_entries.sql"),
-    migration!("2110_fleet_admissions_queue.sql"),
-    migration!("2120_fleet_admissions_drop_receipt.sql"),
-    migration!("2130_authoring_dispatch_deadline.sql"),
-    migration!("2140_fleet_admissions_claim_order.sql"),
-    migration!("2150_fleet_approval_gate_deadlines.sql"),
-    migration!("2160_memory_context_checkpoints.sql"),
-    migration!("2170_authoring_message_save.sql"),
-    migration!("2180_fleet_event_type_index.sql"),
-    migration!("2210_billing_holds_drop.sql"),
-    migration!("2220_billing_usage_lines_unsettled_tenant_index.sql"),
-    migration!("2230_fleet_task_items.sql"),
-    migration!("2240_fleet_tasks.sql"),
-    migration!("2250_fleet_task_inputs.sql"),
-    migration!("2260_fleet_task_bindings.sql"),
-    migration!("2270_model_decision_revisions.sql"),
-    migration!("2280_model_decisions.sql"),
-    migration!("2290_model_decision_prices.sql"),
-    migration!("2300_runner_decision_model.sql"),
-    migration!("2310_runner_lease_decisions.sql"),
-    migration!("2320_runner_decision_calls.sql"),
-    migration!("2330_runner_decision_payloads.sql"),
-    migration!("2340_authoring_edit_decisions.sql"),
-    migration!("2350_fleet_task_adoptions.sql"),
-    migration!("2360_fleet_task_unfinished_order.sql"),
-    migration!("2370_fleet_input_conversation_order.sql"),
-    migration!("2380_fleet_task_effects.sql"),
-    migration!("2390_fleet_task_effect_states.sql"),
-    migration!("2400_fleet_task_interpretations.sql"),
-    migration!("2420_fleet_task_effect_payloads.sql"),
-    migration!("2430_fleet_task_input_receipts.sql"),
-    migration!("2440_fleet_task_effect_recovery.sql"),
-    migration!("2450_fleet_task_identity_keys.sql"),
-    migration!("2460_fleet_task_storage_quota.sql"),
-    migration!("2470_fleet_task_bases.sql"),
-    migration!("2480_fleet_task_checkpoints.sql"),
-    migration!("2490_fleet_task_checkpoint_pages.sql"),
-    migration!("2500_fleet_task_base_pages.sql"),
-    migration!("2510_fleet_task_storage_purges.sql"),
-    migration!("2520_fleet_task_objects.sql"),
-    migration!("2530_fleet_task_object_refs.sql"),
-    migration!("2540_fleet_task_object_pins.sql"),
-    migration!("2550_fleet_task_checkpoint_binding.sql"),
-    migration!("2560_fleet_task_checkpoint_operations.sql"),
-    migration!("2570_fleet_task_checkpoint_cleanup.sql"),
-    migration!("2580_fleet_task_waits.sql"),
-    migration!("2590_fleet_task_completions.sql"),
-    migration!("2600_fleet_task_wait_binding.sql"),
-    migration!("2610_runner_task_lease_cursors.sql"),
-    migration!("2620_fleet_task_transition_reason.sql"),
-    migration!("2630_fleet_task_admission_generations.sql"),
-    migration!("2640_fleet_task_completion_fanout.sql"),
-    migration!("2650_connector_person_links.sql"),
-    migration!("2660_event_task_activity.sql"),
-    migration!("2670_identity_workspace_lock.sql"),
-    migration!("2680_fleet_task_completion_lock.sql"),
-    migration!("2690_runner_durable_tasks.sql"),
+    migration!("20261108120000_schemas.sql"),
+    migration!("20261108120100_roles_and_privileges.sql"),
+    migration!("20261108120200_identity_tenants.sql"),
+    migration!("20261108120300_identity_workspaces.sql"),
+    migration!("20261108120400_identity_users.sql"),
+    migration!("20261108120500_identity_memberships.sql"),
+    migration!("20261108120600_identity_invites.sql"),
+    migration!("20261108120700_identity_api_keys.sql"),
+    migration!("20261108120800_identity_cli_credentials.sql"),
+    migration!("20261108120900_identity_user_preferences.sql"),
+    migration!("20261108121000_vault_secrets.sql"),
+    migration!("20261108121100_model_platform_models.sql"),
+    migration!("20261108121200_model_platform_model_prices.sql"),
+    migration!("20261108121300_model_catalogue_version.sql"),
+    migration!("20261108121400_model_platform_defaults.sql"),
+    migration!("20261108121500_model_tenant_models.sql"),
+    migration!("20261108121600_model_tenant_selections.sql"),
+    migration!("20261108121700_authoring_library_entries.sql"),
+    migration!("20261108121800_authoring_library_revisions.sql"),
+    migration!("20261108121900_fleet_fleets.sql"),
+    migration!("20261108122000_fleet_revisions.sql"),
+    migration!("20261108122100_connector_integration_grants.sql"),
+    migration!("20261108122200_connector_installs.sql"),
+    migration!("20261108122300_connector_channels.sql"),
+    migration!("20261108122400_fleet_events.sql"),
+    migration!("20261108122500_fleet_tool_calls.sql"),
+    migration!("20261108122600_fleet_approval_gates.sql"),
+    migration!("20261108122700_fleet_obligations.sql"),
+    migration!("20261108122800_fleet_schedules.sql"),
+    migration!("20261108122900_fleet_sessions.sql"),
+    migration!("20261108123000_fleet_activity_counters.sql"),
+    migration!("20261108123100_runner_runners.sql"),
+    migration!("20261108123200_runner_leases.sql"),
+    migration!("20261108123300_runner_fleet_slots.sql"),
+    migration!("20261108123400_runner_events.sql"),
+    migration!("20261108123500_runner_lifetime_counters.sql"),
+    migration!("20261108123600_authoring_drafts.sql"),
+    migration!("20261108123700_authoring_candidates.sql"),
+    migration!("20261108123800_authoring_messages.sql"),
+    migration!("20261108123900_authoring_attempts.sql"),
+    migration!("20261108124000_authoring_dispatches.sql"),
+    migration!("20261108124100_authoring_activity_receipts.sql"),
+    migration!("20261108124200_authoring_answer_receipts.sql"),
+    migration!("20261108124300_authoring_replay_receipts.sql"),
+    migration!("20261108124400_billing_wallets.sql"),
+    migration!("20261108124500_billing_authoring_report_receipts.sql"),
+    migration!("20261108124600_billing_usage_lines.sql"),
+    migration!("20261108124700_memory_entries.sql"),
+    migration!("20261108124800_memory_context_checkpoints.sql"),
+    migration!("20261108124900_fleet_task_items.sql"),
+    migration!("20261108125000_fleet_tasks.sql"),
+    migration!("20261108125100_fleet_admissions.sql"),
+    migration!("20261108125200_fleet_task_inputs.sql"),
+    migration!("20261108125300_model_decision_revisions.sql"),
+    migration!("20261108125400_model_decision_prices.sql"),
+    migration!("20261108125500_runner_decision_calls.sql"),
+    migration!("20261108125600_runner_decision_payloads.sql"),
+    migration!("20261108125700_authoring_edit_decisions.sql"),
+    migration!("20261108125800_fleet_task_adoptions.sql"),
+    migration!("20261108125900_fleet_task_effects.sql"),
+    migration!("20261108130000_fleet_task_effect_states.sql"),
+    migration!("20261108130100_fleet_task_interpretations.sql"),
+    migration!("20261108130200_fleet_task_effect_payloads.sql"),
+    migration!("20261108130300_fleet_task_input_receipts.sql"),
+    migration!("20261108130400_fleet_task_effect_recovery.sql"),
+    migration!("20261108130500_fleet_task_identity_keys.sql"),
+    migration!("20261108130600_fleet_task_storage_quota.sql"),
+    migration!("20261108130700_fleet_task_bases.sql"),
+    migration!("20261108130800_fleet_task_checkpoints.sql"),
+    migration!("20261108130900_fleet_task_checkpoint_pages.sql"),
+    migration!("20261108131000_fleet_task_base_pages.sql"),
+    migration!("20261108131100_fleet_task_storage_purges.sql"),
+    migration!("20261108131200_fleet_task_objects.sql"),
+    migration!("20261108131300_fleet_task_object_refs.sql"),
+    migration!("20261108131400_fleet_task_object_pins.sql"),
+    migration!("20261108131500_fleet_task_checkpoint_operations.sql"),
+    migration!("20261108131600_fleet_task_waits.sql"),
+    migration!("20261108131700_fleet_task_completions.sql"),
+    migration!("20261108131800_fleet_task_completion_fanout.sql"),
+    migration!("20261108131900_connector_person_links.sql"),
 ];
 
-/// Derives the slot number from the filename during constant evaluation.
-///
-/// Slice patterns rather than index arithmetic, the way
-/// `af_core::error_code::is_registry_spelling` reads every bound out of the
-/// pattern instead of out of a comparison.
+/// Derives the version from the filename during constant evaluation: its UTC
+/// `yyyymmddHHMMSS` timestamp, the one way a schema file is named.
 ///
 /// # Panics
-/// During constant evaluation, when the name does not start with digits
-/// followed by `_`. Every call site is a `static` initialiser, so a malformed
-/// filename fails the build and never the process.
+/// During constant evaluation, when the name does not open with fourteen digits
+/// spelling a real UTC instant followed by `_`. Every call site is a `static`
+/// initialiser, so a malformed filename fails the build and never the process.
 const fn version_of(name: &str) -> i64 {
     let mut rest = name.as_bytes();
     let mut version: i64 = 0;
@@ -264,12 +222,27 @@ const fn version_of(name: &str) -> i64 {
     }
 
     assert!(
-        digits > 0,
-        "schema filename must start with its slot number"
+        digits == 14,
+        "schema filename must open with a yyyymmddHHMMSS timestamp"
     );
     assert!(
         matches!(rest, [b'_', ..]),
-        "schema filename must separate its slot number with an underscore"
+        "schema filename must separate its timestamp with an underscore"
     );
+    let year = version / 10_000_000_000;
+    let month = (version / 100_000_000).rem_euclid(100);
+    let day = (version / 1_000_000).rem_euclid(100);
+    let hour = (version / 10_000).rem_euclid(100);
+    let minute = (version / 100).rem_euclid(100);
+    let second = version.rem_euclid(100);
+    assert!(year >= 2000, "schema timestamp year is before 2000");
+    assert!(
+        month >= 1 && month <= 12,
+        "schema timestamp month is not 01-12"
+    );
+    assert!(day >= 1 && day <= 31, "schema timestamp day is not 01-31");
+    assert!(hour <= 23, "schema timestamp hour is not 00-23");
+    assert!(minute <= 59, "schema timestamp minute is not 00-59");
+    assert!(second <= 59, "schema timestamp second is not 00-59");
     version
 }
