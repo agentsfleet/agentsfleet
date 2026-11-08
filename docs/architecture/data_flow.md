@@ -485,7 +485,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 
    STEER     agentsfleet steer <fleet_id> "morning health check"
                → POST /v1/.../fleets/{id}/messages
-               → one statement (afd_admission's admit_one.sql):
+               → one write (afd_admission's admit_one.sql), then one read of run facts:
                  INSERT fleet.admissions
                       actor=steer:kishore  type=chat
                       workspace_id=<ws>    request=<msg>
@@ -628,9 +628,9 @@ The lease call prepares work for the runner. The report call commits its termina
 
 **Folded messages.** A message admitted while the fleet's run is live answers `folded` with `folded_into_event_id`.
 
-At its next model call the running lease claims every later unsettled message its fleet received, whatever sent it. The claim stops at the first parked or task-bound message and stamps `input_claim_lease_id` and `input_claim_fence` on each row.
+At its next model call the running lease claims a person's later unsettled messages in its own conversation. The claim stops at the first parked, task-bound or non-person message and stamps `input_claim_lease_id` and `input_claim_fence` on each row.
 
-A durable-task run claims only a person's later messages in its own conversation.
+A durable-task run follows the same rule through its own input claim.
 
 When the run reports succeeded, each folded message a model call read gets the run's reply on its own event. Its admission settles in the report's transaction. A claimed message no completed call read stays unsettled, and the fleet's next run takes it in order.
 

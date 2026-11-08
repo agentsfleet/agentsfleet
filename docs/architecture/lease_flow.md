@@ -101,7 +101,7 @@ Under `Policy::AppIngress` every `pull_request` action wakes the fleet except on
 ### Admission commits the queue row
 
 Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
-An accepted message costs one top-level statement (`afd_admission`'s `admit_one.sql`), and no fleet-row lock is held across round trips.
+An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
 
 Repeated producer identities return the existing admission. After commit, a bounded wake publish can prioritize its fleet on the next poll.
 

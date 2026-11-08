@@ -347,6 +347,12 @@ _RUSTD_SHARD_LCOV := $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).info
 # The exclusive hub suite gets the cluster to itself here too. The single
 # `--include-ignored` invocation this replaces ran it beside every other suite,
 # the one thing `EXCLUSIVE_FILTER` says it must never do.
+# Each step reports its own time: the migrate line its build and run, Cargo's
+# "Finished `test` profile" line the test build, `_rust_lane` the build and the
+# tests together, and the render line the report. The migrate build cannot
+# share the test build's dependencies: tests turn on dev-dependency features
+# (`tokio`'s `process` and `test-util` among them), so every crate above
+# `tokio` builds twice. Measured Nov 08, 2026 with `cargo tree -e features`.
 test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores (RUSTD_SHARD=<one> for a Continuous Integration shard)
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@$(if $(_RUSTD_SHARD_UNKNOWN),echo "✗ [rustd] unknown RUSTD_SHARD: $(_RUSTD_SHARD_UNKNOWN) (known: $(RUSTD_SHARDS))"; exit 1,true)
@@ -354,10 +360,11 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	@echo "→ [rustd] Removing stale instrumented workspace artifacts..."; \
 	cd $(RUSTD_DIR) && cargo llvm-cov clean --workspace
 	@echo "→ [infra] Applying migrations through the instrumented daemon..."; \
+	started=$$(date +%s); \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
 	  cargo llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
-	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
-	@echo "✓ [infra] Instrumented schema applied"
+	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }; \
+	echo "✓ [infra] Instrumented schema applied ($$(( $$(date +%s) - started ))s, its build included)"
 	@$(_api_login)
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard runner: the runner crates, then the runner against the daemon..."; \
@@ -381,9 +388,11 @@ ifeq ($(_RUSTD_SHARD_ALL),yes)
 	@$(_RUSTD_COVERAGE_JUDGE) --out $(RUSTD_DIR)/lcov.info $(RUSTD_DIR)/lcov-all.info
 else
 	@echo "→ [rustd] Rendering shard $(RUSTD_SHARD)'s profile; test-coverage-rustd-merge grades the floor..."; \
+	started=$$(date +%s); \
 	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-$(RUSTD_SHARD).info \
-	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
+	  || { echo "✗ [rustd] lcov report failed"; exit 1; }; \
+	echo "✓ [rustd] shard $(RUSTD_SHARD)'s profile rendered ($$(( $$(date +%s) - started ))s)"
 	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).rev
 	@echo "✓ [rustd] shard $(RUSTD_SHARD) measured: $(_RUSTD_SHARD_LCOV)"
 endif
