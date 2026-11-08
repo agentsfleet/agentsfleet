@@ -68,8 +68,9 @@ async fn save_with_a_blocked_first_run(case: &Case) -> Value {
     request["start"] = json!({"kind":"run_now","message":RUN_NOW});
     let key = mint();
     let response = case.save(key.as_str(), &request).await;
-    assert_eq!(response.status(), StatusCode::CREATED);
+    let status = response.status();
     let blocked = json_body(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{blocked}");
     assert_eq!(blocked["status"], "active");
     assert_eq!(blocked["start"]["state"], "blocked");
     assert_eq!(count(case, &blocked).await, 0);

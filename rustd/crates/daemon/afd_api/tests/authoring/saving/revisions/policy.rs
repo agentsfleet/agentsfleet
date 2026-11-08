@@ -34,8 +34,10 @@ UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM incompatible) WHERE id=
         &body.to_string(),
     )
     .await;
-    assert_eq!(repeated.status(), StatusCode::ACCEPTED);
-    assert_eq!(json_body(repeated).await["event_id"], first["event_id"]);
+    let status = repeated.status();
+    let repeated = json_body(repeated).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{repeated}");
+    assert_eq!(repeated["event_id"], first["event_id"]);
     let new = json!({"message":"New work after the policy change","operation_id":mint()});
     let refused = send(
         &fleet.case.router,
