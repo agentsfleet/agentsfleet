@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Implementation branch:** `feat/m243-runner-push-stream`, worktree `/workspace/agentsfleet-m243`, based on `origin/main` `21e81eba7`.
 
@@ -103,6 +103,9 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 |------|--------|-----|
 | `docs/v2/pending/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
 | `docs/architecture/runner_protocol.md`, `docs/architecture/README.md` | CREATE, EDIT | §3: frames, ordering, rebuild, cancel, supersede, timings; §1's transport evidence; index row |
+| `rustd/crates/daemon/afd_runner/src/capacity/**`, `rustd/crates/daemon/afd_gateway/src/connection.rs`, `rustd/crates/daemon/afd_http/src/auth/guard.rs`, `rustd/crates/daemon/afd_http/src/route/mod.rs` | EDIT, CREATE | atomic session authority and native connection-local secondary-lane binding |
+| `rustd/crates/daemon/{afd_admission,afd_approval,afd_authoring,afd_events,afd_fleet,afd_gate,afd_sse,afd_api_tenant,afd_http,afd_api_runner,afd_api_operator,afd_api,afd_bench}/Cargo.toml` and their bus-owning constructors and module indexes | EDIT | inject the one boot-selected bus into every caller; remove direct pub/sub dependencies where unused |
+| `rustd/crates/daemon/main/Cargo.toml`, `rustd/crates/daemon/main/tests/daemon_suite.rs`, `rustd/crates/daemon/main/tests/support/{e2e_wire,e2e_tail,e2e_speaking,e2e_schedules}.rs`, `rustd/crates/protocol/af_wire/tests/wire_suite.rs` | EDIT | register carrier/protocol tests and convert shared harnesses that call retired routes |
 | `docs/architecture/push_scheduler.md` | EDIT | §M243 status; retires "no cancel channel" and "not a general scheduler"; §8's baseline row |
 | `docs/architecture/runner_fleet.md`, `lease_flow.md`, `data_flow.md`, `scaling.md`, `observability.md`, `api_resources.md`, `runner_execution.md`, `user_flow.md`, `scenarios/fleet-to-fleet.md`, `scenarios/slack-incident-responder.md` | EDIT | §7: the held heartbeat, the poll, the retired routes, kill and the idle-cost knob, described as the stream |
 | `docs/AUTH.md` | EDIT | §7: auth once per connection, revocation pushed with its backstop, the grant re-check |
@@ -187,8 +190,8 @@ Cloudflare and WebSocket are not prerequisites or fallback paths.
 The first candidate is `tokio-quiche` for HTTP/3, alongside the existing Hyper and h2 stack for HTTP/2.
 The spike checks build targets, certificate verification, native duplex operation, queue bounds, cancellation and telemetry before dependency selection is fixed.
 
-The spike fixes how control, reports and activity use separate HTTP streams or bounded framing.
-Every lane must bind to the same authenticated runner session, with no competing serving sessions or unbounded buffers.
+The three-lane mapping, native connection binding, framing bytes, request identifiers and recovery budgets are fixed in `runner_protocol.md`.
+The spike verifies those choices on both carriers before production wiring.
 Authentication, certificate and protocol refusals fail closed; changing the transport must not bypass them.
 
 - **Dimension 1.1** — each carrier stays open and exchanges both ways → Test `direct_carriers_exchange_while_upload_remains_open` (native transport integration): HTTP/3 and HTTP/2 answer application pings during at least 120 seconds of an open request body.
@@ -256,12 +259,12 @@ Every `OFFER_FALLBACK_TICK`, each replica runs one probe: does any unsettled adm
 
 The other frames:
 - **heartbeat** runs `Runners::heartbeat` and answers it. Its policy read is widened to return status, whether the stored token hash still equals the connection's, and `connection_id` (CODE-SEAM).
-- **renew_batch** runs `Plane::renew` per entry, in order, and answers each lease's deadline or refusal code.
-- **activity** publishes through the cache with no statement; only an unknown lease id is read from Postgres, as today.
+- **renew_batch** runs `Plane::renew` per entry and preserves each complete `RenewResponse`, including `recorded_through`, or its classified refusal.
+- **activity** uses the cached target for ordinary chunks. Task observations retain their existing fenced database writes, canonical sequences and first-chunk telemetry. Cache eligibility expires with the confirmed lease deadline and clears on cancellation, refusal or report.
 - **report** runs `Plane::report` and answers `report_ack` with the saved result or a refusal code that says whether a retry helps. The report's spend and delivery telemetry moves here from the deleted handler.
 - **folds** runs M242_002's `Leasing::fold` under the lease's fence and answers `folded`. **Implementation default:** request and answer, not an unasked push, because the runner consumes input only at a model-call boundary, so a push would arrive no sooner.
 
-Authoring leases arrive as offers, because `Plane::claim` already picks either kind; their four per-lease routes stay HTTP. On drain the registry sends `go_away`, stops offering, answers frames already read and closes, bounded by `DRAIN_TIMEOUT`.
+Authoring leases arrive as offers; their four per-lease routes stay HTTP. On drain the registry stops offering, answers accepted work, then sends `go_away` and closes within `DRAIN_TIMEOUT`.
 
 - **Dimension 4.1** — a streamed chat reads the token once and no lease target → Test `a_streamed_chat_reads_no_lease_target` (integration, a private database filtered by `dbid` as `afd_events/tests/queued/snapshot.rs` does): one lease, 2 renewal batches, 40 activity frames and a report over the stream make 1 call of the runner-token statement and 0 of the lease-target statement. Over HTTP the lease-target statement runs 40 times.
 - **Dimension 4.2** — an unknown protocol is refused before opening → Test `an_unknown_protocol_version_is_refused` (integration): `agentsfleet.runner.v9` answers `400` UZ-RUN-023, never a successful session response.
@@ -279,7 +282,7 @@ Each push names its Postgres authority, so pub/sub's at-most-once delivery costs
 
 - **Kill.** The kill transaction in `afd_authoring/src/creation/patch.rs` marks the fleet's active leases in the same transaction (`mark_leases_cancel_requested.sql`). After commit, the handler publishes `Cancel` on each owning runner's subject. The replica holding that stream pushes `cancel`, and the runner cuts the lease with the class a terminal renewal refusal uses. **Implementation default:** that class, because both mean the daemon ended the lease, and a new class would change report and billing readers for no new decision. Backstops: renewal refuses a marked lease with UZ-RUN-022, and rebuild cancels it. Pause keeps today's behaviour.
 - **Revocation, rotation, cordon, drain, policy edits, delete.** After each runner-row write commits, the operator handler publishes `Recheck`. The owning session re-runs the heartbeat's read without its writes. A non-active status closes with UZ-RUN-009, a changed token hash or a missing row with UZ-RUN-001, and anything else pushes the new `heartbeat` answer. Backstop: the next heartbeat runs the same read, and a session with no heartbeat for two intervals closes. Every grant and renewal re-checks inside its transaction (§4).
-- **Supersede.** `runner.runners.connection_id` is the authority; connect overwrites it, and the last writer wins. An older session that reads another id sends `go_away` UZ-RUN-021 and closes, and a runner that receives it halts. A reconnecting runner has already dropped its old socket, so only a second process sharing the token sees UZ-RUN-021. It halts instead of the two flapping.
+- **Supersede.** Guarded connection acquisition compares the authenticated token digest before changing `connection_id`. Issue and streamed renewal compare that digest and expected connection while holding the existing host row lock. A superseded session cannot obtain further authority even if its notification is lost. Its next recheck sends `go_away` UZ-RUN-021 and closes; a second process sharing the token halts rather than flapping.
 
 - **Dimension 5.1** — a kill cancels a running lease from another replica → Test `killing_a_fleet_cancels_its_running_lease_across_replicas` (integration, two `Supervisor` daemons on the lane's Postgres and Dragonfly): the stream on replica B, the kill sent to A; the runner gets `cancel` within 1 s, the row carries `cancel_requested_at`, and the report settles with the renewal-refusal class.
 - **Dimension 5.2** — a lost cancel push ends at the next renewal → Test `a_cancel_whose_push_is_lost_ends_at_the_next_renewal` (integration, a bus that drops runner commands): the next `renewed` answers UZ-RUN-022 for that lease and a deadline for its sibling.
@@ -287,6 +290,7 @@ Each push names its Postgres authority, so pub/sub's at-most-once delivery costs
 - **Dimension 5.4** — a lost revocation push closes at the next heartbeat → Test `a_revocation_whose_push_is_lost_closes_at_the_next_heartbeat` (integration, a bus that drops runner commands): the stream closes on the next heartbeat with UZ-RUN-009, and no offer reaches it after the revoke commits.
 - **Dimension 5.5** — rotation closes the stream on the old token → Test `rotating_a_token_closes_the_stream_on_the_old_token` (integration): after `rotate`, the old stream closes with UZ-RUN-001 and the new token connects.
 - **Dimension 5.6** — a second connection supersedes the first → Test `a_second_connection_supersedes_the_first` (integration, two replicas): the first stream gets `go_away` UZ-RUN-021 and closes, and only the second receives offers.
+- **Dimension 5.7** — lost ownership notifications cannot grant authority → Test `a_stale_session_cannot_issue_or_renew_after_rotation_or_supersession` (integration): pause an old claim at the host lock, rotate or acquire a new connection, drop recheck notifications, and resume. The old transaction grants no lease or renewal; the current owner still succeeds.
 
 ### §6 — The runner takes work from the stream
 
@@ -310,16 +314,24 @@ The downlink dispatches each message:
 - `folded` to the lease's inbox (`verbs::FencedVerbs`); `heartbeat` answers to the assignment watch.
 - `go_away` triggers a reconnect, except UZ-RUN-021, which halts. A `401` at session opening halts through `Halt::stops_on`.
 
-The uplink writes in a fixed priority: control frames and folds, then reports, then renewals, then activity. Activity keeps its 64 KiB batches and drops past `MAX_BATCHES_HELD`, as today. Renewals batch per host each `RENEWAL_TICK`. The report spool deletes a report only on its `report_ack`, and replays it after a reconnect. A refusal that says a retry cannot help is discarded, as today.
+The control writer prioritizes renewals, cancellation and pings over folds and heartbeats.
+Reports and activity have separate bounded HTTP streams and writers; a report backlog cannot queue ahead of renewal.
+Activity retains its 64 KiB batches and drops past `MAX_BATCHES_HELD`.
+
+Renewals batch per host each `RENEWAL_TICK` and preserve each lease's complete `RenewResponse`, including `recorded_through`.
+The report spool deletes a report only on its matching `report_ack`, and replays after reconnect.
+Every answer echoes the session-local request identifier; disconnect fails and clears all pending callers.
 
 - **Dimension 6.1** — a bounded blackhole recovers inside the lease → Test `a_blackholed_stream_reconnects_and_reports_once` (native integration for both carriers): inject a bounded interruption between probes and measure total detection and recovery time. Renew before the confirmed deadline and settle the spooled report once. A separate sustained-outage test, `an_outage_never_extends_a_confirmed_lease`, must stop the lease at expiry.
 - **Dimension 6.2** — an activity flood never delays a renewal → Test `an_activity_flood_does_not_delay_renewal` (unit): with 1,000 activity batches queued, a renewal queued after them is the next frame written.
-- **Dimension 6.3** — reconnects spread out → Test `reconnects_spread_over_the_jitter_window` (unit, paused time): 100 runners told `go_away` at once reconnect within `RECONNECT_JITTER_MAX`, no more than 10 in any tenth of it.
+- **Dimension 6.3** — reconnects spread out → Test `reconnects_spread_over_the_jitter_window` (unit, paused time and injected random source): 100 runners reconnect within the initial jitter bound and occupy several time buckets. The test pins the deterministic injected sample; it does not demand an impossible perfectly even random distribution.
 - **Dimension 6.4** — a superseded runner halts → Test `a_superseded_runner_halts` (unit): `go_away` with UZ-RUN-021 stops the runner, and it opens no new connection.
 - **Dimension 6.5** — an idle runner asks for nothing → Test `an_idle_runner_sends_no_lease_request` (unit, paused time): an idle runner over 60 s writes only heartbeats and pings, and no frame asks for work.
 - **Dimension 6.6** — a runner runs a lease end to end over the stream → Test `a_runner_runs_a_lease_over_the_stream` (e2e, the `integration_runner_e2e` harness): an admitted event reaches the supervisor as an `offer`, streams activity to the tail, and settles its report.
 - **Dimension 6.7** — outbound proxy policy governs connection selection → Test `the_stream_connects_through_an_environment_proxy` (native integration, a CONNECT proxy and injected `MapEnv`): a required HTTP proxy selects the HTTP/2 path and receives the connection. No HTTP/3 attempt bypasses that policy.
 - **Dimension 6.8** — connection failures and fallback are visible → Test `stream_failures_and_recovery_emit_correlated_telemetry` (native integration): collect finite transport/reason labels and correlated attempt, failure, fallback and recovery records. A sustained outage remains distinguishable from a stable connection.
+- **Dimension 6.9** — usage acknowledgements survive carrier changes → Test `renewal_batches_acknowledge_usage_independently_across_reconnect` (integration): several leases each produce more than `LINES_MAX` records. Lose an answer, reconnect, replay and report. Each lease advances its own `recorded_through`; each provider request settles once.
+- **Dimension 6.10** — delayed answers cannot reach another caller → Test `late_replies_do_not_complete_cancelled_or_reconnected_calls` (unit): cancel folds and renewal waits, deliver their answers late, and reconnect. New request identifiers and the new session's map retain the correct callers and bounds.
 
 ### §7 — The pull path is deleted, and the docs describe the stream
 
@@ -340,8 +352,8 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 
 - **Route:** `POST /v1/runners/me/stream` over HTTP/3 or HTTP/2, with `Authorization: Bearer agt_r…` and `agentsfleet-runner-protocol: agentsfleet.runner.v1`. The opening answers `200`, `400` UZ-RUN-023, `401` UZ-RUN-001 or UZ-RUN-009, `503` with `Retry-After` at the ceiling, and `503` UZ-AUTH-004 when authentication storage cannot answer. §1 fixes any additional lane-binding headers before implementation.
 - **Frames**, JSON text tagged by `type`; bodies reuse today's wire types:
-  - up: `hello{accepted_kinds, running[lease_id], credits}`, `ready{credits}`, `heartbeat{HeartbeatRequest without wake}`, `ping{nonce}`, `renew_batch{leases[{lease_id, RenewRequest}]}` (`Up::RenewBatch`), `activity{lease_id, frames}`, `report{ReportRequest}`, `folds{lease_id, FoldRequest}`.
-  - down: `welcome{heartbeat_interval_ms}`, `offer{TaggedLease}`, `heartbeat{HeartbeatResponse without woken}`, `pong{nonce}`, `renewed{leases[{lease_id, lease_expires_at | error_code}]}`, `report_ack{lease_id, ReportResponse | error_code, retryable}`, `folded{lease_id, Folds | error_code}`, `cancel{lease_id, error_code}`, `go_away{error_code?}`.
+  - up: `hello{request_id, accepted_kinds, running[lease_id], credits}`, `ready{credits}`, `heartbeat{request_id, HeartbeatRequest without wake}`, `ping{request_id}`, `renew_batch{request_id, leases[{lease_id, RenewRequest}]}` (`Up::RenewBatch`), `activity{lease_id, frames}`, `report{request_id, ReportRequest}`, `folds{request_id, lease_id, FoldRequest}`.
+  - down: `welcome{request_id, connection_id, heartbeat_interval_ms}`, `offer{TaggedLease}`, `heartbeat{request_id, HeartbeatResponse without woken}`, `pong{request_id}`, `renewed{request_id, leases[{lease_id, RenewResponse | refusal}]}`, `report_ack{request_id, lease_id, ReportResponse | refusal}`, `folded{request_id, lease_id, FoldResponse | refusal}`, `cancel{lease_id, error_code}`, `go_away{error_code?}`. Every answerable up message carries the same positive request identifier; ready and activity need no reply.
 
 ```
 ↑ {"type":"hello","accepted_kinds":["fleet","authoring"],"running":[],"credits":4}
@@ -353,7 +365,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 - **Bus:** `afd_bus::Bus` with `publish(&Subject, &str)`, `publish_batch(&Subject, &[String])` and `subscribe(&Subject) -> Subscription`. `Subject` is `FleetTail(fleet_id) | DraftEvents(draft_id) | Wake(shard) | RunnerCommand(runner_id)`. `Received` is `Message | Lagged(u64) | Gap`, and `Command` is `Cancel{lease_id} | Recheck`.
 - **Schema:** `runner.leases.cancel_requested_at TIMESTAMPTZ(3) NULL`; `runner.runners.connection_id UUID NULL`, with a UUIDv7 check when set.
 - **Error codes:** UZ-RUN-021 "Runner stream superseded" (409); UZ-RUN-022 "Lease cancelled" (409); UZ-RUN-023 "Runner protocol unsupported" (400).
-- **Timing** (`af_core/src/timing.rs`): `STREAM_PING_INTERVAL` 15 s, the Server-Sent Events (SSE) keepalive; `STREAM_ANSWER_TIMEOUT` 5 s; `RECONNECT_JITTER_MAX` 2 s; `OFFER_FALLBACK_TICK` 5 s; and `PROXY_IDLE_FLOOR` 60 s, the Amazon Web Services (AWS) Application Load Balancer's default idle timeout, below any cut §1 measures. Asserted: `2 × STREAM_PING_INTERVAL < PROXY_IDLE_FLOOR`; `RENEWAL_TICK + STREAM_ANSWER_TIMEOUT + RECONNECT_JITTER_MAX < LEASE_TTL − RENEWAL_WINDOW`; `OFFER_FALLBACK_TICK < LEASE_TTL`; `2 × HEARTBEAT_INTERVAL < RUNNER_OFFLINE_AFTER`; and, in `agentsfleetd`, `RECONNECT_JITTER_MAX < DRAIN_TIMEOUT`.
+- **Timing** (`af_core/src/timing.rs`): `STREAM_PING_INTERVAL` 15 s; `STREAM_ANSWER_TIMEOUT` 5 s; `RECONNECT_JITTER_MAX` 2 s; `STREAM_RECOVERY_BUDGET` 7 s, comprising HTTP/3 setup 2 s, HTTP/2 setup 2 s and opening/rebuild 3 s; `STREAM_STABLE_RESET_AFTER` 60 s; `OFFER_FALLBACK_TICK` 5 s; `PROXY_IDLE_FLOOR` 60 s. Assert `RENEWAL_TICK + STREAM_ANSWER_TIMEOUT + RECONNECT_JITTER_MAX + STREAM_RECOVERY_BUDGET < LEASE_TTL − RENEWAL_WINDOW`. Preserve the ping, heartbeat, fallback and drain relations; cap every recovery attempt by the lease's remaining safe lifetime.
 - **Removed:** the six routes in §7, and `retry_after_ms` with `LeaseResponse`.
 
 ## Failure Modes
@@ -386,7 +398,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 1. No lease is granted to a non-active or degraded host, and none is renewed for a revoked or degraded one — `afd_runner::capacity::lock` decides inside the issue and renewal transactions, whatever the session believes; `a_grant_rechecks_the_host_inside_its_transaction` is the counterexample.
 2. A cancel outlives a lost publish — `cancel_requested_at` commits before the publish, and renewal and rebuild read it; `a_cancel_whose_push_is_lost_ends_at_the_next_renewal` fails if renewal ignores it.
 3. One runner has one serving stream — `connection_id` is last-writer-wins, and every heartbeat read compares it; `a_second_connection_supersedes_the_first` fails if the comparison goes.
-4. A reconnect fits inside a lease — the `const` assertions in `af_core/src/timing.rs` fail the build when a value moves out of order, and `stream_timings_leave_a_renewal_window_after_reconnect` restates them.
+4. A bounded first-attempt recovery leaves renewal slack; every outage retains the confirmed expiry deadline. The timing assertion includes the full seven-second carrier/open/rebuild budget. `an_outage_never_extends_a_confirmed_lease` proves the unconditional deadline rule.
 5. A report leaves the runner spool only on its acknowledgement — the spool's delete takes the `report_ack`; `a_blackholed_stream_reconnects_and_reports_once` fails on a lost or doubled report.
 6. Renewals never queue behind activity — the uplink's biased select; `an_activity_flood_does_not_delay_renewal` fails if the order flips.
 
@@ -404,7 +416,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The transport choice rests on recorded tunnel evidence (§1) | `grep -c "^## Transport evidence" docs/architecture/runner_protocol.md` | `1` | P0 | |
+| R1 | Both native carriers have recorded transport evidence (§1) | `make test-integration-rustd` and the commands/outcomes in `runner_protocol.md` | native duplex, fallback, refusal and control-pressure tests pass; an empty heading is insufficient | P0 | |
 | R2 | No production crate names a Dragonfly pub/sub type (§2) | `git grep -n -w -e SubscriptionHub -e publish_tail -e "doorbell::publish" -- 'rustd/crates/*/src/*' ':!rustd/crates/daemon/afd_dragonfly' ':!rustd/crates/daemon/afd_bus'` | no output | P0 | |
 | R3 | The protocol page and edited docs read clean (§3, §7) | `orly gate verify` | exit 0 | P0 | |
 | R4 | A streamed chat reads no lease target (§4) | `make test-integration-rustd` | output holds `a_streamed_chat_reads_no_lease_target ... ok` | P0 | |
@@ -494,7 +506,8 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
 - **Implementer source checks:** `origin/main` is `21e81eba7`; M242 landed in #815. This worktree contains no runtime edits.
 - **Path corrections:** folding lives in `afr_supervisor/src/client/lease_verbs/mod.rs` and `verbs::FencedVerbs`; the proposed `client/folds.rs` and `inbox.rs` do not exist.
 - **Transport references:** Codex's inspected checkout is `748ab55ca7de0b647d9a7a9d9a8e70e00f28666d`. Its supervision patterns apply; its WebSocket dependencies do not.
-- **Review status:** the transport revision remains pending until the direct-carrier spike fixes stream mapping, authentication binding, framing and deployment inputs.
+- **Review status:** the three fresh-context Elephant-Goldfish reviewers completed their first audit. Accepted corrections fix the three-lane mapping, connection-local binding, framing, response correlation, full renewal acknowledgements, aggregate recovery budget, grant authority fencing, task activity, drain order and test registration. Native evidence remains an implementation gate, not a claimed pass.
+- **Data dependency:** fetched `origin/fix/m242-fold-scope` at `d8ec02123` still lacks the promised `af_core/sqlx` feature and event-key rewrite. Recheck the completed follow-up before compiling new data access against it; carrier implementation can proceed independently.
 
 - **Consults** — source review on `main` `14539a73e` plus M241's branch, Nov 06, 2026:
   - Auth admits only `active` runners (`afd_state/src/credentials/rows.rs`), so cordon and drain refuse every call today; the stream keeps that by closing.

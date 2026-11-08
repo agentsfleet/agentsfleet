@@ -1,7 +1,7 @@
 # Runner stream protocol
 
 This page records the M243 implementation design. The transport and gateway are not implemented yet.
-The pending M243 specification holds the acceptance tests and progress.
+The active M243 specification holds the acceptance tests and progress.
 
 ## Connection direction and deployment
 
@@ -81,9 +81,49 @@ Message size, running-lease count, renewal count and queue bounds apply equally 
 Native HTTP frame boundaries are not application-message boundaries.
 The codec must reject an oversized declared length before allocating that payload.
 
-Control, reports and activity need independently bounded scheduling.
-The transport spike must choose and document their HTTP stream mapping and authentication binding before implementation.
-Large reports must not prevent cancellation or renewal from making progress.
+Each carrier opens three duplex POST requests on one native connection, all at `/v1/runners/me/stream`.
+The `agentsfleet-runner-lane` header selects `control`, `reports` or `activity`.
+The protocol header is `agentsfleet-runner-protocol: agentsfleet.runner.v1`.
+
+The control request presents the runner bearer token and opens first.
+After authentication and guarded ownership acquisition, `welcome` returns the connection identifier.
+The other two requests present that identifier in `agentsfleet-runner-session`.
+
+The server supplies a connection-local context as a typed request extension.
+That context binds the proven runner, credential digest, connection identifier and cancellation token.
+A secondary lane must match that context, its current session and its declared lane exactly.
+
+The server rejects duplicate lanes, missing context, another connection's identifier, cancelled bindings and secondary bearer-token authentication.
+One session reserves one ceiling permit, shared by its lanes.
+Closing the native connection cancels all three requests and their pending operations.
+
+The control lane carries hello, credits, heartbeat, ping, renewal, folds, offers, cancellation and drain.
+The reports lane carries reports and their acknowledgements; the activity lane carries activity without acknowledgements.
+Wrong-lane messages are protocol errors.
+
+Each message is a four-byte, unsigned big-endian length followed by UTF-8 JSON.
+The length covers only the JSON bytes, with a maximum of 2 MiB.
+`tokio_util::codec::LengthDelimitedCodec` enforces framing and allocation bounds.
+
+Requests expecting answers carry a positive, session-local `request_id` that every answer echoes.
+The counter never repeats within a session; exhaustion ends that session.
+At most 256 requests may be outstanding, and every pending entry has an answer deadline.
+
+Cancellation, timeout and disconnect remove the pending entry and fail its waiting caller.
+Late or duplicate answers have no pending owner and are ignored with bounded telemetry.
+A new session starts a new request map; old answers cannot reach its callers.
+
+Each successful renewal entry carries the complete `RenewResponse`, including `recorded_through`.
+Usage acknowledgements advance independently for each lease, including after a repeated renewal.
+Final usage flushing keeps its existing batching behavior.
+
+Renewals, ping and cancellation receive control service ahead of folds and ordinary heartbeat updates.
+Reports use a separate bounded writer and cannot queue ahead of control.
+Activity drops beyond its cap, while reports remain durably spooled.
+
+Data writes use chunks of at most 16 KiB and bounded per-stream flow-control windows.
+The connection receive window exceeds the combined data-lane windows, preserving control credit.
+Native tests must prove control progress with continuously ready reports and activity.
 
 Multiple QUIC streams can avoid transport ordering stalls between lanes.
 Messages sharing one ordered stream still wait for missing earlier bytes.
@@ -142,8 +182,13 @@ The writer's deadline also bounds a socket stuck during an in-progress send.
 ## Libraries and reference code
 
 The HTTP/2 carrier uses the existing Hyper, h2, Tokio and TLS stack.
-The HTTP/3 candidate is `tokio-quiche`, using its native HTTP/3 client and server drivers.
-The spike must verify certificate handling, supported targets, build requirements, cancellation and metric integration before pinning its version.
+The HTTP/3 implementation uses `tokio-quiche` 0.20.1 with default compression features disabled.
+Its native client and server drivers handle HTTP/3; its BoringSSL dependency handles that carrier's TLS.
+HTTP/2 uses the workspace's existing h2, Hyper, Tokio and Rustls versions.
+
+The native spike verifies certificate handling, build targets, cancellation and metric integration before production wiring.
+It never disables peer verification to obtain a passing test.
+State-changing operations wait for the completed handshake; early data is disabled.
 
 Cloudflare documents production use of `tokio-quiche`.
 Using that library does not require using Cloudflare's network or hosting.
@@ -173,9 +218,21 @@ A kill marks the affected leases in its transaction before publishing cancellati
 Renewal and reconnect read the marker when a notification is lost.
 A failed bus publish costs delivery time, not the durable cancellation decision.
 
-Each grant and renewal checks the runner's current authority inside its transaction.
-A stale in-memory session cannot authorize new work.
-Supersession tests must include lost notifications and concurrent connections across replicas.
+Ownership acquisition updates the runner row only if the authenticated credential digest still matches and the administrative state permits connection.
+Each issue and streamed renewal checks the expected connection identifier and credential digest while holding the host row lock.
+A stale in-memory session cannot authorize new work, even when a notification is lost.
+
+Those checks widen the existing capacity lock and its callers, rather than adding a second authority resolver.
+The claim ticket carries the expected session authority into both fleet and authoring issue transactions.
+Per-request authoring renewals retain their existing bearer authentication and do not use a cached session identity.
+
+Only the database owner can grant or renew; an old socket may remain open until its next recheck.
+Supersession tests include lost notifications, token rotation and old claims already waiting on the host lock.
+Socket closure is bounded detection, not the execution-authority fence.
+
+The activity cache eliminates target reads for ordinary chat chunks.
+Durable task observations retain their existing fenced database writes and daemon-owned sequence values.
+Cached timing eligibility expires at the confirmed lease deadline and is cleared on refusal, cancellation or report completion.
 
 Heartbeat and application ping deadlines measure session responsiveness.
 Transport acknowledgement alone cannot prove that the gateway can answer a renewal.
@@ -184,6 +241,22 @@ With a 15-second ping interval and 5-second answer timeout, ping-only detection 
 An unanswered renewal fails within its own answer timeout.
 Tests measure the complete detection and reconnect interval from the injected fault.
 Recovery succeeds before lease expiry or the runner stops the lease at its confirmed deadline.
+
+One recovery attempt has a seven-second aggregate deadline: two seconds for HTTP/3, two for HTTP/2, and three for authenticated opening and rebuild.
+The runner caps that deadline again by each running lease's remaining safe execution time.
+Cancellation can interrupt every stage, including name resolution and backoff.
+
+The normal recovery assertion includes renewal tick, answer timeout, maximum initial jitter and the full recovery deadline.
+Their sum is 19 seconds, below the 20-second budget left after reserving the renewal window.
+Repeated failures may outlast that budget; independent lease expiry remains unconditional.
+
+The bounded recovery test restores connectivity within the first carrier-attempt budget.
+A separate sustained-outage test proves that no retry extends an unconfirmed lease.
+Backoff resets only after 60 seconds of a stable session.
+
+During drain, the gateway stops offers and finishes already accepted answers before sending `go_away`.
+It closes all lanes within the existing drain deadline.
+The client may reconnect immediately after `go_away` without losing the answers that preceded it.
 
 HTTP/3 may preserve a connection across supported network-address changes.
 It does not preserve a session whose daemon process died.
