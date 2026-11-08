@@ -20,8 +20,11 @@ test-util = ["afd_dragonfly/test-util"]
 [dependencies]
 af_core.workspace = true
 af_observability.workspace = true
+af_validate.workspace = true
 afd_dragonfly.workspace = true
+async-nats.workspace = true
 async-trait.workspace = true
+bytes.workspace = true
 crc16.workspace = true
 futures-util.workspace = true
 garde.workspace = true

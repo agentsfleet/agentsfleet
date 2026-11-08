@@ -34,6 +34,53 @@ pub(crate) enum ErrorKind {
     },
     #[error("The message subscription or broker has closed.")]
     Closed,
+    #[error("NATS_URL is unset; set it to the broker's comma-separated seed URLs.")]
+    NatsUrlUnset,
+    #[error("NATS_URL holds a seed that is not a NATS URL.")]
+    NatsUrl {
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("AGENTSFLEET_DEV_NAMESPACE must be at most 64 letters, digits, '-' or '_'.")]
+    NatsNamespace {
+        #[source]
+        source: garde::Report,
+    },
+    #[error("A NATS adapter limit is outside its supported range.")]
+    NatsTuning {
+        #[source]
+        source: garde::Report,
+    },
+    #[error("No NATS_URL seed answered before the connect deadline.")]
+    NatsConnect {
+        #[source]
+        source: async_nats::ConnectError,
+    },
+    #[error("The NATS server at NATS_URL is unsuitable: {field}.")]
+    NatsUnsuitable {
+        /// The server-reported property that failed the boot check.
+        field: &'static str,
+    },
+    #[error("The NATS client could not publish the signal.")]
+    NatsPublish {
+        #[source]
+        source: async_nats::PublishError,
+    },
+    #[error("The NATS client could not subscribe.")]
+    NatsSubscribe {
+        #[source]
+        source: async_nats::SubscribeError,
+    },
+    #[error("The NATS server did not confirm the subscription.")]
+    NatsFlush {
+        #[source]
+        source: async_nats::client::FlushError,
+    },
+    #[error("The NATS connection did not drain.")]
+    NatsDrain {
+        #[source]
+        source: async_nats::client::DrainError,
+    },
     #[error("The message broker did not answer before the deadline.")]
     Timeout {
         #[source]
@@ -47,6 +94,11 @@ af_core::error_lifts!(Error, ErrorKind:
     afd_dragonfly::Error => Dragonfly,
     serde_json::Error => Json,
     tokio::time::error::Elapsed => Timeout,
+    async_nats::ConnectError => NatsConnect,
+    async_nats::PublishError => NatsPublish,
+    async_nats::SubscribeError => NatsSubscribe,
+    async_nats::client::FlushError => NatsFlush,
+    async_nats::client::DrainError => NatsDrain,
 );
 
 impl Error {
@@ -54,11 +106,22 @@ impl Error {
     #[must_use]
     pub const fn reason(&self) -> &'static str {
         match self.kind() {
-            ErrorKind::Dragonfly { .. } => "backend",
+            ErrorKind::Dragonfly { .. }
+            | ErrorKind::NatsConnect { .. }
+            | ErrorKind::NatsUnsuitable { .. }
+            | ErrorKind::NatsPublish { .. }
+            | ErrorKind::NatsSubscribe { .. }
+            | ErrorKind::NatsFlush { .. }
+            | ErrorKind::NatsDrain { .. } => "backend",
             ErrorKind::Json { .. } => "serialization",
             ErrorKind::Closed => "closed",
             ErrorKind::Timeout { .. } => "timeout",
-            ErrorKind::Bounds { .. } | ErrorKind::Capacity { .. } => "configuration",
+            ErrorKind::Bounds { .. }
+            | ErrorKind::Capacity { .. }
+            | ErrorKind::NatsUrlUnset
+            | ErrorKind::NatsUrl { .. }
+            | ErrorKind::NatsNamespace { .. }
+            | ErrorKind::NatsTuning { .. } => "configuration",
         }
     }
 
@@ -67,11 +130,22 @@ impl Error {
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Dragonfly { source } => source.code(),
+            ErrorKind::NatsUrlUnset
+            | ErrorKind::NatsUrl { .. }
+            | ErrorKind::NatsNamespace { .. }
+            | ErrorKind::NatsTuning { .. } => error_code::STARTUP_ENV_CHECK,
+            ErrorKind::NatsConnect { .. } | ErrorKind::NatsUnsuitable { .. } => {
+                error_code::STARTUP_DRAGONFLY_CONNECT
+            }
             ErrorKind::Json { .. }
             | ErrorKind::Closed
             | ErrorKind::Timeout { .. }
             | ErrorKind::Bounds { .. }
-            | ErrorKind::Capacity { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::Capacity { .. }
+            | ErrorKind::NatsPublish { .. }
+            | ErrorKind::NatsSubscribe { .. }
+            | ErrorKind::NatsFlush { .. }
+            | ErrorKind::NatsDrain { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
