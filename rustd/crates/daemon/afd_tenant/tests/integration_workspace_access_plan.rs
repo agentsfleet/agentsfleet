@@ -78,6 +78,13 @@ async fn seed(database: &Db, prefix: &str) {
     .execute(&mut *connection)
     .await
     .expect("the plan rows seed");
+}
+
+/// Refreshes the planner's statistics as the tables' owner: `api_runtime` has
+/// no MAINTAIN right, so its `ANALYZE` is skipped with only a warning and the
+/// plans would ride default estimates.
+async fn analyze(owner: &Db) {
+    let mut connection = owner.acquire().await.expect("an owner connection");
     sqlx::query(
         "ANALYZE identity.workspaces, identity.users, identity.memberships, identity.invites",
     )
@@ -150,6 +157,9 @@ impl Seeded {
             .expect("the host draws entropy");
         let prefix: String = fresh.as_str().chars().rev().take(8).collect();
         seed(&database, &prefix).await;
+        let owner = lane.open(DbRole::Migrator, &[]).await;
+        analyze(&owner).await;
+        owner.close().await;
         Self {
             lane,
             database,
