@@ -38,6 +38,7 @@ Integration with #815 also guards admission lookups against internal setup event
 `ui/packages/app/app/(dashboard)/admin/runners/components/**`, relevant app/browser tests and public documentation.
 The #815 integration repair also touches `rustd/crates/daemon/afd_admission/src/sql/admit_one.sql`,
 `rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_inputs.sql` and its lease-fold regression tests.
+Indy's approved coverage follow-up touches `make/test-integration-rustd.mk` to split API and fleet suites from substrate.
 
 ## Acceptance
 
@@ -57,6 +58,10 @@ The #815 integration repair also touches `rustd/crates/daemon/afd_admission/src/
 > Indy: "I merged 815, so i request you to pull the main into your PR, and fix the greptile feedback."
 > Indy: "I would like to go by the ChatGPT Codex model on having the left navigation when i click a single fleet whereit opens the fleet conversation."
 > Indy: "Also i noticed a back button in the picture of a fleet converstaion, why do you need that, where does the back take you to"
+> Indy: "Well i think you will have to push and hopefully see if we can squeeze the 20min"
+
+The approved coverage split retains the 20-minute job limit, all tests and the existing coverage floor.
+Its measured completion remains pending in PR #814.
 
 The single accepted bootstrap-401 acceptance follow-up remains recorded in M241_001; it is not a passing acceptance result.
 
