@@ -14,6 +14,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use serde_json::{Value, json};
 
 use crate::e2e::Scenario;
@@ -95,7 +96,7 @@ pub(crate) async fn poll_for_seeded_lease(http: &reqwest::Client, run: &Scenario
 pub(crate) async fn poll_for_lease(
     http: &reqwest::Client,
     run: &Scenario,
-    event_id: &str,
+    event_id: &Uuid7,
 ) -> (String, u64) {
     let mut elsewhere = Vec::new();
     for _poll in 0..POLL_LIMIT {
@@ -197,7 +198,7 @@ pub(crate) fn assert_no_lease_for_fleet_under_test(run: &Scenario, body: &Value)
 /// sends it TWICE — three literals of eleven fields is three chances for the
 /// cumulative counts to disagree and for the dedup assertion to be measuring a
 /// different report rather than the same one.
-pub(crate) fn report_body(lease_id: &str, event_id: &str, fence: u64) -> Value {
+pub(crate) fn report_body(lease_id: &str, event_id: &Uuid7, fence: u64) -> Value {
     json!({
         "lease_id": lease_id,
         "event_id": event_id,

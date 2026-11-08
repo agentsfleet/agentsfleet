@@ -38,8 +38,9 @@ async fn a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither() {
     let (mut holder, holder_pid) = hold(
         &round,
         "SELECT 1 FROM vault.secrets \
-         WHERE workspace_id = $1::uuid AND key_name = $2 FOR UPDATE",
-        &[round.workspace.as_str(), PROVIDER.grant_key()],
+         WHERE workspace_id = $1 AND key_name = $2 FOR UPDATE",
+        &round.workspace,
+        PROVIDER.grant_key(),
     )
     .await;
     let reconnect = spawn_land(&round, &account(&round, ACCOUNT_B), now);
@@ -85,9 +86,14 @@ impl Holder {
     }
 }
 
-/// Takes the lock `statement` names, bound to `binds` in order, and answers the
-/// holding backend's pid.
-async fn hold(round: &Round, statement: &'static str, binds: &[&str]) -> (Holder, i32) {
+/// Takes the lock `statement` names, bound to `workspace` and `key` in that
+/// order, and answers the holding backend's pid.
+async fn hold(
+    round: &Round,
+    statement: &'static str,
+    workspace: &Uuid7,
+    key: &str,
+) -> (Holder, i32) {
     let mut connection = round
         .database
         .acquire()
@@ -98,9 +104,9 @@ async fn hold(round: &Round, statement: &'static str, binds: &[&str]) -> (Holder
         .execute(&mut connection)
         .await
         .expect("the holder's transaction opens");
-    binds
-        .iter()
-        .fold(sqlx::query(statement), |query, bind| query.bind(*bind))
+    sqlx::query(statement)
+        .bind(workspace)
+        .bind(key)
         .fetch_one(&mut connection)
         .await
         .expect("the row is there to hold");

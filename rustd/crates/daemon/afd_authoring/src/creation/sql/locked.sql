@@ -1,5 +1,5 @@
-SELECT f.id::text AS id,
-       f.workspace_id::text AS workspace_id,
+SELECT f.id AS id,
+       f.workspace_id AS workspace_id,
        f.name,
        f.status,
        f.setup_stream_ready,
@@ -10,12 +10,12 @@ SELECT f.id::text AS id,
        f.memory_reads_workspace,
        f.memory_publishes_workspace,
        r.revision AS head_revision,
-       r.id::text AS head_revision_id,
+       r.id AS head_revision_id,
        r.definition::text AS definition,
        r.runtime_model_ref,
        r.review_context::text AS review_context,
        r.review_digest,
-       r.source_candidate_id::text AS source_candidate_id,
+       r.source_candidate_id AS source_candidate_id,
        r.canonical_digest,
        r.policy_semantics,
        COALESCE(c.event_count, 0) AS events_processed,
@@ -25,4 +25,4 @@ SELECT f.id::text AS id,
   FROM fleet.fleets f
   JOIN fleet.revisions r ON r.id = f.head_revision_id
   LEFT JOIN fleet.activity_counters c ON c.fleet_id = f.id
- WHERE f.id = $1::uuid AND f.workspace_id = $2::uuid
+ WHERE f.id = $1 AND f.workspace_id = $2

@@ -125,7 +125,7 @@ fn code(problem: &Value) -> Option<&str> {
 }
 
 async fn spend(model: &Model, output: u32) {
-    sqlx::query("UPDATE authoring.attempts SET output_token_count=$2 WHERE draft_id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET output_token_count=$2 WHERE draft_id=$1")
         .bind(&model.running.draft)
         .bind(i64::from(output))
         .execute(&mut *model.running.f.db.acquire().await.expect("spend"))
@@ -140,14 +140,14 @@ async fn window(model: &Model, tokens: i32, output: u32) {
     let mut connection = f.db.acquire().await.expect("window");
     sqlx::query(
         "UPDATE model.platform_models SET context_cap_tokens=$2, \
-         inference=jsonb_set(inference, '{max_output_tokens}', to_jsonb($3::bigint)) WHERE id=$1::uuid",
+         inference=jsonb_set(inference, '{max_output_tokens}', to_jsonb($3::bigint)) WHERE id=$1",
     )
-        .bind(f.catalogue.as_str())
-        .bind(tokens)
-        .bind(i64::from(output))
-        .execute(&mut *connection)
-        .await
-        .expect("set the owned model's window");
+    .bind(&f.catalogue)
+    .bind(tokens)
+    .bind(i64::from(output))
+    .execute(&mut *connection)
+    .await
+    .expect("set the owned model's window");
     let live = afd_credential::provider::registered_model(
         &mut connection,
         &f.tenant,
@@ -156,7 +156,7 @@ async fn window(model: &Model, tokens: i32, output: u32) {
     .await
     .expect("registered metadata")
     .expect("owner model exists");
-    sqlx::query("UPDATE authoring.attempts SET model_snapshot=$2::jsonb WHERE draft_id=$1::uuid")
+    sqlx::query("UPDATE authoring.attempts SET model_snapshot=$2::jsonb WHERE draft_id=$1")
         .bind(&model.running.draft)
         .bind(serde_json::to_string(&live).expect("metadata JSON"))
         .execute(&mut *connection)

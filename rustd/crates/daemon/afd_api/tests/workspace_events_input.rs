@@ -35,6 +35,7 @@ use crate::harness;
 use crate::harness::detail_of;
 
 use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_events::Cursor;
 use axum::response::Response;
@@ -78,6 +79,9 @@ const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 
 /// The instant the harness freezes its clock at, so a window is arithmetic.
 const FROZEN: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_000, 0);
+
+/// The event a minted cursor names: any well-formed `UUIDv7` will do.
+const CURSOR_EVENT: &str = "0199a0b0-0000-7000-8000-000000000001";
 
 /// The whole workspace's history, with `suffix` appended verbatim.
 fn workspace_history(suffix: &str) -> String {
@@ -171,9 +175,10 @@ async fn the_page_size_is_refused_before_the_exclusions_are_looked_at() {
 /// stale against a change to the wire form: whatever the type emits is what a
 /// client sends back, and the parser has to take it.
 #[tokio::test]
-async fn a_cursor_this_daemon_minted_resumes_the_walk() {
-    let minted = Cursor::after(FROZEN, "0199a0b0-0000-7000-8000-000000000001").encode();
+async fn a_cursor_this_daemon_minted_resumes_the_walk() -> af_core::error::Result<()> {
+    let minted = Cursor::after(FROZEN, &Uuid7::parse(CURSOR_EVENT)?).encode();
     assert_accepted(&format!("?cursor={minted}")).await;
+    Ok(())
 }
 
 /// A cursor this daemon did not mint is refused, and says nothing more.
@@ -274,12 +279,14 @@ async fn naming_both_actor_spellings_is_refused_before_the_store() {
 /// case pins the order: the window exclusion is answered before the actor one,
 /// so a request carrying both ambiguities gets one stable sentence.
 #[tokio::test]
-async fn a_cursor_and_a_window_together_are_refused_before_the_store_is_asked() {
-    let minted = Cursor::after(FROZEN, "0199a0b0-0000-7000-8000-000000000001").encode();
+async fn a_cursor_and_a_window_together_are_refused_before_the_store_is_asked()
+-> af_core::error::Result<()> {
+    let minted = Cursor::after(FROZEN, &Uuid7::parse(CURSOR_EVENT)?).encode();
     let both = format!("?cursor={minted}&since=2h");
     assert_refused(&both, DETAIL_WINDOW_AMBIGUOUS).await;
     let every_ambiguity = "?actor=a&actor_prefix=b&cursor=x&since=1h";
     assert_refused(every_ambiguity, DETAIL_WINDOW_AMBIGUOUS).await;
+    Ok(())
 }
 
 /// The console's drill-down narrows the workspace listing, or is refused.

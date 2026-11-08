@@ -77,7 +77,7 @@ afd_billing.workspace = true
 afd_approval.workspace = true
 afd_credential.workspace = true
 afd_gate.workspace = true
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
 scopeguard.workspace = true

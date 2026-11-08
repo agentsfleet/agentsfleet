@@ -25,9 +25,9 @@ pub(super) struct Fixture {
     /// The lane owner's pool, for the rows a test seeds and removes around it.
     owner: Db,
     pub(super) runner: Uuid7,
-    tenant: String,
-    workspace: String,
-    fleet: String,
+    tenant: Uuid7,
+    workspace: Uuid7,
+    fleet: Uuid7,
     lane: TestDatabase,
 }
 
@@ -37,7 +37,7 @@ impl Fixture {
         let fixture = Self {
             db: lane.open(DbRole::Api, &[]).await,
             owner: lane.open(DbRole::Migrator, &[]).await,
-            runner: Uuid7::parse(&mint_id()).expect("fixture runner UUIDv7"),
+            runner: mint_id(),
             tenant: mint_id(),
             workspace: mint_id(),
             fleet: mint_id(),
@@ -54,7 +54,7 @@ impl Fixture {
             .await
             .expect("seed the capacity workspace");
         RunnerSeed::new(
-            fixture.runner.as_str(),
+            &fixture.runner,
             afd_runner::sql::RUNNER_STATUS_ACTIVE,
             POLICY,
         )
@@ -79,7 +79,7 @@ impl Fixture {
     pub(super) async fn authoring(&self, tx: &mut Transaction<'_, Postgres>, until: Timestamp) {
         rows::attempt(
             tx,
-            (self.runner.as_str(), &self.workspace, &self.tenant),
+            (&self.runner, &self.workspace, &self.tenant),
             AttemptRow {
                 status: afd_runner::sql::LEASE_STATUS_ACTIVE,
                 lease_expires_at: until,
@@ -95,7 +95,7 @@ impl Fixture {
             &mut connection,
             LeaseRow {
                 id: &mint_id(),
-                runner: self.runner.as_str(),
+                runner: &self.runner,
                 fleet: &self.fleet,
                 workspace: &self.workspace,
                 tenant: &self.tenant,
@@ -115,9 +115,9 @@ impl Fixture {
         sqlx::query(
             "UPDATE runner.leases \
              SET lease_expires_at = clock_timestamp() + $2 * interval '1 millisecond' \
-             WHERE runner_id = $1::uuid",
+             WHERE runner_id = $1",
         )
-        .bind(self.runner.as_str())
+        .bind(&self.runner)
         .bind(millis)
         .execute(&mut *connection)
         .await
@@ -143,8 +143,8 @@ impl Fixture {
     /// Takes the host row's lock on a connection of its own, the way a
     /// concurrent claimant on another replica holds it.
     pub(super) async fn lock_host(&self, tx: &mut Transaction<'_, Postgres>) {
-        sqlx::query("SELECT 1 FROM runner.runners WHERE id = $1::uuid FOR UPDATE")
-            .bind(self.runner.as_str())
+        sqlx::query("SELECT 1 FROM runner.runners WHERE id = $1 FOR UPDATE")
+            .bind(&self.runner)
             .execute(&mut **tx)
             .await
             .expect("the competing claimant locks the host");
@@ -154,18 +154,18 @@ impl Fixture {
         let mut connection = self.owner.acquire().await.expect("cleanup connection");
         // Attempts outlive their runner by design, so a test removes the ones
         // it seeded itself rather than leaving them in the lane.
-        sqlx::query("DELETE FROM authoring.attempts WHERE runner_id = $1::uuid")
-            .bind(self.runner.as_str())
+        sqlx::query("DELETE FROM authoring.attempts WHERE runner_id = $1")
+            .bind(&self.runner)
             .execute(&mut *connection)
             .await
             .expect("remove only this test's attempts");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
             .expect("remove only this test's rows");
-        sqlx::query("DELETE FROM runner.runners WHERE id = $1::uuid")
-            .bind(self.runner.as_str())
+        sqlx::query("DELETE FROM runner.runners WHERE id = $1")
+            .bind(self.runner)
             .execute(&mut *connection)
             .await
             .expect("remove only this test's host");

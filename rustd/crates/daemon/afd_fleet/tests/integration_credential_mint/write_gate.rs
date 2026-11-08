@@ -44,7 +44,7 @@ async fn refusal_code(fixtures: &Fixtures, owner: &Bound) -> ErrorCode {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(&owner.lease, CONNECTOR_GITHUB),
+            &requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB),
             fixtures.enrolled_at(),
         )
         .await
@@ -80,7 +80,7 @@ async fn test_a_drifted_card_does_not_block_a_mint_the_grant_authorises() {
     support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
     let owner = write_bound(&fixtures).await;
-    let _gate = seed_write_gate(&fixtures, &owner.fleet, DRIFTED_BINDING, 0).await;
+    let _gate = seed_write_gate(&fixtures, &owner, DRIFTED_BINDING, 0).await;
 
     assert_eq!(
         refusal_code(&fixtures, &owner).await,
@@ -100,7 +100,7 @@ async fn test_a_spent_allowance_does_not_block_a_mint_the_grant_authorises() {
     support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
     let owner = write_bound(&fixtures).await;
-    let _gate = seed_write_gate(&fixtures, &owner.fleet, STATED_BINDING, WRITE_SPEND_CEILING).await;
+    let _gate = seed_write_gate(&fixtures, &owner, STATED_BINDING, WRITE_SPEND_CEILING).await;
 
     assert_eq!(
         refusal_code(&fixtures, &owner).await,
@@ -121,7 +121,7 @@ async fn test_a_write_mint_without_a_standing_grant_is_refused() {
     support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
     let owner = bound(&fixtures, WRITE_BOUND_CONFIG).await;
-    let _gate = seed_write_gate(&fixtures, &owner.fleet, STATED_BINDING, 0).await;
+    let _gate = seed_write_gate(&fixtures, &owner, STATED_BINDING, 0).await;
 
     assert_eq!(
         refusal_code(&fixtures, &owner).await,

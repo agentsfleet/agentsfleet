@@ -1,6 +1,7 @@
 //! Shared model seeds use the registered schema and atomic identity/price writes.
 #![cfg(feature = "test-util")]
 
+use af_core::id::Uuid7;
 use afd_db::{
     Result,
     config::DbRole,
@@ -13,17 +14,17 @@ const PROVIDER: &str = "catalogue-fixture";
 const VERIFIED: Timestamp = Timestamp::constant(1_760_000_000, 0);
 /// One seeded identity with its base quote, as the seed wrote them.
 const READ: &str = "\
-SELECT m.id::text, p.id::text AS price_id, m.display_name, m.context_cap_tokens,
+SELECT m.id, p.id AS price_id, m.display_name, m.context_cap_tokens,
        m.context_source_url, m.context_verified_at, p.input_nanos_per_mtok,
        p.cached_input_nanos_per_mtok, p.output_nanos_per_mtok
   FROM model.platform_models m
   JOIN model.platform_model_prices p ON p.platform_model_id = m.id
- WHERE m.id = $1::uuid";
+ WHERE m.id = $1";
 
 #[derive(Debug, sqlx::FromRow)]
 struct Row {
-    id: String,
-    price_id: String,
+    id: Uuid7,
+    price_id: Uuid7,
     display_name: String,
     context_cap_tokens: i32,
     context_source_url: String,
@@ -42,7 +43,7 @@ async fn model_seeds_preserve_ids_and_update_exact_prices() -> Result<(), Box<dy
     let db = database.open(DbRole::Api, &[]).await;
     let id = mint_id();
     let mut connection = db.acquire().await?;
-    ModelSeed::new(&id, PROVIDER, &id, 128_000)
+    ModelSeed::new(&id, PROVIDER, id.as_str(), 128_000)
         .insert(&mut *connection)
         .await?;
     let first: Row = sqlx::query_as(READ)
@@ -57,7 +58,7 @@ async fn model_seeds_preserve_ids_and_update_exact_prices() -> Result<(), Box<dy
     );
     assert!(first.context_verified_at > VERIFIED);
     assert_eq!(first.input_nanos_per_mtok, 0);
-    ModelSeed::new(&mint_id(), PROVIDER, &id, 64_000)
+    ModelSeed::new(&mint_id(), PROVIDER, id.as_str(), 64_000)
         .rates(6_000_000, 15_000_000, 187_500_000)
         .verified_at(VERIFIED)
         .insert(&mut *connection)
@@ -87,7 +88,7 @@ async fn a_refused_seed_rolls_back_the_identity_and_preserves_the_sql_source()
     let db = database.open(DbRole::Api, &[]).await;
     let id = mint_id();
     let mut connection = db.acquire().await?;
-    let refused = ModelSeed::new(&id, PROVIDER, &id, 128_000)
+    let refused = ModelSeed::new(&id, PROVIDER, id.as_str(), 128_000)
         .rates(-1, 0, 0)
         .insert(&mut *connection)
         .await;
@@ -104,7 +105,7 @@ async fn a_refused_seed_rolls_back_the_identity_and_preserves_the_sql_source()
             .await?
             .is_none()
     );
-    ModelSeed::new(&id, PROVIDER, &id, 128_000)
+    ModelSeed::new(&id, PROVIDER, id.as_str(), 128_000)
         .insert(&mut *connection)
         .await?;
     assert_eq!(

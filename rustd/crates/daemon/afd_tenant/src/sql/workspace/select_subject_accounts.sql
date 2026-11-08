@@ -7,9 +7,9 @@ WITH me AS (
         SELECT me.tenant_id, NULL::text FROM me
     ) arm ORDER BY arm.tenant_id, arm.role NULLS LAST
 )
-SELECT t.id::text AS tenant_id, held.role,
+SELECT t.id AS tenant_id, held.role,
        COALESCE(owner.display_name, t.name) AS owner_name,
-       me.tenant_id::text AS home_tenant_id
+       me.tenant_id AS home_tenant_id
 FROM held CROSS JOIN me
 JOIN identity.tenants t ON t.id = held.tenant_id
 LEFT JOIN LATERAL (

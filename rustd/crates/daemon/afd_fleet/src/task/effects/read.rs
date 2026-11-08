@@ -26,7 +26,7 @@ pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Resu
         match session
             .reconcile(
                 effect.target()?,
-                &effect.id,
+                effect.id.as_str(),
                 &effect.expected_head,
                 &effect.tested_tree,
             )
@@ -47,7 +47,7 @@ async fn load(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Result<Effect>
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::lease(&mut tx, lease).await?;
     let effect = sqlx::query_as(include_str!("sql/read.sql"))
-        .bind(id.as_str())
+        .bind(id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(&current.task_id)
@@ -82,11 +82,11 @@ pub(super) async fn list(
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::lease(&mut tx, lease).await?;
-    if current.task_id.as_deref() != Some(input.task_id.as_str()) {
+    if current.task_id.as_ref().map(Uuid7::as_str) != Some(input.task_id.as_str()) {
         return Err(TaskRefusal::NotFound.into());
     }
     let mut effects: Vec<Effect> = sqlx::query_as(include_str!("sql/list.sql"))
-        .bind(&input.task_id)
+        .bind(crate::task::guard::wire(&input.task_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(after.max(watermark))

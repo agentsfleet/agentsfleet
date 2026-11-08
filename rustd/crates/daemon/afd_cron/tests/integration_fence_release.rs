@@ -69,7 +69,7 @@ async fn a_finalize_from_a_syncer_that_lost_the_row_does_not_land() {
         SyncStatus::Syncing,
         "the row must still belong to the winner, mid-push"
     );
-    assert_eq!(current.sync_token.as_deref(), Some(winner.as_str()));
+    assert_eq!(current.sync_token.as_ref(), Some(&winner));
 }
 
 #[tokio::test]

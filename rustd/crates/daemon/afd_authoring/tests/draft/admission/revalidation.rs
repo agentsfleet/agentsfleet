@@ -7,7 +7,7 @@ use af_core::error_code;
 use sqlx::Connection as _;
 
 /// Holds the fixture host the way admission locks it first.
-const LOCK_HOST: &str = "SELECT id FROM runner.runners WHERE id=$1::uuid FOR UPDATE";
+const LOCK_HOST: &str = "SELECT id FROM runner.runners WHERE id=$1 FOR UPDATE";
 
 /// Longer than any unblocked claim takes on a loaded lane.
 const PROMPT: std::time::Duration = std::time::Duration::from_secs(10);
@@ -33,14 +33,14 @@ async fn a_creator_removed_while_the_claim_waits_on_the_host_admits_nothing() {
         .await
         .expect("holder session");
     sqlx::query(LOCK_HOST)
-        .bind(f.runner.as_str())
+        .bind(&f.runner)
         .execute(&mut *held)
         .await
         .expect("hold the host");
     let (placed, ()) = tokio::join!(f.drafts.claim_queued(&f.runner, &draft.id), async {
         f.waits_on(pid, 1).await;
-        sqlx::query("DELETE FROM identity.users WHERE id=$1::uuid")
-            .bind(f.member.as_str())
+        sqlx::query("DELETE FROM identity.users WHERE id=$1")
+            .bind(&f.member)
             .execute(&mut *f.connection().await)
             .await
             .expect("the member's account is removed");
@@ -58,13 +58,11 @@ async fn a_draft_past_its_retention_admits_nothing() {
     // Its own database: every lane's maintenance pass purges expired drafts.
     let f = fund(Fixture::isolated().await, 1).await;
     let draft = queue(&f, "Queued, then retained past its window").await;
-    sqlx::query(
-        "UPDATE authoring.drafts SET expires_at=now()-interval '1 second' WHERE id=$1::uuid",
-    )
-    .bind(draft.id.as_str())
-    .execute(&mut *f.connection().await)
-    .await
-    .expect("the retention window closed");
+    sqlx::query("UPDATE authoring.drafts SET expires_at=now()-interval '1 second' WHERE id=$1")
+        .bind(&draft.id)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("the retention window closed");
     let placed = f
         .drafts
         .claim_queued(&f.runner, &draft.id)
@@ -81,8 +79,8 @@ async fn a_draft_row_in_no_known_state_refuses_the_claim_as_a_stored_fault() {
     // Its own database: no other proof's sweep may meet the unreadable row.
     let f = fund(Fixture::isolated().await, 1).await;
     let draft = queue(&f, "Queued under a state this daemon never wrote").await;
-    sqlx::query("UPDATE authoring.drafts SET status='archived' WHERE id=$1::uuid")
-        .bind(draft.id.as_str())
+    sqlx::query("UPDATE authoring.drafts SET status='archived' WHERE id=$1")
+        .bind(&draft.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("another writer's state word");
@@ -118,7 +116,7 @@ async fn a_claim_chosen_as_a_deadlock_victim_surfaces_the_datastore_error() {
         // waited first, is the one Postgres aborts.
         f.waits_on(pid, 1).await;
         sqlx::query(LOCK_HOST)
-            .bind(f.runner.as_str())
+            .bind(&f.runner)
             .execute(&mut *held)
             .await
             .expect("the host frees once the claim is aborted");
@@ -138,8 +136,8 @@ async fn a_claim_skips_a_creator_another_transaction_holds_rather_than_waiting()
     let draft = queue(&f, "Queued by a creator whose account is busy").await;
     let mut holder = f.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
-    sqlx::query("SELECT id FROM identity.users WHERE id=$1::uuid FOR UPDATE")
-        .bind(f.owner.as_str())
+    sqlx::query("SELECT id FROM identity.users WHERE id=$1 FOR UPDATE")
+        .bind(&f.owner)
         .fetch_one(&mut *held)
         .await
         .expect("hold the creator's account");

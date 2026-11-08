@@ -29,7 +29,7 @@ pub trait TaskReportOwner: std::fmt::Debug + Send + Sync {
 pub struct PreparedReport {
     tasks: Tasks,
     lease_id: Uuid7,
-    runner_id: String,
+    runner_id: Uuid7,
     scope: TaskScope,
     snapshot: TaskSnapshot,
     input: TaskReport,

@@ -18,6 +18,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_api_wire::approval::GateStatus;
 use std::time::Duration;
 
@@ -53,7 +54,7 @@ async fn an_absent_status_reads_every_state_and_a_named_one_narrows() {
     lane.seed_gate(Window::Open).await;
     let resolved = lane
         .inbox
-        .resolve(&answered, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(answered.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     assert!(matches!(resolved, Resolution::Resolved(_)));
@@ -165,12 +166,12 @@ async fn the_cursor_walks_every_gate_raised_in_one_millisecond() {
         seeded.push(lane.seed_gate_at(NOW, Window::Open).await);
     }
 
-    let mut walked: Vec<String> = Vec::with_capacity(SIBLINGS);
-    let mut resume: Option<(Timestamp, String)> = None;
+    let mut walked: Vec<Uuid7> = Vec::with_capacity(SIBLINGS);
+    let mut resume: Option<(Timestamp, Uuid7)> = None;
     loop {
         let cursor = resume.as_ref().map(|(at, id)| Cursor {
             created_at: *at,
-            gate_id: id.as_str(),
+            gate_id: id,
         });
         let page = lane
             .inbox

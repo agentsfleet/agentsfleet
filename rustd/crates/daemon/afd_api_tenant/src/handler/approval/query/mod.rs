@@ -25,6 +25,7 @@
 //! through it left `auto_killed` — a state a row really is in, and one the
 //! dashboard's own type declares — unreachable through this listing.
 
+use af_core::id::Uuid7;
 use std::borrow::Cow;
 
 use af_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
@@ -79,9 +80,9 @@ const DETAIL_STATUS: &str = "status must be pending, approved, denied, timed_out
 
 /// The refusal a fleet id that is not an identifier earns.
 ///
-/// Refused HERE rather than at the statement: `SELECT_GATE_PAGE` casts the
-/// value to `uuid`, so an unparsed one reaches Postgres and comes back as a
-/// cast failure — a 500 and an error log line for a client's typo.
+/// Refused HERE rather than at the statement: the column is a `uuid`, so an
+/// unparsed one could not even be bound, and a client's typo would be a 500
+/// and an error log line.
 const DETAIL_FLEET_ID: &str = "fleet_id must be a valid identifier";
 
 /// The refusal a query string this daemon cannot decode earns.
@@ -97,7 +98,7 @@ pub(super) struct Resume {
     /// The boundary row's instant.
     created_at: jiff::Timestamp,
     /// The boundary row's gate id, breaking ties inside one millisecond.
-    gate_id: String,
+    gate_id: Uuid7,
 }
 
 impl Resume {
@@ -116,7 +117,7 @@ pub(super) struct Listing {
     /// The status the page is narrowed to; every state when absent.
     pub(super) status: Option<GateStatus>,
     /// The fleet the page is narrowed to.
-    pub(super) fleet_id: Option<String>,
+    pub(super) fleet_id: Option<af_core::id::Uuid7>,
     /// The gate family the page is narrowed to.
     pub(super) gate_type: Option<String>,
     /// Where the page resumes, absent on the first one.
@@ -188,8 +189,8 @@ fn parse_gate_type(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal>
 /// A text-boundary cursor is refused as malformed rather than mapped: this
 /// listing orders by instant alone, and a name boundary would resume a walk
 /// through an ordering it never served. The gate id is proved an identifier
-/// here for the reason [`DETAIL_FLEET_ID`] gives: `SELECT_GATE_PAGE` casts it
-/// to `uuid`, and a forged one would come back as the store's 500.
+/// here for the reason [`DETAIL_FLEET_ID`] gives: the column is a `uuid`, and a
+/// forged one would come back as the store's 500.
 fn parse_cursor(raw: Option<&str>) -> Result<Option<Resume>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
@@ -199,7 +200,7 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Resume>, Refusal> {
             let gate = parse_id(&id, DETAIL_CURSOR)?;
             Ok(Some(Resume {
                 created_at: at,
-                gate_id: gate.as_str().to_owned(),
+                gate_id: gate,
             }))
         }
         Ok(CoreCursor::Text { .. }) | Err(InvalidCursor) => Err(Refusal::malformed(DETAIL_CURSOR)),
@@ -216,11 +217,11 @@ fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refus
 }
 
 /// The fleet the page is narrowed to, checked before it reaches the statement.
-fn parse_fleet_id(raw: Option<&str>) -> Result<Option<String>, Refusal> {
+fn parse_fleet_id(raw: Option<&str>) -> Result<Option<af_core::id::Uuid7>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };
-    parse_id(raw, DETAIL_FLEET_ID).map(|fleet| Some(fleet.as_str().to_owned()))
+    parse_id(raw, DETAIL_FLEET_ID).map(Some)
 }
 
 /// The status filter, as the store expresses it.

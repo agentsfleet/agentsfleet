@@ -4,7 +4,7 @@
 use af_core::id::Uuid7;
 use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
-use afd_ingress::slack::{Notice, NoticeOwed, notice_key, notice_text};
+use afd_ingress::slack::{Notice, NoticeOwed, notice_text};
 use std::borrow::Cow;
 
 use super::{
@@ -35,16 +35,14 @@ pub(super) async fn owe<D: Services>(
         return Ok(Outcome::Dropped(REASON_NOTICE_OWNER_KILLED));
     }
     let address = address(&asked.thread())?;
-    let key = notice_key(&asked.team_id, &asked.event_id);
     let text = notice_text(notice);
-    let written = services
+    let owed = services
         .ingress()
         .owe_notice(
             NoticeOwed {
                 owner: &owner.fleet,
                 workspace,
                 provider,
-                key: &key,
                 address: &address,
                 text: &text,
             },
@@ -53,35 +51,16 @@ pub(super) async fn owe<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_MENTION))?;
 
-    Ok(accepted(
-        workspace,
-        &owner.fleet,
-        notice.kind(),
-        key,
-        written,
-    ))
+    Ok(accepted(workspace, &owner.fleet, notice.kind(), owed))
 }
 
-fn accepted(
-    workspace: &Uuid7,
-    owner: &Uuid7,
-    verdict: &str,
-    key: String,
-    written: bool,
-) -> Outcome {
+fn accepted(workspace: &Uuid7, owner: &Uuid7, verdict: &str, owed: Uuid7) -> Outcome {
     let workspace_id = workspace.as_str();
     let fleet_id = owner.as_str();
-    let replayed = !written;
-    tracing::info!(
-        workspace_id,
-        fleet_id,
-        verdict,
-        replayed,
-        event = EVENT_ROUTED
-    );
+    tracing::info!(workspace_id, fleet_id, verdict, event = EVENT_ROUTED);
     Outcome::Accepted(Accepted {
-        event_id: Cow::Owned(key),
-        replayed,
+        event_id: Cow::Owned(owed.into()),
+        replayed: false,
     })
 }
 

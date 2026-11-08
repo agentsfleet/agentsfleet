@@ -19,6 +19,7 @@ use afd_dragonfly::{Dragonfly, preflight};
 use afd_dragonfly::{OutboundJob, OutboundQueue};
 
 use crate::fake_redis::{FakeRedis, Reply};
+use crate::support::mint_id;
 use af_core::test_util::trace::install_subscriber;
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
@@ -63,9 +64,9 @@ async fn a_full_datastore_is_its_own_class_and_invites_a_retry() {
         OutboundQueue::new(redis).enqueue(OutboundJob {
             provider: "fixture",
             destination: "destination",
-            workspace_id: "workspace",
-            fleet_id: "fleet",
-            event_id: "event",
+            workspace_id: &mint_id(),
+            fleet_id: &mint_id(),
+            event_id: &mint_id(),
             answer: "answer",
         }),
     )

@@ -3,6 +3,6 @@ SELECT sandbox_tier, network_policy, registry_allowlist::text AS registry_allowl
        selftest_requested_at IS NOT NULL AS selftest_requested,
        sandbox_config::text AS sandbox_config,
        durable_tasks_enabled,
-       decision_platform_model_id::text AS decision_model_id
+       decision_platform_model_id AS decision_model_id
 FROM runner.runners
-WHERE id = $1::uuid
+WHERE id = $1

@@ -120,11 +120,11 @@ async fn install(fixture: &Decisions<'_>, installation: u32) {
         .acquire()
         .await
         .expect("authority fixture");
-    sqlx::query("INSERT INTO connector.installs (id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES ($1::uuid,'github',$2,$3::uuid,'{}',now(),now())")
-        .bind(mint_id()).bind(installation.to_string()).bind(case.scope.workspace_id.as_str()).execute(&mut *connection).await.expect("workspace-owned installation");
-    sqlx::query("INSERT INTO connector.integration_grants (id,fleet_id,service,status,requested_reason,created_at,updated_at) VALUES ($1::uuid,$2::uuid,'github','approved','fixture',now(),now())")
+    sqlx::query("INSERT INTO connector.installs (id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES ($1,'github',$2,$3,'{}',now(),now())")
+        .bind(mint_id()).bind(installation.to_string()).bind(&case.scope.workspace_id).execute(&mut *connection).await.expect("workspace-owned installation");
+    sqlx::query("INSERT INTO connector.integration_grants (id,fleet_id,service,status,requested_reason,created_at,updated_at) VALUES ($1,$2,'github','approved','fixture',now(),now())")
         .bind(mint_id()).bind(&case.held.fleet).execute(&mut *connection).await.expect("standing approval");
-    sqlx::query("UPDATE fleet.tasks SET target=jsonb_set(target,'{installation_id}',to_jsonb($2::bigint)) WHERE fleet_id=$1::uuid")
+    sqlx::query("UPDATE fleet.tasks SET target=jsonb_set(target,'{installation_id}',to_jsonb($2::bigint)) WHERE fleet_id=$1")
         .bind(&case.held.fleet).bind(i64::from(installation)).execute(&mut *connection).await.expect("fixture target installation");
 }
 

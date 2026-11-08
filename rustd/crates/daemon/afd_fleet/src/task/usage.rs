@@ -2,6 +2,7 @@
 
 use super::sql;
 use crate::{Result, error::query};
+use af_core::id::Uuid7;
 use af_wire::task::TaskState;
 use afd_billing::Nanos;
 use sqlx::PgConnection;
@@ -11,16 +12,16 @@ const NANOS_PER_SECOND: i64 = 1_000_000_000;
 #[derive(sqlx::FromRow)]
 struct Owner {
     #[sqlx(rename = "task_id")]
-    task: String,
+    task: Uuid7,
     #[sqlx(rename = "fleet_id")]
-    fleet: String,
+    fleet: Uuid7,
     #[sqlx(rename = "workspace_id")]
-    workspace: String,
+    workspace: Uuid7,
 }
 
 pub(crate) async fn record(
     connection: &mut PgConnection,
-    lease: &str,
+    lease: &Uuid7,
     model_nanos: Nanos,
 ) -> Result<bool> {
     let owner: Option<Owner> = sqlx::query_as(include_str!("sql/usage_owner.sql"))

@@ -13,7 +13,7 @@ use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query};
 use crate::lease::fold::Folds;
-use crate::lease::obligation::{Owing, ReplyDestination};
+use crate::lease::obligation::Owing;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::sql::meter::Metering;
 use crate::lease::store::Leases;
@@ -32,7 +32,7 @@ const CONTEXT_COMMIT: &str = "report commit";
 #[derive(Debug)]
 pub struct TerminalReport<'a> {
     /// The lease being reported on.
-    pub lease_id: &'a str,
+    pub lease_id: &'a Uuid7,
     /// The runner presenting the report — the ownership scope of every
     /// statement below.
     pub runner_id: &'a Uuid7,
@@ -48,7 +48,7 @@ pub struct TerminalReport<'a> {
     /// The run's ending, as the event row will carry it.
     pub outcome: Terminal<'a>,
     /// The event the fleet's next run resumes after.
-    pub last_event_id: &'a str,
+    pub last_event_id: &'a Uuid7,
     /// The answer that run resumes from.
     pub last_response: &'a str,
     /// When the sandbox the run left held for the fleet's next event lapses;
@@ -252,19 +252,12 @@ impl Leases {
             .await?;
         self.release_through(connection, &lease.fleet_id, lease.fence, held_until)
             .await?;
-        let (destination, owed) = self.owe_answer(connection, lease, answer, now).await?;
+        let owed = self.owe_answer(connection, lease, answer, now).await?;
         // A failed or stopped run's folds settle nothing: each message stays
         // for the fleet's next run, in order.
         let read_through = folded_through_sequence.filter(|_| succeeded);
         let folds = self
-            .settle_folds(
-                connection,
-                lease,
-                lease_id,
-                read_through,
-                answer,
-                destination.as_ref(),
-            )
+            .settle_folds(connection, lease, lease_id, read_through, answer)
             .await?;
         Ok((closed, owed, notice, folds))
     }
@@ -279,17 +272,18 @@ impl Leases {
     ///
     /// The lease's own `provider` is the MODEL provider billing resolved, and
     /// it has no path in here: `Delivery` takes a connector type, which only
-    /// the event's recorded destination supplies. Answers that destination,
-    /// and the obligation newly owed to it.
+    /// the event's recorded destination supplies. Answers the obligation
+    /// newly owed to it. A folded message is in the run's conversation, so
+    /// this one reply reaches it too (`claim_inputs.sql`).
     async fn owe_answer(
         &self,
         connection: &mut PgConnection,
         lease: &Reported,
         answer: &str,
         now: Timestamp,
-    ) -> Result<(Option<ReplyDestination>, Option<Owing>)> {
+    ) -> Result<Option<Owing>> {
         let destination =
-            Self::reply_destination(connection, lease.fleet_id.as_str(), &lease.event_id).await?;
+            Self::reply_destination(connection, &lease.fleet_id, lease.event_id.as_str()).await?;
         let owed = match &destination {
             Some(reply) => self
                 .owe_delivery(connection, reply.delivery(lease, answer), now)
@@ -300,6 +294,6 @@ impl Leases {
                 }),
             None => None,
         };
-        Ok((destination, owed))
+        Ok(owed)
     }
 }

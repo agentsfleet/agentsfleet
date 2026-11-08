@@ -85,7 +85,7 @@ impl<'a> RegisterRow<'a> {
     /// here and no caller supplies anything positionally.
     pub fn bind(&'a self) -> Bound<'a> {
         sqlx::query(INSERT_RUNNER_WITH_EVENT)
-            .bind(self.runner_id.as_str())
+            .bind(self.runner_id)
             .bind(self.host_id)
             .bind(self.token_digest)
             .bind(self.sandbox_tier)
@@ -97,11 +97,11 @@ impl<'a> RegisterRow<'a> {
             .bind(self.degraded_reason)
             .bind(self.last_seen_at.to_sqlx())
             .bind(FIRST_LEASE_VERSION)
-            .bind(self.event_id.as_str())
+            .bind(self.event_id)
             .bind(self.event_type)
             .bind(super::meta::HOST_ID)
             .bind(super::meta::SANDBOX_TIER)
-            .bind(self.decision_model_id.map(Uuid7::as_str))
+            .bind(self.decision_model_id)
             .bind(super::meta::DECISION_MODEL_ID)
             .bind(self.sandbox_config_json)
             .bind(self.durable_tasks_enabled)

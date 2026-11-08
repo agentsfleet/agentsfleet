@@ -70,11 +70,11 @@ const SETTLE_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// The newest lease the fleet was issued, by status.
 const LATEST_LEASE_STATUS: &str =
-    "SELECT status FROM runner.leases WHERE fleet_id = $1::uuid ORDER BY created_at DESC LIMIT 1";
+    "SELECT status FROM runner.leases WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1";
 
 /// The content one fleet memory key holds.
 const REMEMBERED_CONTENT: &str =
-    "SELECT content FROM memory.entries WHERE fleet_id = $1::uuid AND key = $2";
+    "SELECT content FROM memory.entries WHERE fleet_id = $1 AND key = $2";
 
 /// The memory item the scripted run remembers and the push must carry.
 const REMEMBERED_KEY: &str = "rust-runner-roundtrip";

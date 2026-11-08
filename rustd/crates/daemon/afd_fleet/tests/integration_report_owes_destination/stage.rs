@@ -25,11 +25,11 @@ const RUN_SPACING_MS: i64 = 10 * SLICE_MS;
 pub(crate) struct Obligation {
     pub(crate) provider: String,
     pub(crate) destination: Option<String>,
-    pub(crate) event_id: String,
+    pub(crate) event_id: Uuid7,
 }
 
 /// Every obligation this fleet holds, oldest first.
-pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &str) -> Vec<Obligation> {
+pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Obligation> {
     let mut connection = fixtures
         .database
         .acquire()
@@ -37,7 +37,7 @@ pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &str) -> Vec<Obligat
         .expect("a pooled connection");
     sqlx::query(
         "SELECT provider, destination, event_id FROM fleet.obligations \
-         WHERE fleet_id = $1::uuid ORDER BY created_at, sequence",
+         WHERE fleet_id = $1 ORDER BY created_at, sequence",
     )
     .bind(fleet)
     .fetch_all(&mut *connection)
@@ -47,7 +47,7 @@ pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &str) -> Vec<Obligat
     .map(|row| Obligation {
         provider: row.try_get(0).expect("provider is text"),
         destination: row.try_get(1).expect("destination is nullable text"),
-        event_id: row.try_get(2).expect("event_id is text"),
+        event_id: row.try_get(2).expect("event_id is a uuid"),
     })
     .collect()
 }
@@ -56,8 +56,8 @@ pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &str) -> Vec<Obligat
 pub(crate) struct Stage {
     pub(crate) fixtures: Fixtures,
     pub(crate) leases: Leases,
-    pub(crate) fleet: String,
-    pub(crate) workspace: String,
+    pub(crate) fleet: Uuid7,
+    pub(crate) workspace: Uuid7,
     pub(crate) tenant: Uuid7,
     pub(crate) runner: Uuid7,
 }
@@ -67,7 +67,6 @@ pub(crate) async fn stage() -> Stage {
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     fixtures.seed_wallet(&tenant, DEEP_POOL).await;
     let leases = fixtures.leases();
-    let tenant = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     Stage {
         fixtures,
         leases,
@@ -85,7 +84,7 @@ impl Stage {
         producer: Producer,
         delivery: &str,
         reply: Reply<'_>,
-    ) -> String {
+    ) -> Uuid7 {
         let key = producer_key(&self.fleet, delivery);
         ledger(&self.fixtures)
             .admit(Admission {
@@ -102,7 +101,7 @@ impl Stage {
 
     /// Leases this fleet's next event at `now` and loads the lease a report
     /// addresses.
-    pub(crate) async fn lease_next(&self, now: Timestamp) -> (String, Reported) {
+    pub(crate) async fn lease_next(&self, now: Timestamp) -> (Uuid7, Reported) {
         let acquired = crate::seed::select_fleet(&self.leases, &self.runner, &self.fleet)
             .await
             .expect("one rotation of polls must reach the fleet holding admitted work");
@@ -128,29 +127,28 @@ impl Stage {
             .expect("the claim is still held");
         let lease = self
             .leases
-            .load_for_report(issued.lease_id.as_str(), &self.runner)
+            .load_for_report(&issued.lease_id, &self.runner)
             .await
             .expect("the lease load must reach the datastore")
             .expect("the lease belongs to this runner");
-        (issued.lease_id.as_str().to_owned(), lease)
+        (issued.lease_id, lease)
     }
 
     /// Reports `response` on a lease, a slice after it was issued.
     pub(crate) async fn report(
         &self,
-        lease_id: &str,
+        lease_id: &Uuid7,
         lease: &Reported,
         response: &str,
         issued_at: Timestamp,
     ) -> afd_fleet::Result<Committed> {
-        let lease_key = Uuid7::parse(lease_id).expect("a lease id is a v7 spelling");
         let pricing = self.fixtures.pricing(lease_id).await;
         self.leases
             .commit_report(report(
                 lease_id,
                 &self.runner,
                 lease,
-                (&lease_key, &pricing),
+                (lease_id, &pricing),
                 response,
                 af_core::clock::after(
                     issued_at,

@@ -1,5 +1,6 @@
 //! Delivery writes roll back together and coexist with producer budget locks.
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_db::config::DbRole;
@@ -12,7 +13,7 @@ use crate::{seed::seeded_parts, support::Fixtures};
 const FAIL_DELIVERY: &str = "CREATE FUNCTION fleet.refuse_delivery() RETURNS trigger \
     LANGUAGE plpgsql AS $$ BEGIN \
       IF NOT EXISTS (SELECT 1 FROM fleet.events \
-        WHERE fleet_id = NEW.fleet_id AND event_id = NEW.id::text) THEN \
+        WHERE fleet_id = NEW.fleet_id AND event_id = NEW.id) THEN \
         RAISE EXCEPTION 'narrative was not inserted'; \
       END IF; \
       RAISE EXCEPTION 'injected delivery failure after narrative'; END $$; \
@@ -68,9 +69,9 @@ async fn assert_stamp_failure_rolls_back(
     connection: &mut sqlx::PgConnection,
     leases: &Leases,
     acquired: &Acquired,
-    runner: &af_core::id::Uuid7,
+    runner: &Uuid7,
 ) {
-    let before = afd_events::fleet_counters(&fixtures.database, acquired.fleet_id.as_str())
+    let before = afd_events::fleet_counters(&fixtures.database, &acquired.fleet_id)
         .await
         .expect("counters");
     sqlx::raw_sql(FAIL_DELIVERY)
@@ -96,7 +97,7 @@ async fn assert_stamp_failure_rolls_back(
         (0, false)
     );
     assert_eq!(
-        afd_events::fleet_counters(&fixtures.database, acquired.fleet_id.as_str())
+        afd_events::fleet_counters(&fixtures.database, &acquired.fleet_id)
             .await
             .expect("rollback counters"),
         before
@@ -113,7 +114,7 @@ async fn receive_with_counter_read_refused(
     leases: &Leases,
     acquired: &Acquired,
 ) -> Received {
-    let before = afd_events::fleet_counters(&fixtures.database, acquired.fleet_id.as_str())
+    let before = afd_events::fleet_counters(&fixtures.database, &acquired.fleet_id)
         .await
         .expect("counters before optional read fault");
     sqlx::raw_sql("REVOKE SELECT ON fleet.activity_counters FROM api_runtime")
@@ -130,7 +131,7 @@ async fn receive_with_counter_read_refused(
         .await
         .expect("restore read grant before checking durability");
     assert_eq!(state, (1, true), "counter read cannot undo delivery");
-    let after = afd_events::fleet_counters(&fixtures.database, acquired.fleet_id.as_str())
+    let after = afd_events::fleet_counters(&fixtures.database, &acquired.fleet_id)
         .await
         .expect("durable counters");
     assert_eq!(after.events_processed, before.events_processed + 1);
@@ -181,10 +182,10 @@ async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() 
     fixtures.cleanup().await;
 }
 
-async fn delivery_state(fixtures: &Fixtures, event: &str) -> (i64, bool) {
+async fn delivery_state(fixtures: &Fixtures, event: &Uuid7) -> (i64, bool) {
     sqlx::query_as(
         "SELECT (SELECT count(*) FROM fleet.events WHERE event_id=$1), \
-        delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid",
+        delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1",
     )
     .bind(event)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))

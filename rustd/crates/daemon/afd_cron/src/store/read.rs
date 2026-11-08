@@ -13,7 +13,7 @@ impl Schedules {
     pub async fn list(&self, fleet: &Uuid7) -> Result<Vec<Schedule>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as::<_, Schedule>(sql::LIST_FOR_FLEET)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_READ))
@@ -26,8 +26,8 @@ impl Schedules {
     pub async fn one(&self, fleet: &Uuid7, schedule: &Uuid7) -> Result<Option<Schedule>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as::<_, Schedule>(sql::SELECT_ONE)
-            .bind(schedule.as_str())
-            .bind(fleet.as_str())
+            .bind(schedule)
+            .bind(fleet)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_READ))

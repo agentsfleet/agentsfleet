@@ -36,7 +36,7 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Lease(held.lease_key.as_str()), "status")
+            .text(Row::Lease(&held.lease_key), "status")
             .await,
         Some(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE.to_owned())
     );
@@ -64,7 +64,7 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
 async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
     let held = held_in(Fixtures::create_isolated_with_queue().await).await;
     let mut connection = held.fixtures.database.acquire().await.expect("database");
-    sqlx::query("UPDATE fleet.admissions SET lease_fence = lease_fence + 1 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.admissions SET lease_fence = lease_fence + 1 WHERE id = $1")
         .bind(&held.event_id)
         .execute(&mut *connection)
         .await
@@ -80,11 +80,11 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Lease(held.lease_key.as_str()), "status")
+            .text(Row::Lease(&held.lease_key), "status")
             .await,
         Some(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE.to_owned())
     );
-    sqlx::query("UPDATE fleet.admissions SET lease_fence = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.admissions SET lease_fence = $2 WHERE id = $1")
         .bind(&held.event_id)
         .bind(held.fence.as_i64())
         .execute(&mut *connection)
@@ -102,12 +102,12 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
 async fn commit(held: &Held) -> afd_fleet::Result<Committed> {
     let leases = held.fixtures.leases_with_dead_queue();
     let lease = leases
-        .load_for_report(held.lease_key.as_str(), &held.runner)
+        .load_for_report(&held.lease_key, &held.runner)
         .await?
         .expect("issued lease");
     leases
         .commit_report(report(
-            held.lease_key.as_str(),
+            &held.lease_key,
             &held.runner,
             &lease,
             (&held.lease_key, &held.pricing),

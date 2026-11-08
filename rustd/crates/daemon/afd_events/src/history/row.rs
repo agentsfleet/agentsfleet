@@ -9,6 +9,7 @@
 //! wire spells it (`af_wire::event::EventSummary`), and the one `From` between
 //! them is the only place the two vocabularies meet.
 
+use af_core::id::Uuid7;
 use std::borrow::Cow;
 
 use af_wire::event::EventSummary;
@@ -27,11 +28,11 @@ const ROW: &str = "event row";
 #[non_exhaustive]
 pub struct EventRow {
     /// The fleet this event belongs to.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// The canonical event identifier.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// The workspace the fleet belongs to.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// Who or what produced the event.
     pub actor: String,
     /// How the event entered the system, as stored.
@@ -48,7 +49,7 @@ pub struct EventRow {
     /// The operator-readable cause line, absent when none was carried.
     pub failure_detail: Option<String>,
     /// The event this one continues, set on a continuation.
-    pub resumes_event_id: Option<String>,
+    pub resumes_event_id: Option<Uuid7>,
     /// When the row was created.
     pub created_at: Timestamp,
     /// When the row last changed.
@@ -64,9 +65,9 @@ pub struct EventRow {
 /// The row as `fleet.events` spells it.
 #[derive(sqlx::FromRow)]
 pub(crate) struct Stored {
-    fleet_id: String,
-    event_id: String,
-    workspace_id: String,
+    fleet_id: Uuid7,
+    event_id: Uuid7,
+    workspace_id: Uuid7,
     actor: String,
     event_type: String,
     status: String,
@@ -74,7 +75,7 @@ pub(crate) struct Stored {
     wall_ms: Option<i64>,
     failure_reason: Option<String>,
     failure_detail: Option<String>,
-    resumes_event_id: Option<String>,
+    resumes_event_id: Option<Uuid7>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -125,9 +126,9 @@ impl EventRow {
     #[must_use]
     pub fn summary(&self) -> EventSummary<'_> {
         EventSummary {
-            fleet_id: Cow::Borrowed(&self.fleet_id),
-            event_id: Cow::Borrowed(&self.event_id),
-            workspace_id: Cow::Borrowed(&self.workspace_id),
+            fleet_id: Cow::Borrowed(self.fleet_id.as_str()),
+            event_id: Cow::Borrowed(self.event_id.as_str()),
+            workspace_id: Cow::Borrowed(self.workspace_id.as_str()),
             actor: Cow::Borrowed(&self.actor),
             event_type: Cow::Borrowed(&self.event_type),
             status: Cow::Borrowed(&self.status),
@@ -135,7 +136,10 @@ impl EventRow {
             wall_ms: self.wall_ms,
             failure_label: self.failure_label.as_deref().map(Cow::Borrowed),
             failure_detail: self.failure_detail.as_deref().map(Cow::Borrowed),
-            resumes_event_id: self.resumes_event_id.as_deref().map(Cow::Borrowed),
+            resumes_event_id: self
+                .resumes_event_id
+                .as_ref()
+                .map(|id| Cow::Borrowed(id.as_str())),
             created_at: self.created_at,
             updated_at: self.updated_at,
             cost_nanos: self.cost_nanos,

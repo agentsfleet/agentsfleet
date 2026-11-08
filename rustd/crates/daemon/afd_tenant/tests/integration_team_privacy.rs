@@ -11,7 +11,7 @@ use af_core::test_util::trace::Capture;
 use afd_tenant::team::Removal;
 use jiff::Timestamp;
 
-use crate::access_lane::{Fixture, id};
+use crate::access_lane::Fixture;
 
 /// Now, for every call a case makes.
 const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
@@ -44,7 +44,7 @@ async fn should_log_each_team_change_once_naming_nobody() {
         .expect("Carol accepts");
     let removed = fixture
         .team
-        .remove(&id(&fixture.john.tenant), &fixture.carol.user_id)
+        .remove(&fixture.john.tenant, &fixture.carol.user)
         .await
         .expect("John removes Carol");
     assert_eq!(removed, Removal::Removed);
@@ -71,12 +71,12 @@ async fn should_log_each_team_change_once_naming_nobody() {
 async fn should_name_a_nameless_inviter_by_address_and_the_account_by_its_name() {
     let fixture = Fixture::create().await;
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query("UPDATE identity.users SET display_name = NULL WHERE id = $1::uuid")
+    sqlx::query("UPDATE identity.users SET display_name = NULL WHERE id = $1")
         .bind(&fixture.john.user)
         .execute(&mut *connection)
         .await
         .expect("John's name clears");
-    sqlx::query("UPDATE identity.tenants SET name = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE identity.tenants SET name = $2 WHERE id = $1")
         .bind(&fixture.john.tenant)
         .bind(ACCOUNT_NAME)
         .execute(&mut *connection)

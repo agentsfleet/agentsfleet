@@ -15,8 +15,8 @@ async fn initial_save_requires_a_message_without_spending_its_operation() {
     let refused = create(&case, &input).await;
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1::uuid")
-            .bind(case.base.workspace.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1")
+            .bind(&case.base.workspace)
             .fetch_one(&mut *case.base.db.acquire().await.expect("draft counts"))
             .await
             .expect("draft count");
@@ -84,13 +84,13 @@ async fn retired_policy_refuses_the_save_without_discarding_the_answer() {
     let retired = mint();
     let mut connection = case.base.db.acquire().await.expect("candidate connection");
     sqlx::query("INSERT INTO authoring.candidates(id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at)
-        SELECT $2::uuid,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now()
-        FROM authoring.candidates c JOIN authoring.drafts d ON d.head_candidate_id=c.id WHERE d.id=$1::uuid")
-        .bind(draft["id"].as_str().expect("draft")).bind(retired.as_str())
+        SELECT $2,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now()
+        FROM authoring.candidates c JOIN authoring.drafts d ON d.head_candidate_id=c.id WHERE d.id=$1")
+        .bind(crate::authoring::id_field(&draft["id"])).bind(&retired)
         .execute(&mut *connection).await.expect("older daemon candidate");
-    sqlx::query("UPDATE authoring.drafts SET head_candidate_id=$2::uuid WHERE id=$1::uuid")
-        .bind(draft["id"].as_str().expect("draft"))
-        .bind(retired.as_str())
+    sqlx::query("UPDATE authoring.drafts SET head_candidate_id=$2 WHERE id=$1")
+        .bind(crate::authoring::id_field(&draft["id"]))
+        .bind(retired)
         .execute(&mut *connection)
         .await
         .expect("retired candidate head");

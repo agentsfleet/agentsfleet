@@ -8,9 +8,9 @@
 #[path = "support/gate_fixture.rs"]
 mod fixture;
 
-use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_gate::gate::{
@@ -54,11 +54,16 @@ async fn an_unreadable_gate_decision_reason_carries_no_code_prefix() {
         connect_redis().await,
         Entropy::new(),
     );
-    let fleet = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let action = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let event_id = "event-decision-unreadable";
+    let fleet = mint_id();
+    let action = mint_id();
+    let event_id = &mint_id();
     gates
-        .record(&fleet, event_id, &GateRef::new(action), REFERENCE_TIMEOUT)
+        .record(
+            &fleet,
+            event_id.as_str(),
+            &GateRef::new(action),
+            REFERENCE_TIMEOUT,
+        )
         .await
         .expect("the live queue holds the reference");
     let config = config(false);
@@ -100,13 +105,12 @@ async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
     let gates = Gates::new(fixture.database.clone(), dead_queue, Entropy::new());
     let policy_kill = config_gates(KILL_EVERY_CHAT);
 
-    let verdict = gates
-        .check(fixture.check("event-ready-stale", &policy_kill), NOW)
-        .await;
+    let event = mint_id();
+    let verdict = gates.check(fixture.check(&event, &policy_kill), NOW).await;
 
     assert_eq!(verdict, Verdict::Killed(Trigger::Policy));
-    let status: String = sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1::uuid")
-        .bind(fixture.fleet.as_str())
+    let status: String = sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")
+        .bind(&fixture.fleet)
         .fetch_one(&mut *fixture.database.acquire().await.expect("live database"))
         .await
         .expect("the stopped fleet remains readable");
@@ -143,13 +147,13 @@ async fn a_mirrored_answer_decides_without_reading_the_durable_row() {
         queue.clone(),
         Entropy::new(),
     );
-    let fleet = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let action = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let event_id = "event-mirror-answers";
+    let fleet = mint_id();
+    let action = mint_id();
+    let event_id = &mint_id();
     gates
         .record(
             &fleet,
-            event_id,
+            event_id.as_str(),
             &GateRef::new(action.clone()),
             REFERENCE_TIMEOUT,
         )
@@ -196,12 +200,12 @@ async fn a_reference_whose_row_is_gone_keeps_the_event_waiting() {
         connect_redis().await,
         Entropy::new(),
     );
-    let action = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let event_id = "event-row-gone";
+    let action = mint_id();
+    let event_id = &mint_id();
     gates
         .record(
             &fixture.fleet,
-            event_id,
+            event_id.as_str(),
             &GateRef::new(action),
             REFERENCE_TIMEOUT,
         )
@@ -225,7 +229,7 @@ async fn a_park_whose_reference_cannot_be_written_fails_closed_after_the_row() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = gates_without_a_queue(fixture.database.clone());
-    let event_id = "event-reference-unwritable";
+    let event_id = &mint_id();
     let config = config(false);
     let scope = fixture.check(event_id, &config);
     let capture = Capture::install();
@@ -236,7 +240,13 @@ async fn a_park_whose_reference_cannot_be_written_fails_closed_after_the_row() {
                 fleet_id: scope.fleet_id,
                 workspace_id: scope.workspace_id,
                 event_id,
-                stated: Stated::of("chat", "user:fixture", event_id, None, REFERENCE_TIMEOUT),
+                stated: Stated::of(
+                    "chat",
+                    "user:fixture",
+                    event_id.as_str(),
+                    None,
+                    REFERENCE_TIMEOUT,
+                ),
                 claim: &Claim::of(None),
             },
             NOW,

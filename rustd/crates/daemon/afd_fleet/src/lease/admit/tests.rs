@@ -107,6 +107,7 @@ async fn decided_on_a_dead_ledger(
     )
     .expect("the fixture document is authorable");
     let (workspace, fleet, tenant) = (test_dead::id(2), test_dead::id(1), test_dead::id(3));
+    let event = test_dead::id(5);
     let accounts = afd_billing::Accounts::new(test_dead::database());
     let biller = test_dead::biller();
     let decided = money_gates(
@@ -116,7 +117,7 @@ async fn decided_on_a_dead_ledger(
         Request {
             workspace_id: &workspace,
             fleet_id: &fleet,
-            event_id: "1767225600000-1",
+            event_id: &event,
             budget: config.budget(),
             posture,
             provider: "anthropic",

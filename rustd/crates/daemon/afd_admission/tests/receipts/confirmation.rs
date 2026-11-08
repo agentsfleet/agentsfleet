@@ -44,15 +44,14 @@ async fn confirming_an_absent_key_does_not_publish_or_create_work() -> Fallible 
     let (server, admissions) = over_fake(&lane, &[]).await?;
     assert_eq!(
         admissions
-            .confirm(afd_admission::Producer::Steer, &lane.fleet)
+            .confirm(afd_admission::Producer::Steer, lane.fleet.as_str())
             .await?,
         None
     );
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid")
-            .bind(&lane.fleet)
-            .fetch_one(&mut *lane.database.acquire().await?)
-            .await?;
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1")
+        .bind(&lane.fleet)
+        .fetch_one(&mut *lane.database.acquire().await?)
+        .await?;
     assert_eq!(count, 0);
     assert!(!server.seen().iter().any(|s| s.starts_with("SPUBLISH")));
     lane.cleanup().await;

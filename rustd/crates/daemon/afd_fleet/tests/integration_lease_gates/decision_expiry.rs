@@ -40,9 +40,8 @@ async fn a_profile_read_past_claim_expiry_creates_no_lease_audit_or_tally() {
             .delivery,
         Delivery::First
     );
-    let tenant = Uuid7::parse(&case.tenant).expect("native tenant");
     let billed = Billed {
-        tenant_id: &tenant,
+        tenant_id: &case.tenant,
         posture: seed::POSTURE,
         provider: seed::PROVIDER,
         model: seed::MODEL,
@@ -94,7 +93,7 @@ async fn expire_while_blocked(
     fixtures: &Fixtures,
     held: Transaction<'_, Postgres>,
     pid: i32,
-    fleet: &str,
+    fleet: &Uuid7,
 ) {
     let mut probe = fixtures
         .database
@@ -109,10 +108,10 @@ async fn expire_while_blocked(
         }
         tokio::task::yield_now().await;
     }
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=date_trunc('milliseconds', clock_timestamp())+$2::interval WHERE fleet_id=$1::uuid")
+    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=date_trunc('milliseconds', clock_timestamp())+$2::interval WHERE fleet_id=$1")
         .bind(fleet).bind(EXPIRY_GRACE).execute(&mut *probe).await.expect("expire after the issue-time capacity read");
     loop {
-        let expired: bool = sqlx::query_scalar("SELECT lease_expires_at <= clock_timestamp() FROM runner.fleet_slots WHERE fleet_id=$1::uuid")
+        let expired: bool = sqlx::query_scalar("SELECT lease_expires_at <= clock_timestamp() FROM runner.fleet_slots WHERE fleet_id=$1")
             .bind(fleet).fetch_one(&mut *probe).await.expect("observe actual database expiry");
         if expired {
             break;
@@ -131,10 +130,10 @@ async fn assert_no_issuance(fixtures: &Fixtures, runner: &Uuid7) {
         .await
         .expect("read issuance effects");
     let found: Issuance = sqlx::query_as(
-        "SELECT (SELECT count(*) FROM runner.leases WHERE runner_id=$1::uuid) AS leases, \
-         (SELECT count(*) FROM runner.events WHERE runner_id=$1::uuid AND event_type=$2) AS acquired_events, \
-         COALESCE((SELECT acquired_count FROM runner.lifetime_counters WHERE runner_id=$1::uuid),0) AS acquisitions")
-        .bind(runner.as_str()).bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
+        "SELECT (SELECT count(*) FROM runner.leases WHERE runner_id=$1) AS leases, \
+         (SELECT count(*) FROM runner.events WHERE runner_id=$1 AND event_type=$2) AS acquired_events, \
+         COALESCE((SELECT acquired_count FROM runner.lifetime_counters WHERE runner_id=$1),0) AS acquisitions")
+        .bind(runner).bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
         .fetch_one(&mut *connection).await.expect("all native issuance effects");
     assert_eq!(found, Issuance::default());
 }

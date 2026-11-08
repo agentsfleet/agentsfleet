@@ -190,7 +190,8 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
     let root = spans
         .iter()
         .find(|span| {
-            span.name == SPAN_RUNNER_LEASE && span.attribute(ATTR_EVENT_ID) == Some(&run.event_id)
+            span.name == SPAN_RUNNER_LEASE
+                && span.attribute(ATTR_EVENT_ID) == Some(run.event_id.as_str())
         })
         .expect("the lease's root span reached the collector, naming the daemon's event");
     assert!(

@@ -82,19 +82,18 @@ const OWNER_TOKEN: &str = "ghp_owner_workspace_token";
 /// The fencing token every fixture lease carries.
 const FIXTURE_FENCE: i64 = 5;
 
-/// The event a fixture lease is issued against.
-const EVENT_ID: &str = "evt-cred-mint-fixture";
-
 /// A fleet, a runner, and a live lease binding them.
 struct Bound {
     /// The runner presenting the lease.
     runner: Uuid7,
     /// The lease it presents.
-    lease: String,
+    lease: Uuid7,
     /// The fleet the lease authorises.
-    fleet: String,
+    fleet: Uuid7,
     /// The workspace the vault is opened in.
-    workspace: String,
+    workspace: Uuid7,
+    /// The event the lease is issued against.
+    event: Uuid7,
 }
 
 /// Seeds a fleet with one runner holding one live lease.
@@ -104,40 +103,47 @@ async fn bound(fixtures: &Fixtures, config_json: &str) -> Bound {
     if config_json != "{}" {
         set_config(fixtures, &fleet, config_json).await;
     }
-    let lease = mint_id();
-    seed_lease(fixtures, &lease, runners[0].as_str(), &fleet, &workspace).await;
+    let (lease, event) = (mint_id(), mint_id());
+    let [runner] = runners;
+    seed_lease(fixtures, &lease, &runner, &fleet, &workspace, &event).await;
     Bound {
-        runner: runners[0].clone(),
+        runner,
         lease,
         fleet,
         workspace,
+        event,
     }
 }
 
 /// The workspace a seeded fleet belongs to.
-async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
+async fn workspace_of(fixtures: &Fixtures, fleet: &Uuid7) -> Uuid7 {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query_scalar::<_, String>(
-        "SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid",
-    )
-    .bind(fleet)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("a seeded fleet has a workspace")
+    sqlx::query_scalar::<_, Uuid7>("SELECT workspace_id FROM fleet.fleets WHERE id = $1")
+        .bind(fleet)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("a seeded fleet has a workspace")
 }
 
 /// Replaces a seeded fleet's stored configuration.
-async fn set_config(fixtures: &Fixtures, fleet: &str, config_json: &str) {
+async fn set_config(fixtures: &Fixtures, fleet: &Uuid7, config_json: &str) {
     fixtures.native_config(fleet, config_json).await;
 }
 
 /// Writes one live lease binding `runner` to `fleet`, over the fleet's
-/// [`EVENT_ID`] event.
-async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str, workspace: &str) {
+/// `event`.
+async fn seed_lease(
+    fixtures: &Fixtures,
+    lease: &Uuid7,
+    runner: &Uuid7,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event: &Uuid7,
+) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -148,19 +154,19 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
         event_type: "chat",
         status: af_core::event::status::RECEIVED,
     };
-    let event = FleetEventSeed::new(fleet, workspace, EVENT_ID, kind)
+    FleetEventSeed::new(fleet, workspace, event, kind)
         .insert(&mut *connection)
         .await
         .expect("the leased event row must insert");
     sqlx::query(
         "INSERT INTO runner.leases
-           (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
+           (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
             posture, provider, model, last_metered_at,
             fencing_token, lease_expires_at, status, posted_message_count, created_at, updated_at)
-         SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5::uuid, now(),
+         SELECT $1, $2, $3, $4, f.tenant_id, $5, now(),
                 'platform', 'anthropic', 'claude-fixture', now(),
                 $6, now() + $7::interval, $8, 0, now(), now()
-         FROM fleet.fleets f WHERE f.id = $3::uuid",
+         FROM fleet.fleets f WHERE f.id = $3",
     )
     .bind(lease)
     .bind(runner)
@@ -177,7 +183,7 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
 
 /// Moves `fleet`'s live sequence past the fixture lease's token, as a reclaim's
 /// claim does, leaving the lease row `active` and unexpired.
-async fn supersede(fixtures: &Fixtures, fleet: &str) {
+async fn supersede(fixtures: &Fixtures, fleet: &Uuid7) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -187,7 +193,7 @@ async fn supersede(fixtures: &Fixtures, fleet: &str) {
         "INSERT INTO runner.fleet_slots
            (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
             created_at, updated_at)
-         VALUES ($1::uuid, NULL, $2, now() + $3::interval, NULL, now(), now())
+         VALUES ($1, NULL, $2, now() + $3::interval, NULL, now(), now())
          ON CONFLICT (fleet_id) DO UPDATE SET fencing_token = EXCLUDED.fencing_token",
     )
     .bind(fleet)
@@ -203,10 +209,10 @@ async fn supersede(fixtures: &Fixtures, fleet: &str) {
 /// Sealed rather than inserted as plaintext, because the read path OPENS it —
 /// a test that wrote unsealed bytes would prove the mint works against rows
 /// production could never produce.
-async fn seed_handle(fixtures: &Fixtures, workspace: &str, name: &str, handle: &str) {
+async fn seed_handle(fixtures: &Fixtures, workspace: &Uuid7, name: &str, handle: &str) {
     let kek = Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed");
     let sealed = Sealer::new()
-        .seal(&kek, &Aad::new(workspace, name), handle.as_bytes())
+        .seal(&kek, &Aad::new(workspace.as_str(), name), handle.as_bytes())
         .expect("the fixture handle seals");
 
     let mut connection = fixtures
@@ -218,7 +224,7 @@ async fn seed_handle(fixtures: &Fixtures, workspace: &str, name: &str, handle: &
         "INSERT INTO vault.secrets
            (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag,
             secret_nonce, secret_ciphertext, secret_tag, kek_version, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
     .bind(mint_id())
@@ -237,7 +243,7 @@ async fn seed_handle(fixtures: &Fixtures, workspace: &str, name: &str, handle: &
 }
 
 /// Writes an approved integration grant for `fleet`.
-async fn seed_grant(fixtures: &Fixtures, fleet: &str, service: &str, status: &str) {
+async fn seed_grant(fixtures: &Fixtures, fleet: &Uuid7, service: &str, status: &str) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -246,7 +252,7 @@ async fn seed_grant(fixtures: &Fixtures, fleet: &str, service: &str, status: &st
     sqlx::query(
         "INSERT INTO connector.integration_grants
            (id, fleet_id, service, status, requested_reason, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, 'fixture', now(), now())
+         VALUES ($1, $2, $3, $4, 'fixture', now(), now())
          ON CONFLICT (fleet_id, service) DO UPDATE SET status = EXCLUDED.status",
     )
     .bind(mint_id())
@@ -267,9 +273,9 @@ const WRITE_SPEND_CEILING: i64 = 32;
 /// The recorded reach a write-bound fixture fleet declares.
 const STATED_BINDING: &str = r#"{"repositories":["acme/payments"],"access":"write","base":"main"}"#;
 
-/// Writes one answered repository-write gate for `fleet` and `EVENT_ID`.
-async fn seed_write_gate(fixtures: &Fixtures, fleet: &str, stated: &str, spent: i64) -> String {
-    let workspace = workspace_of(fixtures, fleet).await;
+/// Writes one answered repository-write gate for `owner`'s fleet and event.
+async fn seed_write_gate(fixtures: &Fixtures, owner: &Bound, stated: &str, spent: i64) -> Uuid7 {
+    let workspace = workspace_of(fixtures, &owner.fleet).await;
     let gate_id = mint_id();
     let mut connection = fixtures
         .database
@@ -282,18 +288,18 @@ async fn seed_write_gate(fixtures: &Fixtures, fleet: &str, stated: &str, spent: 
             gate_type, proposed_action, evidence, blast_radius, expires_at,
             resolved_by, status, detail, created_at, updated_at, event_id,
             stated_binding, spend_count, spend_ceiling)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
+         VALUES ($1, $2, $3, $4, 'git', 'push',
                  $5, 'open a repair pull request', '{}'::jsonb, 'one repository',
                  now() + $6::interval, 'fixture:human', 'approved', '', now(), now(), $7,
                  $8::jsonb, $9, $10)",
     )
     .bind(&gate_id)
-    .bind(fleet)
+    .bind(&owner.fleet)
     .bind(&workspace)
     .bind(mint_id())
     .bind(KIND_REPOSITORY_WRITE)
     .bind(LEASE_WINDOW)
-    .bind(EVENT_ID)
+    .bind(&owner.event)
     .bind(stated)
     .bind(spent)
     .bind(WRITE_SPEND_CEILING)

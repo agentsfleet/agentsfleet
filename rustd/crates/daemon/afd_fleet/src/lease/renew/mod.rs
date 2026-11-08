@@ -98,7 +98,7 @@ impl Leases {
     /// which is why this propagates rather than answering `None`.
     pub async fn load_for_renew(
         &self,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
     ) -> Result<Option<Renewing>> {
         let mut connection = self.pool().acquire().await?;
@@ -107,12 +107,12 @@ impl Leases {
 
     pub(crate) async fn load_for_renew_on(
         connection: &mut sqlx::PgConnection,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
     ) -> Result<Option<Renewing>> {
         let found: Option<LeaseForRenew> = sqlx::query_as(sql::renew::SELECT_LEASE_FOR_RENEW)
             .bind(lease_id)
-            .bind(runner_id.as_str())
+            .bind(runner_id)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
@@ -237,9 +237,9 @@ impl RenewAnswer {
 /// [`sql::renew::SELECT_LEASE_FOR_RENEW`]'s row, ids still as stored text.
 #[derive(sqlx::FromRow)]
 struct LeaseForRenew {
-    tenant_id: String,
-    fleet_id: String,
-    workspace_id: String,
+    tenant_id: Uuid7,
+    fleet_id: Uuid7,
+    workspace_id: Uuid7,
     posture: String,
     provider: String,
     model: String,
@@ -252,9 +252,9 @@ impl LeaseForRenew {
             Uuid7::parse(text).map_err(crate::error::row_malformed("runner.leases", column))
         };
         Ok(Renewing {
-            tenant_id: id(&self.tenant_id, "tenant_id")?,
-            fleet_id: id(&self.fleet_id, "fleet_id")?,
-            workspace_id: id(&self.workspace_id, "workspace_id")?,
+            tenant_id: id(self.tenant_id.as_str(), "tenant_id")?,
+            fleet_id: id(self.fleet_id.as_str(), "fleet_id")?,
+            workspace_id: id(self.workspace_id.as_str(), "workspace_id")?,
             posture: self.posture,
             provider: self.provider,
             model: self.model,
@@ -278,16 +278,17 @@ impl Plane {
     pub async fn renew(
         &self,
         runner_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         request: RenewRequest,
         now: Timestamp,
     ) -> Result<(Timestamp, Nanos)> {
         let Some(lease) = self.leases.load_for_renew(lease_id, runner_id).await? else {
             return Err(lease_not_found());
         };
-        let lease_key = Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
+        let lease_key = Uuid7::parse(lease_id.as_str()).map_err(|_malformed| lease_not_found())?;
         let admission = if lease.status == sql::LEASE_STATUS_ACTIVE {
-            self.gate_renewal(&lease, &lease_key, lease_id, now).await
+            self.gate_renewal(&lease, &lease_key, lease_id.as_str(), now)
+                .await
         } else {
             Err(lease_lost())
         };
@@ -296,7 +297,7 @@ impl Plane {
             posture_of(&lease),
             &lease.provider,
             &lease.model,
-            lease_id,
+            lease_id.as_str(),
         )
         .await;
         if let Err(refusal) = admission {

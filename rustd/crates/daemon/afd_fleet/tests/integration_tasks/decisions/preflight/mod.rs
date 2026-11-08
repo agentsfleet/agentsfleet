@@ -1,12 +1,13 @@
 //! Public interpretation accepts only the human's verified existing pull request.
 use super::{
-    super::fixture::{Case, exercise},
+    super::fixture::{Case, exercise, id},
     checkpoint_server,
     fixture::{Decisions, request},
     github_authority, github_server,
     interpretation::choose,
     reply::known_result,
 };
+use af_core::id::Uuid7;
 use af_core::{error_code, etag::sha256_hex};
 use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome},
@@ -100,7 +101,7 @@ async fn proposed(fixture: &Decisions<'_>) -> TaskBindingsInput {
         .record(&request.call_id, DecisionReceipt::Provider { result })
         .await;
     let revision = revision(case).await;
-    binding(case, source.to_string(), revision, request.call_id)
+    binding(case, source.to_string(), revision.into(), request.call_id)
 }
 
 fn binding(case: &Case, source: String, revision: String, call: String) -> TaskBindingsInput {
@@ -138,8 +139,8 @@ fn valid(input: TaskBindingsInput) -> garde::Valid<TaskBindingsInput> {
         .expect("bounded target interpretation")
 }
 
-async fn assert_target(case: &Case, task: &str) {
-    let target: Value = sqlx::query_scalar("SELECT target FROM fleet.tasks WHERE id=$1::uuid")
+async fn assert_target(case: &Case, task: &Uuid7) {
+    let target: Value = sqlx::query_scalar("SELECT target FROM fleet.tasks WHERE id=$1")
         .bind(task)
         .fetch_one(
             &mut *case
@@ -177,8 +178,8 @@ async fn accepted(
     let item = accepted.items.first().expect("one accepted repair");
     assert!(item.applies_here);
     assert_eq!(item.action, TaskInputAction::NewWork);
-    let task = item.task_id.as_ref().expect("native target owner");
-    assert_target(case, task).await;
+    let task = id(item.task_id.as_ref().expect("native target owner"));
+    assert_target(case, &task).await;
     let replay = tasks
         .interpret(case.lease(), &valid(input))
         .await
@@ -188,9 +189,9 @@ async fn accepted(
     assert_eq!(case.counts().await, (1, 1, 2));
 }
 
-async fn revision(case: &Case) -> String {
-    sqlx::query_scalar("SELECT head_revision_id::text FROM fleet.fleets WHERE id=$1::uuid")
-        .bind(case.scope.fleet_id.as_str())
+async fn revision(case: &Case) -> Uuid7 {
+    sqlx::query_scalar("SELECT head_revision_id FROM fleet.fleets WHERE id=$1")
+        .bind(&case.scope.fleet_id)
         .fetch_one(
             &mut *case
                 .held

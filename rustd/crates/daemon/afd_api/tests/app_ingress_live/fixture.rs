@@ -91,12 +91,12 @@ pub(super) struct Fixture {
     database: Db,
     queue: Dragonfly,
     subject: String,
-    tenant: String,
+    tenant: Uuid7,
     /// Where the App's own signing secret lives.
     admin: Uuid7,
     /// Where the fleets an installation wakes live.
     workspace: Uuid7,
-    user: String,
+    user: Uuid7,
     /// The fleet subscribed to [`REPOSITORY`].
     pub(super) fleet: Uuid7,
     /// This fixture's own installation identifier — see [`CAPTURED_INSTALLATION`].
@@ -111,10 +111,10 @@ impl Fixture {
             queue: harness::connect_redis().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
-            admin: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            admin: mint_id(),
+            workspace: mint_id(),
             user: mint_id(),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
+            fleet: mint_id(),
             installation: minted_installation(),
             lane,
         }
@@ -162,20 +162,20 @@ impl Fixture {
                 email: &email,
                 name: "app-ingress",
                 display_name: None,
-                workspace: self.workspace.as_str(),
+                workspace: &self.workspace,
             },
         )
         .await;
         let mut connection = self.database.acquire().await.expect("an API connection");
-        WorkspaceSeed::new(self.admin.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.admin, &self.tenant)
             .name("platform-admin")
             .insert(&mut *connection)
             .await
             .expect("the admin workspace seeds");
         let setup = FixtureSetup::new(&document());
         FleetSeed::new(
-            self.fleet.as_str(),
-            self.workspace.as_str(),
+            &self.fleet,
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -189,7 +189,7 @@ impl Fixture {
         .insert(&mut *connection)
         .await
         .expect("the fleet seeds");
-        GrantSeed::new(self.fleet.as_str(), PROVIDER, grant_status::APPROVED)
+        GrantSeed::new(&self.fleet, PROVIDER, grant_status::APPROVED)
             .approved(Timestamp::UNIX_EPOCH)
             .insert(&mut *connection)
             .await
@@ -199,7 +199,7 @@ impl Fixture {
     /// Maps the delivery's installation to the tenant workspace.
     async fn map_installation(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        InstallSeed::new(PROVIDER, &self.installation, self.workspace.as_str())
+        InstallSeed::new(PROVIDER, &self.installation, &self.workspace)
             .insert(&mut *connection)
             .await
             .expect("the installation maps to a workspace");
@@ -238,7 +238,7 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
             "SELECT COUNT(*) FROM fleet.events e \
-             JOIN fleet.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1::uuid",
+             JOIN fleet.fleets f ON f.id = e.fleet_id WHERE f.tenant_id = $1",
         )
         .bind(&self.tenant)
         .fetch_one(&mut *connection)
@@ -251,12 +251,12 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-            .bind(self.admin.as_str())
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1")
+            .bind(self.admin)
             .execute(&mut *transaction)
             .await
             .expect("the sealed App secret cleans up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await
@@ -280,7 +280,7 @@ impl Fixture {
 /// Built from a `UUIDv7`'s RANDOM half rather than its whole: the leading digits
 /// of a v7 are a timestamp, so two minted a millisecond apart share them.
 fn minted_installation() -> String {
-    let minted = mint_id().replace('-', "");
+    let minted = mint_id().as_str().replace('-', "");
     let random_half = minted.get(20..).unwrap_or("1");
     let value = u64::from_str_radix(random_half, 16).unwrap_or(1);
     format!("{}", value.max(1))

@@ -10,7 +10,7 @@ use af_core::id::Uuid7;
 use afd_api_wire::operator::{LeaseDestination, LeaseKind, LeaseOutcome};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_uuid7};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 use jiff::Timestamp;
@@ -21,44 +21,43 @@ const CANARY_INSTALLED: Timestamp = Timestamp::constant(1_760_000_000, 11_000_00
 
 /// Two runners, three events on them, and five leases: `$6` holds four, `$7`
 /// one. Events `$13` and `$15` are processed and received; `$14` failed.
-/// `$20`–`$22` are the event rows' ids.
 const SEED: &str = r"
 WITH inserted_runners AS (
     INSERT INTO runner.runners
       (id, host_id, token_hash, sandbox_tier, status, labels, network_policy,
        registry_allowlist, worker_count, lease_version, last_seen_at, created_at, updated_at)
     VALUES
-      ($6::uuid, $16, $18, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
+      ($6, $16, $18, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
        1, 0, '2025-10-09 08:00:00.020+00', '2025-10-09 08:00:00.020+00', '2025-10-09 08:00:00.020+00'),
-      ($7::uuid, $17, $19, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
+      ($7, $17, $19, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress', '[]'::jsonb,
        1, 0, '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00', '2025-10-09 08:00:00.021+00')
 ), inserted_events AS (
     INSERT INTO fleet.events
-      (id, fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms,
+      (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms,
        failure_reason, failure_detail, created_at, updated_at)
     VALUES
-      ($20::uuid, $4::uuid, $2::uuid, $13, 'user:a', 'chat', 'processed', '{}'::jsonb, 999,
+      ($4, $2, $13, 'user:a', 'chat', 'processed', '{}'::jsonb, 999,
        NULL, NULL, '2025-10-09 08:00:00.050+00', '2025-10-09 08:00:00.050+00'),
-      ($21::uuid, $5::uuid, $3::uuid, $14, 'user:b', 'webhook', 'fleet_error', '{}'::jsonb, 2000,
+      ($5, $3, $14, 'user:b', 'webhook', 'fleet_error', '{}'::jsonb, 2000,
        'provider_error', 'upstream refused', '2025-10-09 08:00:00.051+00', '2025-10-09 08:00:00.051+00'),
-      ($22::uuid, $5::uuid, $3::uuid, $15, 'user:c', 'chat', 'received', '{}'::jsonb, NULL,
+      ($5, $3, $15, 'user:c', 'chat', 'received', '{}'::jsonb, NULL,
        NULL, NULL, '2025-10-09 08:00:00.052+00', '2025-10-09 08:00:00.052+00')
 
 )
 INSERT INTO runner.leases
-  (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count,
    created_at, updated_at)
-SELECT v.id, v.runner_id, v.fleet_id, v.workspace_id, $1::uuid, v.fleet_event_id,
+SELECT v.id, v.runner_id, v.fleet_id, v.workspace_id, $1, v.event_id,
        v.event_created_at, v.posture, v.provider, v.model, v.created_at,
        v.fencing_token, v.expires_at, v.status, 0, v.created_at, v.created_at
 FROM (VALUES
-  ($8::uuid, $6::uuid, $4::uuid, $2::uuid, $20::uuid, '2025-10-09 08:00:00.050+00'::timestamptz, 'platform', 'anthropic', 'model-a', 10, 2, 3, 1, '2025-10-09 08:00:00.130+00'::timestamptz, 'expired', '2025-10-09 08:00:00.100+00'::timestamptz),
-  ($9::uuid, $6::uuid, $4::uuid, $2::uuid, $20::uuid, '2025-10-09 08:00:00.050+00', 'platform', 'anthropic', 'model-a', 20, 4, 6, 2, '2025-10-09 08:00:00.230+00', 'reported', '2025-10-09 08:00:00.200+00'),
-  ($10::uuid, $6::uuid, $5::uuid, $3::uuid, $22::uuid, '2025-10-09 08:00:00.052+00', 'bring_your_own', 'openai', 'model-c', 30, 6, 9, 1, '2025-10-09 08:00:00.330+00', 'active', '2025-10-09 08:00:00.300+00'),
-  ($11::uuid, $6::uuid, $5::uuid, $3::uuid, $21::uuid, '2025-10-09 08:00:00.051+00', 'platform', 'anthropic', 'model-b', 40, 8, 12, 1, '2025-10-09 08:00:00.330+00', 'reported', '2025-10-09 08:00:00.300+00'),
-  ($12::uuid, $7::uuid, $4::uuid, $2::uuid, $20::uuid, '2025-10-09 08:00:00.050+00', 'platform', 'anthropic', 'model-a', 1, 0, 1, 3, '2025-10-09 08:00:00.430+00', 'reported', '2025-10-09 08:00:00.400+00')
-) AS v(id, runner_id, fleet_id, workspace_id, fleet_event_id, event_created_at,
+  ($8, $6, $4, $2, $13, '2025-10-09 08:00:00.050+00'::timestamptz, 'platform', 'anthropic', 'model-a', 10, 2, 3, 1, '2025-10-09 08:00:00.130+00'::timestamptz, 'expired', '2025-10-09 08:00:00.100+00'::timestamptz),
+  ($9, $6, $4, $2, $13, '2025-10-09 08:00:00.050+00', 'platform', 'anthropic', 'model-a', 20, 4, 6, 2, '2025-10-09 08:00:00.230+00', 'reported', '2025-10-09 08:00:00.200+00'),
+  ($10, $6, $5, $3, $15, '2025-10-09 08:00:00.052+00', 'bring_your_own', 'openai', 'model-c', 30, 6, 9, 1, '2025-10-09 08:00:00.330+00', 'active', '2025-10-09 08:00:00.300+00'),
+  ($11, $6, $5, $3, $14, '2025-10-09 08:00:00.051+00', 'platform', 'anthropic', 'model-b', 40, 8, 12, 1, '2025-10-09 08:00:00.330+00', 'reported', '2025-10-09 08:00:00.300+00'),
+  ($12, $7, $4, $2, $13, '2025-10-09 08:00:00.050+00', 'platform', 'anthropic', 'model-a', 1, 0, 1, 3, '2025-10-09 08:00:00.430+00', 'reported', '2025-10-09 08:00:00.400+00')
+) AS v(id, runner_id, fleet_id, workspace_id, event_id, event_created_at,
        posture, provider, model, input, cached, output, fencing_token, expires_at, status,
        created_at)
 ";
@@ -209,10 +208,9 @@ struct Fixtures {
     lease_4: Uuid7,
     foreign_lease: Uuid7,
     missing_runner: Uuid7,
-    events: [Uuid7; 3],
-    event_a: String,
-    event_b: String,
-    event_c: String,
+    event_a: Uuid7,
+    event_b: Uuid7,
+    event_c: Uuid7,
     host_a: String,
     host_b: String,
     hash_a: String,
@@ -222,26 +220,25 @@ struct Fixtures {
 impl Fixtures {
     async fn create() -> Self {
         let lane = TestDatabase::shared();
-        let suffix = mint_uuid7();
+        let suffix = mint_id();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            tenant: mint_uuid7(),
-            workspace_a: mint_uuid7(),
-            workspace_b: mint_uuid7(),
-            fleet_a: mint_uuid7(),
-            fleet_b: mint_uuid7(),
-            runner_a: mint_uuid7(),
-            runner_b: mint_uuid7(),
-            lease_1: mint_uuid7(),
-            lease_2: mint_uuid7(),
-            lease_3: mint_uuid7(),
-            lease_4: mint_uuid7(),
-            foreign_lease: mint_uuid7(),
-            missing_runner: mint_uuid7(),
-            events: [mint_uuid7(), mint_uuid7(), mint_uuid7()],
-            event_a: format!("event-a-{suffix}"),
-            event_b: format!("event-b-{suffix}"),
-            event_c: format!("event-c-{suffix}"),
+            tenant: mint_id(),
+            workspace_a: mint_id(),
+            workspace_b: mint_id(),
+            fleet_a: mint_id(),
+            fleet_b: mint_id(),
+            runner_a: mint_id(),
+            runner_b: mint_id(),
+            lease_1: mint_id(),
+            lease_2: mint_id(),
+            lease_3: mint_id(),
+            lease_4: mint_id(),
+            foreign_lease: mint_id(),
+            missing_runner: mint_id(),
+            event_a: mint_id(),
+            event_b: mint_id(),
+            event_c: mint_id(),
             host_a: format!("host-a-{suffix}"),
             host_b: format!("host-b-{suffix}"),
             hash_a: format!("hash-a-{suffix}"),
@@ -252,7 +249,7 @@ impl Fixtures {
 
     async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .name("Operator test")
             .insert(&mut *connection)
             .await
@@ -261,7 +258,7 @@ impl Fixtures {
             (&self.workspace_a, "primary"),
             (&self.workspace_b, "secondary"),
         ] {
-            WorkspaceSeed::new(workspace.as_str(), self.tenant.as_str())
+            WorkspaceSeed::new(workspace, &self.tenant)
                 .name(name)
                 .insert(&mut *connection)
                 .await
@@ -276,17 +273,12 @@ impl Fixtures {
             ),
             (&self.fleet_b, &self.workspace_b, "Canary", CANARY_INSTALLED),
         ] {
-            FleetSeed::new(
-                fleet.as_str(),
-                workspace.as_str(),
-                self.tenant.as_str(),
-                FLEET_STATUS_ACTIVE,
-            )
-            .name(name)
-            .at(at)
-            .insert(&mut *connection)
-            .await
-            .expect("the operator projection fixture seeds");
+            FleetSeed::new(fleet, workspace, &self.tenant, FLEET_STATUS_ACTIVE)
+                .name(name)
+                .at(at)
+                .insert(&mut *connection)
+                .await
+                .expect("the operator projection fixture seeds");
         }
         self.seed_leases(&mut connection).await;
     }
@@ -306,22 +298,16 @@ impl Fixtures {
             &self.lease_3,
             &self.lease_4,
             &self.foreign_lease,
-        ];
-        let texts = [
             &self.event_a,
             &self.event_b,
             &self.event_c,
-            &self.host_a,
-            &self.host_b,
-            &self.hash_a,
-            &self.hash_b,
         ];
-        let seeded = ids
-            .into_iter()
-            .map(Uuid7::as_str)
-            .chain(texts.into_iter().map(String::as_str))
-            .chain(self.events.iter().map(Uuid7::as_str))
-            .fold(sqlx::query(SEED), sqlx::query::Query::bind);
+        let texts = [&self.host_a, &self.host_b, &self.hash_a, &self.hash_b];
+        let seeded = texts.into_iter().fold(
+            ids.into_iter()
+                .fold(sqlx::query(SEED), sqlx::query::Query::bind),
+            sqlx::query::Query::bind,
+        );
         seeded
             .execute(connection)
             .await

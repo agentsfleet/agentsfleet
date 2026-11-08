@@ -17,7 +17,7 @@ use af_observability::test_util::Capture;
 use afd_fleet::lease::{Acquired, Billed, Kind, Leases};
 use jiff::Timestamp;
 
-use super::{hold, id, live};
+use super::{hold, live};
 use crate::rows::{LAPSE, Row};
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -45,9 +45,9 @@ fn claims(capture: &Capture, outcome: &str) -> u64 {
 }
 
 /// `runner` wins `fleet`'s slot.
-async fn wins(leases: &Leases, fleet: &str, runner: &Uuid7) {
+async fn wins(leases: &Leases, fleet: &Uuid7, runner: &Uuid7) {
     leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+        .claim(fleet, runner, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("the slot is won");
@@ -82,9 +82,8 @@ async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: Timestamp) -> Acqui
             .await
             .expect("the event's row opens");
     }
-    let tenant_id = Uuid7::parse(&seeded.tenant).expect("a seeded tenant");
     let billed = Billed {
-        tenant_id: &tenant_id,
+        tenant_id: &seeded.tenant,
         posture: POSTURE,
         provider: PROVIDER,
         model: MODEL,
@@ -163,7 +162,7 @@ async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() 
 
     let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
     fixtures
-        .age(Row::Runner(holder.as_str()), "last_seen_at", silence)
+        .age(Row::Runner(&holder), "last_seen_at", silence)
         .await;
     wins(&leases, &fleet, &other).await;
 
@@ -190,12 +189,12 @@ async fn test_claims_on_an_unheld_fleet_count_nothing() {
     let rounds = usize::try_from(CLAIMS_IN_A_ROW).expect("sixteen fits a usize");
     for runner in runners.iter().cycle().take(rounds) {
         let claimed = leases
-            .claim(&id(&fleet), runner, LEASE_TTL)
+            .claim(&fleet, runner, LEASE_TTL)
             .await
             .expect("the claim answers")
             .expect("a free slot is won");
         leases
-            .release(&id(&fleet), claimed.fence)
+            .release(&fleet, claimed.fence)
             .await
             .expect("an empty claim lets go");
     }

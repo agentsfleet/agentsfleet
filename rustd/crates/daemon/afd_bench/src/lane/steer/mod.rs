@@ -1,5 +1,6 @@
 //! Measure admission latency, database cost and unsettled backlog under concurrent producers.
 
+use af_core::id::Uuid7;
 use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
@@ -124,7 +125,7 @@ struct Submitted {
 
 /// Each submitter's slice of the population: fleet id and the workspace that
 /// owns it, so an appended entry carries the workspace of its own fleet.
-type Slice = Vec<(String, String)>;
+type Slice = Vec<(Uuid7, Uuid7)>;
 
 /// Drive every submitter concurrently, sampling the index while they run.
 async fn submit(
@@ -216,7 +217,7 @@ fn partition(fleets: &[SeededFleet], concurrency: u64) -> Vec<Slice> {
 /// Append to each fleet in turn until the deadline or the monitor fires.
 async fn append_until(
     steer: &Steer,
-    fleets: &[(String, String)],
+    fleets: &[(Uuid7, Uuid7)],
     deadline: Instant,
     abort: &Abort,
 ) -> Result<Outcomes> {

@@ -141,7 +141,7 @@ pub struct Request<'a> {
     /// The fleet whose ceiling applies.
     pub fleet_id: &'a Uuid7,
     /// The event being admitted.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// The fleet's declared ceiling, from the config resolved this lease.
     pub budget: Budget,
     /// Who supplies the provider key.

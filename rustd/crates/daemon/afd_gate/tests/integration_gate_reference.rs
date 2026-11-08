@@ -4,7 +4,9 @@
 #[path = "support/gate_fixture.rs"]
 mod fixture;
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
+use afd_db::test_util::mint_id;
 use afd_gate::gate::{Gates, Refused, Verdict, Waiting, key};
 
 use fixture::{Fixture, NOW, config, config_gates, connect_redis};
@@ -29,12 +31,12 @@ async fn reference_case(corrupt: bool) {
     let queue = connect_redis().await;
     let gates = Gates::new(fixture.database.clone(), queue.clone(), Entropy::new());
     let ruled = config_gates(APPROVE_CHAT);
-    let event = "lost-reference";
+    let event = &mint_id();
     assert_eq!(
         gates.check(fixture.check(event, &ruled), NOW).await,
         Verdict::Await(Waiting::Parked)
     );
-    let reference = key::event_ref(fixture.fleet.as_str(), event);
+    let reference = key::event_ref(fixture.fleet.as_str(), event.as_str());
     if corrupt {
         let corrupted = queue
             .set_for(&reference, "invalid reference", CORRUPT_REFERENCE_SECONDS)
@@ -57,7 +59,7 @@ async fn reference_case(corrupt: bool) {
     fixture.cleanup().await;
 }
 
-async fn assert_deadline_and_answer(fixture: &Fixture, gates: &Gates, event: &str) {
+async fn assert_deadline_and_answer(fixture: &Fixture, gates: &Gates, event: &Uuid7) {
     fixture.lapse(event).await;
     assert_eq!(
         gates.check(fixture.check(event, &config(false)), NOW).await,
@@ -75,7 +77,7 @@ async fn assert_deadline_and_answer(fixture: &Fixture, gates: &Gates, event: &st
         1,
         "the original question is the only card"
     );
-    let unrelated = gates.recorded(&fixture.fleet, "unrelated-event").await;
+    let unrelated = gates.recorded(&fixture.fleet, &mint_id()).await;
     assert!(
         matches!(unrelated, Ok(None)),
         "scoped lookup: {unrelated:?}"

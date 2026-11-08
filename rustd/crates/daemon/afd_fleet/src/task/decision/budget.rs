@@ -100,7 +100,7 @@ async fn paid_ready(
     let overage: bool = sqlx::query_scalar(sql::OVERAGE)
         .bind(&current.lease_id)
         .bind(&context.source_admission_id)
-        .bind(task.map(|task| task.task_id.as_str()))
+        .bind(task.map(|task| &task.task_id))
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_one(connection)

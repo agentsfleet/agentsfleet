@@ -5,7 +5,7 @@ use af_wire::fold::FOLDS_PER_CLAIM_MAX;
 use afd_admission::Producer;
 
 use super::support::{
-    Checked, Claimed, STEER_JSON, STEER_TEXT, WEBHOOK_JSON, claim_as_holder, send, set_lease_task,
+    Checked, Claimed, STEER_JSON, STEER_TEXT, claim_as_holder, send, set_lease_task,
     settle_directly, workspace_of,
 };
 use crate::lease_reads::COLUMN_LEASED_UNTIL;
@@ -21,7 +21,7 @@ async fn test_a_lease_past_its_deadline_claims_nothing() -> Checked {
     let workspace = workspace_of(&held).await?;
     let sent = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert_eq!(claim_as_holder(&held, 0).await?, [sent.claimed(STEER_TEXT)]);
-    let lease = Row::Lease(held.issued.lease_id.as_str());
+    let lease = Row::Lease(&held.issued.lease_id);
     held.fixtures.age(lease, COLUMN_LEASED_UNTIL, LAPSE).await;
     assert_eq!(claim_as_holder(&held, 0).await?, Vec::new());
     held.fixtures.cleanup().await;
@@ -100,11 +100,11 @@ async fn test_a_settled_message_is_not_claimed_again() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
     let done = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    let waiting = send(&held, &workspace, Producer::Webhook, WEBHOOK_JSON).await?;
+    let waiting = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     settle_directly(&held, &done.id).await?;
     assert_eq!(
         claim_as_holder(&held, 0).await?,
-        [waiting.claimed(WEBHOOK_JSON)]
+        [waiting.claimed(STEER_TEXT)]
     );
     held.fixtures.cleanup().await;
     Ok(())

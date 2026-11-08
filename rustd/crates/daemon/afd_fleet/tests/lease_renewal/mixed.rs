@@ -11,6 +11,7 @@ use super::{
     expiry::snapshot, fixture::Running, holders::assert_host_full, replica::expire,
     replicas::contended, seat::Seat,
 };
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_wire::lease::{AcceptedKinds, LeaseKind};
 use afd_authoring::{Claimed, Drafts, types::Draft};
@@ -21,8 +22,8 @@ use std::time::Duration;
 /// Every ordering finishes inside this, or the test fails rather than hangs.
 const DEADLOCK_BOUND: Duration = Duration::from_secs(30);
 const LIVE_AUTHORING: &str = "\
-SELECT lease_id::text FROM authoring.attempts
-WHERE runner_id = $1::uuid AND status = $2 AND lease_expires_at > clock_timestamp()";
+SELECT lease_id FROM authoring.attempts
+WHERE runner_id = $1 AND status = $2 AND lease_expires_at > clock_timestamp()";
 
 /// Where A's late renewal lands relative to B's authoring admission.
 #[derive(Debug, Clone, Copy)]
@@ -121,9 +122,9 @@ async fn race(
     }
 }
 
-async fn live_authoring(running: &Running) -> Vec<String> {
+async fn live_authoring(running: &Running) -> Vec<Uuid7> {
     sqlx::query_scalar(LIVE_AUTHORING)
-        .bind(running.runner.as_str())
+        .bind(&running.runner)
         .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
         .fetch_all(&mut *running.fixtures.database.acquire().await.expect("read"))
         .await

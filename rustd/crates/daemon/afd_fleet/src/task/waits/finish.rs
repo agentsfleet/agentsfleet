@@ -22,17 +22,17 @@ pub(super) struct Probe {
 
 pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
     let scope = TaskScope {
-        fleet_id: guard::id(&probe.owner.fleet_id, "fleet_id")?,
-        workspace_id: guard::id(&probe.owner.workspace_id, "workspace_id")?,
+        fleet_id: probe.owner.fleet_id.clone(),
+        workspace_id: probe.owner.workspace_id.clone(),
     };
     let wake = Continuation::new(
         &scope,
-        &guard::id(&probe.owner.task_id, "task_id")?,
+        &probe.owner.task_id,
         u64::try_from(probe.owner.task_generation)
             .ok()
             .and_then(|value| value.checked_add(1))
             .ok_or(crate::task::TaskRefusal::LimitExhausted)?,
-        &guard::id(&probe.owner.source_admission_id, "source_admission_id")?,
+        &probe.owner.source_admission_id,
     )
     .with_reply(
         probe.owner.reply_provider.as_deref(),
@@ -62,7 +62,7 @@ pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
     };
     if !owner.current()
         || owner.claim_valid != Some(true)
-        || owner.claim_id.as_deref() != Some(probe.claim.as_str())
+        || owner.claim_id.as_ref() != Some(&probe.claim)
     {
         return Ok(false);
     }
@@ -74,7 +74,7 @@ pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
     if woken {
         wake.confirm(tasks).await;
     }
-    let task = guard::id(&owner.task_id, "task_id")?;
+    let task = owner.task_id.clone();
     if let Ok(snapshot) = crate::task::read::read(tasks, &scope, &task).await {
         tasks
             .publish_changed(&scope, &task, snapshot.resource_version)
@@ -168,7 +168,7 @@ async fn update(
     };
     sqlx::query(include_str!("sql/update.sql"))
         .bind(&owner.id)
-        .bind(probe.claim.as_str())
+        .bind(&probe.claim)
         .bind(Json(checks))
         .bind(digest)
         // Consume only the signal visible when this claim started. A racing signal remains due.
@@ -237,7 +237,7 @@ async fn consume(
         .map_err(query("bind single native wait continuation"))?;
     sqlx::query(include_str!("sql/consume.sql"))
         .bind(&owner.id)
-        .bind(probe.claim.as_str())
+        .bind(&probe.claim)
         .bind(&admitted.stored.id)
         .bind(Json(&snapshot.checks))
         .bind(snapshot.digest()?)

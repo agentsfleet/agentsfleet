@@ -3,4 +3,4 @@ SET balance_nanos = balance_nanos - $2,
     exhausted_at = CASE WHEN balance_nanos - $2 <= 0 THEN COALESCE(exhausted_at, now())
                         ELSE NULL END,
     updated_at = now()
-WHERE tenant_id = $1::uuid
+WHERE tenant_id = $1

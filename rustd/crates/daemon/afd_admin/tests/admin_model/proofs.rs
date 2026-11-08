@@ -1,6 +1,7 @@
 //! Administrator writes commit identity, every price and one generation together.
 
 use super::{Lane, NOW, details};
+use af_core::id::Uuid7;
 use afd_admin::CreateModel;
 
 #[tokio::test]
@@ -138,14 +139,12 @@ async fn version(lane: &Lane) -> i64 {
         .expect("generation")
 }
 
-async fn price_ids(lane: &Lane) -> Vec<String> {
+async fn price_ids(lane: &Lane) -> Vec<Uuid7> {
     let mut connection = lane.database.acquire().await.expect("connection");
-    sqlx::query_scalar(
-        "SELECT id::text FROM model.platform_model_prices ORDER BY prompt_tokens_above",
-    )
-    .fetch_all(&mut *connection)
-    .await
-    .expect("price ids")
+    sqlx::query_scalar("SELECT id FROM model.platform_model_prices ORDER BY prompt_tokens_above")
+        .fetch_all(&mut *connection)
+        .await
+        .expect("price ids")
 }
 
 /// The one model the lane files, as the store lists it.

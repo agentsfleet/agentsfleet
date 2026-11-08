@@ -64,7 +64,7 @@ async fn a_claim_takes_the_token_and_moves_the_version() {
         .expect("the lane answers")
         .expect("an unheld schedule is claimable");
 
-    assert_eq!(held.sync_token.as_deref(), Some(token.as_str()));
+    assert_eq!(held.sync_token.as_ref(), Some(&token));
     assert_eq!(held.sync_status, SyncStatus::Syncing);
     assert!(
         held.resource_version > created.resource_version,
@@ -129,8 +129,8 @@ async fn a_lease_that_ran_out_releases_the_row_to_the_next_syncer() {
         .expect("an expired lease is not a hold");
 
     assert_eq!(
-        taken.sync_token.as_deref(),
-        Some(successor.as_str()),
+        taken.sync_token.as_ref(),
+        Some(&successor),
         "a schedule stuck behind a dead syncer would never sync again"
     );
 }
@@ -189,7 +189,7 @@ async fn a_claim_carrying_an_edit_applies_it_and_takes_the_fence_together() {
 
     assert_eq!(held.cron, "30 4 * * *");
     assert_eq!(held.desired_status, DesiredStatus::Paused);
-    assert_eq!(held.sync_token.as_deref(), Some(token.as_str()));
+    assert_eq!(held.sync_token.as_ref(), Some(&token));
     assert_eq!(
         held.sync_status,
         SyncStatus::Syncing,

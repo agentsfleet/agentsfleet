@@ -196,7 +196,7 @@ async fn resolve_user<D: Services>(
     services: &Arc<D>,
     subject: &str,
     event: &'static str,
-) -> Result<String, Refusal> {
+) -> Result<af_core::id::Uuid7, Refusal> {
     services
         .preferences()
         .resolve_user(subject)

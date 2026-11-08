@@ -1,4 +1,4 @@
-SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id,
+SELECT fleet_id, event_id, workspace_id,
        actor, event_type, status, token_count, wall_ms,
        failure_reason, failure_detail, resumes_event_id,
        created_at, updated_at,
@@ -7,7 +7,7 @@ SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id,
          WHERE charge.event_id = fleet.events.event_id
            AND charge.fleet_id = fleet.events.fleet_id) AS cost_nanos
 FROM fleet.events
-WHERE workspace_id = $1::uuid
+WHERE workspace_id = $1
   AND created_at >= COALESCE($2::timestamptz, statement_timestamp() - $3::interval, '-infinity')
 ORDER BY created_at DESC, event_id DESC
 LIMIT $4

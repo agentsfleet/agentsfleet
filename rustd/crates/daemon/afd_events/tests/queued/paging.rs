@@ -21,14 +21,14 @@ async fn test_waiting_overflow_reaches_later_pages() {
     }
     admitted.reverse();
     let history = History::new(lane.database.clone());
-    let (workspace, fleet) = (uuid(&lane.workspace), uuid(&lane.fleet));
+    let (workspace, fleet) = (&lane.workspace, &lane.fleet);
 
     let mut walked = Vec::new();
     let mut cursor: Option<Cursor> = None;
     let page_rows = usize::try_from(SMALL_PAGE).expect("a page size is positive");
     loop {
         let page = history
-            .thread_page(&workspace, &fleet, cursor.as_ref(), SMALL_PAGE)
+            .thread_page(workspace, fleet, cursor.as_ref(), SMALL_PAGE)
             .await
             .expect("the thread reads");
         assert!(page.iter().all(|row| row.task_activity.items.is_empty()));

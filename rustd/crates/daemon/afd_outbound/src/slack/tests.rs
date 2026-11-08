@@ -1,4 +1,5 @@
 use super::*;
+use afd_db::test_util::mint_id;
 
 /// The verdict a real response earns, through both halves of the split.
 fn verdict(status: u16, payload: &str) -> Verdict {
@@ -11,9 +12,9 @@ fn job(address: &str) -> OutboundDelivery {
         id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
         provider: Provider::Slack.id().to_owned(),
         destination: address.to_owned(),
-        workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-        fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "1700000000000-0".to_owned(),
+        workspace_id: mint_id(),
+        fleet_id: mint_id(),
+        event_id: mint_id(),
         answer: "the answer".to_owned(),
     }
 }
@@ -106,7 +107,7 @@ fn test_the_body_escapes_an_answer_carrying_json_punctuation() {
     let answer = "she said \"yes\"\nand {\"ok\": false}";
     let marker = AnswerMarker {
         fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "1700000000000-0".to_owned(),
+        event_id: "0199a0b0-0000-7000-8000-000000000003".to_owned(),
         part: None,
     };
     let round_tripped: Option<serde_json::Value> = serde_json::to_vec(&Message {
@@ -134,7 +135,7 @@ fn test_the_body_escapes_an_answer_carrying_json_punctuation() {
 fn every_post_carries_its_answer_marker() {
     let marker = AnswerMarker {
         fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "1700000000000-0".to_owned(),
+        event_id: "0199a0b0-0000-7000-8000-000000000003".to_owned(),
         part: None,
     };
     let body: Option<serde_json::Value> = serde_json::to_vec(&Message {

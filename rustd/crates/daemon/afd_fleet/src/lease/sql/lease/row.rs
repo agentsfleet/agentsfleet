@@ -39,7 +39,7 @@ use afd_db::statement::Bound;
 /// was billed to the dead lease when it expired.
 ///
 /// The lease stores no copy of the event body: the reclaim path reads it by
-/// joining `fleet.events` on the `(fleet_id, event_id)` unique key, so the
+/// joining `fleet.events` on its `event_id` key, so the
 /// hottest write in the system stops duplicating the largest value in it.
 pub const INSERT_LEASE_WITH_EVENT: &str = include_str!("insert_lease_with_event.sql");
 
@@ -64,7 +64,7 @@ pub struct LeaseRow<'a> {
     pub tenant_id: &'a Uuid7,
     /// The event being leased, as the admission ledger names it. The statement
     /// resolves it to the `fleet.events` row the lease references.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// When the event was raised, by the producer's clock; what the lease bills
     /// against.
     pub event_created_at: Timestamp,
@@ -94,11 +94,11 @@ impl<'a> LeaseRow<'a> {
     /// The statement with every parameter bound, in `$n` order.
     pub fn bind(&'a self) -> Bound<'a> {
         sqlx::query(INSERT_LEASE_WITH_EVENT)
-            .bind(self.lease_id.as_str())
-            .bind(self.runner_id.as_str())
-            .bind(self.fleet_id.as_str())
-            .bind(self.workspace_id.as_str())
-            .bind(self.tenant_id.as_str())
+            .bind(self.lease_id)
+            .bind(self.runner_id)
+            .bind(self.fleet_id)
+            .bind(self.workspace_id)
+            .bind(self.tenant_id)
             .bind(self.event_id)
             .bind(self.posture)
             .bind(self.provider)
@@ -106,7 +106,7 @@ impl<'a> LeaseRow<'a> {
             .bind(self.fencing_token)
             .bind(self.checked_at.to_sqlx())
             .bind(self.status)
-            .bind(self.event_row_id.as_str())
+            .bind(self.event_row_id)
             .bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
             .bind(afd_runner::sql::meta::LEASE_ID)
             .bind(afd_runner::sql::meta::FLEET_ID)

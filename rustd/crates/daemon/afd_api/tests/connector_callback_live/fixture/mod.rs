@@ -65,15 +65,15 @@ pub(crate) struct Fixture {
     pub(crate) team: String,
     /// A second authenticated person, who did not start the connect.
     pub(crate) bystander: String,
-    tenant: String,
+    tenant: Uuid7,
     pub(crate) workspace: Uuid7,
     admin: Uuid7,
-    user: String,
-    key: String,
+    user: Uuid7,
+    key: Uuid7,
     pub(crate) token: String,
     /// The bystander's own row and credential — see [`Self::bystander`].
-    bystander_user: String,
-    bystander_key: String,
+    bystander_user: Uuid7,
+    bystander_key: Uuid7,
     pub(crate) bystander_token: String,
 }
 
@@ -85,11 +85,14 @@ impl Fixture {
             database: lane.open(DbRole::Api, &[]).await,
             queue: harness::connect_redis().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
-            team: format!("T0FIX{}", mint_id().replace('-', "").to_uppercase()),
+            team: format!(
+                "T0FIX{}",
+                mint_id().as_str().replace('-', "").to_uppercase()
+            ),
             bystander: format!("{SUBJECT_PREFIX}bystander_{}", mint_id()),
             tenant: mint_id(),
-            workspace: minted(),
-            admin: minted(),
+            workspace: mint_id(),
+            admin: mint_id(),
             user: mint_id(),
             key: mint_id(),
             token: format!("agt_t{bits}"),
@@ -97,8 +100,8 @@ impl Fixture {
             bystander_key: mint_id(),
             bystander_token: format!(
                 "agt_t{}{}",
-                mint_id().replace('-', ""),
-                mint_id().replace('-', "")
+                mint_id().as_str().replace('-', ""),
+                mint_id().as_str().replace('-', "")
             ),
             lane,
         }
@@ -144,10 +147,10 @@ impl Fixture {
 
     /// The workspaces `connector.installs` routes `account` to, for
     /// `provider` — empty when nothing routes it.
-    pub(crate) async fn routed_to(&self, provider: Provider, account: &str) -> Vec<String> {
+    pub(crate) async fn routed_to(&self, provider: Provider, account: &str) -> Vec<Uuid7> {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT workspace_id::text FROM connector.installs \
+            "SELECT workspace_id FROM connector.installs \
              WHERE provider = $1 AND external_account_id = $2 ORDER BY workspace_id",
         )
         .bind(provider.id())
@@ -171,12 +174,12 @@ impl Fixture {
             "INSERT INTO connector.installs \
                (id, provider, external_account_id, workspace_id, scopes, created_at, \
                 updated_at) \
-             VALUES ($1::uuid, $2, $3, $4::uuid, ARRAY[]::TEXT[], now(), now())",
+             VALUES ($1, $2, $3, $4, ARRAY[]::TEXT[], now(), now())",
         )
         .bind(mint_id())
         .bind(provider.id())
         .bind(account)
-        .bind(self.admin.as_str())
+        .bind(&self.admin)
         .execute(&mut *connection)
         .await
         .expect("the foreign routing row seeds");
@@ -192,7 +195,10 @@ impl Fixture {
     /// reach: the property under test is that the FIRST write unwinds with it.
     pub(crate) async fn refuse_seals(&self) -> RefusedSeals {
         let migrator = self.lane.open(DbRole::Migrator, &[]).await;
-        let name = format!("fixture_refuse_seal_{}", mint_id().replace('-', ""));
+        let name = format!(
+            "fixture_refuse_seal_{}",
+            mint_id().as_str().replace('-', "")
+        );
         let mut connection = migrator.acquire().await.expect("a migrator connection");
         // `AssertSqlSafe`: DDL takes no bind parameter, and every interpolated
         // value is this fixture's own — a minted identifier and a workspace id
@@ -251,11 +257,6 @@ impl RefusedSeals {
         .await
         .expect("the refusing function lifts");
     }
-}
-
-/// A minted workspace identifier, parsed once.
-fn minted() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("a minted workspace is canonical")
 }
 
 mod seeding;

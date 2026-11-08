@@ -11,6 +11,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
@@ -46,13 +47,14 @@ async fn a_refused_admission_reason_carries_no_code_prefix() {
     ))
     .expect("a lazy handle opens no socket and cannot fail");
     let admissions = Admissions::for_tests(afd_db::test_util::unreachable_db(), queue);
+    let fleet = Uuid7::parse(FLEET).expect("a canonical fleet identifier");
 
     let refused = admissions
         .admit(Admission {
             producer: Producer::ScheduleFire,
             key: Key::Repeated("log-reasons"),
-            fleet: FLEET,
-            workspace: FLEET,
+            fleet: &fleet,
+            workspace: &fleet,
             actor: "fixture:log-reasons",
             event_type: EventType::Chat,
             request_json: "{}",

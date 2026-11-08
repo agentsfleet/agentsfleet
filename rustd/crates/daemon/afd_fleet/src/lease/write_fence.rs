@@ -47,8 +47,8 @@ impl Precondition for WriteFence {
     ) -> Pin<Box<dyn Future<Output = sqlx::Result<bool>> + Send + 'c>> {
         Box::pin(async move {
             let found: Option<LiveLease> = sqlx::query_as(SELECT_STANDING_SHARED)
-                .bind(self.lease.as_str())
-                .bind(self.runner.as_str())
+                .bind(&self.lease)
+                .bind(&self.runner)
                 .bind(sql::LEASE_STATUS_ACTIVE)
                 .fetch_optional(connection)
                 .await?;

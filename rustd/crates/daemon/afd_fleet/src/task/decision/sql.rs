@@ -15,7 +15,7 @@ pub(super) const BUDGET: &str = const_format::concatcp!(
     "\n), pending AS (\n\
         SELECT COALESCE(SUM(reserved_nanos), 0)::bigint AS nanos\n\
         FROM runner.decision_calls\n\
-        WHERE workspace_id = $1::uuid AND fleet_id = $2::uuid AND accounted_at IS NULL\n\
+        WHERE workspace_id = $1 AND fleet_id = $2 AND accounted_at IS NULL\n\
     )\n\
     SELECT (charged.day_nanos + pending.nanos)::bigint AS day_nanos,\n\
            (charged.month_nanos + pending.nanos)::bigint AS month_nanos\n\

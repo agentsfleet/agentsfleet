@@ -6,10 +6,10 @@
 use super::*;
 
 /// One owed answer, addressed.
-pub(super) const fn delivery(event_id: &str) -> Delivery<'_> {
+pub(super) fn delivery(event_id: &Uuid7) -> Delivery<'_> {
     Delivery {
-        fleet_id: FLEET,
-        workspace_id: WORKSPACE,
+        fleet_id: &FLEET,
+        workspace_id: &WORKSPACE,
         provider: Provider::Slack,
         destination: DESTINATION,
         event_id,
@@ -22,7 +22,11 @@ pub(super) const fn delivery(event_id: &str) -> Delivery<'_> {
 /// Returns whether this call is the one that created the row, which is what
 /// `owe` answers and what the caller uses to decide whether to append. The row
 /// is then [`AGED`](super::seed::AGED), as if the commit happened an hour ago.
-pub(super) async fn owe_committed(harness: &OutboundHarness, row: &str, event_id: &str) -> bool {
+pub(super) async fn owe_committed(
+    harness: &OutboundHarness,
+    row: &Uuid7,
+    event_id: &Uuid7,
+) -> bool {
     use sqlx::Acquire as _;
 
     let mut connection = harness
@@ -72,21 +76,21 @@ type Scan = for<'a> fn(
 /// Both scans take the same arguments and differ only in WHICH set they name,
 /// so they share a body here for the same reason `obligation::write_receipt`
 /// shares one between its two statements.
-pub(super) async fn owing(harness: &OutboundHarness, scan: Scan) -> Vec<String> {
+pub(super) async fn owing(harness: &OutboundHarness, scan: Scan) -> Vec<Uuid7> {
     scan(&harness.database, AMPLE)
         .await
         .expect("the scan answers")
         .into_iter()
         // The scans are deployment-wide by design; this suite asks about its own
         // fleet, the one `clear_obligations` resets (ISO-1).
-        .filter(|owed| owed.fleet_id == FLEET)
+        .filter(|owed| owed.fleet_id == *FLEET)
         .map(|owed| owed.event_id)
         .collect()
 }
 
 /// Obligations still owed an APPEND — committed, never queued — at the age the
 /// producer's own pass asks for.
-pub(super) async fn awaiting_append(harness: &OutboundHarness) -> Vec<String> {
+pub(super) async fn awaiting_append(harness: &OutboundHarness) -> Vec<Uuid7> {
     owing(harness, |db, limit| {
         Box::pin(obligation::unreceipted(db, MIN_AGE, limit))
     })
@@ -95,7 +99,7 @@ pub(super) async fn awaiting_append(harness: &OutboundHarness) -> Vec<String> {
 
 /// Obligations still owed a DELIVERY — queued, nobody received them — at the
 /// age the producer's own pass asks for.
-pub(super) async fn awaiting_delivery(harness: &OutboundHarness) -> Vec<String> {
+pub(super) async fn awaiting_delivery(harness: &OutboundHarness) -> Vec<Uuid7> {
     owing(harness, |db, limit| {
         Box::pin(obligation::undelivered(db, LOST_AFTER, limit))
     })
@@ -107,7 +111,7 @@ pub(super) async fn awaiting_delivery(harness: &OutboundHarness) -> Vec<String> 
 /// Three steps in the production order: the transaction commits the obligation,
 /// the append follows it, and the receipt records which entry carries it. The
 /// tests below each remove one of those and assert what is left.
-pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &str) {
+pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &Uuid7) {
     assert!(
         owe_committed(harness, &obligation_id(nth), event).await,
         "each fixture answer owes its own delivery"
@@ -117,8 +121,8 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
         .enqueue(OutboundJob {
             provider: PROVIDER,
             destination: DESTINATION,
-            workspace_id: WORKSPACE,
-            fleet_id: FLEET,
+            workspace_id: &WORKSPACE,
+            fleet_id: &FLEET,
             event_id: event,
             answer: ANSWER,
         })

@@ -131,8 +131,8 @@ async fn a_refusal_while_a_dispatch_is_in_flight_shows_its_usage_as_unknown() {
     tokio::time::timeout(Duration::from_secs(5), provider.arrived())
         .await
         .expect("the dispatch reached the provider");
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-        .bind(f.model.as_str())
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+        .bind(&f.model)
         .execute(&mut *f.connection().await)
         .await
         .expect("the owner removes the model mid-dispatch");
@@ -154,8 +154,8 @@ async fn a_refusal_while_a_dispatch_is_in_flight_shows_its_usage_as_unknown() {
         .expect_err("the pinned model is gone");
     assert_eq!(refused.code(), error_code::AUTHORING_MODEL);
     let reason: Option<String> =
-        sqlx::query_scalar("SELECT failure_reason FROM authoring.messages WHERE draft_id=$1::uuid")
-            .bind(attempt.draft.id.as_str())
+        sqlx::query_scalar("SELECT failure_reason FROM authoring.messages WHERE draft_id=$1")
+            .bind(attempt.draft.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("the failed message");

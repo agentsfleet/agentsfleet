@@ -137,7 +137,7 @@ async fn read_pages(
         .checkpoint_page(
             case.lease(),
             &id(&plan.checkpoint_id),
-            &id(&afd_db::test_util::mint_id()),
+            &afd_db::test_util::mint_id(),
             &query,
         )
         .await

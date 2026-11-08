@@ -83,13 +83,13 @@ pub async fn lock(
     runner_id: &Uuid7,
 ) -> Result<Option<Capacity>> {
     let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
-        .bind(runner_id.as_str())
+        .bind(runner_id)
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
     let Some(host) = host else { return Ok(None) };
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
-        .bind(runner_id.as_str())
+        .bind(runner_id)
         .bind(crate::sql::LEASE_STATUS_ACTIVE)
         .fetch_one(&mut **transaction)
         .await

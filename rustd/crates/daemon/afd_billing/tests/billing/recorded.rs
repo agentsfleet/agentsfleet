@@ -7,7 +7,7 @@
 
 use afd_billing::Nanos;
 use afd_billing::biller::{Account, Biller, Observed, RecordingBiller, WorkKey};
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 
 use crate::biller::{LINE, rated};
 
@@ -18,8 +18,8 @@ const SECOND_FUNDING: Nanos = Nanos::from_i64(70_000);
 
 fn payer() -> Account {
     Account {
-        tenant: mint_uuid7(),
-        workspace: mint_uuid7(),
+        tenant: mint_id(),
+        workspace: mint_id(),
     }
 }
 
@@ -29,7 +29,7 @@ fn settlement(payer: &Account, work: &WorkKey) -> afd_billing::biller::Settlemen
         work: work.clone(),
         payer: payer.clone(),
         attribution: afd_billing::biller::Attribution::Fleet {
-            fleet: mint_uuid7(),
+            fleet: mint_id(),
             fleet_name: "recorded".to_owned(),
             event_id: afd_db::test_util::mint_id(),
         },
@@ -63,7 +63,7 @@ async fn settlements_are_kept_in_order() {
     let biller = RecordingBiller::new();
     let payer = payer();
     biller.fund(&payer.tenant, SECOND_FUNDING);
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     let charged = settlement(&payer, &work);
     biller
         .settle(&charged)
@@ -77,7 +77,7 @@ async fn settlements_are_kept_in_order() {
 #[tokio::test]
 async fn an_observed_retry_charges_nothing_new() {
     let payer = payer();
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     let charged = settlement(&payer, &work);
     let inner = Observed::new({
         let inner = RecordingBiller::new();

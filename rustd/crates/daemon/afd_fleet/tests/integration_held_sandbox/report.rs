@@ -9,11 +9,12 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use af_core::timing::{LEASE_TTL, SANDBOX_HOLD_IDLE};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use jiff::Timestamp;
 
-use super::{id, slot};
+use super::slot;
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
 use crate::report_seed::{Held, SLICE, SLICE_MS, held};
 use crate::seed::seeded_parts;
@@ -26,7 +27,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
         folded_through_sequence: None,
         task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
-        event_id: Cow::Borrowed(&held.event_id),
+        event_id: Cow::Borrowed(held.event_id.as_str()),
         fencing_token: held.fence.as_u64(),
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -65,19 +66,19 @@ async fn window_around<T>(
 /// `asked`; answers the hold the slot then stores.
 async fn released(
     fixtures: &Fixtures,
-    fleet: &str,
-    runner: &af_core::id::Uuid7,
+    fleet: &Uuid7,
+    runner: &Uuid7,
     asked: Option<Timestamp>,
 ) -> Option<Timestamp> {
     let leases = fixtures.leases();
     let claimed = leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+        .claim(fleet, runner, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("the runner wins its own fleet");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
-        .release_through(&mut connection, &id(fleet), claimed.fence, asked)
+        .release_through(&mut connection, fleet, claimed.fence, asked)
         .await
         .expect("the release lands");
     drop(connection);
@@ -108,7 +109,7 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
         window.contains(&stored),
         "the slot holds the fleet one idle window and no longer: {stored} outside {window:?}"
     );
-    assert_eq!(holder, Some(held.runner.as_str().to_owned()));
+    assert_eq!(holder, Some(held.runner.clone()));
     held.fixtures.cleanup().await;
 }
 

@@ -106,16 +106,16 @@ pub(super) async fn lock(
     workspace: &Uuid7,
     fleet: &Uuid7,
 ) -> Result<Stored> {
-    let locked: Option<String> = sqlx::query_scalar(sql::LOCK)
-        .bind(fleet.as_str())
-        .bind(workspace.as_str())
+    let locked: Option<Uuid7> = sqlx::query_scalar(sql::LOCK)
+        .bind(fleet)
+        .bind(workspace)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     locked.ok_or(ErrorKind::FleetMissing)?;
     let row: Option<StoredRow> = sqlx::query_as(sql::LOCKED)
-        .bind(fleet.as_str())
-        .bind(workspace.as_str())
+        .bind(fleet)
+        .bind(workspace)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;

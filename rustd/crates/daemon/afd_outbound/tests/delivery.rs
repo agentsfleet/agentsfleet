@@ -24,6 +24,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use afd_db::test_util::mint_id;
 use afd_dragonfly::OutboundDelivery;
 use afd_dragonfly::streams::EventId;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
@@ -96,9 +97,9 @@ fn job() -> OutboundDelivery {
         id: EventId::of("1700000000001-0"),
         provider: "slack".to_owned(),
         destination: DESTINATION.to_owned(),
-        workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-        fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "1700000000000-0".to_owned(),
+        workspace_id: mint_id(),
+        fleet_id: mint_id(),
+        event_id: mint_id(),
         answer: "Aurora is healthy.".to_owned(),
     }
 }

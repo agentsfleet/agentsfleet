@@ -8,7 +8,7 @@
 //! # Why one of them joins and two do not
 //!
 //! `identity.api_keys.created_by_subject` holds the identity provider's subject
-//! claim directly (`schema/1150_identity_api_keys.sql`).
+//! claim directly (`schema/20261108120700_identity_api_keys.sql`).
 //! `identity.cli_credentials.user_id` is a foreign key into `identity.users`,
 //! so the subject has to be joined for. The asymmetry is in the schema, not in
 //! this file, and a join added to the first would resolve nothing.

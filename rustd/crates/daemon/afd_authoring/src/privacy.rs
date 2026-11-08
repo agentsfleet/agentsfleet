@@ -30,12 +30,12 @@ impl Drafts {
 
 pub(crate) async fn purge(connection: &mut PgConnection, id: &Uuid7) -> Result<()> {
     sqlx::query(sql::draft::WIPE_DISPATCHES)
-        .bind(id.as_str())
+        .bind(id)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     sqlx::query(sql::draft::DELETE)
-        .bind(id.as_str())
+        .bind(id)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

@@ -65,7 +65,7 @@ async fn assert_finishes_once(c: &Case, key: &Uuid7, request: SaveFleet, fleet: 
     let event = accepted(&finished).to_owned();
     let rows = c.admissions(fleet).await;
     assert_eq!(rows.len(), 1, "one initial admission: {rows:?}");
-    assert_eq!(rows.first().map(String::as_str), Some(event.as_str()));
+    assert_eq!(rows.first().map(Uuid7::as_str), Some(event.as_str()));
     let again = c.save(key, request).await;
     assert_eq!(accepted(&again), event);
     assert_eq!(c.admissions(fleet).await, rows);

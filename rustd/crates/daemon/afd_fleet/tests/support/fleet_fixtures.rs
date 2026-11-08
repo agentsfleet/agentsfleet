@@ -15,6 +15,7 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -154,11 +155,11 @@ impl Fixtures {
     }
 
     /// The event types written for a runner, oldest first.
-    pub(crate) async fn events(&self, runner: &str) -> Vec<String> {
+    pub(crate) async fn events(&self, runner: &Uuid7) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar(
             "SELECT event_type FROM runner.events \
-             WHERE runner_id = $1::uuid ORDER BY created_at, id",
+             WHERE runner_id = $1 ORDER BY created_at, id",
         )
         .bind(runner)
         .fetch_all(&mut *connection)
@@ -167,11 +168,11 @@ impl Fixtures {
     }
 
     /// Operator subjects recorded on administrative events, oldest first.
-    pub(crate) async fn admin_event_actors(&self, runner: &str) -> Vec<String> {
+    pub(crate) async fn admin_event_actors(&self, runner: &Uuid7) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar(
             "SELECT metadata ->> 'actor_id' FROM runner.events \
-             WHERE runner_id = $1::uuid AND metadata ? 'actor_id' ORDER BY created_at, id",
+             WHERE runner_id = $1 AND metadata ? 'actor_id' ORDER BY created_at, id",
         )
         .bind(runner)
         .fetch_all(&mut *connection)

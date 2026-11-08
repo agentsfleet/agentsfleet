@@ -19,9 +19,7 @@ use afd_billing::tenant::Billing;
 use afd_billing::{Accounts, Posture};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{
-    FleetSeed, ModelSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7,
-};
+use afd_db::test_util::{FleetSeed, ModelSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
@@ -37,7 +35,7 @@ pub(crate) const PROVIDER: &str = "anthropic";
 /// Writes one wallet row, as signup does.
 const INSERT_WALLET: &str = "\
 INSERT INTO billing.wallets (tenant_id, balance_nanos, exhausted_at, created_at, updated_at)
-VALUES ($1::uuid, $2, $3, now(), $4)";
+VALUES ($1, $2, $3, now(), $4)";
 
 /// Writes one charge row with chosen stamps, as the renewal statement would
 /// have accumulated it.
@@ -47,7 +45,7 @@ INSERT INTO billing.usage_lines
    provider, model, posture, requested_at, input_token_count, cached_input_token_count,
    cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
    output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at)
-VALUES ($1::uuid, $2, $3::uuid, 0, $4::uuid, $5::uuid, $6::uuid, $7, $8, $9, $9, $10, $11,
+VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $8, $9, $9, $10, $11,
         0, 0, 0, 0, 0, 0, 0, 0, $12, $11, $11)";
 
 /// The context window a seeded catalogue row declares; nothing here reads it.
@@ -99,30 +97,25 @@ impl Lane {
             database,
             accounts: Accounts::new(pool.clone()),
             billing: Billing::new(pool.clone()),
-            tenant: mint_uuid7(),
-            workspace: mint_uuid7(),
-            fleet: mint_uuid7(),
+            tenant: mint_id(),
+            workspace: mint_id(),
+            fleet: mint_id(),
             pool,
         };
         let mut connection = lane.pool.acquire().await.expect("the lane answers");
-        TenantSeed::new(lane.tenant.as_str())
+        TenantSeed::new(&lane.tenant)
             .insert(&mut *connection)
             .await
             .expect("seeding the tenant");
-        WorkspaceSeed::new(lane.workspace.as_str(), lane.tenant.as_str())
+        WorkspaceSeed::new(&lane.workspace, &lane.tenant)
             .insert(&mut *connection)
             .await
             .expect("seeding the workspace");
-        FleetSeed::new(
-            lane.fleet.as_str(),
-            lane.workspace.as_str(),
-            lane.tenant.as_str(),
-            FLEET_ACTIVE,
-        )
-        .name(FLEET_NAME)
-        .insert(&mut *connection)
-        .await
-        .expect("seeding the fleet");
+        FleetSeed::new(&lane.fleet, &lane.workspace, &lane.tenant, FLEET_ACTIVE)
+            .name(FLEET_NAME)
+            .insert(&mut *connection)
+            .await
+            .expect("seeding the fleet");
         lane
     }
 
@@ -141,7 +134,7 @@ impl Lane {
         updated_at: Timestamp,
     ) {
         sqlx::query(INSERT_WALLET)
-            .bind(self.tenant.as_str())
+            .bind(&self.tenant)
             .bind(balance)
             .bind(exhausted_at.map(jiff_sqlx::ToSqlx::to_sqlx))
             .bind(updated_at.to_sqlx())
@@ -163,14 +156,14 @@ impl Lane {
         executor: impl sqlx::PgExecutor<'e>,
         line: Line,
     ) -> Uuid7 {
-        let id = mint_uuid7();
+        let id = mint_id();
         sqlx::query(INSERT_LINE)
-            .bind(id.as_str())
+            .bind(&id)
             .bind(afd_billing::sql::work::FLEET_LEASE)
-            .bind(mint_uuid7().as_str())
-            .bind(self.tenant.as_str())
-            .bind(self.workspace.as_str())
-            .bind(self.fleet.as_str())
+            .bind(mint_id())
+            .bind(&self.tenant)
+            .bind(&self.workspace)
+            .bind(&self.fleet)
             .bind(FLEET_NAME)
             .bind(mint_id())
             .bind(PROVIDER)
@@ -186,11 +179,11 @@ impl Lane {
     /// Files a model in the catalogue at three prices, answering its name.
     pub(crate) async fn priced_model(&self, input: i64, cached: i64, output: i64) -> String {
         let model = mint_id();
-        ModelSeed::new(&mint_id(), PROVIDER, &model, CONTEXT_CAP_TOKENS)
+        ModelSeed::new(&mint_id(), PROVIDER, model.as_str(), CONTEXT_CAP_TOKENS)
             .rates(input, cached, output)
             .insert(&mut *self.pool.acquire().await.expect("the lane answers"))
             .await
             .expect("filing a catalogue row");
-        model
+        model.into()
     }
 }

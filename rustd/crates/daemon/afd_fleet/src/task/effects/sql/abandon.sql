@@ -1,6 +1,6 @@
 UPDATE fleet.task_effect_states s SET status = $2, updated_at = now()
 FROM fleet.task_effects e
-WHERE s.task_effect_id = e.id AND e.id = $1::uuid AND s.status = $3
+WHERE s.task_effect_id = e.id AND e.id = $1 AND s.status = $3
   AND (e.issuance_expires_at <= clock_timestamp() OR NOT EXISTS (
       SELECT 1 FROM runner.leases l
       JOIN runner.fleet_slots slot ON slot.fleet_id = l.fleet_id

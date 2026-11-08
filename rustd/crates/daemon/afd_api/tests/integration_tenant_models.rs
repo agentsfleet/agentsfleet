@@ -252,9 +252,9 @@ async fn a_tenant_with_no_workspace_is_refused_a_registration_naming_it() {
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
-    key: String,
+    key: Uuid7,
     token: String,
     provider: String,
     first_model: String,
@@ -266,13 +266,13 @@ impl Fixture {
         let lane = TestDatabase::shared();
         let tenant = mint_id();
         let token_bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
-        let workspace = Uuid7::parse(&mint_id()).expect("a minted id is a Uuid7");
+        let workspace = mint_id();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             // Unique per run: `model.platform_models` has no tenant column and
             // this lane shares one database, so a fixed provider would be a row
             // shared with every sibling suite.
-            provider: format!("live{}", tenant.replace('-', "")),
+            provider: format!("live{}", tenant.as_str().replace('-', "")),
             first_model: format!("model-a-{}", mint_id()),
             second_model: format!("model-b-{}", mint_id()),
             tenant,
@@ -311,7 +311,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("its key seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .insert(&mut *connection)
             .await
             .expect("its primary workspace seeds");

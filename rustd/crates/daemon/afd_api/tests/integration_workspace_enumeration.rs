@@ -51,7 +51,14 @@ async fn a_workspace_that_does_not_exist_is_not_distinguishable_from_a_foreign_o
         "",
     )
     .await;
-    let unminted = exchange(&router, Method::GET, &history(&mint_id()), token, "").await;
+    let unminted = exchange(
+        &router,
+        Method::GET,
+        &history(mint_id().as_str()),
+        token,
+        "",
+    )
+    .await;
 
     assert_eq!(
         own.0,

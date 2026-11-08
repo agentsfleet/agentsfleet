@@ -46,7 +46,7 @@ const JOINED: [(&str, &str); 5] = [
 /// A statement naming a column the rebuilt schema dropped.
 const DROPPED_COLUMN: (&str, &str) = (
     "seeded/dropped_column.sql",
-    "SELECT deletion_generation FROM authoring.drafts WHERE id = $1::uuid",
+    "SELECT deletion_generation FROM authoring.drafts WHERE id = $1",
 );
 
 /// `name: error` for every statement in `statements` that does not prepare.

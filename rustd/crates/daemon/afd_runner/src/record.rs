@@ -16,16 +16,13 @@
 use af_core::id::Uuid7;
 use jiff::Timestamp;
 
-use crate::error::{Result, query, row_malformed, runner_vanished};
+use crate::error::{Result, query, runner_vanished};
 use crate::policy::{AssignmentColumns, StoredVerdict};
 use crate::sql;
 use crate::store::Runners;
 
 /// The statement name a query failure carries.
 const CONTEXT_SELF_READ: &str = "runner self read";
-
-/// The table every column here comes from, for a malformed-value report.
-const TABLE_RUNNERS: &str = "runner.runners";
 
 /// One `runner.runners` row, as columns.
 ///
@@ -59,8 +56,8 @@ pub struct SelfRow {
 #[derive(Debug, sqlx::FromRow)]
 struct SelfColumns {
     durable_tasks_enabled: bool,
-    decision_model_id: Option<String>,
-    id: String,
+    decision_model_id: Option<Uuid7>,
+    id: Uuid7,
     status: String,
     host_id: String,
     sandbox_tier: String,
@@ -76,15 +73,15 @@ struct SelfColumns {
 
 impl SelfColumns {
     /// The row, its identifier proven canonical.
-    fn parse(self) -> Result<SelfRow> {
-        Ok(SelfRow {
-            id: Uuid7::parse(&self.id).map_err(row_malformed(TABLE_RUNNERS, "id"))?,
+    fn parse(self) -> SelfRow {
+        SelfRow {
+            id: self.id.clone(),
             status: self.status,
             host_id: self.host_id,
             last_seen_at: self.last_seen_at,
             assignment: AssignmentColumns {
                 durable_tasks_enabled: self.durable_tasks_enabled,
-                decision_model_id: self.decision_model_id,
+                decision_model_id: self.decision_model_id.map(String::from),
                 sandbox_tier: self.sandbox_tier,
                 network_policy: self.network_policy,
                 registry_allowlist_json: self.registry_allowlist,
@@ -95,7 +92,7 @@ impl SelfColumns {
             verdict: StoredVerdict {
                 reason: self.degraded_reason,
             },
-        })
+        }
     }
 }
 
@@ -115,11 +112,11 @@ impl Runners {
     pub async fn self_record(&self, runner: &Uuid7) -> Result<SelfRow> {
         let mut connection = self.pool().acquire().await?;
         let found = sqlx::query_as::<_, SelfColumns>(sql::runner::SELECT_RUNNER_SELF)
-            .bind(runner.as_str())
+            .bind(runner)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SELF_READ))?;
         // Fail closed rather than answer 200 for a phantom runner.
-        found.ok_or_else(runner_vanished)?.parse()
+        Ok(found.ok_or_else(runner_vanished)?.parse())
     }
 }

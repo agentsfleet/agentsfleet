@@ -36,10 +36,10 @@ impl Runners {
         let event_id = self.admin_event_id(now)?;
         let mut connection = self.pool().acquire().await?;
         let changed: bool = sqlx::query_scalar(sql::runner::ROTATE_RUNNER_TOKEN)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(token.digest().as_str())
             .bind(state_wire(AdminState::Revoked))
-            .bind(event_id.as_str())
+            .bind(event_id)
             .bind(EVENT_TOKEN_ROTATED)
             .bind(sql::meta::ACTOR_ID)
             .bind(actor_id)

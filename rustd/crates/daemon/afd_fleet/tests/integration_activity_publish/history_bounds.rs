@@ -4,7 +4,7 @@ use crate::report_seed::held;
 use serde_json::json;
 use sqlx::types::Json;
 
-const WRITE: &str = "UPDATE fleet.events SET task_activity=$2 WHERE fleet_id=$1::uuid";
+const WRITE: &str = "UPDATE fleet.events SET task_activity=$2 WHERE fleet_id=$1";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -47,12 +47,11 @@ async fn database_refuses_non_arrays_excess_history_and_negative_sequences() {
             Some(expected)
         );
     }
-    let error =
-        sqlx::query("UPDATE fleet.events SET task_activity_sequence=-1 WHERE fleet_id=$1::uuid")
-            .bind(&run.fleet)
-            .execute(&mut *connection)
-            .await
-            .expect_err("native sequence cannot become negative");
+    let error = sqlx::query("UPDATE fleet.events SET task_activity_sequence=-1 WHERE fleet_id=$1")
+        .bind(&run.fleet)
+        .execute(&mut *connection)
+        .await
+        .expect_err("native sequence cannot become negative");
     assert_eq!(
         error
             .as_database_error()

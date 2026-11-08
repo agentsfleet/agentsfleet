@@ -1,7 +1,7 @@
 WITH target AS MATERIALIZED (
     SELECT id, expires_at
     FROM identity.invites
-    WHERE tenant_id = $1::uuid AND id = $2::uuid AND resolved_at IS NULL
+    WHERE tenant_id = $1 AND id = $2 AND resolved_at IS NULL
     FOR UPDATE
 ), clock AS MATERIALIZED (
     SELECT clock_timestamp() AS locked_at FROM target

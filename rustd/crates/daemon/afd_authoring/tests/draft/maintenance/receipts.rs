@@ -3,6 +3,7 @@
 
 use super::{Fixture, mint, now};
 use crate::draft::window::{PAST, message_id, receipts, refile};
+use af_core::id::Uuid7;
 use af_core::timing::DAY;
 use afd_authoring::types::MessageQuery;
 use std::time::Duration;
@@ -17,14 +18,14 @@ const PASSES: usize = 20;
 const EXPIRED: &str = "\
 INSERT INTO authoring.replay_receipts
  (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
-SELECT r.id::uuid,$3::uuid,$4::uuid,'sweep:'||r.operation,r.operation::uuid,'digest',r.id::uuid,
+SELECT r.id,$3,$4,'sweep:'||r.operation,r.operation,'digest',r.id,
        statement_timestamp() - $5::interval
-  FROM unnest($1::text[],$2::text[]) AS r(id,operation)";
+  FROM unnest($1,$2) AS r(id,operation)";
 
 /// This workspace's receipts past the window.
 async fn expired(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1::uuid AND created_at <= statement_timestamp() - $2::interval")
-        .bind(f.workspace.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1 AND created_at <= statement_timestamp() - $2::interval")
+        .bind(&f.workspace)
         .bind(DAY)
         .fetch_one(&mut *f.connection().await)
         .await
@@ -42,13 +43,13 @@ async fn sweep_until(f: &Fixture, target: i64, count: impl AsyncFn() -> i64) {
     assert_eq!(count().await, target, "the sweep converged");
 }
 
-async fn seed(f: &Fixture, ids: &[String], age: Duration) {
-    let operations: Vec<String> = ids.iter().map(|_| mint().to_string()).collect();
+async fn seed(f: &Fixture, ids: &[Uuid7], age: Duration) {
+    let operations: Vec<Uuid7> = ids.iter().map(|_| mint()).collect();
     sqlx::query(EXPIRED)
         .bind(ids)
         .bind(&operations)
-        .bind(f.workspace.as_str())
-        .bind(f.owner.as_str())
+        .bind(&f.workspace)
+        .bind(&f.owner)
         .bind(age)
         .execute(&mut *f.connection().await)
         .await
@@ -59,9 +60,9 @@ async fn seed(f: &Fixture, ids: &[String], age: Duration) {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn the_receipt_sweep_is_bounded_and_keeps_receipts_inside_the_window() {
     let f = Fixture::create().await;
-    let ids: Vec<String> = (0..=SWEEP_LIMIT).map(|_| mint().to_string()).collect();
+    let ids: Vec<Uuid7> = (0..=SWEEP_LIMIT).map(|_| mint()).collect();
     seed(&f, &ids, PAST).await;
-    let live = mint().to_string();
+    let live = mint();
     seed(&f, std::slice::from_ref(&live), Duration::ZERO).await;
     let swept = f
         .drafts
@@ -87,12 +88,14 @@ async fn a_message_past_the_window_keeps_its_operation_id_after_its_receipt_is_s
     let request = f.request(key.clone(), Some("Watch checkout"));
     let created = f.drafts.create(f.access(), request, now()).await;
     let draft = created.expect("create").draft.id;
-    sqlx::query("UPDATE authoring.messages SET created_at = created_at - $2::interval WHERE draft_id=$1::uuid")
-        .bind(draft.as_str())
-        .bind(PAST)
-        .execute(&mut *f.connection().await)
-        .await
-        .expect("the message is older than the window");
+    sqlx::query(
+        "UPDATE authoring.messages SET created_at = created_at - $2::interval WHERE draft_id=$1",
+    )
+    .bind(&draft)
+    .bind(PAST)
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("the message is older than the window");
     let message = message_id(&f, &draft, 1).await;
     refile(&f, &key, &message, &f.owner, PAST).await;
     sweep_until(&f, 0, async || receipts(&f, &message).await).await;

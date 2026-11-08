@@ -39,7 +39,7 @@ async fn blocked(case: &Case, capture: &Capture) {
         .begin()
         .await
         .expect("source blocker transaction");
-    sqlx::query("SELECT id FROM fleet.admissions WHERE id=$1::uuid FOR UPDATE")
+    sqlx::query("SELECT id FROM fleet.admissions WHERE id=$1 FOR UPDATE")
         .bind(&case.held.event_id)
         .execute(&mut *blocker)
         .await

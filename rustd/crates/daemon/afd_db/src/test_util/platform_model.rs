@@ -2,6 +2,7 @@
 //!
 //! The fixture evidence URLs identify test data, never a provider API response.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -24,7 +25,7 @@ pub(super) const FIXTURE_INFERENCE: &str =
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until insert runs"]
 pub struct ModelSeed<'a> {
-    id: &'a str,
+    id: &'a Uuid7,
     provider: &'a str,
     model: &'a str,
     context: i32,
@@ -37,7 +38,7 @@ pub struct ModelSeed<'a> {
 
 impl<'a> ModelSeed<'a> {
     /// Uses the model identifier as the fixture label and zero test-only rates.
-    pub const fn new(id: &'a str, provider: &'a str, model: &'a str, context: i32) -> Self {
+    pub const fn new(id: &'a Uuid7, provider: &'a str, model: &'a str, context: i32) -> Self {
         Self {
             id,
             provider,
@@ -102,7 +103,7 @@ impl<'a> ModelSeed<'a> {
     /// # Errors
     /// [`crate::Error`] when the delete fails, a platform default still naming
     /// the row among them: remove the default first.
-    pub async fn remove<'e>(executor: impl PgExecutor<'e>, id: &str) -> Result<()> {
+    pub async fn remove<'e>(executor: impl PgExecutor<'e>, id: &Uuid7) -> Result<()> {
         sqlx::query(DELETE)
             .bind(id)
             .execute(executor)

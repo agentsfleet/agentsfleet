@@ -2,5 +2,5 @@
 -- Reading only the locked tuple remains current across a concurrent revision change.
 SELECT m.decision_enabled
 FROM model.platform_models m
-WHERE m.id = $1::uuid
+WHERE m.id = $1
 FOR SHARE OF m

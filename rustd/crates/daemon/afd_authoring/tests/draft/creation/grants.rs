@@ -16,8 +16,8 @@ async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
         .fill(&mut bytes)
         .expect("independent installation ID");
     let installation = u64::from_be_bytes(bytes).max(1).to_string();
-    sqlx::query("INSERT INTO connector.installs(id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES($1::uuid,'github',$2,$3::uuid,ARRAY['contents:read'],now(),now())")
-        .bind(mint().as_str()).bind(&installation).bind(c.base.workspace.as_str())
+    sqlx::query("INSERT INTO connector.installs(id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES($1,'github',$2,$3,ARRAY['contents:read'],now(),now())")
+        .bind(mint()).bind(&installation).bind(&c.base.workspace)
         .execute(&mut *c.base.connection().await).await.expect("workspace installation");
     let raw = serde_json::value::RawValue::from_string(
         json!({"integration":"github", "installation_id":installation,"app_id":"7"}).to_string(),
@@ -59,11 +59,11 @@ async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
     request
 }
 
-async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(String, String)> {
+async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(af_core::id::Uuid7, String)> {
     sqlx::query_as(
-        "SELECT action_id,status FROM fleet.approval_gates WHERE fleet_id=$1::uuid ORDER BY id",
+        "SELECT action_id,status FROM fleet.approval_gates WHERE fleet_id=$1 ORDER BY id",
     )
-    .bind(fleet.as_str())
+    .bind(fleet)
     .fetch_all(&mut *c.base.connection().await)
     .await
     .expect("real approval cards")
@@ -96,7 +96,7 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
     );
     let resolved = inbox
         .resolve(
-            &pending[0].0,
+            pending[0].0.as_str(),
             Decision::Approved,
             c.base.owner.as_str(),
             "",
@@ -129,7 +129,7 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
     );
     let resolved = inbox
         .resolve(
-            &pending[0].0,
+            pending[0].0.as_str(),
             Decision::Denied,
             c.base.owner.as_str(),
             "",

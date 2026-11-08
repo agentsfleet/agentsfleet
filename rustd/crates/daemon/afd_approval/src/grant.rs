@@ -136,7 +136,7 @@ impl IntegrationGrants {
         }
 
         let rows = sqlx::query_as::<_, StoredGrant>(grant_sql::SELECT_FLEET_GRANTS)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_LIST))?;
@@ -171,9 +171,9 @@ impl IntegrationGrants {
 
         let revoked = sqlx::query(grant_sql::REVOKE_GRANT)
             .bind(status::REVOKED)
-            .bind(grant.as_str())
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
+            .bind(grant)
+            .bind(fleet)
+            .bind(workspace)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_REVOKE))?;
@@ -202,8 +202,8 @@ async fn holds(
     fleet: &Uuid7,
 ) -> Result<bool> {
     sqlx::query(grant_sql::SELECT_FLEET_IN_WORKSPACE)
-        .bind(fleet.as_str())
-        .bind(workspace.as_str())
+        .bind(fleet)
+        .bind(workspace)
         .fetch_optional(connection)
         .await
         .map(|row| row.is_some())
@@ -214,7 +214,7 @@ async fn holds(
 /// name, so the projection and the decoder cannot drift by position.
 #[derive(Debug, sqlx::FromRow)]
 struct StoredGrant {
-    id: String,
+    id: Uuid7,
     service: String,
     status: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -227,7 +227,7 @@ struct StoredGrant {
 impl From<StoredGrant> for GrantRow {
     fn from(stored: StoredGrant) -> Self {
         Self {
-            id: stored.id,
+            id: stored.id.into(),
             service: stored.service,
             status: stored.status,
             created_at: stored.created_at,

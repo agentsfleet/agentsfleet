@@ -23,12 +23,12 @@ struct Locked {
 
 #[derive(sqlx::FromRow)]
 struct Origin {
-    admission_id: String,
+    admission_id: Uuid7,
     reply_provider: Option<String>,
     reply_address: Option<String>,
     generation: i64,
     state: String,
-    accepted_revision_id: String,
+    accepted_revision_id: Uuid7,
     request_digest: Option<String>,
 }
 
@@ -105,7 +105,7 @@ pub(super) async fn apply(
                     source,
                 })?;
             sqlx::query(sql::CONTROL_ADMISSION)
-                .bind(task.as_str())
+                .bind(task)
                 .bind(&admitted.stored.id)
                 .execute(&mut *tx)
                 .await
@@ -113,10 +113,10 @@ pub(super) async fn apply(
         }
     }
     sqlx::query(include_str!("sql/adoption_receipt.sql"))
-        .bind(adoption.operation_id.as_str())
-        .bind(task.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(&adoption.operation_id)
+        .bind(task)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .bind(digest)
         .execute(&mut *tx)
         .await
@@ -160,22 +160,25 @@ async fn questions(
     revision: &Uuid7,
 ) -> Result<Vec<af_wire::decision::NamedQuestion>> {
     let reviewed: bool = sqlx::query_scalar(include_str!("sql/adoption_revision.sql"))
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
-        .bind(revision.as_str())
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
+        .bind(revision)
         .fetch_one(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     if !reviewed {
         return Err(TaskRefusal::InvalidTarget.into());
     }
-    let config =
-        Leases::stored_config_on(connection, scope.fleet_id.as_str(), Some(revision.as_str()))
-            .await?
-            .ok_or(TaskRefusal::InvalidTarget)?;
-    let original = Leases::stored_config_on(connection, scope.fleet_id.as_str(), Some(previous))
+    let config = Leases::stored_config_on(connection, &scope.fleet_id, Some(revision))
         .await?
         .ok_or(TaskRefusal::InvalidTarget)?;
+    let original = Leases::stored_config_on(
+        connection,
+        &scope.fleet_id,
+        Some(&crate::task::guard::wire(previous)?),
+    )
+    .await?
+    .ok_or(TaskRefusal::InvalidTarget)?;
     if !original.same_task_authority(&config) {
         return Err(TaskRefusal::InvalidTarget.into());
     }
@@ -194,10 +197,10 @@ async fn replay(
     digest: &str,
 ) -> Result<bool> {
     let saved: Option<String> = sqlx::query_scalar(include_str!("sql/adoption_replay.sql"))
-        .bind(task.as_str())
-        .bind(adoption.operation_id.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(task)
+        .bind(&adoption.operation_id)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -227,10 +230,10 @@ async fn origin(
     fetch::rows(
         tasks.leases.pool(),
         sqlx::query_as(include_str!("sql/adoption_origin.sql"))
-            .bind(task.as_str())
-            .bind(scope.fleet_id.as_str())
-            .bind(scope.workspace_id.as_str())
-            .bind(adoption.operation_id.as_str()),
+            .bind(task)
+            .bind(&scope.fleet_id)
+            .bind(&scope.workspace_id)
+            .bind(&adoption.operation_id),
         None,
         CONTEXT,
     )
@@ -255,7 +258,7 @@ impl Origin {
                     row::counter(self.generation, "generation")?
                         .checked_add(1)
                         .ok_or(TaskRefusal::LimitExhausted)?,
-                    &guard::id(&self.admission_id, "source_admission_id")?,
+                    &self.admission_id,
                 )
                 .with_reply(
                     self.reply_provider.as_deref(),
@@ -277,14 +280,14 @@ async fn update_goal(
     questions: &[af_wire::decision::NamedQuestion],
     eligible: bool,
 ) -> Result<()> {
-    super::waits::cancel(connection, task.as_str()).await?;
+    super::waits::cancel(connection, task).await?;
     let goal_digest = af_core::etag::sha256_hex(
         &serde_json::to_vec(&(&current.context.objective, &questions))
             .map_err(af_core::json::Unreadable::from)?,
     );
     sqlx::query(include_str!("sql/adopt_goal.sql"))
-        .bind(task.as_str())
-        .bind(adoption.goal_revision_id.as_str())
+        .bind(task)
+        .bind(&adoption.goal_revision_id)
         .bind(sqlx::types::Json(questions))
         .bind(goal_digest)
         .bind(TaskState::Ready.as_str())
@@ -292,16 +295,16 @@ async fn update_goal(
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
-    super::continuation::retire(connection, task.as_str()).await?;
+    super::continuation::retire(connection, task).await?;
     Ok(())
 }
 
 async fn lock(connection: &mut PgConnection, scope: &TaskScope, task: &Uuid7) -> Result<Locked> {
     guard::scope(connection, scope).await?;
     sqlx::query_as(sql::LOCK_TASK)
-        .bind(task.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(task)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?

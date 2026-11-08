@@ -134,9 +134,9 @@ pub(super) async fn enqueue(harness: &OutboundHarness, answer: &str) {
         .enqueue(OutboundJob {
             provider: PROVIDER,
             destination: DESTINATION,
-            workspace_id: WORKSPACE_ID,
-            fleet_id: FLEET_ID,
-            event_id: "1700000000000-0",
+            workspace_id: &WORKSPACE_ID,
+            fleet_id: &FLEET_ID,
+            event_id: &EVENT_ID,
             answer,
         })
         .await

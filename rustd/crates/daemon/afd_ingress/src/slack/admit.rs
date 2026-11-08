@@ -63,8 +63,8 @@ impl Ingress {
             .admit(Admission {
                 producer: Producer::SlackMention,
                 key: Key::Repeated(&key),
-                fleet: fleet.as_str(),
-                workspace: workspace.as_str(),
+                fleet,
+                workspace,
                 actor: &actor,
                 event_type: EventType::Chat,
                 request_json,

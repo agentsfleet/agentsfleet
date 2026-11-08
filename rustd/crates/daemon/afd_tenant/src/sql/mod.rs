@@ -4,10 +4,6 @@
 //! records: Rust has real modules, so no file needs a re-export to stay
 //! findable and `grep -rn 'SELECT' src/sql/` still returns everything.
 
-/// The column a malformed identifier reports against, wherever a reader
-/// meets it.
-pub(crate) const COLUMN_ID: &str = "id";
-
 pub mod apikey;
 pub mod cli_credential;
 pub mod invite;

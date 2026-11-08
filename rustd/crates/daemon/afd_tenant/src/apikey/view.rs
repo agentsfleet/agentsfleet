@@ -1,6 +1,7 @@
 //! Metadata-only API key pages and their cursor boundaries.
 use super::{ApiKeySort, row_unreadable};
 use crate::Result;
+use af_core::id::Uuid7;
 use af_core::paging::{Boundary, BoundaryKind, Cursor, SortOrder as _};
 use jiff::Timestamp;
 use sqlx::FromRow as _;
@@ -100,14 +101,14 @@ impl KeyRow {
 /// tenant's total, and the key identifier that is NULL only on the marker.
 #[derive(Debug, sqlx::FromRow)]
 struct MarkerRow {
-    id: Option<String>,
+    id: Option<Uuid7>,
     total: i64,
 }
 
 /// One key's columns, read only from a row that holds a key.
 #[derive(Debug, sqlx::FromRow)]
 struct ListedRow {
-    id: String,
+    id: Uuid7,
     name: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
@@ -117,7 +118,7 @@ struct ListedRow {
 impl From<ListedRow> for KeyRow {
     fn from(row: ListedRow) -> Self {
         Self {
-            id: row.id,
+            id: row.id.into(),
             name: row.name,
             created_at: row.created_at,
             revoked_at: row.revoked_at.map(jiff_sqlx::Timestamp::to_jiff),

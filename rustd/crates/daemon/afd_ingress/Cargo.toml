@@ -37,7 +37,7 @@ afd_connector.workspace = true
 # `fleet.obligations`, so a notice and an answer are owed alike.
 afd_outbound.workspace = true
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The plaintext wrapper a signing secret comes back in. This crate computes no
 # tag of its own — the wall does, in `af_webhook`.
 af_crypto.workspace = true

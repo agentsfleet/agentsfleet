@@ -1,6 +1,7 @@
 //! An isolated platform default exercises actual admission pricing and saved routing.
 
 use super::{Fixture, claim, fixture, mint, now};
+use af_core::id::Uuid7;
 use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
@@ -24,8 +25,8 @@ async fn configured() -> Fixture {
         )
         .await
         .expect("sealed platform credential");
-    sqlx::query("INSERT INTO model.platform_defaults(provider,source_workspace_id,active,platform_model_id,created_at,updated_at) VALUES('openai',$1::uuid,true,$2::uuid,now(),now())")
-        .bind(f.workspace.as_str()).bind(f.catalogue.first().expect("owned catalogue model").as_str())
+    sqlx::query("INSERT INTO model.platform_defaults(provider,source_workspace_id,active,platform_model_id,created_at,updated_at) VALUES('openai',$1,true,$2,now(),now())")
+        .bind(&f.workspace).bind(f.catalogue.first().expect("owned catalogue model"))
         .execute(&mut *f.connection().await).await.expect("isolated platform default");
     f
 }
@@ -81,8 +82,8 @@ async fn platform_admission_reserves_output_and_runtime_before_rolling_input_fun
     assert_eq!(lease.model.reference, "platform-default");
     assert_eq!(lease.limits.output_per_turn, 8192);
     let (reserved, managed): (i64, bool) = sqlx::query_as(
-        "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM authoring.attempts WHERE id=$1::uuid",
-    ).bind(&lease.attempt_id).fetch_one(&mut *f.connection().await).await.expect("durable priced bound");
+        "SELECT reserved_nanos,(model_snapshot->>'platform_managed')::boolean FROM authoring.attempts WHERE id=$1",
+    ).bind(Uuid7::parse(&lease.attempt_id).expect("the lease names its attempt")).fetch_one(&mut *f.connection().await).await.expect("durable priced bound");
     // Measured input is funded before each physical dispatch; admission reserves
     // total output, rounding and the separately priced five-minute runtime.
     assert_eq!(reserved, 30_000_000 + 16_384_000 + 7);
@@ -115,20 +116,19 @@ async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
             },
         },
     };
-    let lease_id = af_core::id::Uuid7::parse(&lease.lease_id).expect("lease identity");
+    let lease_id = Uuid7::parse(&lease.lease_id).expect("lease identity");
     let ack = f
         .drafts
         .report(&f.runner, &lease_id, report)
         .await
         .expect("the platform attempt settles");
     assert!(ack.settled);
-    let postures: Vec<String> = sqlx::query_scalar(
-        "SELECT DISTINCT posture FROM billing.usage_lines WHERE work_id=$1::uuid",
-    )
-    .bind(&lease.attempt_id)
-    .fetch_all(&mut *f.connection().await)
-    .await
-    .expect("the attempt's lines");
+    let postures: Vec<String> =
+        sqlx::query_scalar("SELECT DISTINCT posture FROM billing.usage_lines WHERE work_id=$1")
+            .bind(Uuid7::parse(&lease.attempt_id).expect("the lease names its attempt"))
+            .fetch_all(&mut *f.connection().await)
+            .await
+            .expect("the attempt's lines");
     assert_eq!(postures, [afd_billing::Posture::Platform.as_str()]);
     f.cleanup().await;
 }
@@ -142,7 +142,7 @@ async fn a_platform_attempt_settles_its_lines_under_the_platform_posture() {
 async fn unaffordable_output_prices_fail_without_creating_an_attempt() {
     let f = configured().await;
     let draft = queued(&f).await;
-    let model = f.catalogue.first().expect("owned catalogue model").as_str();
+    let model = &f.catalogue.first().expect("owned catalogue model");
     let negative = sqlx::query(SET_OUTPUT_PRICE)
         .bind(model)
         .bind(-1_i64)
@@ -170,4 +170,4 @@ async fn unaffordable_output_prices_fail_without_creating_an_attempt() {
 
 /// Rewrites every price tier of one catalogue model's output rate.
 const SET_OUTPUT_PRICE: &str = "UPDATE model.platform_model_prices SET output_nanos_per_mtok = $2 \
-     WHERE platform_model_id = $1::uuid";
+     WHERE platform_model_id = $1";

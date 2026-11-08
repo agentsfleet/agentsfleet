@@ -1,5 +1,6 @@
 //! Expired capture cleanup transfers custody before releasing storage quota.
 
+use af_core::id::Uuid7;
 use af_wire::task::{CheckpointMode, CheckpointObjectsInput, CheckpointPlaintext};
 use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _};
 
@@ -23,7 +24,7 @@ async fn retention(case: &Case) {
     let task = fixture.bind_goal().await;
     let tasks = configured(&fixture, &server).await;
     let (plan, objects) = capture(&tasks, case, &task).await;
-    let object = &objects.items.first().expect("registered object").object_id;
+    let object = id(&objects.items.first().expect("registered object").object_id);
     let mut cursor = CheckpointMaintenanceCursor::default();
     let retained = tasks
         .maintain_checkpoints(&mut cursor)
@@ -31,7 +32,7 @@ async fn retention(case: &Case) {
         .expect("live custody survives");
     assert_eq!(retained.objects, 0);
     assert_eq!(retained.owners, 0);
-    expire(case, &task.task_id, &plan, object).await;
+    expire(case, &id(&task.task_id), &plan, &object).await;
     let removed = tasks
         .maintain_checkpoints(&mut cursor)
         .await
@@ -46,7 +47,7 @@ async fn retention(case: &Case) {
         ),
         (1, 1, 1, 1, 0)
     );
-    assert_erased(case, object).await;
+    assert_erased(case, &object).await;
     let repeated = tasks
         .maintain_checkpoints(&mut cursor)
         .await
@@ -59,7 +60,7 @@ async fn retention(case: &Case) {
     server.finish().await;
 }
 
-async fn expire(case: &Case, task: &str, plan: &af_wire::task::CheckpointPlan, object: &str) {
+async fn expire(case: &Case, task: &Uuid7, plan: &af_wire::task::CheckpointPlan, object: &Uuid7) {
     // Deterministically age this isolated test's actual capture, without sleeping
     // or forging a successful upload or terminal task result.
     let mut connection = case
@@ -69,24 +70,29 @@ async fn expire(case: &Case, task: &str, plan: &af_wire::task::CheckpointPlan, o
         .acquire()
         .await
         .expect("expiry fixture");
-    sqlx::query("UPDATE fleet.task_object_pins SET expires_at = now() - interval '2 hours', operation_expires_at = now() - interval '2 hours' WHERE task_id = $1::uuid")
+    sqlx::query("UPDATE fleet.task_object_pins SET expires_at = now() - interval '2 hours', operation_expires_at = now() - interval '2 hours' WHERE task_id = $1")
         .bind(task).execute(&mut *connection).await.expect("expired writer");
-    sqlx::query("UPDATE fleet.task_checkpoints SET transfer_expires_at = now() - interval '2 hours' WHERE id = $1::uuid")
-        .bind(&plan.checkpoint_id).execute(&mut *connection).await.expect("expired transfer");
+    sqlx::query("UPDATE fleet.task_checkpoints SET transfer_expires_at = now() - interval '2 hours' WHERE id = $1")
+        .bind(id(&plan.checkpoint_id)).execute(&mut *connection).await.expect("expired transfer");
     sqlx::query(
-        "UPDATE fleet.task_bases SET updated_at = now() - interval '2 hours' WHERE id = $1::uuid",
+        "UPDATE fleet.task_bases SET updated_at = now() - interval '2 hours' WHERE id = $1",
     )
-    .bind(&plan.base_id)
+    .bind(plan.base_id.as_deref().map(id))
     .execute(&mut *connection)
     .await
     .expect("aged base");
-    sqlx::query("UPDATE fleet.task_objects SET updated_at = now() - interval '2 hours', reclaim_after_at = now() - interval '2 hours' WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.task_objects SET updated_at = now() - interval '2 hours', reclaim_after_at = now() - interval '2 hours' WHERE id = $1")
         .bind(object).execute(&mut *connection).await.expect("aged object");
-    sqlx::query("UPDATE fleet.tasks SET checkpoint_cleanup_at = now() - interval '2 hours' WHERE id = $1::uuid")
-        .bind(task).execute(&mut *connection).await.expect("due owner");
+    sqlx::query(
+        "UPDATE fleet.tasks SET checkpoint_cleanup_at = now() - interval '2 hours' WHERE id = $1",
+    )
+    .bind(task)
+    .execute(&mut *connection)
+    .await
+    .expect("due owner");
 }
 
-async fn assert_erased(case: &Case, object: &str) {
+async fn assert_erased(case: &Case, object: &Uuid7) {
     let mut connection = case
         .held
         .fixtures
@@ -94,10 +100,15 @@ async fn assert_erased(case: &Case, object: &str) {
         .acquire()
         .await
         .expect("custody observer");
-    let quota: (i64, i64) = sqlx::query_as("SELECT reserved_bytes, stored_bytes FROM fleet.task_storage_quota WHERE workspace_id = $1::uuid")
-        .bind(case.scope.workspace_id.as_str()).fetch_one(&mut *connection).await.expect("quota");
+    let quota: (i64, i64) = sqlx::query_as(
+        "SELECT reserved_bytes, stored_bytes FROM fleet.task_storage_quota WHERE workspace_id = $1",
+    )
+    .bind(&case.scope.workspace_id)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("quota");
     assert_eq!(quota, (0, 0));
-    let custody: (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM fleet.task_objects WHERE id = $1::uuid), EXISTS (SELECT 1 FROM fleet.task_storage_purges WHERE task_object_id = $1::uuid AND completed_at IS NOT NULL)")
+    let custody: (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM fleet.task_objects WHERE id = $1), EXISTS (SELECT 1 FROM fleet.task_storage_purges WHERE task_object_id = $1 AND completed_at IS NOT NULL)")
         .bind(object).fetch_one(&mut *connection).await.expect("erasure receipt");
     assert_eq!(
         custody,

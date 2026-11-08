@@ -38,9 +38,9 @@ fn seeded_at(millis: u64) -> Timestamp {
 
 /// A tenant and workspace with two fleets, each with its own thread.
 struct Threads {
-    workspace: String,
-    fleet: String,
-    other_fleet: String,
+    workspace: Uuid7,
+    fleet: Uuid7,
+    other_fleet: Uuid7,
 }
 
 impl Threads {
@@ -70,7 +70,7 @@ impl Threads {
                 &tenant,
                 afd_state::sql::FLEET_STATUS_ACTIVE,
             )
-            .name(fleet)
+            .name(fleet.as_str())
             .at(SEED)
             .insert(&mut *connection)
             .await
@@ -83,8 +83,8 @@ impl Threads {
     async fn event(
         &self,
         database: &Db,
-        fleet: &str,
-        event_id: &str,
+        fleet: &Uuid7,
+        event_id: &Uuid7,
         at: Timestamp,
         (message, status, answer): (&str, &str, Option<&str>),
     ) {
@@ -94,16 +94,16 @@ impl Threads {
             event_type: EventType::Chat.as_str(),
             status,
         };
-        let row = FleetEventSeed::new(fleet, &self.workspace, event_id, kind)
+        FleetEventSeed::new(fleet, &self.workspace, event_id, kind)
             .at(at)
             .insert(&mut *connection)
             .await
             .expect("seeding a fleet event");
         sqlx::query(
             "UPDATE fleet.events SET request_json = $2::jsonb, response_text = $3 \
-             WHERE id = $1::uuid",
+             WHERE event_id = $1",
         )
-        .bind(row)
+        .bind(event_id)
         .bind(serde_json::json!({ "message": message }).to_string())
         .bind(answer)
         .execute(&mut *connection)
@@ -112,11 +112,11 @@ impl Threads {
     }
 
     /// Records `label` as the failure `fleet`'s event `event_id` ended on.
-    async fn label(&self, database: &Db, fleet: &str, event_id: &str, label: &str) {
+    async fn label(&self, database: &Db, fleet: &Uuid7, event_id: &Uuid7, label: &str) {
         let mut connection = database.acquire().await.expect("a connection");
         sqlx::query(
             "UPDATE fleet.events SET failure_reason = $3
-             WHERE fleet_id = $1::uuid AND event_id = $2",
+             WHERE fleet_id = $1 AND event_id = $2",
         )
         .bind(fleet)
         .bind(event_id)
@@ -130,20 +130,18 @@ impl Threads {
     async fn turns_at(
         &self,
         database: &Db,
-        fleet: &str,
-        event_id: &str,
+        fleet: &Uuid7,
+        event_id: &Uuid7,
         at: Timestamp,
     ) -> Vec<(String, String)> {
-        let workspace = Uuid7::parse(&self.workspace).expect("a minted id");
-        let fleet = Uuid7::parse(fleet).expect("a minted id");
         let cursor = Cursor {
             created_at: at,
-            event_id: event_id.to_owned(),
+            event_id: event_id.clone(),
         };
         turns_before(
             &History::new(database.clone()),
-            &workspace,
-            &fleet,
+            &self.workspace,
+            fleet,
             &cursor,
             EventType::Chat,
         )
@@ -164,11 +162,12 @@ async fn test_history_read_carries_the_previous_turn() {
     let database = &fixtures.database;
     let threads = Threads::seed(database).await;
     let fleet = threads.fleet.clone();
+    let (first, second) = (mint_id(), mint_id());
     threads
         .event(
             database,
             &fleet,
-            "e1",
+            &first,
             seeded_at(1),
             (
                 "which tests failed?",
@@ -181,13 +180,15 @@ async fn test_history_read_carries_the_previous_turn() {
         .event(
             database,
             &fleet,
-            "e2",
+            &second,
             seeded_at(2),
             ("fix the second one", "queued", None),
         )
         .await;
 
-    let turns = threads.turns_at(database, &fleet, "e2", seeded_at(2)).await;
+    let turns = threads
+        .turns_at(database, &fleet, &second, seeded_at(2))
+        .await;
 
     assert_eq!(
         turns,
@@ -208,7 +209,7 @@ async fn test_history_stays_in_its_fleet() {
         .event(
             database,
             &other,
-            "o1",
+            &mint_id(),
             seeded_at(1),
             ("someone else's", status::PROCESSED, Some("theirs")),
         )
@@ -217,13 +218,16 @@ async fn test_history_stays_in_its_fleet() {
         .event(
             database,
             &fleet,
-            "e1",
+            &mint_id(),
             seeded_at(2),
             ("mine", status::PROCESSED, Some("ours")),
         )
         .await;
 
-    let turns = threads.turns_at(database, &fleet, "e2", seeded_at(3)).await;
+    // The read's own event, which has no row yet.
+    let turns = threads
+        .turns_at(database, &fleet, &mint_id(), seeded_at(3))
+        .await;
 
     assert_eq!(turns, [("mine".to_owned(), "ours".to_owned())]);
     fixtures.cleanup().await;
@@ -250,14 +254,14 @@ async fn test_unfinished_rows_never_shrink_the_window() {
     for (index, ended, answer) in rows {
         let message = format!("m{index}");
         let at = seeded_at(index);
-        let event_id = format!("e{index}");
         threads
-            .event(database, &fleet, &event_id, at, (&message, ended, answer))
+            .event(database, &fleet, &mint_id(), at, (&message, ended, answer))
             .await;
     }
 
+    // The read's own event, after the twelve rows, which has no row yet.
     let turns = threads
-        .turns_at(database, &fleet, "e13", seeded_at(13))
+        .turns_at(database, &fleet, &mint_id(), seeded_at(13))
         .await;
 
     let messages: Vec<&str> = turns.iter().map(|(message, _)| message.as_str()).collect();
@@ -274,10 +278,11 @@ async fn test_history_read_excludes_finished_rows_after_its_event() {
     let database = &fixtures.database;
     let threads = Threads::seed(database).await;
     let fleet = threads.fleet.clone();
+    let [first, second, third] = [mint_id(), mint_id(), mint_id()];
     let rows = [
-        ("e1", ("first", status::PROCESSED, Some("one"))),
-        ("e2", ("second", status::RECEIVED, None)),
-        ("e3", ("third", status::PROCESSED, Some("three"))),
+        (&first, ("first", status::PROCESSED, Some("one"))),
+        (&second, ("second", status::RECEIVED, None)),
+        (&third, ("third", status::PROCESSED, Some("three"))),
     ];
     for (offset, (event_id, row)) in (1..).zip(rows) {
         threads
@@ -285,7 +290,9 @@ async fn test_history_read_excludes_finished_rows_after_its_event() {
             .await;
     }
 
-    let turns = threads.turns_at(database, &fleet, "e2", seeded_at(2)).await;
+    let turns = threads
+        .turns_at(database, &fleet, &second, seeded_at(2))
+        .await;
 
     assert_eq!(turns, [("first".to_owned(), "one".to_owned())]);
     fixtures.cleanup().await;
@@ -301,18 +308,22 @@ async fn test_history_read_carries_a_failed_turn() {
     let database = &fixtures.database;
     let threads = Threads::seed(database).await;
     let fleet = threads.fleet.clone();
+    let failed_run = mint_id();
     threads
         .event(
             database,
             &fleet,
-            "e1",
+            &failed_run,
             seeded_at(1),
             ("run the suite", status::FLEET_ERROR, None),
         )
         .await;
-    threads.label(database, &fleet, "e1", LABEL).await;
+    threads.label(database, &fleet, &failed_run, LABEL).await;
 
-    let turns = threads.turns_at(database, &fleet, "e2", seeded_at(2)).await;
+    // The read's own event, which has no row yet.
+    let turns = threads
+        .turns_at(database, &fleet, &mint_id(), seeded_at(2))
+        .await;
 
     let failed = format!("{ANSWER_FAILED}{LABEL}{ANSWER_FAILED_END}");
     assert_eq!(turns, [("run the suite".to_owned(), failed)]);

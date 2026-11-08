@@ -5,4 +5,4 @@ UPDATE authoring.attempts
        lease_expires_at = LEAST(lease_expires_at, $5::timestamptz),
        outcome = $6,
        updated_at = now()
- WHERE id = $1::uuid
+ WHERE id = $1

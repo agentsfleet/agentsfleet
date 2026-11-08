@@ -35,9 +35,9 @@ pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCou
     sqlx::query(
         "INSERT INTO fleet.activity_counters
            (fleet_id, event_count, budget_used_nanos, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, now(), now())",
+         VALUES ($1, $2, $3, now(), now())",
     )
-    .bind(fleet.as_str())
+    .bind(fleet)
     .bind(counters.events_processed)
     .bind(counters.budget_used_nanos)
     .execute(&mut *owner.acquire().await.expect("an owner connection"))

@@ -76,8 +76,8 @@ impl Creations {
         if row.setup_stream_ready != Some(true) {
             let mut connection = self.setup.drafts.database.acquire().await?;
             sqlx::query(sql::STREAM_READY)
-                .bind(fleet.as_str())
-                .bind(access.workspace.as_str())
+                .bind(fleet)
+                .bind(access.workspace)
                 .bind(INSTALLING)
                 .execute(&mut *connection)
                 .await
@@ -99,7 +99,7 @@ impl Creations {
             .map_err(query(CONTEXT))?;
         let person = access::current(&mut tx, access).await?;
         sqlx::query_scalar::<_, i64>(sql::WALLET)
-            .bind(person.owner.as_str())
+            .bind(person.owner)
             .fetch_optional(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
@@ -115,8 +115,8 @@ impl Creations {
             .stage_initial(&mut tx, row.initial_start, prepared)
             .await?;
         let changed = sqlx::query(sql::ACTIVATE)
-            .bind(fleet.as_str())
-            .bind(access.workspace.as_str())
+            .bind(fleet)
+            .bind(access.workspace)
             .bind(ACTIVE)
             .bind(INSTALLING)
             .bind(row.head_revision)
@@ -132,12 +132,10 @@ impl Creations {
         super::start::store(&mut tx, access, fleet, &initial).await?;
         close_saved_drafts(&mut tx, fleet).await?;
         let number = row.head_revision.to_string();
-        let identity = format!("setup_ready:{number}");
         let announcement = afd_events::activity::record_on(
             &mut tx,
             access.workspace,
             fleet,
-            &identity,
             afd_api_wire::activity::FleetActivity::SetupReady {
                 revision: number.as_str().into(),
             },
@@ -159,7 +157,7 @@ impl Creations {
 
 async fn close_saved_drafts(connection: &mut sqlx::PgConnection, fleet: &Uuid7) -> Result<()> {
     sqlx::query(sql::CLOSE_DRAFTS)
-        .bind(fleet.as_str())
+        .bind(fleet)
         .bind(DraftState::Closed.as_str())
         .bind(super::PRIVATE_RETENTION)
         .bind(DraftState::Saving.as_str())

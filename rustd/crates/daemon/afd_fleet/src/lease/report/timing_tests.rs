@@ -33,8 +33,8 @@ fn lease() -> Result<Reported, &'static str> {
     Ok(Reported {
         fleet_id: id.clone(),
         workspace_id: id.clone(),
-        tenant_id: id,
-        event_id: "event-fixture".to_owned(),
+        tenant_id: id.clone(),
+        event_id: id,
         actor: "api".to_owned(),
         posture: "platform".to_owned(),
         provider: "anthropic".to_owned(),

@@ -80,9 +80,9 @@ impl Schedules {
         };
         let update = outcome.update();
         let row = sqlx::query_as::<_, Schedule>(update.statement)
-            .bind(held.schedule_id.as_str())
+            .bind(&held.schedule_id)
             .bind(held.resource_version)
-            .bind(token.as_str())
+            .bind(token)
             .bind(update.status.as_str())
             .bind(update.value)
             .fetch_optional(&mut *scope.transaction)
@@ -91,7 +91,6 @@ impl Schedules {
         let Some(row) = row else { return Ok(None) };
         let announcement = Receipt {
             schedule: &row,
-            operation: token.as_str(),
             fact: update.fact,
         }
         .record_on(&mut scope.transaction, workspace)
@@ -112,9 +111,9 @@ impl Schedules {
             return Ok(false);
         };
         let deleted = sqlx::query(sql::DELETE_CLAIMED)
-            .bind(held.schedule_id.as_str())
+            .bind(&held.schedule_id)
             .bind(held.resource_version)
-            .bind(token.as_str())
+            .bind(token)
             .fetch_optional(&mut *scope.transaction)
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
@@ -123,7 +122,6 @@ impl Schedules {
         }
         let announcement = Receipt {
             schedule: held,
-            operation: token.as_str(),
             fact: Fact::Removed,
         }
         .record_on(&mut scope.transaction, workspace)

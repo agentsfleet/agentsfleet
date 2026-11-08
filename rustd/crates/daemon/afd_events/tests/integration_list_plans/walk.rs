@@ -37,8 +37,8 @@ struct Scope {
 impl Scope {
     fn of(lane: &EventsLane) -> Self {
         Self {
-            workspace: Uuid7::parse(&lane.workspace).expect("the fixture workspace is canonical"),
-            fleet: Uuid7::parse(&lane.fleet).expect("the fixture fleet is canonical"),
+            workspace: lane.workspace.clone(),
+            fleet: lane.fleet.clone(),
         }
     }
 }
@@ -63,7 +63,7 @@ fn pair_at(nth: i64) -> Timestamp {
 /// Seeds the walked events and answers `(created_at, event_id)` for each,
 /// newest first, as every page orders them. Ids are `UUIDv7`s, as an admitted
 /// event's are, and each pair shares an instant so the id breaks the tie.
-pub(super) async fn seed_walk(lane: &EventsLane) -> Vec<(Timestamp, String)> {
+pub(super) async fn seed_walk(lane: &EventsLane) -> Vec<(Timestamp, Uuid7)> {
     let mut seeded = Vec::new();
     for nth in 0..EVENTS {
         let created_at = pair_at(nth / 2);
@@ -110,7 +110,7 @@ async fn walk_listing(
     scope: &Scope,
     listing: Listing,
     filter: &Filter,
-) -> Vec<String> {
+) -> Vec<Uuid7> {
     let mut seen = Vec::new();
     let mut cursor = None;
     loop {
@@ -124,7 +124,7 @@ async fn walk_listing(
 }
 
 /// Every event id `actor` has in the fleet, walked page by page to the end.
-async fn walk_actor(history: &History, scope: &Scope, actor: &str) -> Vec<String> {
+async fn walk_actor(history: &History, scope: &Scope, actor: &str) -> Vec<Uuid7> {
     let mut seen = Vec::new();
     let mut cursor = None;
     loop {
@@ -141,7 +141,7 @@ async fn walk_actor(history: &History, scope: &Scope, actor: &str) -> Vec<String
 }
 
 /// Every event id the fleet's thread serves, walked page by page to the end.
-async fn walk_thread(history: &History, scope: &Scope) -> Vec<String> {
+async fn walk_thread(history: &History, scope: &Scope) -> Vec<Uuid7> {
     let mut seen = Vec::new();
     let mut cursor: Option<Cursor> = None;
     loop {
@@ -159,7 +159,7 @@ async fn walk_thread(history: &History, scope: &Scope) -> Vec<String> {
 }
 
 /// The seeded events' ids at or after `since`, newest first.
-fn ids_since(seeded: &[(Timestamp, String)], since: Timestamp) -> Vec<String> {
+fn ids_since(seeded: &[(Timestamp, Uuid7)], since: Timestamp) -> Vec<Uuid7> {
     seeded
         .iter()
         .filter(|(created_at, _)| *created_at >= since)
@@ -177,7 +177,7 @@ fn filter(actor_prefix: Option<&str>, since: Option<Timestamp>) -> Filter {
 
 /// Every listing walks exactly the events each filter admits, so every text
 /// `History` picks runs with its binds, and the thread walks them all.
-pub(super) async fn assert_walks(lane: &EventsLane, seeded: &[(Timestamp, String)]) {
+pub(super) async fn assert_walks(lane: &EventsLane, seeded: &[(Timestamp, Uuid7)]) {
     let history = History::new(lane.database.clone());
     let scope = Scope::of(lane);
     let since = pair_at(EVENTS / 4);

@@ -5,17 +5,18 @@ use crate::{
     error::query,
     task::{TaskRefusal, guard::LeaseRow, row},
 };
+use af_core::id::Uuid7;
 use af_wire::task::{TaskAcceptedInterpretation, TaskItemBinding, TaskRecoveredItem, TaskState};
 use sqlx::PgConnection;
 use std::collections::BTreeMap;
 
 #[derive(sqlx::FromRow)]
 struct InterpretationRow {
-    source_admission_id: String,
+    source_admission_id: Uuid7,
     plan_digest: String,
     message: String,
-    item_id: String,
-    task_id: Option<String>,
+    item_id: Uuid7,
+    task_id: Option<Uuid7>,
     generation: Option<i64>,
     state: Option<String>,
     input_sequence: Option<i64>,
@@ -29,8 +30,8 @@ struct InterpretationRow {
 pub(super) async fn read(
     connection: &mut PgConnection,
     current: &LeaseRow,
-    sources: &[String],
-) -> Result<BTreeMap<String, TaskAcceptedInterpretation>> {
+    sources: &[Uuid7],
+) -> Result<BTreeMap<Uuid7, TaskAcceptedInterpretation>> {
     let rows: Vec<InterpretationRow> =
         sqlx::query_as(include_str!("../sql/recovered_interpretations.sql"))
             .bind(sources)
@@ -44,7 +45,7 @@ pub(super) async fn read(
             .map_err(query(
                 "recover complete accepted source meanings and original replies",
             ))?;
-    let mut interpretations: BTreeMap<String, TaskAcceptedInterpretation> = BTreeMap::new();
+    let mut interpretations: BTreeMap<Uuid7, TaskAcceptedInterpretation> = BTreeMap::new();
     for item in rows {
         let start =
             usize::try_from(item.source_start).map_err(|_overflow| TaskRefusal::InputAmbiguous)?;
@@ -62,14 +63,14 @@ pub(super) async fn read(
             crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
         })?;
         let binding = TaskItemBinding {
-            item_id: item.item_id,
+            item_id: item.item_id.into(),
             task_generation: item
                 .generation
                 .map(|generation| row::counter(generation, "generation"))
                 .transpose()?,
             applies_here: item.task_id == current.task_id
                 && item.state.as_deref() == Some(TaskState::Running.as_str()),
-            task_id: item.task_id,
+            task_id: item.task_id.map(String::from),
             action,
             input_sequence: item
                 .input_sequence
@@ -79,7 +80,7 @@ pub(super) async fn read(
         let accepted = interpretations
             .entry(item.source_admission_id.clone())
             .or_insert_with(|| TaskAcceptedInterpretation {
-                source_admission_id: item.source_admission_id,
+                source_admission_id: item.source_admission_id.into(),
                 plan_digest: item.plan_digest,
                 message: item.message,
                 items: Vec::new(),

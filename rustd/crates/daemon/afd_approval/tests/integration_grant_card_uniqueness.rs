@@ -2,6 +2,7 @@
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
 use crate::lane::{Lane, NOW, mint, sweeper_exclusive};
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_approval::{Decision, IntegrationGrants, Origin, Requested, Wanted};
 
@@ -25,10 +26,13 @@ async fn request(lane: &Lane, service: &str) -> Requested {
 }
 
 async fn counts(lane: &Lane) -> (i64, i64) {
-    sqlx::query_as("SELECT COUNT(*), COUNT(active_grant_id) FROM fleet.approval_gates WHERE fleet_id = $1::uuid")
-        .bind(lane.fleet.as_str())
-        .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
-        .await.expect("card counts")
+    sqlx::query_as(
+        "SELECT COUNT(*), COUNT(active_grant_id) FROM fleet.approval_gates WHERE fleet_id = $1",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
+    .await
+    .expect("card counts")
 }
 
 #[tokio::test]
@@ -55,14 +59,14 @@ async fn a_second_active_reference_is_refused_by_the_database() {
         (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type,
          proposed_action, evidence, blast_radius, expires_at, status,
          detail, created_at, updated_at, active_grant_id)
-        SELECT $2::uuid, fleet_id, workspace_id, $3, tool_name, action_name, gate_type,
+        SELECT $2, fleet_id, workspace_id, $3, tool_name, action_name, gate_type,
          proposed_action, evidence, blast_radius, expires_at, status,
          detail, created_at, updated_at, active_grant_id
-        FROM fleet.approval_gates WHERE fleet_id = $1::uuid",
+        FROM fleet.approval_gates WHERE fleet_id = $1",
     )
-    .bind(lane.fleet.as_str())
-    .bind(mint().as_str())
-    .bind(mint().as_str())
+    .bind(&lane.fleet)
+    .bind(mint())
+    .bind(mint())
     .execute(&mut *lane.pool.acquire().await.expect("connection"))
     .await
     .expect_err("duplicate active reference must collide");
@@ -80,15 +84,20 @@ async fn resolutions_release_the_active_reference_and_keep_history() {
     for decision in [Decision::Approved, Decision::Denied] {
         let lane = Lane::isolated().await;
         request(&lane, SERVICE).await;
-        let action: String = sqlx::query_scalar(
-            "SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1::uuid",
-        )
-        .bind(lane.fleet.as_str())
-        .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
-        .await
-        .expect("card action");
+        let action: Uuid7 =
+            sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1")
+                .bind(&lane.fleet)
+                .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
+                .await
+                .expect("card action");
         lane.inbox
-            .resolve(&action, decision, "fixture", "", Some(lane.fleet.as_str()))
+            .resolve(
+                action.as_str(),
+                decision,
+                "fixture",
+                "",
+                Some(lane.fleet.as_str()),
+            )
             .await
             .expect("resolution");
         assert_eq!(counts(&lane).await, (1, 0));
@@ -107,8 +116,8 @@ async fn expiry_releases_the_reference_for_one_replacement_card() {
     let lane = Lane::isolated().await;
     request(&lane, SERVICE).await;
     // Lapsed on the database's own clock, which is the one the sweep reads.
-    sqlx::query("UPDATE fleet.approval_gates SET expires_at = now() WHERE fleet_id = $1::uuid")
-        .bind(lane.fleet.as_str())
+    sqlx::query("UPDATE fleet.approval_gates SET expires_at = now() WHERE fleet_id = $1")
+        .bind(&lane.fleet)
         .execute(&mut *lane.pool.acquire().await.expect("connection"))
         .await
         .expect("deadline fixture");
@@ -140,12 +149,11 @@ async fn a_card_insert_failure_rolls_back_the_new_grant() {
         "nonexistent workspace must refuse the card"
     );
     assert_eq!(counts(&lane).await, (0, 0));
-    let grants: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM connector.integration_grants WHERE fleet_id = $1::uuid",
-    )
-    .bind(lane.fleet.as_str())
-    .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
-    .await
-    .expect("grant count");
+    let grants: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM connector.integration_grants WHERE fleet_id = $1")
+            .bind(&lane.fleet)
+            .fetch_one(&mut *lane.pool.acquire().await.expect("connection"))
+            .await
+            .expect("grant count");
     assert_eq!(grants, 0, "card failure must not leave an orphan grant");
 }

@@ -16,6 +16,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer, Reply};
 use afd_events::{ACTOR_MACHINE, Steer, Steered};
@@ -40,7 +41,7 @@ const REDELIVERED_JSON: &str = r#"{"action":"opened","draft":false}"#;
 /// Rewrites the payload digest, or the fleet, of the row an operation holds.
 const SET_DIGEST: &str = "UPDATE fleet.admissions SET payload_digest = $3 \
      WHERE producer = $1 AND producer_key = $2";
-const SET_FLEET: &str = "UPDATE fleet.admissions SET fleet_id = $3::uuid \
+const SET_FLEET: &str = "UPDATE fleet.admissions SET fleet_id = $3 \
      WHERE producer = $1 AND producer_key = $2";
 
 /// The warns a reused key can leave, the field that names them, and the field
@@ -88,7 +89,7 @@ async fn test_replayed_append_never_answers_unchecked() {
         .await
         .expect("the first send is admitted");
 
-    set_stored(&lane, SET_DIGEST, FOREIGN_DIGEST).await;
+    set_stored_digest(&lane, FOREIGN_DIGEST).await;
     let logs = Capture::install();
     let foreign_digest = send(&steer, &lane, REQUEST_JSON)
         .await
@@ -97,7 +98,7 @@ async fn test_replayed_append_never_answers_unchecked() {
     assert_eq!(causes(&logs), [CAUSE_PAYLOAD]);
     drop(logs);
 
-    set_stored(&lane, SET_FLEET, &elsewhere.fleet).await;
+    set_stored_fleet(&lane, &elsewhere.fleet).await;
     let logs = Capture::install();
     let foreign_fleet = send(&steer, &lane, REQUEST_JSON)
         .await
@@ -163,18 +164,36 @@ async fn send(steer: &Steer, lane: &EventsLane, request_json: &str) -> afd_event
         .await
 }
 
-/// Runs `statement` over the row [`OPERATION`] holds on the lane's fleet.
-async fn set_stored(lane: &EventsLane, statement: &'static str, value: &str) {
-    let key = [lane.fleet.as_str(), OPERATION].join(KEY_SEPARATOR);
+/// Rewrites the payload digest of the row [`OPERATION`] holds on the lane's
+/// fleet.
+async fn set_stored_digest(lane: &EventsLane, digest: &str) {
     let mut connection = lane.connection().await;
-    let updated = sqlx::query(statement)
+    let updated = sqlx::query(SET_DIGEST)
         .bind(PRODUCER_STEER)
-        .bind(key)
-        .bind(value)
+        .bind(operation_key(lane))
+        .bind(digest)
         .execute(&mut *connection)
         .await
         .expect("the stored row is rewritten");
     assert_eq!(updated.rows_affected(), 1, "one row holds the operation");
+}
+
+/// [`set_stored_digest`] for the fleet, which binds as the `uuid` it is.
+async fn set_stored_fleet(lane: &EventsLane, fleet: &Uuid7) {
+    let mut connection = lane.connection().await;
+    let updated = sqlx::query(SET_FLEET)
+        .bind(PRODUCER_STEER)
+        .bind(operation_key(lane))
+        .bind(fleet)
+        .execute(&mut *connection)
+        .await
+        .expect("the stored row is rewritten");
+    assert_eq!(updated.rows_affected(), 1, "one row holds the operation");
+}
+
+/// The producer key the operation's row is stored under.
+fn operation_key(lane: &EventsLane) -> String {
+    [lane.fleet.as_str(), OPERATION].join(KEY_SEPARATOR)
 }
 
 /// A webhook delivery on the lane's fleet under `key`.

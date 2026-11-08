@@ -112,13 +112,12 @@ impl Plane {
         );
     }
 
-    /// Record, announce and queue what the run's folds settled.
+    /// Record and announce what the run's folds settled.
     ///
-    /// Best effort, as the run's own announcement is: every row and every
-    /// obligation is committed, so a frame that does not land is re-read by
-    /// the next page, and a queue append that fails is re-appended by the
-    /// producer sweep. The settled log and counter are written here, after the
-    /// commit, so a report that rolled back leaves neither.
+    /// Best effort, as the run's own announcement is: every row is committed,
+    /// so a frame that does not land is re-read by the next page. The settled
+    /// log and counter are written here, after the commit, so a report that
+    /// rolled back leaves neither.
     pub(super) async fn announce_folds(
         &self,
         lease: &Reported,
@@ -129,24 +128,6 @@ impl Plane {
         folds.record_settled(lease.fleet_id.as_str(), lease_id);
         for closed in &folds.closed {
             let _published = self.leases.publish_completion(closed, Some(answer)).await;
-        }
-        for (owing, event_id) in &folds.owed {
-            let delivery = afd_outbound::obligation::Delivery {
-                fleet_id: lease.fleet_id.as_str(),
-                workspace_id: lease.workspace_id.as_str(),
-                provider: owing.reply.provider,
-                destination: &owing.reply.address,
-                event_id,
-                answer,
-            };
-            step(
-                "queue_fold_delivery",
-                lease,
-                owing.obligation.as_str(),
-                self.leases
-                    .queue_delivery(&owing.obligation, delivery)
-                    .await,
-            );
         }
     }
 

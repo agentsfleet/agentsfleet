@@ -60,7 +60,7 @@ async fn run_now_is_accepted_only_with_one_committed_admission_and_replays_same_
     assert!(error_code.is_none());
     let rows = c.admissions(&saved.id).await;
     assert_eq!(rows.len(), 1);
-    assert_eq!(event_id.as_ref(), Some(&rows[0]));
+    assert_eq!(event_id.as_deref(), Some(rows[0].as_str()));
     let retried = c.save(&key, request).await;
     assert_eq!(retried.id, saved.id);
     assert_eq!(

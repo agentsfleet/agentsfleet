@@ -60,7 +60,7 @@ pub(in crate::task) async fn register(
     )
     .await?;
     identity::quota(&mut tx, &plan.workspace_id).await?;
-    let workspace = task_guard::id(&plan.workspace_id, "workspace_id")?;
+    let workspace = plan.workspace_id.clone();
     let identity = identity::load(tasks, storage, &mut tx, &workspace, &plan.repository).await?;
     let content: Vec<_> = input
         .objects
@@ -72,7 +72,7 @@ pub(in crate::task) async fn register(
     }
     let existing: Vec<Object> = sqlx::query_as(include_str!("sql/objects_content.sql"))
         .bind(&plan.workspace_id)
-        .bind(identity.id.as_str())
+        .bind(&identity.id)
         .bind(&content)
         .fetch_all(&mut *tx)
         .await
@@ -101,7 +101,7 @@ pub(in crate::task) async fn register(
     reserve(&mut tx, &plan, &new, storage).await?;
     let objects: Vec<Object> = sqlx::query_as(include_str!("sql/objects_content.sql"))
         .bind(&plan.workspace_id)
-        .bind(identity.id.as_str())
+        .bind(identity.id)
         .bind(&content)
         .fetch_all(&mut *tx)
         .await
@@ -241,18 +241,15 @@ fn prepare(
 pub(super) async fn attach(
     connection: &mut PgConnection,
     plan: &Plan,
-    objects: &[String],
+    objects: &[Uuid7],
 ) -> Result<()> {
     sqlx::query(include_str!("sql/objects_attach.sql"))
         .bind(objects)
         .bind(&plan.workspace_id)
-        .bind(
-            (plan.mode()? == af_wire::task::CheckpointMode::Incremental)
-                .then_some(plan.id.as_str()),
-        )
+        .bind((plan.mode()? == af_wire::task::CheckpointMode::Incremental).then_some(&plan.id))
         .bind(
             if plan.mode()? == af_wire::task::CheckpointMode::RetainBase {
-                plan.base_id.as_deref()
+                plan.base_id.as_ref()
             } else {
                 None
             },

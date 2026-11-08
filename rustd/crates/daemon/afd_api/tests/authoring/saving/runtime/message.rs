@@ -173,8 +173,7 @@ const STATUS_BLIND_KEY: &str =
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_steer_reads_no_fleet_status_before_admitting() {
     let saved = Saved::create().await;
-    let workspace = af_core::id::Uuid7::parse(saved.case.base.workspace.as_str())
-        .expect("a canonical workspace id");
+    let workspace = saved.case.base.workspace.clone();
     let router = crate::harness::Fleet::new()
         .with_owned_workspace(workspace)
         .with_person(

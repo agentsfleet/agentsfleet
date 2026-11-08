@@ -130,7 +130,7 @@ fn render(page: TaskPage) -> TasksResponse<'static> {
                 status: item.state,
                 resource_version: item.resource_version,
                 generation: item.generation,
-                accepted_revision_id: Cow::Owned(item.accepted_revision_id),
+                accepted_revision_id: Cow::Owned(item.accepted_revision_id.into()),
                 created_at: item.created_at,
                 expires_at: item.expires_at,
             })

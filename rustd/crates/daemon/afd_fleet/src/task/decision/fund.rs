@@ -87,8 +87,8 @@ async fn cover(tasks: &Tasks, lease: TaskLease<'_>, call: &Call) -> Result<Cover
     let ask = Ask {
         work: WorkKey::FleetLease(lease.lease_id.clone()),
         payer: Account {
-            tenant: Call::id(&call.tenant_id, "tenant_id")?,
-            workspace: Call::id(&call.workspace_id, "workspace_id")?,
+            tenant: call.tenant_id.clone(),
+            workspace: call.workspace_id.clone(),
         },
         next: proposed.required,
     };
@@ -108,11 +108,10 @@ async fn proposed(tasks: &Tasks, lease: TaskLease<'_>) -> Result<Coverage> {
 
 async fn proposed_on(connection: &mut PgConnection, lease: TaskLease<'_>) -> Result<Coverage> {
     let mut tx = transaction::begin(connection).await?;
-    let current =
-        crate::lease::Leases::load_for_renew_on(&mut tx, lease.lease_id.as_str(), lease.runner_id)
-            .await?
-            .filter(|lease| lease.status == crate::lease::sql::LEASE_STATUS_ACTIVE)
-            .ok_or(TaskRefusal::StaleState)?;
+    let current = crate::lease::Leases::load_for_renew_on(&mut tx, lease.lease_id, lease.runner_id)
+        .await?
+        .filter(|lease| lease.status == crate::lease::sql::LEASE_STATUS_ACTIVE)
+        .ok_or(TaskRefusal::StaleState)?;
     let posture = Posture::parse(&current.posture).ok_or(TaskRefusal::DecisionUnavailable)?;
     let estimate = Accounts::estimate_on(
         &mut tx,

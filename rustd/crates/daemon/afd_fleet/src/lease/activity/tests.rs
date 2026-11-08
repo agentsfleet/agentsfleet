@@ -76,7 +76,7 @@ fn target() -> Target {
     const FIXTURE: Timestamp = Timestamp::constant(1, 0);
     Target {
         fleet_id: Uuid7::encode(FIXTURE, [0; ENTROPY_LEN]).expect("fixture fleet id"),
-        event_id: "event".to_owned(),
+        event_id: Uuid7::encode(FIXTURE, [1; ENTROPY_LEN]).expect("fixture event id"),
         lease_created_at: Timestamp::UNIX_EPOCH,
         event_created_at: Timestamp::UNIX_EPOCH,
         timing_eligible: true,

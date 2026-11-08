@@ -47,10 +47,15 @@ impl Plane {
         // The row's token, as the settle is fenced on it: the report is this
         // runner's by the load, and a lease the fleet has moved past writes
         // neither its memory nor its settle.
+        // The report was loaded by this id, so it parses; a value that does
+        // not names no lease and has no memory to write.
+        let Ok(lease_key) = Uuid7::parse(request.lease_id.as_ref()) else {
+            return;
+        };
         let holder = Holder {
             runner_id,
             fleet_id: &lease.fleet_id,
-            lease_id: request.lease_id.as_ref(),
+            lease_id: &lease_key,
             fencing_token: lease.fence.as_u64(),
         };
         let Err(failure) = self.capture_for(holder, &request.memory, now).await else {

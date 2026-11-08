@@ -76,7 +76,7 @@ impl Notice {
 struct Stored {
     sequence: i64,
     status: String,
-    candidate_id: Option<String>,
+    candidate_id: Option<Uuid7>,
     failure_reason: Option<String>,
     failure_cause: Option<String>,
     #[sqlx(flatten)]
@@ -88,7 +88,7 @@ pub(super) async fn running_sequence(
     draft: &Uuid7,
 ) -> Result<Option<i64>> {
     sqlx::query_scalar(sql::message::RUNNING)
-        .bind(draft.as_str())
+        .bind(draft)
         .bind(MessageState::Running.as_str())
         .fetch_optional(connection)
         .await
@@ -97,7 +97,7 @@ pub(super) async fn running_sequence(
 
 pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Result<Vec<Notice>> {
     let rows: Vec<Stored> = sqlx::query_as(sql::message::NOTICES)
-        .bind(draft.as_str())
+        .bind(draft)
         .bind(LIMIT)
         .bind(dispatch_status::KNOWN)
         .bind(dispatch_status::PENDING)
@@ -126,7 +126,7 @@ pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Re
                 event,
                 draft_id: draft.clone(),
                 sequence: Some(stored.sequence.to_string()),
-                candidate_id: optional(stored.candidate_id.as_deref())?,
+                candidate_id: optional(stored.candidate_id.as_ref().map(Uuid7::as_str))?,
                 revision: None,
                 state: Some(state),
                 usage: stored.metered.usage()?,

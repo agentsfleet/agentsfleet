@@ -781,7 +781,7 @@ Each renewal reads that ceiling afresh. A paused or stopped fleet's config can b
 
   While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_event_id`. The running lease claims it at its next model call through `POST /v1/runners/me/leases/{lease_id}/folds`.
 
-  A run claims every message its fleet received after its own, oldest first. It stops at the first parked (approval-gated) or task-bound one.
+  A run claims a person's messages in its own conversation after its own, oldest first. It stops at the first parked (approval-gated), task-bound or non-person one.
 
 That message is a barrier, and nothing after it folds. The model call in flight is never cut short.
 

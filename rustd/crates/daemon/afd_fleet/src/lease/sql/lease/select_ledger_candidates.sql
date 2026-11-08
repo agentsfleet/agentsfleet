@@ -5,7 +5,7 @@ WITH instant AS MATERIALIZED (
          (host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false)) AS task_capable
   FROM fleet.fleets z
   CROSS JOIN instant
-  JOIN runner.runners host ON host.id = $2::uuid
+  JOIN runner.runners host ON host.id = $2
   LEFT JOIN runner.fleet_slots s ON s.fleet_id = z.id
   LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
   WHERE z.status = $1
@@ -15,7 +15,7 @@ WITH instant AS MATERIALIZED (
     AND (s.lease_expires_at IS NULL OR s.lease_expires_at < instant.read_at)
     AND (s.hold_expires_at IS NULL
          OR s.hold_expires_at <= instant.read_at
-         OR s.last_runner_id = $2::uuid
+         OR s.last_runner_id = $2
          OR NOT EXISTS (
            SELECT 1 FROM runner.runners r
            WHERE r.id = s.last_runner_id
@@ -25,9 +25,9 @@ WITH instant AS MATERIALIZED (
       SELECT COALESCE(array_agg(e), '{}'::text[])
       FROM jsonb_array_elements_text(
         (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
-         FROM runner.runners WHERE id = $2::uuid)) AS e)
+         FROM runner.runners WHERE id = $2)) AS e)
 )
-SELECT z.id::text
+SELECT z.id
 FROM eligible z
 JOIN LATERAL (
   SELECT a.id, a.parked_at
@@ -47,10 +47,10 @@ JOIN LATERAL (
   UNION ALL
   (SELECT 1 FROM fleet.approval_gates g
   WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
-    AND g.event_id = head.id::text AND g.expires_at > z.read_at LIMIT 1))
-ORDER BY z.id = ANY((SELECT ($6::text[])::uuid[])::uuid[]) DESC,
-         (z.id = $7::uuid) DESC NULLS LAST,
-         (z.last_runner_id = $2::uuid) DESC NULLS LAST,
+    AND g.event_id = head.id AND g.expires_at > z.read_at LIMIT 1))
+ORDER BY z.id = ANY($6) DESC,
+         (z.id = $7) DESC NULLS LAST,
+         (z.last_runner_id = $2) DESC NULLS LAST,
          -- Only each fleet's head is ordered. Spread runners across fleets
          -- rather than making all of them contend for the same oldest fleet.
          random()

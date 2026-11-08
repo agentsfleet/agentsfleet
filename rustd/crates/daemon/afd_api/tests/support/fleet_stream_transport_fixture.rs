@@ -72,7 +72,7 @@ impl Watched {
     }
 
     pub(super) fn channel(&self) -> String {
-        fleet_activity_channel(&self.fixture.fleet)
+        fleet_activity_channel(self.fixture.fleet.as_str())
     }
 
     fn events_path(&self) -> String {
@@ -160,12 +160,12 @@ impl Watched {
             "INSERT INTO fleet.events \
             (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, \
              response_text, token_count, wall_ms, created_at, updated_at) \
-            VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', $4, \
+            VALUES ($1, $2, $3, 'steer:api', 'chat', $4, \
                     '{}', 'recovered answer', 7, 12, \
                     '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.011Z')",
         )
         .bind(&self.fixture.fleet)
-        .bind(self.fixture.workspace.as_str())
+        .bind(&self.fixture.workspace)
         .bind(&event_id)
         .bind(Outcome::Processed.as_str())
         .execute(
@@ -177,7 +177,7 @@ impl Watched {
         )
         .await
         .expect("the history row commits without publishing");
-        event_id
+        event_id.into()
     }
 
     pub(super) async fn history(&self) -> Value {

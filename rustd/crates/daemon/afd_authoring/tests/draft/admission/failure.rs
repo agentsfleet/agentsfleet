@@ -2,6 +2,7 @@
 
 use super::{claim, fixture, funded, queue};
 use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_authoring::types::MessageState;
 
 #[tokio::test]
@@ -9,8 +10,8 @@ use afd_authoring::types::MessageState;
 async fn revoked_model_leaves_a_durable_recovery_action() {
     let f = funded(1).await;
     let draft = queue(&f, "Selected model later disappears").await;
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-        .bind(f.model.as_str())
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+        .bind(&f.model)
         .execute(&mut *f.connection().await)
         .await
         .expect("disable owned entry");
@@ -29,8 +30,8 @@ async fn revoked_model_leaves_a_durable_recovery_action() {
 async fn missing_wallet_is_a_durable_billing_failure_without_an_attempt() {
     let f = funded(1).await;
     let draft = queue(&f, "Owner billing is required").await;
-    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id=$1::uuid")
-        .bind(f.tenant.as_str())
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id=$1")
+        .bind(&f.tenant)
         .execute(&mut *f.connection().await)
         .await
         .expect("remove owned wallet");
@@ -56,20 +57,19 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
         )
         .await
         .expect("member's private draft");
-    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
-        .bind(f.tenant.as_str())
-        .bind(f.member.as_str())
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
+        .bind(&f.tenant)
+        .bind(&f.member)
         .execute(&mut *f.connection().await)
         .await
         .expect("committed membership revocation");
     assert!(claim(&f, &created.draft).await.is_none());
-    let state: (String, Option<String>) = sqlx::query_as(
-        "SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1::uuid",
-    )
-    .bind(created.draft.id.as_str())
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("owned private state");
+    let state: (String, Option<String>) =
+        sqlx::query_as("SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1")
+            .bind(&created.draft.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("owned private state");
     assert_eq!(state, ("cancelled".into(), None));
     assert_eq!(fixture::attempts(&f).await, 0);
     f.cleanup().await;
@@ -80,8 +80,8 @@ async fn membership_revocation_cancels_queued_work_before_any_placement() {
 async fn a_large_current_request_is_transferred_for_exact_daemon_window_preflight() {
     let f = funded(1).await;
     let draft = queue(&f, &"語".repeat(10_000)).await;
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=8192 WHERE id=$1::uuid")
-        .bind(f.catalogue[0].as_str())
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=8192 WHERE id=$1")
+        .bind(&f.catalogue[0])
         .execute(&mut *f.connection().await)
         .await
         .expect("controlled context ceiling");
@@ -94,8 +94,8 @@ async fn a_large_current_request_is_transferred_for_exact_daemon_window_prefligh
         "語".repeat(10_000)
     );
     let dispatches: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1::uuid")
-            .bind(&lease.attempt_id)
+        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1")
+            .bind(Uuid7::parse(&lease.attempt_id).expect("attempt"))
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("no provider intent before preflight");

@@ -64,7 +64,7 @@ const RECALL_LIMIT: usize = 10;
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_memory_capture_fencing() {
     let run = held().await;
-    let fleet_id = Uuid7::parse(&run.fleet).expect("the fixture id is a v7 spelling");
+    let fleet_id = run.fleet.clone();
     let plane = run.fixtures.plane();
     let lease = run.issued.lease_id.as_str();
 
@@ -146,7 +146,7 @@ async fn test_memory_capture_fencing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_memory_capture_refuses_a_token_that_is_not_the_holders() {
     let run = held().await;
-    let fleet_id = Uuid7::parse(&run.fleet).expect("the fixture id is a v7 spelling");
+    let fleet_id = run.fleet.clone();
     let plane = run.fixtures.plane();
     let lease = run.issued.lease_id.as_str();
 
@@ -187,7 +187,7 @@ async fn test_memory_capture_refuses_a_token_that_is_not_the_holders() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_memory_routes_refuse_a_superseded_active_lease() {
     let run = held().await;
-    let fleet_id = Uuid7::parse(&run.fleet).expect("the fixture id is a v7 spelling");
+    let fleet_id = run.fleet.clone();
     let plane = run.fixtures.plane();
     let lease = run.issued.lease_id.as_str();
     // The control: while the fleet has not moved past it, the holder recalls
@@ -253,7 +253,7 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_memory_capture_refuses_a_lease_the_runner_does_not_hold() {
     let run = held().await;
-    let fleet_id = Uuid7::parse(&run.fleet).expect("the fixture id is a v7 spelling");
+    let fleet_id = run.fleet.clone();
     let plane = run.fixtures.plane();
 
     let refusal = plane

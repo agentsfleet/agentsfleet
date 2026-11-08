@@ -61,7 +61,7 @@ pub(crate) fn report_with(lease_id: &str, run: &Scenario, fence: u64, tool_calls
 async fn nullable_column(run: &Scenario, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
         "SELECT {column}::text FROM fleet.events \
-         WHERE fleet_id = $1::uuid AND event_id = $2"
+         WHERE fleet_id = $1 AND event_id = $2"
     ));
     let mut connection = run.booted.database.acquire().await.expect("a connection");
     let row = sqlx::query(statement)
@@ -170,7 +170,7 @@ async fn test_fenced_report_writes_no_tool_calls() {
     let mut connection = run.booted.database.acquire().await.expect("a connection");
     sqlx::query(AssertSqlSafe(
         "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 \
-         WHERE fleet_id = $1::uuid"
+         WHERE fleet_id = $1"
             .to_owned(),
     ))
     .bind(&run.fleet)

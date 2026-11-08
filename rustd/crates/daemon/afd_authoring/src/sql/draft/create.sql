@@ -3,7 +3,7 @@ INSERT INTO authoring.drafts
      source_type, source_library_revision_id, source_fleet_revision_id, instance_name,
      fleet_id, last_message_sequence, cancelled_through_sequence, resource_version,
      created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::uuid,
-        $8, $9::uuid, $10::uuid, $11,
-        $12::uuid, $13, $13, $13,
+VALUES ($1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11,
+        $12, $13, $13, $13,
         now(), now())

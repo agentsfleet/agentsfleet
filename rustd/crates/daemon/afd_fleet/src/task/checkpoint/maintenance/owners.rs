@@ -5,13 +5,14 @@ use crate::{
     error::query,
     task::{TaskScope, Tasks, guard as task_guard, sql, transaction},
 };
+use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 
 #[derive(sqlx::FromRow)]
 struct Task {
-    id: String,
-    fleet_id: String,
-    workspace_id: String,
+    id: Uuid7,
+    fleet_id: Uuid7,
+    workspace_id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     checkpoint_cleanup_at: jiff::Timestamp,
 }
@@ -44,7 +45,7 @@ pub(super) async fn retain(
             Ok(count) => removed += count,
             Err(error) => {
                 deferred += 1;
-                tracing::warn!(event = "dt_checkpoint_retention_deferred", task_id = task.id, error_code = %error.code());
+                tracing::warn!(event = "dt_checkpoint_retention_deferred", task_id = %task.id, error_code = %error.code());
             }
         }
     }
@@ -53,8 +54,8 @@ pub(super) async fn retain(
 
 async fn retain_one(tasks: &Tasks, task: &Task) -> Result<u64> {
     let scope = TaskScope {
-        fleet_id: task_guard::id(&task.fleet_id, "fleet_id")?,
-        workspace_id: task_guard::id(&task.workspace_id, "workspace_id")?,
+        fleet_id: task.fleet_id.clone(),
+        workspace_id: task.workspace_id.clone(),
     };
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
@@ -106,8 +107,8 @@ async fn retain_one(tasks: &Tasks, task: &Task) -> Result<u64> {
 
 #[derive(sqlx::FromRow)]
 struct Base {
-    id: String,
-    workspace_id: String,
+    id: Uuid7,
+    workspace_id: Uuid7,
 }
 
 pub(super) async fn bases(tasks: &Tasks) -> Result<u64> {

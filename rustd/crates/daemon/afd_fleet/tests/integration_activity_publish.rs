@@ -35,6 +35,7 @@ use std::borrow::Cow;
 
 use af_core::error_code;
 use af_core::event::label;
+use af_core::id::Uuid7;
 use af_observability::test_util::Capture;
 use af_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_fleet::lease::Ended;
@@ -81,9 +82,9 @@ async fn test_first_chunk_records_active_lease_stages() {
          SET created_at = clock_timestamp() - $2::interval,
              event_created_at = clock_timestamp() - $3::interval,
              lease_expires_at = clock_timestamp() + $4::interval
-         WHERE id = $1::uuid",
+         WHERE id = $1",
     )
-    .bind(run.issued.lease_id.as_str())
+    .bind(&run.issued.lease_id)
     .bind(std::time::Duration::from_millis(100))
     .bind(std::time::Duration::from_millis(200))
     .bind(LEASE_LEFT)
@@ -118,14 +119,14 @@ async fn test_first_chunk_records_active_lease_stages() {
     expired
         .fixtures
         .age(
-            Row::Lease(expired.issued.lease_id.as_str()),
+            Row::Lease(&expired.issued.lease_id),
             "lease_expires_at",
             LAPSE,
         )
         .await;
     let target = expired
         .leases
-        .load_activity_target(expired.issued.lease_id.as_str(), &expired.runner)
+        .load_activity_target(&expired.issued.lease_id, &expired.runner)
         .await
         .expect("the target lookup succeeds")
         .expect("the held lease exists");
@@ -279,8 +280,8 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
         .acquire()
         .await
         .expect("a pooled connection");
-    let workspace: String =
-        sqlx::query_scalar("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
+    let workspace: Uuid7 =
+        sqlx::query_scalar("SELECT workspace_id FROM fleet.fleets WHERE id = $1")
             .bind(&run.fleet)
             .fetch_one(&mut *connection)
             .await
@@ -290,7 +291,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
            (id, fleet_id, workspace_id, action_id, tool_name, action_name,
             gate_type, proposed_action, evidence, blast_radius, expires_at,
             resolved_by, status, detail, created_at, updated_at, event_id)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
+         VALUES ($1, $2, $3, $4, 'git', 'push',
                  'repository_write', 'open a pull request', '{}'::jsonb,
                  'one repository', now(), '', $5, '', now(), now(), $6)",
     )

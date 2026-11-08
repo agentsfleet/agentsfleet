@@ -3,7 +3,7 @@ WITH held AS MATERIALIZED (
            max_model_nanos, used_model_nanos, reserved_model_nanos,
            max_running_nanos, used_running_nanos, max_leases, used_leases
     FROM fleet.tasks
-    WHERE id = $1::uuid AND fleet_id = $2::uuid AND workspace_id = $3::uuid
+    WHERE id = $1 AND fleet_id = $2 AND workspace_id = $3
     FOR UPDATE
 ), instant AS MATERIALIZED (
     SELECT clock_timestamp() AS checked_at FROM held

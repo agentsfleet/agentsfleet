@@ -14,7 +14,7 @@
 const FLEET_INDEX: &str = "idx_events_fleet_id_created_at_event_id";
 /// The index a workspace-scoped read walks.
 const WORKSPACE_INDEX: &str = "idx_events_workspace_id_created_at_event_id";
-/// The index one actor's read in a fleet walks (`schema/1700_fleet_events.sql`).
+/// The index one actor's read in a fleet walks (`schema/20261108122400_fleet_events.sql`).
 const ACTOR_INDEX: &str = "idx_events_fleet_id_actor_created_at_event_id";
 /// Equality-filtered event types keep the cursor on the same ordered index.
 const TYPE_INDEX: &str = "idx_events_fleet_id_event_type_created_at_event_id";

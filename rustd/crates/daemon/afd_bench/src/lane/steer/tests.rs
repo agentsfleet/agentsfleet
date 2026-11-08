@@ -11,6 +11,7 @@ use std::time::Instant;
 
 use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_events::Steer;
 
@@ -50,7 +51,7 @@ fn refusing_steer() -> Steer {
 #[tokio::test]
 async fn a_refused_append_is_counted_and_trips_the_monitor_before_the_deadline() {
     let steer = refusing_steer();
-    let fleets = [("fleet-a".to_owned(), "workspace-a".to_owned())];
+    let fleets = [(mint_id(), mint_id())];
     let abort = Abort::new(0.5);
     let started = Instant::now();
 

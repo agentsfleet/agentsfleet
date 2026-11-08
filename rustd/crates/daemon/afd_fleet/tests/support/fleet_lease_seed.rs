@@ -11,30 +11,20 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use std::sync::atomic::{AtomicU32, Ordering};
-
 use af_core::id::Uuid7;
 use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
+use afd_db::test_util::mint_id;
 use afd_fleet::lease::{Acquired, Leases};
 use afd_runner::heartbeat::holds::prove;
 
 use crate::requests::{capable, enrolment_tagged, placement_tag};
 use crate::support::Fixtures;
 
-/// Distinguishes fleets created by one process, so two runs never share one.
-static SEQUENCE: AtomicU32 = AtomicU32::new(0);
-
 /// A fleet, workspace and tenant nothing else in the lane will name.
 ///
 /// Fresh identifiers isolate rows in the shared test database.
-///
-/// Shaped so the schema's `uuidv7` CHECK passes: the character after the
-/// second dash must be `7`.
-pub(crate) fn unique_ids() -> (String, String, String) {
-    let run = SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
-    let id = |slot: u32| format!("0195b4ba-8d3a-7{run:03x}-8abc-{pid:08x}{slot:04x}");
-    (id(1), id(2), id(3))
+pub(crate) fn unique_ids() -> (Uuid7, Uuid7, Uuid7) {
+    (mint_id(), mint_id(), mint_id())
 }
 
 /// The actor every seeded event carries.
@@ -65,11 +55,11 @@ pub(crate) struct Seeded<const N: usize> {
     /// The LOGICAL event id the fixture admitted under.
     ///
     /// `Acquired::event_id`, `fleet.events` and `billing.usage_lines` share it.
-    pub(crate) event_id: String,
+    pub(crate) event_id: Uuid7,
     /// The fleet holding the event.
-    pub(crate) fleet: String,
+    pub(crate) fleet: Uuid7,
     /// Its billing tenant.
-    pub(crate) tenant: String,
+    pub(crate) tenant: Uuid7,
 }
 
 /// A fleet with one admission and `N` enrolled runners.
@@ -131,7 +121,7 @@ async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
 /// before it returns.
 pub(crate) async fn seeded_parts<const N: usize>(
     fixtures: &Fixtures,
-) -> (String, String, String, [Uuid7; N]) {
+) -> (Uuid7, Uuid7, Uuid7, [Uuid7; N]) {
     let (fleet, workspace, tenant) = unique_ids();
     // One tag per seeded fleet, carried by its own runners and nobody else's:
     // see `Fixtures::seed_fleet` on why the assignment pass needs it.
@@ -164,14 +154,18 @@ pub(crate) async fn seeded_parts<const N: usize>(
 }
 
 /// One serving poll, prioritizing this fixture's fleet among held fleets.
-pub(crate) async fn select_fleet(leases: &Leases, runner: &Uuid7, fleet: &str) -> Option<Acquired> {
-    let named = [Uuid7::parse(fleet).expect("seeded fleet")];
+pub(crate) async fn select_fleet(
+    leases: &Leases,
+    runner: &Uuid7,
+    fleet: &Uuid7,
+) -> Option<Acquired> {
+    let named = [fleet.clone()];
     let acquired = leases
         .select(runner, &named)
         .await
         .expect("serving selection");
     if let Some(acquired) = &acquired {
-        assert_eq!(acquired.fleet_id.as_str(), fleet);
+        assert_eq!(&acquired.fleet_id, fleet);
     }
     acquired
 }

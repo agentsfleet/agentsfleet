@@ -7,7 +7,8 @@ use super::{
     capture, settle,
     support::{Observation, counts, decision, observe},
 };
-use af_wire::task::{DecisionTaskVersion, TaskState};
+use af_core::id::Uuid7;
+use af_wire::task::TaskState;
 use afd_fleet::task::{TaskLifecycle as _, Tasks};
 use serde_json::{Value, json};
 
@@ -17,7 +18,8 @@ mod races;
 struct Waiting<'a> {
     fixture: Decisions<'a>,
     tasks: Tasks,
-    task: DecisionTaskVersion,
+    /// The bound task's identifier, parsed once from its wire spelling.
+    task_id: Uuid7,
     server: Server,
     checkpoint: String,
 }
@@ -44,7 +46,7 @@ impl Waiting<'_> {
         Waiting {
             fixture,
             tasks,
-            task,
+            task_id: id(&task.task_id),
             server,
             checkpoint,
         }
@@ -52,8 +54,8 @@ impl Waiting<'_> {
 
     async fn due(&self) {
         let case = self.fixture.case;
-        let updated = sqlx::query("UPDATE fleet.task_waits SET due_at=clock_timestamp()-interval '1 second',cooldown_expires_at=clock_timestamp()-interval '1 second' WHERE task_id=$1::uuid AND consumed_at IS NULL AND cancelled_at IS NULL")
-            .bind(&self.task.task_id).execute(&mut *case.held.fixtures.database.acquire().await.expect("wait scheduler fixture"))
+        let updated = sqlx::query("UPDATE fleet.task_waits SET due_at=clock_timestamp()-interval '1 second',cooldown_expires_at=clock_timestamp()-interval '1 second' WHERE task_id=$1 AND consumed_at IS NULL AND cancelled_at IS NULL")
+            .bind(&self.task_id).execute(&mut *case.held.fixtures.database.acquire().await.expect("wait scheduler fixture"))
             .await.expect("due native dependency wait");
         assert_eq!(updated.rows_affected(), 1);
     }
@@ -95,12 +97,12 @@ async fn completed_dependencies_consume_one_native_wait_for_success_and_failure(
             assert_eq!(
                 waiting
                     .tasks
-                    .read(&case.scope, &id(&waiting.task.task_id))
+                    .read(&case.scope, &waiting.task_id)
                     .await
                     .expect("stable continuation"),
                 snapshot
             );
-            assert_eq!(counts(case, &waiting.task.task_id).await, (1, 3, 1, 2, 2));
+            assert_eq!(counts(case, &waiting.task_id).await, (1, 3, 1, 2, 2));
             assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
             waiting.finish().await;
         })
@@ -152,11 +154,11 @@ async fn closed_or_changed_head_dependencies_block_without_admitting_work() {
             observe(&waiting.server, observation);
             let result = waiting.tasks.maintain_waits().await.expect("refused remote dependency");
             assert_eq!((result.checked, result.woken, result.deferred), (1, 0, 1));
-            let state: (String, String, i64, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation FROM fleet.tasks WHERE id=$1::uuid")
-                .bind(&waiting.task.task_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("blocked owner observer"))
+            let state: (String, String, i64, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation FROM fleet.tasks WHERE id=$1")
+                .bind(&waiting.task_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("blocked owner observer"))
                 .await.expect("current native task state");
             assert_eq!(state, (TaskState::Blocked.as_str().to_owned(), reason.to_owned(), 3, 2));
-            assert_eq!(counts(case, &waiting.task.task_id).await, (0, 0, 0, 2, 1));
+            assert_eq!(counts(case, &waiting.task_id).await, (0, 0, 0, 2, 1));
             assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
             waiting.finish().await;
         }).await;
@@ -164,8 +166,8 @@ async fn closed_or_changed_head_dependencies_block_without_admitting_work() {
 }
 
 async fn wait_state(waiting: &Waiting<'_>) -> (bool, bool, bool, bool, i32) {
-    sqlx::query_as("SELECT consumed_at IS NOT NULL,cancelled_at IS NOT NULL,initial_read_at IS NOT NULL,claim_id IS NOT NULL,fallback_count FROM fleet.task_waits WHERE task_id=$1::uuid")
-        .bind(&waiting.task.task_id).fetch_one(&mut *waiting.fixture.case.held.fixtures.database.acquire().await.expect("wait evidence observer"))
+    sqlx::query_as("SELECT consumed_at IS NOT NULL,cancelled_at IS NOT NULL,initial_read_at IS NOT NULL,claim_id IS NOT NULL,fallback_count FROM fleet.task_waits WHERE task_id=$1")
+        .bind(&waiting.task_id).fetch_one(&mut *waiting.fixture.case.held.fixtures.database.acquire().await.expect("wait evidence observer"))
         .await.expect("durable observation custody")
 }
 
@@ -185,12 +187,12 @@ async fn failed_dependency_reads_retain_prior_evidence_and_observe_provider_cool
             assert_eq!((result.checked, result.woken, result.deferred), (1, 0, 1));
             assert_eq!(baseline(&waiting).await, prior, "failed reads retain prior check facts and digest");
             assert_eq!(wait_state(&waiting).await, (false, false, true, false, 0));
-            let snapshot = waiting.tasks.read(&case.scope, &id(&waiting.task.task_id)).await.expect("recoverable task");
+            let snapshot = waiting.tasks.read(&case.scope, &waiting.task_id).await.expect("recoverable task");
             assert_eq!(snapshot.context.state, TaskState::Waiting);
             assert_eq!(snapshot.context.usage.fallback_reads, 0);
-            assert_eq!(counts(case, &waiting.task.task_id).await, (0, 0, 1, 2, 1));
-            let cooled: bool = sqlx::query_scalar("SELECT cooldown_expires_at > clock_timestamp() FROM fleet.task_waits WHERE task_id=$1::uuid")
-                .bind(&waiting.task.task_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("cooldown observer"))
+            assert_eq!(counts(case, &waiting.task_id).await, (0, 0, 1, 2, 1));
+            let cooled: bool = sqlx::query_scalar("SELECT cooldown_expires_at > clock_timestamp() FROM fleet.task_waits WHERE task_id=$1")
+                .bind(&waiting.task_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("cooldown observer"))
                 .await.expect("native provider cooldown");
             assert_eq!(cooled, response.get("fixture_http_status").is_some());
             let retry = waiting.tasks.maintain_waits().await.expect("failure backoff preserves the wait");
@@ -202,8 +204,8 @@ async fn failed_dependency_reads_retain_prior_evidence_and_observe_provider_cool
 }
 
 async fn baseline(waiting: &Waiting<'_>) -> Value {
-    sqlx::query_scalar("SELECT jsonb_build_object('checks',checks,'baseline_digest',baseline_digest) FROM fleet.task_waits WHERE task_id=$1::uuid")
-        .bind(&waiting.task.task_id).fetch_one(&mut *waiting.fixture.case.held.fixtures.database.acquire().await.expect("baseline observer"))
+    sqlx::query_scalar("SELECT jsonb_build_object('checks',checks,'baseline_digest',baseline_digest) FROM fleet.task_waits WHERE task_id=$1")
+        .bind(&waiting.task_id).fetch_one(&mut *waiting.fixture.case.held.fixtures.database.acquire().await.expect("baseline observer"))
         .await.expect("committed native observation")
 }
 
@@ -211,7 +213,7 @@ async fn continued(waiting: &Waiting<'_>) -> afd_fleet::task::TaskSnapshot {
     let case = waiting.fixture.case;
     let snapshot = waiting
         .tasks
-        .read(&case.scope, &id(&waiting.task.task_id))
+        .read(&case.scope, &waiting.task_id)
         .await
         .expect("continued task");
     assert_eq!(snapshot.context.state, TaskState::Ready);
@@ -226,7 +228,7 @@ async fn continued(waiting: &Waiting<'_>) -> afd_fleet::task::TaskSnapshot {
         snapshot.context.checkpoint_id.as_deref(),
         Some(waiting.checkpoint.as_str())
     );
-    assert_eq!(counts(case, &waiting.task.task_id).await, (1, 3, 1, 2, 2));
+    assert_eq!(counts(case, &waiting.task_id).await, (1, 3, 1, 2, 2));
     assert_eq!(wait_state(waiting).await, (true, false, true, false, 0));
     snapshot
 }
@@ -235,7 +237,7 @@ async fn unchanged(waiting: &Waiting<'_>, expected_reads: u32) {
     let case = waiting.fixture.case;
     let snapshot = waiting
         .tasks
-        .read(&case.scope, &id(&waiting.task.task_id))
+        .read(&case.scope, &waiting.task_id)
         .await
         .expect("still waiting");
     assert_eq!(snapshot.context.state, TaskState::Waiting);
@@ -247,7 +249,7 @@ async fn unchanged(waiting: &Waiting<'_>, expected_reads: u32) {
         (2, 1)
     );
     assert_eq!(snapshot.context.usage.fallback_reads, expected_reads);
-    assert_eq!(counts(case, &waiting.task.task_id).await, (0, 0, 1, 2, 1));
+    assert_eq!(counts(case, &waiting.task_id).await, (0, 0, 1, 2, 1));
     assert_eq!(
         wait_state(waiting).await,
         (

@@ -97,7 +97,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
     ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send;
 
     /// One tool call's kept record, inside this workspace, fleet and event.
@@ -109,7 +109,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
         call: CallAddress,
     ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send;
 }
@@ -164,7 +164,7 @@ impl WorkspaceEvents for History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
     ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send {
         Self::detail(self, workspace, fleet, event_id)
     }
@@ -173,7 +173,7 @@ impl WorkspaceEvents for History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
         call: CallAddress,
     ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send {
         Self::tool_call(self, workspace, fleet, event_id, call)
@@ -197,8 +197,8 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     /// Reports a queue that would not take the append.
     fn append(
         &self,
-        fleet: &str,
-        workspace: &str,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,
@@ -213,8 +213,8 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
 impl FleetSteering for Steer {
     fn append(
         &self,
-        fleet: &str,
-        workspace: &str,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,

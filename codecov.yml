@@ -18,13 +18,15 @@ coverage:
     # Grade changed lines per language using the same floors as local lanes.
     # Indy reset Rust floors on Nov 06, 2026 to the verified M236 baseline:
     # 98.5561% overall and 94.3990% patch. Later milestones raise these floors.
+    # Patch raised to 97.5% on Nov 08, 2026 (Indy: "move the coverage from 94 to
+    # 97.5"), on #816's measured 97.67%.
     # RUSTD_PATCH_FLOOR and RUSTD_COVERAGE_FLOOR use the same values locally.
     # TypeScript remains at 100%; measurement paths and exclusions are unchanged.
     patch:
       rust-afd:
         flags:
           - rust-afd
-        target: 94%
+        target: 97.5%
         threshold: 0%
         informational: false
 

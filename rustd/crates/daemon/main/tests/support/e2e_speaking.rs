@@ -13,6 +13,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_connector::test_util::FakeSlack;
 use agentsfleetd::preflight::SLACK_API_URL_KNOB;
 use agentsfleetd::supervisor::Supervisor;
@@ -73,6 +74,8 @@ impl Speaking {
 
     /// How many lines `lease_id` has counted against its cap.
     pub(crate) async fn counted(&self, lease_id: &str) -> i32 {
+        let lease_id =
+            Uuid7::parse(lease_id).expect("a lease id the daemon answered is a canonical UUIDv7");
         let mut connection = self
             .run
             .booted
@@ -80,8 +83,8 @@ impl Speaking {
             .acquire()
             .await
             .expect("a connection");
-        sqlx::query_scalar("SELECT posted_message_count FROM runner.leases WHERE id = $1::uuid")
-            .bind(lease_id)
+        sqlx::query_scalar("SELECT posted_message_count FROM runner.leases WHERE id = $1")
+            .bind(&lease_id)
             .fetch_one(&mut *connection)
             .await
             .expect("the lease row")
@@ -98,7 +101,7 @@ impl Speaking {
             .await
             .expect("a connection");
         sqlx::query(
-            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1::uuid",
+            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
         )
         .bind(&self.run.fleet)
         .execute(&mut *connection)

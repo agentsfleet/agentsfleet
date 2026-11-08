@@ -20,8 +20,8 @@ pub(super) async fn find(
     request: &Prepared,
 ) -> Result<Option<Reported>> {
     let prior: Option<(String, String)> = sqlx::query_as(sql::RECEIPT)
-        .bind(attempt.id.as_str())
-        .bind(request.report_id.as_str())
+        .bind(&attempt.id)
+        .bind(&request.report_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -33,8 +33,8 @@ pub(super) async fn find(
     }
     if let Some(digest) = &request.answer_digest {
         let saved: Option<String> = sqlx::query_scalar(sql::ANSWER)
-            .bind(attempt.id.as_str())
-            .bind(request.report_id.as_str())
+            .bind(&attempt.id)
+            .bind(&request.report_id)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -56,9 +56,9 @@ pub(super) async fn insert(
     now: Timestamp,
 ) -> Result<()> {
     sqlx::query(sql::ACKNOWLEDGE)
-        .bind(drafts.mint(now)?.as_str())
-        .bind(attempt.id.as_str())
-        .bind(request.report_id.as_str())
+        .bind(drafts.mint(now)?)
+        .bind(&attempt.id)
+        .bind(&request.report_id)
         .bind(&request.digest)
         .bind(serde_json::to_string(ack).map_err(stored)?)
         .execute(connection)
@@ -77,10 +77,10 @@ pub(super) async fn answer(
     now: Timestamp,
 ) -> Result<()> {
     sqlx::query(sql::ANSWER_RECEIPT)
-        .bind(drafts.mint(now)?.as_str())
-        .bind(attempt.draft_id.as_str())
-        .bind(attempt.id.as_str())
-        .bind(prepared.report_id.as_str())
+        .bind(drafts.mint(now)?)
+        .bind(&attempt.draft_id)
+        .bind(&attempt.id)
+        .bind(&prepared.report_id)
         .bind(digest)
         .bind(crate::model::budget::PRIVATE_TTL)
         .execute(connection)

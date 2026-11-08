@@ -16,6 +16,7 @@
 use crate::datastores::Datastores;
 use crate::error::{ErrorKind, Result};
 use crate::fixture::RunPrefix;
+use af_core::id::Uuid7;
 
 /// An attempt still running, as `afd_authoring` spells it.
 ///
@@ -95,7 +96,7 @@ impl Census {
 pub(super) async fn count(
     stores: &Datastores,
     prefix: &RunPrefix,
-    tenants: &[String],
+    tenants: &[Uuid7],
     chat_issued: u64,
     recovered: bool,
 ) -> Result<Census> {
@@ -131,7 +132,7 @@ pub(super) async fn count(
 /// # Errors
 ///
 /// Whatever Postgres refused.
-pub(super) async fn issued(stores: &Datastores, tenants: &[String]) -> Result<u64> {
+pub(super) async fn issued(stores: &Datastores, tenants: &[Uuid7]) -> Result<u64> {
     let mut connection = stores.database.acquire().await?;
     let issued: i64 = sqlx::query_scalar(ISSUED_ATTEMPTS)
         .bind(tenants)

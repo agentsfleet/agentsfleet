@@ -26,7 +26,6 @@ pub(super) async fn removed(
                 announcement.append(
                     Receipt {
                         schedule: &retired,
-                        operation: "setup",
                         fact: Fact::mutation(Some(DesiredStatus::Deleting)),
                     }
                     .record_on(connection, set.workspace)

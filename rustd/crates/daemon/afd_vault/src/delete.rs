@@ -121,7 +121,7 @@ impl Directory {
             .await
             .map_err(&unreadable)?;
         sqlx::query(sql::DELETE_SECRET)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(name.as_str())
             .execute(&mut **transaction)
             .await
@@ -136,7 +136,7 @@ async fn secret_is_held(
     name: &SecretName,
 ) -> Result<bool> {
     Ok(sqlx::query(sql::LOCK_SECRET)
-        .bind(workspace.as_str())
+        .bind(workspace)
         .bind(name.as_str())
         .fetch_optional(&mut **transaction)
         .await
@@ -147,9 +147,9 @@ async fn secret_is_held(
 async fn owning_tenant(
     transaction: &mut Transaction<'_, sqlx::Postgres>,
     workspace: &Uuid7,
-) -> Result<String> {
+) -> Result<Uuid7> {
     sqlx::query_scalar(sql::OWNING_TENANT)
-        .bind(workspace.as_str())
+        .bind(workspace)
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(CONTEXT_DELETE))?
@@ -158,7 +158,7 @@ async fn owning_tenant(
 
 async fn reference_count(
     transaction: &mut Transaction<'_, sqlx::Postgres>,
-    tenant: &str,
+    tenant: &Uuid7,
     name: &SecretName,
 ) -> Result<usize> {
     Ok(sqlx::query(sql::LOCK_ENTRIES)

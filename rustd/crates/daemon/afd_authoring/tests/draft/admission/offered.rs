@@ -35,13 +35,11 @@ async fn an_offered_choice_admits_queued_work_once_and_a_spent_choice_admits_not
         .await
         .expect("admission answers");
     assert!(spent.is_none(), "the recorded placement spent the choice");
-    sqlx::query(
-        "UPDATE authoring.drafts SET expires_at=now()-interval '1 second' WHERE id=$1::uuid",
-    )
-    .bind(second.id.as_str())
-    .execute(&mut *f.connection().await)
-    .await
-    .expect("the second chat's retention closed");
+    sqlx::query("UPDATE authoring.drafts SET expires_at=now()-interval '1 second' WHERE id=$1")
+        .bind(&second.id)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("the second chat's retention closed");
     let fresh = Runners::new(f.db.clone(), Entropy::new())
         .claim_offer(&f.runner, AcceptedKinds::ALL)
         .await

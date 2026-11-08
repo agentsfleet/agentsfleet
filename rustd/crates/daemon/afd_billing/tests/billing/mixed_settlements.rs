@@ -13,9 +13,7 @@ use afd_billing::{
 use afd_db::{
     Db, Migrator,
     config::DbRole,
-    test_util::{
-        FleetSeed, TenantSeed, TestDatabase, WalletSeed, WorkspaceSeed, mint_id, mint_uuid7,
-    },
+    test_util::{FleetSeed, TenantSeed, TestDatabase, WalletSeed, WorkspaceSeed, mint_id},
 };
 use futures_util::FutureExt as _;
 use jiff::Timestamp;
@@ -54,10 +52,10 @@ async fn scenario(lane: &TestDatabase) {
     migrator.close().await;
     let database = lane.open(DbRole::Api, &[]).await;
     let payer = Account {
-        tenant: mint_uuid7(),
-        workspace: mint_uuid7(),
+        tenant: mint_id(),
+        workspace: mint_id(),
     };
-    let fleet = mint_uuid7();
+    let fleet = mint_id();
     seed(&database, &payer, &fleet).await;
     recovery(&database, &payer, &fleet).await;
     database.close().await;
@@ -65,25 +63,20 @@ async fn scenario(lane: &TestDatabase) {
 
 async fn seed(database: &Db, payer: &Account, fleet: &Uuid7) {
     let mut connection = database.acquire().await.expect("seed connection");
-    TenantSeed::new(payer.tenant.as_str())
+    TenantSeed::new(&payer.tenant)
         .insert(&mut *connection)
         .await
         .expect("tenant seed");
-    WorkspaceSeed::new(payer.workspace.as_str(), payer.tenant.as_str())
+    WorkspaceSeed::new(&payer.workspace, &payer.tenant)
         .insert(&mut *connection)
         .await
         .expect("workspace seed");
-    FleetSeed::new(
-        fleet.as_str(),
-        payer.workspace.as_str(),
-        payer.tenant.as_str(),
-        "active",
-    )
-    .name(FLEET_NAME)
-    .insert(&mut *connection)
-    .await
-    .expect("fleet seed");
-    WalletSeed::new(payer.tenant.as_str(), BALANCE.as_i64())
+    FleetSeed::new(fleet, &payer.workspace, &payer.tenant, "active")
+        .name(FLEET_NAME)
+        .insert(&mut *connection)
+        .await
+        .expect("fleet seed");
+    WalletSeed::new(&payer.tenant, BALANCE.as_i64())
         .insert(&mut *connection)
         .await
         .expect("funded wallet");
@@ -154,9 +147,9 @@ async fn reconstruct(database: &Db, payer: &Account, expected: &mut [Settlement;
             .await
             .expect("later usage and identical replay commit");
         let aged = sqlx::query(include_str!("fixtures/age_mixed_settlements.sql"))
-            .bind(payer.tenant.as_str())
+            .bind(&payer.tenant)
             .bind(Duration::from_secs(1))
-            .bind(expected[0].work.id().as_str())
+            .bind(expected[0].work.id())
             .bind(8_i64)
             .execute(&mut *connection)
             .await
@@ -185,7 +178,7 @@ async fn reconstruct(database: &Db, payer: &Account, expected: &mut [Settlement;
 }
 
 fn groups(payer: &Account, fleet: &Uuid7) -> [Settlement; 5] {
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     let attribution = Attribution::Fleet {
         fleet: fleet.clone(),
         fleet_name: FLEET_NAME.to_owned(),
@@ -208,7 +201,7 @@ fn groups(payer: &Account, fleet: &Uuid7) -> [Settlement; 5] {
         Posture::Platform,
         vec![line(0, 25_000)],
     );
-    other.work = WorkKey::FleetLease(mint_uuid7());
+    other.work = WorkKey::FleetLease(mint_id());
     [
         group(
             "openai",

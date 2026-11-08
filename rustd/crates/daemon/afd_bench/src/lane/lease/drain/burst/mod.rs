@@ -10,6 +10,7 @@
 
 mod pace;
 
+use af_core::id::Uuid7;
 use core::time::Duration;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -185,7 +186,7 @@ fn spawn_pacers(
 /// Append one steer and remember when it returned.
 async fn append_one(
     steer: &Steer,
-    (fleet, workspace): &(String, String),
+    (fleet, workspace): &(Uuid7, Uuid7),
     pickups: &Pickups,
     appends: &Appends,
 ) {

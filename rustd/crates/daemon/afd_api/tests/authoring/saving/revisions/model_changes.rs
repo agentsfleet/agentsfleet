@@ -24,8 +24,8 @@ async fn every_saved_revision_notifies_but_a_replayed_save_stays_quiet() {
     let (hub, mut reader) = subscribe(&fleet).await;
     let other = Fixture::create().await;
     let selected = mint();
-    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1::uuid,$2::uuid,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3::uuid")
-        .bind(selected.as_str()).bind(fleet.case.base.tenant.as_str()).bind(other.model.as_str())
+    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1,$2,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3")
+        .bind(&selected).bind(&fleet.case.base.tenant).bind(&other.model)
         .execute(&mut *fleet.case.base.db.acquire().await.expect("model connection"))
         .await.expect("second runtime choice");
     let (draft, _) = fleet.improvement().await;
@@ -188,8 +188,8 @@ async fn stop_then_change_price(fleet: &Fleet) -> Value {
         )
         .await;
     assert_eq!(stopped.status(), StatusCode::OK);
-    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=input_nanos_per_mtok+1,updated_at=clock_timestamp() WHERE platform_model_id=$1::uuid")
-        .bind(fleet.case.base.catalogue.as_str())
+    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=input_nanos_per_mtok+1,updated_at=clock_timestamp() WHERE platform_model_id=$1")
+        .bind(&fleet.case.base.catalogue)
         .execute(&mut *fleet.case.base.db.acquire().await.expect("price connection"))
         .await.expect("catalogue price changed");
     json_body(stopped).await
@@ -263,10 +263,13 @@ async fn history_with_receipts(fleet: &Fleet, revision: u32) -> Vec<Value> {
         })
         .collect();
     receipts.sort();
+    // A repeated receipt write records again: activity receipts carry a fresh
+    // `UUIDv7` and no dedupe key (Indy, Nov 08, 2026: "v7, drop the dedupe").
+    receipts.dedup();
     expected.sort();
     assert_eq!(
         receipts, expected,
-        "each committed setup has one receipt of each kind"
+        "each committed setup has a receipt of each kind"
     );
     notices
 }
@@ -278,8 +281,8 @@ async fn a_failed_live_notice_keeps_the_model_save_committed_and_replayable() {
     let other = Fixture::create().await;
     let (draft, _) = fleet.improvement().await;
     let selected = mint();
-    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1::uuid,$2::uuid,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3::uuid")
-        .bind(selected.as_str()).bind(fleet.case.base.tenant.as_str()).bind(other.model.as_str())
+    sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1,$2,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3")
+        .bind(&selected).bind(&fleet.case.base.tenant).bind(&other.model)
         .execute(&mut *fleet.case.base.db.acquire().await.expect("model connection"))
         .await.expect("second runtime choice");
     let request = select_model(&fleet, &draft, selected.as_str()).await;

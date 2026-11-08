@@ -89,9 +89,9 @@ impl Resource {
 /// [`sql::READ`]'s row, by column name.
 #[derive(Deserialize, sqlx::FromRow)]
 pub(crate) struct Receipt {
-    user_id: String,
+    user_id: Uuid7,
     request_digest: String,
-    resource_id: String,
+    resource_id: Uuid7,
     /// Whether the named resource still exists.
     live: bool,
 }
@@ -116,7 +116,7 @@ pub(crate) async fn find(
 ) -> Result<Option<Uuid7>> {
     let receipt = sqlx::query_as::<_, Receipt>(sql::READ)
         .bind(scope)
-        .bind(operation.as_str())
+        .bind(operation)
         .bind(REPLAY_WINDOW)
         .bind(resource.kind())
         .fetch_optional(connection)
@@ -140,7 +140,7 @@ pub(crate) fn decide(
     if !receipt.live {
         return Err(ErrorKind::Gone.into());
     }
-    Ok(Some(Uuid7::parse(&receipt.resource_id)?))
+    Ok(Some(receipt.resource_id))
 }
 
 pub(crate) struct Reservation<'a> {
@@ -165,19 +165,19 @@ pub(crate) async fn reserve(
 ) -> Result<bool> {
     sqlx::query(sql::EXPIRE)
         .bind(reservation.scope)
-        .bind(reservation.operation.as_str())
+        .bind(reservation.operation)
         .bind(REPLAY_WINDOW)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     let inserted = sqlx::query(sql::INSERT)
-        .bind(reservation.receipt_id.as_str())
-        .bind(reservation.workspace.as_str())
-        .bind(reservation.person.id.as_str())
+        .bind(reservation.receipt_id)
+        .bind(reservation.workspace)
+        .bind(&reservation.person.id)
         .bind(reservation.scope)
-        .bind(reservation.operation.as_str())
+        .bind(reservation.operation)
         .bind(reservation.digest)
-        .bind(reservation.resource.as_str())
+        .bind(reservation.resource)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

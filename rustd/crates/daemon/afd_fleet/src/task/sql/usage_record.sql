@@ -3,7 +3,7 @@ WITH measured AS MATERIALIZED (
         GREATEST(l.task_runtime_accounted_at, LEAST(l.last_metered_at, l.lease_expires_at)) AS until,
         (EXTRACT(EPOCH FROM GREATEST(l.task_runtime_accounted_at, LEAST(l.last_metered_at, l.lease_expires_at))
             - l.task_runtime_accounted_at) * $3::bigint)::bigint AS running_nanos
-    FROM runner.leases l WHERE l.id = $1::uuid AND l.task_id IS NOT NULL AND l.task_started_at IS NOT NULL
+    FROM runner.leases l WHERE l.id = $1 AND l.task_id IS NOT NULL AND l.task_started_at IS NOT NULL
 ), cursor AS (
     UPDATE runner.leases l SET task_runtime_accounted_at = m.until, updated_at = now()
     FROM measured m WHERE l.id = m.id

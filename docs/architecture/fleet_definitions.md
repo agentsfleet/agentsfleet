@@ -61,7 +61,7 @@ No object-store bundle is needed for this path.
 
 Bundle upload, GitHub archive import, export, tar snapshots, runner bundle download, the `SKILL.md`/`TRIGGER.md` parser and source-Markdown setup writers are removed. Shared tools, vault storage, connector ingress and repository checkout keep their independent uses.
 
-`fleet.fleets` (`schema/1500_fleet_fleets.sql`) has no instruction or bundle columns. A fleet row carries no instructions of its own; they live only in its pinned revision (`fleet.revisions`).
+`fleet.fleets` (`schema/20261108121900_fleet_fleets.sql`) has no instruction or bundle columns. A fleet row carries no instructions of its own; they live only in its pinned revision (`fleet.revisions`).
 
 ## Validated Definition
 

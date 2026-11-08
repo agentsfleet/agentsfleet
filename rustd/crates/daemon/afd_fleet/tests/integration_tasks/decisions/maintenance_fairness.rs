@@ -1,5 +1,6 @@
 //! Recovery reaches other fleets while the oldest candidate remains busy.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
@@ -66,7 +67,7 @@ async fn held_pass(
     fixture: &Decisions<'_>,
     later: &Decisions<'_>,
     cursor: &mut DecisionMaintenanceCursor,
-) -> String {
+) -> Uuid7 {
     let mut connection = fixture
         .case
         .held
@@ -105,8 +106,8 @@ async fn held_pass(
 async fn retried_pair(
     oldest: &Decisions<'_>,
     later: &Decisions<'_>,
-    first: &str,
-    arriving: &str,
+    first: &Uuid7,
+    arriving: &Uuid7,
     cursor: &mut DecisionMaintenanceCursor,
 ) {
     assert_eq!(
@@ -223,8 +224,8 @@ async fn malformed(case: &Case) {
         .expect("decision model fixture lifecycle");
 }
 
-async fn replace_profile(fixture: &Decisions<'_>, call: &str, value: &serde_json::Value) {
-    sqlx::query("UPDATE runner.decision_calls SET profile_snapshot=$2 WHERE id=$1::uuid")
+async fn replace_profile(fixture: &Decisions<'_>, call: &Uuid7, value: &serde_json::Value) {
+    sqlx::query("UPDATE runner.decision_calls SET profile_snapshot=$2 WHERE id=$1")
         .bind(call)
         .bind(sqlx::types::Json(value))
         .execute(
@@ -258,7 +259,7 @@ fn failed_diagnostics(capture: &Capture) {
     );
 }
 
-pub(super) async fn extra_unissued(fixture: &Decisions<'_>) -> String {
+pub(super) async fn extra_unissued(fixture: &Decisions<'_>) -> Uuid7 {
     let source = fixture.case.claimed_source().await;
     let mut input: DecisionReservationInput = fixture
         .reservation(DecisionAssessment::Message, None)
@@ -270,19 +271,19 @@ pub(super) async fn extra_unissued(fixture: &Decisions<'_>) -> String {
     let call = unissued(fixture, &input).await;
     // Input settlement remains separate work. Seed its completed-source state
     // so this financial fixture preserves FIFO ordering.
-    let finished = sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1::uuid AND input_claim_lease_id=$2::uuid AND input_claim_fence=$3 AND settled_at IS NULL")
-        .bind(source.as_str()).bind(fixture.case.held.lease_key.as_str()).bind(fixture.case.held.fence.as_i64())
+    let finished = sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND input_claim_lease_id=$2 AND input_claim_fence=$3 AND settled_at IS NULL")
+        .bind(source).bind(&fixture.case.held.lease_key).bind(fixture.case.held.fence.as_i64())
         .execute(&mut *fixture.case.held.fixtures.database.acquire().await.expect("owned completed input"))
         .await.expect("preceding claimed input finishes before the next source");
     assert_eq!(finished.rows_affected(), 1);
     call
 }
 
-pub(super) async fn due_after_scan(fixture: &Decisions<'_>, call: &str) {
+pub(super) async fn due_after_scan(fixture: &Decisions<'_>, call: &Uuid7) {
     // Advance past the stored millisecond deadline quantum without backdating
     // a new arrival into the already-started scan cycle.
     tokio::time::sleep(Duration::from_millis(2)).await;
-    sqlx::query("UPDATE runner.decision_calls SET logical_expires_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1::uuid")
+    sqlx::query("UPDATE runner.decision_calls SET logical_expires_at=date_trunc('milliseconds',clock_timestamp()) WHERE id=$1")
         .bind(call).execute(&mut *fixture.case.held.fixtures.database.acquire().await.expect("new elapsed deadline"))
         .await.expect("arrival after the preceding scan");
 }

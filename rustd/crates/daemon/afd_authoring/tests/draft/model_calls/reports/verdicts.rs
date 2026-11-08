@@ -11,10 +11,10 @@ use std::sync::Arc;
 /// lease live.
 const PAST_DEADLINE: &str = "UPDATE authoring.attempts \
      SET expires_at=date_trunc('milliseconds',clock_timestamp())-interval '1 second' \
-     WHERE id=$1::uuid";
+     WHERE id=$1";
 
 /// The attempt's stored outcome.
-const OUTCOME: &str = "SELECT outcome FROM authoring.attempts WHERE id=$1::uuid";
+const OUTCOME: &str = "SELECT outcome FROM authoring.attempts WHERE id=$1";
 
 fn timed_out() -> Report {
     let mut request = report();
@@ -40,7 +40,7 @@ async fn a_timed_out_verdict_settles_only_past_the_attempts_deadline() {
     assert_eq!(early.code(), error_code::INVALID_REQUEST);
     assert_eq!(counts(&f, &a).await, (0, 0, 0), "nothing settled early");
     sqlx::query(PAST_DEADLINE)
-        .bind(a.id.as_str())
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("the attempt ran out of wall clock");
@@ -52,7 +52,7 @@ async fn a_timed_out_verdict_settles_only_past_the_attempts_deadline() {
     assert!(ack.settled);
     assert_eq!(ack.state, Outcome::TimedOut);
     let outcome: Option<String> = sqlx::query_scalar(OUTCOME)
-        .bind(a.id.as_str())
+        .bind(&a.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("the settled attempt");

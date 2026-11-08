@@ -80,9 +80,9 @@ pub(super) struct Fixture {
     database: Db,
     queue: Dragonfly,
     subject: String,
-    tenant: String,
+    tenant: Uuid7,
     pub(super) workspace: Uuid7,
-    user: String,
+    user: Uuid7,
     /// The fleet a delivery is addressed to.
     pub(super) fleet: Uuid7,
 }
@@ -95,9 +95,9 @@ impl Fixture {
             queue: harness::connect_redis().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             user: mint_id(),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
+            fleet: mint_id(),
             lane,
         }
     }
@@ -148,14 +148,14 @@ impl Fixture {
                 email: "ingress-live@example.test",
                 name: "ingress-live",
                 display_name: None,
-                workspace: self.workspace.as_str(),
+                workspace: &self.workspace,
             },
         )
         .await;
         let setup = FixtureSetup::new(&document());
         FleetSeed::new(
-            self.fleet.as_str(),
-            self.workspace.as_str(),
+            &self.fleet,
+            &self.workspace,
             &self.tenant,
             runnable.stored(),
         )
@@ -195,12 +195,12 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-            .bind(self.workspace.as_str())
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1")
+            .bind(self.workspace)
             .execute(&mut *transaction)
             .await
             .expect("the sealed credential cleans up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

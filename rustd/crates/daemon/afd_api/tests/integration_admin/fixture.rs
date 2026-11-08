@@ -1,6 +1,7 @@
 //! The existing platform fixture owns its catalogue row and tenant cleanup.
 
 use super::SUBJECT;
+use af_core::id::Uuid7;
 use afd_auth::{credential::Presented, directory::Digest};
 use afd_db::{
     Db,
@@ -11,11 +12,11 @@ use afd_db::{
 pub(super) struct Fixture {
     pub(super) lane: TestDatabase,
     pub(super) database: Db,
-    pub(super) tenant: String,
-    pub(super) key: String,
+    pub(super) tenant: Uuid7,
+    pub(super) key: Uuid7,
     pub(super) token: String,
-    pub(super) workspace: String,
-    pub(super) platform_model_row: String,
+    pub(super) workspace: Uuid7,
+    pub(super) platform_model_row: Uuid7,
     pub(super) platform_model: String,
     pub(super) provider: String,
 }
@@ -29,9 +30,9 @@ impl Fixture {
             .await
             .expect("isolated admin schema");
         migrator.close().await;
-        let first = mint_id().replace('-', "");
-        let second = mint_id().replace('-', "");
-        let provider = mint_id().replace('-', "");
+        let first = mint_id().as_str().replace('-', "");
+        let second = mint_id().as_str().replace('-', "");
+        let provider = mint_id().as_str().replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
@@ -91,13 +92,13 @@ impl Fixture {
             .execute(&mut *connection)
             .await
             .expect("the platform default cleanup runs");
-        sqlx::query("DELETE FROM model.platform_models WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM model.platform_models WHERE id = $1")
             .bind(&self.platform_model_row)
             .execute(&mut *connection)
             .await
             .expect("the platform model cleanup runs");
 
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

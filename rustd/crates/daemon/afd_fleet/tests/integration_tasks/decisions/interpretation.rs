@@ -60,7 +60,7 @@ pub(super) async fn proposed(
 fn input(fixture: &Decisions<'_>, call: String, action: TaskInputAction) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
         fencing_token: fixture.case.lease().fencing_token,
-        source_admission_id: fixture.case.held.event_id.clone(),
+        source_admission_id: fixture.case.held.event_id.clone().into(),
         accepted_revision_id: fixture.revision.to_string(),
         plan_digest: "0".repeat(64),
         message_decision_call_id: call,
@@ -112,21 +112,20 @@ async fn conversation(case: &Case) {
     assert!(replay.replayed);
     assert_eq!(replay.items, accepted.items);
     assert_eq!(case.counts().await, (0, 1, 1));
-    let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.task_interpretations WHERE admission_id=$1::uuid",
-    )
-    .bind(&case.held.event_id)
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fleet.task_interpretations WHERE admission_id=$1")
+            .bind(&case.held.event_id)
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("receipt observer"),
+            )
             .await
-            .expect("receipt observer"),
-    )
-    .await
-    .expect("one immutable interpretation");
+            .expect("one immutable interpretation");
     assert_eq!(count, 1);
     fixture.model.finish().await.expect("model cleanup");
 }
@@ -143,7 +142,7 @@ async fn refusals(case: &Case) {
     let mut bad_digest = original.clone();
     bad_digest.plan_digest = "f".repeat(64);
     let mut unpaid = original.clone();
-    unpaid.message_decision_call_id = afd_db::test_util::mint_id();
+    unpaid.message_decision_call_id = afd_db::test_util::mint_id().into();
     let mut out_of_bounds = original.clone();
     out_of_bounds
         .items

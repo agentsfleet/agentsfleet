@@ -17,7 +17,7 @@ workspace = true
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The row identifier's entropy. Held by the ledger rather than drawn per call
 # — see `Admissions`.
 af_crypto.workspace = true
@@ -27,7 +27,7 @@ afd_db.workspace = true
 af_fleet_runtime.workspace = true
 # The fleet status a runnable admission binds, and the one a refusal names.
 afd_fleet_lifecycle.workspace = true
-# The live lease status the disposition facts read.
+# The live lease status the steer's run facts read.
 afd_state.workspace = true
 # Best-effort notification transport.
 afd_dragonfly.workspace = true

@@ -16,8 +16,8 @@ pub(super) async fn observe(
 ) -> Result<()> {
     let version: Option<String> = match &context.creator_id {
         Some(creator) => sqlx::query_scalar(super::sql::AUTHORITY)
-            .bind(creator.as_str())
-            .bind(context.workspace_id.as_str())
+            .bind(creator)
+            .bind(&context.workspace_id)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT))?,

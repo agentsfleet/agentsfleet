@@ -48,7 +48,6 @@
 //! job's answer as the fleet wrote it, so an answer that names the channel
 //! shows the name and pages nobody.
 
-use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
 use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};
@@ -167,22 +166,18 @@ impl SlackPoster {
     /// nothing here is an error.
     async fn inputs(&self, job: &OutboundDelivery, part: Option<&Part>) -> Result<Inputs, Verdict> {
         let destination = destination(job)?;
-        let Ok(workspace) = Uuid7::parse(&job.workspace_id) else {
-            // An identifier this daemon queued that will not parse is this
-            // build's own bug, not a transient: retrying re-runs the parse.
-            return Err(failed(job, "identifier_unparseable", Verdict::Permanent));
-        };
+        let workspace = &job.workspace_id;
 
         // No handle, no token in it, or one that will not open: disconnected,
         // uninstalled, malformed, or sealed under another key. Retryable, so a
         // reconnect inside the lanes' cycle budget delivers.
-        let Ok(Some(identity)) = self.grants.bot_identity(&workspace, Provider::Slack).await else {
+        let Ok(Some(identity)) = self.grants.bot_identity(workspace, Provider::Slack).await else {
             return Err(failed(job, REASON_TOKEN_LOAD_FAILED, Verdict::Retryable));
         };
 
         let marker = AnswerMarker {
-            fleet_id: job.fleet_id.clone(),
-            event_id: job.event_id.clone(),
+            fleet_id: job.fleet_id.clone().into(),
+            event_id: job.event_id.clone().into(),
             part: part.cloned(),
         };
         Ok(Inputs {

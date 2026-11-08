@@ -11,7 +11,7 @@ use crate::{rows::Row, seed::seeded_parts, support::Fixtures};
 const ORDER: &str = "SELECT claimed.sequence < delayed.sequence \
     AND delayed.created_at < claimed.created_at \
     FROM fleet.admissions claimed, fleet.admissions delayed \
-    WHERE claimed.id=$1::uuid AND delayed.id=$2::uuid";
+    WHERE claimed.id=$1 AND delayed.id=$2";
 
 // Value: protects=unfinished work survives an older transaction committing later;
 // fails_when=created_at outranks serialized insertion order; why_new=real producer
@@ -69,15 +69,15 @@ async fn assert_reclaimed(
     leases: &Leases,
     poller: &Uuid7,
     first: &Acquired,
-    issued: &str,
-    tenant: &str,
+    issued: &Uuid7,
+    tenant: &Uuid7,
 ) {
     let recovered = next(leases, poller).await.expect("recover unfinished run");
     assert_eq!(recovered.event_id, first.event_id);
     assert!(recovered.redelivered);
     assert!(recovered.fence > first.fence);
     assert_eq!(
-        recovered.reused.expect("original billing").tenant_id,
+        &recovered.reused.expect("original billing").tenant_id,
         tenant
     );
     assert_eq!(
@@ -86,7 +86,7 @@ async fn assert_reclaimed(
     );
 }
 
-const fn input<'a>(fleet: &'a str, workspace: &'a str) -> Admission<'a> {
+const fn input<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> Admission<'a> {
     Admission {
         producer: Producer::Steer,
         key: Key::Unrepeatable,
@@ -158,7 +158,7 @@ async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
         .expect("the waiting send admits");
     let later: bool = sqlx::query_scalar(
         "SELECT w.sequence > s.sequence FROM fleet.admissions w, fleet.admissions s \
-         WHERE w.id = $1::uuid AND s.id = $2::uuid",
+         WHERE w.id = $1 AND s.id = $2",
     )
     .bind(&behind.stored.id)
     .bind(&staged.stored.id)

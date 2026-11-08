@@ -15,6 +15,7 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::EventId;
 use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
@@ -70,19 +71,37 @@ const REQUEST_DEADLINE: Duration = Duration::from_secs(2);
 
 const PROVIDER: &str = "slack";
 const FLEET_ID: &str = "0199a0b0-0000-7000-8000-0000000000f1";
-const SLOW_WORKSPACE: &str = "slow";
-const FAST_WORKSPACE: &str = "fast";
+/// The workspace whose destination a test holds shut, by number.
+const SLOW_WORKSPACE: usize = 1;
+/// The workspace whose destination answers, by number.
+const FAST_WORKSPACE: usize = 2;
 
-/// A job addressed to `workspace`, numbered `n` in both of its ids.
-fn job(workspace: &str, n: u32) -> Box<OutboundDelivery> {
+/// A fixture identifier spelled in full.
+fn id(text: &str) -> Uuid7 {
+    Uuid7::parse(text).expect("a fixture identifier is a canonical UUIDv7")
+}
+
+/// Workspace number `w`, so a test can address as many as it needs.
+fn workspace(w: usize) -> Uuid7 {
+    id(&format!("0199a0b0-0000-7000-8000-{w:012x}"))
+}
+
+/// The event job `n` to workspace `w` answers. Both numbers are in it, so a
+/// delivery log names the workspace as well as the job.
+fn event(w: usize, n: u32) -> Uuid7 {
+    id(&format!("0199a0b0-{w:04x}-7000-8000-{n:012x}"))
+}
+
+/// A job addressed to workspace `w`, numbered `n` in both of its ids.
+fn job(w: usize, n: u32) -> Box<OutboundDelivery> {
     Box::new(OutboundDelivery {
         id: EventId::of(&format!("1700000000{n:03}-0")),
         provider: PROVIDER.to_owned(),
         destination: DESTINATION.to_owned(),
-        workspace_id: workspace.to_owned(),
-        fleet_id: FLEET_ID.to_owned(),
-        event_id: format!("{workspace}-{n}"),
-        answer: format!("answer {n} for {workspace}"),
+        workspace_id: workspace(w),
+        fleet_id: id(FLEET_ID),
+        event_id: event(w, n),
+        answer: format!("answer {n} for workspace {w}"),
     })
 }
 
@@ -127,7 +146,7 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let (lanes, poster) = lanes_against(&server, &token).await;
-    let gate = poster.shut(SLOW_WORKSPACE);
+    let gate = poster.shut(&workspace(SLOW_WORKSPACE));
 
     lanes.dispatch(job(SLOW_WORKSPACE, 1)).await;
     lanes.dispatch(job(FAST_WORKSPACE, 2)).await;
@@ -140,7 +159,7 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
     .await;
     assert_eq!(
         poster.delivered(),
-        vec!["fast-2".to_owned(), "fast-3".to_owned()],
+        vec![event(FAST_WORKSPACE, 2), event(FAST_WORKSPACE, 3)],
         "the fast answers left while the slow one was still held"
     );
     assert!(
@@ -184,9 +203,7 @@ async fn answers_to_one_destination_leave_in_the_order_they_were_queued() {
     })
     .await;
 
-    let expected: Vec<String> = (1..=count)
-        .map(|n| format!("{FAST_WORKSPACE}-{n}"))
-        .collect();
+    let expected: Vec<Uuid7> = (1..=count).map(|n| event(FAST_WORKSPACE, n)).collect();
     assert_eq!(
         poster.delivered(),
         expected,
@@ -212,9 +229,8 @@ async fn in_flight_deliveries_never_exceed_the_ceiling() {
 
     let destinations = 5 * IN_FLIGHT_DELIVERIES;
     for n in 0..destinations {
-        let workspace = format!("workspace-{n}");
         lanes
-            .dispatch(job(&workspace, u32::try_from(n).expect("small")))
+            .dispatch(job(n, u32::try_from(n).expect("small")))
             .await;
     }
     await_until("every destination's answer to be acknowledged", || {
@@ -260,7 +276,7 @@ async fn a_retired_lane_is_replaced_and_order_survives_the_hand_over() {
     .await;
     assert_eq!(
         poster.delivered(),
-        vec!["fast-1".to_owned(), "fast-2".to_owned()],
+        vec![event(FAST_WORKSPACE, 1), event(FAST_WORKSPACE, 2)],
         "the fresh lane delivered after the retired one"
     );
 
@@ -276,7 +292,7 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let (lanes, poster) = lanes_against(&server, &token).await;
-    let gate = poster.shut(SLOW_WORKSPACE);
+    let gate = poster.shut(&workspace(SLOW_WORKSPACE));
 
     lanes.dispatch(job(SLOW_WORKSPACE, 1)).await;
     lanes.dispatch(job(SLOW_WORKSPACE, 2)).await;
@@ -292,7 +308,7 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
 
     assert_eq!(
         poster.delivered(),
-        vec!["slow-1".to_owned()],
+        vec![event(SLOW_WORKSPACE, 1)],
         "the delivery in hand finished; nothing queued behind it was started"
     );
     assert_eq!(
@@ -329,9 +345,7 @@ async fn a_job_rescued_from_a_retiring_lane_is_not_overtaken() {
         .await;
     }
 
-    let expected: Vec<String> = (1..=rounds * 2)
-        .map(|n| format!("{FAST_WORKSPACE}-{n}"))
-        .collect();
+    let expected: Vec<Uuid7> = (1..=rounds * 2).map(|n| event(FAST_WORKSPACE, n)).collect();
     assert_eq!(
         poster.delivered(),
         expected,

@@ -13,7 +13,7 @@ use afd_db::test_util::mint_id;
 use afd_tenant::error::InviteConflict;
 use jiff::Timestamp;
 
-use crate::access_lane::{Fixture, id};
+use crate::access_lane::Fixture;
 
 /// Now, for every call a case makes.
 const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
@@ -40,7 +40,7 @@ async fn should_settle_one_outcome_when_accept_races_revoke() {
 /// One round: Carol accepts while John revokes, and both answers agree with
 /// the rows they left.
 async fn accept_against_revoke(fixture: &Fixture, round: usize) {
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let invite = fixture
         .invite(&fixture.carol.email, NOW)
         .await
@@ -72,7 +72,7 @@ async fn accept_against_revoke(fixture: &Fixture, round: usize) {
             );
             fixture
                 .team
-                .remove(&tenant, &fixture.carol.user_id)
+                .remove(&tenant, &fixture.carol.user)
                 .await
                 .expect("Carol leaves for the next round");
         }
@@ -97,7 +97,7 @@ async fn accept_against_revoke(fixture: &Fixture, round: usize) {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_refuse_new_invite_when_it_races_an_accept_for_the_same_address() {
     let fixture = Fixture::create().await;
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let carol = fixture.carol.invitee();
     for round in 0..RACE_ROUNDS {
         let earlier = fixture
@@ -117,7 +117,7 @@ async fn should_refuse_new_invite_when_it_races_an_accept_for_the_same_address()
         );
         fixture
             .team
-            .remove(&tenant, &fixture.carol.user_id)
+            .remove(&tenant, &fixture.carol.user)
             .await
             .expect("Carol leaves for the next round");
     }

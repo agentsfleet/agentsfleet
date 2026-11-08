@@ -15,14 +15,13 @@ use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
 
 use super::{
-    Acceptance, EmailStatus, INVITE_TTL, Invitation, InvitationRow, InviteStatus, LockedRow, TABLE,
+    Acceptance, EmailStatus, INVITE_TTL, Invitation, InvitationRow, InviteStatus, LockedRow,
 };
 use crate::error::InviteConflict;
-use crate::sql::COLUMN_ID;
 use crate::sql::invite as sql;
 use crate::team::{Accepted, Invitee, NewInvite, Team, Waiting, email};
 use crate::workspace::access::{ROLE_OWNER, Role};
-use crate::{Result, error, stored};
+use crate::{Result, error};
 
 /// The context each statement failure here reports under.
 const CONTEXT_ISSUE: &str = "issue invitation";
@@ -30,9 +29,6 @@ const CONTEXT_LIST: &str = "list invitations";
 const CONTEXT_REVOKE: &str = "revoke invitation";
 const CONTEXT_WAITING: &str = "list waiting invitations";
 const CONTEXT_ACCEPT: &str = "accept invitation";
-
-/// Where an accept's workspace identifiers come from, as a malformed one names it.
-const TABLE_WORKSPACES: &str = "identity.workspaces";
 
 /// The index that holds an account to one pending invitation per address.
 const PENDING_CONSTRAINT: &str = "uq_invites_tenant_id_email_pending";
@@ -49,22 +45,22 @@ struct IssuedRow {
 /// One invitation waiting for an address, with the account it opens.
 #[derive(Debug, sqlx::FromRow)]
 struct WaitingRow {
-    id: String,
-    tenant_id: String,
+    id: Uuid7,
+    tenant_id: Uuid7,
     owner_name: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     expires_at: Timestamp,
 }
 
 impl WaitingRow {
-    /// The waiting invitation this row stores; both identifiers parse here.
-    fn parse(self) -> Result<Waiting> {
-        Ok(Waiting {
-            id: stored::uuid(TABLE, COLUMN_ID, &self.id)?,
-            tenant: stored::tenant(&self.tenant_id)?,
+    /// The waiting invitation this row stores.
+    fn parse(self) -> Waiting {
+        Waiting {
+            id: self.id.clone(),
+            tenant: self.tenant_id.clone(),
             owner_name: self.owner_name,
             expires_at: self.expires_at,
-        })
+        }
     }
 }
 
@@ -88,13 +84,13 @@ impl Team {
         // Serialises with an accept of an earlier invite to this address, so
         // the member check below sees a join that commits first.
         sqlx::query(sql::LOCK_PENDING_FOR_EMAIL)
-            .bind(new.tenant.as_str())
+            .bind(new.tenant)
             .bind(new.email.as_str())
             .execute(&mut *transaction)
             .await
             .map_err(&raise)?;
         let member: Option<i32> = sqlx::query_scalar(sql::SELECT_MEMBER_BY_EMAIL)
-            .bind(new.tenant.as_str())
+            .bind(new.tenant)
             .bind(new.email.as_str())
             .fetch_optional(&mut *transaction)
             .await
@@ -103,19 +99,19 @@ impl Team {
             return Err(error::invite_conflict(InviteConflict::Member));
         }
         sqlx::query(sql::RETIRE_EXPIRED_PENDING)
-            .bind(new.tenant.as_str())
+            .bind(new.tenant)
             .bind(new.email.as_str())
             .bind(InviteStatus::Expired.wire())
             .execute(&mut *transaction)
             .await
             .map_err(&raise)?;
         let issued: IssuedRow = sqlx::query_as(sql::INSERT_INVITE)
-            .bind(id.as_str())
-            .bind(new.tenant.as_str())
+            .bind(&id)
+            .bind(new.tenant)
             .bind(new.email.as_str())
             .bind(Role::Member.wire())
             .bind(InviteStatus::Pending.wire())
-            .bind(new.inviter.as_str())
+            .bind(new.inviter)
             .bind(INVITE_TTL)
             .fetch_one(&mut *transaction)
             .await
@@ -148,7 +144,7 @@ impl Team {
     pub async fn invitations(&self, tenant: &Uuid7) -> Result<Vec<Invitation>> {
         let mut connection = self.database.acquire().await?;
         let rows: Vec<InvitationRow> = sqlx::query_as(sql::SELECT_TENANT_PENDING)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_LIST))?;
@@ -170,8 +166,8 @@ impl Team {
         let raise = error::query(CONTEXT_REVOKE);
         let mut connection = self.database.acquire().await?;
         let revoked = sqlx::query(sql::REVOKE_INVITE)
-            .bind(tenant.as_str())
-            .bind(invitation.as_str())
+            .bind(tenant)
+            .bind(invitation)
             .bind(InviteStatus::Revoked.wire())
             .execute(connection.as_mut())
             .await
@@ -183,8 +179,8 @@ impl Team {
             return Ok(());
         }
         let joined: Option<i32> = sqlx::query_scalar(sql::SELECT_JOINED_THROUGH_INVITE)
-            .bind(tenant.as_str())
-            .bind(invitation.as_str())
+            .bind(tenant)
+            .bind(invitation)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(&raise)?;
@@ -206,7 +202,7 @@ impl Team {
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_WAITING))?;
-        rows.into_iter().map(WaitingRow::parse).collect()
+        Ok(rows.into_iter().map(WaitingRow::parse).collect())
     }
 
     /// Accepts `invitation` as `invitee`, making them a member of its account.
@@ -232,32 +228,26 @@ impl Team {
             .map_err(&raise)?;
 
         let row: LockedRow = sqlx::query_as(sql::LOCK_INVITE)
-            .bind(invitation.as_str())
+            .bind(invitation)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(&raise)?
             .ok_or_else(error::invite_not_found)?;
         let (locked, locked_at) = row.parse()?;
-        let tenant = locked.tenant.as_str();
+        let tenant = &locked.tenant;
         self.settle(&mut transaction, &locked, invitee, locked_at, now)
             .await?;
-        let rows: Vec<String> = sqlx::query_scalar(sql::SELECT_TENANT_WORKSPACE_IDS)
+        let workspaces: Vec<Uuid7> = sqlx::query_scalar(sql::SELECT_TENANT_WORKSPACE_IDS)
             .bind(tenant)
             .fetch_all(&mut *transaction)
             .await
             .map_err(&raise)?;
-        // Parsed before the commit: a row this daemon cannot read rolls the
-        // join back, never leaving a membership whose every accept answers 500.
-        let workspaces = rows
-            .iter()
-            .map(|workspace| stored::uuid(TABLE_WORKSPACES, COLUMN_ID, workspace))
-            .collect::<Result<_>>()?;
         transaction.commit().await.map_err(&raise)?;
 
         let invite_id = invitation.as_str();
         let user_id = invitee.user.as_str();
         tracing::info!(
-            tenant_id = tenant,
+            tenant_id = %tenant,
             invite_id,
             user_id,
             event = "workspace_invite_accepted"
@@ -282,14 +272,14 @@ impl Team {
         now: Timestamp,
     ) -> Result<()> {
         let raise = error::query(CONTEXT_ACCEPT);
-        let tenant = invitation.tenant.as_str();
+        let tenant = &invitation.tenant;
         match invitation.acceptance_for(invitee, locked_at) {
             Acceptance::Closed => Err(error::invite_not_found()),
             Acceptance::WrongAddress => Err(error::invite_email_mismatch()),
             Acceptance::AlreadyJoined => {
                 let held: Option<i32> = sqlx::query_scalar(sql::SELECT_MEMBERSHIP_EXISTS)
                     .bind(tenant)
-                    .bind(invitee.user.as_str())
+                    .bind(invitee.user)
                     .fetch_optional(&mut *transaction)
                     .await
                     .map_err(&raise)?;
@@ -298,16 +288,16 @@ impl Team {
             Acceptance::Join => {
                 let membership = self.entropy.uuid7(now)?;
                 sqlx::query(sql::INSERT_MEMBERSHIP)
-                    .bind(membership.as_str())
+                    .bind(&membership)
                     .bind(tenant)
-                    .bind(invitee.user.as_str())
+                    .bind(invitee.user)
                     .bind(invitation.role.wire())
                     .execute(&mut *transaction)
                     .await
                     .map_err(&raise)?;
                 sqlx::query(sql::MARK_ACCEPTED)
-                    .bind(invitation.id.as_str())
-                    .bind(invitee.user.as_str())
+                    .bind(&invitation.id)
+                    .bind(invitee.user)
                     .bind(InviteStatus::Accepted.wire())
                     .execute(&mut *transaction)
                     .await

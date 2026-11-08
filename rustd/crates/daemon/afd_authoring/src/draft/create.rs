@@ -215,25 +215,25 @@ async fn write_draft(
 ) -> Result<()> {
     let pin = SourcePin::from(&new.request.source);
     let library_revision = match &new.request.source {
-        Source::Library { revision_id, .. } => Some(revision_id.as_str()),
+        Source::Library { revision_id, .. } => Some(Uuid7::parse(revision_id.as_str())?),
         Source::Blank | Source::Definition { .. } | Source::Fleet { .. } => None,
     };
     sqlx::query(sql::draft::CREATE)
-        .bind(id.as_str())
-        .bind(new.access.workspace.as_str())
-        .bind(new.person.owner.as_str())
-        .bind(new.person.id.as_str())
+        .bind(id)
+        .bind(new.access.workspace)
+        .bind(&new.person.owner)
+        .bind(&new.person.id)
         .bind(initial_title(
             new.request.message.as_deref(),
             captured.definition.as_ref(),
         ))
         .bind(EDITING)
-        .bind(model::tenant_model(&new.request.authoring_model_ref))
+        .bind(model::tenant_model(&new.request.authoring_model_ref)?)
         .bind(pin.source_type())
-        .bind(library_revision)
-        .bind(captured.fleet_revision.as_ref().map(Uuid7::as_str))
+        .bind(library_revision.as_ref())
+        .bind(captured.fleet_revision.as_ref())
         .bind(captured.instance_name.as_deref())
-        .bind(captured.fleet.as_ref().map(Uuid7::as_str))
+        .bind(captured.fleet.as_ref())
         .bind(INITIAL_COUNTER)
         .execute(connection)
         .await

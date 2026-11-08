@@ -9,7 +9,7 @@ Indy made each decision below on Nov 06, 2026. The specs quote his words.
 | Decision | What it means |
 |---|---|
 | Postgres accepts every message and fences every run | `fleet.admissions` is the only acceptance store. `runner.fleet_slots.fencing_token` is the only execution authority. |
-| Messages fold into a running run | A message that arrives mid-run joins that run before its next model call, whatever sent it, up to the first parked or task-bound message. A call in flight is never interrupted. A durable task keeps #803's person-only claim. Revised Nov 07, 2026: every sender folds (M242_002 Discovery). |
+| Messages fold into a running run | A person's message in the run's conversation joins that run before its next model call. A call in flight is never interrupted. A message no person sent, such as a webhook, waits for a run of its own and is never passed. Revised Nov 08, 2026: a plain run takes a durable task's rule (M242_002 Discovery). |
 | Runners hold one stream | A runner host keeps one outbound connection to `agentsfleetd`. Work is pushed down it; nothing polls. |
 | Core NATS replaces Dragonfly | NATS carries signals only: no JetStream, no KV. Every durable fact moves to Postgres first. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
@@ -76,9 +76,9 @@ client          agentsfleetd                       Postgres                     
   │                 │                                 │   under the fence (#803)     │ next safe boundary
 ```
 
-A live run claims every later message before its next model call, oldest first, up to the first parked or task-bound one. A durable task claims a person's later messages in its conversation through #803.
+A live run claims a person's later messages in its conversation before its next model call, oldest first. A durable task does the same through #803. Each stops at a parked, task-bound or non-person message.
 
-The report settles each message that a completed model call read (M242_002). Each settled message gets the run's answer on its own event, and a reply owed to its own destination.
+The report settles each message that a completed model call read (M242_002), in three statements however many there are. Each settled message gets the run's answer on its own event. It is in the run's conversation, so the run's own reply reaches it.
 
 ### A runner connects, and reconnects
 
@@ -154,7 +154,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | Milestone | Delivers | Proof of done |
 |---|---|---|
 | M241 | This page, honest counters, statements per chat by path, the burst bench | Baselines below |
-| M242 | One-statement intake; folding with a disposition | One statement per accepted message; a durable-task run takes a person's mid-run message |
+| M242 | One-statement intake; folding with a disposition | One write statement per accepted message; a live run takes a person's mid-run message in its conversation |
 | M243 | One runner stream; the Bus seam with a Dragonfly implementation | Activity path near 0 statements; no poll; reconnect and revocation tests |
 | M244 | Core NATS behind the Bus; durable jobs in Postgres; Dragonfly deleted | Tail and wake p99 and a kill drill, Dragonfly then NATS |
 | M245 | Revision-keyed caches, a one-statement report, batched renewal | 15 to 20 statements per chat |
@@ -195,6 +195,10 @@ A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets fo
 The headline is pickup p95: 54.2 s, between 53.4 s and 54.5 s. The median run is committed as `lease-burst.rig.json`.
 
 In it, 29,953 messages were accepted, none were refused, and 29,729 were still unleased at the close. Pickup p50 is 28.5 s and append p95 is 35.7 ms.
+
+With M242's folding, a live run takes its fleet's messages at each model call. Pickup p95 is 491.5 ms, between 489.0 ms and 491.8 ms, and that median run replaces `lease-burst.rig.json`.
+
+Of 30,000 messages, 4,564 folded and 25,212 still waited at the close, because 8 runners serve 50 fleets. The pickup percentiles count only the messages a run picked up.
 
 ### M242: one-statement intake
 

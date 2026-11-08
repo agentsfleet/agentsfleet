@@ -1,5 +1,6 @@
 //! Current work uses the unfinished-task index and excludes private evidence.
 
+use af_core::id::Uuid7;
 use jiff_sqlx::ToSqlx as _;
 
 use super::{TaskAfter, TaskPage, TaskScope, TaskSummary, Tasks, fetch, row};
@@ -10,12 +11,12 @@ const PAGE_MAX: u32 = 100;
 
 #[derive(sqlx::FromRow)]
 struct SummaryRow {
-    id: String,
+    id: Uuid7,
     title: String,
     state: String,
     resource_version: i64,
     generation: i64,
-    accepted_revision_id: String,
+    accepted_revision_id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -30,10 +31,10 @@ pub(super) async fn read(
 ) -> Result<TaskPage> {
     let limit = limit.clamp(1, PAGE_MAX);
     let statement = sqlx::query_as(include_str!("sql/list.sql"))
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .bind(after.map(|boundary| boundary.created_at.to_sqlx()))
-        .bind(after.map(|boundary| boundary.id.as_str()))
+        .bind(after.map(|boundary| &boundary.id))
         .bind(i64::from(limit) + 1);
     let mut rows: Vec<SummaryRow> = fetch::rows(
         tasks.leases.pool(),
@@ -50,7 +51,7 @@ pub(super) async fn read(
         .into_iter()
         .map(|stored| {
             Ok(TaskSummary {
-                id: stored.id,
+                id: stored.id.into(),
                 title: stored.title,
                 state: row::state(&stored.state)?,
                 resource_version: row::counter(stored.resource_version, "resource_version")?,

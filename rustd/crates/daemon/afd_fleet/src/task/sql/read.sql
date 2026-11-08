@@ -1,7 +1,7 @@
-SELECT t.id::text, t.originating_task_item_id::text AS originating_item_id, t.target::text,
-       t.accepted_revision_id::text, r.revision AS accepted_revision_number, t.title, t.objective,
+SELECT t.id, t.originating_task_item_id AS originating_item_id, t.target::text,
+       t.accepted_revision_id, r.revision AS accepted_revision_number, t.title, t.objective,
        t.questions::text, t.goal_digest, t.status AS state, t.resource_version, t.generation,
-       t.stop_generation, t.covered_input_sequence, t.input_sequence, t.task_checkpoint_id::text,
+       t.stop_generation, t.covered_input_sequence, t.input_sequence, t.task_checkpoint_id,
        c.generation AS checkpoint_generation, t.effect_cursor,
        t.confirmed_effect_watermark, t.max_model_nanos, t.used_model_nanos,
        t.reserved_model_nanos, t.max_running_nanos, t.used_running_nanos,
@@ -29,4 +29,4 @@ LEFT JOIN LATERAL (
     WHERE e.task_id = t.id AND e.fleet_id = t.fleet_id AND e.workspace_id = t.workspace_id
     ORDER BY e.ordinal DESC LIMIT 1
 ) publication ON true
-WHERE t.id = $1::uuid AND t.fleet_id = $2::uuid AND t.workspace_id = $3::uuid
+WHERE t.id = $1 AND t.fleet_id = $2 AND t.workspace_id = $3

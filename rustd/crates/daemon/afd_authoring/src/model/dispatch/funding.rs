@@ -49,7 +49,7 @@ impl ModelCalls {
             )
             .await?;
             let spent: i64 = sqlx::query_scalar(include_str!("spent.sql"))
-                .bind(guarded.attempt.id.as_str())
+                .bind(&guarded.attempt.id)
                 .bind(super::dispatch_status::KNOWN)
                 .fetch_one(&mut *tx)
                 .await
@@ -139,7 +139,7 @@ impl Funding {
         same_counting_key(self.counting_key.as_ref(), key)?;
         self.snapshot.verify(connection, guarded, request).await?;
         sqlx::query(include_str!("fund.sql"))
-            .bind(guarded.attempt.id.as_str())
+            .bind(&guarded.attempt.id)
             .bind(self.ceiling)
             .execute(connection)
             .await

@@ -24,13 +24,13 @@ pub(super) async fn funded(workers: i32) -> Fixture {
 }
 
 pub(super) async fn fund(f: Fixture, workers: i32) -> Fixture {
-    RunnerSeed::new(f.runner.as_str(), ACTIVE, POLICY)
+    RunnerSeed::new(&f.runner, ACTIVE, POLICY)
         .workers(workers)
         .insert(&mut *f.connection().await)
         .await
         .expect("owned host");
-    sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
-        .bind(f.tenant.as_str()).bind(crate::draft::FUNDED_NANOS)
+    sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
+        .bind(&f.tenant).bind(crate::draft::FUNDED_NANOS)
         .execute(&mut *f.connection().await).await.expect("owned wallet");
     f
 }
@@ -69,16 +69,16 @@ pub(super) async fn failure(f: &Fixture, draft: &Draft) -> afd_authoring::types:
 }
 
 pub(super) async fn attempts(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE workspace_id=$1::uuid")
-        .bind(f.workspace.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE workspace_id=$1")
+        .bind(&f.workspace)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("owned obligations")
 }
 
 pub(super) async fn balance(f: &Fixture, nanos: i64) {
-    sqlx::query("UPDATE billing.wallets SET balance_nanos=$2 WHERE tenant_id=$1::uuid")
-        .bind(f.tenant.as_str())
+    sqlx::query("UPDATE billing.wallets SET balance_nanos=$2 WHERE tenant_id=$1")
+        .bind(&f.tenant)
         .bind(nanos)
         .execute(&mut *f.connection().await)
         .await
@@ -87,29 +87,25 @@ pub(super) async fn balance(f: &Fixture, nanos: i64) {
 
 pub(super) async fn runtime(f: &Fixture, until: Timestamp) -> Uuid7 {
     let fleet = mint();
-    FleetSeed::new(
-        fleet.as_str(),
-        f.workspace.as_str(),
-        f.tenant.as_str(),
-        ACTIVE,
-    )
-    .name("capacity-runtime")
-    .at(now())
-    .insert(&mut *f.connection().await)
-    .await
-    .expect("owned runtime fleet");
+    FleetSeed::new(&fleet, &f.workspace, &f.tenant, ACTIVE)
+        .name("capacity-runtime")
+        .at(now())
+        .insert(&mut *f.connection().await)
+        .await
+        .expect("owned runtime fleet");
     let kind = EventKind {
         actor: "fixture",
         event_type: "chat",
         status: ACTIVE,
     };
-    let event = FleetEventSeed::new(fleet.as_str(), f.workspace.as_str(), "1-0", kind)
+    let event = mint();
+    FleetEventSeed::new(&fleet, &f.workspace, &event, kind)
         .insert(&mut *f.connection().await)
         .await
         .expect("owned runtime event");
-    sqlx::query("INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,fleet_event_id,event_created_at,posture,provider,model,last_metered_at,fencing_token,lease_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,now(),'tenant','test','test',now(),1,$7,'active',0,now(),now())")
-        .bind(mint().as_str()).bind(f.runner.as_str()).bind(fleet.as_str())
-        .bind(f.workspace.as_str()).bind(f.tenant.as_str()).bind(&event).bind(until.to_sqlx())
+    sqlx::query("INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,event_created_at,posture,provider,model,last_metered_at,fencing_token,lease_expires_at,status,posted_message_count,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,now(),'tenant','test','test',now(),1,$7,'active',0,now(),now())")
+        .bind(mint()).bind(&f.runner).bind(&fleet)
+        .bind(&f.workspace).bind(&f.tenant).bind(&event).bind(until.to_sqlx())
         .execute(&mut *f.connection().await).await.expect("owned active runtime slot");
     fleet
 }

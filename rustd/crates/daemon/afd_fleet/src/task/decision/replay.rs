@@ -20,7 +20,7 @@ pub(super) async fn response(tasks: &Tasks, call: Call) -> Result<ReservedDecisi
         None
     };
     let packet = DecisionReservationResult::Existing {
-        call_id: call.id,
+        call_id: call.id.into(),
         state,
         recorded,
     };

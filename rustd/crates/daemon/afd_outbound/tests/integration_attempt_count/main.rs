@@ -41,7 +41,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::EventId;
 use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundJob, OutboundQueue};
@@ -130,14 +132,14 @@ const FIELD_EVENT_ID: &str = "agentsfleet_event_id";
 async fn failed_cycles_increase_the_attempt_count() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000001-0";
-    owe_and_queue(&harness, 1, event).await;
+    let event = mint_id();
+    owe_and_queue(&harness, 1, &event).await;
 
-    let (_, _, aged) = row(&harness, event).await;
-    let first = obligation::count_attempt(&harness.database, FLEET, event)
+    let (_, _, aged) = row(&harness, &event).await;
+    let first = obligation::count_attempt(&harness.database, &FLEET, &event)
         .await
         .expect("counting the first cycle");
-    let second = obligation::count_attempt(&harness.database, FLEET, event)
+    let second = obligation::count_attempt(&harness.database, &FLEET, &event)
         .await
         .expect("counting the second cycle");
 
@@ -147,7 +149,7 @@ async fn failed_cycles_increase_the_attempt_count() {
         Some(2),
         "a second cycle on an undelivered row counts again"
     );
-    let (attempts, delivered_at, updated_at) = row(&harness, event).await;
+    let (attempts, delivered_at, updated_at) = row(&harness, &event).await;
     assert_eq!(attempts, 2);
     assert_eq!(delivered_at, None, "counting never stamps");
     assert!(
@@ -167,27 +169,27 @@ async fn failed_cycles_increase_the_attempt_count() {
 async fn duplicate_delivery_preserves_the_first_stamp() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000001-1";
-    owe_and_queue(&harness, 2, event).await;
+    let event = mint_id();
+    owe_and_queue(&harness, 2, &event).await;
 
-    let counted = obligation::count_attempt(&harness.database, FLEET, event)
+    let counted = obligation::count_attempt(&harness.database, &FLEET, &event)
         .await
         .expect("counting the cycle that delivers");
     assert_eq!(counted, Some(1));
-    obligation::stamp_delivered(&harness.database, FLEET, event)
+    obligation::stamp_delivered(&harness.database, &FLEET, &event)
         .await
         .expect("stamping the delivery");
-    let (_, accepted_at, _) = row(&harness, event).await;
+    let (_, accepted_at, _) = row(&harness, &event).await;
 
-    let again = obligation::count_attempt(&harness.database, FLEET, event)
+    let again = obligation::count_attempt(&harness.database, &FLEET, &event)
         .await
         .expect("a duplicate cycle asks and is refused");
-    obligation::stamp_delivered(&harness.database, FLEET, event)
+    obligation::stamp_delivered(&harness.database, &FLEET, &event)
         .await
         .expect("a duplicate stamp asks and is refused");
 
     assert_eq!(again, None, "an already-delivered row counts no cycle");
-    let (attempts, delivered_at, updated_at) = row(&harness, event).await;
+    let (attempts, delivered_at, updated_at) = row(&harness, &event).await;
     assert_eq!(attempts, 1, "the counter did not move for the duplicate");
     assert!(accepted_at.is_some(), "the delivery was stamped");
     assert_eq!(delivered_at, accepted_at, "the first acceptance stands");
@@ -211,15 +213,15 @@ async fn duplicate_delivery_preserves_the_first_stamp() {
 async fn recovery_pacing_follows_the_cycle_start() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000001-2";
-    owe_and_queue(&harness, 3, event).await;
+    let event = mint_id();
+    owe_and_queue(&harness, 3, &event).await;
 
     assert_eq!(
         reoffered(&harness).await,
-        vec![event.to_owned()],
+        vec![event.clone()],
         "before any cycle starts, the queued row is the scan's business"
     );
-    obligation::count_attempt(&harness.database, FLEET, event)
+    obligation::count_attempt(&harness.database, &FLEET, &event)
         .await
         .expect("counting the cycle");
 
@@ -227,10 +229,10 @@ async fn recovery_pacing_follows_the_cycle_start() {
         reoffered(&harness).await.is_empty(),
         "a row whose cycle just started is somebody's work, not the scan's"
     );
-    age(&harness.owner, event).await;
+    age(&harness.owner, &event).await;
     assert_eq!(
         reoffered(&harness).await,
-        vec![event.to_owned()],
+        vec![event.clone()],
         "once the window passes the start, a cycle that never finished is re-offered"
     );
 }

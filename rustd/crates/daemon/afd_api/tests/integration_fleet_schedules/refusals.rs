@@ -128,7 +128,7 @@ async fn a_schedule_this_fleet_does_not_hold_is_not_found(
     let response = send(
         router,
         Method::GET,
-        &fixture.one(&absent),
+        &fixture.one(absent.as_str()),
         Some(&fixture.token),
         "",
     )
@@ -181,7 +181,7 @@ async fn an_edit_is_validated_before_the_row_is_looked_up(
         let response = send(
             router,
             Method::PATCH,
-            &fixture.one(&absent),
+            &fixture.one(absent.as_str()),
             Some(&fixture.token),
             &body.to_string(),
         )
@@ -209,7 +209,7 @@ async fn a_sync_of_a_schedule_this_fleet_does_not_hold_is_not_found(
     let response = send(
         router,
         Method::POST,
-        &format!("{}/sync", fixture.one(&mint_id())),
+        &format!("{}/sync", fixture.one(mint_id().as_str())),
         Some(&fixture.token),
         "",
     )

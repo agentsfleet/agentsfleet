@@ -77,7 +77,7 @@ async fn commit(
     receipt: &DecisionReceipt,
     digest: &str,
 ) -> Result<(Written, Option<Payload>)> {
-    let call = row::peek(tasks.leases.pool(), Lookup::Id(id.as_str()))
+    let call = row::peek(tasks.leases.pool(), Lookup::Id(id))
         .await?
         .ok_or(TaskRefusal::NotFound)?;
     if !call.owned_by(lease) {
@@ -102,7 +102,7 @@ async fn commit_on(
     super::locks::Mode::Wait
         .parents(&mut transaction, call)
         .await?;
-    let call = owned(&mut transaction, lease, &Call::id(&call.id, "id")?).await?;
+    let call = owned(&mut transaction, lease, &call.id).await?;
     let plan = account::classify(&call, receipt, digest)?;
     let written = Recording {
         call: &call,
@@ -120,7 +120,7 @@ async fn commit_on(
 }
 
 async fn owned(connection: &mut PgConnection, lease: TaskLease<'_>, id: &Uuid7) -> Result<Call> {
-    let call = row::find(connection, Lookup::Id(id.as_str()))
+    let call = row::find(connection, Lookup::Id(id))
         .await?
         .ok_or(TaskRefusal::NotFound)?;
     if !call.owned_by(lease) {
@@ -146,13 +146,13 @@ async fn disposition(
 pub(super) async fn changed(tasks: &Tasks, written: &Written) -> Result<()> {
     if let Some((task, version)) = written.call.task_id.as_ref().zip(written.task_version) {
         let scope = TaskScope {
-            fleet_id: Call::id(&written.call.fleet_id, "fleet_id")?,
-            workspace_id: Call::id(&written.call.workspace_id, "workspace_id")?,
+            fleet_id: written.call.fleet_id.clone(),
+            workspace_id: written.call.workspace_id.clone(),
         };
         tasks
             .publish_changed(
                 &scope,
-                &Call::id(task, "task_id")?,
+                &Call::id(task.as_str(), "task_id")?,
                 crate::task::row::counter(version, "resource_version")?,
             )
             .await;
@@ -166,7 +166,7 @@ fn response(
 ) -> Result<DecisionReceiptResult> {
     let call = &written.call;
     Ok(DecisionReceiptResult {
-        call_id: call.id.clone(),
+        call_id: call.id.clone().into(),
         state: call.state()?,
         replayed: written.replayed,
         disposition,

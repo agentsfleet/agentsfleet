@@ -80,7 +80,7 @@ pub struct Park<'a> {
     /// The workspace it belongs to.
     pub workspace_id: &'a Uuid7,
     /// The event being parked.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// What the daemon and the workspace assert.
     pub stated: Stated<'a>,
     /// What the fleet's model claims.
@@ -127,7 +127,7 @@ impl Gates {
         if let Err(fault) = self
             .record(
                 request.fleet_id,
-                request.event_id,
+                request.event_id.as_str(),
                 &reference,
                 request.stated.timeout,
             )
@@ -140,10 +140,10 @@ impl Gates {
         let fleet = request.fleet_id.as_str();
         let action = reference.action_id().as_str();
         tracing::debug!(
-            event = EVENT_PARK_PENDING,
-            fleet_id = fleet,
-            agentsfleet_event_id = request.event_id,
-            action_id = action,
+            event = %EVENT_PARK_PENDING,
+            fleet_id = %fleet,
+            agentsfleet_event_id = %request.event_id,
+            action_id = %action,
             "a human has been asked, and this event waits for the answer"
         );
         Parked::Awaiting(reference)
@@ -160,7 +160,7 @@ impl Gates {
     async fn announce(&self, request: &Park<'_>, recorded: &Recorded) {
         let frame = TailFrame::GateOpened {
             gate_id: Cow::Borrowed(recorded.gate_id.as_str()),
-            event_id: Cow::Borrowed(request.event_id),
+            event_id: Cow::Borrowed(request.event_id.as_str()),
             pending_approvals: recorded.pending_approvals,
             counters: recorded.counters,
         };
@@ -204,8 +204,7 @@ impl Gates {
         .await
         .map_err(query(CONTEXT_PARK))?;
         let counters =
-            afd_events::fleet_counters_best_effort_on(&mut connection, request.fleet_id.as_str())
-                .await;
+            afd_events::fleet_counters_best_effort_on(&mut connection, request.fleet_id).await;
         Ok(Recorded {
             gate_id,
             pending_approvals,
@@ -238,9 +237,9 @@ impl Gates {
             Error::to_string,
         );
         tracing::warn!(
-            event = EVENT_PARK_UNAVAILABLE,
-            fleet_id = fleet,
-            agentsfleet_event_id = request.event_id,
+            event = %EVENT_PARK_UNAVAILABLE,
+            fleet_id = %fleet,
+            agentsfleet_event_id = %request.event_id,
             write,
             reason,
             "the gate could not be raised; the event waits rather than running ungated"

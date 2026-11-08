@@ -1,3 +1,3 @@
-SELECT tenant_id::text
+SELECT tenant_id
 FROM identity.workspaces
-WHERE id = $1::uuid
+WHERE id = $1

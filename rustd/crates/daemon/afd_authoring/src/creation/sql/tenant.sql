@@ -1,1 +1,1 @@
-SELECT tenant_id::text FROM identity.workspaces WHERE id = $1::uuid
+SELECT tenant_id FROM identity.workspaces WHERE id = $1

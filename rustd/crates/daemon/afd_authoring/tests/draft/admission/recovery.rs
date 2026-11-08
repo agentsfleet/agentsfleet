@@ -16,7 +16,7 @@ const FIRST: &str = "A request whose provider usage cannot be read";
 const NEXT: &str = "Continue after stopping the old turn";
 const ACTION_RETRY_MESSAGE: &str = "retry_message";
 const ATTEMPTS: &str =
-    "SELECT count(*),bool_or(usage_unknown) FROM authoring.attempts WHERE draft_id=$1::uuid";
+    "SELECT count(*),bool_or(usage_unknown) FROM authoring.attempts WHERE draft_id=$1";
 
 #[test]
 fn failure_recovery_actions_preserve_the_daemons_reason_and_code() {
@@ -203,7 +203,7 @@ async fn unknown_work_keeps_its_obligation_while_a_fresh_message_runs() {
     assert_ne!(newer.attempt_id, lease.attempt_id);
     assert_eq!(newer.sequence, "2");
     let retained: (i64, bool) = sqlx::query_as(ATTEMPTS)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("old obligation retained");
@@ -251,7 +251,7 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
     assert_ne!(newer.attempt_id, lease.attempt_id);
     assert_eq!(newer.sequence, "2");
     let retained: (i64, bool) = sqlx::query_as(ATTEMPTS)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("old obligation retained");
@@ -266,9 +266,9 @@ async fn stopped_unknown_work_does_not_block_new_claim_or_publish_late_text() {
         .await
         .expect("delayed old Stop");
     let status: String = sqlx::query_scalar(
-        "SELECT status FROM authoring.messages WHERE draft_id=$1::uuid AND sequence=2",
+        "SELECT status FROM authoring.messages WHERE draft_id=$1 AND sequence=2",
     )
-    .bind(draft.id.as_str())
+    .bind(&draft.id)
     .fetch_one(&mut *f.connection().await)
     .await
     .expect("new turn state");

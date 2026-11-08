@@ -1,5 +1,6 @@
 //! Publication advances a capture's head without replacing its verified base.
 
+use af_core::id::Uuid7;
 use std::{sync::Arc, time::Duration};
 
 use af_core::{error_code, etag::sha256_hex};
@@ -29,6 +30,7 @@ async fn incremental_capture_retains_its_base_after_publication_and_refuses_inco
 async fn capture(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
+    let task_id = id(&task.task_id);
     super::configured::support::set(case, false).await;
     let tasks = storage(&fixture);
     let base_input = input(
@@ -44,8 +46,8 @@ async fn capture(case: &Case) {
         .expect("base allocation");
     let base = complete(&tasks, case, &task, &base).await;
     let head = "2".repeat(40);
-    sqlx::query("UPDATE fleet.tasks SET target = jsonb_set(target, '{head}', to_jsonb($2::text)), updated_at = now() WHERE id = $1::uuid")
-        .bind(&task.task_id).bind(&head)
+    sqlx::query("UPDATE fleet.tasks SET target = jsonb_set(target, '{head}', to_jsonb($2::text)), updated_at = now() WHERE id = $1")
+        .bind(&task_id).bind(&head)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("publication observer"))
         .await.expect("simulate the already confirmed publication head");
     let request = input(
@@ -117,7 +119,7 @@ pub(super) fn input(
 ) -> CheckpointPlanInput {
     CheckpointPlanInput {
         fencing_token: case.lease().fencing_token,
-        operation_id: mint_id(),
+        operation_id: mint_id().into(),
         task: task.clone(),
         mode,
         base_id,
@@ -177,6 +179,8 @@ pub(super) async fn complete(
 }
 
 async fn report_head(case: &Case, task: &DecisionTaskVersion, plan: &CheckpointPlan, head: &str) {
+    let task_id = id(&task.task_id);
+    let checkpoint_id = id(&plan.checkpoint_id);
     let mut connection = case
         .held
         .fixtures
@@ -184,21 +188,20 @@ async fn report_head(case: &Case, task: &DecisionTaskVersion, plan: &CheckpointP
         .acquire()
         .await
         .expect("report observer");
-    let state: (String, String) = sqlx::query_as("SELECT c.commit_oid, b.commit_oid FROM fleet.task_checkpoints c JOIN fleet.task_bases b ON b.id = c.task_base_id WHERE c.id = $1::uuid")
-        .bind(&plan.checkpoint_id).fetch_one(&mut *connection).await.expect("separate saved heads");
+    let state: (String, String) = sqlx::query_as("SELECT c.commit_oid, b.commit_oid FROM fleet.task_checkpoints c JOIN fleet.task_bases b ON b.id = c.task_base_id WHERE c.id = $1")
+        .bind(&checkpoint_id).fetch_one(&mut *connection).await.expect("separate saved heads");
     assert_eq!(state, (head.to_owned(), "0".repeat(40)));
-    let revision: String = sqlx::query_scalar(
-        "SELECT accepted_revision_id::text FROM fleet.tasks WHERE id = $1::uuid",
-    )
-    .bind(&task.task_id)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("accepted revision");
+    let revision: Uuid7 =
+        sqlx::query_scalar("SELECT accepted_revision_id FROM fleet.tasks WHERE id = $1")
+            .bind(&task_id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("accepted revision");
     for (candidate, expected) in [(head, true), ("0".repeat(40).as_str(), false)] {
         let accepted = afd_fleet::task::CheckpointGuard {
-            checkpoint_id: Some(&plan.checkpoint_id),
-            task_id: &task.task_id,
-            lease_id: case.lease().lease_id.as_str(),
+            checkpoint_id: Some(plan.checkpoint_id.as_str()),
+            task_id: &task_id,
+            lease_id: case.lease().lease_id,
             generation: 1,
             stop_generation: 0,
             revision_id: &revision,
@@ -216,9 +219,9 @@ async fn report_head(case: &Case, task: &DecisionTaskVersion, plan: &CheckpointP
 async fn refusals(tasks: &Tasks, case: &Case, request: CheckpointPlanInput) {
     for missing in [false, true] {
         let mut invalid = request.clone();
-        invalid.operation_id = mint_id();
+        invalid.operation_id = mint_id().into();
         if missing {
-            invalid.base_id = Some(mint_id());
+            invalid.base_id = Some(mint_id().into());
         } else {
             invalid.toolbox_digest = "4".repeat(64);
         }
@@ -230,7 +233,7 @@ async fn refusals(tasks: &Tasks, case: &Case, request: CheckpointPlanInput) {
     }
     for commit in [None, Some("0".repeat(40))] {
         let mut invalid = request.clone();
-        invalid.operation_id = mint_id();
+        invalid.operation_id = mint_id().into();
         invalid.commit_oid = commit;
         let failure = tasks
             .plan_checkpoint(case.lease(), &valid(invalid))
@@ -239,8 +242,8 @@ async fn refusals(tasks: &Tasks, case: &Case, request: CheckpointPlanInput) {
         assert_eq!(failure.code(), error_code::TASK_INVALID_TARGET);
     }
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.task_checkpoints WHERE task_id = $1::uuid")
-            .bind(&request.task.task_id)
+        sqlx::query_scalar("SELECT count(*) FROM fleet.task_checkpoints WHERE task_id = $1")
+            .bind(id(&request.task.task_id))
             .fetch_one(
                 &mut *case
                     .held

@@ -12,7 +12,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::memory::{MemoryDelta, Visibility};
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_memory::Memories;
 
 /// The status every seeded fleet carries.
@@ -22,7 +22,7 @@ const FLEET_ACTIVE: &str = "active";
 pub(crate) struct Workspace {
     lane: TestDatabase,
     pub(crate) database: Db,
-    tenant: String,
+    tenant: Uuid7,
     pub(crate) id: Uuid7,
     pub(crate) memories: Memories,
 }
@@ -40,13 +40,13 @@ impl Workspace {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
-        let id = mint_uuid7();
+        let id = mint_id();
         let mut connection = database.acquire().await.expect("an API connection");
         TenantSeed::new(&tenant)
             .insert(&mut *connection)
             .await
             .expect("the tenant seed");
-        WorkspaceSeed::new(id.as_str(), &tenant)
+        WorkspaceSeed::new(&id, &tenant)
             .insert(&mut *connection)
             .await
             .expect("the workspace seed");
@@ -63,8 +63,8 @@ impl Workspace {
 
     /// A fleet named `name` holding `grants`.
     pub(crate) async fn fleet(&self, name: &str, grants: Grants) -> Uuid7 {
-        let fleet = mint_uuid7();
-        FleetSeed::new(fleet.as_str(), self.id.as_str(), &self.tenant, FLEET_ACTIVE)
+        let fleet = mint_id();
+        FleetSeed::new(&fleet, &self.id, &self.tenant, FLEET_ACTIVE)
             .name(name)
             .memory(grants.read, grants.publish)
             .insert(&mut *self.database.acquire().await.expect("an API connection"))
@@ -75,7 +75,7 @@ impl Workspace {
 
     /// Erases everything the suite seeded, through the tenant's cascade.
     pub(crate) async fn cleanup(self) {
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *self.database.acquire().await.expect("an API connection"))
             .await

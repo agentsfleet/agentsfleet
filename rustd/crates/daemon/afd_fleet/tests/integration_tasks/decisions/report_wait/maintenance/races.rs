@@ -1,5 +1,5 @@
 //! A completed HTTP read cannot revive work after its native authority changes.
-use super::{Observation, Waiting, baseline, counts, exercise, id, observe, wait_state};
+use super::{Observation, Waiting, baseline, counts, exercise, observe, wait_state};
 use af_wire::task::TaskState;
 use afd_fleet::task::{TaskControl, TaskLifecycle as _};
 use std::time::Duration;
@@ -26,7 +26,7 @@ async fn completed_read_cannot_bypass_pause_revocation_or_spent_allowance_after_
                 "unusable observations do not replace retained evidence"
             );
             assert_eq!(wait_state(&waiting).await, (false, true, true, true, 0));
-            assert_eq!(counts(case, &waiting.task.task_id).await, (0, 0, 0, 2, 1));
+            assert_eq!(counts(case, &waiting.task_id).await, (0, 0, 0, 2, 1));
             assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
             assert_stopped(&waiting, change).await;
             waiting.finish().await;
@@ -60,17 +60,17 @@ async fn race(waiting: &Waiting<'_>, change: Change) {
 async fn change_authority(waiting: &Waiting<'_>, change: Change) {
     let case = waiting.fixture.case;
     if matches!(change, Change::Pause) {
-        let task = id(&waiting.task.task_id);
+        let task = &waiting.task_id;
         let before = waiting
             .tasks
-            .read(&case.scope, &task)
+            .read(&case.scope, task)
             .await
             .expect("waiting task");
         waiting
             .tasks
             .control(
                 &case.scope,
-                &task,
+                task,
                 &before.etag(),
                 before.context.generation,
                 TaskControl::Pause,
@@ -81,12 +81,12 @@ async fn change_authority(waiting: &Waiting<'_>, change: Change) {
     }
     let (statement, owner) = match change {
         Change::Revoke => (
-            "UPDATE connector.integration_grants SET status='revoked',revoked_at=clock_timestamp() WHERE fleet_id=$1::uuid AND service='github'",
-            case.held.fleet.as_str(),
+            "UPDATE connector.integration_grants SET status='revoked',revoked_at=clock_timestamp() WHERE fleet_id=$1 AND service='github'",
+            &case.held.fleet,
         ),
         Change::Spent => (
-            "UPDATE fleet.tasks SET used_model_nanos=max_model_nanos WHERE id=$1::uuid",
-            waiting.task.task_id.as_str(),
+            "UPDATE fleet.tasks SET used_model_nanos=max_model_nanos WHERE id=$1",
+            &waiting.task_id,
         ),
         Change::Pause => unreachable!("pause used the public control verb"),
     };
@@ -109,9 +109,9 @@ async fn change_authority(waiting: &Waiting<'_>, change: Change) {
 async fn assert_stopped(waiting: &Waiting<'_>, change: Change) {
     let case = waiting.fixture.case;
     let actual: (String, Option<String>, i64, i64) = sqlx::query_as(
-        "SELECT status,status_reason,generation,stop_generation FROM fleet.tasks WHERE id=$1::uuid",
+        "SELECT status,status_reason,generation,stop_generation FROM fleet.tasks WHERE id=$1",
     )
-    .bind(&waiting.task.task_id)
+    .bind(&waiting.task_id)
     .fetch_one(
         &mut *case
             .held

@@ -27,7 +27,7 @@ af_observability.workspace = true
 serde.workspace = true
 # The registry codes, identifiers, the clock, and the paging vocabulary every
 # list verb here parses its query string with.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # `Minted` — a credential drawn once and zeroed — plus the classifier that
 # supplies its marker, and the principal a verb acts for.
 afd_auth.workspace = true

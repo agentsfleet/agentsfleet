@@ -12,18 +12,18 @@ const CONTEXT: &str = "prove durable task lease ownership";
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct LeaseRow {
-    pub lease_id: String,
-    pub fleet_id: String,
-    pub workspace_id: String,
-    pub tenant_id: String,
-    pub source_admission_id: String,
-    pub task_id: Option<String>,
+    pub lease_id: Uuid7,
+    pub fleet_id: Uuid7,
+    pub workspace_id: Uuid7,
+    pub tenant_id: Uuid7,
+    pub source_admission_id: Uuid7,
+    pub task_id: Option<Uuid7>,
     pub capable: bool,
     pub task_generation: Option<i64>,
     pub task_stop_generation: Option<i64>,
     pub fence: i64,
     pub live_fence: i64,
-    pub revision_id: Option<String>,
+    pub revision_id: Option<Uuid7>,
     pub fleet_status: String,
     pub fleet_name: String,
     pub decision_snapshot: Option<sqlx::types::Json<af_wire::decision::DecisionAssignment>>,
@@ -37,16 +37,16 @@ pub(super) struct LeaseRow {
 
 pub(super) async fn lease_scope(database: &Db, presented: TaskLease<'_>) -> Result<TaskScope> {
     let mut connection = database.acquire().await?;
-    let (fleet, workspace): (String, String) = sqlx::query_as(sql::LEASE_SCOPE)
-        .bind(presented.lease_id.as_str())
-        .bind(presented.runner_id.as_str())
+    let (fleet_id, workspace_id): (Uuid7, Uuid7) = sqlx::query_as(sql::LEASE_SCOPE)
+        .bind(presented.lease_id)
+        .bind(presented.runner_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
         .ok_or_else(lease_not_found)?;
     Ok(TaskScope {
-        fleet_id: id(&fleet, "fleet_id")?,
-        workspace_id: id(&workspace, "workspace_id")?,
+        workspace_id,
+        fleet_id,
     })
 }
 
@@ -80,17 +80,17 @@ async fn locked_lease(
 ) -> Result<LeaseRow> {
     // A short ownership read precedes the lock so fleet deletion cannot wait
     // on our slot while we wait on its parent row's foreign-key lock.
-    let scope: Option<(String, String)> = sqlx::query_as(sql::LEASE_SCOPE)
-        .bind(presented.lease_id.as_str())
-        .bind(presented.runner_id.as_str())
+    let scope: Option<(Uuid7, Uuid7)> = sqlx::query_as(sql::LEASE_SCOPE)
+        .bind(presented.lease_id)
+        .bind(presented.runner_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     let (fleet, workspace) = scope.ok_or_else(lease_not_found)?;
     lock_scope(connection, &fleet, &workspace).await?;
-    sqlx::query_scalar::<_, String>(slot_lock)
-        .bind(presented.lease_id.as_str())
-        .bind(presented.runner_id.as_str())
+    sqlx::query_scalar::<_, Uuid7>(slot_lock)
+        .bind(presented.lease_id)
+        .bind(presented.runner_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
@@ -98,8 +98,8 @@ async fn locked_lease(
     // Slot and parent locks are already held when the existing deadline/fence
     // is checked. A row-lock wait cannot leave a pre-wait deadline accepted.
     let row: LeaseRow = sqlx::query_as(lease_lock)
-        .bind(presented.lease_id.as_str())
-        .bind(presented.runner_id.as_str())
+        .bind(presented.lease_id)
+        .bind(presented.runner_id)
         .bind(LEASE_STATUS_ACTIVE)
         .bind(af_wire::task::CAPABILITY)
         .bind(afd_admission::Producer::SlackMention.as_str())
@@ -117,14 +117,9 @@ async fn locked_lease(
 }
 
 pub(super) async fn scope(connection: &mut PgConnection, scope: &TaskScope) -> Result<()> {
-    lock_scope(
-        connection,
-        scope.fleet_id.as_str(),
-        scope.workspace_id.as_str(),
-    )
-    .await?;
-    let _slot = sqlx::query_scalar::<_, String>(sql::LOCK_SCOPE_SLOT)
-        .bind(scope.fleet_id.as_str())
+    lock_scope(connection, &scope.fleet_id, &scope.workspace_id).await?;
+    let _slot = sqlx::query_scalar::<_, Uuid7>(sql::LOCK_SCOPE_SLOT)
+        .bind(&scope.fleet_id)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -139,11 +134,11 @@ pub(super) async fn context(
         return Ok(None);
     };
     let scope = TaskScope {
-        fleet_id: id(&current.fleet_id, "fleet_id")?,
-        workspace_id: id(&current.workspace_id, "workspace_id")?,
+        fleet_id: id(current.fleet_id.as_str(), "fleet_id")?,
+        workspace_id: id(current.workspace_id.as_str(), "workspace_id")?,
     };
     Ok(Some(
-        super::read::on(connection, &scope, &id(task, "task_id")?)
+        super::read::on(connection, &scope, &id(task.as_str(), "task_id")?)
             .await?
             .context,
     ))
@@ -151,10 +146,10 @@ pub(super) async fn context(
 
 pub(super) async fn lock_scope(
     connection: &mut PgConnection,
-    fleet: &str,
-    workspace: &str,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
 ) -> Result<()> {
-    sqlx::query_scalar::<_, String>(sql::LOCK_SCOPE)
+    sqlx::query_scalar::<_, Uuid7>(sql::LOCK_SCOPE)
         .bind(fleet)
         .bind(workspace)
         .fetch_optional(connection)
@@ -162,6 +157,13 @@ pub(super) async fn lock_scope(
         .map_err(query(CONTEXT))?
         .ok_or(TaskRefusal::NotFound)?;
     Ok(())
+}
+
+/// An identifier the runner sent as text: one that is not a `UUIDv7` names no
+/// row, so it is refused as not found rather than bound and refused by
+/// Postgres.
+pub(super) fn wire(text: &str) -> Result<Uuid7> {
+    Uuid7::parse(text).map_err(|_text| TaskRefusal::NotFound.into())
 }
 
 pub(super) fn id(text: &str, column: &'static str) -> Result<Uuid7> {

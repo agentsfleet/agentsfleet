@@ -26,11 +26,12 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// Reading a fleet.
 const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 
+/// A well-formed event identifier the fixture addresses.
+const EVENT: &str = "01924f4e-0000-7000-8000-0000000e7e01";
+
 /// The read for `call_id` on a fixture event of `fleet`.
 fn tool_call(fleet: &str, call_id: &str) -> String {
-    format!(
-        "/v1/workspaces/{OWNED_WORKSPACE}/fleets/{fleet}/events/1700000000000-0/tool-calls/{call_id}"
-    )
+    format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/{fleet}/events/{EVENT}/tool-calls/{call_id}")
 }
 
 /// One GET at a fresh router holding one scoped person.

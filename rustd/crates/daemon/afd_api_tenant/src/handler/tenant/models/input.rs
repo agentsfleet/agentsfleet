@@ -106,16 +106,13 @@ pub(super) fn parse_cursor(
             DETAIL_CURSOR_MISMATCH,
         ));
     }
-    // The id rides the page SQL as a `::uuid` cast, so a hand-minted cursor
-    // whose id is not an identifier must fail HERE as the malformed input it
-    // is — not downstream as a Postgres cast error dressed in a 500.
-    if Uuid7::parse(&token.id).is_err() {
-        return Err(malformed());
-    }
+    // A hand-minted cursor whose id is not an identifier is the malformed
+    // input it is, refused here rather than bound.
+    let id = Uuid7::parse(&token.id).map_err(|_text| malformed())?;
     Ok(Some(Boundary {
         display_key: token.display_key,
         vendor_key: token.vendor_key,
-        id: token.id,
+        id,
     }))
 }
 

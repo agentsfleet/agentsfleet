@@ -45,7 +45,9 @@ async fn test_resolution_happens_once_under_concurrent_resolves() {
             let action = action.clone();
             tokio::spawn(async move {
                 barrier.wait().await;
-                inbox.resolve(&action, decision, who, NOTE, None).await
+                inbox
+                    .resolve(action.as_str(), decision, who, NOTE, None)
+                    .await
             })
         };
         let approve = spawn(Decision::Approved, APPROVER);

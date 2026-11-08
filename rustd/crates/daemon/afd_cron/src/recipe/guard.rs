@@ -5,6 +5,7 @@ use crate::{
     Refused, Result,
     error::{self, ErrorKind},
 };
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "lock inherited schedules";
@@ -13,9 +14,9 @@ pub(super) async fn lock(
     connection: &mut PgConnection,
     set: &RecipeSet<'_>,
 ) -> Result<Vec<Stored>> {
-    let owned: Option<String> = sqlx::query_scalar(crate::sql::LOCK_FLEET_IN_WORKSPACE)
-        .bind(set.fleet.as_str())
-        .bind(set.workspace.as_str())
+    let owned: Option<Uuid7> = sqlx::query_scalar(crate::sql::LOCK_FLEET_IN_WORKSPACE)
+        .bind(set.fleet)
+        .bind(set.workspace)
         .fetch_optional(&mut *connection)
         .await
         .map_err(error::query(CONTEXT))?;
@@ -26,7 +27,7 @@ pub(super) async fn lock(
         .into());
     }
     let rows: Vec<Stored> = sqlx::query_as(sql::ROWS)
-        .bind(set.fleet.as_str())
+        .bind(set.fleet)
         .fetch_all(&mut *connection)
         .await
         .map_err(error::query(CONTEXT))?;
@@ -34,7 +35,7 @@ pub(super) async fn lock(
         return Err(ErrorKind::Held.into());
     }
     let independent: i64 = sqlx::query_scalar(crate::sql::COUNT_INDEPENDENT)
-        .bind(set.fleet.as_str())
+        .bind(set.fleet)
         .fetch_one(connection)
         .await
         .map_err(error::query(CONTEXT))?;

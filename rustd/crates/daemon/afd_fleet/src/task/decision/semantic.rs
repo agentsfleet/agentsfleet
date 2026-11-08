@@ -1,5 +1,6 @@
 //! Advisory answer usability never prevents original-owner financial recording.
 
+use af_core::id::Uuid7;
 use af_wire::{
     decision::{
         DecisionAssignment, DecisionOutcome, DecisionPurpose, DecisionRequest, DecisionResult,
@@ -22,8 +23,8 @@ use crate::{
 
 #[derive(sqlx::FromRow)]
 struct Owner {
-    revision_id: Option<String>,
-    task_id: Option<String>,
+    revision_id: Option<Uuid7>,
+    task_id: Option<Uuid7>,
     decision_snapshot: Option<Json<DecisionAssignment>>,
 }
 
@@ -103,7 +104,7 @@ pub(super) async fn current_on(connection: &mut PgConnection, call: &Call) -> Re
         .as_ref()
         .map(|assignment| &assignment.0)
         != Some(&call.profile_snapshot.0)
-        || owner.task_id.as_deref() != saved.execution.as_ref().map(|task| task.task_id.as_str())
+        || owner.task_id.as_ref() != saved.execution.as_ref().map(|task| &task.task_id)
     {
         return Ok(false);
     }
@@ -112,13 +113,11 @@ pub(super) async fn current_on(connection: &mut PgConnection, call: &Call) -> Re
         return Ok(false);
     }
     let revision = if saved.assessment.purpose() == DecisionPurpose::Goal {
-        execution
-            .as_ref()
-            .map(|task| task.accepted_revision_id.as_str())
+        execution.as_ref().map(|task| &task.accepted_revision_id)
     } else {
-        owner.revision_id.as_deref()
+        owner.revision_id.as_ref()
     };
-    if revision != Some(saved.accepted_revision_id.as_str()) {
+    if revision != Some(&saved.accepted_revision_id) {
         return Ok(false);
     }
     candidates_match(&mut tx, call, saved).await
@@ -149,8 +148,8 @@ async fn candidates_match(
     saved: &AssessedContext,
 ) -> Result<bool> {
     let scope = TaskScope {
-        fleet_id: Call::id(&call.fleet_id, "fleet_id")?,
-        workspace_id: Call::id(&call.workspace_id, "workspace_id")?,
+        fleet_id: call.fleet_id.clone(),
+        workspace_id: call.workspace_id.clone(),
     };
     let candidates =
         super::prepare::candidates(connection, &scope, saved.assessment.purpose()).await?;

@@ -178,7 +178,7 @@ async fn test_a_shutdown_while_a_full_lane_holds_the_reader_stops_the_worker() {
     }
 
     let poster = Gated::default();
-    let gate = poster.shut(WORKSPACE_ID);
+    let gate = poster.shut(&WORKSPACE_ID);
     let token = CancellationToken::new();
     let running = held_at_a_full_lane(&harness, &poster, &token, read).await;
 
@@ -191,7 +191,7 @@ async fn test_a_shutdown_while_a_full_lane_holds_the_reader_stops_the_worker() {
 
     assert_eq!(
         poster.delivered(),
-        vec!["1700000000000-0".to_owned()],
+        vec![EVENT_ID.clone()],
         "only the job in hand is delivered; the lane starts nothing after the \
          shutdown"
     );

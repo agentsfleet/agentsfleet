@@ -15,7 +15,7 @@ use afd_tenant::test_util::hold;
 use afd_tenant::workspace::access::ROLE_OWNER;
 use jiff::Timestamp;
 
-use crate::access_lane::{Fixture, id};
+use crate::access_lane::Fixture;
 
 /// Now, for every call a case makes.
 const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
@@ -28,14 +28,12 @@ const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 async fn should_refuse_inviting_an_owner_no_membership_row_backs() {
     let fixture = Fixture::create().await;
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "DELETE FROM identity.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
-    )
-    .bind(&fixture.john.tenant)
-    .bind(&fixture.john.user)
-    .execute(&mut *connection)
-    .await
-    .expect("John's account predates memberships");
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id = $1 AND user_id = $2")
+        .bind(&fixture.john.tenant)
+        .bind(&fixture.john.user)
+        .execute(&mut *connection)
+        .await
+        .expect("John's account predates memberships");
     drop(connection);
     let refused = fixture
         .invite(&fixture.john.email, NOW)
@@ -52,7 +50,7 @@ async fn should_refuse_inviting_an_owner_no_membership_row_backs() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_remove_owner_when_another_owner_remains() {
     let fixture = Fixture::create().await;
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     hold(
         &fixture.database,
         &fixture.john.tenant,
@@ -63,14 +61,14 @@ async fn should_remove_owner_when_another_owner_remains() {
 
     let removed = fixture
         .team
-        .remove(&tenant, &fixture.carol.user_id)
+        .remove(&tenant, &fixture.carol.user)
         .await
         .expect("a second owner can go");
     assert_eq!(removed, Removal::Removed);
     assert_eq!(fixture.owners_in_johns().await, 1);
     let last = fixture
         .team
-        .remove(&tenant, &fixture.john.user_id)
+        .remove(&tenant, &fixture.john.user)
         .await
         .expect_err("John is now the last owner");
     assert_eq!(last.code(), error_code::MEMBER_LAST_OWNER);
@@ -100,7 +98,7 @@ async fn should_keep_existing_role_when_member_accepts_invite() {
         .accept(&invite, &fixture.carol.invitee(), NOW)
         .await
         .expect("the accept answers");
-    assert!(accepted.workspaces.contains(&id(&fixture.john.workspace)));
+    assert!(accepted.workspaces.contains(&fixture.john.workspace));
     assert_eq!(
         fixture.role_in_johns(&fixture.carol).await.as_deref(),
         Some(ROLE_OWNER)
@@ -108,7 +106,7 @@ async fn should_keep_existing_role_when_member_accepts_invite() {
     assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
     let listed = fixture
         .team
-        .invitations(&id(&fixture.john.tenant))
+        .invitations(&fixture.john.tenant)
         .await
         .expect("the invite list reads");
     assert!(
@@ -124,14 +122,14 @@ async fn should_keep_existing_role_when_member_accepts_invite() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_report_query_failure_when_insert_fails_other_than_unique() {
     let fixture = Fixture::create().await;
-    let nowhere = id(&mint_id());
+    let nowhere = mint_id();
     let email = Email::parse(&fixture.carol.email, |_| true).expect("an address");
     let refused = fixture
         .team
         .invite(
             &NewInvite {
                 tenant: &nowhere,
-                inviter: &fixture.john.user_id,
+                inviter: &fixture.john.user,
                 email: &email,
             },
             NOW,

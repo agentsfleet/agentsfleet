@@ -44,12 +44,12 @@ pub(super) async fn accept(
         return Err(TaskRefusal::ReplayConflict.into());
     }
     sqlx::query(include_str!("sql/insert.sql"))
-        .bind(&input.item_id)
+        .bind(crate::task::guard::wire(&input.item_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(input.mode.as_str())
-        .bind(&input.operation_id)
-        .bind(lease.lease_id.as_str())
+        .bind(crate::task::guard::wire(&input.operation_id)?)
+        .bind(lease.lease_id)
         .bind(current.fence)
         .bind(digest)
         .bind(&response)
@@ -58,7 +58,7 @@ pub(super) async fn accept(
         .map_err(query("retain immutable input outcome"))?;
     if response.is_some() {
         sqlx::query(include_str!("sql/answered.sql"))
-            .bind(&input.item_id)
+            .bind(crate::task::guard::wire(&input.item_id)?)
             .execute(&mut *tx)
             .await
             .map_err(query("retain fulfilled input reply obligation"))?;
@@ -80,10 +80,10 @@ pub(super) async fn accept(
     }
     if let Some(task) = item.task_id {
         let scope = super::TaskScope {
-            fleet_id: guard::id(&current.fleet_id, "fleet_id")?,
-            workspace_id: guard::id(&current.workspace_id, "workspace_id")?,
+            fleet_id: current.fleet_id.clone(),
+            workspace_id: current.workspace_id.clone(),
         };
-        let id = guard::id(&task, "task_id")?;
+        let id = task.clone();
         if let Ok(snapshot) = super::read::read(tasks, &scope, &id).await {
             tasks
                 .publish_changed(&scope, &id, snapshot.resource_version)
@@ -108,7 +108,7 @@ async fn response(
             execution::load(connection, lease, version).await?;
             let sequence = item.sequence.ok_or(TaskRefusal::InvalidTarget)?;
             let applied = sqlx::query(include_str!("sql/apply.sql"))
-                .bind(&version.task_id)
+                .bind(crate::task::guard::wire(&version.task_id)?)
                 .bind(sequence)
                 .execute(&mut *connection)
                 .await

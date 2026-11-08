@@ -1,5 +1,6 @@
 //! An unfinished intent is never permission for another physical send.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use serde::Deserialize;
 use sqlx::PgConnection;
@@ -28,7 +29,7 @@ enum State {
 /// [`sql::PRIOR`]'s and [`sql::UNFINISHED`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct Receipt {
-    id: String,
+    id: Uuid7,
     sequence: i32,
     request_digest: String,
     status: String,
@@ -44,8 +45,8 @@ pub(in crate::model) async fn prior(
     digest: &str,
 ) -> Result<Option<Decision>> {
     let prior: Option<Receipt> = sqlx::query_as(sql::PRIOR)
-        .bind(guarded.attempt.id.as_str())
-        .bind(&request.dispatch_id)
+        .bind(&guarded.attempt.id)
+        .bind(super::super::dispatch_id(request)?)
         .bind(i64::from(request.call_index))
         .fetch_optional(&mut *connection)
         .await
@@ -60,7 +61,7 @@ pub(in crate::model) async fn prior(
         return existing(connection, guarded, receipt).await.map(Some);
     }
     let unfinished: Option<Receipt> = sqlx::query_as(sql::UNFINISHED)
-        .bind(guarded.attempt.id.as_str())
+        .bind(&guarded.attempt.id)
         .bind(dispatch_status::COMPLETED)
         .fetch_optional(&mut *connection)
         .await
@@ -86,7 +87,7 @@ async fn existing(
         .await
         .map_err(query(CONTEXT))?;
     sqlx::query(sql::UNCERTAIN)
-        .bind(guarded.attempt.id.as_str())
+        .bind(&guarded.attempt.id)
         .bind(Status::AwaitingAccounting.as_str())
         .execute(connection)
         .await
@@ -126,7 +127,7 @@ mod tests {
     -> crate::Result<()> {
         let deadline = Timestamp::constant(100, 0);
         let receipt = Receipt {
-            id: String::new(),
+            id: afd_db::test_util::mint_id(),
             sequence: 1,
             request_digest: String::new(),
             status: "pending".into(),

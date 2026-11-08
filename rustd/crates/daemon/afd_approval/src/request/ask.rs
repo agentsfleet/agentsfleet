@@ -34,8 +34,8 @@ impl IntegrationGrants {
         let gate_id = self.mint(now)?;
         let action_id = self.mint(now)?;
         sqlx::query(grant_sql::ENSURE_GRANT)
-            .bind(grant_id.as_str())
-            .bind(fleet.as_str())
+            .bind(grant_id)
+            .bind(fleet)
             .bind(wanted.service)
             .bind(status::PENDING)
             .bind(wanted.origin.reason())
@@ -43,12 +43,12 @@ impl IntegrationGrants {
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
         let asked = sqlx::query_as::<_, Asked>(grant_sql::REQUEST_GRANT)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .bind(wanted.service)
             .bind(status::PENDING)
-            .bind(gate_id.as_str())
-            .bind(workspace.as_str())
-            .bind(action_id.as_str())
+            .bind(gate_id)
+            .bind(workspace)
+            .bind(action_id)
             .bind(wanted.service)
             .bind(wanted.credential)
             .bind(KIND_INTEGRATION_GRANT)

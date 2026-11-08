@@ -36,7 +36,7 @@ impl Admissions {
         let limit = self.budgets.deployment_backlog;
         let reply = ReplyBinds::from(admission.reply);
         let answer = sqlx::query_as::<_, Answer>(sql::ADMIT_ONE)
-            .bind(row_id.as_str())
+            .bind(row_id)
             .bind(admission.fleet)
             .bind(admission.workspace)
             .bind(admission.producer.as_str())
@@ -49,10 +49,9 @@ impl Admissions {
             .bind(i64::try_from(estimate).unwrap_or(i64::MAX))
             .bind(reply.connector)
             .bind(reply.address)
-            .bind(reply.inherited.as_ref().map(Uuid7::as_str))
+            .bind(reply.inherited.as_ref())
             .bind(af_fleet_runtime::definition::POLICY_SEMANTICS)
             .bind(runnable.map(FleetStatus::as_str))
-            .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_ADMIT))?;

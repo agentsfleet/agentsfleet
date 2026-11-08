@@ -18,6 +18,7 @@
 //! report has parsed. One that is not a trace, or that breaks a bound, is
 //! dropped and logged, and the report settles without it.
 
+use af_core::id::Uuid7;
 use af_wire::tool_trace::{RawToolTrace, fenced_call_id};
 
 /// A report's trace was not stored; the run settles without it.
@@ -27,9 +28,9 @@ const EVENT_TRACE_DROPPED: &str = "report_tool_trace_dropped";
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TraceOwner<'a> {
     /// The fleet that ran.
-    pub fleet_id: &'a str,
+    pub fleet_id: &'a Uuid7,
     /// The event the run answered.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// The fence the lease holds, which scopes every call id.
     pub fence: i64,
 }
@@ -49,11 +50,11 @@ pub(crate) fn stored(raw: Option<RawToolTrace<'_>>, owner: TraceOwner<'_>) -> Op
             let reason = rejection.as_str();
             let bytes = raw.byte_len();
             tracing::warn!(
-                fleet_id,
-                agentsfleet_event_id = event_id,
+                fleet_id = %fleet_id,
+                agentsfleet_event_id = %event_id,
                 reason,
                 bytes,
-                event = EVENT_TRACE_DROPPED,
+                event = %EVENT_TRACE_DROPPED,
                 "the run's tool trace was not stored; the report settles without it"
             );
             return None;

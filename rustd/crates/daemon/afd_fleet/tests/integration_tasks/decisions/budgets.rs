@@ -1,6 +1,6 @@
 //! Routing, accepted task budgets and actual overages keep distinct owners.
 
-use af_core::error_code;
+use af_core::{error_code, id::Uuid7};
 use af_wire::{
     decision::DecisionUsage,
     task::{DecisionAssessment, DecisionCallState, DecisionTaskVersion},
@@ -62,11 +62,11 @@ async fn source_routing(fixture: &Decisions<'_>, task: &DecisionTaskVersion) {
         ),
         (0, 0, 0)
     );
-    let owner: (Option<String>, String, String) = sqlx::query_as(
-        "SELECT task_id::text,source_admission_id::text,context_snapshot #>> '{execution,task_id}' FROM runner.decision_calls WHERE id=$1::uuid")
-        .bind(call).fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("native call ownership"))
+    let owner: (Option<Uuid7>, Uuid7, String) = sqlx::query_as(
+        "SELECT task_id,source_admission_id,context_snapshot #>> '{execution,task_id}' FROM runner.decision_calls WHERE id=$1")
+        .bind(id(call)).fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("native call ownership"))
         .await.expect("retained source attribution");
-    assert_eq!(owner, (None, source.to_string(), task.task_id.clone()));
+    assert_eq!(owner, (None, source, task.task_id.clone()));
     fixture.reprice().await;
     source_charge(fixture, call, &body).await;
     assert_eq!(
@@ -103,7 +103,7 @@ async fn source_charge(fixture: &Decisions<'_>, call: &str, body: &Value) {
 async fn goal_overage(fixture: &Decisions<'_>, task: DecisionTaskVersion) {
     let input = fixture.reservation(
         DecisionAssessment::Goal {
-            action_group_id: afd_db::test_util::mint_id(),
+            action_group_id: afd_db::test_util::mint_id().into(),
         },
         Some(task.clone()),
     );
@@ -150,7 +150,7 @@ async fn goal_overage(fixture: &Decisions<'_>, task: DecisionTaskVersion) {
 async fn further_work_is_blocked(fixture: &Decisions<'_>, task: DecisionTaskVersion) {
     let next = fixture.reservation(
         DecisionAssessment::Goal {
-            action_group_id: afd_db::test_util::mint_id(),
+            action_group_id: afd_db::test_util::mint_id().into(),
         },
         Some(task),
     );
@@ -165,8 +165,8 @@ async fn further_work_is_blocked(fixture: &Decisions<'_>, task: DecisionTaskVers
         "a decision cost exceeded its reservation; related paid work is blocked"
     );
     assert_eq!(fixture.counts().await, (2, 2, 2));
-    let lines: Vec<(String, i64)> = sqlx::query_as("SELECT event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2 ORDER BY seq")
-        .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
+    let lines: Vec<(Uuid7, i64)> = sqlx::query_as("SELECT event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2 ORDER BY seq")
+        .bind(&fixture.case.held.lease_key).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
         .fetch_all(&mut *fixture.case.held.fixtures.database.acquire().await.expect("source and goal charges"))
         .await.expect("two original-work lines");
     assert_eq!(

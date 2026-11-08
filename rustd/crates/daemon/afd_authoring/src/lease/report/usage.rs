@@ -70,7 +70,7 @@ pub(super) async fn settlement(
         },
     );
     let dispatched: Vec<Dispatched> = sqlx::query_as(KNOWN_DISPATCHES)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(dispatch_status::KNOWN)
         .fetch_all(connection)
         .await

@@ -34,6 +34,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use std::borrow::Cow;
 
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
@@ -52,7 +53,7 @@ use crate::e2e_native::Stored;
 /// Whether a scenario's workspace is already seeded, so a second fleet in it
 /// shares the account rather than refusing on the tenant's key.
 pub(crate) const WORKSPACE_EXISTS: &str =
-    "SELECT EXISTS (SELECT 1 FROM identity.workspaces WHERE id = $1::uuid)";
+    "SELECT EXISTS (SELECT 1 FROM identity.workspaces WHERE id = $1)";
 
 /// A pool deep enough that no gate under test clamps against it.
 pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
@@ -106,12 +107,12 @@ const MODEL_INFERENCE: &str =
 /// stray lease on another scenario's leftover fleet takes the only slot a
 /// scenario's runner has. Tagged, a scenario's fleet is placed on its own
 /// runner alone.
-pub(crate) fn scenario_tag(fleet: &str) -> String {
+pub(crate) fn scenario_tag(fleet: &Uuid7) -> String {
     format!("e2e-{fleet}")
 }
 
 /// [`enrolment`], labelled to take `fleet`'s work.
-pub(crate) fn scenario_enrolment(fleet: &str) -> RegisterRequest<'static> {
+pub(crate) fn scenario_enrolment(fleet: &Uuid7) -> RegisterRequest<'static> {
     let mut request = enrolment();
     request.labels.push(Cow::Owned(scenario_tag(fleet)));
     request
@@ -151,10 +152,10 @@ pub(crate) const FIXTURE_INSTRUCTIONS: &str = "# fixture";
 /// put a write path nothing ships into the shipping crate.
 pub(crate) async fn seed_fleet(
     booted: &Booted,
-    fleet: &str,
+    fleet: &Uuid7,
     name: &str,
-    workspace: &str,
-    tenant: &str,
+    workspace: &Uuid7,
+    tenant: &Uuid7,
     config: &str,
     now: Timestamp,
 ) {
@@ -196,7 +197,7 @@ pub(crate) async fn seed_fleet(
 }
 
 /// Gives a tenant a credit pool of `nanos`.
-pub(crate) async fn seed_wallet(booted: &Booted, tenant: &str, nanos: i64, now: Timestamp) {
+pub(crate) async fn seed_wallet(booted: &Booted, tenant: &Uuid7, nanos: i64, now: Timestamp) {
     let mut connection = booted
         .database
         .acquire()
@@ -204,7 +205,7 @@ pub(crate) async fn seed_wallet(booted: &Booted, tenant: &str, nanos: i64, now: 
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO billing.wallets (tenant_id, balance_nanos, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $3)
+         VALUES ($1, $2, $3, $3)
          ON CONFLICT (tenant_id) DO UPDATE
            SET balance_nanos = EXCLUDED.balance_nanos, updated_at = EXCLUDED.updated_at",
     )
@@ -227,7 +228,9 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
         .acquire()
         .await
         .expect("a pooled connection");
-    ModelSeed::new(CATALOGUE_ROW, PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
+    let catalogue_row =
+        Uuid7::parse(CATALOGUE_ROW).expect("the catalogue row is a canonical UUIDv7");
+    ModelSeed::new(&catalogue_row, PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
         .rates(
             INPUT_NANOS_PER_MTOK,
             CACHED_INPUT_NANOS_PER_MTOK,
@@ -274,7 +277,7 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: Timestamp) {
 /// workspace whose key was gone, and the next run failed to resolve a provider.
 pub(crate) async fn seed_platform_default(
     booted: &Booted,
-    workspace: &str,
+    workspace: &Uuid7,
     now: Timestamp,
 ) -> PlatformDefault {
     PlatformDefault::hold(

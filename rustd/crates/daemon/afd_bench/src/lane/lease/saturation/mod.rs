@@ -113,7 +113,7 @@ async fn measure(
     // so a refusal here leaves nothing running beneath the caller's cleanup.
     let locker = slow::named(run.stores.sampler().await?).await?;
     let mut sampler = run.stores.sampler().await?;
-    let workspaces = workspaces_of(staged)?;
+    let workspaces = workspaces_of(staged);
     let abort = Arc::new(Abort::new(run.profile.caps().abort_error_rate));
     let started = Instant::now();
     let shared = Arc::new(Shared {
@@ -145,7 +145,7 @@ async fn measure(
     window.slow_holds = writer?;
     window.length = started.elapsed();
     let recovered = run.stores.database.serves(run.stores.pool_size).await;
-    let tenants: Vec<String> = staged.tenants.iter().map(|t| t.tenant.clone()).collect();
+    let tenants: Vec<Uuid7> = staged.tenants.iter().map(|t| t.tenant.clone()).collect();
     ledger.created(invariants::issued(run.stores, &tenants).await?);
     let census = invariants::count(
         run.stores,
@@ -176,31 +176,27 @@ fn spawn_requesters(
 }
 
 /// The tenant the slow writer holds: the first chat tenant's.
-fn first_tenant(staged: &stage::Staged) -> String {
-    staged
-        .tenants
-        .first()
-        .map(|seeded| seeded.tenant.clone())
-        .unwrap_or_default()
+fn first_tenant(staged: &stage::Staged) -> Option<Uuid7> {
+    staged.tenants.first().map(|seeded| seeded.tenant.clone())
 }
 
 /// The slow writer over `tenant`'s drafts, on the connection it was handed.
 fn spawn_writer(
     mut locker: sqlx::PgConnection,
-    tenant: String,
+    tenant: Option<Uuid7>,
     shared: &Arc<Shared>,
 ) -> tokio::task::JoinHandle<Result<u64>> {
     let shared = Arc::clone(shared);
-    tokio::spawn(async move { slow::write(&mut locker, &tenant, &shared).await })
+    tokio::spawn(async move { slow::write(&mut locker, tenant.as_ref(), &shared).await })
 }
 
 /// Every chat tenant's workspace, which the wall viewers cycle through.
-fn workspaces_of(staged: &stage::Staged) -> Result<Arc<[Uuid7]>> {
-    Ok(staged
+fn workspaces_of(staged: &stage::Staged) -> Arc<[Uuid7]> {
+    staged
         .tenants
         .iter()
-        .map(|tenant| Uuid7::parse(&tenant.workspace))
-        .collect::<core::result::Result<_, _>>()?)
+        .map(|tenant| tenant.workspace.clone())
+        .collect()
 }
 
 /// [`live::READERS`] wall viewers over `workspaces`.

@@ -13,13 +13,10 @@
 //! `make test-integration-rustd`.
 #![cfg(feature = "test-util")]
 #![expect(
-    clippy::expect_used,
     clippy::indexing_slicing,
-    reason = "test target: an unmet precondition should fail the test loudly, and a step \
-              indexes the JSON it just built"
+    reason = "test target: a step indexes the JSON it just built"
 )]
 
-use af_core::id::Uuid7;
 use af_wire::message_verb::{MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MESSAGES_PER_RUN_MAX};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
@@ -169,11 +166,10 @@ async fn test_message_without_channel_refused() {
 async fn test_message_is_scrubbed() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, DECLARING).await;
-    let workspace = Uuid7::parse(&speaking.run.workspace).expect("a minted workspace id");
     let body = json!({"host": "grafana.example.test", "token": TOKEN}).to_string();
     seal(
         &speaking.run.booted,
-        &workspace,
+        &speaking.run.workspace,
         CREDENTIAL,
         &body,
         af_core::clock::now(),
