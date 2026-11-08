@@ -8,13 +8,13 @@ use afd_cron::{Fire, QStash, ScheduleService, Schedules as CronSchedules};
     clippy::disallowed_methods,
     reason = "the fixture connector clients stand in for production's vendor clients and never reach a real provider; a proxy rule and a deadline are not what the router suites prove"
 )]
-pub(super) fn connectors(database: &Db, queue: &Dragonfly) -> Connectors {
+pub(super) fn connectors(database: &Db) -> Connectors {
     Connectors::new(
         PlatformApp::new(vault(database.clone())),
         Grants::new(vault(database.clone()), database.clone(), Entropy::new()),
         Exchange::new(reqwest::Client::new()),
         reqwest::Client::new(),
-        queue.clone(),
+        database.clone(),
         Entropy::new(),
     )
 }

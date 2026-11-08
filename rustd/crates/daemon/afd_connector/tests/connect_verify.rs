@@ -35,8 +35,6 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::SecretBytes;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_vault::Vault;
 use jiff::Timestamp;
 
@@ -46,8 +44,6 @@ use afd_connector::{Connectors, Exchange, Grants, PlatformApp, Provider};
 /// An address that answers nothing. Port 1 is reserved and unbound.
 const NOWHERE: &str = "postgres://nobody@127.0.0.1:1/nothing";
 
-/// The same, for the queue.
-const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
 /// The workspace a round-trip is started in.
 const WORKSPACE: &str = "01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8e9f";
@@ -86,11 +82,6 @@ fn connectors() -> Connectors {
     let environment = MapEnv::from_pairs([(DbRole::Api.url_knob(), NOWHERE)]);
     let pool = PoolConfig::resolve(&environment, DbRole::Api).expect("the fixture URL resolves");
     let database = Db::unreachable(&pool);
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE_QUEUE.to_owned(),
-    ))
-    .expect("a lazy manager opens no socket, so it cannot fail to open one");
     let kek = std::sync::Arc::new(af_crypto::secret::Kek::from_bytes([7_u8; 32]));
 
     Connectors::new(
@@ -101,12 +92,12 @@ fn connectors() -> Connectors {
         )),
         Grants::new(
             Vault::new(database.clone(), kek, Entropy::new()),
-            database,
+            database.clone(),
             Entropy::new(),
         ),
         Exchange::new(reqwest::Client::new()),
         reqwest::Client::new(),
-        queue,
+        database,
         Entropy::new(),
     )
 }
