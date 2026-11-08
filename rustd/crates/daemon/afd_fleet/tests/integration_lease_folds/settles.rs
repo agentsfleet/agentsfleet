@@ -64,6 +64,24 @@ async fn test_a_failed_report_settles_no_fold() -> Checked {
     Ok(())
 }
 
+/// A run whose calls read none of the messages it claimed settles none of
+/// them, and still answers how far it read: they stay for the next run.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_report_that_read_before_its_claims_settles_none() -> Checked {
+    let held = held().await;
+    let workspace = workspace_of(&held).await?;
+    let claimed = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    assert_eq!(claim_as_holder(&held, 0).await?.len(), 1);
+    let before = claimed.sequence - 1;
+    let folds = report_read_through(&held, before, Verdict::Succeeded).await?;
+    assert!(folds.closed.is_empty(), "{folds:?}");
+    assert_eq!(folds.read_through, before);
+    assert_eq!(settled(&held, &claimed.id).await?, Settlement::UNREAD);
+    held.fixtures.cleanup().await;
+    Ok(())
+}
+
 /// A burst settles in the same three statements as one message: every
 /// message the run read gets its own closed event, past one claim's cap.
 #[tokio::test]
