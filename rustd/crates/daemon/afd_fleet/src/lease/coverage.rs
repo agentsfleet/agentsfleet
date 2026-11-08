@@ -237,6 +237,7 @@ mod tests {
                 .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
         };
         Ok(Renewing {
+            cancelled: false,
             tenant_id: mint(1)?,
             fleet_id: mint(2)?,
             workspace_id: mint(3)?,

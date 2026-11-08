@@ -188,6 +188,10 @@ Multiple QUIC streams can avoid transport ordering stalls between lanes.
 Messages sharing one ordered stream still wait for missing earlier bytes.
 HTTP/3 does not remove shared bandwidth, congestion or application queue limits.
 
+Control cancellation may arrive before its work-lane offer.
+The runner retains that lease's cancellation within bounded session state and refuses to start it when the offer arrives.
+Exhausting that state closes the session; reconnect discards unread bytes from its predecessor.
+
 State-changing messages cannot use replayable TLS early data.
 Reports retain their lease-keyed idempotency regardless of carrier.
 Transport retries alone never establish exactly-once processing.
@@ -336,6 +340,16 @@ The client may reconnect immediately after `go_away` without losing the answers 
 HTTP/3 may preserve a connection across supported network-address changes.
 It does not preserve a session whose daemon process died.
 Both carriers use the same reconnect, fencing and database rebuild rules after server failure.
+
+### Ownership during reconnect
+
+The control request carries its previous connection identifier in `agentsfleet-runner-session` when reconnecting after a successful welcome.
+Acquisition compares that identifier and the credential digest while holding the host row lock.
+A fresh runner process omits the previous owner and can supersede an existing process using the same token.
+
+The ownership marker remains after a network disconnect; liveness and the local registry record whether a session is serving.
+An older process cannot resume after another connection has replaced its marker.
+It receives UZ-RUN-021 and halts, preventing automatic reconnects from repeatedly replacing the newer process.
 
 ## Observability
 

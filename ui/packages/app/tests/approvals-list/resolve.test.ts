@@ -33,7 +33,7 @@ describe("ApprovalsList — resolve actions", () => {
 
     // The refusal leaves the row beside the error.
     await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
-    expect(screen.getByRole("alert").textContent).toMatch(/gate service unavailable/);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/gate service unavailable/);
   });
 
   it("a rejected resolve call restores the row with the error, never the error boundary", async () => {
@@ -49,7 +49,7 @@ describe("ApprovalsList — resolve actions", () => {
 
     // The transport, not the gate, refused: the row is back beside the message.
     await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
-    expect(screen.getByRole("alert").textContent).toMatch(/transport failed/);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/transport failed/);
   });
 
   it("a resolve call rejected with something that is not an Error still names it", async () => {
@@ -64,7 +64,7 @@ describe("ApprovalsList — resolve actions", () => {
     approveRow();
 
     await waitFor(() => expect(screen.getByText(AGENT_A_DISPLAY_NAME)).toBeTruthy());
-    expect(screen.getByRole("alert").textContent).toMatch(/transport gave up/);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/transport gave up/);
   });
 
   it("resolving the last gate keeps the list shell until the server confirms", async () => {

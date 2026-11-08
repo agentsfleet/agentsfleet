@@ -32,6 +32,7 @@ pub struct Drafts {
     /// Moves a setup chat's money: the same biller fleet leases bill through
     /// (billing §11), built once where the daemon is assembled.
     pub(crate) biller: Arc<dyn Biller>,
+    pub(crate) authority: Option<afd_runner::capacity::authority::Authority>,
 }
 
 impl Drafts {
@@ -47,7 +48,26 @@ impl Drafts {
             analytics: Analytics::silent(),
             senders: Cache::new(MAX_CACHED_SEND_GATES),
             biller,
+            authority: None,
         }
+    }
+
+    /// Fence streamed authoring grants with the same owner as fleet grants.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.authority = Some(authority);
+        self
+    }
+
+    pub(crate) async fn lock_capacity(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &Uuid7,
+    ) -> Result<Option<afd_runner::capacity::Capacity>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::lock(tx, runner).await?,
+        })
     }
 
     /// Reports the private-chat-to-fleet funnel steps to `analytics`. Every

@@ -109,7 +109,7 @@ impl Leases {
         if !crate::task::lease::parents(&mut transaction, acquired).await? {
             return Ok(None);
         }
-        let Some(capacity) = afd_runner::capacity::lock(&mut transaction, runner_id).await? else {
+        let Some(capacity) = self.lock_capacity(&mut transaction, runner_id).await? else {
             return Ok(None);
         };
         if !capacity.can_claim()

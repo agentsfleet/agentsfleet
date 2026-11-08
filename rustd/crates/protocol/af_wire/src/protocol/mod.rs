@@ -12,7 +12,7 @@ pub const VERSION: &str = "agentsfleet.runner.v1";
 pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.
 pub const LANE_HEADER: &str = "agentsfleet-runner-lane";
-/// Connection owner returned by welcome and required on secondary lanes.
+/// Previous owner on a reconnecting control lane; current owner on secondary lanes.
 pub const SESSION_HEADER: &str = "agentsfleet-runner-session";
 /// Maximum JSON payload, excluding its four-byte length prefix.
 pub const MESSAGE_BYTES_MAX: usize = 2 * 1024 * 1024;
