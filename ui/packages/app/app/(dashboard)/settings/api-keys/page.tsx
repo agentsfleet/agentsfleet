@@ -13,7 +13,7 @@ export default async function ApiKeysPage() {
   // session token carries no role claim (AUTH.md — role lives only in the
   // api-template token the backend verifies), so the backend arbitrates.
   // `GET /v1/api-keys` requires the `apikey:read` scope (`TenantRoute::ApiKeys`
-  // in rustd/crates/afd_http/src/route/tenant.rs). A principal without it gets
+  // in rustd/crates/daemon/afd_http/src/route/tenant.rs). A principal without it gets
   // 403 — render this same page with the operator-only notice inline rather
   // than redirecting to a route that no longer exists.
   let data = null;

@@ -31,7 +31,7 @@ export type UseFleetEventStreamResult = {
   events: FleetEvent[];
   connectionStatus: ConnectionStatus;
   appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
-  reconcileOptimistic: (tempId: string, realEventId: string, replayed: boolean) => boolean;
+  reconcileOptimistic: (tempId: string, realEventId: string, replayed: boolean, foldedInto?: string | null) => boolean;
   discardOptimistic: (tempId: string) => void;
   retryConnection: () => void;
   convertEvent: (event: FleetEvent) => ThreadMessageLike;
@@ -80,8 +80,8 @@ export function useFleetEventStream(
     [streams, fleetId],
   );
   const reconcileOptimistic = useCallback(
-    (tempId: string, realEventId: string, replayed: boolean) =>
-      streams.reconcileOptimistic(fleetId, tempId, realEventId, replayed),
+    (tempId: string, realEventId: string, replayed: boolean, foldedInto: string | null = null) =>
+      streams.reconcileOptimistic(fleetId, tempId, realEventId, replayed, foldedInto),
     [streams, fleetId],
   );
   const discardOptimistic = useCallback(

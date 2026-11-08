@@ -96,7 +96,7 @@ describe("FleetThread — steer recovery", () => {
     // The ledger record, under its own id — never a second operation for the
     // same words.
     expect(postSteerMock).toHaveBeenLastCalledWith(WS, ZID, "retry this send", operationIdOf(0), expect.any(AbortSignal));
-    await waitFor(() => expect(reconcileOptimistic).toHaveBeenCalledWith("temp_resend", "evt_resend_ok", false));
+    await waitFor(() => expect(reconcileOptimistic).toHaveBeenCalledWith("temp_resend", "evt_resend_ok", false, null));
     expect(screen.queryByText(SEND_FAILED_TEXT)).toBeNull();
     // Resend cleared the draft that was exactly the refused text.
     expect(composerInput().value).toBe("");

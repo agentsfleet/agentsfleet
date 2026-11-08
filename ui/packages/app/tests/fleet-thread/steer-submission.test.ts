@@ -97,7 +97,7 @@ describe("FleetThread — steer submission", () => {
     // Named for the account the daemon will write, so a turn announced before
     // the 202 can be told apart from a teammate's (`HeldTurns`).
     expect(appendOptimistic).toHaveBeenCalledWith("deploy the canary", ACTOR.PENDING_STEER, `${ACTOR.STEER_PREFIX}${SUBJECT}`);
-    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42", false);
+    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42", false, null);
     expect(discardOptimistic).not.toHaveBeenCalled();
     // Acknowledged: nothing is left to recover.
     expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
@@ -206,7 +206,7 @@ describe("FleetThread — steer submission", () => {
     postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_already_complete"));
     renderThread();
     await capturedOnNew.current!(appendMessage("fast completion"));
-    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_1", "evt_already_complete", false);
+    expect(reconcileOptimistic).toHaveBeenCalledWith("temp_1", "evt_already_complete", false, null);
   });
 
   it("does not post a steer when the submitted message text is empty", async () => {

@@ -1,0 +1,117 @@
+//! Admission pins authority, capacity and bounded money in one transaction.
+
+mod context;
+mod issue;
+mod selection;
+mod sql;
+
+use af_core::id::Uuid7;
+use af_wire::lease::LeaseKind;
+use afd_runner::capacity::choice::{self, Ticket};
+use sqlx::Connection as _;
+
+use crate::{Drafts, Result, error::raise::query, funnel::Owed, types::Candidate};
+use selection::{Authorized, Hint};
+
+/// The complete private placement returned only to the authenticated runner.
+pub type Claimed = af_wire::authoring::Lease<Candidate>;
+
+/// Logged when a claim skips a candidate whose creator or draft another
+/// transaction holds.
+const EVENT_DRAFT_SKIPPED: &str = "authoring_claim_draft_skipped";
+
+/// What [`EVENT_DRAFT_SKIPPED`] says.
+const MESSAGE_DRAFT_SKIPPED: &str =
+    "a held draft was skipped, not waited on; a later poll admits it";
+
+enum Placement {
+    Busy,
+    Skipped,
+    Admitted(Box<Claimed>),
+}
+
+impl Drafts {
+    /// The compiled discovery statement, for real database query-plan measurements.
+    #[cfg(feature = "test-util")]
+    pub const QUEUED_DRAFTS_QUERY: &'static str = sql::CANDIDATES;
+
+    /// Admits one oldest queued message within an eligible private draft, under
+    /// the shared poll's optimistic host choice.
+    ///
+    /// Capacity is shared with fleet leases. A failed model or wallet gate is
+    /// terminal and durable; another poll can continue with other queued work.
+    ///
+    /// # Errors
+    /// Preserves admission failures; a concurrent winning poll yields no work.
+    pub async fn claim_offered(&self, runner: &Uuid7, ticket: Ticket) -> Result<Option<Claimed>> {
+        for hint in selection::candidates(&self.database).await? {
+            match self.admit(runner, &hint, Some(ticket)).await? {
+                Placement::Admitted(lease) => return Ok(Some(*lease)),
+                Placement::Busy => return Ok(None),
+                Placement::Skipped => {}
+            }
+        }
+        Ok(None)
+    }
+
+    /// Runs the production admission transaction for one fixture-owned draft.
+    ///
+    /// # Errors
+    /// Preserves the same refusals and datastore failures as `claim_offered`.
+    #[cfg(feature = "test-util")]
+    pub async fn claim_queued(&self, runner: &Uuid7, draft: &Uuid7) -> Result<Option<Claimed>> {
+        let hint = selection::hint(&mut *self.database.acquire().await?, draft).await?;
+        Ok(match self.admit(runner, &hint, None).await? {
+            Placement::Admitted(lease) => Some(*lease),
+            Placement::Busy | Placement::Skipped => None,
+        })
+    }
+
+    async fn admit(
+        &self,
+        runner: &Uuid7,
+        hint: &Hint,
+        ticket: Option<Ticket>,
+    ) -> Result<Placement> {
+        let mut connection = self.database.acquire().await?;
+        let mut tx = connection.begin().await.map_err(query(sql::CONTEXT))?;
+        let Some(host) = afd_runner::capacity::lock(&mut tx, runner).await? else {
+            return Ok(Placement::Busy);
+        };
+        if !host.can_claim()
+            || ticket.is_some_and(|ticket| !ticket.permits(host, LeaseKind::Authoring))
+        {
+            return Ok(Placement::Busy);
+        }
+        let mut owed = Owed::default();
+        let selected = match selection::authorize(&mut tx, hint, &mut owed).await? {
+            Authorized::Selected(selected) => *selected,
+            passed @ (Authorized::Passed | Authorized::Locked) => {
+                tx.commit().await.map_err(query(sql::CONTEXT))?;
+                owed.settle(&self.analytics);
+                if matches!(passed, Authorized::Locked) {
+                    // Debug: under contention this fires on every poll of the walk.
+                    let runner_id = runner.as_str();
+                    tracing::debug!(
+                        runner_id,
+                        event = EVENT_DRAFT_SKIPPED,
+                        MESSAGE_DRAFT_SKIPPED
+                    );
+                }
+                return Ok(Placement::Skipped);
+            }
+        };
+        let admitted = issue::admit(self, &mut tx, runner, hint, selected, &mut owed).await?;
+        if admitted.is_some()
+            && !choice::record(&mut tx, runner, host, LeaseKind::Authoring).await?
+        {
+            return Ok(Placement::Busy);
+        }
+        tx.commit().await.map_err(query(sql::CONTEXT))?;
+        owed.settle(&self.analytics);
+        let Some(lease) = admitted else {
+            return Ok(Placement::Skipped);
+        };
+        Ok(Placement::Admitted(Box::new(lease)))
+    }
+}

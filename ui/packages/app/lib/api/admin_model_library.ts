@@ -1,7 +1,7 @@
 // Authenticated platform-admin client for the model library + platform default.
 // Distinct from model_library.ts (the tenant-facing catalogue reader): these
 // routes are platform-admin-gated and manage model.platform_models and its prices.
-// Wire shape: rustd/crates/afd_api_operator/src/handler/admin/models.rs +
+// Wire shape: rustd/crates/daemon/afd_api_operator/src/handler/admin/models.rs +
 // .../admin/platform_keys/mod.rs.
 
 import { z } from "zod";

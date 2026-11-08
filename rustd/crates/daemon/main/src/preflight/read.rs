@@ -1,0 +1,284 @@
+//! Reading one knob at a time, and saying which one was wrong.
+//!
+//! The helpers `preflight` composes: each takes the environment and the fault
+//! list, answers `Option`, and pushes a fault when a knob was SET and unusable.
+//! That split — absent is a decision, present-and-broken is a fault — is the
+//! whole reason these are functions rather than a chain of `?`: an optional knob may be absent, while a partial identity provider refuses boot.
+
+use std::fmt;
+
+use af_core::env::{EnvSource, optional};
+use af_core::id::Uuid7;
+use af_crypto::secret::Kek;
+use afd_connector::Dashboard;
+use afd_identity::ProviderSecret;
+use url::Host;
+
+use super::knobs::{
+    APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB, OIDC_AUDIENCE_KNOB,
+    OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB,
+    PROVIDER_SECRET_KNOB, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB,
+    WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_APP_URL, WHY_AUDIENCE, WHY_IDENTITY_PROXY, WHY_ISSUER,
+    WHY_KEK, WHY_PLATFORM_ADMIN, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
+};
+use super::{Fault, IdentityConfig};
+
+/// The one host name a plain-http Slack base may name: every other loopback
+/// host is an address the parser has already classified.
+const LOOPBACK_NAME: &str = "localhost";
+
+/// The dashboard base `raw` names, parsed once so a base that is not a URL
+/// refuses boot rather than failing every connect and invite link on its own.
+pub(super) fn dashboard(raw: &str, faults: &mut Vec<Fault>) -> Option<Dashboard> {
+    let parsed = Dashboard::parse(raw).ok_or(WHY_APP_URL);
+    classify(faults, true, APP_URL_KNOB, WHY_APP_URL, parsed)
+}
+
+/// Resolves the identity provider, which every boot must have.
+///
+/// Returns `None` after pushing a fault for each knob that is unset or
+/// unusable. There is no "configured nothing" answer: boot refuses without
+/// `OIDC_ISSUER` and `OIDC_AUDIENCE`. A half-configured provider — say
+/// `OIDC_JWKS_URL` set but `OIDC_ISSUER` missing — is refused here too,
+/// because it would otherwise fail at the first tenant request rather than at
+/// boot, which is the furthest possible point from the mistake.
+pub(super) fn identity<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<IdentityConfig> {
+    let issuer = required(env, faults, OIDC_ISSUER_KNOB, WHY_ISSUER);
+    let audience = required(env, faults, OIDC_AUDIENCE_KNOB, WHY_AUDIENCE);
+    let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE)
+        .and_then(|raw| provider_api_base(raw, faults));
+    let raw_secret = required(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
+    let transport = identity_transport(env, faults);
+
+    let secret = raw_secret.and_then(|raw| {
+        classify(
+            faults,
+            true,
+            PROVIDER_SECRET_KNOB,
+            WHY_SECRET,
+            ProviderSecret::new(&raw),
+        )
+    });
+
+    let (Some(issuer), Some(audience), Some(api_base), Some(secret), Some(transport)) =
+        (issuer, audience, api_base, secret, transport)
+    else {
+        return None;
+    };
+    Some(IdentityConfig {
+        issuer: issuer.into(),
+        audience: audience.into(),
+        // Optional by design: the key-set endpoint is DERIVED from the issuer
+        // unless an operator has a reason, which is what keeps the two from
+        // ever naming different providers.
+        jwks_url: optional(env, OIDC_JWKS_URL_KNOB),
+        api_base: api_base.into(),
+        secret,
+        transport,
+    })
+}
+
+/// Reads the explicit identity route once; ordinary proxy variables do not opt in.
+pub(super) fn identity_transport<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<afd_identity::Transport> {
+    let Some(raw) = optional(env, IDENTITY_HTTP_PROXY_URL_KNOB) else {
+        return Some(afd_identity::Transport::Direct);
+    };
+    let proxy = reqwest::Url::parse(&raw)
+        .ok()
+        .filter(|url| {
+            matches!(url.scheme(), "http" | "https")
+                && url.host_str().is_some()
+                && url.path() == "/"
+                && url.query().is_none()
+                && url.fragment().is_none()
+        })
+        .and_then(|url| reqwest::Proxy::all(url).ok());
+    if let Some(proxy) = proxy {
+        return Some(afd_identity::Transport::TrustedProxy(Box::new(proxy)));
+    }
+    faults.push(Fault::Invalid {
+        knob: IDENTITY_HTTP_PROXY_URL_KNOB,
+        why: WHY_IDENTITY_PROXY.to_owned(),
+    });
+    None
+}
+
+/// The provider API base, refused unless the provider secret can travel to it
+/// safely: every capability read sends `CLERK_SECRET_KEY` there, so a base
+/// that is plain http off a loopback host, or not a URL at all, refuses boot
+/// rather than leaking the secret or answering 503 on every read.
+fn provider_api_base(raw: String, faults: &mut Vec<Fault>) -> Option<String> {
+    if reqwest::Url::parse(&raw).is_ok_and(|url| carries_a_token_safely(&url)) {
+        return Some(raw);
+    }
+    faults.push(Fault::Invalid {
+        knob: PROVIDER_API_BASE_KNOB,
+        why: WHY_API_BASE_UNSAFE.to_owned(),
+    });
+    None
+}
+
+/// Reads a knob that must be present, recording a fault when it is not.
+pub(super) fn required<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+    knob: &'static str,
+    why: &'static str,
+) -> Option<String> {
+    let value = optional(env, knob).map(String::from);
+    if value.is_none() {
+        faults.push(Fault::Missing { knob, why });
+    }
+    value
+}
+
+/// Whether `knob` carries a value that is not blank.
+pub(super) fn is_set<E: EnvSource + ?Sized>(env: &E, knob: &str) -> bool {
+    optional(env, knob).is_some()
+}
+
+/// Records a resolver's failure as missing or invalid, by whether it was set.
+///
+/// The resolvers answer with one error type for both cases, and they are
+/// different operator problems: "you forgot this" is fixed by supplying a
+/// value, "what you wrote does not work" by correcting one. Collapsing them
+/// would make the second read like the first.
+pub(super) fn classify<T, E: fmt::Display>(
+    faults: &mut Vec<Fault>,
+    was_set: bool,
+    knob: &'static str,
+    why: &'static str,
+    outcome: Result<T, E>,
+) -> Option<T> {
+    match outcome {
+        Ok(value) => Some(value),
+        Err(error) if was_set => {
+            faults.push(Fault::Invalid {
+                knob,
+                why: error.to_string(),
+            });
+            None
+        }
+        Err(_unset) => {
+            faults.push(Fault::Missing { knob, why });
+            None
+        }
+    }
+}
+
+/// Resolves the master key, which no sibling crate reads from the environment.
+///
+/// `af_crypto` deliberately takes hex rather than a knob name — it is the
+/// layer that must not know where a key came from — so the read belongs here.
+pub(super) fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<Kek> {
+    // Held as a secret from the moment it is read, so the hex is zeroed when
+    // the key is built rather than left in a plain string.
+    let Some(hex) = super::optional_secret(env, ENCRYPTION_MASTER_KEY_KNOB) else {
+        faults.push(Fault::Missing {
+            knob: ENCRYPTION_MASTER_KEY_KNOB,
+            why: WHY_KEK,
+        });
+        return None;
+    };
+
+    classify(
+        faults,
+        true,
+        ENCRYPTION_MASTER_KEY_KNOB,
+        WHY_KEK,
+        Kek::from_hex(hex.expose()),
+    )
+}
+
+/// How many concurrent event streams one deployment will hold open.
+///
+/// Unset is the default rather than a fault — a deployment that never tuned
+/// this is the ordinary case. Set-but-unusable IS a fault, because an operator
+/// who wrote a number meant it, and silently serving the default would leave a
+/// ceiling they believe they raised exactly where it was.
+pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> usize {
+    optional(env, SSE_MAX_STREAMS_KNOB)
+        .map_or(Some(SSE_MAX_STREAMS_DEFAULT), |raw| {
+            classify(
+                faults,
+                true,
+                SSE_MAX_STREAMS_KNOB,
+                WHY_SSE_MAX_STREAMS,
+                raw.parse::<usize>()
+                    .ok()
+                    .filter(|streams| *streams > 0)
+                    .ok_or(WHY_SSE_MAX_STREAMS),
+            )
+        })
+        .unwrap_or(SSE_MAX_STREAMS_DEFAULT)
+}
+
+/// The Slack base `SLACK_API_URL` names, or `None` when it is unset.
+///
+/// Set and unsafe pushes a fault: see [`WHY_SLACK_API_URL`].
+pub(super) fn slack_api_url<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<Box<str>> {
+    let raw = optional(env, SLACK_API_URL_KNOB)?;
+    if reqwest::Url::parse(&raw)
+        .is_ok_and(|url| carries_a_token_safely(&url) && takes_a_method(&url))
+    {
+        return Some(raw);
+    }
+    faults.push(Fault::Invalid {
+        knob: SLACK_API_URL_KNOB,
+        why: WHY_SLACK_API_URL.to_owned(),
+    });
+    None
+}
+
+/// Whether `url` is https, or http on a loopback host.
+fn carries_a_token_safely(url: &reqwest::Url) -> bool {
+    // The parser has already classified the host — a numeric one is an
+    // address, bracketed or not — so nothing is trimmed or re-parsed here.
+    let loopback = match url.host() {
+        Some(Host::Domain(domain)) => domain == LOOPBACK_NAME,
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    };
+    match url.scheme() {
+        "https" => url.host_str().is_some(),
+        "http" => loopback,
+        _other => false,
+    }
+}
+
+/// Whether a method path appended to `url` still names that method: the
+/// poster joins `/chat.postMessage` onto the raw string, so a query or a
+/// fragment would swallow it.
+fn takes_a_method(url: &reqwest::Url) -> bool {
+    url.query().is_none() && url.fragment().is_none()
+}
+
+/// The platform admin workspace `PLATFORM_ADMIN_WORKSPACE` names, or `None`
+/// when it is unset.
+///
+/// Unset is a deployment that mints nothing; SET and unparseable is a typo
+/// that would otherwise surface as "not connected" at the first mint, which
+/// is the furthest possible point from the mistake.
+pub(super) fn platform_admin_workspace<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<Uuid7> {
+    let raw = optional(env, PLATFORM_ADMIN_WORKSPACE_KNOB)?;
+    classify(
+        faults,
+        true,
+        PLATFORM_ADMIN_WORKSPACE_KNOB,
+        WHY_PLATFORM_ADMIN,
+        Uuid7::parse(&raw),
+    )
+}

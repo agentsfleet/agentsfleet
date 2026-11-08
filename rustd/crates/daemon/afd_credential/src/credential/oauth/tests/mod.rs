@@ -1,0 +1,271 @@
+//! The refresh exchange's decisions, none of which need a socket.
+//!
+//! What the network would contribute is a status and a body, and both are
+//! parameters here. The exchange itself is `reqwest`'s and is not what these
+//! prove — what they prove is that a hostile or broken answer never becomes a
+//! delivered credential, and that the form leaving this daemon is shaped the
+//! way a token endpoint reads it.
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+)]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "no client here sends: one builds a request to read its form, the other backs a mint that refuses before dialling"
+)]
+
+use std::time::Duration;
+
+use af_core::clock::after;
+use jiff::Timestamp;
+use serde_json::{Value, json};
+use zeroize::Zeroizing;
+
+use super::{Answered, DEFAULT_ACCESS_TTL, Grant, Refresh, classify, granted, mint, rotated};
+use crate::credential::outcome::{Outcome, Retry};
+use crate::credential::platform::OauthApp;
+
+/// The instant every expiry here is measured from.
+const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
+
+/// A response body, as a token endpoint writes one.
+fn answered(body: &Value) -> Answered {
+    serde_json::from_value(body.clone()).expect("the fixture body is well formed")
+}
+
+/// Zoho's declared endpoint, standing in for whatever the descriptor carries.
+const DECLARED: &str = "https://accounts.zoho.com/oauth/v2/token";
+
+/// An hour, as this daemon holds it and as a provider states it.
+///
+/// `expires_in` is SECONDS on the wire, so it is derived from the span rather
+/// than written beside it, and the two cannot be edited apart (RULE UFS).
+const AN_HOUR: Duration = Duration::from_hours(1);
+const EXPIRES_IN_AN_HOUR: u64 = AN_HOUR.as_secs();
+
+/// Four centuries, in the seconds `expires_in` is written in: forty times the
+/// ten-year ceiling `MAX_ACCESS_TTL` believes, so the refusal cannot hinge on
+/// where exactly that boundary sits.
+const FOUR_CENTURIES_S: i64 = 400 * 365 * 24 * 60 * 60;
+
+#[test]
+fn the_grant_is_form_encoded_by_the_crate_that_owns_the_encoding() {
+    // These values are provider-issued opaque bytes, and every one of
+    // `+ & = %` changes the shape of the form if it escapes its field.
+    // Built through `reqwest` rather than through the encoder directly, so what
+    // is asserted is the request this daemon would actually send.
+    let request = reqwest::Client::builder()
+        .build()
+        .expect("a default client builds")
+        .post(DECLARED)
+        .form(&Grant {
+            grant_type: "refresh_token",
+            refresh_token: "rt+a&b=c%",
+            client_id: "cid+1",
+            client_secret: "sec&ret=",
+        })
+        .build()
+        .expect("a flat struct of strings encodes");
+
+    let body = request
+        .body()
+        .and_then(reqwest::Body::as_bytes)
+        .expect("the form is an in-memory body");
+    assert_eq!(
+        std::str::from_utf8(body).expect("form encoding is ASCII"),
+        "grant_type=refresh_token&refresh_token=rt%2Ba%26b%3Dc%25\
+         &client_id=cid%2B1&client_secret=sec%26ret%3D"
+    );
+    // And the content type the token endpoint parses by, set by the same call.
+    assert_eq!(
+        request
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .map(reqwest::header::HeaderValue::as_bytes),
+        Some(b"application/x-www-form-urlencoded".as_slice())
+    );
+}
+
+#[test]
+fn a_success_body_mints_for_exactly_as_long_as_it_states() {
+    let outcome = granted(
+        &answered(&json!({"access_token": "at_live", "expires_in": EXPIRES_IN_AN_HOUR})),
+        "rt_posted",
+        NOW,
+    );
+    let minted = outcome.minted().expect("a success body mints");
+    assert_eq!(minted.token.as_str(), "at_live");
+    assert_eq!(minted.expires_at, after(NOW, AN_HOUR));
+    assert!(minted.rotated_refresh_token.is_none());
+}
+
+#[test]
+fn expires_in_is_read_however_the_provider_spells_a_number() {
+    // Real OAuth servers emit all three, and a rendering this daemon refuses is
+    // a mint that worked before the hostile-input hardening and stops after it.
+    for (spelled, lifetime) in [
+        (json!(EXPIRES_IN_AN_HOUR), AN_HOUR),
+        // Spelled from the same constant rather than written out: the claim is
+        // that the RENDERING varies, not the number, and a literal "3600" here
+        // could drift from the row above and still look like it agreed.
+        (json!(EXPIRES_IN_AN_HOUR.to_string()), AN_HOUR),
+        (json!(1800.5), Duration::from_millis(1_800_500)),
+    ] {
+        let outcome = granted(
+            &answered(&json!({"access_token": "at", "expires_in": spelled})),
+            "rt",
+            NOW,
+        );
+        assert_eq!(
+            outcome.minted().expect("a success body mints").expires_at,
+            after(NOW, lifetime),
+            "{spelled}"
+        );
+    }
+}
+
+#[test]
+fn an_absent_expiry_falls_to_the_conservative_floor() {
+    // Short, never long: an assumed lifetime past the real one caches a dead
+    // token and a child meets a 401 mid-run.
+    let outcome = granted(&answered(&json!({"access_token": "at"})), "rt", NOW);
+    assert_eq!(
+        outcome.minted().expect("a success body mints").expires_at,
+        after(NOW, DEFAULT_ACCESS_TTL)
+    );
+}
+
+#[test]
+fn a_success_body_this_daemon_cannot_read_mints_nothing() {
+    // Every one of these arrives under a 200. A stated expiry that is
+    // unreadable is NOT the absent case — falling back to the default there
+    // would be believing a body we just decided is malformed.
+    for malformed in [
+        // The one field the exchange exists to obtain.
+        json!({"expires_in": EXPIRES_IN_AN_HOUR}),
+        // Negative, and beyond the ten-year ceiling: an expiry nothing real
+        // states, which would park a dead token in the broker's cache.
+        json!({"access_token": "at", "expires_in": -1}),
+        json!({"access_token": "at", "expires_in": FOUR_CENTURIES_S}),
+        // Beyond any integer: a float a naive cast would saturate or trap on.
+        json!({"access_token": "at", "expires_in": 1e30}),
+    ] {
+        let outcome = granted(&answered(&malformed), "rt", NOW);
+        assert!(
+            matches!(outcome, Outcome::MintFailed(Retry::Permanent)),
+            "{malformed}: {outcome:?}"
+        );
+    }
+
+    // And a shape that is not a number at all fails the deserialisation
+    // itself, which is the same malformed-body path one level up.
+    assert!(
+        serde_json::from_value::<Answered>(json!({"access_token": "at", "expires_in": {}}))
+            .is_err()
+    );
+}
+
+#[test]
+fn only_a_genuinely_new_refresh_token_is_written_back() {
+    // A rotation the caller misses costs the tenant the whole connection: these
+    // providers invalidate the posted token the moment they issue a successor.
+    let rotation = rotated(
+        &answered(&json!({"access_token": "at", "refresh_token": "rt_new"})),
+        "rt_old",
+    );
+    assert_eq!(rotation.as_deref().map(String::as_str), Some("rt_new"));
+
+    // An echo is not a rotation, an empty replacement is a broken provider, and
+    // silence is a provider that does not rotate. All three write back nothing.
+    for quiet in [
+        json!({"access_token": "at", "refresh_token": "rt_old"}),
+        json!({"access_token": "at", "refresh_token": ""}),
+        json!({"access_token": "at"}),
+    ] {
+        assert!(rotated(&answered(&quiet), "rt_old").is_none(), "{quiet}");
+    }
+}
+
+#[test]
+fn a_dead_refresh_token_is_a_reconnect_at_whatever_status_carries_it() {
+    // Providers disagree about the status; they agree about the code, and what
+    // it means does not depend on the number in front of it.
+    for status in [
+        reqwest::StatusCode::BAD_REQUEST,
+        reqwest::StatusCode::UNAUTHORIZED,
+        reqwest::StatusCode::FORBIDDEN,
+    ] {
+        let outcome = classify(status, Some(&answered(&json!({"error": "invalid_grant"}))));
+        assert!(matches!(outcome, Outcome::ReconnectRequired), "{status}");
+    }
+}
+
+#[test]
+fn every_other_failure_splits_by_whose_fault_it_is() {
+    // The GitHub mint's split, and the caller's backoff depends on it: the
+    // vendor's fault is worth retrying and our request's is not.
+    let vendor = classify(reqwest::StatusCode::BAD_GATEWAY, None);
+    assert!(matches!(vendor, Outcome::MintFailed(Retry::Transient)));
+
+    for ours in [
+        // Bad client credentials.
+        Some(answered(&json!({"error": "invalid_client"}))),
+        // A body that told us nothing.
+        None,
+    ] {
+        let outcome = classify(reqwest::StatusCode::UNAUTHORIZED, ours.as_ref());
+        assert!(matches!(outcome, Outcome::MintFailed(Retry::Permanent)));
+    }
+}
+
+#[tokio::test]
+async fn a_handle_that_names_no_refresh_token_never_reaches_the_network() {
+    // The client here would fail to connect if anything dialled through it, so
+    // the assertion is also a proof that nothing did.
+    let http = reqwest::Client::builder()
+        .build()
+        .expect("a default client builds");
+    let app = OauthApp {
+        client_id: "cid".to_owned(),
+        client_secret: Zeroizing::new("secret".to_owned()),
+    };
+
+    // No refresh token: a connection a human finishes, not a failure to retry.
+    let stored = json!({"integration": "zoho"});
+    let outcome = mint(Refresh {
+        app: &app,
+        handle: &stored,
+        token_url: DECLARED,
+        http: &http,
+        now: NOW,
+    })
+    .await;
+    assert!(matches!(outcome, Outcome::ReconnectRequired));
+
+    // A handle that is not an object names nothing at all.
+    let stored = json!(["zoho"]);
+    let outcome = mint(Refresh {
+        app: &app,
+        handle: &stored,
+        token_url: DECLARED,
+        http: &http,
+        now: NOW,
+    })
+    .await;
+    assert!(matches!(outcome, Outcome::MintFailed(Retry::Permanent)));
+
+    // And a base this daemon will not dial fails BEFORE the client secret is
+    // put on a wire, which is the whole point of checking it.
+    let stored = json!({"refresh_token": "rt", "accounts_base": "http://169.254.169.254"});
+    let outcome = mint(Refresh {
+        app: &app,
+        handle: &stored,
+        token_url: DECLARED,
+        http: &http,
+        now: NOW,
+    })
+    .await;
+    assert!(matches!(outcome, Outcome::MintFailed(Retry::Permanent)));
+}
+
+mod transport;

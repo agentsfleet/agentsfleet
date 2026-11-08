@@ -8,8 +8,8 @@
 
 **Proof boundary:** HTTP policy bounds the repairer’s repository writes. Historical M157 specifications describe durable linkage and verification that the current daemon does not implement. Live provider delivery remains separately unproven.
 
-> **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification: the App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`), and the storage and dispatcher those would feed were retired (Indy, Oct 15, 2026).
->
+> **Not implemented.** The daemon records no PR link, run history, merge pin, production result or verification. The App ingress drops repair-branch and `deployment_status` traffic as unsupported (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/app_route.rs`). The storage and dispatcher those would feed were retired (Indy, Oct 15, 2026).
+
 > A Slack-requested repair runs under the same grant, the way Claude Tag's attached bundles do; see [`slack-incident-responder.md`](./slack-incident-responder.md) §"7. Four stages, four authorities".
 
 ```text
@@ -44,9 +44,9 @@ Trigger wiring determines which Fleet runs. No model chooses a crew member, and 
 
 ## 2. Approve before repository write access exists
 
-There is no per-event approval card and no request ceiling. M202 retired both: the `github` grant a person approves while the fleet is set up authorises a write, and the grant, the fleet's `budget.daily_nanos` and `agentsfleet grant delete` bound it (`rustd/crates/afd_gate/src/gate/first.rs:8-17`).
+There is no per-event approval card and no request ceiling, and M202 retired both. The `github` grant a person approves while the fleet is set up authorises a write. That grant, the fleet's `budget.daily_nanos` and `agentsfleet grant delete` bound it (`rustd/crates/daemon/afd_gate/src/gate/first.rs:8-17`).
 
-The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission (`WRITE_REACH` in `rustd/crates/afd_credential/src/credential/github/request.rs:23-26`). The daemon verifies the token returned by GitHub before exposing it to the run.
+The token is repository-scoped and expires in one hour. It carries contents and Pull Request write permissions, and never carries workflow-file permission (`WRITE_REACH` in `rustd/crates/daemon/afd_credential/src/credential/github/request.rs:23-26`). The daemon verifies the token returned by GitHub before exposing it to the run.
 
 ## 3. Diagnose and open one draft PR
 
@@ -54,7 +54,9 @@ The repairer reads the failed deployment, recent code changes, and current files
 
 For a bounded forward fix, the repairer writes blobs, a tree, a commit, one daemon-issued branch, and one draft PR through GitHub APIs. It never checks out a repository, merges, deploys, or rewinds history.
 
-The branch is `agentsfleet-repair/<repair_ref>`. The repair reference is the unpadded URL-safe Base64 encoding of the leased event identifier's bytes, so its length varies with the identifier (`branch_for` in `rustd/crates/afd_gate/src/policy/repair.rs:65`). The daemon supplies the complete branch in trusted run context; the repairer copies it verbatim and never builds identity metadata itself.
+The branch is `agentsfleet-repair/<repair_ref>`. The repair reference is the unpadded URL-safe Base64 encoding of the leased event identifier's bytes. Its length therefore varies with the identifier (`branch_for` in `rustd/crates/daemon/afd_gate/src/policy/repair.rs:65`).
+
+The daemon supplies the complete branch in trusted run context; the repairer copies it verbatim and never builds identity metadata itself.
 
 The fleet's reviewed setup declares the exact repository and trusted Pull Request base. The daemon combines them with the event's repair branch and emits generic HTTP rules for host, method, path, and the top-level JSON fields each request may carry, locked or permitted; a rule that names fields refuses any other key and any query string. Those rules allow repository reads, blob and tree creation, a commit carrying only its message, tree and parents, the exact `refs/heads/<repair branch>` ref, and a draft Pull Request whose head and base equal the trusted values. The runner evaluates only those generic rules. It contains no GitHub repair type, procedure, or progress flag.
 

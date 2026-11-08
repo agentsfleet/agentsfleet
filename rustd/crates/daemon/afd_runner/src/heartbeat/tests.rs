@@ -1,0 +1,97 @@
+//! A capability report past its bounds is ignored, and the beat still lands.
+
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+)]
+
+use af_core::error_code;
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::{CONTROLLER_NAME_MAX_BYTES, HeartbeatRequest, REPORT_CONTROLLERS_MAX};
+use serde_json::json;
+
+use super::{EVENT_LIVENESS_WRITE, bounded_report, refuse_selftest, report};
+use crate::bounds::DETAIL_SELFTEST_UNBOUNDED;
+use crate::error::{rejected, runner_vanished};
+
+/// The runner every logged line names.
+const RUNNER: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+
+/// A beat body as a runner sends it, reporting `controllers`.
+fn beat_body(controllers: &[String]) -> String {
+    json!({
+        "capability_report": {
+            "landlock": true,
+            "seccomp": true,
+            "cgroup_controllers": controllers,
+            "bubblewrap": true,
+            "egress_enforcement": true,
+        },
+        "selftest": null,
+        "holds": [],
+        "closing": false,
+    })
+    .to_string()
+}
+
+/// Whether the beat parsed AND its report would be reconciled.
+fn reported(controllers: &[String]) -> bool {
+    let body = beat_body(controllers);
+    let beat: HeartbeatRequest<'_> =
+        serde_json::from_str(&body).expect("an out-of-bounds report still parses as a beat");
+    bounded_report(&beat).is_some()
+}
+
+#[test]
+fn test_capability_report_out_of_bounds_is_ignored() {
+    let named = |count: usize| vec!["cpu".to_owned(); count];
+    assert!(reported(&named(2)));
+    assert!(reported(&named(REPORT_CONTROLLERS_MAX)));
+    // Seventeen controllers: the beat parses and lands, the report is not one.
+    assert!(!reported(&named(REPORT_CONTROLLERS_MAX + 1)));
+    assert!(!reported(&[String::new()]));
+    assert!(!reported(&["c".repeat(CONTROLLER_NAME_MAX_BYTES + 1)]));
+}
+
+#[test]
+fn a_beat_without_a_report_reconciles_the_stored_one() {
+    assert!(bounded_report(&super::NO_REPORT).is_none());
+}
+
+/// A refused verdict is logged with the refusal's own sentence: the code is
+/// the line's `error_code` already, so the reason does not repeat it.
+#[test]
+fn a_refused_selftest_reason_is_the_refusal_sentence() {
+    let capture = Capture::install();
+    let runner = Uuid7::parse(RUNNER).expect("a canonical identifier");
+
+    refuse_selftest(&runner, &rejected(DETAIL_SELFTEST_UNBOUNDED));
+
+    let logged = capture.only("selftest_verdict_refused");
+    assert_eq!(logged.field("reason"), Some(DETAIL_SELFTEST_UNBOUNDED));
+    assert_eq!(
+        logged.field("error_code"),
+        Some(error_code::INVALID_REQUEST.as_str())
+    );
+    assert_eq!(logged.field("runner_id"), Some(RUNNER));
+}
+
+#[test]
+fn an_unattempted_beat_step_reason_carries_no_code_prefix() {
+    let capture = Capture::install();
+    let runner = Uuid7::parse(RUNNER).expect("a canonical identifier");
+
+    report(EVENT_LIVENESS_WRITE, &runner, &runner_vanished());
+
+    let logged = capture.only(EVENT_LIVENESS_WRITE);
+    logged.assert_uncoded_reason();
+    assert_eq!(
+        logged.field("error_code"),
+        Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
+    assert_eq!(
+        logged.field("cause_error_code"),
+        Some(runner_vanished().code().as_str())
+    );
+}

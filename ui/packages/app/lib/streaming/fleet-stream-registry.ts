@@ -3,7 +3,7 @@ import { FRAME_KIND, ROUTED_FRAME_KINDS, streamFleetEventsUrl } from "@/lib/api/
 import type { FleetFacts } from "@/lib/events/run-summary";
 import { landFrames, onFrame, recoverGap, type LiveEntry } from "./fleet-stream-dispatch";
 import { mergeFacts } from "./fleet-stream-facts";
-import { optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
+import { foldRow, optimisticRow, reconcileRows } from "./fleet-stream-optimistic";
 import { patchSnapshot, setEvents } from "./fleet-stream-snapshot";
 import { ChatConnection } from "./chat-connection";
 import { mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
@@ -183,9 +183,19 @@ reconcileOptimistic(
   tempId: string,
   realEventId: string,
   replayed: boolean,
+  foldedInto: string | null = null,
 ): boolean {
   const entry = this.#entries.get(fleetId);
   if (!entry) return false;
+  if (foldedInto !== null) {
+    // The live run took it at its next model call, and that run's report
+    // answers it under its own id: the row says it joined the run until then,
+    // and its reply is watched like any other send's.
+    setEvents(entry, (prev) => foldRow(prev, tempId, realEventId));
+    watchReply(entry, fleetId, realEventId, entry.apply, entry.isCurrent, false);
+    landFrames(entry, fleetId, entry.held.release(entry.snapshot.events));
+    return false;
+  }
   const { events, alreadyComplete, loaded } = reconcileRows(entry.snapshot.events, tempId, realEventId);
   setEvents(entry, () => events);
   // A replay's event may have run before this page held it, with no frame left

@@ -7,12 +7,14 @@ the failure, fixes the blocker and redeploys.
 A deploy runs `agentsfleetd migrate` as Fly's `release_command`
 (`deploy/fly/agentsfleetd-{dev,prod}/fly.toml`) before any machine is
 replaced. Each slot applies in its own transaction, so a slot that fails
-rolls back whole: the schema, the data and the applied ledger
+rolls back whole. The schema, the data and the applied ledger
 (`audit._sqlx_migrations`) stay exactly as the previous release left them, and
-the old machines keep serving. The proofs are `test_a_failed_slot_is_never_recorded`
-in `rustd/crates/afd_db/tests/integration_migrate/locking.rs` and
+the old machines keep serving.
+
+The proofs are `test_a_failed_slot_is_never_recorded`
+in `rustd/crates/daemon/afd_db/tests/integration_migrate/locking.rs` and
 `a_runtime_batch_failure_rolls_back_and_a_corrected_retry_applies_once` in
-`rustd/crates/afd_db/tests/integration_migrate_batch.rs`.
+`rustd/crates/daemon/afd_db/tests/integration_migrate_batch.rs`.
 
 ## What not to do
 

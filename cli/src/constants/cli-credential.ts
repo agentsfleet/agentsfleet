@@ -1,14 +1,14 @@
 // Credential shape facts shared with the daemon. Every value here mirrors a
-// declaration in `rustd/crates/afd_auth/` — the machine label in
-// `rustd/crates/afd_tenant/` — and must not drift from it: the minting
+// declaration in `rustd/crates/daemon/afd_auth/` — the machine label in
+// `rustd/crates/daemon/afd_tenant/` — and must not drift from it: the minting
 // endpoint and this client validate the same strings, so a rename on
 // either side that lands alone turns into a refusal at runtime (RULE UFS).
 
-// Mirrors CLI_CREDENTIAL_PREFIX in rustd/crates/afd_auth/src/credential.rs.
+// Mirrors CLI_CREDENTIAL_PREFIX in rustd/crates/daemon/afd_auth/src/credential.rs.
 // The durable per-user credential `agentsfleet login` mints and persists.
 export const CLI_CREDENTIAL_PREFIX = "afc_" as const;
 
-// Mirrors BODY_HEX_LEN in rustd/crates/afd_auth/src/authenticate.rs — 32
+// Mirrors BODY_HEX_LEN in rustd/crates/daemon/afd_auth/src/authenticate.rs — 32
 // random bytes rendered as lower-case hex.
 export const CLI_CREDENTIAL_BODY_LEN = 64;
 
@@ -20,7 +20,7 @@ export const CLI_CREDENTIAL_PATTERN = new RegExp(
 );
 
 // Mirrors MACHINE_NAME_MAX in
-// rustd/crates/afd_tenant/src/cli_credential/machine.rs, which counts
+// rustd/crates/daemon/afd_tenant/src/cli_credential/machine.rs, which counts
 // characters rather than bytes — so a non-ASCII name gets the same 64.
 export const MAX_MACHINE_NAME_LEN = 64;
 

@@ -1,0 +1,231 @@
+//! `GET|POST /v1/runners/me/memory/{fleet_id}` — what a fleet remembers.
+//!
+//! # The runner NAMES the fleet
+//!
+//! It already holds the fleet in its lease payload, so naming it explicitly
+//! beats inferring it from ambient lease state — and it gives the write path an
+//! IDOR cross-check to make: the body's lease must belong to the path's fleet.
+//!
+//! # Two verbs, one path, different authorization
+//!
+//! GET asks whether this runner holds a live lease on this fleet. POST asks
+//! that AND fences the token, because it writes. Both refusals are the
+//! statement's `WHERE`, decided in `afd_fleet` — this layer supplies the
+//! identity and renders the answer.
+
+use std::sync::Arc;
+
+use af_core::error_code;
+use af_wire::memory::{MemoryCaptureResponse, MemoryPushRequest, MemoryRecallRequest};
+use afd_http::handler::{Refusal, parse_fleet_id};
+use axum::Json;
+use axum::body::Bytes;
+use axum::extract::{Path, State};
+use axum::response::{IntoResponse as _, Response};
+use garde::Validate as _;
+
+use crate::auth::RunnerIdentity;
+use crate::handler::malformed;
+use crate::services::{Leasing as _, Services};
+
+/// The scoped event a failed hydrate is logged under.
+const EVENT_HYDRATE: &str = "runner_memory_hydrate_failed";
+
+/// The scoped event a failed capture is logged under.
+const EVENT_CAPTURE: &str = "runner_memory_capture_failed";
+
+/// The refusal a body this daemon cannot read earns.
+const DETAIL_MALFORMED: &str = "Malformed memory body";
+
+/// The scoped event a failed recall is logged under.
+const EVENT_RECALL: &str = "runner_memory_recall_failed";
+
+/// The refusal a recall body this daemon cannot read, or will not search, earns.
+const DETAIL_RECALL_MALFORMED: &str = "Malformed memory recall body";
+
+/// The `current_state` a fenced memory verb names: the fleet has moved past
+/// the lease, or the token is not the lease's own.
+const STATE_SUPERSEDED: &str = "superseded";
+
+/// Seeds a run with its fleet's memory window.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = af_wire::paths::RUNNER_MEMORY_FLEET,
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "runner_hydrate_memory",
+    summary = "Load what a fleet remembers",
+    description = concat!(
+        "Loads a fleet's saved memory at the start of a run. Requires its current work ",
+        "assignment. Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
+    ),
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryHydrateResponse<'_>),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
+pub(crate) async fn hydrate<D: Services>(
+    State(services): State<Arc<D>>,
+    RunnerIdentity(runner): RunnerIdentity,
+    Path(fleet_id): Path<String>,
+) -> Response {
+    let fleet = match parse_fleet_id(&fleet_id) {
+        Ok(fleet) => fleet,
+        Err(refused) => return refused.into_response(),
+    };
+    match services.leases().hydrate(runner.id(), &fleet).await {
+        Ok(hydrated) => Json(hydrated).into_response(),
+        Err(error) => Refusal::conflict_or_at(EVENT_HYDRATE, conflict_state)(error).into_response(),
+    }
+}
+
+/// Searches a fleet's memory past the window a run was seeded with.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = af_wire::paths::RUNNER_MEMORY_RECALL,
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "runner_recall_memory",
+    summary = "Search what a fleet remembers",
+    description = concat!(
+        "Searches memory keys and content without case sensitivity, with key matches first. ",
+        "Shared entries are included when permitted and identify their authoring fleet. ",
+        "Replaced assignments return 409 `UZ-RUN-005` with `superseded`.",
+    ),
+    request_body = MemoryRecallRequest<'_>,
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = af_wire::memory::MemoryRecallResponse<'_>),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
+pub(crate) async fn recall<D: Services>(
+    State(services): State<Arc<D>>,
+    RunnerIdentity(runner): RunnerIdentity,
+    Path(fleet_id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let fleet = match parse_fleet_id(&fleet_id) {
+        Ok(fleet) => fleet,
+        Err(refused) => return refused.into_response(),
+    };
+    let Ok(request) = afd_http::handler::read_strict_body::<MemoryRecallRequest<'_>>(&body) else {
+        return malformed(DETAIL_RECALL_MALFORMED);
+    };
+    if request.validate().is_err() {
+        return malformed(DETAIL_RECALL_MALFORMED);
+    }
+    match services
+        .leases()
+        .recall(runner.id(), &fleet, &request)
+        .await
+    {
+        Ok(recalled) => Json(recalled).into_response(),
+        Err(error) => Refusal::conflict_or_at(EVENT_RECALL, conflict_state)(error).into_response(),
+    }
+}
+
+/// Persists what a run learned.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = af_wire::paths::RUNNER_MEMORY_FLEET,
+    tag = afd_http::openapi::tag::MEMORY,
+    operation_id = "runner_capture_memory",
+    summary = "Capture what a fleet learned",
+    description = concat!(
+        "Saves memory learned during this run and reports stored and skipped entries. A ",
+        "replaced assignment or incorrect assignment token returns 409 `UZ-RUN-005` with ",
+        "`superseded`.",
+    ),
+    request_body = MemoryPushRequest<'_>,
+    params(
+        afd_http::openapi::path::FleetOnly,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = MemoryCaptureResponse),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
+pub(crate) async fn capture<D: Services>(
+    State(services): State<Arc<D>>,
+    RunnerIdentity(runner): RunnerIdentity,
+    Path(fleet_id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let fleet = match parse_fleet_id(&fleet_id) {
+        Ok(fleet) => fleet,
+        Err(refused) => return refused.into_response(),
+    };
+    // Borrowed out of `body`: every delta's content goes straight into a column.
+    // Strict because a delta is also what hydrate answers with, and the runner
+    // reads that leniently; a pushed delta still carries exactly three keys.
+    let Ok(request) = afd_http::handler::read_strict_body::<MemoryPushRequest<'_>>(&body) else {
+        return malformed(DETAIL_MALFORMED);
+    };
+
+    match services
+        .leases()
+        .capture(runner.id(), &fleet, &request, services.now())
+        .await
+    {
+        // The tallies only; the sweep and eviction counts stay in the log,
+        // being the daemon's housekeeping rather than a fact about this
+        // request. `MemoryCaptureResponse` carries the reasoning for the two
+        // that survive.
+        Ok(counted) => Json(MemoryCaptureResponse {
+            stored: counted.stored,
+            skipped: counted.skipped,
+        })
+        .into_response(),
+        Err(error) => Refusal::conflict_or_at(EVENT_CAPTURE, conflict_state)(error).into_response(),
+    }
+}
+
+/// The state a refused memory verb is in, when the refusal is a conflict: a
+/// 409 names the state that refuses it.
+fn conflict_state(error: &afd_fleet::Error) -> Option<&'static str> {
+    (error.code() == error_code::RUN_STALE_FENCING_TOKEN).then_some(STATE_SUPERSEDED)
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    use super::{STATE_SUPERSEDED, conflict_state};
+
+    /// The stale-fence refusal is a conflict naming `superseded`; a refusal
+    /// that is not a conflict names none, and renders as every other does.
+    #[test]
+    fn only_the_stale_fence_refusal_names_a_conflict_state() {
+        assert_eq!(
+            conflict_state(&afd_fleet::Error::stale_fence()),
+            Some(STATE_SUPERSEDED)
+        );
+        assert_eq!(conflict_state(&afd_fleet::Error::lease_not_found()), None);
+        assert_eq!(conflict_state(&afd_fleet::Error::mint_unconfigured()), None);
+    }
+}

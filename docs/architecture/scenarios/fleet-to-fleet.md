@@ -21,12 +21,12 @@ The relay is a human ([`slack-incident-responder.md`](./slack-incident-responder
 
 | What exists | Where |
 |---|---|
-| A person steers a fleet by id. It is the only place work from a person enters a fleet's stream. | `rustd/crates/afd_api_tenant/src/handler/fleet/message_steer/mod.rs`, `rustd/crates/afd_events/src/steer/mod.rs` |
-| A fleet posts one line to the thread it was asked from. The daemon holds the channel credential. | `rustd/crates/afr_tools/src/verbs/message/mod.rs`, `POST /v1/runners/me/leases/{lease_id}/messages` |
-| A fleet sends a push notification. | `rustd/crates/afr_tools/src/pushover/mod.rs` |
+| A person steers a fleet by id. It is the only place work from a person enters a fleet's stream. | `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs`, `rustd/crates/daemon/afd_events/src/steer/mod.rs` |
+| A fleet posts one line to the thread it was asked from. The daemon holds the channel credential. | `rustd/crates/runner/afr_tools/src/verbs/message/mod.rs`, `POST /v1/runners/me/leases/{lease_id}/messages` |
+| A fleet sends a push notification. | `rustd/crates/runner/afr_tools/src/pushover/mod.rs` |
 | Fleets share facts through memory a workspace admin lets them publish and read. | [`../memory.md`](../memory.md) §1 |
-| A run starts child loops inside itself: same lease, same grants, gone when the run ends. | `rustd/crates/afr_tools/src/nested/mod.rs` |
-| A fleet edits only its own schedules. No verb names another fleet. | `rustd/crates/afr_tools/src/verbs/mod.rs` |
+| A run starts child loops inside itself: same lease, same grants, gone when the run ends. | `rustd/crates/runner/afr_tools/src/nested/mod.rs` |
+| A fleet edits only its own schedules. No verb names another fleet. | `rustd/crates/runner/afr_tools/src/verbs/mod.rs` |
 
 ## 1. Chief of staff
 
@@ -49,7 +49,7 @@ One fleet the owner talks to. It reads every fleet and may steer any of them.
          (budget left is not in the read; the chief says "stopped", not why)
 ```
 
-"Awake" is a daemon fact: status and last run (`rustd/crates/afd_fleet_lifecycle/src/lib.rs`, `FleetStatus`). Reading that fact costs no model call on the fleet asked. A digest agent is this fleet on a schedule.
+"Awake" is a daemon fact: status and last run (`rustd/crates/daemon/afd_fleet_lifecycle/src/lib.rs`, `FleetStatus`). Reading that fact costs no model call on the fleet asked. A digest agent is this fleet on a schedule.
 
 ## 2. Incident crew in `#ci-dev`
 
@@ -62,15 +62,15 @@ One fleet the owner talks to. It reads every fleet and may steer any of them.
   repairer:   draft PR #412 → link                               ← answers in this thread
 ```
 
-The repairer answers where the responder was asked because the steer copies the responder's reply destination onto the repairer's admission. An approved gate's continuation already copies a destination this way, within one fleet (`rustd/crates/afd_approval/src/inbox/resolve/mod.rs`, `Reply::Inherit`). The spec widens the copy to one workspace.
+The repairer answers where the responder was asked because the steer copies the responder's reply destination onto the repairer's admission. An approved gate's continuation already copies a destination this way, within one fleet (`rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs`, `Reply::Inherit`). The spec widens the copy to one workspace.
 
 ## 3. What is new, what it reuses
 
 | Piece | Reuses | New |
 |---|---|---|
-| `fleet_steer` tool | `message` verb shape: `LeaseVerbs`, a lease-proven runner route, refusal codes the model reads (`rustd/crates/afr_tools/src/verbs/`) | the tool, `POST /v1/runners/me/leases/{lease_id}/steers` |
+| `fleet_steer` tool | `message` verb shape: `LeaseVerbs`, a lease-proven runner route, refusal codes the model reads (`rustd/crates/runner/afr_tools/src/verbs/`) | the tool, `POST /v1/runners/me/leases/{lease_id}/steers` |
 | Admission | `Producer::Steer`, key `<fleet_id>:<operation_id>` | `Steer::prepare_from_fleet`, staged by the lease in the transaction that takes its steer slot; actor `fleet:<sender_fleet_id>`, hop and sender name in the stored body |
-| Reply in the sender's thread | `Reply::Inherit` | `insert_admission.sql` joins the inherited row by workspace, not by fleet |
+| Reply in the sender's thread | `Reply::Inherit` | `admit_one.sql` joins the inherited row by workspace, not by fleet |
 | `fleet_activity` tool | lease proof by fencing token, as the schedules `GET` does | two statements (fleets with last event; events with an answer excerpt), `GET /v1/runners/me/leases/{lease_id}/fleets` and `.../fleets/{fleet_id}/events` |
 | Chat label | the actor-to-summary map (`ui/packages/app/lib/events/event-summary.ts`) | a `fleet:` arm reading `sender_fleet_name` from the stored body |
 | Owner consent | the fleet's `tools` list in its reviewed revision | none: no allowlist, no subscription, no rule |
@@ -96,7 +96,7 @@ The repairer answers where the responder was asked because the steer copies the 
 
 ## 6. Not this feature
 
-- Named outcomes, subscriptions or a new trigger type. A steer reaches every fleet whatever it declares (`rustd/crates/afd_fleet_runtime/src/config/trigger/mod.rs`).
+- Named outcomes, subscriptions or a new trigger type. A steer reaches every fleet whatever it declares (`rustd/crates/protocol/af_fleet_runtime/src/config/trigger/mod.rs`).
 - Waking the sender when the receiver answers. The sender reads the answer with `fleet_activity`; a durable wait is M236's.
 - A fleet posting to a channel other than the thread it was asked from.
 - Steering across workspaces.

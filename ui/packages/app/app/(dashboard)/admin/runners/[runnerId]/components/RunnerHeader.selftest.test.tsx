@@ -163,10 +163,10 @@ describe("RunnerHeader self-test control", () => {
 
   // Dimension 1.4 (control absent) — the refusal half is the route scope guard:
   // the self-test is a PATCH on the runner, which needs `runner:write`
-  // (`RunnerOpsRoute::Patch` in rustd/crates/afd_http/src/route/runner_ops.rs),
+  // (`RunnerOpsRoute::Patch` in rustd/crates/daemon/afd_http/src/route/runner_ops.rs),
   // proven daemon-side by
   // `runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io`
-  // in rustd/crates/afd_api/tests/operator_plane.rs.
+  // in rustd/crates/daemon/afd_api/tests/operator_plane.rs.
   it("test_selftest_control_requires_write_scope (control absent)", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite={false} />);
     expect(screen.queryByRole("button", { name: SELFTEST_LABEL })).toBeNull();

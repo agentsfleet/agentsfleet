@@ -2,17 +2,21 @@
 
 > Read this to evaluate SPACE (`Sandboxed Platform for Agentic Code Execution`) approaches and source for an `agentsfleet`-owned coding sandbox. The [working concept brief](../../concepts_brief.md) records the brainstorming scope. [Runner behavior](runner_execution.md) owns implemented runtime behavior; [conversation compaction](context_lifecycle.md) owns model context. 
 
-Native sandbox alternatives below remain proposals. M236's November 5 source
+Native sandbox alternatives below remain proposals. M236's Nov 05, 2026 source
 continuation adds durable workspace recovery to the existing supervisor and
-bubblewrap boundary; it has not been compiled or verified and remains disabled.
+bubblewrap boundary. It has not been compiled or verified and remains disabled.
+
 Capture freezes the workspace, reads regular files through directory descriptors,
 validates complete relative-symlink graphs and publishes authenticated manifests.
 Restore validates base/overlay roots before writing a fresh workspace. Private
 conversation bytes share the saved generation; unknown effects require native
-readback. Uploads authorize up to 256 small objects per native page while bounding
-memory to four maximum-size ciphertexts and physical transfers to four concurrent
-requests. Restore reads at most four objects per batch. Manifest layout accounts
-bytes per entry. This source is not a benchmark or
+readback.
+
+Uploads authorize up to 256 small objects per native page. They bound memory to
+four maximum-size ciphertexts and physical transfers to four concurrent requests.
+Restore reads at most four objects per batch.
+
+Manifest layout accounts bytes per entry. This source is not a benchmark or
 host-loss acceptance result.
 
 ## Recommendation and decision criteria
@@ -63,7 +67,7 @@ Existing executor -> commands, file edits, test results
 ```
 
 Start on one qualified Linux host with Kernel-based Virtual Machine (KVM) access and a pinned guest image.
-Use the existing [engine boundary](../../rustd/crates/afr_sandbox/src/engine/mod.rs) for sandbox ownership and the [executor](../../rustd/crates/afr_executor/src/lib.rs) for commands.
+Use the existing engine boundary (`afr_sandbox`) for sandbox ownership and the in-sandbox server (`afr_executor`) for commands.
 The planned guest entry and separate writable disk already belong to [runner behavior](runner_execution.md#crates).
 
 ### Reuse before adding another subsystem
@@ -72,8 +76,8 @@ The planned guest entry and separate writable disk already belong to [runner beh
 |---|---|---|
 | Launch and stop safely | SPACE [jailer launch](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/launch/os/linux.rs) and [owned launch/cleanup](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/supervisor/src/service.rs) | Adapt launch, limits, process ownership and partial-failure cleanup behind our engine. Preserve our lease authority. |
 | Control Firecracker | SPACE [API client](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/fc_api.rs) and [behavior tests](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/crates/libs/node/runtime/core/src/fc_api/tests.rs) | Adapt the needed operations and tests; inspect imported types and map errors into our existing error model. |
-| Run commands and edit files | Existing [executor server and client](../../rustd/crates/afr_executor/src/lib.rs) | Carry the existing protocol across the guest boundary. Prove its connection handshake, output bounds, cancellation and file behavior on a real guest. |
-| Prepare repository contents | Existing [trusted checkout](../../rustd/crates/afr_supervisor/src/lease_loop/checkout.rs) and [workspace design](runner_execution.md#workspace-between-leases) | Add private guest-disk preparation with exclusive host/guest ownership. Fetch credentials remain outside the guest; validate the exact selected revision. |
+| Run commands and edit files | Existing executor server and client (`afr_executor`) | Carry the existing protocol across the guest boundary. Prove its connection handshake, output bounds, cancellation and file behavior on a real guest. |
+| Prepare repository contents | Existing trusted checkout (`afr_supervisor`) and [workspace design](runner_execution.md#workspace-between-leases) | Add private guest-disk preparation with exclusive host/guest ownership. Fetch credentials remain outside the guest; validate the exact selected revision. |
 | Reduce startup work | SPACE [base snapshots and optional local pools](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/base-snapshots.md) | Compare cold boot with a clean template snapshot. Evaluate an idle pool only after measuring its benefit and resource cost. |
 
 Importing SPACE's runtime crates directly brings shared service, runtime and generated protocol dependencies.
@@ -158,7 +162,7 @@ Keep the fleet as the durable runtime. A workspace handle is a runtime resource,
 
 Independent coding tasks need independent writable checkouts; sharing an authorized read cache must not share mutable working trees.
 
-The existing [engine interfaces](../../rustd/crates/afr_sandbox/src/engine/mod.rs) and [executor](../../rustd/crates/afr_executor/src/api/mod.rs) already separate runtime effects. However, [checkout](../../rustd/crates/afr_supervisor/src/lease_loop/checkout.rs) requires a host-visible workspace. A remote engine therefore needs a repository preparation path; implementing `Executor` alone is insufficient.
+The existing engine interfaces (`afr_sandbox`) and in-sandbox server (`afr_executor`) already separate runtime effects. However, checkout (`afr_supervisor`) requires a host-visible workspace. A remote engine therefore needs a repository preparation path; implementing `Executor` alone is insufficient.
 
 Use traits for effects with distinct implementations. Use generics for known adapters and trait objects where the backend is selected at runtime. Use `Fn` for a repeatable cancellation observation, `FnMut` for progress accumulation and `FnOnce` for consuming prepared publication. 
 
@@ -173,7 +177,7 @@ Use a synthetic Git repository with a pinned base commit, a small build, an exis
 | 1 | Bind a repository and ask for the change. | Record the exact base commit and current repository permission; create one private writable checkout. | Repository hash, clean initial diff and denied foreign repository access. |
 | 2 | Start work and perform setup. | Report progress for checkout, environment setup and the first useful command separately. | Stage timings and a command result; a live machine alone is insufficient. |
 | 3 | Send a follow-up while a command is running. | Acknowledge the queued steer event; finish the current run before leasing that event. Show queued versus consumed status. | A controlled command barrier proves the follow-up does not start a second active lease and runs after the first. Mid-run steering is a separate proposed behavior. |
-| 4 | Grow both setup and runtime context through repeated compaction. | Continue with the goal, latest instructions and complete tool groups; retain original source history. | Forced host tests plus the unchanged full continuity journey. Turn count alone does not prove a compaction occurred. |
+| 4 | Grow both setup and runtime context through repeated compaction. | Continue with the goal, latest instructions and complete tool groups; retain original source history. | Forced host tests plus the unchanged full continuity scenario. Turn count alone does not prove a compaction occurred. |
 | 5 | Edit tracked files, create an untracked file and leave a local commit unpushed. | Report which checkpoint durably protects each item and its recovery boundary. | Hashes, Git status and the committed workspace manifest; no assumption that Git commit captures all files. |
 | 6 | Suspend, then replace the worker after a completed durable save. | Restore the declared files and base commit under a new current lease. Reject stale writers. Report processes as restored or stopped according to the chosen mechanism. | Restore on a different worker; compare hashes and reject an old lease's mutation. |
 | 7 | Drop a command attachment after its side effect, then reconnect. | Reattach to the existing command or report uncertain outcome. Never automatically start the side effect again. | Append a unique marker once; interrupt transport after acknowledgement and count markers after reconnect. |
@@ -193,7 +197,7 @@ Keep these recovery units distinct:
 | Workspace checkpoint | Proposed private file state, manifest, base commit and generation. | It protects only the last successfully published durable generation. A hard crash before that boundary can lose later writes. |
 | Resident pause | Backend keeps stopped compute and local files. | It consumes resources and does not establish host-loss durability. |
 | Machine snapshot | Backend saves memory, runtime state and disk according to its lifecycle. | It can contain stale credentials, sockets and ownership state; restore requires current authorization. |
-| Git push or artifact export | Explicit publication outside the temporary execution environment. | A Git push excludes untracked files, dependencies and process state. |
+| Git push or file export | Explicit publication outside the temporary execution environment. | A Git push excludes untracked files, dependencies and process state. |
 
 SPACE distinguishes pause, which keeps a resident guest, from suspend, which saves guest state.
 It warns that acknowledged file writes may be lost before its lifecycle saves complete.
@@ -216,7 +220,7 @@ Conversation context alone cannot replace those bytes; exact save coverage, reco
 
 An uncertain external effect requires verification before any retry.
 
-Current [runtime identity](../../rustd/crates/afr_agent/src/loop/context/mod.rs) binds notes to a lease and branch.
+Current runtime identity (`afr_agent`) binds notes to a lease and branch.
 Cross-worker conversation recovery needs an authorized handoff and retained source history; compaction alone does not supply that path.
 
 ### Coding sessions and worktrees across leases
@@ -240,7 +244,7 @@ Incident B / coding session B / private Git workspace B
 ```
 
 The current [workspace implementation](runner_execution.md#workspace-between-leases) keeps only a temporary fleet-scoped hold; durable save and restore are not built.
-Its [hold key](../../rustd/crates/afr_supervisor/src/holds/mod.rs) names the fleet, workspace, limits and policy, without incident identity.
+Its hold key (`afr_supervisor`) names the fleet, workspace, limits and policy, without incident identity.
 The proposed session identity must participate in attachment checks so a same-fleet incident cannot inherit another incident's writable checkout.
 
 At a planned handoff, stop workspace writers before recording a consistent file checkpoint.
@@ -320,7 +324,7 @@ A result for an older commit cannot approve a newer commit.
 Read remote review state after an ambiguous post before repeating it.
 
 **Current gaps:** [Review posting is refused](lease_flow.md#4-how-agent-bob-01-can-reply), and prior review continuity across events is not automatic.
-The [ingress digest](../../rustd/crates/afd_api_ingress/src/handler/webhook/github/mod.rs) carries the head commit but omits the base commit.
+The ingress digest (`afd_api_ingress`) carries the head commit but omits the base commit.
 The proposed revision selection and publication checks need implementation and narrowly scoped posting authority.
 
 ### Turn production evidence into a patch
@@ -401,8 +405,8 @@ After an uncertain publication, inspect the recorded branch and draft before ret
 Repeated channel responses resolve to the same approved action and admission.
 Each later approved action remains distinct while continuing the same repair attempt.
 
-**Current implementation gap:** [Repair branches](../../rustd/crates/afd_gate/src/policy/repair.rs) derive from an admission's event.
-The [write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs) allow creation and non-force updates only on the current event-owned repair branch.
+**Current implementation gap:** Repair branches (`afd_gate`) derive from an admission's event.
+The write rules (`afd_gate`) allow creation and non-force updates only on the current event-owned repair branch.
 The selected design therefore needs a trusted continuation mapping and bounded update authority; restoring files alone cannot supply either.
 
 Required proof includes a new admission resuming the same draft after worker replacement and a laptop push racing publication.
@@ -412,7 +416,7 @@ Incident B must retain its own workspace and publication targets throughout thos
 ### Durable Task checkpoints in R2
 
 M236 selects Cloudflare R2 for encrypted immutable coding checkpoints.
-[Durable Tasks](durable_tasks.md) owns lifecycle and guarded manifest publication.
+[Durable Tasks (DTs)](durable_tasks.md) owns lifecycle and guarded manifest publication.
 Use Rust `object_store` 0.14.2 with its S3-compatible client in trusted daemon storage code.
 
 Use [`Signer::signed_url_opts`](https://docs.rs/object_store/0.14.2/object_store/signer/trait.Signer.html#method.signed_url_opts) and `SignedUrlOptions::with_signed_header` to bind mandatory transfer headers, including create-only `If-None-Match: *`.
@@ -468,7 +472,7 @@ All size checks use measured bytes and declared capacity; the approved storage c
 Include smaller repositories and capacity-limit cases in acceptance, alongside the large-repository fixture.
 
 The current host mirror fetches missing Git objects on reuse rather than cloning every lease.
-`afr_supervisor/src/workspace_clone/fetch.rs` owns that behavior; `checkout.rs` still copies mirror objects into fresh private repositories.
+`afr_supervisor`'s workspace-clone fetch owns that behavior; its checkout still copies mirror objects into fresh private repositories.
 A replacement host with no mirror can still require a large cold transfer.
 
 ```text
@@ -540,15 +544,15 @@ Use conditional object creation and replay the identical ciphertext buffer when 
 Before enabling R2, an integration proof must reject a second different write to the same object key.
 If the configured backend cannot enforce create-only writes, checkpoint publication stays disabled rather than accepting mutable referenced objects.
 
-For each new object, the daemon generates a fresh 256-bit data key through `afd_crypto::entropy`.
-Wrap that key with the existing `afd_crypto::envelope` under the daemon's configured versioned master key.
+For each new object, the daemon generates a fresh 256-bit data key through `af_crypto::entropy`.
+Wrap that key with the existing `af_crypto::envelope` under the daemon's configured versioned master key.
 Bind the wrapped key to workspace, repository, random object identity and checkpoint format through associated data.
 
 The trusted supervisor receives only the scoped temporary data key and its assigned nonce, never the master key.
 Encrypt each object with AES-256-GCM, its native fresh 96-bit nonce and the ownership/format binding.
 Save only ciphertext, nonce, authentication tag, wrapped key envelope and ciphertext digest; zero plaintext keys when buffers leave scope.
 
-`afd_crypto::checkpoint` now defines scoped key wrapping and object encryption; vault envelope bytes remain compatible.
+`af_crypto::checkpoint` now defines scoped key wrapping and object encryption; vault envelope bytes remain compatible.
 Native registration, R2 transfer, manifests and restore remain pending.
 
 The key wrapper also binds the registered nonce and wrapping-key version.
@@ -711,7 +715,7 @@ Verify the responding person's current access to the proposal's workspace before
 Recheck that access and current repository grants before queued repair starts.
 Record who answered and which proposal and workspace the decision covers.
 
-The [mention handler](../../rustd/crates/afd_api_ingress/src/handler/mention/mod.rs) resolves team, channel and fleet; routing alone cannot establish workspace access.
+The mention handler (`afd_api_ingress`) resolves team, channel and fleet; routing alone cannot establish workspace access.
 Slack approval needs a verified link from the responding Slack user to the person whose workspace access is checked.
 Channel presence, display names and quoted messages cannot substitute for that identity check.
 
@@ -757,7 +761,7 @@ Each bounded monitoring sweep reads scoped evidence windows and saves progress a
 Keep evidence references and bounded excerpts in each incident conversation instead of appending the whole log stream.
 
 After recording a diagnosis and proposal, finish the responder admission and release its lease.
-Waiting for approval must not park the responder's queue head, which can [block later admissions](../../rustd/crates/afd_fleet/src/lease/sql/lease/select_ledger_candidates.sql).
+Waiting for approval must not park the responder's queue head, which can block later admissions (`afd_fleet`).
 The saved proposal waits independently; approval admits the configured repairer's work.
 
 ```text
@@ -767,7 +771,7 @@ More A evidence -> incident A
 ```
 
 The responder can handle another outage while the separate repairer works on the first.
-The [one active lease per fleet](data_flow.md#one-active-lease-per-fleet--the-ownership-model) rule still bounds each fleet.
+The [one active lease per fleet](data_flow.md#one-active-lease-per-fleet-the-ownership-model) rule still bounds each fleet.
 A busy responder delays its next sweep; scheduled monitoring does not promise continuous log tailing.
 
 For this proposal, another approved repair queues while the same repairer is busy.
@@ -802,7 +806,7 @@ Each due schedule wakes its own fleet, even when another monitoring fleet is alr
 Reading Grafana with a credential does not itself create an incoming alert subscription.
 
 For an alert-driven setup, define which approved alert route targets which monitoring fleet before promising selective wakeups.
-The [generic webhook route](../../rustd/crates/afd_api_ingress/src/handler/webhook/source_route.rs) names one fleet and source; it does not infer alert kinds from arbitrary payloads.
+The generic webhook route (`afd_api_ingress`) names one fleet and source; it does not infer alert kinds from arbitrary payloads.
 Grafana alert validation, routing and incident grouping need their own design and delivery proof.
 
 The proposed default is to assign a responsible monitor for each service and environment.
@@ -811,9 +815,9 @@ Existing delivery retry detection does not establish shared incident identity ac
 
 ### Checkout freshness and proof
 
-Current [held sandbox reuse](../../rustd/crates/afr_supervisor/src/lease_loop/workspace.rs) skips checkout and retains the previous files.
-Fresh [materialization](../../rustd/crates/afr_supervisor/src/workspace_clone/checkout.rs) selects a branch tip rather than an event-pinned commit.
-The [sandbox Git tool](../../rustd/crates/afr_tools/src/sandbox/git/mod.rs) refuses remote operations, so trusted preparation must own refresh.
+Current held sandbox reuse (`afr_supervisor`) skips checkout and retains the previous files.
+Fresh materialization (`afr_supervisor`) selects a branch tip rather than an event-pinned commit.
+The sandbox Git tool (`afr_tools`) refuses remote operations, so trusted preparation must own refresh.
 
 The proposed preparation path must verify the selected commit even when compute is reused.
 Use a fresh private checkout or a verified reusable view; preserve or refuse an incompatible dirty workspace.
@@ -847,15 +851,15 @@ The proposed daemon recovery owner above supplies a boundary, while its detailed
 
 | Decision | Required behavior or unresolved choice | Evidence |
 |---|---|---|
-| Select and resume a task | Chat and Slack must identify incident A after B without guessing from conversation prose. Bind its conversation coverage, file generation and command results together. | [Current lease-scoped context](../../rustd/crates/afr_agent/src/loop/context/mod.rs), [fleet-scoped holds](../../rustd/crates/afr_supervisor/src/holds/mod.rs). |
+| Select and resume a task | Chat and Slack must identify incident A after B without guessing from conversation prose. Bind its conversation coverage, file generation and command results together. | Current lease-scoped context (`afr_agent`), fleet-scoped holds (`afr_supervisor`). |
 | Bound retained work | Set saved file coverage, acceptable crash loss, save/restore deadlines, retention during approval waits and storage limits. Protect each retained session's referenced generation. | [Existing retention target](runner_execution.md#workspace-between-leases) and [proposed session lifecycle](#coding-sessions-and-worktrees-across-leases). |
-| Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), [event-derived branch](../../rustd/crates/afd_gate/src/policy/repair.rs) and [event-scoped write rules](../../rustd/crates/afd_gate/src/policy/egress/write.rs). |
+| Continue an approved repair | Owner selected the same existing draft for later approved fixes to the same incident. The trusted attempt mapping, current authority and publication precondition still need implementation. | [Selected continuation behavior](#continue-an-existing-repair-draft), event-derived branch (`afd_gate`) and event-scoped write rules (`afd_gate`). |
 | Identify the approver | Owner selected existing workspace access, including invited members, without a separate approver list. Verified Slack identity and adoption across direct requests, queued work and running leases still need design. | [Workspace roles](../AUTH.md#memberships-and-roles), [existing direct Slack request](scenarios/slack-incident-responder.md#7-four-stages-four-authorities), [proposed approval flow](#workspace-approval-in-chat-or-slack). |
-| Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](scenarios/slack-incident-responder.md#6-how-the-answer-comes-back) and [outbound abandonment](../../rustd/crates/afd_outbound/src/abandon.rs). |
+| Discover and deliver proposals | Keep saved proposals discoverable when Slack notification fails. Track saved, delivered, uncertain and abandoned outcomes separately; retry the same proposal identity. | [Existing answer delivery](scenarios/slack-incident-responder.md#6-how-the-answer-comes-back) and outbound abandonment (`afd_outbound`). |
 | Bound monitoring delay | Set critical-alert diagnosis delay and repair queue capacity. Track successful sweep freshness separately from accepted-alert queue time, including failed provider reads and evidence gaps. | [Ordered queue without a waiting-time guarantee](datastore_scaling.md#the-admissions-ledger-is-the-queue), [serial diagnosis](#several-incidents-under-the-same-fleets). |
 | Report recoverable progress | Show which files were saved, which tests cover that generation and which command outcomes remain unknown. Give a verification step before retrying an uncertain effect. | [Command reconnect limits](#selective-space-reuse), [proposed recovery units](#walkthrough-to-build-and-test). |
-| Upgrade and roll back | Choose whether adoption starts with new sessions or imports verified in-progress work. Retained saves need compatible readers or a validated conversion before older workers resume them. | [Current lease payload](../../rustd/crates/afd_wire/src/lease/payload.rs), upstream [versioning](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/versioning.md). |
-| Choose bounded source reuse | Owner selected a small SPACE-derived Firecracker wrapper with the existing executor. Exact extraction, dependency closure and real Linux measurements still need proof. | [First wrapper](#first-firecracker-wrapper), [local atomic report publication](../../rustd/crates/afr_supervisor/src/report_spool/mod.rs), [reuse criteria](#selective-space-reuse). |
+| Upgrade and roll back | Choose whether adoption starts with new sessions or imports verified in-progress work. Retained saves need compatible readers or a validated conversion before older workers resume them. | Current lease payload (`af_wire`), upstream [versioning](https://github.com/perplexityai/SPACE/blob/20d321385dac0855b39f86cd93c008ff5ec4ce3c/docs/versioning.md). |
+| Choose bounded source reuse | Owner selected a small SPACE-derived Firecracker wrapper with the existing executor. Exact extraction, dependency closure and real Linux measurements still need proof. | [First wrapper](#first-firecracker-wrapper), local atomic report publication (`afr_supervisor`), [reuse criteria](#selective-space-reuse). |
 
 Guest resource limits do not bound supervisor compression, upload buffers or temporary storage.
 The integration needs host-wide save/restore admission, transfer limits, deadlines and cleanup reserve alongside per-session storage limits.
@@ -867,16 +871,16 @@ File checkpoints and full guest snapshots carry different compatibility costs; r
 
 ## Refactor order and files
 
-| Slice | Files or existing area | Change and proof |
+| Slice | Owning crate or existing area | Change and proof |
 |---|---|---|
-| Shared preparation | `rustd/crates/afd_context/src/{plan,ports}.rs`, [preparation work tests](../../rustd/crates/afd_context/tests/work.rs) and existing planner tests | Reduce cumulative estimates, retain a final complete provider estimate and exact output safety, and reject stale source. A blocked summary must not block another conversation. |
-| Runtime history | `rustd/crates/afr_agent/src/loop/{mod,conversation}.rs`, `loop/context/{mod,source,estimate}.rs`; proposed history-index module | One owned encoded-history index and borrowed views; invalidate the affected tail when pending input changes. Preserve complete tool groups and native continuation rules. |
-| Authoring preparation | `rustd/crates/afd_authoring/src/model/context/`, `model/dispatch/{mod,funding}.rs`, existing funding/source-change integration tests | Reuse prepared input only with an exact source/authority witness after funding. Funding and model access stay outside datastore locks. |
-| Repository preparation proposal | `rustd/crates/afr_supervisor/src/{lease_loop/checkout.rs,workspace_clone/}`, related checkout and concurrency tests | Separate trusted repository acquisition from local or remote materialization. Preserve credential isolation; publish an immutable source before shortening mirror lock duration. |
+| Shared preparation | `af_context` (planner and ports, with the preparation-work and planner tests) | Reduce cumulative estimates, retain a final complete provider estimate and exact output safety, and reject stale source. A blocked summary must not block another conversation. |
+| Runtime history | `afr_agent` (loop, conversation and context modules); proposed history-index module | One owned encoded-history index and borrowed views; invalidate the affected tail when pending input changes. Preserve complete tool groups and native continuation rules. |
+| Authoring preparation | `afd_authoring` (model context, dispatch and funding, with the existing funding/source-change integration tests) | Reuse prepared input only with an exact source/authority witness after funding. Funding and model access stay outside datastore locks. |
+| Repository preparation proposal | `afr_supervisor` (lease-loop checkout and workspace clone, with the related checkout and concurrency tests) | Separate trusted repository acquisition from local or remote materialization. Preserve credential isolation; publish an immutable source before shortening mirror lock duration. |
 | Native backend experiment | Existing `afr_sandbox` engine/boot and `afr_executor` boundaries; proposed guest engine informed by SPACE | Map readiness, process identity, bounded streams, cancellation, network policy, quota and cleanup. Unsupported semantics must refuse explicitly. |
-| Recovery proposal | Existing `afr_supervisor` held-sandbox and lease paths, plus a manifest/storage owner to be selected with the persistence mechanism | Bind durable workspace generation to current fleet authority. Test host loss, source changes, deletion and revoked credentials. No new scheduler. |
+| Recovery proposal | Existing `afr_supervisor` held-sandbox and lease paths, plus a manifest/storage owner to be selected with the storage mechanism | Bind durable workspace generation to current fleet authority. Test host loss, source changes, deletion and revoked credentials. No new scheduler. |
 
-Do not extract a checkpoint-storage crate solely to anticipate SPACE. The [current optional PostgreSQL feature](../../rustd/crates/afd_context/Cargo.toml) already excludes that dependency from runtime builds. Extract only if a concrete caller or dependency boundary improves.
+Do not extract a checkpoint-storage crate solely to anticipate SPACE. The current optional PostgreSQL feature (`af_context`'s manifest) already excludes that dependency from runtime builds. Extract only if a concrete caller or dependency boundary improves.
 
 ## Selective SPACE reuse
 
@@ -916,7 +920,7 @@ It exposes repeated work. It does not quantify a throughput gain or a provider b
 
 Target bounded estimator visits in that fixture, then measure elapsed preparation time and allocations separately. Geometrically spaced probes must never send unchecked input; a complete provider estimate still precedes dispatch. An owned immutable prefix may reuse verified history evidence; an arbitrary stored watermark is insufficient.
 
-Repository performance needs its own comparison. The [mirror lock](../../rustd/crates/afr_supervisor/src/workspace_clone/mod.rs) currently covers fetch and checkout; [materialization](../../rustd/crates/afr_supervisor/src/workspace_clone/checkout.rs) copies the mirror's objects. 
+Repository performance needs its own comparison. The mirror lock (`afr_supervisor`) currently covers fetch and checkout; materialization (`afr_supervisor`) copies the mirror's objects. 
 
 Benchmark many checkouts of one repository separately from independent repositories. Moving the lock without making the source immutable can introduce inconsistent checkouts.
 

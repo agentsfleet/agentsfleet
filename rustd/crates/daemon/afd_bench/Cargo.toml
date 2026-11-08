@@ -1,0 +1,114 @@
+[package]
+name = "afd_bench"
+description = "Measurement lanes for the paths a fleet's life runs through: what steer, lease and delivery sustain, and which datastore gives out first."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# THE dependency that makes this a measurement rather than a model: the lanes
+# drive `Leases::select`, the real assignment pass, not a copy of it. A
+# reimplementation would not compile against these signatures (Invariant 2).
+afd_fleet.workspace = true
+# The memory store the lease plane it drives is built with.
+afd_memory.workspace = true
+# Enrolling the runners a lease is issued to.
+afd_runner.workspace = true
+# The steer ingress path the steer lane drives.
+afd_events.workspace = true
+# The rest of the lease plane the drain composes: `Plane::lease` walks past the
+# claim into the payer's wallet (`afd_billing`), the provider and the vault
+# (`afd_credential`), the approval gate (`afd_gate`) and the standing grants
+# (`afd_approval`). The drain builds the same plane the daemon's root builds,
+# so each is here for the same reason `afd_fleet` is: a copy would not be the
+# path under measurement.
+afd_billing.workspace = true
+afd_credential.workspace = true
+afd_gate.workspace = true
+afd_approval.workspace = true
+# The setup chat half of the production poll: `Plane::claim` admits chat
+# work through `Drafts`, and the saturation shape seeds its drafts through
+# `Drafts::create`, the route's own write path.
+afd_authoring.workspace = true
+# The live set a wall's viewers re-read every tick, read beside the poll so the
+# saturation shape measures the two competing for one pool.
+afd_fleet_lifecycle.workspace = true
+# The client the credential broker is built over. The drain never mints — its
+# fleets declare no integration — but the broker will not construct without one.
+reqwest.workspace = true
+# The delivery worker the outbound lane drives, and the trait its scripted
+# destination implements.
+afd_outbound.workspace = true
+# The token the worker is stopped by.
+tokio-util.workspace = true
+# The live tail's per-viewer stream and its stream ceiling, as the tenant
+# routes hold them: the tail lane measures that path, not a copy of it.
+afd_sse.workspace = true
+# Pulling frames off a tail, which is a `Stream`.
+futures-util.workspace = true
+# The pool the lease path reads through, opened the way the daemon opens it,
+# and the shared seeds the lane's fixture rows are written through: the same
+# builders the integration suites use, so a schema change reaches the bench
+# with them. The release build names its package (`make/build.mk`), so this
+# feature never reaches the shipped daemon.
+afd_db = { workspace = true, features = ["test-util"] }
+# The live tail, doorbell and outbound queue used by the measured paths.
+afd_dragonfly.workspace = true
+# `INFO commandstats`, for the Redis half of the attribution. The library never
+# spells a Redis command itself -- `afd_dragonfly` owns every one the product
+# issues -- but asking the SERVER what it served is a question only the server
+# answers, and the same reason `afd_outbound`'s suite reaches for this crate.
+redis.workspace = true
+# Identifiers, the clock the pass is given, and the environment source the
+# daemon's own pool config resolves through.
+af_core.workspace = true
+# The entropy surface a lease mints its identifiers from.
+# The ledger a steer is admitted through. The lane builds one so its
+# measured cost is the production path's, not a shortcut around it.
+afd_admission.workspace = true
+af_crypto.workspace = true
+# The enrolment request shape a seeded runner is registered with.
+af_wire.workspace = true
+# The reads the lanes take of what they measured, and the connection the
+# shared seeds write through.
+sqlx.workspace = true
+# The instants the seeds stamp and the clock the paths are handed.
+jiff.workspace = true
+# Sealing the drain's platform credential through the vault's own write path.
+afd_vault.workspace = true
+# The concurrency the lanes exist to measure.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
+# The daemon's own lease instrument: candidates per poll are READ from
+# `producers::fleet::lease_polled`. Statements come from `pg_stat_statements`,
+# which counts what every crate sends.
+af_observability.workspace = true
+# The manual reader the counters are collected through. Nothing exports
+# anywhere; the provider exists so an in-process reader can be asked for a sum.
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+# The p95 and p99 every lane reports. Recording is constant-time, so the
+# sample budget is bounded by the profile's caps rather than by memory.
+hdrhistogram.workspace = true
+# The result file every lane writes, and the baseline the comparison reads.
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# `MapEnv`: the environment a test hands every knob reader instead of
+# mutating the process.
+af_core = { workspace = true, features = ["test-util"] }
+# `Redis::unreachable`: a handle that opens no socket, so the abort rail can be
+# proven wired into a lane without a datastore to kill.
+afd_dragonfly = { workspace = true, features = ["test-util"] }
+# Paused time: the burst's pacer is proven 100 ms apart without waiting it out.
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
