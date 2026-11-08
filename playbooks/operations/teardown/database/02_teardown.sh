@@ -83,6 +83,7 @@ teardown_database() {
 
 	if DATABASE_URL="$url" docker run --rm \
 		-e DATABASE_URL \
+		-e PGSSLROOTCERT=system \
 		-v "$tmp_sql:/teardown.sql:ro" \
 		postgres:18-alpine \
 		sh -c 'psql "$DATABASE_URL" -f /teardown.sql -v ON_ERROR_STOP=1' 2>&1; then
