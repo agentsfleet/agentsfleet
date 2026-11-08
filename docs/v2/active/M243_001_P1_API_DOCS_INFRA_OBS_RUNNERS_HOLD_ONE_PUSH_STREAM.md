@@ -103,6 +103,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 |------|--------|-----|
 | `docs/v2/pending/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
 | `docs/architecture/runner_protocol.md`, `docs/architecture/README.md` | CREATE, EDIT | §3: frames, ordering, rebuild, cancel, supersede, timings; §1's transport evidence; index row |
+| `docs/reviews/m243/{implementation-signoff,failure-and-observability,transport-and-toon-research}.md`, `docs/reviews/m243/files.tsv` | CREATE | Indy's requested design review; exact paths, ownership, native transport risks and TOON study |
 | `rustd/crates/daemon/afd_runner/src/capacity/**`, `rustd/crates/daemon/afd_gateway/src/connection.rs`, `rustd/crates/daemon/afd_http/src/auth/guard.rs`, `rustd/crates/daemon/afd_http/src/route/mod.rs` | EDIT, CREATE | atomic session authority and native connection-local secondary-lane binding |
 | `rustd/crates/daemon/{afd_admission,afd_approval,afd_authoring,afd_events,afd_fleet,afd_gate,afd_sse,afd_api_tenant,afd_http,afd_api_runner,afd_api_operator,afd_api,afd_bench}/Cargo.toml` and their bus-owning constructors and module indexes | EDIT | inject the one boot-selected bus into every caller; remove direct pub/sub dependencies where unused |
 | `rustd/crates/daemon/main/Cargo.toml`, `rustd/crates/daemon/main/tests/daemon_suite.rs`, `rustd/crates/daemon/main/tests/support/{e2e_wire,e2e_tail,e2e_speaking,e2e_schedules}.rs`, `rustd/crates/protocol/af_wire/tests/wire_suite.rs` | EDIT | register carrier/protocol tests and convert shared harnesses that call retired routes |
@@ -136,7 +137,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/afd_bench/src/lane/lease/drain/{runner,window,mod,tests}.rs`, `lane/lease/saturation/production.rs`, `lane/lease/seed/mod.rs`, `make/bench.mk`, `bench/baselines/lease.rig.json` | EDIT | §8: the drain drives a session; idle totals replace per-poll ratios; median baseline |
 | retired: `afd_api_runner/src/handler/runner/{heartbeat,wake,wake_tests,renew,activity,report,folds}.rs`, `handler/runner/lease/**`, `afr_supervisor/src/heartbeat/**`, `afd_api/tests/integration_runner_heartbeat.rs`, `agentsfleetd/tests/integration_runner_wake.rs`, `afd_approval/tests/integration_grant_request.rs` | DELETE, EDIT | §7: pull path and tests; fold client methods currently live in `afr_supervisor/src/client/lease_verbs/mod.rs` |
 | `rustd/crates/daemon/main/src/serve/runner_stream.rs`, `rustd/crates/daemon/main/src/preflight/runner_stream.rs` and their parent module indexes | CREATE, EDIT | direct TLS listener and deployment configuration; exact transport mapping is fixed by §1 |
-| `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml` | PROPOSE only; edit after Indy's approval | direct listener, certificate delivery and any public exposure; no Cloudflare dependency |
+| `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml` | PROPOSE only; edit after Indy's approval | private runner listener and certificate delivery; public ingress is outside this milestone |
 | `~/Projects/docs` branch `chore/m243-runner-stream-changelog`: `runners.mdx`, `runners/install.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx` | EDIT | §7: direct endpoint and network prerequisites, carrier fallback, kill behaviour and errors; API pages after merge |
 
 ## Applicable Rules
@@ -182,15 +183,16 @@ The runner initiates a connection to a directly reachable daemon endpoint.
 HTTP/3 is preferred, with HTTP/2 fallback when a network or transport failure prevents connection.
 Both carriers use the same authenticated session and domain services.
 
-Fly-hosted runners can use private networking.
-External operators provide endpoint reachability, trusted certificates, UDP for HTTP/3, and TCP for HTTP/2.
+Private Fly routing is the supported hosted deployment path.
+External operators provide endpoint reachability, trusted certificates, and outbound UDP for HTTP/3 or TCP for HTTP/2.
+An external runner needs private network access when its configured daemon endpoint is private to Fly.
 Cloudflare and WebSocket are not prerequisites or fallback paths.
 
 `runner_protocol.md` records the source references, library versions, stream mapping, test commands and measured outcomes.
-The first candidate is `tokio-quiche` for HTTP/3, alongside the existing Hyper and h2 stack for HTTP/2.
+The first candidate is `tokio-quiche` for HTTP/3, alongside Hyper and h2 for HTTP/2, with BoringSSL serving both carriers.
 The spike checks build targets, certificate verification, native duplex operation, queue bounds, cancellation and telemetry before dependency selection is fixed.
 
-The three-lane mapping, native connection binding, framing bytes, request identifiers and recovery budgets are fixed in `runner_protocol.md`.
+The approved four-lane mapping, native connection binding, framing bytes, request identifiers and recovery budgets live in `runner_protocol.md`.
 The spike verifies those choices on both carriers before production wiring.
 Authentication, certificate and protocol refusals fail closed; changing the transport must not bypass them.
 
@@ -227,6 +229,9 @@ No new table or ALTER migration file belongs here.
 SQL binds and rows use `af_core::id::Uuid7` through its `sqlx` feature.
 New statements use no identifier parameter casts, text-cast identifier outputs or String-typed identifier fields.
 `fleet.events` is keyed by `event_id`; leases and tool calls refer to `event_id`.
+
+Any SQL cast added or retained in changed M243 statements or schema expressions requires Indy's approval before implementation.
+Present the exact expression, its reason and the typed alternative when seeking that exception.
 
 The kill transaction writes the cancellation marker; renewal and reconnect read it.
 Connect writes connection ownership; rechecks compare it.
@@ -298,6 +303,10 @@ Each push names its Postgres authority, so pub/sub's at-most-once delivery costs
 Its proxy-aware HTTP/2 path respects the injected environment policy; HTTP/3 cannot bypass a mandatory proxy.
 A healthy session keeps its chosen carrier until that session ends.
 
+The next permitted normal connection setup tries HTTP/3 again after connection loss, daemon drain/restart or runner restart.
+A healthy HTTP/2 session can remain on HTTP/2 indefinitely.
+This milestone adds no periodic upgrade or hot carrier switch.
+
 The runner sends `hello` with running leases, accepted kinds and idle workers.
 It sends `ready` when credits change, heartbeats at the served interval, and application pings every `STREAM_PING_INTERVAL`.
 An unanswered ping or renewal fails at `STREAM_ANSWER_TIMEOUT` after that request was sent.
@@ -332,10 +341,11 @@ Every answer echoes the session-local request identifier; disconnect fails and c
 - **Dimension 6.8** — connection failures and fallback are visible → Test `stream_failures_and_recovery_emit_correlated_telemetry` (native integration): collect finite transport/reason labels and correlated attempt, failure, fallback and recovery records. A sustained outage remains distinguishable from a stable connection.
 - **Dimension 6.9** — usage acknowledgements survive carrier changes → Test `renewal_batches_acknowledge_usage_independently_across_reconnect` (integration): several leases each produce more than `LINES_MAX` records. Lose an answer, reconnect, replay and report. Each lease advances its own `recorded_through`; each provider request settles once.
 - **Dimension 6.10** — delayed answers cannot reach another caller → Test `late_replies_do_not_complete_cancelled_or_reconnected_calls` (unit): cancel folds and renewal waits, deliver their answers late, and reconnect. New request identifiers and the new session's map retain the correct callers and bounds.
+- **Dimension 6.11** — HTTP/3 returns on normal reconnect without a hot switch → Test `http3_is_reselected_only_when_the_http2_session_ends` (native integration): establish HTTP/2 with UDP blocked, restore UDP and keep the healthy session on HTTP/2; end it and prove the next permitted connection selects HTTP/3.
 
 ### §7 — The pull path is deleted, and the docs describe the stream
 
-Six routes go: `POST /v1/runners/me/heartbeats`, `/leases`, `/leases/{lease_id}/renew`, `/leases/{lease_id}/activity`, `/leases/{lease_id}/folds` (M242_002) and `/reports`, with their handlers, client verbs and tests. The doorbell's hold (`wait_for_ring`, `Waited`, the held count, `close`) goes with `Leasing::wait_for_work`, `NO_WORK_RETRY_AFTER`, `WAKE_HOLD_MAX`, `HELD_BEATS_MAX`, `wake`, `woken`, `LeaseRequest`, `LeaseResponse` and `agentsfleet_runner_wake_answers_total`. **Implementation default:** the removed routes answer `404`, following the pre-2.0.0 precedent in M145_001 and M228_001; `VERSION` is 0.73.0, and there is no compatibility period (NLG; Indy, Discovery). The architecture pages, `docs/AUTH.md` and the docs repository change in the same Pull Request (ARCH-HOMES, ARCH-PUBLISHED).
+Six routes go: `POST /v1/runners/me/heartbeats`, `/leases`, `/leases/{lease_id}/renew`, `/leases/{lease_id}/activity`, `/leases/{lease_id}/folds` (M242_002) and `/reports`, with their handlers, client verbs and tests. The doorbell's hold (`wait_for_ring`, `Waited`, the held count, `close`) goes with `Leasing::wait_for_work`, `NO_WORK_RETRY_AFTER`, `WAKE_HOLD_MAX`, `HELD_BEATS_MAX`, `wake`, `woken`, `LeaseRequest`, `LeaseResponse` and `agentsfleet_runner_wake_answers_total`. **Implementation default:** the removed routes answer `404`, following the pre-2.0.0 precedent in M145_001 and M228_001; `VERSION` is 0.75.0, and there is no compatibility period (NLG; Indy, Discovery). The architecture pages, `docs/AUTH.md` and the docs repository change in the same Pull Request (ARCH-HOMES, ARCH-PUBLISHED).
 
 - **Dimension 7.1** — the retired routes are gone → Test `the_retired_runner_routes_answer_404` (integration): each of the six `POST`s answers `404`, while `GET /v1/runners/me` still answers `200`.
 - **Dimension 7.2** — no census row outlives its producer → Test `every_census_family_has_a_producer` (unit): passes with the wake-answers row gone and each new stream-health family paired with its producer.
@@ -451,7 +461,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 
 Hits under `docs/v2/` are records and stay. CHORE(open) reruns each search on `origin/main` and adds any new hit to Files Changed.
 
-Schema this milestone leaves with no runtime reader or writer is dropped in a new slot in this Pull Request, under Indy's blanket approval (Discovery). Each drop gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it.
+Schema this milestone leaves with no runtime reader or writer is removed from its owning table file in this Pull Request, under Indy's blanket approval (Discovery). An unused table loses its table file; a removed column or index changes that table's file. Each removal gets a row above, with a `git grep -n -w` over `rustd`, `ui` and `cli` proving nothing still reads or writes it. The owner's current table-file layout supersedes the historical new-slot wording below.
 
 ## Out of Scope
 
@@ -461,7 +471,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   - A pause that cancels a running lease: pause keeps today's behaviour.
 - Aiming a ring at one eligible runner: an empty pass still costs one claim per session with credits, as each ring costs today, counted by `agentsfleet_runner_offer_claims_total`. Not planned until that count matters.
 - Customer-runner trust (M246) and the lapsed-host respawn signal (M247).
-- Deployment changes without a concrete reviewed patch. Private and public routes need their own deployment evidence; no Cloudflare tunnel drill is required.
+- Deployment changes without a concrete reviewed patch. Private Fly routing needs deployment evidence; a hosted public ingress deployment is outside M243.
 
 ---
 
@@ -503,7 +513,12 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
 
   > Indy: "No legacy support to think about in this PR." — context: replace existing code, SQL, schema, routes and tests in place; add no compatibility surface.
 
-- **Implementer source checks:** `origin/main` is `21e81eba7`; M242 landed in #815. This worktree contains no runtime edits.
+- **Implementer source checks:** fetched `origin/main` remains `21e81eba7`; M242 landed in #815. A wire-type draft and its package tests exist, but native transport and production wiring remain unimplemented.
+- **Owner implementation approval:** Indy approved the [design packet](../../reviews/m243/implementation-signoff.md) with "Other than than the I am sign off / approve the implementation." and "Yes keep going to a PR". The shared `af_stream` crate, fourth `work` lane, private Fly deployment scope and native proof gates now govern implementation. BoringSSL is scoped to both new runner carriers; a project-wide Rustls removal remains separate.
+- **Current owner constraints:** "Private Fly routing is what we will support, for external runners, i suggest we ask folks to have HTTP/3 QUIC or HTTP/2 enabled." Also: "If you find doing cast, get it signedoff / approved with indy" and "I dont wish to build the hot switch from http/2 to http/3 now". Apply those constraints to routing prerequisites, changed SQL and reconnect behavior.
+- **M244 alignment:** its source specifies core NATS behind `afd_bus::Bus`, no JetStream or key-value store, neutral `Message`/`Lagged`/`Gap`, and durable facts moved to Postgres before Dragonfly deletion. M243 builds that replaceable signal boundary and keeps runners free of broker credentials.
+- **Reference study:** cloned RustAPI, Quiche and Neqo outside this worktree at the owner's request. [Source findings](../../reviews/m243/transport-and-toon-research.md) distinguish production library history from the unverified native adapter and TOON model-input experiment.
+- **Inventory evidence:** [files.tsv](../../reviews/m243/files.tsv) resolves complete proposed paths against `origin/main` `21e81eba7`. It checks all existing paths for presence and proposed creations for absence; dependent audit rows remain due during implementation.
 - **Path corrections:** folding lives in `afr_supervisor/src/client/lease_verbs/mod.rs` and `verbs::FencedVerbs`; the proposed `client/folds.rs` and `inbox.rs` do not exist.
 - **Transport references:** Codex's inspected checkout is `748ab55ca7de0b647d9a7a9d9a8e70e00f28666d`. Its supervision patterns apply; its WebSocket dependencies do not.
 - **Review status:** the three fresh-context Elephant-Goldfish reviewers completed their first audit. Accepted corrections fix the three-lane mapping, connection-local binding, framing, response correlation, full renewal acknowledgements, aggregate recovery budget, grant authority fencing, task activity, drain order and test registration. Native evidence remains an implementation gate, not a claimed pass.
@@ -529,9 +544,9 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
 - **Programme decisions (relayed in the authoring brief, Nov 06, 2026; transport replaced by the owner's Nov 08 decision):** one outbound session per host; self-hosted runners never touch the broker. Authentication happens at session opening; revocation closes the session; each grant rechecks the host. Postgres rebuilds state and holds cancellation markers. No compatibility period preserves retired routes.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
-- **Model reviews** — none yet; the Elephant-Goldfish Model (EGM) review runs before this spec leaves `pending/`.
+- **Model reviews** — implementer source-readiness review and accepted corrections appear above; Indy's new implementation design review remains pending.
 - **Open implementation decisions** —
   1. §1 must prove both direct carriers and fix their stream mapping, framing and session authentication binding.
-  2. Prepare a concrete listener, certificate-delivery and routing proposal before seeking approval for deployment edits. Public Fly UDP limitations do not constrain private networking, and no Cloudflare service is required.
+  2. Prepare a concrete private Fly listener and certificate-delivery proposal before seeking approval for deployment edits. Document external runner prerequisites without adding hosted public ingress.
   3. Reverify the complete Files Changed inventory after the data-layer follow-up lands. New SQL must use its native UUIDv7 bindings and table-file layout.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

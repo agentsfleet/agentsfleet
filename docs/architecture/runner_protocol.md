@@ -13,9 +13,8 @@ HTTP/3 is preferred. HTTP/2 carries the same application protocol when HTTP/3 ca
 Both transports are required in M243; WebSocket and lease polling are removed.
 
 ```text
-Fly-hosted runner ---- Fly private network -----+
-                                               +--> agentsfleetd runner listener
-External runner ----- directly reachable host -+
+Fly-hosted runner ---- Fly private network ----------> agentsfleetd runner listener
+External runner ----- operator-provided reachability -> configured daemon endpoint
                        HTTP/3: UDP + TLS 1.3
                        HTTP/2: TCP + TLS
 ```
@@ -25,18 +24,23 @@ Transmission Control Protocol (TCP) carries HTTP/2.
 Transport Layer Security (TLS) verifies the daemon's identity on both paths.
 
 Cloudflare is not a dependency of either path.
-An operator may put supported infrastructure in front of the endpoint, provided it passes the deployment tests below.
-Private and public connections use the same runner protocol and authentication rules.
+Private Fly routing is the supported hosted deployment path for M243.
+External operators supply reachability and permit outbound HTTP/3 over QUIC or HTTP/2 to their configured endpoint.
+
+An external runner needs private network access when its configured daemon endpoint is private to Fly.
+Enabling HTTP/3 or HTTP/2 alone does not create that route.
+The runner remains an outbound client and needs no inbound HTTP listener.
 
 The deployment requirements are:
 
 - A runner can resolve and reach the configured daemon endpoint.
 - The endpoint presents a certificate valid for the configured server name.
 - The runner trusts the certificate chain; private deployments may supply their own trusted certificate authority.
-- HTTP/3 requires a reachable UDP listener, normally on port 443.
-- HTTP/2 requires a reachable TCP listener, normally on port 443.
+- HTTP/3 requires outbound UDP to the daemon's configured listener port.
+- HTTP/2 requires outbound TCP to the daemon's configured listener port.
+- External operators permit at least one carrier; permitting both allows HTTP/2 fallback when UDP fails.
 - Any intermediary must pass bidirectional streaming without buffering the entire request.
-- Public QUIC routing must retain connection ownership across packets, including during scaling and drain.
+- Routing must retain native connection ownership across packets, including during scaling and drain.
 
 The selected port and hostname belong to deployment configuration.
 Running both services on Fly does not require a public route.
@@ -58,6 +62,10 @@ Authentication, certificate, protocol-version and policy refusals fail closed in
 A healthy HTTP/2 session stays on HTTP/2.
 The runner does not interrupt active work merely to try HTTP/3 again.
 Subsequent attempts retain recent failure history so an unavailable UDP path cannot create a retry loop.
+
+The next normal connection setup tries HTTP/3 again when network policy permits it.
+That setup follows a connection failure, daemon drain or restart, or runner restart.
+A healthy HTTP/2 session can therefore remain on HTTP/2 indefinitely; this milestone adds no periodic upgrade or hot switch.
 
 An explicit outbound proxy policy must also govern transport selection.
 An HTTP/3 attempt must not bypass a configured proxy requirement.
@@ -81,13 +89,13 @@ Message size, running-lease count, renewal count and queue bounds apply equally 
 Native HTTP frame boundaries are not application-message boundaries.
 The codec must reject an oversized declared length before allocating that payload.
 
-Each carrier opens three duplex POST requests on one native connection, all at `/v1/runners/me/stream`.
-The `agentsfleet-runner-lane` header selects `control`, `reports` or `activity`.
+Each carrier opens four duplex POST requests on one native connection, all at `/v1/runners/me/stream`.
+The `agentsfleet-runner-lane` header selects `control`, `work`, `reports` or `activity`.
 The protocol header is `agentsfleet-runner-protocol: agentsfleet.runner.v1`.
 
 The control request presents the runner bearer token and opens first.
 After authentication and guarded ownership acquisition, `welcome` returns the connection identifier.
-The other two requests present that identifier in `agentsfleet-runner-session`.
+The other three requests present that identifier in `agentsfleet-runner-session`.
 
 The server supplies a connection-local context as a typed request extension.
 That context binds the proven runner, credential digest, connection identifier and cancellation token.
@@ -95,10 +103,12 @@ A secondary lane must match that context, its current session and its declared l
 
 The server rejects duplicate lanes, missing context, another connection's identifier, cancelled bindings and secondary bearer-token authentication.
 One session reserves one ceiling permit, shared by its lanes.
-Closing the native connection cancels all three requests and their pending operations.
+Closing the native connection cancels all four requests and their pending operations.
 
-The control lane carries hello, credits, heartbeat, ping, renewal, folds, offers, cancellation and drain.
+The control lane carries hello, credits, heartbeat, ping, renewal, cancellation and drain.
+The work lane carries offers and folded-input requests and answers.
 The reports lane carries reports and their acknowledgements; the activity lane carries activity without acknowledgements.
+
 Wrong-lane messages are protocol errors.
 
 Each message is a four-byte, unsigned big-endian length followed by UTF-8 JSON.
@@ -117,8 +127,10 @@ Each successful renewal entry carries the complete `RenewResponse`, including `r
 Usage acknowledgements advance independently for each lease, including after a repeated renewal.
 Final usage flushing keeps its existing batching behavior.
 
-Renewals, ping and cancellation receive control service ahead of folds and ordinary heartbeat updates.
+Renewals, ping and cancellation receive control service ahead of ordinary heartbeat updates.
+Large offers and folded inputs remain on the independently flow-controlled work lane.
 Reports use a separate bounded writer and cannot queue ahead of control.
+
 Activity drops beyond its cap, while reports remain durably spooled.
 
 Data writes use chunks of at most 16 KiB and bounded per-stream flow-control windows.
@@ -135,6 +147,10 @@ Transport retries alone never establish exactly-once processing.
 
 ## Rust boundaries and file owners
 
+Indy approved implementation and continuation to one pull request on Nov 08, 2026.
+The [sign-off packet](../reviews/m243/implementation-signoff.md) records the shared `af_stream` carrier crate and exact file paths.
+This page owns the approved runtime design; the review packet supplies supporting detail and evidence.
+
 The paths below describe planned files, not existing implementations.
 Existing crate owners keep their lease, billing and authentication decisions.
 New dependencies land with their first production callers.
@@ -148,20 +164,27 @@ New dependencies land with their first production callers.
 | Gateway composition and errors | `rustd/crates/daemon/afd_gateway/src/lib.rs`, `error.rs` |
 | Session registry and offer passes | `rustd/crates/daemon/afd_gateway/src/registry/mod.rs`, `offers.rs` |
 | Session opening, messages and authority checks | `rustd/crates/daemon/afd_gateway/src/session/mod.rs`, `hello.rs`, `frames.rs`, `recheck.rs` |
-| Server carriers and bounded framing | `rustd/crates/daemon/afd_gateway/src/transport/mod.rs`, `h2.rs`, `h3.rs`, `codec.rs` |
+| Shared framing and byte budgets | `rustd/crates/protocol/af_stream/src/framing/mod.rs`, `reader.rs`, `writer.rs`, `budget.rs` |
+| Native HTTP/2 carrier | `rustd/crates/protocol/af_stream/src/h2/mod.rs`, `client.rs`, `server.rs` |
+| Native HTTP/3 carrier | `rustd/crates/protocol/af_stream/src/h3/mod.rs`, `client.rs`, `server.rs`, `driver.rs`, `socket.rs`, `trust.rs`, `telemetry.rs` |
+| Shared BoringSSL trust policy | `rustd/crates/protocol/af_stream/src/tls/mod.rs`, `boring.rs` |
 | HTTP runner entry | `rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs` |
-| Client connection and recovery | `rustd/crates/runner/afr_supervisor/src/downlink/mod.rs`, `connect.rs`, `h2.rs`, `h3.rs`, `dispatch.rs`, `reconnect.rs` |
+| Client connection and recovery | `rustd/crates/runner/afr_supervisor/src/downlink/mod.rs`, `connect.rs`, `dispatch.rs`, `reconnect.rs`, `pending.rs` |
 | Client priority queues and writer | `rustd/crates/runner/afr_supervisor/src/uplink/mod.rs`, `queues.rs`, `writer.rs` |
 | Stream metrics and finite labels | `rustd/crates/protocol/af_observability/src/producers/fleet/runner/stream.rs`, `metrics/label/fleet.rs`, `metrics/declared/fleet.rs` |
 | Native transport and failure evidence | `rustd/crates/daemon/main/tests/integration_runner_stream/mod.rs`, `transport.rs`, `reconnect.rs`, `cancel.rs`, `reports.rs`, `observability.rs` |
 
 Directory prefixes in each row apply to the following short filenames.
-The pending specification inventories the existing files whose callers also change.
+The active specification inventories the existing files whose callers also change.
 The HTTP stream mapping may require refining this plan during the spike.
 
 `afd_bus::Bus` is the runtime-selected broker boundary.
 Its `publish`, `publish_batch` and `subscribe` methods use typed `Subject` values.
 An `Arc<dyn Bus>` handle permits the later broker replacement without changing publishers.
+
+The adapter translates backend-specific values into `Message`, `Lagged` and `Gap` outcomes.
+M244 supplies core NATS behind this interface and moves Dragonfly's durable responsibilities into Postgres before deleting Dragonfly.
+The bus carries signals without adding durable replay or broker credentials to runners.
 
 The gateway remains a concrete session owner over existing services.
 Carrier adapters supply bounded inbound and outbound messages.
@@ -181,10 +204,12 @@ The writer's deadline also bounds a socket stuck during an in-progress send.
 
 ## Libraries and reference code
 
-The HTTP/2 carrier uses the existing Hyper, h2, Tokio and TLS stack.
-The HTTP/3 implementation uses `tokio-quiche` 0.20.1 with default compression features disabled.
-Its native client and server drivers handle HTTP/3; its BoringSSL dependency handles that carrier's TLS.
-HTTP/2 uses the workspace's existing h2, Hyper, Tokio and Rustls versions.
+The HTTP/3 candidate uses `tokio-quiche` 0.20.1 with default compression features disabled.
+BoringSSL serves both carriers on the new runner connection.
+HTTP/2 keeps Hyper and h2, using a matching `tokio-boring` stream for TLS.
+
+Existing database, broker and outbound HTTP clients retain their current Rustls integrations.
+The [reference study](../reviews/m243/transport-and-toon-research.md) records their backend support and the broader migration cost.
 
 The native spike verifies certificate handling, build targets, cancellation and metric integration before production wiring.
 It never disables peer verification to obtain a passing test.
@@ -243,7 +268,7 @@ Tests measure the complete detection and reconnect interval from the injected fa
 Recovery succeeds before lease expiry or the runner stops the lease at its confirmed deadline.
 
 One recovery attempt has a seven-second aggregate deadline: two seconds for HTTP/3, two for HTTP/2, and three for authenticated opening and rebuild.
-The runner caps that deadline again by each running lease's remaining safe execution time.
+The runner also caps that deadline by each running lease's remaining time before expiry.
 Cancellation can interrupt every stage, including name resolution and backoff.
 
 The normal recovery assertion includes renewal tick, answer timeout, maximum initial jitter and the full recovery deadline.
@@ -288,8 +313,14 @@ An HTTP/2 fallback is visible as a transport outcome, not reported as an HTTP/3 
 
 ## Transport evidence
 
-No HTTP/2 or HTTP/3 runner-stream probe has run for this design.
-Tool availability and a successful build do not establish transport or deployment support.
+The local HTTP/3 spike completed verified-certificate duplex exchange, a byte-identical 2 MiB payload and 120 seconds of application pings.
+The raw client worker reported exit after explicit close, without a client certificate configured.
+The HTTP/2 BoringSSL spike has completed duplex and payload exchange; its idle and cleanup checks remain in progress.
+
+These scratch probes establish library behavior, not completion of production adapter or deployment tests.
+Fly development checks follow local implementation and repository gates, before the pull request.
+
+The probe commands and findings live in the [transport study](../reviews/m243/transport-and-toon-research.md).
 
 Before runtime implementation, the spike must record:
 
@@ -302,6 +333,8 @@ Before runtime implementation, the spike must record:
 7. Session rebuild and report retry after server restart, with one settlement.
 8. Tracing and metrics that distinguish timeout, fallback, reconnect and sustained outage.
 
-Private Fly routing and public routing need separate deployment evidence.
-Public routing details and certificate delivery remain deployment decisions requiring a concrete reviewed patch.
+Private Fly routing needs deployment evidence before the hosted rollout.
+External operators meet the documented routing, certificate and carrier prerequisites; public ingress deployment is outside this milestone.
+Certificate delivery remains a deployment decision requiring a concrete reviewed patch.
+
 No production deployment or configuration change is authorized by this page.
