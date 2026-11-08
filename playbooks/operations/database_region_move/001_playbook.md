@@ -62,7 +62,8 @@ For the environment being moved:
    Postgres applies a role's settings only to the role that logs in, so the API login carries them, not `api_runtime`.
 
    Verify the target login's role memberships before copying.
-   `schema/20261108120100_roles_and_privileges.sql` defines the role hierarchy; each table's slot owns its grants.
+   `schema/20261108120100_roles_and_privileges.sql` defines the role hierarchy; each table's file owns its grants.
+
    Do not add `pg_read_all_data` or `pg_write_all_data` to bypass a missing grant.
    Those roles would bypass the intended `memory` schema boundary.
 5. IP restrictions are per database, not per branch, so the Fly egress
