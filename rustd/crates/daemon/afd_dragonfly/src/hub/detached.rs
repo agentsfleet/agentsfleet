@@ -41,7 +41,7 @@ impl Server {
     pub fn publish(&self, channel: &str, payload: &str) {
         self.inner.dispatch(Message {
             channel: channel.to_owned(),
-            payload: payload.to_owned(),
+            payload: Arc::new(payload.to_owned()),
         });
     }
 

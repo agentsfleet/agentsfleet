@@ -47,16 +47,55 @@ The [failure design](failure-and-observability.md) defines recovery and verifica
 | Item | Checked state |
 |---|---|
 | Worktree | `/workspace/agentsfleet-m243`, branch `feat/m243-runner-push-stream` |
-| Fetched base | `origin/main` at `21e81eba77fbe69e5d6a25bf2ca71c857e107f8b`; checked again Nov 08, 2026 |
-| Existing commits | Two documentation commits; no push or pull request |
-| Held draft | `af_wire/src/protocol/{mod,up,down}.rs`, module registration and wire tests; written before the sign-off request |
+| Fetched base | `origin/main` at `a5155b6f8`, including #816's native UUIDv7 flattening; rebased Nov 08, 2026 |
+| Existing commits | Three documentation commits; no push or pull request |
+| Written code | Four-lane wire types, shared framing, both native adapters and the initial bus adapter; gateway and runner wiring remain due |
 | Package evidence | Earlier `cargo test -p af_wire --all-features`: 78 unit tests and 96 wire-suite tests passed |
 | HTTP/3 scratch evidence | Verified CA chain, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings, raw client worker exit after explicit close |
-| HTTP/2 scratch evidence | BoringSSL certificate verification, open upload with duplex replies and byte-identical 2 MiB payload; idle/cleanup checks in progress |
-| Unverified | Production adapters, full cancellation and fallback matrix, fault timing, static targets, Fly deployment and repository gates |
+| HTTP/2 scratch evidence | BoringSSL certificate verification, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings and client/server task exit |
+| Production adapter evidence | Earlier scratch-override package run: 197 tests passed, including transport, wire and bus tests; current refactor requires a new run |
+| Dependencies | Indy approved `libc = 0.2.189`; the workspace uses published `tokio-quiche 0.20.1` without a scratch override |
+| Current lint checkpoint | `make lint-all` passed, including rustfmt, workspace Clippy with all features and targets, dependency checks and the remaining repository linters |
+| Unit checkpoint | The full lane's runner shard passed 1,749 tests with test umask `022`; the remaining lane was interrupted for Indy's early draft request |
+| Unverified | Current refactor runtime tests, complete cancellation and fallback matrix, fault timing, static targets, Fly deployment, coverage and remaining repository gates |
 
 The wire draft does not establish a working runner session.
 The approval permits the native transport proof first, followed by production wiring when that proof passes.
+
+### Local code review feedback
+
+Every code comment Indy supplied in this chat has been read.
+The following changes are written; a row becomes verified only after its matching checks pass.
+The gateway, runner integration and remaining milestone gates stay open.
+
+| Feedback | Current change or remaining check |
+|---|---|
+| Reader complexity and manual cleanup | Direct bounded reads into one zeroing allocation; automatic permit cleanup; partial-frame and cancellation tests |
+| Writer complexity | Bounded serializer owns completion; retained capacity stays charged and serialization reserves its temporary allocation peak |
+| Framing test complexity | Shared fixture, explicit expected-error patterns and a polled blocked future; the generic `required` helper is removed |
+| HTTP/2 client and upload loop | Hyper owns body transfer and native flow control; connection setup and worker supervision have separate owners |
+| HTTP/2 server length | Typed session owner, bounded opening and native request count; task lifetime is supervised |
+| HTTP/3 client length | Separate socket preparation, connection supervision and typed opening states; duplicate correlation maps are removed |
+| HTTP/3 request and response parsing | `RequestHead`, `ResponseHead` and `Encoded` conversions validate pseudo-headers before producing typed HTTP values |
+| HTTP/3 server length and failures | Session owns handlers and cancellation; a refused native connection is observed without terminating the listener |
+| Body state and Exonum reference | Separate native `Body` implementations and explicit closed state; the source comparison is recorded in the research page |
+| Meaning of `Carrier` | Renamed to `Transport`; no compatibility alias |
+| Human and agent error handling | Plain outer messages, retained causes, stable error codes and finite outcome fields |
+| Tokio Quiche features | Exact pinned feature decisions and native telemetry bridge are recorded in the research page |
+| Wake queue ownership and performance | One short mutex protects FIFO and membership together; hash membership replaces the linear duplicate scan; latency benchmark remains due |
+| Capacity and configuration | Validated `RUNNER_STREAM_HINT_CAPACITY`; startup wiring remains due; runner concurrency retains its existing server-owned policy |
+| A thousand fleets and fairness | Buffer pressure test is written; unconditional database discovery and end-to-end fairness proof remain due |
+| UUIDv7 main changes | Rebased onto merged #816; new data access must retain native identifiers and table ownership |
+| Traces, logs and coverage | Finite metric declarations, structured operation observations and export/redaction tests are written; final coverage measurement remains due |
+
+### Early draft requested for M244
+
+Indy asked, “well send the draft PR when you have the check, fmt clippy lints taken care”.
+He added, “so the claude agent can start”.
+The draft publishes the bus interface for M244 while M243 implementation and final verification continue.
+
+The draft must identify every pending gate and remain unready for merge.
+It does not claim that production publishers already use the bus or that runner sessions are wired into startup.
 
 ## How it behaves
 
@@ -89,7 +128,7 @@ Indy's approval includes the additional shared carrier crate.
 | Crate | Responsibility and principal public values |
 |---|---|
 | `af_wire` | `Up<'a>`, `Down<'a>`, `Answer<'a, T>`, `Lane::{Control,Work,Reports,Activity}`, `Renewal`, `RenewalAnswer`; values and validation without Tokio, SQL or native transport |
-| **New `af_stream`**, under `protocol/` | `Carrier`, `Endpoint`, `Trust`, `Limits`, `Incoming`, `OwnedFrame`, `Connection`, `ConnectionInfo`; native transport and framing, without SQL or authentication decisions |
+| **New `af_stream`**, under `protocol/` | `Transport`, `Endpoint`, `Trust`, `Incoming`, `OwnedFrame`, `Connection`, `ConnectionInfo`; native transport and framing, without SQL or authentication decisions |
 | **New `afd_bus`**, under `daemon/` | Object-safe `Bus`, cloneable `Handle`, `Subject`, `Command`, `Subscription`, `Received`; Dragonfly adapter and wake hints |
 | **New `afd_gateway`**, under `daemon/` | Concrete `Gateway`, `ConnectionContext`, `Authority`, `Session`, `LiveLease`, `Registry`; owns session decisions over existing services |
 | `afr_supervisor` | `Downlink`, cloneable `StreamHandle`, `Pending`, `Uplink`; offers feed existing workers, reports retain their durable spool |
@@ -180,6 +219,7 @@ pub trait Bus: Send + Sync + std::fmt::Debug {
     async fn publish(&self, subject: &Subject, payload: &str) -> Result<()>;
     async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> Result<()>;
     async fn subscribe(&self, subject: &Subject) -> Result<Subscription>;
+    async fn shutdown(&self) -> Result<()>;
 }
 
 pub struct Handle(std::sync::Arc<dyn Bus>);
@@ -207,6 +247,10 @@ All other publishers and subscribers receive `afd_bus::Handle` from boot.
 M244 replaces the notification adapter with core NATS and moves durable Dragonfly responsibilities into Postgres before removing Dragonfly.
 Typed subjects and neutral subscription outcomes keep backend names and reconnect mechanics inside the adapter.
 Publish does not imply durable delivery; gaps remain explicit and Postgres backstops remain authoritative.
+
+Shutdown is asynchronous and idempotent, so M244 can await `async-nats` connection draining behind the same interface.
+The daemon owns its absolute shutdown deadline.
+Dropping an individual subscription releases only that consumer, rather than closing the shared bus.
 
 ### Gateway and runner callables
 
@@ -285,8 +329,8 @@ Repeated reports retain existing lease-keyed billing idempotence and complete us
 `EDIT` and `DELETE` paths were checked against the fetched tree; `CREATE` paths are explicitly new.
 `AUDIT` rows name source hits whose dependent callers require review before implementation is complete.
 
-The inventory contains 99 proposed new paths, 145 edits, 20 deletions, one move and 113 additional audit paths.
-Two deployment paths and one builder-image path remain proposals requiring separate approval.
+The inventory contains 407 paths: 113 creations, 168 edits, 20 deletions, one move, 101 audit paths and three deployment/build proposals.
+The two deployment paths and builder-image path require separate approval before edits.
 These are scope counts, not completed implementation changes.
 
 The inventory includes test-suite registration because these Cargo manifests disable automatic test discovery.

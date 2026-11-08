@@ -20,6 +20,26 @@ pub(crate) const CMD_PUBLISH: &str = "SPUBLISH";
 const EVENT_FRAME_DROPPED: &str = "tail_frame_dropped";
 
 impl FleetStreams {
+    /// Publish an ordered batch on one native channel without a wait per payload.
+    ///
+    /// # Errors
+    /// Returns the native command failure; a prefix may already have arrived.
+    pub async fn publish_batch(&self, channel: &str, payloads: &[String]) -> Result<()> {
+        if payloads.is_empty() {
+            return Ok(());
+        }
+        let channel = self.redis.physical_key(channel);
+        let mut pipeline = redis::pipe();
+        for payload in payloads {
+            pipeline.cmd(CMD_PUBLISH).arg(&channel).arg(payload);
+        }
+        let _receivers: Vec<i64> = self
+            .redis
+            .pipeline(CMD_PUBLISH, &channel, &pipeline)
+            .await?;
+        Ok(())
+    }
+
     /// Publishes on a channel, for the subscription hub's readers.
     ///
     /// # Errors

@@ -8,6 +8,34 @@ executable: false
 
 # Datastore scaling requirements and target design
 
+## Approved next destination: core NATS and Postgres
+
+Indy approved replacing Dragonfly with core NATS on Nov 06, 2026.
+He said, “Yes i agree on NATS.”
+
+The [M244 decision and acceptance criteria](../v2/pending/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md#discovery-consult-log) record that approval and the required measurements.
+The [scheduler decisions](push_scheduler.md#decisions) define the resulting responsibilities.
+
+Postgres will own every durable fact and atomic state transition, including delivery obligations, login sessions and single-use authorization state.
+Core NATS will carry live activity, wake notifications and runner commands, without JetStream or a key-value store.
+Each signal remains disposable because its durable authority or recovery path lives in Postgres.
+
+Dragonfly's existing sharded Pub/Sub already provides disposable, at-most-once notifications.
+Moving durable state into Postgres also works with Dragonfly retained as the broker.
+Disposable messaging alone does not justify choosing NATS; the decision depends on measured cluster operation, reconnect behavior and subscription recovery.
+
+This separates broker recovery from lease authority and removes Dragonfly's durable state responsibilities.
+The current self-hosted deployment concentrates four Dragonfly processes on one machine and provides no managed multi-shard failover.
+M244 must demonstrate reconnect, explicit gap notifications and recovery rather than assume the replacement improves availability.
+
+The decision does not claim NATS is already faster or more reliable in this workload.
+M244 first measures Dragonfly, then requires NATS tail and wake 99th-percentile latency within 10% of that baseline on the same workload.
+Killing one NATS node must notify every viewer of the gap and restore progress within ten seconds.
+
+M243 supplies the typed `afd_bus::Bus` interface with a Dragonfly adapter.
+M244 implements NATS behind that interface, moves the remaining state into Postgres and removes Dragonfly after the required checks.
+The Dragonfly requirements below describe the current implementation until M244 lands.
+
 | Decision | Requirement |
 |---|---|
 | Required target | Four self-hosted Dragonfly processes, one region, must pass the application and recovery tests before this work is complete. Dragonfly Cloud Swarm is the later move, not the first one (Indy, 2026-09-14). |

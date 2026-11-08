@@ -37,6 +37,7 @@ members = [
     "crates/daemon/afd_authoring",
     "crates/daemon/afd_bench",
     "crates/daemon/afd_billing",
+    "crates/daemon/afd_bus",
     "crates/daemon/afd_connector",
     "crates/protocol/af_context",
     "crates/foundation/af_core",
@@ -68,6 +69,7 @@ members = [
     "crates/daemon/afd_vault",
     "crates/protocol/af_webhook",
     "crates/protocol/af_wire",
+    "crates/protocol/af_stream",
     "crates/runner/afr_agent",
     "crates/harness/af_egress",
     "crates/runner/afr_executor",
@@ -677,6 +679,12 @@ tower = { version = "0.5.3", default-features = false, features = ["util"] }
 # drives the same listener with an HTTP/1.1 client and an HTTP/2 one, and there
 # is no other way to prove the auto builder serves both.
 h2 = { version = "0.4.20", default-features = false }
+# Both runner carriers use the same BoringSSL implementation and verified identity.
+boring = { version = "5.4.0", default-features = false }
+tokio-boring = { version = "5.4.0", default-features = false }
+tokio-quiche = { version = "=0.20.1", default-features = false }
+http-body = { version = "1.1.0", default-features = false }
+http-body-util = { version = "0.1.5", default-features = false }
 hyper = { version = "1.12.0", default-features = false, features = ["server", "client", "http1", "http2"] }
 # The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
 # what lets a `tokio::net::TcpStream` be served by a hyper connection.
@@ -917,7 +925,8 @@ jsonrpsee-types = { version = "0.26.1", default-features = false }
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
-libc = { version = "0.2.191", default-features = false }
+# tokio-quiche 0.20.1 caps this below 0.2.190; retain the published transport.
+libc = { version = "=0.2.189", default-features = false }
 # The sandbox's egress scope speaks netlink itself: route netlink for the veth
 # pair, its addresses and its route, nf_tables for the host-side rules. Pure
 # Rust over the kernel's own protocol, so the static runner links no C library

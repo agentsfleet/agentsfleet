@@ -26,6 +26,7 @@ mod policy_shapes;
 #[path = "redaction.rs"]
 mod redaction;
 // Every runner route template, pinned in one reviewed snapshot.
+mod protocol;
 #[path = "routes.rs"]
 mod routes;
 mod runner_policy;

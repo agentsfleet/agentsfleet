@@ -132,7 +132,9 @@ Explicit close produced the raw client's worker shutdown notification without co
 
 Command: `cargo run --quiet` in `/workspace/scratch/m243-transport/native`, using the task-local native build dependencies.
 Output: `/workspace/scratch/m243-logs/native-h3-proof-v4.log`; source fingerprints: `native-h3-proof-v4.sources.sha256` beside that log.
-The HTTP/2 probe uses `cargo run --quiet -- h2`; its idle and cleanup checks remain in progress.
+
+The HTTP/2 probe uses `cargo run --quiet -- h2` and also passed duplex, 2 MiB payload, 120-second ping and task-exit checks.
+Its output is `/workspace/scratch/m243-logs/native-h2-proof.log`.
 
 Two probe corrections mattered before the HTTP/3 success:
 
@@ -141,6 +143,52 @@ Two probe corrections mattered before the HTTP/3 success:
 
 The production adapter must preserve peer verification and match the pinned event types directly.
 These scratch results do not satisfy production adapter, failure-injection, static-target or Fly deployment acceptance criteria.
+
+### Workspace dependency conflict
+
+Published `tokio-quiche 0.20.1` requires `libc < 0.2.190`; the workspace previously requested `0.2.191`.
+The [upstream issue](https://github.com/rust-lang/libc/issues/5601) says its iOS regression was fixed in `0.2.191`.
+The [pending cap update](https://github.com/cloudflare/quiche/pull/2841) changes one manifest line, but its revision includes 21 commits after the published transport release.
+
+A scratch copy changed only that dependency requirement for local compilation and tests.
+The workspace check passed, followed by 14 production adapter and framing tests in `/workspace/scratch/m243-logs/native-cap-proof-tests-v1.log`.
+No scratch path is an approved dependency for the pull request.
+
+Indy approved: “Pin workspace libc to 0.2.189 and require full Linux gates (Recommended)”.
+The workspace and regenerated lockfile now use released `libc 0.2.189` with published `tokio-quiche 0.20.1`.
+No scratch dependency override remains; verification must run against those published packages.
+
+### Enabled QUIC features and telemetry
+
+`tokio-quiche 0.20.1` is pinned with `default-features = false`.
+Its published defaults enable qlog compression; these defaults are disabled here.
+No handshake key logging is enabled.
+
+| Feature | M243 decision |
+|---|---|
+| `rpk` | Disabled; runner connections verify certificate chains and endpoint names |
+| `gcongestion` | Disabled; retain the published congestion controller until comparative measurements justify changing it |
+| `zero-copy` | Deprecated flag; the pinned manifest says zero-copy sends are always enabled; this flag only enables `gcongestion` |
+| `perf-quic-listener-metrics` | Disabled; native connection and handshake durations enter the shared telemetry pipeline directly |
+| `tokio-task-metrics` | Disabled; enabling native task histograms alone would not export them through our declared producers |
+
+The adapter samples public `quiche::Stats` and `PathStats`, then exports through an owned observation task.
+Measurements include round-trip time, sent/lost/retransmission packets, retransmitted bytes and probe timeouts.
+HTTP/2 emits no invented QUIC readings.
+
+Each established connection publishes its final sample before the driver drops.
+Its owner waits for the observation task during explicit close.
+Failed handshakes remain visible through connection outcomes and measured timeouts.
+
+### Exonum review reference
+
+The inspected Exonum revision is `2d2fa22e5f5bc451d08c155c2398956f11dce06e`.
+Its `exonum-node/src/events/codec.rs` separates framing from typed messages and network connection state.
+The refactor keeps that boundary through `OwnedFrame`, typed HTTP headers and separate native connection owners.
+
+Its historical decoder checks plaintext length after collecting and decrypting the encrypted frame.
+Our reader proves the declared length before allocation, then reads directly into one zeroing buffer.
+The old dependencies, late bounds and test unwraps are not imported.
 
 ### What TOON changes
 
