@@ -13,7 +13,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 af_inference.workspace = true
 af_providers.workspace = true
 af_context = { workspace = true, features = ["postgres"] }

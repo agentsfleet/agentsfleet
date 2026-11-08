@@ -76,7 +76,7 @@ fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
 }
 
 /// Asserts the fleet's claim was handed back, so the next poll may take it.
-async fn assert_claim_freed(fixtures: &Fixtures, fleet: &str) {
+async fn assert_claim_freed(fixtures: &Fixtures, fleet: &Uuid7) {
     assert!(
         fixtures.slot_is_free(fleet).await,
         "the retry freed the claim"
@@ -184,7 +184,10 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
         "an unrecordable refusal issued a lease: {answer}"
     );
     assert!(line.get("error_code").is_some_and(|code| !code.is_empty()));
-    assert_eq!(line.get("agentsfleet_event_id"), Some(&seeded.event_id));
+    assert_eq!(
+        line.get("agentsfleet_event_id").map(String::as_str),
+        Some(seeded.event_id.as_str())
+    );
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
         None,
@@ -207,7 +210,7 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let claimed = claim(&fixtures, &seeded).await;
-    let slot = Row::Slot(claimed.fleet_id.as_str());
+    let slot = Row::Slot(&claimed.fleet_id);
     fixtures.age(slot, "lease_expires_at", LAPSE).await;
     let won = fixtures
         .leases()
@@ -226,10 +229,13 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
         "a lost claim issued a lease: {answer}"
     );
     assert_eq!(
-        lost.get("runner_id"),
-        Some(&seeded.runner.as_str().to_owned())
+        lost.get("runner_id").map(String::as_str),
+        Some(seeded.runner.as_str())
     );
-    assert_eq!(lost.get("agentsfleet_event_id"), Some(&seeded.event_id));
+    assert_eq!(
+        lost.get("agentsfleet_event_id").map(String::as_str),
+        Some(seeded.event_id.as_str())
+    );
 
     fixtures.cleanup().await;
 }
@@ -272,10 +278,10 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
 /// caller picks: the fleet's own, or one no row carries.
 async fn ready_in(
     fixtures: &Fixtures,
-    workspace: &str,
+    workspace: &Uuid7,
     runner: Uuid7,
-    fleet: String,
-    tenant: String,
+    fleet: Uuid7,
+    tenant: Uuid7,
 ) -> Ready {
     let event_id = crate::queue::enqueue(
         &fixtures.database,

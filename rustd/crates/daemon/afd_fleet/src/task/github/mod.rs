@@ -105,7 +105,7 @@ impl Github {
         let scope = self
             .plane
             .leases
-            .mint_scope(lease.runner_id, lease.lease_id.as_str())
+            .mint_scope(lease.runner_id, lease.lease_id)
             .await?
             .ok_or(super::TaskRefusal::StaleState)?;
         let handle = self

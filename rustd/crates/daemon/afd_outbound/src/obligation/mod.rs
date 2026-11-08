@@ -28,6 +28,7 @@
 //! an answer the queue carried and nobody received, which is exactly the set
 //! the producer's recovery scan re-offers.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use afd_connector::Provider;
@@ -53,9 +54,9 @@ const CONTEXT_SCAN: &str = "scan obligations";
 #[derive(Debug, Clone, Copy)]
 pub struct Delivery<'a> {
     /// The fleet that produced the answer.
-    pub fleet_id: &'a str,
+    pub fleet_id: &'a Uuid7,
     /// The workspace whose grant pays for it.
-    pub workspace_id: &'a str,
+    pub workspace_id: &'a Uuid7,
     /// Which connector carries it back. The connector type rather than its
     /// id, so a lease's model provider — a string the report also holds —
     /// cannot be passed here and compile.
@@ -64,7 +65,7 @@ pub struct Delivery<'a> {
     /// producer recorded it at admission.
     pub destination: &'a str,
     /// The event the answer is threaded onto.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// What to say.
     pub answer: &'a str,
 }
@@ -123,17 +124,17 @@ impl Owed {
 #[derive(Debug, sqlx::FromRow)]
 pub struct Owed {
     /// The obligation row.
-    pub id: String,
+    pub id: Uuid7,
     /// The fleet that produced the answer.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// The workspace whose grant pays for the delivery.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// Which connector carries it back, as the ledger spells it.
     pub provider: String,
     /// Where that connector posts it.
     pub destination: String,
     /// The event the answer is threaded onto.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// What to say.
     pub answer: String,
 }
@@ -165,7 +166,7 @@ const CONTEXT_OWE: &str = "owe delivery";
 /// Reports a database that would not answer.
 pub async fn owe(
     connection: &mut sqlx::PgConnection,
-    row_id: &str,
+    row_id: &Uuid7,
     delivery: Delivery<'_>,
 ) -> Result<bool> {
     if delivery.answer.is_empty() {
@@ -194,7 +195,7 @@ pub async fn owe(
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn receipt(database: &Db, obligation: &str, entry: &str) -> Result<()> {
+pub async fn receipt(database: &Db, obligation: &Uuid7, entry: &str) -> Result<()> {
     write_receipt(database, sql::RECEIPT_DELIVERY, obligation, entry).await
 }
 
@@ -241,7 +242,7 @@ const CONTEXT_RECEIPT: &str = "record receipt";
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn record_reappended(database: &Db, obligation: &str, entry: &str) -> Result<()> {
+pub async fn record_reappended(database: &Db, obligation: &Uuid7, entry: &str) -> Result<()> {
     write_receipt(database, sql::REAPPEND_RECEIPT, obligation, entry).await
 }
 
@@ -253,7 +254,7 @@ pub async fn record_reappended(database: &Db, obligation: &str, entry: &str) -> 
 async fn write_receipt(
     database: &Db,
     statement: &'static str,
-    obligation: &str,
+    obligation: &Uuid7,
     entry: &str,
 ) -> Result<()> {
     let mut connection = database.acquire().await?;

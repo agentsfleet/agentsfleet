@@ -103,7 +103,7 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
     let claimed = claim(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, claimed).await;
 
-    let branch = repair::branch_for(&seeded.event_id);
+    let branch = repair::branch_for(seeded.event_id.as_str());
     assert!(
         answer.contains(&branch),
         "the delivery locked a branch that is not this gate's {branch}: {answer}"

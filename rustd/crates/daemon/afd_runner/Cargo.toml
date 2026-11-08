@@ -19,7 +19,7 @@ workspace = true
 afd_admission.workspace = true
 af_observability.workspace = true
 # Identifiers, the clock a liveness instant is stamped with, the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 garde.workspace = true
 # The sentence each enrolment bound earns, keyed by the path garde reports.
 af_validate.workspace = true

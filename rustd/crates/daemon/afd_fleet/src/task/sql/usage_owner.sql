@@ -1,2 +1,2 @@
-SELECT task_id::text, fleet_id::text, workspace_id::text FROM runner.leases
-WHERE id = $1::uuid AND task_id IS NOT NULL
+SELECT task_id, fleet_id, workspace_id FROM runner.leases
+WHERE id = $1 AND task_id IS NOT NULL

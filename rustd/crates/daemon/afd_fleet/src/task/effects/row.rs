@@ -4,15 +4,16 @@ use crate::{
     Result,
     task::{TaskRefusal, github::BoundPr, row::counter},
 };
+use af_core::id::Uuid7;
 use af_wire::task::{TaskEffect, TaskEffectState};
 use sqlx::types::Json;
 
 #[derive(sqlx::FromRow)]
 pub(super) struct Effect {
-    pub id: String,
-    pub task_id: String,
-    pub fleet_id: String,
-    pub workspace_id: String,
+    pub id: Uuid7,
+    pub task_id: Uuid7,
+    pub fleet_id: Uuid7,
+    pub workspace_id: Uuid7,
     pub task_generation: i64,
     pub stop_generation: i64,
     pub ordinal: i64,
@@ -42,7 +43,7 @@ impl Effect {
             _ => return Err(TaskRefusal::EffectUncertain.into()),
         };
         Ok(TaskEffect {
-            effect_id: self.id.clone(),
+            effect_id: self.id.clone().into(),
             ordinal: counter(self.ordinal, "effect ordinal")?,
             state,
             expected_head: self.expected_head.clone(),

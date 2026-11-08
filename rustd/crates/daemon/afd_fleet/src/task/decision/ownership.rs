@@ -40,8 +40,8 @@ impl NativeContext {
             return Err(TaskRefusal::StaleState.into());
         }
         let scope = TaskScope {
-            fleet_id: guard::id(&current.fleet_id, "fleet_id")?,
-            workspace_id: guard::id(&current.workspace_id, "workspace_id")?,
+            fleet_id: current.fleet_id.clone(),
+            workspace_id: current.workspace_id.clone(),
         };
         let task = execution(connection, &current, &scope, input).await?;
         let source_id = guard::id(&input.source_admission_id, "source_admission_id")?;
@@ -70,7 +70,7 @@ impl NativeContext {
                 .as_ref()
                 .map(|task| task.snapshot.context.accepted_revision_id.as_ref())
         } else {
-            self.current.revision_id.as_deref()
+            self.current.revision_id.as_ref().map(Uuid7::as_str)
         }
         .ok_or_else(|| TaskRefusal::StaleState.into())
     }
@@ -83,15 +83,17 @@ impl NativeContext {
         candidates: &[Candidate],
     ) -> Result<AssessedContext> {
         Ok(AssessedContext {
-            source_admission_id: input.source_admission_id.clone(),
+            source_admission_id: crate::task::guard::wire(&input.source_admission_id)?,
             assessment: input.assessment.clone(),
-            accepted_revision_id: self.revision(input.assessment.purpose())?.to_owned(),
-            profile_revision_id: profile_revision.to_owned(),
+            accepted_revision_id: crate::task::guard::wire(
+                self.revision(input.assessment.purpose())?,
+            )?,
+            profile_revision_id: crate::task::guard::wire(profile_revision)?,
             questions_digest,
             execution: self
                 .task
                 .as_ref()
-                .map(|task| TaskStamp::of(&task.snapshot.context)),
+                .and_then(|task| TaskStamp::of(&task.snapshot.context)),
             candidates: candidates
                 .iter()
                 .map(|candidate| candidate.stamp.clone())
@@ -117,7 +119,7 @@ pub(super) async fn execution(
                 .await
                 .map_err(query("lock decision execution stamp"))?
                 .ok_or(TaskRefusal::StaleState)?;
-            let task = read::on(connection, scope, &guard::id(id, "task_id")?).await?;
+            let task = read::on(connection, scope, &guard::id(id.as_str(), "task_id")?).await?;
             if task.context.generation != expected.generation
                 || current.task_generation != i64::try_from(task.context.generation).ok()
                 || current.task_stop_generation != i64::try_from(task.context.stop_generation).ok()
@@ -150,7 +152,7 @@ pub(super) async fn authorize_source(
     }
     source::check_human(input)?;
     if source_id.as_str() != current.source_admission_id {
-        sqlx::query_scalar::<_, String>(sql::CLAIM_SOURCE)
+        sqlx::query_scalar::<_, Uuid7>(sql::CLAIM_SOURCE)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .bind(&current.source_admission_id)
@@ -159,10 +161,10 @@ pub(super) async fn authorize_source(
             .bind(format!("{}%", afd_events::ACTOR_PREFIX))
             .bind(0_i64)
             .bind(1_i64)
-            .bind(lease.lease_id.as_str())
+            .bind(lease.lease_id)
             .bind(current.fence)
             .bind(LEASE_STATUS_ACTIVE)
-            .bind(source_id.as_str())
+            .bind(source_id)
             .bind(false)
             .bind(afd_admission::Producer::SlackMention.as_str())
             .bind(afd_connector::Provider::Slack.id())

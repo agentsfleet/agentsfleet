@@ -158,7 +158,12 @@ async fn run_turn(
             requests: af_wire::usage::RequestLines::default(),
         };
         plane
-            .renew(runner, &lease.lease_id, request, clock::now())
+            .renew(
+                runner,
+                &Uuid7::parse(&lease.lease_id)?,
+                request,
+                clock::now(),
+            )
             .await?;
     }
     for seq in 0..turn.posts {

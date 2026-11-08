@@ -22,7 +22,7 @@ pub(super) struct Claimed {
 }
 
 pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option<Claimed>> {
-    let scope = candidate.scope()?;
+    let scope = candidate.scope();
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     guard::scope(&mut tx, &scope).await?;
@@ -92,7 +92,7 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
     }
     let until: jiff_sqlx::Timestamp = sqlx::query_scalar(include_str!("sql/claim.sql"))
         .bind(&owner.id)
-        .bind(claim.as_str())
+        .bind(&claim)
         .bind(CLAIM_TTL)
         .bind(i32::from(fallback))
         .fetch_one(&mut *tx)
@@ -106,7 +106,7 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
         scope: MintScope {
             workspace_id: scope.workspace_id,
             fleet_id: scope.fleet_id,
-            event_id: owner.id.clone().into_boxed_str(),
+            event_id: owner.id.clone().into(),
             binding: Some(binding),
         },
         installation: owner.target.installation_id,
@@ -119,7 +119,7 @@ pub(super) async fn claim(tasks: &Tasks, candidate: &Candidate) -> Result<Option
     }))
 }
 
-pub(super) async fn owner(connection: &mut PgConnection, id: &str) -> Result<Option<Wait>> {
+pub(super) async fn owner(connection: &mut PgConnection, id: &Uuid7) -> Result<Option<Wait>> {
     sqlx::query_as(include_str!("sql/owner.sql"))
         .bind(id)
         .fetch_optional(connection)
@@ -132,7 +132,7 @@ pub(super) async fn authority(
     owner: &Wait,
 ) -> Result<af_fleet_runtime::config::RepositoryBinding> {
     let mut live = None;
-    for revision in [Some(owner.accepted_revision_id.as_str()), None] {
+    for revision in [Some(&owner.accepted_revision_id), None] {
         let config = Leases::stored_config_on(connection, &owner.fleet_id, revision)
             .await?
             .ok_or(TaskRefusal::InvalidTarget)?;
@@ -144,8 +144,8 @@ pub(super) async fn authority(
         }
     }
     let scope = super::super::TaskScope {
-        fleet_id: guard::id(&owner.fleet_id, "fleet_id")?,
-        workspace_id: guard::id(&owner.workspace_id, "workspace_id")?,
+        fleet_id: owner.fleet_id.clone(),
+        workspace_id: owner.workspace_id.clone(),
     };
     super::super::Github::hold_authority(connection, &scope, owner.target.installation_id).await?;
     live.ok_or_else(|| TaskRefusal::InvalidTarget.into())

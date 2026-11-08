@@ -28,7 +28,7 @@ async fn test_a_runner_token_resolves_to_a_machine() {
     let fixtures = Fixtures::create().await;
     let id = identifier(7);
     let digest = digest_of("agt_r_fixture_live");
-    fixtures.runner(&id, &digest, ACTIVE, true).await;
+    fixtures.runner(id.as_str(), &digest, ACTIVE, true).await;
 
     let found = Credentials::new(fixtures.database().clone())
         .resolve(CredentialKind::RunnerToken, &digest)
@@ -70,7 +70,7 @@ async fn test_only_an_active_runner_is_live() {
     ] {
         let digest = digest_of(&format!("agt_r_fixture_{state}"));
         fixtures
-            .runner(&identifier(seed), &digest, state, false)
+            .runner(identifier(seed).as_str(), &digest, state, false)
             .await;
 
         let found = Credentials::new(fixtures.database().clone())

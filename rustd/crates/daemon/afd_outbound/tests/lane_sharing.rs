@@ -13,6 +13,7 @@
 
 use std::time::Duration;
 
+use afd_db::test_util::mint_id;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::EventId;
 use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
@@ -45,8 +46,6 @@ use self::hanging_queue::HangingQueue;
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 
 const PROVIDER: &str = "slack";
-const FLEET_ID: &str = "0199a0b0-0000-7000-8000-0000000000f1";
-const WORKSPACE: &str = "fast";
 /// The deadline the client gives the fake for any one command.
 const REQUEST_DEADLINE: Duration = Duration::from_secs(2);
 /// How long the acknowledgement is waited for. Nothing here is held shut, so
@@ -83,9 +82,9 @@ async fn a_clone_names_the_same_lanes() {
             id: EventId::of("1700000000001-0"),
             provider: PROVIDER.to_owned(),
             destination: DESTINATION.to_owned(),
-            workspace_id: WORKSPACE.to_owned(),
-            fleet_id: FLEET_ID.to_owned(),
-            event_id: "shared-1".to_owned(),
+            workspace_id: mint_id(),
+            fleet_id: mint_id(),
+            event_id: mint_id(),
             answer: "the run finished".to_owned(),
         }))
         .await;
@@ -130,15 +129,16 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
         no_ledger::no_ledger(),
         token.clone(),
     );
+    let event = mint_id();
 
     lanes
         .dispatch(Box::new(OutboundDelivery {
             id: EventId::of("1700000000002-0"),
             provider: PROVIDER.to_owned(),
             destination: DESTINATION.to_owned(),
-            workspace_id: WORKSPACE.to_owned(),
-            fleet_id: FLEET_ID.to_owned(),
-            event_id: "unacknowledged-1".to_owned(),
+            workspace_id: mint_id(),
+            fleet_id: mint_id(),
+            event_id: event.clone(),
             answer: "the run finished".to_owned(),
         }))
         .await;
@@ -167,7 +167,7 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
 
     assert_eq!(
         poster.delivered(),
-        vec!["unacknowledged-1".to_owned()],
+        vec![event.clone()],
         "a failed acknowledgement must not make this process deliver twice"
     );
 
@@ -177,7 +177,7 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
     // And still once after the drain: nothing requeued it on the way out.
     assert_eq!(
         poster.delivered(),
-        vec!["unacknowledged-1".to_owned()],
+        vec![event.clone()],
         "the shutdown redelivered an answer whose acknowledgement had failed"
     );
 }

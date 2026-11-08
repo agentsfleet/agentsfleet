@@ -1,2 +1,2 @@
-SELECT fleet_id::text FROM runner.fleet_slots
-WHERE fleet_id = $1::uuid FOR UPDATE
+SELECT fleet_id FROM runner.fleet_slots
+WHERE fleet_id = $1 FOR UPDATE

@@ -104,23 +104,23 @@ async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() 
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
     subject: String,
-    user: String,
-    key: String,
+    user: Uuid7,
+    key: Uuid7,
     token: String,
 }
 
 impl Fixture {
     async fn create() -> Self {
         let lane = TestDatabase::shared();
-        let first = mint_id().replace('-', "");
-        let second = mint_id().replace('-', "");
+        let first = mint_id().as_str().replace('-', "");
+        let second = mint_id().as_str().replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             user: mint_id(),
             key: mint_id(),
@@ -132,7 +132,7 @@ impl Fixture {
     /// Routes `account` to this workspace, as a landed connect would have.
     async fn route(&self, provider: Provider, account: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        InstallSeed::new(provider.id(), account, self.workspace.as_str())
+        InstallSeed::new(provider.id(), account, &self.workspace)
             .insert(&mut *connection)
             .await
             .expect("the routing row seeds");
@@ -140,13 +140,13 @@ impl Fixture {
 
     /// Names `provider`'s grant key from a model entry, the reference the vault
     /// refuses a delete over. Returns the entry for [`Self::drop_entry`].
-    async fn reference_handle(&self, provider: Provider) -> String {
+    async fn reference_handle(&self, provider: Provider) -> Uuid7 {
         let id = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "INSERT INTO model.tenant_models \
                (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, 'fixture-model', $3, now(), now())",
+             VALUES ($1, $2, 'fixture-model', $3, now(), now())",
         )
         .bind(&id)
         .bind(&self.tenant)
@@ -158,9 +158,9 @@ impl Fixture {
     }
 
     /// Removes the entry [`Self::reference_handle`] wrote.
-    async fn drop_entry(&self, id: &str) {
+    async fn drop_entry(&self, id: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM model.tenant_models WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM model.tenant_models WHERE id = $1")
             .bind(id)
             .execute(&mut *connection)
             .await
@@ -172,11 +172,11 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
             "SELECT count(*) FROM connector.installs \
-             WHERE provider = $1 AND external_account_id = $2 AND workspace_id = $3::uuid",
+             WHERE provider = $1 AND external_account_id = $2 AND workspace_id = $3",
         )
         .bind(provider.id())
         .bind(account)
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .fetch_one(&mut *connection)
         .await
         .expect("the routing rows count")
@@ -204,7 +204,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("connector-status")
             .insert(&mut *connection)
             .await
@@ -250,12 +250,12 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-            .bind(self.workspace.as_str())
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1")
+            .bind(&self.workspace)
             .execute(&mut *transaction)
             .await
             .expect("the sealed handles clean up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

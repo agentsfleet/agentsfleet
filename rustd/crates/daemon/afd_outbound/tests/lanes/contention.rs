@@ -22,10 +22,7 @@ async fn simultaneous_dispatchers_deliver_every_answer_once() {
         dispatchers.spawn(async move {
             start.wait().await;
             lanes
-                .dispatch(job(
-                    &format!("workspace-{n}"),
-                    u32::try_from(n).expect("small count"),
-                ))
+                .dispatch(job(n, u32::try_from(n).expect("small count")))
                 .await;
         });
     }
@@ -36,8 +33,8 @@ async fn simultaneous_dispatchers_deliver_every_answer_once() {
         server.acks().len() == DISPATCHERS
     })
     .await;
-    let expected: BTreeSet<String> = (0..DISPATCHERS)
-        .map(|n| format!("workspace-{n}-{n}"))
+    let expected: BTreeSet<Uuid7> = (0..DISPATCHERS)
+        .map(|n| event(n, u32::try_from(n).expect("small count")))
         .collect();
     let delivered = poster.delivered();
     assert_eq!(delivered.len(), DISPATCHERS);

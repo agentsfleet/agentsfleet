@@ -54,7 +54,7 @@ pub(crate) use self::refuse::{
     budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
     github_reconnect_required, grant_required, integration_not_connected, lease_lost,
     lease_max_runtime, lease_not_found, message_limit_reached, message_no_channel,
-    mint_unconfigured, renewal_no_credits, stale_fence, task_target_counter,
+    mint_unconfigured, renewal_no_credits, stale_fence, task_target_counter, wire_lease,
 };
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.

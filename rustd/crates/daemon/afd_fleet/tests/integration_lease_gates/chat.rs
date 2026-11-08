@@ -15,7 +15,7 @@ use af_wire::event::EventType;
 use af_wire::lease::LeaseResponse;
 use af_wire::memory::MemoryDelta;
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_db::test_util::{EventKind, FleetEventSeed, PlatformDefault};
+use afd_db::test_util::{EventKind, FleetEventSeed, PlatformDefault, mint_id};
 use afd_fleet::lease::Plane;
 use jiff::Timestamp;
 
@@ -37,15 +37,12 @@ pub(super) const FOLLOW_UP: &str = "fix the second one";
 /// after the first was answered is.
 pub(super) const ASKED_LATER: Duration = Duration::from_secs(60);
 
-/// A run the fleet finished after the event a case leases.
-const LATER_EVENT_ID: &str = "finished-after-the-leased-event";
-
 /// One leasable fleet with two runners, and the provider default its leases
 /// resolve against, held for the case's life.
 pub(super) struct Chat {
     pub(super) fixtures: Fixtures,
-    fleet: String,
-    workspace: String,
+    fleet: Uuid7,
+    workspace: Uuid7,
     pub(super) runner: Uuid7,
     pub(super) spare: Uuid7,
     _default: PlatformDefault,
@@ -53,8 +50,8 @@ pub(super) struct Chat {
 
 /// What a case reads off an issued lease.
 pub(super) struct Issued {
-    lease_id: String,
-    pub(super) event_id: String,
+    lease_id: Uuid7,
+    pub(super) event_id: Uuid7,
     fencing_token: u64,
     pub(super) history: Vec<(String, String)>,
     /// The memory window's entries, key and content, or `None` when the lease
@@ -80,7 +77,7 @@ impl Chat {
     }
 
     /// Admits one `event_type` event asking `message`, stamped `at`.
-    pub(super) async fn ask(&self, event_type: EventType, message: &str, at: Timestamp) -> String {
+    pub(super) async fn ask(&self, event_type: EventType, message: &str, at: Timestamp) -> Uuid7 {
         let request = serde_json::json!({ "message": message }).to_string();
         crate::queue::enqueue(
             &self.fixtures.database,
@@ -108,16 +105,18 @@ impl Chat {
             event_type: EventType::Chat.as_str(),
             status: status::PROCESSED,
         };
-        let row = FleetEventSeed::new(&self.fleet, &self.workspace, LATER_EVENT_ID, kind)
+        // A run the fleet finished after the event a case leases.
+        let later = mint_id();
+        FleetEventSeed::new(&self.fleet, &self.workspace, &later, kind)
             .at(at)
             .insert(&mut *connection)
             .await
             .expect("seeding a finished run");
         sqlx::query(
             "UPDATE fleet.events SET request_json = $2::jsonb, response_text = $3 \
-             WHERE id = $1::uuid",
+             WHERE event_id = $1",
         )
-        .bind(row)
+        .bind(&later)
         .bind(serde_json::json!({ "message": message }).to_string())
         .bind(answer)
         .execute(&mut *connection)
@@ -126,7 +125,7 @@ impl Chat {
     }
 
     /// The fleet every lease here is for.
-    pub(super) fn fleet(&self) -> &str {
+    pub(super) const fn fleet(&self) -> &Uuid7 {
         &self.fleet
     }
 
@@ -165,8 +164,8 @@ impl Chat {
             panic!("the fleet plane grants fleet work");
         };
         Issued {
-            lease_id: lease.lease_id.into_owned(),
-            event_id: lease.event.event_id.into_owned(),
+            lease_id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
+            event_id: Uuid7::parse(&lease.event.event_id).expect("the event is a UUIDv7"),
             fencing_token: lease.fencing_token,
             history: lease
                 .history
@@ -207,8 +206,8 @@ impl Chat {
         let request = ReportRequest {
             folded_through_sequence: None,
             task: None,
-            lease_id: Cow::Borrowed(&lease.lease_id),
-            event_id: Cow::Borrowed(&lease.event_id),
+            lease_id: Cow::Borrowed(lease.lease_id.as_str()),
+            event_id: Cow::Borrowed(lease.event_id.as_str()),
             fencing_token: lease.fencing_token,
             outcome: Outcome::Processed,
             failure_reason: None,
@@ -222,7 +221,7 @@ impl Chat {
                 segments: None,
             },
             checkpoint: ReportCheckpoint {
-                last_event_id: Cow::Borrowed(&lease.event_id),
+                last_event_id: Cow::Borrowed(lease.event_id.as_str()),
                 last_response: Cow::Borrowed(answer),
             },
             tool_calls: None,

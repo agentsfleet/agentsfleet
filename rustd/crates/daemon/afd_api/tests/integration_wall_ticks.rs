@@ -136,7 +136,7 @@ async fn a_second_lag_inside_a_tick_re_announces_when_the_tick_ends() {
     past_a_tick().await;
     let hello = wall.next_of("hello").await;
     assert!(
-        hello.contains(&wall.fixture.fleet),
+        hello.contains(wall.fixture.fleet.as_str()),
         "the owed read announces the set"
     );
     wall.close().await;

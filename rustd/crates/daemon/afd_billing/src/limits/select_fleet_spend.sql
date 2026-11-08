@@ -9,5 +9,5 @@ SELECT
   COALESCE(SUM(l.charged_nanos) FILTER (WHERE l.created_at >= f.month_floor), 0)::bigint AS month_nanos
 FROM floors f
 JOIN billing.usage_lines l
-  ON l.workspace_id = $1::uuid AND l.fleet_id = $2::uuid
+  ON l.workspace_id = $1 AND l.fleet_id = $2
  AND l.created_at >= LEAST(f.day_floor, f.month_floor)

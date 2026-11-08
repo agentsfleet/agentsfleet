@@ -45,7 +45,7 @@ pub(crate) async fn verify(
     now: jiff::Timestamp,
 ) -> Result<Verified> {
     let totals: Totals = sqlx::query_as(TOTALS)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(dispatch_status::KNOWN)
         .bind(dispatch_status::PENDING)
         .bind(dispatch_status::UNKNOWN)

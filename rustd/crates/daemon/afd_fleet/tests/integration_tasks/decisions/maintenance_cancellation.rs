@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use af_wire::task::DecisionAssessment;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _, Tasks};
 use sqlx::Connection as _;
@@ -73,7 +74,7 @@ async fn cancel_at_parent(
     fixture: &Decisions<'_>,
     tasks: &Tasks,
     cursor: &mut DecisionMaintenanceCursor,
-    first: &str,
+    first: &Uuid7,
 ) {
     let mut connection = fixture
         .case

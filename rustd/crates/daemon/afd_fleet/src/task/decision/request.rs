@@ -20,7 +20,7 @@ const _: () = assert!(usize::BITS >= u32::BITS);
 
 #[derive(Serialize)]
 struct State<'a> {
-    source_admission_id: &'a str,
+    source_admission_id: &'a Uuid7,
     message: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     assessed_message: Option<&'a str>,
@@ -61,8 +61,9 @@ pub(super) fn compile(
         af_wire::task::DecisionAssessment::Message
         | af_wire::task::DecisionAssessment::Goal { .. } => None,
     };
+    let source_admission_id = crate::task::guard::wire(&input.source_admission_id)?;
     let state = State {
-        source_admission_id: &input.source_admission_id,
+        source_admission_id: &source_admission_id,
         message,
         assessed_message,
         assessment: &input.assessment,

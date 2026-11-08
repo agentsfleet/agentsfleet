@@ -20,14 +20,14 @@ async fn internal_retries_are_one_cycle_and_the_count_rides_the_delivered_event(
     let capture = capture();
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000002-0";
-    let entry = owe_and_queue(&harness, 4, event).await;
+    let event = mint_id();
+    let entry = owe_and_queue(&harness, 4, &event).await;
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let poster = Scripted::answering(&[Verdict::Retryable, Verdict::Retryable, Verdict::Delivered]);
     let lanes = lanes_over(&server, harness.database.clone(), poster.clone(), &token).await;
 
-    lanes.dispatch(job(entry.clone(), event)).await;
+    lanes.dispatch(job(entry.clone(), &event)).await;
     await_until("the delivered answer to be acknowledged", || {
         server.acks().contains(&entry.as_str().to_owned())
     })
@@ -41,7 +41,7 @@ async fn internal_retries_are_one_cycle_and_the_count_rides_the_delivered_event(
         [Attempt::First, Attempt::Repeat, Attempt::Repeat],
         "a first cycle posts straight away; each retry may follow a post that landed"
     );
-    let (attempts, delivered_at, _updated_at) = row(&harness, event).await;
+    let (attempts, delivered_at, _updated_at) = row(&harness, &event).await;
     assert_eq!(
         attempts, 1,
         "three vendor calls inside one cycle count once"
@@ -69,14 +69,14 @@ async fn an_exhausted_cycle_is_counted_and_reported() {
     let capture = capture();
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000002-1";
-    let entry = owe_and_queue(&harness, 5, event).await;
+    let event = mint_id();
+    let entry = owe_and_queue(&harness, 5, &event).await;
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let poster = Scripted::answering(&[Verdict::Retryable]);
     let lanes = lanes_over(&server, harness.database.clone(), poster.clone(), &token).await;
 
-    lanes.dispatch(job(entry.clone(), event)).await;
+    lanes.dispatch(job(entry.clone(), &event)).await;
     await_until("the exhausted job to be acknowledged", || {
         server.acks().contains(&entry.as_str().to_owned())
     })
@@ -89,7 +89,7 @@ async fn an_exhausted_cycle_is_counted_and_reported() {
         DELIVERY_ATTEMPTS,
         "the whole budget was spent"
     );
-    let (attempts, delivered_at, _updated_at) = row(&harness, event).await;
+    let (attempts, delivered_at, _updated_at) = row(&harness, &event).await;
     assert_eq!(attempts, 1, "a failed cycle is still a cycle");
     assert_eq!(
         delivered_at, None,
@@ -109,14 +109,14 @@ async fn a_permanent_refusal_counts_one_cycle_and_is_acknowledged() {
     let _capture = capture();
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000002-2";
-    let entry = owe_and_queue(&harness, 6, event).await;
+    let event = mint_id();
+    let entry = owe_and_queue(&harness, 6, &event).await;
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let poster = Scripted::answering(&[Verdict::Permanent]);
     let lanes = lanes_over(&server, harness.database.clone(), poster.clone(), &token).await;
 
-    lanes.dispatch(job(entry.clone(), event)).await;
+    lanes.dispatch(job(entry.clone(), &event)).await;
     await_until("the refused job to be acknowledged", || {
         server.acks().contains(&entry.as_str().to_owned())
     })
@@ -125,7 +125,7 @@ async fn a_permanent_refusal_counts_one_cycle_and_is_acknowledged() {
     lanes.drain().await;
 
     assert_eq!(poster.calls(), 1, "a permanent verdict is not retried");
-    let (attempts, delivered_at, _updated_at) = row(&harness, event).await;
+    let (attempts, delivered_at, _updated_at) = row(&harness, &event).await;
     assert_eq!(attempts, 1);
     assert_eq!(delivered_at, None);
 }
@@ -143,14 +143,14 @@ async fn shutdown_requeue_preserves_the_pending_entry() {
     let capture = capture();
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000002-3";
-    let entry = owe_and_queue(&harness, 7, event).await;
+    let event = mint_id();
+    let entry = owe_and_queue(&harness, 7, &event).await;
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let poster = Scripted::answering(&[Verdict::Retryable]);
     let lanes = lanes_over(&server, harness.database.clone(), poster.clone(), &token).await;
 
-    lanes.dispatch(job(entry.clone(), event)).await;
+    lanes.dispatch(job(entry.clone(), &event)).await;
     // Cancel as soon as the first refusal has been given: the retry loop reads
     // the token before its next attempt and stops there.
     await_until("the poster to be asked once", || poster.calls() >= 1).await;
@@ -162,7 +162,7 @@ async fn shutdown_requeue_preserves_the_pending_entry() {
         "a job handed back at shutdown is not acknowledged: {:?}",
         server.acks()
     );
-    let (attempts, delivered_at, _updated_at) = row(&harness, event).await;
+    let (attempts, delivered_at, _updated_at) = row(&harness, &event).await;
     assert_eq!(attempts, 1, "the cycle that was cut short still started");
     assert_eq!(delivered_at, None);
     let requeued = capture.named(EVENT_REQUEUED);
@@ -181,14 +181,14 @@ async fn shutdown_requeue_preserves_the_pending_entry() {
 #[tokio::test(flavor = "multi_thread")]
 async fn bookkeeping_failure_does_not_discard_an_answer() {
     let capture = capture();
-    let event = "1700000003-0";
+    let event = mint_id();
     let entry = EventId::of("1700000003000-0");
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let poster = Scripted::answering(&[Verdict::Delivered]);
     let lanes = lanes_over(&server, no_ledger::no_ledger(), poster.clone(), &token).await;
 
-    lanes.dispatch(job(entry.clone(), event)).await;
+    lanes.dispatch(job(entry.clone(), &event)).await;
     await_until(
         "the answer to be acknowledged despite the dead ledger",
         || server.acks().contains(&entry.as_str().to_owned()),
@@ -214,7 +214,7 @@ async fn bookkeeping_failure_does_not_discard_an_answer() {
         capture.events()
     );
     assert!(
-        capture.named_for(EVENT_DELIVERED, event).is_empty(),
+        capture.named_for(EVENT_DELIVERED, &event).is_empty(),
         "with the stamp refused, no delivered event claims a count"
     );
 }
@@ -229,15 +229,15 @@ async fn bookkeeping_failure_does_not_discard_an_answer() {
 async fn a_later_cycle_opens_as_a_repeat() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000002-9";
-    let entry = owe_and_queue(&harness, 9, event).await;
-    abandonment::set_attempts(&harness, event, 1).await;
+    let event = mint_id();
+    let entry = owe_and_queue(&harness, 9, &event).await;
+    abandonment::set_attempts(&harness, &event, 1).await;
     let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
     let poster = Scripted::answering(&[Verdict::Delivered]);
     let lanes = lanes_over(&server, harness.database.clone(), poster.clone(), &token).await;
 
-    lanes.dispatch(job(entry.clone(), event)).await;
+    lanes.dispatch(job(entry.clone(), &event)).await;
     await_until("the answer to be acknowledged", || {
         server.acks().contains(&entry.as_str().to_owned())
     })
@@ -250,7 +250,7 @@ async fn a_later_cycle_opens_as_a_repeat() {
         [Attempt::Repeat],
         "a second cycle is not a first attempt"
     );
-    let (attempts, delivered_at, _updated_at) = row(&harness, event).await;
+    let (attempts, delivered_at, _updated_at) = row(&harness, &event).await;
     assert_eq!(
         attempts, 2,
         "this cycle is counted on top of the one before"

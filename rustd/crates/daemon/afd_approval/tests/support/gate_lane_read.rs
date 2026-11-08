@@ -5,10 +5,11 @@
 //! these exactly as before — `lane.status_of(...)`, `lane.event_count()`.
 
 use super::Lane;
+use af_core::id::Uuid7;
 
 impl Lane {
     /// The status column of one gate, by action.
-    pub(crate) async fn status_of(&self, action: &str) -> String {
+    pub(crate) async fn status_of(&self, action: &Uuid7) -> String {
         sqlx::query_scalar("SELECT status FROM fleet.approval_gates WHERE action_id = $1")
             .bind(action)
             .fetch_one(&mut *self.connection().await)
@@ -17,7 +18,7 @@ impl Lane {
     }
 
     /// One column of one gate's row, as text.
-    pub(crate) async fn gate_column(&self, action: &str, column: &str) -> String {
+    pub(crate) async fn gate_column(&self, action: &Uuid7, column: &str) -> String {
         // The column name is a literal from this suite, never input.
         let statement = sqlx::AssertSqlSafe(format!(
             "SELECT {column}::text FROM fleet.approval_gates WHERE action_id = $1"
@@ -31,22 +32,26 @@ impl Lane {
 
     /// How many events this lane's fleet holds.
     pub(crate) async fn event_count(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id = $1::uuid")
-            .bind(self.fleet.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id = $1")
+            .bind(&self.fleet)
             .fetch_one(&mut *self.connection().await)
             .await
             .expect("the count must run")
     }
 
     /// One column of one event row, as text.
+    ///
+    /// `event` is text because the continuation ids a resolve reports are; it
+    /// is parsed here so the read binds the `uuid` the column holds.
     pub(crate) async fn event_column(&self, event: &str, column: &str) -> Option<String> {
+        let event = Uuid7::parse(event).expect("an event id is a UUIDv7");
         let statement = sqlx::AssertSqlSafe(format!(
             "SELECT {column}::text FROM fleet.events \
-             WHERE fleet_id = $1::uuid AND event_id = $2"
+             WHERE fleet_id = $1 AND event_id = $2"
         ));
         sqlx::query_scalar::<_, Option<String>>(statement)
-            .bind(self.fleet.as_str())
-            .bind(event)
+            .bind(&self.fleet)
+            .bind(&event)
             .fetch_optional(&mut *self.connection().await)
             .await
             .expect("the event read must run")
@@ -54,14 +59,15 @@ impl Lane {
     }
 
     /// The continuation remains available for a ledger claim.
-    pub(crate) async fn continuation_is_unsettled(&self, action: &str) -> bool {
+    pub(crate) async fn continuation_is_unsettled(&self, action: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         sqlx::query_scalar::<_, bool>(
             "SELECT settled_at IS NULL FROM fleet.admissions \
              WHERE producer = $1 AND producer_key = $2",
         )
         .bind(afd_admission::Producer::GateContinuation.as_str())
-        .bind(action)
+        // The admission key is TEXT: the gate's action id, spelled out.
+        .bind(action.as_str())
         .fetch_optional(&mut *connection)
         .await
         .expect("the ledger reads")

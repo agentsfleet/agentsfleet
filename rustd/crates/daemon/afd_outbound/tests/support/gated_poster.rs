@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_dragonfly::OutboundDelivery;
 use afd_outbound::{Deliver, Verdict};
 use dashmap::DashMap;
@@ -28,10 +29,10 @@ pub(crate) struct Gated {
 
 #[derive(Debug, Default)]
 struct GatedInner {
-    gates: DashMap<String, Arc<Notify>>,
+    gates: DashMap<Uuid7, Arc<Notify>>,
     /// An ordered log two tasks append to, which is what a lock is for; the
     /// gates beside it are keyed, so they go in the sharded map.
-    delivered: Mutex<Vec<String>>,
+    delivered: Mutex<Vec<Uuid7>>,
     in_flight: AtomicUsize,
     high_water: AtomicUsize,
 }
@@ -39,16 +40,16 @@ struct GatedInner {
 impl Gated {
     /// Holds every delivery to `workspace` until the returned gate is
     /// notified.
-    pub(crate) fn shut(&self, workspace: &str) -> Arc<Notify> {
+    pub(crate) fn shut(&self, workspace: &Uuid7) -> Arc<Notify> {
         let gate = Arc::new(Notify::new());
         self.inner
             .gates
-            .insert(workspace.to_owned(), Arc::clone(&gate));
+            .insert(workspace.clone(), Arc::clone(&gate));
         gate
     }
 
     /// The `event_id`s delivered so far, in order.
-    pub(crate) fn delivered(&self) -> Vec<String> {
+    pub(crate) fn delivered(&self) -> Vec<Uuid7> {
         self.inner
             .delivered
             .lock()

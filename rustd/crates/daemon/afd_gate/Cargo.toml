@@ -18,7 +18,7 @@ workspace = true
 # A gate's spend is priced before it is admitted.
 afd_billing.workspace = true
 # Identifiers, the clock a gate's deadline is measured against, registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # What the policy assembly resolves a fleet's declared credentials into.
 afd_credential.workspace = true
 af_crypto.workspace = true

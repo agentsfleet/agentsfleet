@@ -22,6 +22,8 @@ test-util = ["dep:tracing", "dep:tracing-subscriber"]
 # `signal::shutdown`, the stop both binaries wait on. Behind a flag so the
 # value layer links no runtime for the crates that never stop a process.
 signal = ["dep:tokio"]
+# `Uuid7` binds as and decodes from a Postgres `uuid` and `uuid[]`.
+sqlx = ["dep:sqlx"]
 
 [dependencies]
 # `paging::Page::parse` reads `?limit` through `af_validate::Limit` with the
@@ -64,6 +66,9 @@ tracing-subscriber = { workspace = true, optional = true }
 # `Uuid::parse_str` normalises case and this product rejects it. See the
 # workspace manifest for the full rationale.
 uuid.workspace = true
+# `Uuid7` as a Postgres `uuid`, bound and read natively; enabled by the
+# crates that run statements.
+sqlx = { workspace = true, optional = true }
 # `signal` only: SIGTERM and SIGINT through the runtime both binaries run.
 tokio = { workspace = true, optional = true, features = ["signal"] }
 

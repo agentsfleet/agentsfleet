@@ -29,8 +29,10 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_db::Db;
 use afd_dragonfly::{
     Dedicated, Dragonfly, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundReader,
@@ -42,11 +44,19 @@ use jiff::Timestamp;
 pub(crate) const AGED: Duration = Duration::from_hours(1);
 
 /// The tenant every fixture workspace hangs from.
-pub(crate) const TENANT: &str = "0195b4ba-8d3a-7a11-8abc-000000000001";
+pub(crate) static TENANT: LazyLock<Uuid7> =
+    LazyLock::new(|| fixed("0195b4ba-8d3a-7a11-8abc-000000000001"));
 /// The workspace every fixture fleet hangs from.
-pub(crate) const WORKSPACE: &str = "0195b4ba-8d3a-7a11-8abc-000000000002";
+pub(crate) static WORKSPACE: LazyLock<Uuid7> =
+    LazyLock::new(|| fixed("0195b4ba-8d3a-7a11-8abc-000000000002"));
 /// The fleet every fixture obligation is owed by.
-pub(crate) const FLEET: &str = "0195b4ba-8d3a-7a11-8abc-000000000003";
+pub(crate) static FLEET: LazyLock<Uuid7> =
+    LazyLock::new(|| fixed("0195b4ba-8d3a-7a11-8abc-000000000003"));
+
+/// A fixture identifier spelled in full, as the ledger binds it.
+fn fixed(text: &str) -> Uuid7 {
+    Uuid7::parse(text).expect("a fixture identifier is a canonical UUIDv7")
+}
 
 /// Seeds the tenant, workspace and fleet, idempotently.
 pub(crate) async fn seed_parents(database: &Db) {
@@ -54,21 +64,23 @@ pub(crate) async fn seed_parents(database: &Db) {
 
     sqlx::query(
         "INSERT INTO identity.tenants (id, name, created_at, updated_at)
-         VALUES ($1::uuid, 'outbound-fixture', now(), now())
+         VALUES ($1, 'outbound-fixture', now(), now())
          ON CONFLICT (id) DO NOTHING",
     )
-    .bind(TENANT)
+    .bind(&*TENANT)
     .execute(&mut *connection)
     .await
     .expect("seeding a tenant");
 
     sqlx::query(
         "INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
-         VALUES ($1::uuid, $2::uuid, $1::text, now())
+         VALUES ($1, $2, $3, now())
          ON CONFLICT (id) DO NOTHING",
     )
-    .bind(WORKSPACE)
-    .bind(TENANT)
+    .bind(&*WORKSPACE)
+    .bind(&*TENANT)
+    // Named after itself, so the name is as unique within the tenant as the id.
+    .bind(WORKSPACE.to_string())
     .execute(&mut *connection)
     .await
     .expect("seeding a workspace");
@@ -78,13 +90,13 @@ pub(crate) async fn seed_parents(database: &Db) {
            (id, workspace_id, tenant_id, name, status, required_tags,
             memory_reads_workspace, memory_publishes_workspace, resource_version,
             created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'outbound-fixture', 'active',
+         VALUES ($1, $2, $3, 'outbound-fixture', 'active',
                  '{}'::text[], false, false, 1, now(), now())
          ON CONFLICT (id) DO NOTHING",
     )
-    .bind(FLEET)
-    .bind(WORKSPACE)
-    .bind(TENANT)
+    .bind(&*FLEET)
+    .bind(&*WORKSPACE)
+    .bind(&*TENANT)
     .execute(&mut *connection)
     .await
     .expect("seeding a fleet");
@@ -96,8 +108,8 @@ pub(crate) async fn seed_parents(database: &Db) {
 /// carries other suites' rows and a bare `DELETE` would take theirs too.
 pub(crate) async fn clear_obligations(database: &Db) {
     let mut connection = database.acquire().await.expect("the ledger answers");
-    sqlx::query("DELETE FROM fleet.obligations WHERE fleet_id = $1::uuid")
-        .bind(FLEET)
+    sqlx::query("DELETE FROM fleet.obligations WHERE fleet_id = $1")
+        .bind(&*FLEET)
         .execute(&mut *connection)
         .await
         .expect("clearing this fixture's obligations");
@@ -105,15 +117,15 @@ pub(crate) async fn clear_obligations(database: &Db) {
 
 /// Backdates the fixture fleet's row for `event` by [`AGED`], as that long
 /// passing without anyone touching it would leave it.
-pub(crate) async fn age(database: &Db, event: &str) {
+pub(crate) async fn age(database: &Db, event: &Uuid7) {
     let mut connection = database.acquire().await.expect("the ledger answers");
     sqlx::query(
         "UPDATE fleet.obligations
             SET created_at = created_at - $3::interval,
                 updated_at = updated_at - $3::interval
-          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+          WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(FLEET)
+    .bind(&*FLEET)
     .bind(event)
     .bind(AGED)
     .execute(&mut *connection)
@@ -130,7 +142,7 @@ pub(crate) const DESTINATION: &str =
 pub(crate) struct OwedRow<'a> {
     /// Which [`obligation_id`] the row takes.
     pub(crate) nth: u8,
-    pub(crate) event: &'a str,
+    pub(crate) event: &'a Uuid7,
     /// The connector id the row names, which need not be one any connector
     /// answers to.
     pub(crate) provider: &'a str,
@@ -150,12 +162,12 @@ pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
         "INSERT INTO fleet.obligations
            (id, fleet_id, workspace_id, provider, destination, event_id, answer,
             receipt, attempt_count, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, 0,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0,
                  now() - $9::interval, now() - $9::interval)",
     )
     .bind(obligation_id(row.nth))
-    .bind(FLEET)
-    .bind(WORKSPACE)
+    .bind(&*FLEET)
+    .bind(&*WORKSPACE)
     .bind(row.provider)
     .bind(row.destination)
     .bind(row.event)
@@ -169,13 +181,16 @@ pub(crate) async fn seed_owed_row(database: &Db, row: OwedRow<'_>) {
 
 /// The fixture fleet's row for `event`, as its abandonment reads:
 /// `(abandoned_at, abandon_reason)`, both `None` while it is still owed.
-pub(crate) async fn abandonment(database: &Db, event: &str) -> (Option<Timestamp>, Option<String>) {
+pub(crate) async fn abandonment(
+    database: &Db,
+    event: &Uuid7,
+) -> (Option<Timestamp>, Option<String>) {
     let mut connection = database.acquire().await.expect("the ledger answers");
     let (at, reason): (Option<jiff_sqlx::Timestamp>, Option<String>) = sqlx::query_as(
         "SELECT abandoned_at, abandon_reason FROM fleet.obligations
-          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+          WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(FLEET)
+    .bind(&*FLEET)
     .bind(event)
     .fetch_one(&mut *connection)
     .await
@@ -187,8 +202,8 @@ pub(crate) async fn abandonment(database: &Db, event: &str) -> (Option<Timestamp
 ///
 /// `ck_obligations_id_uuidv7` reads the version nibble, so the `7` in the
 /// third group is load-bearing and not decoration.
-pub(crate) fn obligation_id(nth: u8) -> String {
-    format!("{OBLIGATION_ID_STEM}{nth:02}")
+pub(crate) fn obligation_id(nth: u8) -> Uuid7 {
+    fixed(&format!("{OBLIGATION_ID_STEM}{nth:02}"))
 }
 
 /// Everything before the two digits [`obligation_id`] varies.
@@ -275,7 +290,7 @@ pub(crate) async fn entries_on(redis: &Dragonfly) -> u64 {
 /// So the question is asked about this test's own answer. Scanned with
 /// `XRANGE` rather than read through the group, because a read would claim the
 /// entries and change the pending list this suite asserts on.
-pub(crate) async fn entries_naming(redis: &Dragonfly, event: &str) -> u64 {
+pub(crate) async fn entries_naming(redis: &Dragonfly, event: &Uuid7) -> u64 {
     fields_naming(redis, event)
         .await
         .len()
@@ -286,7 +301,7 @@ pub(crate) async fn entries_naming(redis: &Dragonfly, event: &str) -> u64 {
 /// The destination every entry carrying `event` was appended with.
 ///
 /// Scoped to this test's own answer for the reason [`entries_naming`] gives.
-pub(crate) async fn destinations_naming(redis: &Dragonfly, event: &str) -> Vec<String> {
+pub(crate) async fn destinations_naming(redis: &Dragonfly, event: &Uuid7) -> Vec<String> {
     fields_naming(redis, event)
         .await
         .into_iter()
@@ -299,7 +314,7 @@ pub(crate) async fn destinations_naming(redis: &Dragonfly, event: &str) -> Vec<S
 }
 
 /// Each entry on the stream that carries `event`, as its field pairs.
-async fn fields_naming(redis: &Dragonfly, event: &str) -> Vec<Vec<(String, String)>> {
+async fn fields_naming(redis: &Dragonfly, event: &Uuid7) -> Vec<Vec<(String, String)>> {
     let mut cmd = redis::cmd(CMD_XRANGE);
     cmd.arg(OUTBOUND_STREAM_KEY).arg(RANGE_START).arg(RANGE_END);
     let entries: Vec<(String, Vec<String>)> = redis

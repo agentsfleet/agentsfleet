@@ -67,7 +67,7 @@ impl Drafts {
         )
         .await?;
         sqlx::query(sql::ADVANCE)
-            .bind(guarded.attempt.id.as_str())
+            .bind(&guarded.attempt.id)
             .bind(sequence)
             .execute(&mut *tx)
             .await

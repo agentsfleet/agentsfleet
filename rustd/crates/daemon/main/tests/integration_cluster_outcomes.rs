@@ -37,6 +37,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
@@ -94,7 +95,7 @@ async fn prove_capabilities(http: &reqwest::Client, run: &Scenario) {
 /// carries the stream key as its hash tag. If that ever comes apart, the
 /// documented outcome of accepting work becomes a 500 — and it does so on the
 /// SECOND event, not the first, because the first is what creates the stream.
-async fn a_second_admission_lands_on_the_same_slot(run: &Scenario) -> String {
+async fn a_second_admission_lands_on_the_same_slot(run: &Scenario) -> Uuid7 {
     let second = run.enqueue_event(SUPPORTED_EVENT).await;
     assert_ne!(
         second, run.event_id,
@@ -271,7 +272,7 @@ async fn a_report_settles_once_across_both_stores(
 async fn the_fleet_is_still_discoverable_for_its_remaining_work(
     http: &reqwest::Client,
     run: &Scenario,
-    second_event: &str,
+    second_event: &Uuid7,
 ) {
     // A rotation rather than one request: the second event is discoverable
     // only on the poll that samples its partition, and the helper carries the

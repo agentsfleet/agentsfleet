@@ -34,8 +34,8 @@ const INPUT_TOKENS: i64 = 1_000_000;
 /// One reported millisecond at the runtime rate.
 const AUTHORING_DEBIT: i64 = 100;
 const HOLD_WALLET: &str =
-    "SELECT pg_backend_pid() FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE";
-const BALANCE: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid";
+    "SELECT pg_backend_pid() FROM billing.wallets WHERE tenant_id = $1 FOR UPDATE";
+const BALANCE: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1";
 
 #[derive(Debug, Clone, Copy)]
 enum First {
@@ -65,9 +65,10 @@ async fn scenario(first: First) {
     let lease = Seat::admit(&drafts, &running.runner, &draft)
         .await
         .expect("the second worker admits the turn beside the runtime lease");
+    let attempt = Uuid7::parse(&lease.attempt_id).expect("an attempt id is a UUIDv7");
     running
         .fixtures
-        .age(Row::Attempt(lease.attempt_id.as_str()), "created_at", AGE)
+        .age(Row::Attempt(&attempt), "created_at", AGE)
         .await;
     assert_eq!(balance(&running, &seat.tenant).await, FUNDED);
 
@@ -107,8 +108,8 @@ async fn scenario(first: First) {
 
 /// Gives the runner a second worker, for the setup chat turn beside the lease.
 async fn widen(running: &Running) {
-    sqlx::query("UPDATE runner.runners SET worker_count = 2 WHERE id = $1::uuid")
-        .bind(running.runner.as_str())
+    sqlx::query("UPDATE runner.runners SET worker_count = 2 WHERE id = $1")
+        .bind(&running.runner)
         .execute(&mut *running.fixtures.database.acquire().await.expect("widen"))
         .await
         .expect("a second worker for the authoring turn");
@@ -137,7 +138,7 @@ async fn renew_and_settle(running: &Running, biller: &LedgerBiller) -> (Renewed,
         output_tokens: 0,
     }];
     let metering = Metering {
-        lease_id: running.lease.as_str(),
+        lease_id: &running.lease,
         runner_id: &running.runner,
         requests: &requests,
     };
@@ -197,7 +198,7 @@ async fn report_and_relay(
 /// Hold the wallet row, queue `first` then `second` behind it, release both.
 async fn queued<A, B>(
     running: &Running,
-    tenant: &str,
+    tenant: &Uuid7,
     first: impl Future<Output = A>,
     second: impl Future<Output = B>,
 ) -> (A, B) {
@@ -225,7 +226,7 @@ fn accounting(lease: &Claimed) -> Report {
     Report::Accounting {
         accounting: Accounting {
             fence: lease.fence.clone(),
-            report_id: mint_id(),
+            report_id: mint_id().into(),
             outcome: Outcome::Completed,
             failure_reason: None,
             usage: af_wire::authoring::Meter {
@@ -244,7 +245,7 @@ fn lease_id(lease: &Claimed) -> Uuid7 {
     Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7")
 }
 
-async fn balance(running: &Running, tenant: &str) -> i64 {
+async fn balance(running: &Running, tenant: &Uuid7) -> i64 {
     sqlx::query_scalar(BALANCE)
         .bind(tenant)
         .fetch_one(&mut *running.fixtures.database.acquire().await.expect("read"))

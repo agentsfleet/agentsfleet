@@ -60,8 +60,8 @@ async fn a_blocked_authorization_read_closes_at_its_deadline_and_releases_capaci
 }
 
 async fn lock_draft(held: &mut sqlx::Transaction<'_, sqlx::Postgres>, live: &Live) -> i32 {
-    sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE")
-        .bind(live.draft.as_str())
+    sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+        .bind(&live.draft)
         .fetch_one(&mut **held)
         .await
         .expect("draft row lock")
@@ -118,9 +118,9 @@ async fn stopped_hub_falls_back_to_durable_notices_then_closes() {
         heartbeat.as_ref(),
         b"event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
     );
-    live.mutate("UPDATE authoring.messages SET status='completed' WHERE draft_id=$1::uuid")
+    live.mutate("UPDATE authoring.messages SET status='completed' WHERE draft_id=$1")
         .await;
-    live.mutate("UPDATE authoring.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1::uuid").await;
+    live.mutate("UPDATE authoring.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
     assert!(
         frame(&mut body)
             .await
@@ -137,7 +137,7 @@ async fn stopped_hub_falls_back_to_durable_notices_then_closes() {
 async fn closed_draft_never_emits_a_buffered_private_preview() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.mutate("UPDATE authoring.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1::uuid").await;
+    live.mutate("UPDATE authoring.drafts SET status='closed',closed_at=now(),expires_at=now()+interval '1 day' WHERE id=$1").await;
     live.publish(&live.delta("late private text"));
     let last = frame(&mut body).await;
     assert!(last.contains("event: draft.closed\n"), "{last}");

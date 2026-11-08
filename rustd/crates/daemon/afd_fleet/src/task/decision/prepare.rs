@@ -69,9 +69,13 @@ impl super::ownership::NativeContext {
             .clone();
         let provider = enabled(connection, &assignment).await?;
         let revision = self.revision(input.assessment.purpose())?;
-        let config = Leases::stored_config_on(connection, &self.current.fleet_id, Some(revision))
-            .await?
-            .ok_or(TaskRefusal::DecisionUnavailable)?;
+        let config = Leases::stored_config_on(
+            connection,
+            &self.current.fleet_id,
+            Some(&crate::task::guard::wire(revision)?),
+        )
+        .await?
+        .ok_or(TaskRefusal::DecisionUnavailable)?;
         let policy = config
             .decision_policy()
             .ok_or(TaskRefusal::DecisionUnavailable)?;
@@ -136,8 +140,8 @@ pub(super) async fn enabled(
     assignment: &DecisionAssignment,
 ) -> Result<String> {
     sqlx::query_scalar(sql::PROFILE)
-        .bind(&assignment.profile.model_id)
-        .bind(&assignment.revision_id)
+        .bind(crate::task::guard::wire(&assignment.profile.model_id)?)
+        .bind(crate::task::guard::wire(&assignment.revision_id)?)
         .fetch_optional(connection)
         .await
         .map_err(query("check frozen decision revision activation"))?
@@ -153,8 +157,8 @@ pub(super) async fn candidates(
         return Ok(Vec::new());
     }
     let mut rows: Vec<Candidate> = sqlx::query_as(sql::CANDIDATES)
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .bind(i64::from(UNFINISHED_MAX) + 1)
         .fetch_all(connection)
         .await

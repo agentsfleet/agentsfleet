@@ -42,7 +42,7 @@ async fn test_enrolment_stores_only_the_digest() {
         .await
         .expect("a well-formed enrolment against a reachable datastore");
 
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     let token = enrolled.token.expose().to_owned();
     let digest = Digest::of_minted(&token);
 
@@ -91,7 +91,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
         .await
         .expect("an out-of-range worker count is clamped, never refused");
 
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     assert_eq!(enrolled.worker_count, af_core::limits::MAX_WORKERS);
     assert_eq!(
         fixtures.text(Row::Runner(&runner), "worker_count").await,
@@ -138,7 +138,7 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
         .await
         .expect("enrolment must succeed");
 
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     assert_eq!(
         enrolled.verdict,
         Verdict::Degraded {
@@ -193,7 +193,7 @@ async fn test_the_self_read_never_bumps_liveness() {
     assert_eq!(assigned.registry_allowlist, ["registry.npmjs.org"]);
     assert_eq!(assigned.worker_count, 2);
     // Read twice; still never seen.
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     assert_eq!(
         fixtures.instant(Row::Runner(&runner), "last_seen_at").await,
         Some(afd_runner::sql::NEVER_SEEN),

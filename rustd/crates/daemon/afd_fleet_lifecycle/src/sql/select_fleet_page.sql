@@ -2,7 +2,7 @@
 -- projection, the counter row the lifetime totals. Both are keyed lookups
 -- (fleet.revisions primary key, fleet.activity_counters primary key), so a page
 -- costs one probe of each per row rather than a subquery per column.
-SELECT f.id::text AS id,
+SELECT f.id AS id,
        f.name,
        f.status,
        f.created_at,
@@ -14,7 +14,7 @@ SELECT f.id::text AS id,
 FROM fleet.fleets f
 LEFT JOIN fleet.revisions r ON r.id = f.head_revision_id
 LEFT JOIN fleet.activity_counters c ON c.fleet_id = f.id
-WHERE f.workspace_id = $1::uuid
-  AND (f.created_at, f.id) < (COALESCE($3::timestamptz, 'infinity'::timestamptz), $4::uuid)
+WHERE f.workspace_id = $1
+  AND (f.created_at, f.id) < (COALESCE($3::timestamptz, 'infinity'::timestamptz), $4)
 ORDER BY f.created_at DESC, f.id DESC
 LIMIT $2

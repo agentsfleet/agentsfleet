@@ -28,14 +28,14 @@ const GATE_EXPIRES_AT: &str = "2100-01-01T00:00:00Z";
 pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: Db,
-    tenant: String,
+    tenant: Uuid7,
     pub(crate) workspace: Uuid7,
-    pub(crate) fleet: String,
-    user: String,
-    key: String,
-    pub(crate) gate: String,
-    pub(crate) action: String,
-    event: String,
+    pub(crate) fleet: Uuid7,
+    user: Uuid7,
+    key: Uuid7,
+    pub(crate) gate: Uuid7,
+    pub(crate) action: Uuid7,
+    event: Uuid7,
     pub(crate) token: String,
     /// The signed-in person this fixture seeds and authenticates as.
     pub(crate) subject: &'static str,
@@ -53,7 +53,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             fleet: mint_id(),
             user: mint_id(),
             key: mint_id(),
@@ -74,7 +74,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("approval")
             .insert(&mut *connection)
             .await
@@ -94,7 +94,7 @@ impl Fixture {
             .expect("its API key seeds");
         FleetSeed::new(
             &self.fleet,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -109,14 +109,14 @@ impl Fixture {
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
                 proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
                 detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push', 'tool', \
+             VALUES ($1, $2, $3, $4, 'git', 'push', 'tool', \
                      'open a pull request', '{}', 'one repository', $6::timestamptz, '', \
                      'pending', '', '1970-01-01T00:00:00.001Z', \
                      '1970-01-01T00:00:00.001Z', $5, 0, 32)",
         )
         .bind(&self.gate)
         .bind(&self.fleet)
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(&self.action)
         .bind(&self.event)
         .bind(GATE_EXPIRES_AT)
@@ -144,7 +144,7 @@ impl Fixture {
     }
 
     /// The same, under a fleet the caller names.
-    pub(crate) async fn seed_gate_for(&self, fleet: &str, kind: &str, created_at: i64) -> String {
+    pub(crate) async fn seed_gate_for(&self, fleet: &Uuid7, kind: &str, created_at: i64) -> String {
         let second = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
@@ -152,14 +152,14 @@ impl Fixture {
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
                 proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
                 detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'stripe', 'charge', $7, \
+             VALUES ($1, $2, $3, $4, 'stripe', 'charge', $7, \
                      'refund a customer', '{}', 'one account', $6::timestamptz, '', \
                      'pending', '', to_timestamp($8::bigint / 1000.0), \
                      to_timestamp($8::bigint / 1000.0), $5, 0, 32)",
         )
         .bind(&second)
         .bind(fleet)
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(mint_id())
         .bind(mint_id())
         .bind(GATE_EXPIRES_AT)
@@ -168,17 +168,17 @@ impl Fixture {
         .execute(&mut *connection)
         .await
         .expect("the second approval gate seeds");
-        second
+        second.into()
     }
 
     /// A second fleet in this workspace, so a fleet filter has something to
     /// exclude rather than merely something to match.
-    pub(crate) async fn seed_second_fleet(&self) -> String {
+    pub(crate) async fn seed_second_fleet(&self) -> Uuid7 {
         let other = mint_id();
         let mut connection = self.database.acquire().await.expect("an API connection");
         FleetSeed::new(
             &other,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -196,7 +196,7 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

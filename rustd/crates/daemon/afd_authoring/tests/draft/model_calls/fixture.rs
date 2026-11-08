@@ -88,11 +88,16 @@ pub(super) async fn calls<T: Transport + 'static>(
     provider: Arc<T>,
 ) -> ModelCalls {
     let mut connection = f.connection().await;
-    sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
-        .bind(f.tenant.as_str()).bind(crate::draft::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
-    sqlx::query("UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE id=$1::uuid")
-        .bind(attempt.id.as_str()).bind(hex::encode(Sha256::digest(CAPABILITY.as_bytes())))
-        .execute(&mut *connection).await.expect("pin capability and full runtime bound");
+    sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
+        .bind(&f.tenant).bind(crate::draft::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
+    sqlx::query(
+        "UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE id=$1",
+    )
+    .bind(&attempt.id)
+    .bind(hex::encode(Sha256::digest(CAPABILITY.as_bytes())))
+    .execute(&mut *connection)
+    .await
+    .expect("pin capability and full runtime bound");
     let kek = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
         .expect("fixture key");
     let providers =
@@ -118,6 +123,6 @@ pub(super) fn request(attempt: &Attempt) -> ModelCallInput {
 }
 
 pub(super) async fn receipts(f: &Fixture, attempt: &Attempt) -> (i64, i32, bool) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id),call_count,usage_unknown FROM authoring.attempts a WHERE id=$1::uuid")
-        .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("durable receipt state")
+    sqlx::query_as("SELECT (SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id),call_count,usage_unknown FROM authoring.attempts a WHERE id=$1")
+        .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("durable receipt state")
 }

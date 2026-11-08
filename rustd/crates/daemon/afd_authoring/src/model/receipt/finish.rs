@@ -112,9 +112,9 @@ async fn authorization(
         }
         Err(error) => return Err(error),
     };
-    let locked: Option<String> = sqlx::query_scalar(sql::LOCK_ATTEMPT)
-        .bind(attempt.id.as_str())
-        .bind(runner.as_str())
+    let locked: Option<Uuid7> = sqlx::query_scalar(sql::LOCK_ATTEMPT)
+        .bind(&attempt.id)
+        .bind(runner)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -140,8 +140,8 @@ async fn write(
     };
     let usage = decoded.map_or(&ModelUsage::Unknown, |decoded| &decoded.usage);
     let changed = sqlx::query(sql::COMPLETE)
-        .bind(&request.dispatch_id)
-        .bind(attempt.id.as_str())
+        .bind(super::super::dispatch_id(request)?)
+        .bind(&attempt.id)
         .bind(status)
         .bind(
             result
@@ -166,7 +166,7 @@ async fn write(
         return Err(ErrorKind::State { current: "settled" }.into());
     }
     sqlx::query(sql::METER)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(decoded.map_or(0, |decoded| decoded.output))
         .bind(decoded.is_none())
         .bind(Status::AwaitingAccounting.as_str())

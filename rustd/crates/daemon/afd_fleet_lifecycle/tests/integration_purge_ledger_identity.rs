@@ -69,15 +69,15 @@ async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
             cache_write_5m_token_count, cache_write_1h_token_count, output_token_count,
             runtime_ms, platform_model_price_id, unpriced_token_count, charged_nanos,
             created_at, updated_at)
-         VALUES ($1::uuid, $5, $1::uuid, 0, $2::uuid, $3::uuid, $4::uuid,
-                 (SELECT f.name FROM fleet.fleets f WHERE f.id = $4::uuid),
+         VALUES ($1, $5, $1, 0, $2, $3, $4,
+                 (SELECT f.name FROM fleet.fleets f WHERE f.id = $4),
                  $1, NULL, 'anthropic', $7, $6, now(), 0, 0, 0, 0, 0, 0, 0, NULL, 0, 0,
                  now(), now())",
     )
-    .bind(row.as_str())
-    .bind(lane.tenant.as_str())
-    .bind(lane.workspace.as_str())
-    .bind(fleet.as_str())
+    .bind(&row)
+    .bind(&lane.tenant)
+    .bind(&lane.workspace)
+    .bind(fleet)
     .bind(WORK_TYPE)
     .bind(POSTURE)
     .bind(MODEL)
@@ -89,8 +89,8 @@ async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
 
 /// Gives the fleet the name its charges should record.
 async fn rename(lane: &Lane, fleet: &Uuid7, name: &str) {
-    sqlx::query("UPDATE fleet.fleets SET name = $2 WHERE id = $1::uuid")
-        .bind(fleet.as_str())
+    sqlx::query("UPDATE fleet.fleets SET name = $2 WHERE id = $1")
+        .bind(fleet)
         .bind(name)
         .execute(&mut *lane.connection().await)
         .await
@@ -100,14 +100,14 @@ async fn rename(lane: &Lane, fleet: &Uuid7, name: &str) {
 /// The identifier and the name a ledger row still carries.
 #[derive(Debug, sqlx::FromRow)]
 struct ChargedAs {
-    fleet_id: String,
+    fleet_id: Uuid7,
     fleet_name: String,
 }
 
 /// The identity a ledger row still carries, if the row is there.
 async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<ChargedAs> {
-    sqlx::query_as("SELECT fleet_id::text, fleet_name FROM billing.usage_lines WHERE id = $1::uuid")
-        .bind(row.as_str())
+    sqlx::query_as("SELECT fleet_id, fleet_name FROM billing.usage_lines WHERE id = $1")
+        .bind(row)
         .fetch_optional(&mut *lane.connection().await)
         .await
         .expect("reading the ledger row")
@@ -119,12 +119,11 @@ async fn ledger_identity(lane: &Lane, row: &Uuid7) -> Option<ChargedAs> {
 /// lane's owner, because `memory.entries` is out of `api_runtime`'s reach and
 /// the count is the test's observation, not the code under test.
 pub(crate) async fn rows_for(lane: &Lane, table: &str, fleet: &Uuid7) -> i64 {
-    let statement = sqlx::AssertSqlSafe(format!(
-        "SELECT count(*) FROM {table} WHERE fleet_id = $1::uuid"
-    ));
+    let statement =
+        sqlx::AssertSqlSafe(format!("SELECT count(*) FROM {table} WHERE fleet_id = $1"));
     let owner = lane.owner().await;
     let rows = sqlx::query_scalar(statement)
-        .bind(fleet.as_str())
+        .bind(fleet)
         .fetch_one(&mut *owner.acquire().await.expect("an owner connection"))
         .await
         .expect("counting a fleet's rows");
@@ -148,11 +147,11 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
         "INSERT INTO memory.entries
            (id, key, content, category, workspace_visible, fleet_id, workspace_id,
             created_at, updated_at)
-         SELECT $1::uuid, 'note', 'remembered', 'fact', false, id, workspace_id, now(), now()
-         FROM fleet.fleets WHERE id = $2::uuid",
+         SELECT $1, 'note', 'remembered', 'fact', false, id, workspace_id, now(), now()
+         FROM fleet.fleets WHERE id = $2",
     )
-    .bind(mint().as_str())
-    .bind(fleet.as_str())
+    .bind(mint())
+    .bind(fleet)
     .execute(&mut *connection)
     .await
     .expect("seeding a memory entry");
@@ -162,19 +161,19 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
     sqlx::query(
         "INSERT INTO connector.integration_grants
            (id, fleet_id, service, status, requested_reason, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, 'github', 'requested', 'fixture', now(), now())",
+         VALUES ($1, $2, 'github', 'requested', 'fixture', now(), now())",
     )
-    .bind(mint().as_str())
-    .bind(fleet.as_str())
+    .bind(mint())
+    .bind(fleet)
     .execute(&mut *connection)
     .await
     .expect("seeding an integration grant");
 
     sqlx::query(
         "INSERT INTO fleet.sessions (fleet_id, context_json, created_at, updated_at)
-         VALUES ($1::uuid, '{}'::jsonb, now(), now())",
+         VALUES ($1, '{}'::jsonb, now(), now())",
     )
-    .bind(fleet.as_str())
+    .bind(fleet)
     .execute(&mut *connection)
     .await
     .expect("seeding a session");
@@ -191,13 +190,14 @@ async fn seed_approval_gates(connection: &mut sqlx::PgConnection, lane: &Lane, f
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
                 gate_type, proposed_action, evidence, blast_radius, expires_at,
                 status, detail, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'shell', $4,
-                     'confirm', $4, '{}'::jsonb, 'workspace', now() + interval '1 hour',
+             VALUES ($1, $2, $3, $4, 'shell', $5,
+                     'confirm', $5, '{}'::jsonb, 'workspace', now() + interval '1 hour',
                      'pending', '', now(), now())",
         )
-        .bind(mint().as_str())
-        .bind(fleet.as_str())
-        .bind(lane.workspace.as_str())
+        .bind(mint())
+        .bind(fleet)
+        .bind(&lane.workspace)
+        .bind(mint())
         .bind(action)
         .execute(&mut *connection)
         .await

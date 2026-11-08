@@ -20,7 +20,7 @@ const NOWHERE: &str = "postgres://fixture:fixture@127.0.0.1:1/fixture";
 fn stranded() -> Created {
     Created {
         url: NOWHERE.to_owned(),
-        workspace: "0199f0c0-0000-7000-8000-000000000002".to_owned(),
+        workspace: super::super::mint_id(),
     }
 }
 

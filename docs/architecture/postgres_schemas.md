@@ -2,7 +2,7 @@
 
 > Canonical for which Postgres schema a table lives in, what each table is for, and how
 > tables link. Indy signed the design off table by table on Oct 17, 2026, and milestone
-> M229 rebuilt `schema/*.sql` from it. Each slot file describes what is deployed.
+> M229 rebuilt `schema/*.sql` from it. Each schema file describes what is deployed.
 
 ## Why this exists
 
@@ -91,8 +91,14 @@ Each table's columns live in its `schema/` slot, the only copy kept.
 | `memory` | Fleet memory, behind its own database role |
 
 `audit` holds the migration ledger. SQLx's `Migrator` applies `schema/*.sql` from the explicit
-list in `afd_db`'s migration module. It keeps checksums, so an edited applied slot is refused, and
+list in `afd_db`'s migration module. It keeps checksums, so an edited applied file is refused, and
 runs inside our bounded advisory lock.
+
+Each table has one file, `<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, applied in foreign-key
+order and holding the table's whole `CREATE`: columns, constraints, indexes, grants, functions and
+triggers. The only `ALTER` is a foreign key that closes a cycle, kept in the later table's file.
+Until the first production deploy, a change to a table edits its file; after it, a change is a new
+`<UTC>_<schema>_<table>_<what>.sql`.
 
 ## Runtime SQL
 
@@ -241,7 +247,7 @@ omit its model and review then resolves the tenant default.
 ## runner
 
 ```
- runners ◀── leases ··▶ fleet.events (fleet_event_id), fleet.fleets (fleet_id): opaque, no FK
+ runners ◀── leases ··▶ fleet.events (event_id), fleet.fleets (fleet_id): opaque, no FK
          ◀── events, lifetime_counters (1:1)
  fleet_slots (1 per fleet) ──▶ runners (last_runner_id), fleet.fleets
 ```
@@ -308,7 +314,7 @@ Routing follows those settings; credential endpoint restrictions must match them
 | `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `UNIQUE (work_type, work_id, seq)` · fleet runs and setup chat both write it (billing §11) |
 
 Nothing is set aside before work runs. A funds check reads the balance less the payer's unsettled
-lines, and slot 2210 dropped the former `holds` table (billing §11).
+lines, and no `holds` table exists (billing §11).
 
 Money outlives every deletion. `usage_lines` carries opaque `tenant_id`, `workspace_id`,
 `fleet_id` and `authoring_attempt_id` values with no foreign key. `authoring.attempts` keeps
@@ -343,40 +349,40 @@ Each item is decided from the rebuilt slots and the statements that read them. A
 names its slot and a reader; a dropped one names the slot that declares its table without it.
 A column kept with no reader still owes a drop under rule 7.
 
-- **`identity.api_keys.description`: kept, no reader.** Slot 1150 declares it and
+- **`identity.api_keys.description`: kept, no reader.** The file `20261108120700_identity_api_keys.sql` declares it and
   `afd_tenant`'s `insert_tenant_key.sql` writes it. The key list selects
   `id, name, created_at, revoked_at`, and `ApiKeySummary` has no description field.
 - **`identity.cli_credentials.credential_prefix`, `deployment`, `created_from_address`: kept,
-  no reader.** Slot 1160 declares them and only `afd_tenant`'s `insert_cli_credential.sql` writes
+  no reader.** The file `20261108120800_identity_cli_credentials.sql` declares them and only `afd_tenant`'s `insert_cli_credential.sql` writes
   them. The table's one read, `afd_state`'s `select_cli_credential.sql`, selects none of them. The mint response echoes the request's deployment, not the stored one.
-- **`identity.cli_credentials.tenant_id`: kept.** Slot 1160 declares it and
+- **`identity.cli_credentials.tenant_id`: kept.** The file `20261108120800_identity_cli_credentials.sql` declares it and
   `select_cli_credential.sql` reads it during authentication. The mint copies the user's tenant,
   and the reading statement already joins `identity.users`. The column therefore restates
   `identity.users.tenant_id` (rule 5) with no consistency rule in its slot.
-- **`authoring.attempts.settled_nanos`: dropped.** Slot 1940 declares the table without it. The
-  settled charge is `billing.usage_lines.charged_nanos` (slot 2040), summed per work type by
+- **`authoring.attempts.settled_nanos`: dropped.** The file `20261108123900_authoring_attempts.sql` declares the table without it. The
+  settled charge is `billing.usage_lines.charged_nanos` (the file `20261108124600_billing_usage_lines.sql`), summed per work type by
   `afd_billing`'s `select_owed.sql`.
 
 Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 
-- **`fleet.revisions.runtime_model_ref`: kept.** Slot 1510 declares it; the lease reads it in
+- **`fleet.revisions.runtime_model_ref`: kept.** The file `20261108122000_fleet_revisions.sql` declares it; the lease reads it in
   `afd_fleet`'s `select_fleet_with_session.sql`.
-- **`model.platform_defaults.base_url`: kept.** Slot 1320 declares it; `afd_credential`'s
+- **`model.platform_defaults.base_url`: kept.** The file `20261108121400_model_platform_defaults.sql` declares it; `afd_credential`'s
   `select_active_platform_default.sql` reads it.
-- **`runner.leases.last_metered_at`: kept.** Slot 1810 declares it as the lease's runtime cursor
+- **`runner.leases.last_metered_at`: kept.** The file `20261108123200_runner_leases.sql` declares it as the lease's runtime cursor
   (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `meter_lease.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
   `bill_expired_slice.sql`).
 
   The review listed it as dropped. Per-request billing kept this one
   cursor and dropped the lease's token cursors and the slot's cursors instead.
-- **`runner.runners.selftest_all_ok`: dropped.** Derived from `selftest_checks` (slot 1800), read
+- **`runner.runners.selftest_all_ok`: dropped.** Derived from `selftest_checks` (the file `20261108123100_runner_runners.sql`), read
   by `afd_runner`'s `runner_detail.sql`.
-- **`runner.runners.capability_reported_at`: dropped.** Slot 1800 declares the table with
+- **`runner.runners.capability_reported_at`: dropped.** The file `20261108123100_runner_runners.sql` declares the table with
   `capability_report` and no instant beside it.
-- **`authoring.attempts.input_token_count`: dropped.** Slot 1940 keeps `call_count` and
-  `output_token_count` only; input tokens are counted per request on `billing.usage_lines` (slot 2040).
-- **`authoring.dispatches.output_allowance`: dropped.** Slot 1950 declares the table without it.
-- **`setup_context`: replaced** by `fleet.revisions.review_context` (slot 1510), written by
+- **`authoring.attempts.input_token_count`: dropped.** The file `20261108123900_authoring_attempts.sql` keeps `call_count` and
+  `output_token_count` only; input tokens are counted per request on `billing.usage_lines` (the file `20261108124600_billing_usage_lines.sql`).
+- **`authoring.dispatches.output_allowance`: dropped.** The file `20261108124000_authoring_dispatches.sql` declares the table without it.
+- **`setup_context`: replaced** by `fleet.revisions.review_context` (the file `20261108122000_fleet_revisions.sql`), written by
   `afd_authoring`'s creation `revision.sql` and read by its `locked.sql`.
 
 ## Public interface changes

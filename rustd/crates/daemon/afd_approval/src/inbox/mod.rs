@@ -95,9 +95,9 @@ impl Inbox {
     ) -> Result<Vec<GateRow>> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query_as::<_, StoredGate>(sql::SELECT_GATE_PAGE)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(filter.status.map_or(NO_FILTER, GateStatus::as_str))
-            .bind(filter.fleet_id.unwrap_or(NO_FILTER))
+            .bind(filter.fleet_id)
             .bind(filter.gate_type.unwrap_or(NO_FILTER))
             .bind(cursor.is_some())
             // NULL, not a stand-in instant or `''`, when there is no cursor:
@@ -124,8 +124,8 @@ impl Inbox {
     pub async fn one(&self, workspace: &Uuid7, gate: &Uuid7) -> Result<Option<GateRow>> {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query_as::<_, StoredGate>(sql::SELECT_GATE_BY_ID)
-            .bind(gate.as_str())
-            .bind(workspace.as_str())
+            .bind(gate)
+            .bind(workspace)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_ONE))?;

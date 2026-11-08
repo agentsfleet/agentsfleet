@@ -57,8 +57,8 @@ impl ReplyDestination {
     #[must_use]
     pub(crate) fn delivery<'a>(&'a self, lease: &'a Reported, answer: &'a str) -> Delivery<'a> {
         Delivery {
-            fleet_id: lease.fleet_id.as_str(),
-            workspace_id: lease.workspace_id.as_str(),
+            fleet_id: &lease.fleet_id,
+            workspace_id: &lease.workspace_id,
             provider: self.provider,
             destination: &self.address,
             event_id: &lease.event_id,
@@ -93,7 +93,7 @@ impl Leases {
     /// Reports a datastore that would not answer.
     pub(crate) async fn reply_destination(
         connection: &mut PgConnection,
-        fleet_id: &str,
+        fleet_id: &Uuid7,
         event_id: &str,
     ) -> Result<Option<ReplyDestination>> {
         let Ok(admission) = Uuid7::parse(event_id) else {
@@ -102,7 +102,7 @@ impl Leases {
         let stored: Option<(String, String)> =
             sqlx::query_as(afd_admission::sql::SELECT_REPLY_DESTINATION)
                 .bind(fleet_id)
-                .bind(admission.as_str())
+                .bind(&admission)
                 .fetch_optional(&mut *connection)
                 .await
                 .map_err(query(CONTEXT_REPLY))?;
@@ -111,9 +111,9 @@ impl Leases {
                 Provider::parse(&connector).map(|provider| ReplyDestination { provider, address });
             if parsed.is_none() {
                 tracing::warn!(
-                    fleet_id,
-                    agentsfleet_event_id = event_id,
-                    event = EVENT_REPLY_PROVIDER_UNKNOWN,
+                    fleet_id = %fleet_id,
+                    agentsfleet_event_id = %event_id,
+                    event = %EVENT_REPLY_PROVIDER_UNKNOWN,
                     "the recorded connector names no connector; the answer is owed nowhere"
                 );
             }
@@ -144,7 +144,7 @@ impl Leases {
     ) -> Result<Option<Uuid7>> {
         let row_id = self.entropy().uuid7(now)?;
 
-        let written = obligation::owe(connection, row_id.as_str(), delivery).await?;
+        let written = obligation::owe(connection, &row_id, delivery).await?;
         Ok(written.then_some(row_id))
     }
 
@@ -161,7 +161,7 @@ impl Leases {
     /// would not record the receipt.
     pub async fn queue_delivery(&self, owed: &Uuid7, delivery: Delivery<'_>) -> Result<()> {
         let entry = self.outbound().enqueue(OutboundJob::from(delivery)).await?;
-        obligation::receipt(self.pool(), owed.as_str(), entry.as_str()).await?;
+        obligation::receipt(self.pool(), owed, entry.as_str()).await?;
         Ok(())
     }
 }

@@ -22,10 +22,10 @@ async fn a_policy_marker_change_refuses_new_admissions_but_preserves_accepted_re
     let first = json_body(first).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{first}");
     sqlx::query("WITH incompatible AS (INSERT INTO fleet.revisions(id,fleet_id,revision,definition,canonical_digest,policy_semantics,created_at,runtime_model_ref)
-SELECT $2::uuid,fleet_id,revision+1,definition,canonical_digest,'policy-unavailable-fixture',created_at,runtime_model_ref
-FROM fleet.revisions WHERE fleet_id=$1::uuid RETURNING id)
-UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM incompatible) WHERE id=$1::uuid")
-        .bind(fleet.saved["id"].as_str().expect("fleet ID")).bind(mint().as_str())
+SELECT $2,fleet_id,revision+1,definition,canonical_digest,'policy-unavailable-fixture',created_at,runtime_model_ref
+FROM fleet.revisions WHERE fleet_id=$1 RETURNING id)
+UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM incompatible) WHERE id=$1")
+        .bind(crate::authoring::id_field(&fleet.saved["id"])).bind(mint())
         .execute(&mut *fleet.case.base.db.acquire().await.expect("policy connection")).await.expect("change marker");
     let repeated = send(
         &fleet.case.router,

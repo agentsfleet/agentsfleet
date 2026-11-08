@@ -1,3 +1,3 @@
-SELECT id::text, definition = $3::jsonb AS identical
+SELECT id, definition = $3::jsonb AS identical
 FROM model.decision_revisions
-WHERE platform_model_id = $1::uuid AND revision = $2
+WHERE platform_model_id = $1 AND revision = $2

@@ -127,11 +127,11 @@ impl Fleets {
     /// The statement behind [`Self::live_set`], run on a miss.
     async fn enumerate(&self, workspace: &Uuid7) -> Result<BTreeSet<String>> {
         let mut connection = self.database.acquire().await?;
-        sqlx::query_scalar::<_, String>(sql::SELECT_FLEET_IDS)
-            .bind(workspace.as_str())
+        sqlx::query_scalar::<_, Uuid7>(sql::SELECT_FLEET_IDS)
+            .bind(workspace)
             .fetch_all(connection.as_mut())
             .await
-            .map(|ids| ids.into_iter().collect())
+            .map(|ids| ids.into_iter().map(String::from).collect())
             .map_err(error::query(CONTEXT_LIVE_SET))
     }
 
@@ -150,10 +150,16 @@ impl Fleets {
         workspace: &Uuid7,
         fleets: &[String],
     ) -> Result<BTreeMap<String, FleetCounters>> {
+        // A requested identifier that is not a UUIDv7 names no fleet, so it is
+        // absent like any other this workspace does not hold.
+        let fleets: Vec<Uuid7> = fleets
+            .iter()
+            .filter_map(|fleet| Uuid7::parse(fleet).ok())
+            .collect();
         let mut connection = self.database.acquire().await?;
         sqlx::query_as::<_, CounterRow>(sql::SELECT_FLEET_COUNTERS_FOR_SET)
-            .bind(workspace.as_str())
-            .bind(fleets)
+            .bind(workspace)
+            .bind(&fleets)
             .fetch_all(connection.as_mut())
             .await
             .map(|rows| rows.into_iter().map(CounterRow::into_entry).collect())
@@ -165,7 +171,7 @@ impl Fleets {
 /// names its columns.
 #[derive(Debug, sqlx::FromRow)]
 struct CounterRow {
-    id: String,
+    id: Uuid7,
     event_count: i64,
     budget_used_nanos: i64,
 }
@@ -177,7 +183,7 @@ impl CounterRow {
             events_processed: self.event_count,
             budget_used_nanos: self.budget_used_nanos,
         };
-        (self.id, counters)
+        (self.id.into(), counters)
     }
 }
 

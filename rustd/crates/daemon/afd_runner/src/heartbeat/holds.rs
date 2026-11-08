@@ -51,9 +51,9 @@ pub(super) async fn reconcile(
     closing: bool,
 ) -> Vec<String> {
     let held = holds.map(fleets).unwrap_or_default();
-    let listed: Vec<&str> = held.iter().map(Uuid7::as_str).collect();
+    let listed: Vec<&Uuid7> = held.iter().collect();
     let clear = sqlx::query(sql::holds::CLEAR_DROPPED_HOLDS)
-        .bind(runner.as_str())
+        .bind(runner)
         .bind(&listed)
         .bind(HEARTBEAT_INTERVAL)
         .bind(closing);
@@ -63,14 +63,14 @@ pub(super) async fn reconcile(
     }
     // A row that will not decode fails the answer like a failed read: the
     // runner keeps its holds one beat longer, and the warning says why.
-    let released = sqlx::query_scalar::<_, String>(sql::holds::SELECT_HOLDS_TO_RELEASE)
-        .bind(runner.as_str())
+    let released = sqlx::query_scalar::<_, Uuid7>(sql::holds::SELECT_HOLDS_TO_RELEASE)
+        .bind(runner)
         .bind(&listed)
         .bind(sql::FLEET_STATUS_ACTIVE)
         .fetch_all(&mut *connection)
         .await;
     match released {
-        Ok(fleets) => fleets,
+        Ok(fleets) => fleets.into_iter().map(String::from).collect(),
         Err(error) => {
             let code = error_code::INTERNAL_DB_QUERY.as_str();
             let id = runner.as_str();

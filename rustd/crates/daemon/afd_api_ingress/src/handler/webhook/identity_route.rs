@@ -211,7 +211,7 @@ pub(crate) async fn receive<D: Services>(
     // does, this person's next session token carries no `tenant_id` and every
     // call they make is refused for want of a tenant — so the write happens
     // here, before the 200.
-    write_back(&services, &event.data.id, &opened.tenant_id).await;
+    write_back(&services, &event.data.id, opened.tenant_id.as_str()).await;
 
     // 200 either way, and the flag says which. A replay is not a conflict: the
     // provider is right to retry and a 409 would put a delivery it cannot

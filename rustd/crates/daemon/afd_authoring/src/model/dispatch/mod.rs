@@ -247,8 +247,8 @@ async fn insert(
     digest: &str,
 ) -> Result<()> {
     let inserted = sqlx::query(sql::INSERT)
-        .bind(&request.dispatch_id)
-        .bind(attempt.id.as_str())
+        .bind(super::dispatch_id(request)?)
+        .bind(&attempt.id)
         .bind(i64::from(request.call_index))
         .bind(digest)
         .bind(dispatch_status::PENDING)
@@ -261,7 +261,7 @@ async fn insert(
         return Err(ErrorKind::Replay.into());
     }
     sqlx::query(sql::ADVANCE)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

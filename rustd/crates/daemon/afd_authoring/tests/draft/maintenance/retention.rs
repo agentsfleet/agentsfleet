@@ -14,8 +14,8 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
         .create(f.access(), request.clone(), now())
         .await
         .expect("create");
-    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1::uuid")
-        .bind(created.draft.id.as_str())
+    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
+        .bind(&created.draft.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("retention deadline");
@@ -60,8 +60,8 @@ async fn expired_closed_drafts_are_unreadable_then_purged_without_recreating_pri
 async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
-    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1::uuid")
-        .bind(a.draft.id.as_str())
+    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
+        .bind(a.draft.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("closed fixture");
@@ -70,8 +70,8 @@ async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry
         .await
         .expect("live lease blocks physical purge");
     assert_eq!(f.counts().await, (1, 0, 1));
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
-        .bind(a.id.as_str())
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("lease expires");
@@ -81,8 +81,8 @@ async fn closed_retention_waits_for_a_live_authoring_lease_then_purges_at_expiry
         .expect("purge after live boundary");
     assert_eq!(f.counts().await, (0, 0, 0));
     let obligations: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE id=$1::uuid")
-            .bind(a.id.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE id=$1")
+            .bind(a.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("accounting remains");

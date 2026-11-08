@@ -128,11 +128,11 @@ impl Lane {
     /// sibling is about to answer. Both are real failures this suite has had.
     /// Minting the pair costs three seeding statements and removes the class.
     pub(crate) async fn isolated() -> Self {
-        Self::open(mint().as_str().to_owned(), mint().as_str().to_owned()).await
+        Self::open(mint(), mint()).await
     }
 
     /// Opens the lane over `workspace` and `fleet`, seeding both.
-    async fn open(workspace: String, fleet: String) -> Self {
+    async fn open(workspace: Uuid7, fleet: Uuid7) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
         let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
@@ -148,8 +148,8 @@ impl Lane {
             _database: database,
             pool,
             queue,
-            fleet: Uuid7::parse(&fleet).expect("a fixture fleet id is well formed"),
-            workspace: Uuid7::parse(&workspace).expect("a fixture workspace id is well formed"),
+            fleet,
+            workspace,
             tenant: Uuid7::parse(TENANT).expect("the fixture tenant id is well formed"),
         };
         lane.seed_fleet().await;
@@ -172,10 +172,10 @@ impl Lane {
         // first writes it, and every later one finds it there.
         sqlx::query(
             "INSERT INTO identity.tenants (id, name, created_at, updated_at)
-             VALUES ($1::uuid, 'fixture', now(), now())
+             VALUES ($1, 'fixture', now(), now())
              ON CONFLICT (id) DO NOTHING",
         )
-        .bind(self.tenant.as_str())
+        .bind(&self.tenant)
         .execute(&mut *connection)
         .await
         .expect("seeding a tenant");
@@ -183,15 +183,15 @@ impl Lane {
         // Named after its own id, which `WorkspaceSeed` does by default:
         // `uq_workspaces_tenant_id_name` is unique per tenant, and every
         // isolated lane shares the tenant, so a constant name would collide.
-        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .insert(&mut *connection)
             .await
             .expect("seeding a workspace");
 
         FleetSeed::new(
-            self.fleet.as_str(),
-            self.workspace.as_str(),
-            self.tenant.as_str(),
+            &self.fleet,
+            &self.workspace,
+            &self.tenant,
             FleetStatus::Active.as_str(),
         )
         .name("fixture-fleet")
@@ -236,5 +236,5 @@ pub(crate) fn dead_queue() -> Dragonfly {
 /// crate has no reason to depend on the crypto crate, and the helper already
 /// shapes a value both `ck_*_id_uuidv7` and [`Uuid7`] accept.
 pub(crate) fn mint() -> Uuid7 {
-    Uuid7::parse(&afd_db::test_util::mint_id()).expect("a minted identifier is well formed")
+    afd_db::test_util::mint_id()
 }

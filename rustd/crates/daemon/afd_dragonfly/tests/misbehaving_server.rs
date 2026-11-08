@@ -24,6 +24,7 @@ use afd_dragonfly::session::{AbortReason, Approval, SessionStore};
 use afd_dragonfly::{OutboundJob, OutboundQueue};
 
 use crate::fake_redis::{FakeRedis, Reply};
+use crate::support::mint_id;
 use af_core::test_util::trace::Capture;
 use af_core::test_util::trace::install_subscriber;
 
@@ -163,9 +164,9 @@ async fn test_an_empty_xadd_id_is_refused_rather_than_handed_out() {
         OutboundQueue::new(redis).enqueue(OutboundJob {
             provider: "fixture",
             destination: "destination",
-            workspace_id: "workspace",
-            fleet_id: "fleet",
-            event_id: "event",
+            workspace_id: &mint_id(),
+            fleet_id: &mint_id(),
+            event_id: &mint_id(),
             answer: "answer",
         }),
     )
@@ -211,9 +212,9 @@ async fn test_a_socket_that_dies_mid_command_reports_redis_unreachable() {
         OutboundQueue::new(redis).enqueue(OutboundJob {
             provider: "fixture",
             destination: "destination",
-            workspace_id: "workspace",
-            fleet_id: "fleet",
-            event_id: "event",
+            workspace_id: &mint_id(),
+            fleet_id: &mint_id(),
+            event_id: &mint_id(),
             answer: "answer",
         }),
     )

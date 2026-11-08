@@ -36,7 +36,7 @@ impl Fixture {
             (&self.workspace, "connected"),
             (&self.admin, "platform-admin"),
         ] {
-            WorkspaceSeed::new(workspace.as_str(), &self.tenant)
+            WorkspaceSeed::new(workspace, &self.tenant)
                 .name(name)
                 .insert(&mut *connection)
                 .await
@@ -110,8 +110,8 @@ impl Fixture {
     /// operator rotating them out mid-connect would.
     pub(crate) async fn withdraw_app(&self, provider: Provider) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2")
-            .bind(self.admin.as_str())
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2")
+            .bind(&self.admin)
             .bind(provider.app_key())
             .execute(&mut *connection)
             .await
@@ -142,9 +142,9 @@ impl Fixture {
     pub(crate) async fn secret_names(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT key_name FROM vault.secrets WHERE workspace_id = $1::uuid ORDER BY key_name",
+            "SELECT key_name FROM vault.secrets WHERE workspace_id = $1 ORDER BY key_name",
         )
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .fetch_all(&mut *connection)
         .await
         .expect("the workspace's secret names read")
@@ -156,8 +156,8 @@ impl Fixture {
             .await
             .expect("the cleanup transaction opens");
         for workspace in [&self.workspace, &self.admin] {
-            sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-                .bind(workspace.as_str())
+            sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1")
+                .bind(workspace)
                 .execute(&mut *transaction)
                 .await
                 .expect("the fixture's sealed secrets clean up");
@@ -165,13 +165,13 @@ impl Fixture {
             // rather than on this fixture, so a row left behind is one the
             // next test on this shared lane meets as "held elsewhere" — which
             // is the product working and the fixture leaking.
-            sqlx::query("DELETE FROM connector.installs WHERE workspace_id = $1::uuid")
-                .bind(workspace.as_str())
+            sqlx::query("DELETE FROM connector.installs WHERE workspace_id = $1")
+                .bind(workspace)
                 .execute(&mut *transaction)
                 .await
                 .expect("the fixture's routing rows clean up");
         }
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

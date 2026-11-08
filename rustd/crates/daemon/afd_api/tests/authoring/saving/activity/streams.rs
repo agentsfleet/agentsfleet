@@ -22,7 +22,7 @@ pub(super) struct Reader {
     hub: SubscriptionHub,
     subscription: Subscription,
     publisher: FleetStreams,
-    fleet: String,
+    fleet: Uuid7,
 }
 
 impl Reader {
@@ -39,12 +39,12 @@ impl Reader {
             hub,
             subscription: reader,
             publisher: FleetStreams::new(saved.case.queue.clone()),
-            fleet: fleet.to_string(),
+            fleet: fleet.clone(),
         };
         tokio::time::timeout(DELIVERY_BUDGET, async {
             while stream
                 .publisher
-                .publish_tail(&stream.fleet, PROBE)
+                .publish_tail(stream.fleet.as_str(), PROBE)
                 .await
                 .expect("subscription probe")
                 == 0
@@ -65,7 +65,7 @@ impl Reader {
 
     pub(super) async fn quiet(&mut self) {
         self.publisher
-            .publish_tail(&self.fleet, FINISHED)
+            .publish_tail(self.fleet.as_str(), FINISHED)
             .await
             .expect("ordered end marker");
         assert_eq!(

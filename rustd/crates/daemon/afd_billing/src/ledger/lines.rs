@@ -1,5 +1,6 @@
 //! The usage log: priced lines written into `billing.usage_lines`.
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -38,20 +39,15 @@ pub async fn log_lines<'e>(
     let ids = settlement
         .lines
         .iter()
-        .map(|_line| Ok(entropy.uuid7(now)?.as_str().to_owned()))
-        .collect::<Result<Vec<String>>>()?;
+        .map(|_line| Ok(entropy.uuid7(now)?))
+        .collect::<Result<Vec<Uuid7>>>()?;
     let (fleet, fleet_name, event_id, attempt) = match &settlement.attribution {
         Attribution::Fleet {
             fleet,
             fleet_name,
             event_id,
-        } => (
-            Some(fleet.as_str()),
-            Some(fleet_name.as_str()),
-            Some(event_id.as_str()),
-            None,
-        ),
-        Attribution::SetupChat => (None, None, None, Some(settlement.work.id().as_str())),
+        } => (Some(fleet), Some(fleet_name.as_str()), Some(event_id), None),
+        Attribution::SetupChat => (None, None, None, Some(settlement.work.id())),
     };
     let lines = &settlement.lines;
     let unpriced = lines
@@ -61,9 +57,9 @@ pub async fn log_lines<'e>(
     let model_nanos: i64 = sqlx::query_scalar(INSERT_LINES)
         .bind(ids)
         .bind(settlement.work.work_type())
-        .bind(settlement.work.id().as_str())
-        .bind(settlement.payer.tenant.as_str())
-        .bind(settlement.payer.workspace.as_str())
+        .bind(settlement.work.id())
+        .bind(&settlement.payer.tenant)
+        .bind(&settlement.payer.workspace)
         .bind(fleet)
         .bind(fleet_name)
         .bind(event_id)
@@ -88,9 +84,7 @@ pub async fn log_lines<'e>(
         }))
         .bind(column(lines, |line| i64::from(line.usage.output_tokens)))
         .bind(column(lines, |line| i64::from(line.usage.runtime_ms)))
-        .bind(column(lines, |line| {
-            line.price.as_ref().map(|id| id.as_str().to_owned())
-        }))
+        .bind(column(lines, |line| line.price.clone()))
         .bind(unpriced)
         .bind(column(lines, |line| line.charged.as_i64()))
         .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))

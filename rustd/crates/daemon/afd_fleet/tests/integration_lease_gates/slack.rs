@@ -16,7 +16,12 @@ use super::*;
 use crate::recovery_seed::{admission, ledger};
 
 /// One Slack mention, admitted as the mention route admits it.
-async fn admit_mention(ledger: &Admissions, fleet: &str, workspace: &str, key: &str) -> Admitted {
+async fn admit_mention(
+    ledger: &Admissions,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    key: &str,
+) -> Admitted {
     ledger
         .admit(Admission {
             producer: Producer::SlackMention,
@@ -71,18 +76,18 @@ async fn one_slack_request_is_one_attempt() {
         !answer.contains(NO_LEASE),
         "a Slack-requested write event was held rather than leased: {answer}"
     );
-    let first_branch = repair::branch_for(&first.stored.id);
+    let first_branch = repair::branch_for(first.stored.id.as_str());
     assert!(answer.contains(&first_branch), "{first_branch}: {answer}");
 
     let mut connection = fixtures.database.acquire().await.expect("database");
     let states: Vec<(bool,)> = sqlx::query_as(
-        "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1::uuid ORDER BY created_at, sequence"
+        "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1 ORDER BY created_at, sequence"
     ).bind(&fleet).fetch_all(&mut *connection).await.expect("queue state");
     assert_eq!(states, [(true,), (false,)], "one delivered, one waiting");
     drop(connection);
     // The second request authors elsewhere: its branch is named for its own
     // event, the name the lease path gives it (`deliver.rs`).
-    assert_ne!(repair::branch_for(&second.stored.id), first_branch);
+    assert_ne!(repair::branch_for(second.stored.id.as_str()), first_branch);
 
     fixtures.cleanup().await;
 }

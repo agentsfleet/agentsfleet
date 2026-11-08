@@ -399,7 +399,7 @@ uuid = { version = "1.29.1", default-features = false, features = ["v7", "std"] 
 # `/usr/share/zoneinfo` (gcr.io/distroless/static-debian12:nonroot, verified).
 # It lets a zone name be VALIDATED against the real database instead of
 # pattern-matched — see `afd_cron::validate::timezone`.
-jiff = { version = "0.2.39", default-features = false, features = [
+jiff = { version = "0.2.40", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",
   # Every instant on the wire is a `jiff::Timestamp` serialized as RFC 3339 in

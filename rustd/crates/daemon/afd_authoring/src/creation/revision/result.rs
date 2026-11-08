@@ -22,8 +22,8 @@ impl Creations {
         access::current(&mut tx, access).await?;
         let current = read::lock(&mut tx, access.workspace, fleet).await?;
         let number: Option<i64> = sqlx::query_scalar(sql::ACCEPTED)
-            .bind(revision.as_str())
-            .bind(fleet.as_str())
+            .bind(revision)
+            .bind(fleet)
             .fetch_optional(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

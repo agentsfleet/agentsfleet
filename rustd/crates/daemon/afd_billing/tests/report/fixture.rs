@@ -27,12 +27,12 @@ INSERT INTO billing.usage_lines (
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
     settled_at, created_at, updated_at
 )
-SELECT id::uuid, kind, work_id::uuid, seq, tenant::uuid, tenant::uuid,
-       fleet::uuid, name, CASE WHEN fleet IS NULL THEN work_id::uuid END,
+SELECT id, kind, work_id, seq, tenant, tenant,
+       fleet, name, CASE WHEN fleet IS NULL THEN work_id END,
        model, model, posture, at::timestamptz, $14, 0, 0, 0, 0, $15, $16,
        unpriced, money, settled::timestamptz, at::timestamptz, at::timestamptz
-  FROM unnest($1::text[], $2::text[], $3::text[], $4::bigint[], $5::text[],
-              $6::text[], $7::text[], $8::text[], $9::text[], $10::text[],
+  FROM unnest($1, $2::text[], $3, $4::bigint[], $5,
+              $6, $7::text[], $8::text[], $9::text[], $10::text[],
               $11::text[], $12::bigint[], $13::bigint[])
     AS source(id, kind, work_id, seq, tenant, fleet, name, model, posture, at, settled, money, unpriced)
 ";
@@ -71,12 +71,12 @@ impl Fixture {
 }
 
 pub(super) struct Line {
-    pub(super) id: String,
+    pub(super) id: Uuid7,
     pub(super) work_type: &'static str,
-    pub(super) work_id: String,
+    pub(super) work_id: Uuid7,
     pub(super) sequence: i64,
-    pub(super) tenant: String,
-    pub(super) fleet: Option<String>,
+    pub(super) tenant: Uuid7,
+    pub(super) fleet: Option<Uuid7>,
     pub(super) name: Option<String>,
     pub(super) model: &'static str,
     pub(super) posture: &'static str,
@@ -93,8 +93,8 @@ impl Line {
             work_type: work::FLEET_LEASE,
             work_id: mint_id(),
             sequence: 0,
-            tenant: tenant.as_str().to_owned(),
-            fleet: Some(fleet.as_str().to_owned()),
+            tenant: tenant.clone(),
+            fleet: Some(fleet.clone()),
             name: Some(FLEET_NAME.to_owned()),
             model: MODEL_A,
             posture: posture::PLATFORM,
@@ -116,7 +116,7 @@ impl Line {
 }
 
 pub(super) fn id() -> Uuid7 {
-    Uuid7::parse(&mint_id()).unwrap()
+    mint_id()
 }
 
 pub(super) fn instant(text: &str) -> Timestamp {
@@ -145,30 +145,25 @@ pub(super) fn summary(report: &afd_billing::report::Report) -> &afd_billing::rep
 
 pub(super) async fn seed(db: &Db, lines: &[Line]) {
     sqlx::query(INSERT_LINES)
-        .bind(
-            lines
-                .iter()
-                .map(|line| line.id.as_str())
-                .collect::<Vec<_>>(),
-        )
+        .bind(lines.iter().map(|line| line.id.clone()).collect::<Vec<_>>())
         .bind(lines.iter().map(|line| line.work_type).collect::<Vec<_>>())
         .bind(
             lines
                 .iter()
-                .map(|line| line.work_id.as_str())
+                .map(|line| line.work_id.clone())
                 .collect::<Vec<_>>(),
         )
         .bind(lines.iter().map(|line| line.sequence).collect::<Vec<_>>())
         .bind(
             lines
                 .iter()
-                .map(|line| line.tenant.as_str())
+                .map(|line| line.tenant.clone())
                 .collect::<Vec<_>>(),
         )
         .bind(
             lines
                 .iter()
-                .map(|line| line.fleet.as_deref())
+                .map(|line| line.fleet.clone())
                 .collect::<Vec<_>>(),
         )
         .bind(
@@ -193,6 +188,6 @@ pub(super) async fn seed(db: &Db, lines: &[Line]) {
 
 /// Includes pending rows, so a report that mutates money or settlement fails the check.
 pub(super) async fn ledger(db: &Db, tenant: &Uuid7) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos),0)::bigint, COUNT(settled_at)::bigint FROM billing.usage_lines WHERE tenant_id=$1::uuid")
-        .bind(tenant.as_str()).fetch_one(&mut *db.acquire().await.unwrap()).await.unwrap()
+    sqlx::query_as("SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos),0)::bigint, COUNT(settled_at)::bigint FROM billing.usage_lines WHERE tenant_id=$1")
+        .bind(tenant).fetch_one(&mut *db.acquire().await.unwrap()).await.unwrap()
 }

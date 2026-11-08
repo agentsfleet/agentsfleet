@@ -42,7 +42,7 @@ const KEY_NAME: &str = "provider-handle";
 /// `$1` tenant · `$2` entry.
 const POINT_SELECTION: &str = "\
 INSERT INTO model.tenant_selections (tenant_id, tenant_model_id, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, now(), now())
+VALUES ($1, $2, now(), now())
 ON CONFLICT (tenant_id) DO UPDATE SET tenant_model_id = EXCLUDED.tenant_model_id,
                                       updated_at = now()";
 
@@ -89,7 +89,7 @@ impl Fixture {
     async fn seed_tenant_without_workspace(&self) -> Uuid7 {
         let orphan = id();
         let mut connection = self.database.acquire().await.expect("an API connection");
-        TenantSeed::new(orphan.as_str())
+        TenantSeed::new(&orphan)
             .name("No workspace")
             .insert(&mut *connection)
             .await
@@ -99,12 +99,12 @@ impl Fixture {
 
     async fn seed_scope(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .name("Credential rotation")
             .insert(&mut *connection)
             .await
             .expect("the vault scope's tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .insert(&mut *connection)
             .await
             .expect("the vault scope seeds");
@@ -138,9 +138,9 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "UPDATE vault.secrets SET meta_provider = $3, meta_has_key = $4 \
-             WHERE workspace_id = $1::uuid AND key_name = $2",
+             WHERE workspace_id = $1 AND key_name = $2",
         )
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(name)
         .bind(meta_provider)
         .bind(meta_has_key)
@@ -182,7 +182,7 @@ impl Fixture {
             &self.database,
             DefaultSeed {
                 provider,
-                source_workspace_id: self.workspace.as_str(),
+                source_workspace_id: &self.workspace,
                 model,
                 context_cap_tokens: cap,
                 created_at: NOW,
@@ -200,8 +200,8 @@ impl Fixture {
     async fn point_selection_at(&self, tenant: &Uuid7, entry: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(POINT_SELECTION)
-            .bind(tenant.as_str())
-            .bind(entry.as_str())
+            .bind(tenant)
+            .bind(entry)
             .execute(&mut *connection)
             .await
             .expect("the selection points at the entry");
@@ -213,10 +213,10 @@ impl Fixture {
             "INSERT INTO vault.secrets \
                (id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonce, dek_tag, \
                 secret_nonce, secret_ciphertext, secret_tag, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
         )
         .bind(mint_id())
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(name)
         .bind(envelope.kek_version())
         .bind(envelope.wrapped_dek())
@@ -232,8 +232,8 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
-            .bind(self.tenant.as_str())
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
+            .bind(self.tenant)
             .execute(&mut *connection)
             .await
             .expect("the scoped fixture cleans up");
@@ -244,5 +244,5 @@ impl Fixture {
 }
 
 fn id() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("the minted fixture id is UUIDv7")
+    mint_id()
 }

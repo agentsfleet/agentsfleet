@@ -31,6 +31,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_db::test_util::{
     FIXTURE_SETUP_MODEL_REF, FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
@@ -61,8 +62,10 @@ const GATE_BLOCKED: &str = "gate_blocked";
 /// Its identifier is the scenario's own with a distinct trailing slot, so it
 /// satisfies the column's version-7 CHECK and cannot collide with any other
 /// scenario's fleet in a shared lane.
-async fn seed_unreadable_fleet(run: &Scenario) -> String {
-    let fleet = format!("{}00f0", &run.fleet[..run.fleet.len() - 4]);
+async fn seed_unreadable_fleet(run: &Scenario) -> Uuid7 {
+    let own = run.fleet.as_str();
+    let fleet = Uuid7::parse(&format!("{}00f0", &own[..own.len() - 4]))
+        .expect("the neighbour's id is a canonical UUIDv7");
     FleetSeed::new(&fleet, &run.workspace, &run.tenant, FLEET_STATUS_ACTIVE)
         .name("e2e-unreadable-fleet")
         .at(run.seeded_at)

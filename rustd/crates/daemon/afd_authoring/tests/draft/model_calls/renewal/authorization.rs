@@ -45,8 +45,8 @@ async fn missing_or_invalid_model_settings_deny_renewal_with_durable_recovery() 
         let a = Attempt::start(&f, f.access(), Source::Blank).await;
         let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
         let before = snapshot(&f, &a).await;
-        sqlx::query("UPDATE model.platform_models SET inference=NULLIF($2::jsonb,'null'::jsonb) WHERE id=$1::uuid")
-            .bind(f.catalogue.first().expect("owned catalogue model").as_str()).bind(inference).execute(&mut *f.connection().await).await.expect("changed saved model");
+        sqlx::query("UPDATE model.platform_models SET inference=NULLIF($2::jsonb,'null'::jsonb) WHERE id=$1")
+            .bind(f.catalogue.first().expect("owned catalogue model")).bind(inference).execute(&mut *f.connection().await).await.expect("changed saved model");
         let error = f
             .drafts
             .renew(&f.runner, &a.lease, request())
@@ -56,9 +56,9 @@ async fn missing_or_invalid_model_settings_deny_renewal_with_durable_recovery() 
         assert_eq!(error.current_state(), Some("unavailable"));
         assert_eq!(snapshot(&f, &a).await, before);
         let saved: (String, String) = sqlx::query_as(
-            "SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1::uuid",
+            "SELECT status,failure_reason FROM authoring.messages WHERE draft_id=$1",
         )
-        .bind(a.draft.id.as_str())
+        .bind(&a.draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("saved model failure");
@@ -78,8 +78,8 @@ async fn an_underreserved_attempt_cannot_extend_its_lease() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     let before = snapshot(&f, &a).await;
-    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=1 WHERE id=$1::uuid")
-        .bind(a.id.as_str())
+    sqlx::query("UPDATE authoring.attempts SET reserved_nanos=1 WHERE id=$1")
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("insufficient own reservation");
@@ -91,8 +91,8 @@ async fn an_underreserved_attempt_cannot_extend_its_lease() {
     assert_eq!(error.code(), error_code::AUTHORING_BALANCE);
     assert_eq!(snapshot(&f, &a).await, before);
     let reason: String =
-        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1::uuid")
-            .bind(a.id.as_str())
+        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1")
+            .bind(a.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("saved owner billing failure");
@@ -111,8 +111,8 @@ async fn a_removed_host_cannot_extend_or_meter_a_private_lease() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     let before = snapshot(&f, &a).await;
-    sqlx::query("UPDATE runner.runners SET status='removed' WHERE id=$1::uuid")
-        .bind(f.runner.as_str())
+    sqlx::query("UPDATE runner.runners SET status='removed' WHERE id=$1")
+        .bind(&f.runner)
         .execute(&mut *f.connection().await)
         .await
         .expect("removed runner");

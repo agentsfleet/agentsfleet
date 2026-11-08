@@ -54,12 +54,12 @@ impl Creations {
         let mut tx = sqlx::Transaction::begin(self.setup.drafts.database.acquire().await?, None)
             .await
             .map_err(query(CONTEXT))?;
-        let tenant: Option<String> = sqlx::query_scalar(sql::TENANT)
-            .bind(setup.workspace.as_str())
+        let tenant: Option<Uuid7> = sqlx::query_scalar(sql::TENANT)
+            .bind(setup.workspace)
             .fetch_optional(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
-        let tenant = Uuid7::parse(&tenant.ok_or(ErrorKind::Hidden)?)?;
+        let tenant = tenant.ok_or(ErrorKind::Hidden)?;
         let name = setup.definition.runtime().name().as_str();
         let captured = Captured {
             origin: None,
@@ -100,15 +100,15 @@ impl Creations {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         sqlx::query(sql::STREAM_READY)
-            .bind(id.as_str())
-            .bind(workspace.as_str())
+            .bind(id)
+            .bind(workspace)
             .bind(INSTALLING)
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
         sqlx::query(sql::ACTIVATE)
-            .bind(id.as_str())
-            .bind(workspace.as_str())
+            .bind(id)
+            .bind(workspace)
             .bind(ACTIVE)
             .bind(INSTALLING)
             .bind(INITIAL_VERSION)
@@ -123,8 +123,8 @@ impl Creations {
         let removed: Result<()> = async {
             let mut connection = self.setup.drafts.database.acquire().await?;
             sqlx::query(sql::REMOVE)
-                .bind(id.as_str())
-                .bind(workspace.as_str())
+                .bind(id)
+                .bind(workspace)
                 .bind(INSTALLING)
                 .execute(connection.as_mut())
                 .await

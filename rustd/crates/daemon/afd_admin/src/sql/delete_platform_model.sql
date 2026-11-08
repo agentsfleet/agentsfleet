@@ -1,2 +1,2 @@
 DELETE FROM model.platform_models
-WHERE id = $1::uuid
+WHERE id = $1

@@ -12,6 +12,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_cron::{ACTOR_PREFIX, Source};
 use agentsfleetd::preflight::{QSTASH_TOKEN_KNOB, QSTASH_URL_KNOB};
@@ -59,7 +60,7 @@ impl<'a> Seeded<'a> {
 pub(crate) struct Leased {
     pub(crate) run: Scenario,
     pub(crate) http: reqwest::Client,
-    pub(crate) lease_id: String,
+    pub(crate) lease_id: Uuid7,
     pub(crate) fence: u64,
 }
 
@@ -83,6 +84,7 @@ impl Leased {
         )]
         let http = reqwest::Client::new();
         let (lease_id, fence) = lease(&http, &run).await;
+        let lease_id = Uuid7::parse(&lease_id).expect("the daemon answers a canonical lease id");
         Self {
             run,
             http,
@@ -129,7 +131,7 @@ impl Leased {
 
     /// Settles the held lease, so the fleet takes its next event.
     pub(crate) async fn settle(&self) {
-        let report = report_body(&self.lease_id, &self.run.event_id, self.fence);
+        let report = report_body(self.lease_id.as_str(), &self.run.event_id, self.fence);
         let reported = post(&self.http, &self.run, REPORTS, &report).await;
         assert_eq!(reported.status().as_u16(), 200, "the held lease settles");
     }
@@ -144,10 +146,8 @@ impl Leased {
     /// How many schedules of `source` the fleet holds, or of any source.
     pub(crate) async fn held(&self, source: Option<Source>) -> i64 {
         let statement = match source {
-            Some(_) => {
-                "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1::uuid AND source = $2"
-            }
-            None => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1::uuid AND $2 = ''",
+            Some(_) => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1 AND source = $2",
+            None => "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1 AND $2 = ''",
         };
         let mut connection = self.connection().await;
         sqlx::query(statement)
@@ -168,17 +168,17 @@ impl Leased {
     }
 
     /// Writes `row` for `fleet` straight into the table.
-    pub(crate) async fn seed_row(&self, fleet: &str, row: Seeded<'_>) -> String {
+    pub(crate) async fn seed_row(&self, fleet: &Uuid7, row: Seeded<'_>) -> String {
         let now = af_core::clock::now();
         let id = Entropy::new().uuid7(now).expect("an identifier");
         let mut connection = self.connection().await;
         sqlx::query(
             "INSERT INTO fleet.schedules (id, fleet_id, source, provider_schedule_id, \
              cron_expression, timezone, message, desired_status, sync_status, resource_version, \
-             created_at, updated_at, once) VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'UTC', \
+             created_at, updated_at, once) VALUES ($1, $2, $3, $4, $5, 'UTC', \
              'seeded', $6, 'synced', 1, now(), now(), $7)",
         )
-        .bind(id.as_str())
+        .bind(&id)
         .bind(fleet)
         .bind(row.source.as_str())
         .bind(row.key)
@@ -193,12 +193,12 @@ impl Leased {
 
     /// A second fleet in this scenario's workspace, for cross-fleet cases;
     /// [`Self::finish_with`] retires it.
-    pub(crate) async fn other_fleet(&self) -> String {
+    pub(crate) async fn other_fleet(&self) -> Uuid7 {
         let now = af_core::clock::now();
         let fleet = Entropy::new().uuid7(now).expect("an identifier");
         seed_fleet(
             &self.run.booted,
-            fleet.as_str(),
+            &fleet,
             OTHER_FLEET_NAME,
             &self.run.workspace,
             &self.run.tenant,
@@ -206,7 +206,7 @@ impl Leased {
             now,
         )
         .await;
-        fleet.as_str().to_owned()
+        fleet
     }
 
     /// Runs one statement against this scenario's fleet, `$1` its id.
@@ -222,7 +222,7 @@ impl Leased {
     /// Moves the fleet's live sequence past this lease's, as a reclaim does.
     pub(crate) async fn supersede(&self) {
         self.on_fleet(
-            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1::uuid",
+            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
         )
         .await;
     }
@@ -233,7 +233,7 @@ impl Leased {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE fleet.events SET actor = $2 \
-             WHERE id = (SELECT fleet_event_id FROM runner.leases WHERE id = $1::uuid)",
+             WHERE event_id = (SELECT event_id FROM runner.leases WHERE id = $1)",
         )
         .bind(&self.lease_id)
         .bind(format!(
@@ -248,14 +248,15 @@ impl Leased {
     pub(crate) async fn hold_sync(&self, schedule: &str, held: bool) {
         let now = af_core::clock::now();
         let token = held.then(|| Entropy::new().uuid7(now).expect("a token"));
+        let schedule = Uuid7::parse(schedule).expect("a schedule id is a canonical UUIDv7");
         let mut connection = self.connection().await;
         sqlx::query(
-            "UPDATE fleet.schedules SET sync_token = $2::uuid, \
+            "UPDATE fleet.schedules SET sync_token = $2, \
              sync_lease_expires_at = CASE WHEN $3 THEN clock_timestamp() + $4::interval END \
-             WHERE id = $1::uuid",
+             WHERE id = $1",
         )
-        .bind(schedule)
-        .bind(token.as_ref().map(af_core::id::Uuid7::as_str))
+        .bind(&schedule)
+        .bind(token.as_ref())
         .bind(held)
         .bind(SYNC_HOLD)
         .execute(&mut *connection)
@@ -267,7 +268,7 @@ impl Leased {
     pub(crate) async fn admitted(&self, schedule: &str) -> i64 {
         let mut connection = self.connection().await;
         sqlx::query_scalar(
-            "SELECT count(*) FROM fleet.admissions WHERE workspace_id = $1::uuid AND actor = $2",
+            "SELECT count(*) FROM fleet.admissions WHERE workspace_id = $1 AND actor = $2",
         )
         .bind(&self.run.workspace)
         .bind(format!("{ACTOR_PREFIX}{schedule}"))
@@ -292,7 +293,7 @@ impl Leased {
     }
 
     /// [`Self::finish`], retiring `other` first.
-    pub(crate) async fn finish_with(self, supervisor: Supervisor, other: &str) {
+    pub(crate) async fn finish_with(self, supervisor: Supervisor, other: &Uuid7) {
         crate::e2e_retire::retire_fleet(&self.run.booted, other).await;
         self.finish(supervisor).await;
     }

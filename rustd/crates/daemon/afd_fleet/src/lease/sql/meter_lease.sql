@@ -1,18 +1,17 @@
 WITH locked_slot AS MATERIALIZED (
     SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
     FROM runner.fleet_slots s JOIN runner.leases l ON l.fleet_id = s.fleet_id
-    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $4
+    WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF s
 ), probe AS (
-    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, e.event_id,
+    SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
            l.fencing_token, l.created_at, l.lease_expires_at, l.last_metered_at,
            a.fencing_token AS live_fence, a.lease_expires_at AS slot_expires_at,
            l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
            l.task_runtime_accounted_at
     FROM runner.leases l
     JOIN locked_slot a ON a.fleet_id = l.fleet_id
-    JOIN fleet.events e ON e.id = l.fleet_event_id
-    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $4
+    WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF l
 ), held_task AS MATERIALIZED (
     SELECT t.id, t.status, t.generation, t.stop_generation, t.expires_at,
@@ -54,7 +53,7 @@ WITH locked_slot AS MATERIALIZED (
           END
       AND EXISTS (
           SELECT 1 FROM fleet.admissions a
-          WHERE a.id = metered.event_id::uuid AND a.fleet_id = metered.fleet_id
+          WHERE a.id = metered.event_id AND a.fleet_id = metered.fleet_id
             AND a.lease_fence = metered.fencing_token AND a.settled_at IS NULL
       )
 ), moved AS (
@@ -75,14 +74,14 @@ WITH locked_slot AS MATERIALIZED (
     UPDATE fleet.admissions a
     SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
     FROM guard g
-    WHERE $5::boolean AND a.id = g.event_id::uuid AND a.fleet_id = g.fleet_id
+    WHERE $5::boolean AND a.id = g.event_id AND a.fleet_id = g.fleet_id
       AND a.lease_fence = g.fencing_token AND a.settled_at IS NULL
       AND EXISTS (SELECT 1 FROM moved)
 ), tally AS (
     INSERT INTO runner.lifetime_counters AS c
       (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
        created_at, updated_at)
-    SELECT $2::uuid, 0,
+    SELECT $2, 0,
            CASE WHEN $9::boolean THEN 1 ELSE 0 END,
            CASE WHEN $9::boolean THEN 0 ELSE 1 END,
            0, now(), now()
@@ -99,8 +98,8 @@ SELECT
     (SELECT capped FROM moved)                    AS new_until,
     (SELECT LEAST(created_at + $7::interval, task_execution_deadline_at) FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at, g.d_ms,
-    g.tenant_id::text AS tenant_id, g.workspace_id::text AS workspace_id,
-    g.fleet_id::text AS fleet_id, g.event_id,
+    g.tenant_id AS tenant_id, g.workspace_id AS workspace_id,
+    g.fleet_id AS fleet_id, g.event_id AS event_id,
     (SELECT f.name FROM fleet.fleets f WHERE f.id = g.fleet_id) AS fleet_name,
     (SELECT count(*) FROM billing.usage_lines u
       WHERE u.work_type = $10 AND u.work_id = g.id

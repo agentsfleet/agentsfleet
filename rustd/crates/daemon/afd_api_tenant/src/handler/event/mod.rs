@@ -223,7 +223,14 @@ pub(crate) async fn detail<D: Services>(
 
     let found = services
         .events()
-        .one(&owned.workspace, &fleet, &path.event_id)
+        .one(
+            &owned.workspace,
+            &fleet,
+            // An id that is not a UUIDv7 names no event: the same 404.
+            &af_core::id::Uuid7::parse(&path.event_id).map_err(|_text| {
+                Refusal::coded(error_code::EVENT_NOT_FOUND, DETAIL_EVENT_NOT_FOUND)
+            })?,
+        )
         .await
         .map_err(Refusal::at(EVENT_DETAIL))?;
 
@@ -270,9 +277,9 @@ fn page_response(page: &[EventRow], limit: i64) -> EventsResponse<'_> {
 pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
     let row = &event.row;
     EventDetail {
-        fleet_id: Cow::Borrowed(&row.fleet_id),
-        event_id: Cow::Borrowed(&row.event_id),
-        workspace_id: Cow::Borrowed(&row.workspace_id),
+        fleet_id: Cow::Borrowed(row.fleet_id.as_str()),
+        event_id: Cow::Borrowed(row.event_id.as_str()),
+        workspace_id: Cow::Borrowed(row.workspace_id.as_str()),
         actor: Cow::Borrowed(&row.actor),
         event_type: Cow::Borrowed(&row.event_type),
         status: Cow::Borrowed(&row.status),
@@ -289,7 +296,10 @@ pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
         wall_ms: row.wall_ms,
         failure_label: row.failure_label.as_deref().map(Cow::Borrowed),
         failure_detail: row.failure_detail.as_deref().map(Cow::Borrowed),
-        resumes_event_id: row.resumes_event_id.as_deref().map(Cow::Borrowed),
+        resumes_event_id: row
+            .resumes_event_id
+            .as_ref()
+            .map(|id| Cow::Borrowed(id.as_str())),
         created_at: row.created_at,
         updated_at: row.updated_at,
         cost_nanos: row.cost_nanos,

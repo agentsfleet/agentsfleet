@@ -54,8 +54,8 @@ pub(crate) async fn resolve(
             revision_id,
         } => sqlx::query_scalar(crate::sql::candidate::LIBRARY_SOURCE)
             .bind(library_id.as_str())
-            .bind(revision_id.as_str())
-            .bind(person.owner.as_str())
+            .bind(revision_id)
+            .bind(&person.owner)
             .bind(PLATFORM)
             .fetch_optional(connection)
             .await
@@ -95,7 +95,7 @@ fn positive_revision(setup_revision: &str) -> Result<i64> {
 /// [`crate::sql::candidate::FLEET_SOURCE`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct FleetSource {
-    id: String,
+    id: Uuid7,
     definition: String,
     name: String,
     runtime_model_ref: Option<String>,
@@ -108,8 +108,8 @@ async fn fleet_source(
     revision: i64,
 ) -> Result<Captured> {
     let row: Option<FleetSource> = sqlx::query_as(crate::sql::candidate::FLEET_SOURCE)
-        .bind(fleet.as_str())
-        .bind(workspace.as_str())
+        .bind(fleet)
+        .bind(workspace)
         .bind(revision)
         .fetch_optional(connection)
         .await
@@ -130,7 +130,7 @@ async fn fleet_source(
     Ok(Captured {
         definition: Some(definition),
         fleet: Some(fleet.clone()),
-        fleet_revision: Some(Uuid7::parse(&row.id)?),
+        fleet_revision: Some(row.id.clone()),
         instance_name: Some(row.name),
     })
 }

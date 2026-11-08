@@ -1,1 +1,1 @@
-SELECT id::text FROM identity.users WHERE id = $1::uuid FOR SHARE NOWAIT
+SELECT id FROM identity.users WHERE id = $1 FOR SHARE NOWAIT

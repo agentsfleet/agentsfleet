@@ -22,7 +22,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 /// What [`Case::admissions`] reads for a fleet that admitted nothing.
-pub(super) const NO_ADMISSIONS: [String; 0] = [];
+pub(super) const NO_ADMISSIONS: [Uuid7; 0] = [];
 
 /// The state `saved` reports for its setup check of `kind`.
 pub(super) fn check<'a>(saved: &'a SavedFleet, kind: &str) -> &'a str {
@@ -119,8 +119,8 @@ impl Case {
     }
 
     pub(super) async fn fund(&self) {
-        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
-            .bind(self.base.tenant.as_str()).bind(crate::draft::FUNDED_NANOS)
+        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
+            .bind(&self.base.tenant).bind(crate::draft::FUNDED_NANOS)
             .execute(&mut *self.base.connection().await).await.expect("wallet covers activation");
     }
 
@@ -131,19 +131,17 @@ impl Case {
             .expect("retained Save")
     }
 
-    pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<String> {
-        sqlx::query_scalar(
-            "SELECT id::text FROM fleet.admissions WHERE fleet_id=$1::uuid ORDER BY sequence",
-        )
-        .bind(fleet.as_str())
-        .fetch_all(&mut *self.base.connection().await)
-        .await
-        .expect("durable admissions")
+    pub(super) async fn admissions(&self, fleet: &Uuid7) -> Vec<Uuid7> {
+        sqlx::query_scalar("SELECT id FROM fleet.admissions WHERE fleet_id=$1 ORDER BY sequence")
+            .bind(fleet)
+            .fetch_all(&mut *self.base.connection().await)
+            .await
+            .expect("durable admissions")
     }
 
     pub(super) async fn fleet_count(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")
-            .bind(self.base.workspace.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1")
+            .bind(&self.base.workspace)
             .fetch_one(&mut *self.base.connection().await)
             .await
             .expect("only owned fleets")

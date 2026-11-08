@@ -24,11 +24,11 @@ struct Stored {
     save_requested: bool,
     save_error_code: Option<String>,
     sequence: i64,
-    operation_id: String,
+    operation_id: Uuid7,
     status: String,
     user_text: String,
     answer_text: Option<String>,
-    candidate_id: Option<String>,
+    candidate_id: Option<Uuid7>,
     failure_reason: Option<String>,
     failure_cause: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -77,7 +77,7 @@ pub(super) async fn page_on(
     ))?;
     let (sequence, ordinal) = boundary(request.starting_after.as_deref(), &binding)?;
     let rows: Vec<Stored> = sqlx::query_as(sql::message::PAGE)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .bind(sequence)
         .bind(ordinal)
         .bind(QUEUED)
@@ -148,7 +148,7 @@ fn project(stored: Stored) -> Result<Message> {
         save_requested: stored.save_requested,
         save_error_code: if user { None } else { stored.save_error_code },
         sequence: stored.sequence.to_string(),
-        operation_id: Uuid7::parse(&stored.operation_id)?,
+        operation_id: stored.operation_id.clone(),
         role: if user { USER } else { ASSISTANT },
         state,
         text: if user {
@@ -159,7 +159,7 @@ fn project(stored: Stored) -> Result<Message> {
         candidate_id: if user {
             None
         } else {
-            read::optional(stored.candidate_id.as_deref())?
+            read::optional(stored.candidate_id.as_ref().map(Uuid7::as_str))?
         },
         usage: stored.metered.usage()?,
         failure: stored

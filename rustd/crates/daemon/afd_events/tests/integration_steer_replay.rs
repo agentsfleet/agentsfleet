@@ -263,7 +263,7 @@ async fn a_twin_committed_behind_the_fleet_lock_is_answered_under_a_spent_ceilin
         .await
         .expect("holder backend");
     let mut hold = connection.begin().await.expect("open the holder");
-    sqlx::query("SELECT 1 FROM fleet.fleets WHERE id = $1::uuid FOR UPDATE")
+    sqlx::query("SELECT 1 FROM fleet.fleets WHERE id = $1 FOR UPDATE")
         .bind(&lane.fleet)
         .execute(&mut *hold)
         .await

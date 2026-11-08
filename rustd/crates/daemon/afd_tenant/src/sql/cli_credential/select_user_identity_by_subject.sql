@@ -1,4 +1,4 @@
-SELECT users.id::text AS id, users.tenant_id::text AS tenant_id, users.email, users.display_name,
+SELECT users.id AS id, users.tenant_id AS tenant_id, users.email, users.display_name,
        tenants.name AS tenant_name
 FROM identity.users AS users
 JOIN identity.tenants AS tenants ON tenants.id = users.tenant_id

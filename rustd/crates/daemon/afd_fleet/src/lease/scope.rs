@@ -68,11 +68,15 @@ impl Leases {
     /// Reports a datastore that would not answer, and a stored identifier that
     /// is not one. A fleet whose config will not parse is NOT an error — it is
     /// a scope with no binding, which refuses a write mint one step later.
-    pub async fn mint_scope(&self, runner_id: &Uuid7, lease_id: &str) -> Result<Option<MintScope>> {
+    pub async fn mint_scope(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &Uuid7,
+    ) -> Result<Option<MintScope>> {
         let mut connection = self.pool().acquire().await?;
         let found: Option<ScopeRow> = sqlx::query_as(sql::lease::SELECT_LEASE_SCOPE_FOR_MINT)
             .bind(lease_id)
-            .bind(runner_id.as_str())
+            .bind(runner_id)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
@@ -85,8 +89,8 @@ impl Leases {
         // reason about, not a lease that failed to authorise — so it propagates
         // rather than becoming a `None` a caller would read as "no such lease".
         Ok(Some(MintScope {
-            workspace_id: Uuid7::parse(&found.workspace_id)?,
-            fleet_id: Uuid7::parse(&found.fleet_id)?,
+            workspace_id: found.workspace_id.clone(),
+            fleet_id: found.fleet_id.clone(),
             event_id: found.event_id.into(),
             binding: binding_of(&found.definition),
         }))
@@ -111,7 +115,7 @@ impl Leases {
         sqlx::query_scalar(sql::lease::SELECT_CONNECTOR_INSTALL_HELD)
             .bind(provider)
             .bind(account)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_INSTALL_HELD))
@@ -126,7 +130,7 @@ impl Leases {
             sqlx::query_scalar::<_, String>(include_str!("sql/lease/hold_connector_install.sql"))
                 .bind("github")
                 .bind(account)
-                .bind(workspace.as_str())
+                .bind(workspace)
                 .fetch_optional(connection)
                 .await
                 .map_err(query(CONTEXT_INSTALL_HELD))?
@@ -160,10 +164,10 @@ fn binding_of(definition: &str) -> Option<RepositoryBinding> {
 /// [`sql::lease::SELECT_LEASE_SCOPE_FOR_MINT`]'s row, ids still as stored text.
 #[derive(sqlx::FromRow)]
 struct ScopeRow {
-    workspace_id: String,
-    fleet_id: String,
+    workspace_id: Uuid7,
+    fleet_id: Uuid7,
     definition: String,
-    event_id: String,
+    event_id: Uuid7,
 }
 
 #[cfg(test)]

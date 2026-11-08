@@ -1,3 +1,5 @@
+use af_core::id::Uuid7;
+
 use super::{FleetSeed, INSERT_FLEET};
 
 const ID: &str = "0199f0c0-0000-7000-8000-000000000001";
@@ -44,16 +46,29 @@ fn every_named_column_has_exactly_one_placeholder_in_order() {
     );
 }
 
-#[test]
-fn an_unnamed_fleet_takes_its_id_so_two_seeds_in_a_workspace_never_collide() {
-    let seed = FleetSeed::new(ID, WORKSPACE, TENANT, STATUS);
-
-    assert_eq!(seed.name, ID);
+/// The three fixed ids, as the seed takes them.
+fn ids() -> af_core::error::Result<(Uuid7, Uuid7, Uuid7)> {
+    Ok((
+        Uuid7::parse(ID)?,
+        Uuid7::parse(WORKSPACE)?,
+        Uuid7::parse(TENANT)?,
+    ))
 }
 
 #[test]
-fn a_later_update_moves_updated_at_and_leaves_created_at() {
-    let seed = FleetSeed::new(ID, WORKSPACE, TENANT, STATUS)
+fn an_unnamed_fleet_takes_its_id_so_two_seeds_in_a_workspace_never_collide()
+-> af_core::error::Result<()> {
+    let (id, workspace, tenant) = ids()?;
+    let seed = FleetSeed::new(&id, &workspace, &tenant, STATUS);
+
+    assert_eq!(seed.name, ID);
+    Ok(())
+}
+
+#[test]
+fn a_later_update_moves_updated_at_and_leaves_created_at() -> af_core::error::Result<()> {
+    let (id, workspace, tenant) = ids()?;
+    let seed = FleetSeed::new(&id, &workspace, &tenant, STATUS)
         .at(CREATED)
         .updated(UPDATED);
 
@@ -61,6 +76,7 @@ fn a_later_update_moves_updated_at_and_leaves_created_at() {
         (seed.created_at, seed.updated_at),
         (Some(CREATED), Some(UPDATED))
     );
+    Ok(())
 }
 
 /// The setup a seeded fleet selects is the one `af_fleet_runtime` writes,

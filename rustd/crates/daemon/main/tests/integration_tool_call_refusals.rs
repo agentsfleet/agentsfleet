@@ -87,9 +87,9 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
     assert_eq!(status, 404, "another runner's lease is not found");
 
     let unknown = afd_db::test_util::mint_id();
-    let (status, _) = post_records(&http, &run, (&unknown, fence), &calls).await;
+    let (status, _) = post_records(&http, &run, (unknown.as_str(), fence), &calls).await;
     assert_eq!(status, 404, "an unknown lease is not found");
-    let report = report_with(&unknown, &run, fence, trace(1));
+    let report = report_with(unknown.as_str(), &run, fence, trace(1));
     let refused = post(&http, &run, REPORTS, &report).await;
     assert_eq!(
         refused.status().as_u16(),
@@ -101,9 +101,7 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
         &run,
         &format!(
             "UPDATE runner.leases SET lease_expires_at = to_timestamp(0) \
-             WHERE id = '{lease_id}'::uuid AND fleet_id = $1::uuid \
-               AND fleet_event_id = (SELECT id FROM fleet.events \
-                                      WHERE fleet_id = $1::uuid AND event_id = $2)"
+             WHERE id = '{lease_id}'::uuid AND fleet_id = $1 AND event_id = $2"
         ),
     )
     .await;
@@ -196,7 +194,7 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
                VALUES ('{tenant}'::uuid, 'other', now(), now()) RETURNING id) \
              INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
              SELECT '{workspace}'::uuid, t.id, 'other', now() FROM t \
-             WHERE $1 <> '' AND $2 <> ''"
+             WHERE $1 IS NOT NULL AND $2 IS NOT NULL"
         ),
     )
     .await;

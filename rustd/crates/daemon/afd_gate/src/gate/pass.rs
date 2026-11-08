@@ -109,7 +109,7 @@ pub struct Check<'a> {
     /// The workspace it belongs to.
     pub workspace_id: &'a Uuid7,
     /// The event being judged.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// Its type, which the rules match as the TOOL.
     pub event_type: &'a str,
     /// Who raised it, which the rules match as the ACTION.
@@ -145,9 +145,9 @@ impl Gates {
                 let Logged { error_code, reason } = fault.logged();
                 tracing::warn!(
                     error_code,
-                    event = EVENT_LOOKUP_UNREADABLE,
-                    fleet_id = fleet,
-                    agentsfleet_event_id = request.event_id,
+                    event = %EVENT_LOOKUP_UNREADABLE,
+                    fleet_id = %fleet,
+                    agentsfleet_event_id = %request.event_id,
                     reason,
                     "whether this event already holds a gate could not be read"
                 );
@@ -171,9 +171,9 @@ impl Gates {
                 let Logged { error_code, reason } = fault.logged();
                 tracing::warn!(
                     error_code,
-                    event = EVENT_DECISION_UNREADABLE,
-                    fleet_id = fleet,
-                    agentsfleet_event_id = request.event_id,
+                    event = %EVENT_DECISION_UNREADABLE,
+                    fleet_id = %fleet,
+                    agentsfleet_event_id = %request.event_id,
                     reason,
                     "a recorded gate's decision could not be read; the event waits"
                 );

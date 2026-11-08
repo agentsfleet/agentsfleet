@@ -2,7 +2,7 @@
 //! accepted by.
 //!
 //! `email` is lowercased before it is bound, so every comparison here is plain
-//! equality and the partial indexes in `schema/1140_identity_invites.sql`
+//! equality and the partial indexes in `schema/20261108120600_identity_invites.sql`
 //! serve it. An invite is pending while `resolved_at` is NULL; the statement
 //! that resolves it stamps `resolved_at` and binds which way it went into
 //! `status`, and each is guarded on `resolved_at IS NULL`, so an invite

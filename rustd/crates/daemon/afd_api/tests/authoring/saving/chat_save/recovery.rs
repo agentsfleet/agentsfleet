@@ -2,6 +2,7 @@
 
 use super::super::activity::fault::Refusal;
 use super::*;
+use af_core::id::Uuid7;
 
 #[tokio::test]
 #[ignore = "needs isolated local Postgres and Dragonfly"]
@@ -51,35 +52,35 @@ async fn revoke_access(case: &mut Case) {
     let other_account = mint();
     case.base.own_tenant(&other_account);
     let mut connection = case.base.db.acquire().await.expect("membership connection");
-    sqlx::query("INSERT INTO identity.tenants(id,name,created_at,updated_at) VALUES($1::uuid,'Separate personal account',now(),now())")
-        .bind(other_account.as_str()).execute(&mut *connection).await.expect("owned account");
-    sqlx::query("UPDATE identity.users SET tenant_id=$2::uuid WHERE id=$1::uuid")
-        .bind(case.base.owner.as_str())
-        .bind(other_account.as_str())
+    sqlx::query("INSERT INTO identity.tenants(id,name,created_at,updated_at) VALUES($1,'Separate personal account',now(),now())")
+        .bind(&other_account).execute(&mut *connection).await.expect("owned account");
+    sqlx::query("UPDATE identity.users SET tenant_id=$2 WHERE id=$1")
+        .bind(&case.base.owner)
+        .bind(other_account)
         .execute(&mut *connection)
         .await
         .expect("creator no longer owns workspace");
-    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
-        .bind(case.base.tenant.as_str())
-        .bind(case.base.owner.as_str())
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
+        .bind(&case.base.tenant)
+        .bind(&case.base.owner)
         .execute(&mut *connection)
         .await
         .expect("revoke workspace membership");
 }
 
 async fn restore_membership(case: &Case) {
-    sqlx::query("INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at) VALUES($1::uuid,$2::uuid,$3::uuid,'admin',now())")
-        .bind(mint().as_str()).bind(case.base.tenant.as_str()).bind(case.base.owner.as_str())
+    sqlx::query("INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at) VALUES($1,$2,$3,'admin',now())")
+        .bind(mint()).bind(&case.base.tenant).bind(&case.base.owner)
         .execute(&mut *case.base.db.acquire().await.expect("membership restore connection"))
         .await.expect("restore actual membership");
 }
 
-async fn state(case: &Case) -> (String, String, i64) {
+async fn state(case: &Case) -> (Uuid7, String, i64) {
     sqlx::query_as(
-        "SELECT f.id::text,f.status,(SELECT count(*) FROM fleet.events e WHERE e.fleet_id=f.id)
-        FROM fleet.fleets f WHERE f.workspace_id=$1::uuid",
+        "SELECT f.id,f.status,(SELECT count(*) FROM fleet.events e WHERE e.fleet_id=f.id)
+        FROM fleet.fleets f WHERE f.workspace_id=$1",
     )
-    .bind(case.base.workspace.as_str())
+    .bind(&case.base.workspace)
     .fetch_one(
         &mut *case
             .base

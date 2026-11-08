@@ -6,6 +6,7 @@
 //! `impl Lane` block, so callers reach these exactly as before —
 //! `lane.seed_gate(...)`.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use jiff::Timestamp;
@@ -41,16 +42,16 @@ impl Lane {
     /// `window` is a parameter because the sweeper tests need a deadline in
     /// the past and the race tests need one that has not arrived — a fixture
     /// that fixed it would make one of the two impossible to write.
-    pub(crate) async fn seed_gate(&self, window: Window) -> String {
-        let action = afd_db::test_util::mint_id();
+    pub(crate) async fn seed_gate(&self, window: Window) -> Uuid7 {
+        let action = mint();
         self.seed_gate_for(&action, window).await;
         action
     }
 
     /// One pending gate that held no run: `event_id` is NULL, the shape of a
     /// standing grant raised at install time rather than by an event.
-    pub(crate) async fn seed_runless_gate(&self, window: Window) -> String {
-        let action = afd_db::test_util::mint_id();
+    pub(crate) async fn seed_runless_gate(&self, window: Window) -> Uuid7 {
+        let action = mint();
         self.seed_row(&action, window, NOW, None).await;
         action
     }
@@ -58,9 +59,8 @@ impl Lane {
     /// One pending gate row for an action that may already have one — a
     /// re-raised action, which the park writes as a second row rather than
     /// reopening the first.
-    pub(crate) async fn seed_gate_for(&self, action: &str, window: Window) {
-        self.seed_row(action, window, NOW, Some(afd_db::test_util::mint_id()))
-            .await;
+    pub(crate) async fn seed_gate_for(&self, action: &Uuid7, window: Window) {
+        self.seed_row(action, window, NOW, Some(mint())).await;
     }
 
     /// Seeds one pending gate raised at `created_at`, returning its action id.
@@ -69,15 +69,10 @@ impl Lane {
     /// tests need control of: one proves the page walks newest-first and
     /// therefore needs distinct instants, the other proves the cursor's TUPLE
     /// comparison and therefore needs several rows sharing one.
-    pub(crate) async fn seed_gate_at(&self, created_at: Timestamp, window: Window) -> String {
-        let action = afd_db::test_util::mint_id();
-        self.seed_row(
-            &action,
-            window,
-            created_at,
-            Some(afd_db::test_util::mint_id()),
-        )
-        .await;
+    pub(crate) async fn seed_gate_at(&self, created_at: Timestamp, window: Window) -> Uuid7 {
+        let action = mint();
+        self.seed_row(&action, window, created_at, Some(mint()))
+            .await;
         action
     }
 
@@ -88,10 +83,10 @@ impl Lane {
     /// page and cursor tests read it and they need to choose it.
     async fn seed_row(
         &self,
-        action: &str,
+        action: &Uuid7,
         window: Window,
         created_at: Timestamp,
-        event_id: Option<String>,
+        event_id: Option<Uuid7>,
     ) {
         sqlx::query(
             "INSERT INTO fleet.approval_gates
@@ -99,14 +94,14 @@ impl Lane {
                 gate_type, proposed_action, evidence, blast_radius, expires_at,
                 status, detail, created_at, updated_at, event_id,
                 spend_count, spend_ceiling)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push',
+             VALUES ($1, $2, $3, $4, 'git', 'push',
                      $5, 'open a pull request', '{}'::jsonb, 'one repository',
                      CASE WHEN $6 THEN now() - $7::interval ELSE now() + $7::interval END,
                      $8, '', $9, $9, $10, 0, 32)",
         )
-        .bind(mint().as_str())
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
+        .bind(mint())
+        .bind(&self.fleet)
+        .bind(&self.workspace)
         .bind(action)
         .bind(KIND)
         .bind(window == Window::Lapsed)

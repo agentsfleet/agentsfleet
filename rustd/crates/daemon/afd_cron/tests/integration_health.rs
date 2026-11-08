@@ -27,16 +27,26 @@ async fn health_tracks_real_states_and_refuses_a_closed_database() {
     let after = lane.store.health(now).await.expect("created snapshot");
     assert_eq!(change(after, before), [1, 0, 0, 0, 1, 0, 0]);
     let mut connection = lane.database.acquire().await.expect("fixture connection");
-    sqlx::query("UPDATE fleet.schedules SET desired_status='paused', sync_status='failed' WHERE id=$1::uuid")
-        .bind(row.schedule_id.as_str()).execute(&mut *connection).await.expect("owned state change");
+    sqlx::query(
+        "UPDATE fleet.schedules SET desired_status='paused', sync_status='failed' WHERE id=$1",
+    )
+    .bind(&row.schedule_id)
+    .execute(&mut *connection)
+    .await
+    .expect("owned state change");
     let paused = lane.store.health(now).await.expect("paused snapshot");
     assert_eq!(change(paused, after), [-1, 1, 0, 0, -1, 1, 0]);
-    sqlx::query("UPDATE fleet.schedules SET desired_status='deleting', sync_status='synced' WHERE id=$1::uuid")
-        .bind(row.schedule_id.as_str()).execute(&mut *connection).await.expect("owned deleting state");
+    sqlx::query(
+        "UPDATE fleet.schedules SET desired_status='deleting', sync_status='synced' WHERE id=$1",
+    )
+    .bind(&row.schedule_id)
+    .execute(&mut *connection)
+    .await
+    .expect("owned deleting state");
     let deleting = lane.store.health(now).await.expect("deleting snapshot");
     assert_eq!(change(deleting, paused), [0, -1, 1, 1, 0, -1, 0]);
-    sqlx::query("UPDATE fleet.schedules SET desired_status='active', once=true, fire_at=$2::timestamptz - interval '1 second' WHERE id=$1::uuid")
-        .bind(row.schedule_id.as_str()).bind(now.to_sqlx()).execute(&mut *connection).await.expect("owned overdue one-shot");
+    sqlx::query("UPDATE fleet.schedules SET desired_status='active', once=true, fire_at=$2::timestamptz - interval '1 second' WHERE id=$1")
+        .bind(&row.schedule_id).bind(now.to_sqlx()).execute(&mut *connection).await.expect("owned overdue one-shot");
     let overdue = lane.store.health(now).await.expect("overdue snapshot");
     assert_eq!(change(overdue, deleting), [1, 0, -1, 0, 0, 0, 1]);
     drop(connection);

@@ -19,7 +19,7 @@ use afd_auth::scope::ScopeSet;
 use afd_db::{
     Db,
     config::DbRole,
-    test_util::{OwnedRows, TestDatabase, mint_uuid7},
+    test_util::{OwnedRows, TestDatabase, mint_id},
 };
 use afd_fleet::{
     lease::{Billed, Leases},
@@ -42,7 +42,7 @@ pub(super) struct Runner {
 pub(super) struct Lease {
     pub id: Uuid7,
     pub fence: u64,
-    pub source: String,
+    pub source: Uuid7,
 }
 
 pub(super) struct Fixture {
@@ -67,36 +67,36 @@ impl Fixture {
         let mut model_cleanup = OwnedRows::new(&lane);
         let mut cleanup = OwnedRows::new(&lane);
         cleanup.record(
-            "DELETE FROM runner.decision_payloads WHERE tenant_id = $1::uuid",
-            owner.tenant.as_str(),
+            "DELETE FROM runner.decision_payloads WHERE tenant_id = $1",
+            &owner.tenant,
         );
         cleanup.record(
-            "DELETE FROM fleet.task_checkpoints c USING identity.workspaces w WHERE c.workspace_id = w.id AND w.tenant_id = $1::uuid",
-            owner.tenant.as_str(),
+            "DELETE FROM fleet.task_checkpoints c USING identity.workspaces w WHERE c.workspace_id = w.id AND w.tenant_id = $1",
+            &owner.tenant,
         );
-        cleanup.record(include_str!("fixtures/cleanup.sql"), owner.tenant.as_str());
-        cleanup.record(
+        cleanup.record(include_str!("fixtures/cleanup.sql"), &owner.tenant);
+        cleanup.record_text(
             "DELETE FROM runner.runners WHERE labels ? $1::text",
             &owner.tag,
         );
         cleanup.record(
-            "DELETE FROM model.platform_models WHERE id=$1::uuid",
-            owner.coding_id.as_str(),
+            "DELETE FROM model.platform_models WHERE id=$1",
+            &owner.coding_id,
         );
         owner.seed(&database).await;
         let model = DecisionModelFixture::create(&database)
             .await
             .expect("reviewed decision model fixture");
         model_cleanup.record(
-            "DELETE FROM model.platform_models WHERE id=$1::uuid",
-            model.model.id.as_str(),
+            "DELETE FROM model.platform_models WHERE id=$1",
+            &model.model.id,
         );
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
         let queue = harness::connect_redis().await;
         let admissions = Admissions::for_tests(database.clone(), queue.clone());
         let leases = Leases::new(database.clone(), queue, Entropy::new());
         let lease = acquire(&leases, &admissions, &owner, &runner).await;
-        let key = format!("decision-http-fixture-{}", mint_uuid7());
+        let key = format!("decision-http-fixture-{}", mint_id());
         save_key(&database, &owner.workspace, &key).await;
         let mut dependencies = harness::task_dependencies(database.clone());
         dependencies.admin_workspace = Some(owner.workspace.clone());
@@ -135,9 +135,9 @@ impl Fixture {
 
     pub(super) fn reservation(&self) -> DecisionReservationInput {
         DecisionReservationInput {
-            operation_id: mint_uuid7().to_string(),
+            operation_id: mint_id().into(),
             fencing_token: self.lease.fence,
-            source_admission_id: self.lease.source.clone(),
+            source_admission_id: self.lease.source.to_string(),
             assessment: DecisionAssessment::Message,
             task: None,
             retry_of: None,
@@ -256,15 +256,15 @@ async fn acquire(
     }
 }
 
-async fn admit(admissions: &Admissions, owner: &Owner) -> String {
+async fn admit(admissions: &Admissions, owner: &Owner) -> Uuid7 {
     let body = json!({"message":setup::MESSAGE}).to_string();
-    let key = mint_uuid7().to_string();
+    let key = mint_id();
     let admitted = admissions
         .admit(Admission {
             producer: Producer::Steer,
-            key: Key::Repeated(&key),
-            fleet: owner.fleet.as_str(),
-            workspace: owner.workspace.as_str(),
+            key: Key::Repeated(key.as_str()),
+            fleet: &owner.fleet,
+            workspace: &owner.workspace,
             actor: &afd_events::steer_actor("native_decision_http"),
             event_type: EventType::Chat,
             request_json: &body,

@@ -29,10 +29,10 @@ const UNCHECKED_DIGEST: &str = "fixture";
 /// cannot name is testing a different thing — see [`enqueue_unsupported`].
 pub(crate) async fn enqueue(
     booted: &Booted,
-    fleet: &str,
-    workspace: &str,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
     event_type: EventType,
-) -> String {
+) -> Uuid7 {
     let admitted = Admissions::for_tests(booted.database.clone(), booted.queue.clone())
         .admit(Admission {
             producer: Producer::Steer,
@@ -56,22 +56,19 @@ pub(crate) async fn enqueue(
 /// Bypasses the closed producer enum to exercise refusal of an unknown event type.
 pub(crate) async fn enqueue_unsupported(
     booted: &Booted,
-    fleet: &str,
-    workspace: &str,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
     event_type: &str,
     now: Timestamp,
-) -> String {
-    insert_admission(booted, fleet, workspace, event_type, now)
-        .await
-        .as_str()
-        .to_owned()
+) -> Uuid7 {
+    insert_admission(booted, fleet, workspace, event_type, now).await
 }
 
 /// The ledger row for [`enqueue_unsupported`]: its id, which is the event's.
 async fn insert_admission(
     booted: &Booted,
-    fleet: &str,
-    workspace: &str,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
     event_type: &str,
     now: Timestamp,
 ) -> Uuid7 {
@@ -87,9 +84,9 @@ async fn insert_admission(
            (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
             actor, event_type, request_json, event_created_at,
             created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $1, $5, $6, $7, $8, $9, $9, $9)",
+         VALUES ($1, $2, $3, $4, $1, $5, $6, $7, $8, $9, $9, $9)",
     )
-    .bind(row_id.as_str())
+    .bind(&row_id)
     .bind(fleet)
     .bind(workspace)
     .bind(Producer::Steer.as_str())

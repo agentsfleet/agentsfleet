@@ -1,6 +1,7 @@
 //! Refused associations preserve work; a paused owner's late usage still pays.
 
 use af_core::error_code;
+use af_core::id::Uuid7;
 use af_wire::task::{DecisionCallState, DecisionRecordDisposition, DecisionTaskVersion};
 use afd_fleet::task::{TaskControl, TaskLifecycle as _, TaskSnapshot};
 use serde_json::Value;
@@ -88,8 +89,8 @@ async fn late(fixture: &Decisions<'_>, task: &DecisionTaskVersion, balance: i64)
     fixture.case.held.relay().await;
     assert_eq!(fixture.wallet().await, balance - 3);
     assert_eq!(fixture.counts().await, (1, 1, 1));
-    let generation: (i64, String) = sqlx::query_as("SELECT task_generation,context_snapshot #>> '{execution,generation}' FROM runner.decision_calls WHERE id=$1::uuid")
-        .bind(&request.call_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("original generation observer")).await.expect("native generation binding");
+    let generation: (i64, String) = sqlx::query_as("SELECT task_generation,context_snapshot #>> '{execution,generation}' FROM runner.decision_calls WHERE id=$1")
+        .bind(id(&request.call_id)).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("original generation observer")).await.expect("native generation binding");
     assert_eq!(generation, (1, "1".to_owned()));
 }
 
@@ -146,7 +147,7 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
             &afd_events::steer_actor("goal-owner"),
         )
         .await;
-    let source_before = admission(fixture, source.as_str()).await;
+    let source_before = admission(fixture, &source).await;
     let mut input = (*fixture.goal_reservation(task)).clone();
     input.source_admission_id = source.to_string();
     let input = garde::Unvalidated::new(input)
@@ -158,13 +159,13 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
         .await
         .expect_err("another admission cannot own the goal assessment");
     assert_eq!(fault.code(), error_code::TASK_INVALID_TARGET);
-    assert_eq!(admission(fixture, source.as_str()).await, source_before);
+    assert_eq!(admission(fixture, &source).await, source_before);
     assert_eq!(fixture.goal_snapshot(task).await, *before);
     assert_eq!(fixture.counts().await, (0, 0, 0));
 }
 
-async fn admission(fixture: &Decisions<'_>, source: &str) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(a) FROM fleet.admissions a WHERE id=$1::uuid")
+async fn admission(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
+    sqlx::query_scalar("SELECT to_jsonb(a) FROM fleet.admissions a WHERE id=$1")
         .bind(source)
         .fetch_one(
             &mut *fixture

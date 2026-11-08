@@ -81,7 +81,7 @@ where
     O: for<'r> FromRow<'r, PgRow>,
     S: SqlSafeStr,
 {
-    sqlx::query_as(wrap(SELECT_BALANCE)).bind(tenant.as_str())
+    sqlx::query_as(wrap(SELECT_BALANCE)).bind(tenant)
 }
 
 /// Wraps the production funds read, keeping its bindings, for a plan test.

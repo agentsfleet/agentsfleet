@@ -58,8 +58,8 @@ async fn rename_and_stop_preserve_setup_and_resume_rechecks_the_removed_model() 
     let stopped = json_body(response).await;
     assert!(stopped.get("needs_re_review").is_none());
     assert_eq!(stopped["setup_etag"], fleet.saved["setup_etag"]);
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-        .bind(fleet.case.base.model.as_str())
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+        .bind(&fleet.case.base.model)
         .execute(
             &mut *fleet
                 .case

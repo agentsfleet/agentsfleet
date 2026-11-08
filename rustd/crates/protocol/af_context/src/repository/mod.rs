@@ -39,19 +39,21 @@ impl Scope {
         }
     }
 
-    fn keys(&self) -> (Option<&str>, Option<&str>, Option<&str>, Option<&str>) {
+    const fn keys(
+        &self,
+    ) -> (
+        Option<&Uuid7>,
+        Option<&Uuid7>,
+        Option<&Uuid7>,
+        Option<&Uuid7>,
+    ) {
         match self {
-            Self::Draft(draft) => (Some(draft.as_str()), None, None, None),
+            Self::Draft(draft) => (Some(draft), None, None, None),
             Self::Run {
                 lease,
                 fleet,
                 branch,
-            } => (
-                None,
-                Some(lease.as_str()),
-                Some(fleet.as_str()),
-                Some(branch.as_str()),
-            ),
+            } => (None, Some(lease), Some(fleet), Some(branch)),
         }
     }
 }
@@ -110,8 +112,13 @@ impl<'a> Repository<'a> {
             i64::try_from(checkpoint.generation).map_err(|_overflow| Error::stale())?;
         let expected = i64::try_from(expected).map_err(|_overflow| Error::stale())?;
         let (draft, lease, fleet, branch) = self.scope.keys();
-        let changed = sqlx::query(if expected == 0 { INSERT } else { UPDATE })
-            .bind(self.id.as_str())
+        // The insert names the new row's id; the update finds the row by scope.
+        let statement = if expected == 0 {
+            sqlx::query(INSERT).bind(&self.id)
+        } else {
+            sqlx::query(UPDATE)
+        };
+        let changed = statement
             .bind(draft)
             .bind(lease)
             .bind(fleet)

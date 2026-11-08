@@ -25,7 +25,6 @@
 
 use crate::seed;
 use crate::support;
-use af_core::id::Uuid7;
 use af_observability::test_util::Capture;
 use afd_fleet::lease::{Billed, Kind};
 
@@ -97,7 +96,7 @@ async fn test_reclaim_counts_as_reclaimed() {
         .record_received(&held)
         .await
         .expect("the narrative log must open");
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let tenant_id = tenant.clone();
     leases
         .issue(
             &first,

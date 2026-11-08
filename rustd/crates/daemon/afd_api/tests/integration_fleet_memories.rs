@@ -6,6 +6,7 @@
 )]
 
 use crate::harness;
+use af_core::id::Uuid7;
 
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
@@ -142,12 +143,12 @@ fn text<'value>(document: &'value Value, field: &str) -> &'value str {
 pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: Db,
-    tenant: String,
+    tenant: Uuid7,
     pub(crate) workspace: af_core::id::Uuid7,
-    pub(crate) fleet: String,
-    key: String,
+    pub(crate) fleet: Uuid7,
+    key: Uuid7,
     pub(crate) token: String,
-    entries: [String; 2],
+    entries: [Uuid7; 2],
 }
 
 impl Fixture {
@@ -157,8 +158,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: af_core::id::Uuid7::parse(&mint_id())
-                .expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             fleet: mint_id(),
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
@@ -190,7 +190,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("memory")
             .insert(&mut *connection)
             .await
@@ -201,7 +201,7 @@ impl Fixture {
             .expect("its API key seeds");
         FleetSeed::new(
             &self.fleet,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -238,7 +238,7 @@ impl Fixture {
                 "INSERT INTO memory.entries \
                    (id, key, content, category, fleet_id, workspace_id, workspace_visible, \
                     created_at, updated_at) \
-                 VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6::uuid, false, \
+                 VALUES ($1, $2, $3, $4, $5, $6, false, \
                          to_timestamp($7::bigint / 1000.0), to_timestamp($7::bigint / 1000.0))",
             )
             .bind(id)
@@ -246,7 +246,7 @@ impl Fixture {
             .bind(content)
             .bind(category)
             .bind(&self.fleet)
-            .bind(self.workspace.as_str())
+            .bind(&self.workspace)
             .bind(instant)
             .execute(&mut *transaction)
             .await
@@ -257,7 +257,7 @@ impl Fixture {
 
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

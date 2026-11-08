@@ -2,14 +2,14 @@ WITH closed AS (
   UPDATE fleet.events
   SET status = $3, response_text = $4, token_count = $5, wall_ms = $6, updated_at = now(),
       failure_reason = $7, failure_detail = $9, tool_calls = $11::jsonb
-  WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $8
+  WHERE fleet_id = $1 AND event_id = $2 AND status = $8
   RETURNING fleet_id, event_id, workspace_id, actor, event_type, status,
             token_count, wall_ms, failure_reason, failure_detail,
             resumes_event_id, created_at, updated_at
 )
-SELECT c.fleet_id::text AS fleet_id, c.event_id, c.workspace_id::text AS workspace_id,
+SELECT c.fleet_id AS fleet_id, c.event_id AS event_id, c.workspace_id AS workspace_id,
        c.actor, c.event_type, c.status, c.token_count, c.wall_ms,
-       c.failure_reason, c.failure_detail, c.resumes_event_id,
+       c.failure_reason, c.failure_detail, c.resumes_event_id AS resumes_event_id,
        c.created_at, c.updated_at,
        (SELECT SUM(charge.charged_nanos)::bigint
           FROM billing.usage_lines charge

@@ -32,11 +32,11 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     let reused = reclaimed.reused.expect("original billing context");
     assert_eq!(
         (
-            reused.tenant_id.as_str(),
+            &reused.tenant_id,
             reused.posture.as_str(),
             reused.model.as_str()
         ),
-        (tenant.as_str(), POSTURE, MODEL)
+        (&tenant, POSTURE, MODEL)
     );
     assert_eq!(
         fixtures
@@ -58,15 +58,14 @@ pub(super) async fn issue(
     leases: &Leases,
     acquired: &Acquired,
     holder: &Uuid7,
-    tenant: &str,
-) -> String {
-    let tenant = Uuid7::parse(tenant).expect("fixture tenant");
+    tenant: &Uuid7,
+) -> Uuid7 {
     leases
         .issue(
             holder,
             acquired,
             Billed {
-                tenant_id: &tenant,
+                tenant_id: tenant,
                 posture: POSTURE,
                 provider: PROVIDER,
                 model: MODEL,
@@ -77,6 +76,4 @@ pub(super) async fn issue(
         .expect("issue query")
         .expect("live fence")
         .lease_id
-        .as_str()
-        .to_owned()
 }

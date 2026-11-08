@@ -52,8 +52,8 @@ async fn pointed_at(store: &Providers, fixture: &Fixture) -> OwnModel {
 async fn refused_pointer(fixture: &Fixture, tenant: &Uuid7, entry: &Uuid7) -> sqlx::Error {
     let mut connection = fixture.database.acquire().await.expect("an API connection");
     sqlx::query(POINT_SELECTION)
-        .bind(tenant.as_str())
-        .bind(entry.as_str())
+        .bind(tenant)
+        .bind(entry)
         .execute(&mut *connection)
         .await
         .expect_err("a pointer at another tenant's model is refused")

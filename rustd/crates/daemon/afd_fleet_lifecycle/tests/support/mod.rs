@@ -84,7 +84,7 @@ impl Lane {
     /// A second workspace under the same tenant, for the cross-workspace proofs.
     pub(crate) async fn another_workspace(&self) -> Uuid7 {
         let workspace = mint();
-        WorkspaceSeed::new(workspace.as_str(), self.tenant.as_str())
+        WorkspaceSeed::new(&workspace, &self.tenant)
             .name("second")
             .at(NOW)
             .insert(&mut *self.connection().await)
@@ -98,8 +98,8 @@ impl Lane {
     /// The orphan check: after a purge this must be what it was before, and a
     /// response assertion alone cannot say that.
     pub(crate) async fn fleet_count(&self, workspace: &Uuid7) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id = $1::uuid")
-            .bind(workspace.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id = $1")
+            .bind(workspace)
             .fetch_one(&mut *self.connection().await)
             .await
             .expect("counting fleets")
@@ -109,10 +109,10 @@ impl Lane {
     pub(crate) async fn fleet_column(&self, fleet: &Uuid7, column: &str) -> Option<String> {
         // The column name is a literal from this suite, never input.
         let statement = sqlx::AssertSqlSafe(format!(
-            "SELECT {column}::text FROM fleet.fleets WHERE id = $1::uuid"
+            "SELECT {column}::text FROM fleet.fleets WHERE id = $1"
         ));
         sqlx::query_scalar::<_, Option<String>>(statement)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .fetch_optional(&mut *self.connection().await)
             .await
             .expect("reading a fleet column")
@@ -145,13 +145,13 @@ impl Lane {
     /// Seeds the tenant and the workspace every fixture fleet lands in.
     async fn seed_tenant_and_workspace(&self) {
         let mut connection = self.connection().await;
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .name(FIXTURE_NAME)
             .at(NOW)
             .insert(&mut *connection)
             .await
             .expect("seeding a tenant");
-        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name(FIXTURE_NAME)
             .at(NOW)
             .insert(&mut *connection)

@@ -13,6 +13,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::report::RenewRequest;
 use afd_db::config::DbRole;
@@ -35,18 +36,19 @@ const HIDE_CHARGES: &str =
 /// Moves the lease's runtime cursor past the database clock, so the window
 /// measures nothing and the renewal logs no line into the hidden column.
 const CURSOR_AHEAD: &str = "UPDATE runner.leases \
-     SET last_metered_at = now() + interval '1 hour' WHERE id = $1::uuid";
+     SET last_metered_at = now() + interval '1 hour' WHERE id = $1";
 
 /// Takes the revision table away, so the fleet's ceiling read fails as a
 /// database fault. Only in a database of the case's own.
 const HIDE_REVISIONS: &str = "ALTER TABLE fleet.revisions RENAME TO revisions_hidden";
 
 /// Uninstalls the fleet's head revision, as a purge racing the run leaves it.
-const UNINSTALL: &str = "UPDATE fleet.fleets SET head_revision_id = NULL WHERE id = $1::uuid";
+const UNINSTALL: &str = "UPDATE fleet.fleets SET head_revision_id = NULL WHERE id = $1";
 
 /// Runs one scene-setting statement as the lane's owner: renaming a table or
 /// column is the owner's right, and the scene is not the code under test.
-async fn run(held: &Held, statement: &'static str, binds: &[&str]) {
+/// Every statement here binds identifiers and nothing else.
+async fn run(held: &Held, statement: &'static str, binds: &[&Uuid7]) {
     let mut query = sqlx::query(statement);
     for bind in binds {
         query = query.bind(*bind);
@@ -65,7 +67,7 @@ async fn renew(held: &Held) -> afd_fleet::Result<(jiff::Timestamp, afd_billing::
         .plane()
         .renew(
             &held.runner,
-            held.issued.lease_id.as_str(),
+            &held.issued.lease_id,
             RenewRequest::default(),
             held.now,
         )
@@ -101,7 +103,7 @@ async fn test_a_gate_that_cannot_be_read_admits_the_run_and_names_itself() {
     held.fixtures
         .native_config(&held.fleet, DEEP_DAILY_BUDGET)
         .await;
-    run(&held, CURSOR_AHEAD, &[held.issued.lease_id.as_str()]).await;
+    run(&held, CURSOR_AHEAD, &[&held.issued.lease_id]).await;
 
     let mut gates = Vec::new();
     for hide in [HIDE_CHARGES, HIDE_REVISIONS] {

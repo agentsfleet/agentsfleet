@@ -104,7 +104,7 @@ async fn unissued_replays(fixture: &Decisions<'_>) -> String {
         .expect("retained native call");
     let independent = fixture.reservation(DecisionAssessment::Message, None);
     let mut changed = (*independent).clone();
-    changed.operation_id = afd_db::test_util::mint_id();
+    changed.operation_id = afd_db::test_util::mint_id().into();
     changed.evidence = json!({"observation":"a different tested head"});
     let changed = garde::Unvalidated::new(changed)
         .validate()

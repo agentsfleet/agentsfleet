@@ -89,8 +89,8 @@ impl ApiKeyLane {
             .mint(&request, at)
             .await
             .expect("minting a fixture key");
-        sqlx::query("UPDATE identity.api_keys SET created_at = $2 WHERE id = $1::uuid")
-            .bind(minted.id.as_str())
+        sqlx::query("UPDATE identity.api_keys SET created_at = $2 WHERE id = $1")
+            .bind(minted.id)
             .bind(at.to_sqlx())
             .execute(&mut *self.connection().await)
             .await
@@ -126,7 +126,7 @@ impl ApiKeyLane {
 
     /// Seeds the tenant every key hangs from.
     async fn seed_tenant(&self) {
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .insert(&mut *self.connection().await)
             .await
             .expect("seeding a tenant");

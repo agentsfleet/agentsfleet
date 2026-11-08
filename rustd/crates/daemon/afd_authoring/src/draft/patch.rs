@@ -58,9 +58,9 @@ impl Drafts {
         model::selected(&mut tx, &person.owner, authoring).await?;
         let title = patch.title.as_deref().unwrap_or(&locked.title);
         sqlx::query(sql::draft::PATCH)
-            .bind(id.as_str())
+            .bind(id)
             .bind(title)
-            .bind(model::tenant_model(authoring))
+            .bind(model::tenant_model(authoring)?)
             .bind(&patch.instance_name)
             .execute(&mut *tx)
             .await
@@ -127,7 +127,7 @@ pub(crate) async fn idle(connection: &mut PgConnection, locked: &read::Locked) -
         .into());
     }
     let active: bool = sqlx::query_scalar(sql::draft::ACTIVE_MESSAGES)
-        .bind(locked.id.as_str())
+        .bind(&locked.id)
         .bind(QUEUED)
         .bind(RUNNING)
         .fetch_one(connection)

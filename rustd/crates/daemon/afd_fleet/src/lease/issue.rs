@@ -159,7 +159,7 @@ impl Leases {
         else {
             return Ok(None);
         };
-        let execution_deadline = super::deadline::read(&mut transaction, lease_id.as_str()).await?;
+        let execution_deadline = super::deadline::read(&mut transaction, &lease_id).await?;
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
         record_issued(&lease_id, runner_id, acquired, decision.as_deref());

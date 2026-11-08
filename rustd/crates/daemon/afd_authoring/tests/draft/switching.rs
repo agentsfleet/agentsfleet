@@ -24,13 +24,13 @@ const LIMIT: Duration = Duration::from_secs(10);
 const WITHDRAWALS: [(&str, &str); 2] = [
     (
         "entry removed",
-        "DELETE FROM model.tenant_models WHERE id=$1::uuid",
+        "DELETE FROM model.tenant_models WHERE id=$1",
     ),
     (
         "credential removed",
         "DELETE FROM vault.secrets WHERE key_name='authoring-model' \
          AND workspace_id=(SELECT w.id FROM identity.workspaces w \
-         JOIN model.tenant_models e ON e.tenant_id=w.tenant_id WHERE e.id=$1::uuid)",
+         JOIN model.tenant_models e ON e.tenant_id=w.tenant_id WHERE e.id=$1)",
     ),
 ];
 
@@ -79,7 +79,7 @@ async fn a_switch_to_a_withdrawn_model_is_refused_and_changes_nothing() {
         let f = Fixture::create().await;
         let created = draft(&f, None).await;
         sqlx::query(withdraw)
-            .bind(f.other_model.as_str())
+            .bind(&f.other_model)
             .execute(&mut *f.connection().await)
             .await
             .expect("withdraw the model");
@@ -221,8 +221,8 @@ async fn in_order<A: Future, B: Future>(
         .fetch_one(&mut *lock)
         .await
         .expect("lock owner");
-    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE")
-        .bind(draft.as_str())
+    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+        .bind(draft)
         .fetch_one(&mut *lock)
         .await
         .expect("hold the private row");

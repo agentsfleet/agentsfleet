@@ -328,8 +328,9 @@ Each lane ran three times on a reset rig, and the committed file is the median r
 | Drain, Postgres statements per chat | 115.025 | 114.875 | 115.025 |
 | Drain, commits per chat | 77.185 | 76.97 | 77.185 |
 | Drain, Dragonfly calls per chat | 43.09 | 43.05 | 43.09 |
-| Burst, pickup p95 (50 fleets, 10 messages a second each, 60 s) | 54.2 s | 53.4 s | 54.5 s |
+| Burst, pickup p95 (50 fleets, 10 messages a second each, 60 s, 8 runners) | 491.5 ms | 489.0 ms | 491.8 ms |
 
+The burst row counts only the messages a run picked up: 25,212 of 30,000 still waited at the close.
 The drain now sends a whole chat per lease: two renewals and forty activity posts.
 The older rows above sent only the lease and its report.
 

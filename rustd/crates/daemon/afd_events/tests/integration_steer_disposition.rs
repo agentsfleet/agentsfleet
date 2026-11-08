@@ -10,6 +10,7 @@
 //! Marked `#[ignore]` so `make test-unit-all` still compiles and lints this
 //! without a datastore; `make test-integration-rustd` runs it.
 
+use af_core::id::Uuid7;
 use std::error::Error;
 
 use af_wire::event::EventType;
@@ -36,16 +37,16 @@ const POLICY: RunnerPolicy<'static> = RunnerPolicy {
 
 const INSERT_LEASE: &str = "\
 INSERT INTO runner.leases
-  (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status,
    posted_message_count, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, now(),
+VALUES ($1, $2, $3, $4, $5, $6, now(),
         'platform', 'test', 'test', now(), 1, now() + interval '1 hour', $7, 0, now(), now())";
 
 const INSERT_SLOT: &str = "\
 INSERT INTO runner.fleet_slots
   (fleet_id, last_runner_id, fencing_token, lease_expires_at, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, 1, now() + interval '1 hour', now(), now())";
+VALUES ($1, $2, 1, now() + interval '1 hour', now(), now())";
 
 /// Sends the person's message, keyed by `operation` when it has one.
 async fn send(
@@ -77,6 +78,7 @@ fn placed(disposition: SteerDisposition, joined: Option<&str>) -> Placed {
 /// Makes the run `head` began the fleet's live run: a runner, the event the
 /// run serves, an active lease on it and the fleet's slot held under it.
 async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
+    let head = Uuid7::parse(head)?;
     let runner = mint_id();
     let mut connection = lane.connection().await;
     RunnerSeed::new(&runner, afd_state::sql::RUNNER_STATUS_ACTIVE, POLICY)
@@ -87,7 +89,7 @@ async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
         event_type: EventType::Chat.as_str(),
         status: "received",
     };
-    let event = FleetEventSeed::new(&lane.fleet, &lane.workspace, head, kind)
+    FleetEventSeed::new(&lane.fleet, &lane.workspace, &head, kind)
         .insert(&mut *connection)
         .await?;
     sqlx::query(INSERT_LEASE)
@@ -96,7 +98,7 @@ async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
         .bind(&lane.fleet)
         .bind(&lane.workspace)
         .bind(&lane.tenant)
-        .bind(&event)
+        .bind(&head)
         .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
         .execute(&mut *connection)
         .await?;
@@ -110,8 +112,9 @@ async fn go_live(lane: &EventsLane, head: &str) -> Outcome {
 
 /// Parks `admission`, so a send behind it must wait for it.
 async fn park(lane: &EventsLane, admission: &str) -> Outcome {
-    sqlx::query("UPDATE fleet.admissions SET parked_at = now() WHERE id = $1::uuid")
-        .bind(admission)
+    let admission = Uuid7::parse(admission)?;
+    sqlx::query("UPDATE fleet.admissions SET parked_at = now() WHERE id = $1")
+        .bind(&admission)
         .execute(&mut *lane.connection().await)
         .await?;
     Ok(())

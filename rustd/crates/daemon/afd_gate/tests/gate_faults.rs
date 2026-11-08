@@ -19,6 +19,7 @@ mod fixture;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_gate::gate::{Check, Claim, Gates, Park, Parked, Stated, Trigger, Verdict, Waiting};
@@ -76,6 +77,7 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
     let capture = Capture::install();
     let gates = unreachable_gates();
     let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
+    let event = mint_id();
     let config = config_gates(KILL_AND_COUNT);
 
     let verdict = gates
@@ -83,7 +85,7 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
             Check {
                 fleet_id: &fleet,
                 workspace_id: &fleet,
-                event_id: "event-unreachable",
+                event_id: &event,
                 event_type: "chat",
                 actor: "user:fixture",
                 request_json: "{}",
@@ -115,6 +117,7 @@ async fn a_gated_event_whose_lookup_failed_waits_instead_of_asking_again() {
     let capture = Capture::install();
     let gates = unreachable_gates();
     let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
+    let event = mint_id();
     let config = config_gates(ASK_EVERY_CHAT);
 
     let verdict = gates
@@ -122,7 +125,7 @@ async fn a_gated_event_whose_lookup_failed_waits_instead_of_asking_again() {
             Check {
                 fleet_id: &fleet,
                 workspace_id: &fleet,
-                event_id: "event-ask-unreadable",
+                event_id: &event,
                 event_type: "chat",
                 actor: "user:fixture",
                 request_json: "{}",
@@ -152,13 +155,14 @@ async fn a_park_whose_row_cannot_be_written_fails_closed_naming_the_row() {
     let capture = Capture::install();
     let gates = unreachable_gates();
     let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
+    let event = mint_id();
 
     let parked = gates
         .park(
             Park {
                 fleet_id: &fleet,
                 workspace_id: &fleet,
-                event_id: "event-row-unwritable",
+                event_id: &event,
                 stated: Stated::of(
                     "chat",
                     "user:fixture",

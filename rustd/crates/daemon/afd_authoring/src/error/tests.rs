@@ -3,6 +3,7 @@
 
 use super::{Error, ErrorKind};
 use af_core::error_code;
+use af_core::id::Uuid7;
 use std::error::Error as _;
 
 // Value: protects=public status and recovery fields agree for lifecycle refusals;
@@ -80,7 +81,7 @@ fn subsystem_failures_retain_their_original_classification_and_typed_cause() {
 // seam=the real public identifier/key parsers; no_claim=OS entropy exhaustion.
 #[test]
 fn identity_and_entropy_failures_keep_internal_classification() {
-    let identifier = af_core::id::Uuid7::parse("invalid").expect_err("invalid identifier");
+    let identifier = Uuid7::parse("invalid").expect_err("invalid identifier");
     let entropy = af_crypto::secret::Kek::from_hex("invalid").expect_err("invalid encryption key");
     for error in [Error::from(identifier), Error::from(entropy)] {
         assert_eq!(error.code(), error_code::INTERNAL_OPERATION_FAILED);
@@ -131,8 +132,8 @@ async fn a_biller_fault_keeps_the_billing_code_and_its_cause() {
     let ledger =
         afd_billing::ledger::LedgerBiller::on_system_clock(afd_db::test_util::unreachable_db());
     let payer = Account {
-        tenant: af_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
-        workspace: af_core::id::Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture id"),
+        tenant: afd_db::test_util::mint_id(),
+        workspace: afd_db::test_util::mint_id(),
     };
     let fault = ledger
         .balance(&payer)

@@ -6,6 +6,7 @@
 //! a [`Dedicated`] one nothing else may hold. The two halves share the key,
 //! the group and the field names, and nothing else.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use redis::ToRedisArgs as _;
@@ -187,23 +188,25 @@ impl OutboundReader {
     }
 }
 
-/// A stream entry as a delivery, or nothing when a field is missing.
+/// A stream entry as a delivery, or nothing when a field is missing or an
+/// identifier field is not a `UUIDv7`.
 ///
 /// Every field is written by [`OutboundQueue::enqueue`], so an entry short of
-/// one was not written by this daemon — operator tooling, a foreign writer, a
-/// format that drifted. `None` rather than an error, because the caller's only
+/// one, or with an identifier it would never write, was not written by this
+/// daemon: operator tooling, a foreign writer, a format that drifted. `None` rather than an error, because the caller's only
 /// sane response is the same either way: acknowledge it and move on, since
 /// redelivering something undeliverable forever is the one outcome worse than
 /// dropping it.
 fn decode(entry: &redis::streams::StreamId) -> Option<OutboundDelivery> {
     let field = |name: &str| entry.get::<String>(name);
+    let id = |name: &str| Uuid7::parse(&field(name)?).ok();
     let delivery = OutboundDelivery {
         id: EventId::of(&entry.id),
         provider: field(FIELD_PROVIDER)?,
         destination: field(FIELD_DESTINATION)?,
-        workspace_id: field(FIELD_WORKSPACE_ID)?,
-        fleet_id: field(FIELD_FLEET_ID)?,
-        event_id: field(FIELD_EVENT_ID)?,
+        workspace_id: id(FIELD_WORKSPACE_ID)?,
+        fleet_id: id(FIELD_FLEET_ID)?,
+        event_id: id(FIELD_EVENT_ID)?,
         answer: field(FIELD_ANSWER)?,
     };
     Some(delivery)
@@ -243,7 +246,7 @@ mod tests {
             ),
             (FIELD_WORKSPACE_ID, "0199a0b0-0000-7000-8000-000000000001"),
             (FIELD_FLEET_ID, "0199a0b0-0000-7000-8000-000000000002"),
-            (FIELD_EVENT_ID, "1700000000000-0"),
+            (FIELD_EVENT_ID, "0199a0b0-0000-7000-8000-000000000003"),
             (FIELD_ANSWER, "Aurora is healthy."),
         ]
     }
@@ -252,7 +255,7 @@ mod tests {
     /// decoder that dropped a field would still pass every assertion about the
     /// fields it kept, and the failure this guards is a field going missing.
     #[test]
-    fn test_decode_round_trips_every_field_and_the_entry_id() {
+    fn test_decode_round_trips_every_field_and_the_entry_id() -> af_core::error::Result<()> {
         let decoded = decode(&entry(&complete()));
 
         assert_eq!(
@@ -262,12 +265,13 @@ mod tests {
                 provider: "slack".to_owned(),
                 destination: r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#
                     .to_owned(),
-                workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-                fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-                event_id: "1700000000000-0".to_owned(),
+                workspace_id: Uuid7::parse("0199a0b0-0000-7000-8000-000000000001")?,
+                fleet_id: Uuid7::parse("0199a0b0-0000-7000-8000-000000000002")?,
+                event_id: Uuid7::parse("0199a0b0-0000-7000-8000-000000000003")?,
                 answer: "Aurora is healthy.".to_owned(),
             })
         );
+        Ok(())
     }
 
     /// One case per field, so a decoder that stopped checking one is caught by
@@ -283,6 +287,30 @@ mod tests {
                 None,
                 "an entry with no `{name}` is not a job this daemon wrote"
             );
+        }
+    }
+
+    /// One case per identifier field: a value this daemon would never write
+    /// there, a retired `<millis>-<seq>` event id among them, is a foreign
+    /// entry and not a job.
+    #[test]
+    fn test_decode_refuses_an_identifier_that_is_not_a_uuidv7() {
+        for name in [FIELD_WORKSPACE_ID, FIELD_FLEET_ID, FIELD_EVENT_ID] {
+            for foreign in [
+                "1700000001-1",
+                "workspace",
+                "0199A0B0-0000-7000-8000-000000000001",
+            ] {
+                let mut fields = complete();
+                fields.retain(|(field, _)| *field != name);
+                fields.push((name, foreign));
+
+                assert_eq!(
+                    decode(&entry(&fields)),
+                    None,
+                    "an entry whose `{name}` is `{foreign}` is not a job this daemon wrote"
+                );
+            }
         }
     }
 

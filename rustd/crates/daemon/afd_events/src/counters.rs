@@ -26,6 +26,7 @@
 //! write already returned its connection.
 
 use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
 use afd_db::Db;
 use sqlx::PgConnection;
@@ -55,7 +56,7 @@ const EVENT_COUNTERS_UNREAD: &str = "fleet_counters_unread";
 /// # Errors
 /// Reports a pool that would not give a connection, or a statement that would
 /// not run.
-pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounters> {
+pub async fn fleet_counters(database: &Db, fleet_id: &Uuid7) -> Result<FleetCounters> {
     let mut connection = database.acquire().await?;
     fleet_counters_on(&mut connection, fleet_id).await
 }
@@ -69,7 +70,7 @@ pub async fn fleet_counters(database: &Db, fleet_id: &str) -> Result<FleetCounte
 /// Reports a statement that would not run.
 pub async fn fleet_counters_on(
     connection: &mut PgConnection,
-    fleet_id: &str,
+    fleet_id: &Uuid7,
 ) -> Result<FleetCounters> {
     let stored = sqlx::query_as::<_, StoredCounters>(SELECT_FLEET_COUNTERS)
         .bind(fleet_id)
@@ -84,7 +85,7 @@ pub async fn fleet_counters_on(
 
 /// The fleet's counters for a frame about to be published, or `None` with the
 /// failure logged — never zeros.
-pub async fn fleet_counters_best_effort(database: &Db, fleet_id: &str) -> Option<FleetCounters> {
+pub async fn fleet_counters_best_effort(database: &Db, fleet_id: &Uuid7) -> Option<FleetCounters> {
     unread_logged(fleet_counters(database, fleet_id).await, fleet_id)
 }
 
@@ -92,19 +93,19 @@ pub async fn fleet_counters_best_effort(database: &Db, fleet_id: &str) -> Option
 /// held, so the hot path pays no second acquire.
 pub async fn fleet_counters_best_effort_on(
     connection: &mut PgConnection,
-    fleet_id: &str,
+    fleet_id: &Uuid7,
 ) -> Option<FleetCounters> {
     unread_logged(fleet_counters_on(connection, fleet_id).await, fleet_id)
 }
 
 /// The figures, or `None` with the refusal logged under its registry code.
-fn unread_logged(read: Result<FleetCounters>, fleet_id: &str) -> Option<FleetCounters> {
+fn unread_logged(read: Result<FleetCounters>, fleet_id: &Uuid7) -> Option<FleetCounters> {
     match read {
         Ok(counters) => Some(counters),
         Err(error) => {
             let Logged { error_code, reason } = error.logged();
             let event = EVENT_COUNTERS_UNREAD;
-            tracing::warn!(error_code, fleet_id, reason, event);
+            tracing::warn!(error_code, fleet_id = %fleet_id, reason, event);
             None
         }
     }

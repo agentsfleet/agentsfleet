@@ -25,8 +25,8 @@ async fn control(case: &Case) {
         .task_id
         .as_ref()
         .expect("accepted new-work item owns a task");
-    sqlx::query("UPDATE fleet.tasks SET used_model_nanos=50000,reserved_model_nanos=100000,used_running_nanos=5000000000,used_decision_calls=2 WHERE id=$1::uuid")
-        .bind(task.as_str()).execute(&mut *case.held.fixtures.database.acquire().await.expect("usage connection"))
+    sqlx::query("UPDATE fleet.tasks SET used_model_nanos=50000,reserved_model_nanos=100000,used_running_nanos=5000000000,used_decision_calls=2 WHERE id=$1")
+        .bind(task).execute(&mut *case.held.fixtures.database.acquire().await.expect("usage connection"))
         .await.expect("earlier measured work");
     let initial = tasks
         .read(scope, task)

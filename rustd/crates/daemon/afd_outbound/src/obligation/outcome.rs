@@ -5,6 +5,7 @@
 //! the worker's side of the queue, once per cycle, and each write is guarded so
 //! a duplicate queue entry for the same answer changes nothing.
 
+use af_core::id::Uuid7;
 use afd_db::Db;
 
 use super::sql;
@@ -65,7 +66,11 @@ impl AbandonReason {
 /// # Errors
 /// Reports a database that would not answer. A caller must log that and DELIVER
 /// ANYWAY: the answer is owed to a person and bookkeeping is not.
-pub async fn count_attempt(database: &Db, fleet_id: &str, event_id: &str) -> Result<Option<i64>> {
+pub async fn count_attempt(
+    database: &Db,
+    fleet_id: &Uuid7,
+    event_id: &Uuid7,
+) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
     sqlx::query_scalar(sql::COUNT_ATTEMPT)
         .bind(fleet_id)
@@ -79,7 +84,7 @@ pub async fn count_attempt(database: &Db, fleet_id: &str, event_id: &str) -> Res
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn stamp_delivered(database: &Db, fleet_id: &str, event_id: &str) -> Result<()> {
+pub async fn stamp_delivered(database: &Db, fleet_id: &Uuid7, event_id: &Uuid7) -> Result<()> {
     let mut connection = database.acquire().await?;
     sqlx::query(sql::STAMP_DELIVERED)
         .bind(fleet_id)
@@ -100,8 +105,8 @@ pub async fn stamp_delivered(database: &Db, fleet_id: &str, event_id: &str) -> R
 /// Reports a database that would not answer.
 pub async fn abandon(
     database: &Db,
-    fleet_id: &str,
-    event_id: &str,
+    fleet_id: &Uuid7,
+    event_id: &Uuid7,
     reason: AbandonReason,
 ) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;

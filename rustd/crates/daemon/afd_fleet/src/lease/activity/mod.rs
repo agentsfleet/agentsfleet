@@ -33,7 +33,7 @@ use af_wire::activity::ActivityFrame;
 use jiff::Timestamp;
 
 use self::published::Published;
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -61,7 +61,7 @@ pub struct Target {
     /// The fleet whose channel carries the tail.
     pub fleet_id: Uuid7,
     /// The event the frames describe.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// Both instants are stamped by the control plane, so their differences
     /// from activity receipt do not compare clocks across hosts.
     pub lease_created_at: Timestamp,
@@ -86,17 +86,17 @@ impl Leases {
         &self,
         target: &Target,
         runner_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         records: &[af_wire::activity::TaskActivityRecord],
     ) -> Result<Option<af_wire::activity::TaskActivityHistory>> {
         let mut connection = self.pool().acquire().await?;
         let history: Option<sqlx::types::Json<af_wire::activity::TaskActivityHistory>> =
             sqlx::query_scalar(include_str!("task_history.sql"))
-                .bind(target.fleet_id.as_str())
+                .bind(&target.fleet_id)
                 .bind(&target.event_id)
                 .bind(sqlx::types::Json(records))
                 .bind(lease_id)
-                .bind(runner_id.as_str())
+                .bind(runner_id)
                 .bind(target.fence)
                 .bind(sql::LEASE_STATUS_ACTIVE)
                 .bind(TASK_HISTORY_FACTS)
@@ -170,13 +170,13 @@ impl Leases {
     /// an identifier.
     pub async fn load_activity_target(
         &self,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
     ) -> Result<Option<Target>> {
         let mut connection = self.pool().acquire().await?;
         let found: Option<LeaseTarget> = sqlx::query_as(sql::activity::SELECT_LEASE_TARGET)
             .bind(lease_id)
-            .bind(runner_id.as_str())
+            .bind(runner_id)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
@@ -185,8 +185,7 @@ impl Leases {
             return Ok(None);
         };
         Ok(Some(Target {
-            fleet_id: Uuid7::parse(&found.fleet_id)
-                .map_err(row_malformed("runner.leases", "fleet_id"))?,
+            fleet_id: found.fleet_id.clone(),
             event_id: found.event_id,
             lease_created_at: found.created_at,
             event_created_at: found.event_created_at,
@@ -199,8 +198,8 @@ impl Leases {
 /// What [`sql::activity::SELECT_LEASE_TARGET`] answers for one lease.
 #[derive(sqlx::FromRow)]
 struct LeaseTarget {
-    fleet_id: String,
-    event_id: String,
+    fleet_id: Uuid7,
+    event_id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -222,6 +221,7 @@ impl crate::lease::pull::Plane {
         lease_id: &str,
         frames: &[ActivityFrame<'_>],
     ) -> Result<()> {
+        let lease_id = &crate::error::wire_lease(lease_id)?;
         let Some(target) = self
             .leases
             .load_activity_target(lease_id, runner_id)

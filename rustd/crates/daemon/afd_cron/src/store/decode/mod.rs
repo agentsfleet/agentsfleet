@@ -19,10 +19,6 @@ use sqlx::postgres::PgRow;
 
 use crate::model::{DesiredStatus, Schedule, Source, SyncStatus};
 
-/// See [`ScheduleRow::id`].
-const COL_ID: &str = "id";
-/// See [`ScheduleRow::fleet_id`].
-const COL_FLEET: &str = "fleet_id";
 /// See [`ScheduleRow::source`].
 const COL_SOURCE: &str = "source";
 /// See [`ScheduleRow::desired_status`].
@@ -36,9 +32,9 @@ const COL_RECIPE: &str = "recipe";
 #[derive(Debug, FromRow)]
 struct ScheduleRow {
     /// The schedule's id, as text.
-    id: String,
+    id: Uuid7,
     /// The fleet's id, as text.
-    fleet_id: String,
+    fleet_id: Uuid7,
     /// The source word.
     source: String,
     /// The external scheduler's key.
@@ -58,7 +54,7 @@ struct ScheduleRow {
     /// The fence's version.
     resource_version: i64,
     /// The fence's holder, as text.
-    sync_token: Option<String>,
+    sync_token: Option<Uuid7>,
     /// When the fence's lease runs out.
     sync_lease_expires_at: Option<jiff_sqlx::Timestamp>,
     /// Why the last push failed.
@@ -91,8 +87,8 @@ impl ScheduleRow {
     /// The schedule this row stores, its words and ids read here.
     fn parse(self) -> sqlx::Result<Schedule> {
         Ok(Schedule {
-            schedule_id: Uuid7::parse(&self.id).map_err(|_shape| unreadable(COL_ID))?,
-            fleet_id: Uuid7::parse(&self.fleet_id).map_err(|_shape| unreadable(COL_FLEET))?,
+            schedule_id: self.id,
+            fleet_id: self.fleet_id,
             source: Source::parse(&self.source).ok_or_else(|| unreadable(COL_SOURCE))?,
             provider_schedule_id: self.provider_schedule_id,
             cron: self.cron_expression,

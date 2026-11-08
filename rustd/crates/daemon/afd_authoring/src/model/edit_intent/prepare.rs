@@ -48,7 +48,7 @@ impl ModelCalls {
     ) -> Result<Prepared> {
         self.decisions.as_ref().ok_or(ErrorKind::Model)?;
         let unresolved: bool = sqlx::query_scalar(include_str!("sql/paid_unavailable.sql"))
-            .bind(guarded.attempt.id.as_str())
+            .bind(&guarded.attempt.id)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -122,10 +122,10 @@ pub(super) async fn record_fallback(
     disposition: &'static str,
 ) -> Result<()> {
     sqlx::query(include_str!("sql/fallback.sql"))
-        .bind(&request.dispatch_id)
-        .bind(guarded.attempt.id.as_str())
-        .bind(guarded.attempt.tenant_id.as_str())
-        .bind(guarded.attempt.workspace_id.as_str())
+        .bind(super::super::dispatch_id(request)?)
+        .bind(&guarded.attempt.id)
+        .bind(&guarded.attempt.tenant_id)
+        .bind(&guarded.attempt.workspace_id)
         .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE) + i64::from(request.call_index))
         .bind(guarded.draft.candidate_revision)
         .bind(disposition)

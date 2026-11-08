@@ -120,12 +120,12 @@ impl Providers {
         let fetch = i64::from(limit) + 1;
         let statement = match after {
             None => sqlx::query_as::<_, EntryRow>(sql::SELECT_FIRST_PAGE)
-                .bind(tenant.as_str())
+                .bind(tenant)
                 .bind(fetch),
             Some(boundary) => sqlx::query_as::<_, EntryRow>(sql::SELECT_PAGE_AFTER)
-                .bind(tenant.as_str())
+                .bind(tenant)
                 .bind(boundary.created_at.to_sqlx())
-                .bind(boundary.id.as_str())
+                .bind(&boundary.id)
                 .bind(fetch),
         };
 
@@ -142,7 +142,7 @@ impl Providers {
             .into_iter()
             .take(limit)
             .map(EntryRow::into_entry)
-            .collect::<Result<_>>()?;
+            .collect();
 
         // From the last SERVED row, never the extra one: the seek is exclusive,
         // so the next page has to resume after what the caller already saw.

@@ -29,18 +29,18 @@ pub(super) async fn account(f: &Fixture, digest: &str) {
     sign_up(
         &f.db,
         &Signup {
-            tenant: f.tenant.as_str(),
-            user: f.owner.as_str(),
+            tenant: &f.tenant,
+            user: &f.owner,
             subject: f.owner.as_str(),
             email: f.owner.as_str(),
             name: "authoring-http",
             display_name: None,
-            workspace: f.workspace.as_str(),
+            workspace: &f.workspace,
         },
     )
     .await;
     // The account's API key, the credential the router's requests present.
-    ApiKeySeed::new(mint().as_str(), f.tenant.as_str(), digest, f.owner.as_str())
+    ApiKeySeed::new(&mint(), &f.tenant, digest, f.owner.as_str())
         .insert(&mut *f.db.acquire().await.expect("seed connection"))
         .await
         .expect("seed authenticated account");
@@ -49,7 +49,7 @@ pub(super) async fn account(f: &Fixture, digest: &str) {
 pub(super) async fn model(f: &Fixture) {
     let mut connection = f.db.acquire().await.expect("model connection");
     let model = format!("workspace-model-{}", f.catalogue);
-    ModelSeed::new(f.catalogue.as_str(), "openai", &model, CONTEXT_CAP_TOKENS)
+    ModelSeed::new(&f.catalogue, "openai", &model, CONTEXT_CAP_TOKENS)
         .rates(
             INPUT_NANOS_PER_MTOK,
             CACHED_INPUT_NANOS_PER_MTOK,
@@ -61,10 +61,10 @@ pub(super) async fn model(f: &Fixture) {
         .expect("seed isolated priced model");
     sqlx::query(
         "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) \
-        VALUES ($1::uuid,$2::uuid,$3,'authoring-model',now(),now())",
+        VALUES ($1,$2,$3,'authoring-model',now(),now())",
     )
-    .bind(f.model.as_str())
-    .bind(f.tenant.as_str())
+    .bind(&f.model)
+    .bind(&f.tenant)
     .bind(&model)
     .execute(&mut *connection)
     .await

@@ -130,8 +130,8 @@ async fn recover(fixture: &Decisions<'_>, call: &Value, balance: i64) {
 }
 
 async fn wallet_snapshot(fixture: &Decisions<'_>) -> (Value, Value) {
-    sqlx::query_as("SELECT to_jsonb(w),COALESCE((SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$2::uuid),'[]'::jsonb) FROM billing.wallets w WHERE w.tenant_id=$1::uuid")
-        .bind(&fixture.case.held.tenant).bind(fixture.case.held.lease_key.as_str())
+    sqlx::query_as("SELECT to_jsonb(w),COALESCE((SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$2),'[]'::jsonb) FROM billing.wallets w WHERE w.tenant_id=$1")
+        .bind(&fixture.case.held.tenant).bind(&fixture.case.held.lease_key)
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("native financial observer"))
         .await.expect("entire wallet and original usage ledger")
 }

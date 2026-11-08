@@ -14,19 +14,31 @@ async fn test_retry_keeps_one_queued_message_and_its_delivered_identity() {
     let operation = afd_db::test_util::mint_id();
     let steer = Steer::new(lane.admissions());
     let accepted = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR, BODY, Some(&operation))
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR,
+            BODY,
+            Some(operation.as_str()),
+        )
         .await
         .expect("durable admission succeeds");
     assert_queued(&lane, &accepted.event_id).await;
     let replay = steer
-        .append(&lane.fleet, &lane.workspace, ACTOR, BODY, Some(&operation))
+        .append(
+            &lane.fleet,
+            &lane.workspace,
+            ACTOR,
+            BODY,
+            Some(operation.as_str()),
+        )
         .await
         .expect("retry returns the same admission");
     assert_eq!(replay.event_id, accepted.event_id);
     assert_queued(&lane, &accepted.event_id).await;
     mark_delivered(&lane).await;
     lane.seed_event(
-        &accepted.event_id,
+        &uuid(&accepted.event_id),
         accepted.admitted_at.expect("first admission time"),
     )
     .await;
@@ -36,9 +48,9 @@ async fn test_retry_keeps_one_queued_message_and_its_delivered_identity() {
 
 async fn assert_queued(lane: &EventsLane, event_id: &str) {
     let history = History::new(lane.database.clone());
-    let (workspace, fleet) = (uuid(&lane.workspace), uuid(&lane.fleet));
+    let (workspace, fleet) = (&lane.workspace, &lane.fleet);
     let pending = history
-        .thread_page(&workspace, &fleet, None, PAGE)
+        .thread_page(workspace, fleet, None, PAGE)
         .await
         .expect("admissions can be read after acceptance");
     assert_eq!(pending.len(), 1, "an accepted message must survive reload");
@@ -58,9 +70,9 @@ async fn mark_delivered(lane: &EventsLane) {
 
 async fn assert_delivered(lane: &EventsLane, event_id: &str) {
     let history = History::new(lane.database.clone());
-    let (workspace, fleet) = (uuid(&lane.workspace), uuid(&lane.fleet));
+    let (workspace, fleet) = (&lane.workspace, &lane.fleet);
     let delivered = history
-        .thread_page(&workspace, &fleet, None, PAGE)
+        .thread_page(workspace, fleet, None, PAGE)
         .await
         .expect("delivered history keeps the logical identity");
     assert_eq!(delivered.len(), 1);

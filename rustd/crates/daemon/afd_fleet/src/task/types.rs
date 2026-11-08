@@ -53,7 +53,7 @@ pub struct CheckpointMaintenance {
 /// Local fairness cursor; it carries no task authority or queued work.
 #[derive(Debug, Default)]
 pub struct CheckpointMaintenanceCursor {
-    pub(super) after: Option<(jiff::Timestamp, String)>,
+    pub(super) after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) cutoff: Option<jiff::Timestamp>,
 }
 
@@ -63,7 +63,7 @@ pub struct CheckpointMaintenanceCursor {
 /// pass to progress after cancellation, malformed rows or lock contention.
 #[derive(Debug, Default)]
 pub struct DecisionMaintenanceCursor {
-    pub(super) after: Option<(jiff::Timestamp, String)>,
+    pub(super) after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) cutoff: Option<jiff::Timestamp>,
 }
 
@@ -206,7 +206,7 @@ pub struct TaskSummary {
     /// Generation required by subsequent task operations.
     pub generation: u64,
     /// Setup revision accepted by this objective.
-    pub accepted_revision_id: String,
+    pub accepted_revision_id: Uuid7,
     /// Admission instant used by the keyset boundary.
     pub created_at: jiff::Timestamp,
     /// Fixed cumulative wall deadline.

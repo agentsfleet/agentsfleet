@@ -11,7 +11,7 @@ use afd_fleet::task::TaskLifecycle as _;
 use serde_json::json;
 
 use super::{
-    super::fixture::{Case, exercise},
+    super::fixture::{Case, exercise, id},
     fixture::{Decisions, request},
     interpretation::choose,
     reply::known_result,
@@ -24,6 +24,7 @@ async fn paid_steer_and_refresh_append_once_to_the_running_task() {
         exercise(async |case| {
             let fixture = Decisions::create(case).await;
             let task = fixture.bind_goal().await;
+            let task_id = id(&task.task_id);
             let source = case.claimed_source().await;
             let input = proposed(&fixture, &source, &task.task_id, action).await;
             let accepted = fixture
@@ -39,7 +40,7 @@ async fn paid_steer_and_refresh_append_once_to_the_running_task() {
             assert!(item.applies_here);
             assert_eq!(item.input_sequence, Some(1));
             assert_eq!(item.task_generation, Some(1));
-            assert_input(case, &task.task_id, action).await;
+            assert_input(case, &task_id, action).await;
             let replay = fixture
                 .tasks
                 .interpret(case.lease(), &valid(input))
@@ -47,7 +48,7 @@ async fn paid_steer_and_refresh_append_once_to_the_running_task() {
                 .expect("accepted association replay");
             assert!(replay.replayed);
             assert_eq!(replay.items, accepted.items);
-            assert_input(case, &task.task_id, action).await;
+            assert_input(case, &task_id, action).await;
             assert_eq!(fixture.counts().await, (1, 1, 1));
             fixture.model.finish().await.expect("model fixture cleanup");
         })
@@ -61,6 +62,7 @@ async fn paid_existing_input_refuses_missing_and_foreign_task_without_partial_wr
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
+        let task_id = id(&task.task_id);
         let source = case.claimed_source().await;
         let input = proposed(&fixture, &source, &task.task_id, TaskInputAction::Steer).await;
         let before = case.counts().await;
@@ -72,7 +74,7 @@ async fn paid_existing_input_refuses_missing_and_foreign_task_without_partial_wr
             ),
         ] {
             let mut wrong = input.clone();
-            wrong.items.first_mut().expect("one item").proposed.task_id = target;
+            wrong.items.first_mut().expect("one item").proposed.task_id = target.map(String::from);
             digest(&mut wrong);
             let error = fixture
                 .tasks
@@ -82,8 +84,8 @@ async fn paid_existing_input_refuses_missing_and_foreign_task_without_partial_wr
             assert_eq!(error.code(), code);
             assert_eq!(case.counts().await, before);
             let count: i64 =
-                sqlx::query_scalar("SELECT count(*) FROM fleet.task_inputs WHERE task_id=$1::uuid")
-                    .bind(&task.task_id)
+                sqlx::query_scalar("SELECT count(*) FROM fleet.task_inputs WHERE task_id=$1")
+                    .bind(&task_id)
                     .fetch_one(
                         &mut *case
                             .held
@@ -183,7 +185,7 @@ fn valid(input: TaskBindingsInput) -> garde::Valid<TaskBindingsInput> {
         .expect("bounded interpretation")
 }
 
-async fn assert_input(case: &Case, task: &str, action: TaskInputAction) {
+async fn assert_input(case: &Case, task: &Uuid7, action: TaskInputAction) {
     let mut connection = case
         .held
         .fixtures
@@ -191,7 +193,7 @@ async fn assert_input(case: &Case, task: &str, action: TaskInputAction) {
         .acquire()
         .await
         .expect("accepted input observer");
-    let rows: Vec<(i64, String, String, i64)> = sqlx::query_as("SELECT sequence,accepted_text,interpretation,generation FROM fleet.task_inputs WHERE task_id=$1::uuid")
+    let rows: Vec<(i64, String, String, i64)> = sqlx::query_as("SELECT sequence,accepted_text,interpretation,generation FROM fleet.task_inputs WHERE task_id=$1")
         .bind(task).fetch_all(&mut *connection).await.expect("accepted input custody");
     assert_eq!(
         rows,
@@ -202,11 +204,11 @@ async fn assert_input(case: &Case, task: &str, action: TaskInputAction) {
             1
         )]
     );
-    let state: (String, i64, i64, i64) = sqlx::query_as("SELECT status,generation,input_sequence,(SELECT count(*) FROM fleet.admissions WHERE fleet_id=$2::uuid) FROM fleet.tasks WHERE id=$1::uuid")
-        .bind(task).bind(case.scope.fleet_id.as_str()).fetch_one(&mut *connection).await.expect("same execution");
+    let state: (String, i64, i64, i64) = sqlx::query_as("SELECT status,generation,input_sequence,(SELECT count(*) FROM fleet.admissions WHERE fleet_id=$2) FROM fleet.tasks WHERE id=$1")
+        .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *connection).await.expect("same execution");
     assert_eq!(state, ("running".to_owned(), 1, 1, 2));
     let saved: serde_json::Value = sqlx::query_scalar(
-        "SELECT to_jsonb(i) FROM fleet.task_items i WHERE task_id=$1::uuid AND action=$2",
+        "SELECT to_jsonb(i) FROM fleet.task_items i WHERE task_id=$1 AND action=$2",
     )
     .bind(task)
     .bind(action.as_str())

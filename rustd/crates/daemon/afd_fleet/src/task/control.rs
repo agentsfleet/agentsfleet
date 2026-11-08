@@ -14,7 +14,7 @@ const CONTEXT: &str = "control durable task";
 
 #[derive(sqlx::FromRow)]
 struct Origin {
-    source_admission_id: String,
+    source_admission_id: Uuid7,
     reply_provider: Option<String>,
     reply_address: Option<String>,
     generation: i64,
@@ -58,8 +58,8 @@ pub(super) async fn apply(
     )
     .await?;
     if changed {
-        super::waits::cancel(&mut transaction, task_id.as_str()).await?;
-        super::continuation::retire(&mut transaction, task_id.as_str()).await?;
+        super::waits::cancel(&mut transaction, task_id).await?;
+        super::continuation::retire(&mut transaction, task_id).await?;
         queue(tasks, &mut transaction, task_id, prepared, previous).await?;
     }
     let snapshot = read::on(&mut transaction, scope, task_id).await?;
@@ -79,9 +79,9 @@ async fn transition(
     control: TaskControl,
 ) -> Result<(bool, TaskState)> {
     let locked: Locked = sqlx::query_as(sql::LOCK_TASK)
-        .bind(task_id.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(task_id)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
@@ -136,7 +136,7 @@ async fn queue(
                 source,
             })?;
         sqlx::query(sql::CONTROL_ADMISSION)
-            .bind(task_id.as_str())
+            .bind(task_id)
             .bind(&admitted.stored.id)
             .execute(&mut *connection)
             .await
@@ -170,9 +170,9 @@ async fn publish(
 async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Result<Continuation> {
     let mut connection = tasks.leases.pool().acquire().await?;
     let origin: Origin = sqlx::query_as(sql::CONTROL_ORIGIN)
-        .bind(task_id.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(task_id)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
@@ -180,13 +180,7 @@ async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Re
     let generation = row::counter(origin.generation, "generation")?
         .checked_add(1)
         .ok_or(TaskRefusal::LimitExhausted)?;
-    Continuation::new(
-        scope,
-        task_id,
-        generation,
-        &guard::id(&origin.source_admission_id, "admission_id")?,
-    )
-    .with_reply(
+    Continuation::new(scope, task_id, generation, &origin.source_admission_id).with_reply(
         origin.reply_provider.as_deref(),
         origin.reply_address.as_deref(),
     )
@@ -200,10 +194,10 @@ async fn update(
     control: TaskControl,
     previous: TaskState,
 ) -> Result<()> {
-    sqlx::query_scalar::<_, String>(sql::CONTROL)
-        .bind(task_id.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+    sqlx::query_scalar::<_, Uuid7>(sql::CONTROL)
+        .bind(task_id)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
         .bind(control.requested().as_str())
         .bind(i64::from(control != TaskControl::Resume))
         .bind(control == TaskControl::Cancel)

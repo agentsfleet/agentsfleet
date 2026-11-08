@@ -12,7 +12,7 @@ pub(super) async fn required_on(
     coding_headroom: Nanos,
 ) -> Result<Nanos> {
     let unresolved: i64 = sqlx::query_scalar(include_str!("sql/required_credit.sql"))
-        .bind(lease.as_str())
+        .bind(lease)
         .fetch_one(connection)
         .await
         .map_err(query("read unresolved physical decision credit"))?;

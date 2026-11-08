@@ -109,7 +109,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ("SELECT w.balance_nanos, w.exhausted_at", Path::Gates),
     ("WITH floors AS", Path::Gates),
     (
-        "SELECT tenant_id::text FROM identity.workspaces WHERE id",
+        "SELECT tenant_id FROM identity.workspaces WHERE id",
         Path::Gates,
     ),
     ("SELECT action_id FROM fleet.approval_gates", Path::Gates),
@@ -123,7 +123,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Gates,
     ),
     // Pricing.
-    ("SELECT p.id::text AS id, p.effective_from", Path::Pricing),
+    ("SELECT p.id AS id, p.effective_from", Path::Pricing),
     (
         "SELECT resource_version FROM model.catalogue_version",
         Path::Pricing,
@@ -160,7 +160,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     // Activity: authorizing one live-tail post.
     (
-        "SELECT l.fleet_id::text AS fleet_id, e.event_id, l.created_at, l.event_created_at",
+        "SELECT l.fleet_id AS fleet_id, e.event_id, l.created_at, l.event_created_at",
         Path::Activity,
     ),
     // Report.
@@ -182,7 +182,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     ("WITH closed AS ( UPDATE fleet.events", Path::Report),
     (
-        "SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id, actor, event_type",
+        "SELECT fleet_id AS fleet_id, event_id, workspace_id AS workspace_id, actor, event_type",
         Path::Issue,
     ),
     ("SELECT COALESCE(sum(input_token_count)", Path::Report),
@@ -193,13 +193,10 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ("INSERT INTO runner.events (id, runner_id", Path::Report),
     // Task: the durable-task reads that issue, renewal and report each send.
     (
-        "SELECT task_id::text, fleet_id::text, workspace_id::text FROM runner.leases",
+        "SELECT task_id, fleet_id, workspace_id FROM runner.leases",
         Path::Task,
     ),
-    (
-        "SELECT t.id::text AS task_id, t.status, t.generation",
-        Path::Task,
-    ),
+    ("SELECT t.id AS task_id, t.status, t.generation", Path::Task),
     ("a.task_generation AS admission_generation", Path::Task),
     (
         "task_execution_deadline_at) AS execution_deadline",

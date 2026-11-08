@@ -81,10 +81,10 @@ const ACTIVE: &str = "active";
 
 /// The saved fleet's current setup revision, as the database names it.
 const HEAD_REVISION: &str = "SELECT r.revision FROM fleet.fleets f \
-     JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1::uuid";
+     JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1";
 
 /// Links a draft to a saved fleet, as a Save does once activation succeeds.
-const LINK_FLEET: &str = "UPDATE authoring.drafts SET fleet_id = $2::uuid WHERE id = $1::uuid";
+const LINK_FLEET: &str = "UPDATE authoring.drafts SET fleet_id = $2 WHERE id = $1";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -97,17 +97,12 @@ async fn a_listed_chat_carries_its_candidate_and_saved_setup_revisions() {
         .expect("owner draft");
     let fleet = mint();
     let mut connection = f.connection().await;
-    afd_db::test_util::FleetSeed::new(
-        fleet.as_str(),
-        f.workspace.as_str(),
-        f.tenant.as_str(),
-        ACTIVE,
-    )
-    .name(&format!("saved-{fleet}"))
-    .native_setup()
-    .insert(&mut *connection)
-    .await
-    .expect("the saved fleet seeds");
+    afd_db::test_util::FleetSeed::new(&fleet, &f.workspace, &f.tenant, ACTIVE)
+        .name(&format!("saved-{fleet}"))
+        .native_setup()
+        .insert(&mut *connection)
+        .await
+        .expect("the saved fleet seeds");
     let unsaved = card(&f).await;
     assert_eq!(
         unsaved.candidate_revision,
@@ -121,13 +116,13 @@ async fn a_listed_chat_carries_its_candidate_and_saved_setup_revisions() {
     );
 
     sqlx::query(LINK_FLEET)
-        .bind(created.draft.id.as_str())
-        .bind(fleet.as_str())
+        .bind(created.draft.id)
+        .bind(&fleet)
         .execute(&mut *connection)
         .await
         .expect("the draft links its saved fleet");
     let head: i64 = sqlx::query_scalar(HEAD_REVISION)
-        .bind(fleet.as_str())
+        .bind(fleet)
         .fetch_one(&mut *connection)
         .await
         .expect("the saved fleet has a head revision");
@@ -148,7 +143,7 @@ async fn card(f: &Fixture) -> afd_authoring::types::DraftCard {
 }
 
 /// Renames a chat, as an explicit title edit does.
-const RENAME: &str = "UPDATE authoring.drafts SET title = $2 WHERE id = $1::uuid";
+const RENAME: &str = "UPDATE authoring.drafts SET title = $2 WHERE id = $1";
 
 /// A whole-page search for `text`.
 fn search(text: &str) -> ListQuery {
@@ -177,7 +172,7 @@ async fn a_search_matches_the_creators_titles_and_turns_and_nothing_else() {
         "the first request titles the chat"
     );
     sqlx::query(RENAME)
-        .bind(inbox.draft.id.as_str())
+        .bind(&inbox.draft.id)
         .bind("Morning routine")
         .execute(&mut *f.connection().await)
         .await

@@ -1,5 +1,6 @@
 //! One fresh authority check and one native credential-issuance commit.
 
+use af_core::id::Uuid7;
 use std::borrow::Cow;
 
 use af_crypto::secret::SecretString;
@@ -89,14 +90,18 @@ impl Issuance<'_> {
 }
 
 async fn issue_on(connection: &mut PgConnection, call: &Call) -> Result<()> {
-    sqlx::query_scalar::<_, String>(sql::ISSUE)
+    sqlx::query_scalar::<_, Uuid7>(sql::ISSUE)
         .bind(&call.id)
         .bind(DecisionCallState::Issued.as_str())
         .bind(DecisionCallState::Reserved.as_str())
         .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
         .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
-        .bind(&call.profile_snapshot.0.profile.model_id)
-        .bind(&call.profile_snapshot.0.revision_id)
+        .bind(crate::task::guard::wire(
+            &call.profile_snapshot.0.profile.model_id,
+        )?)
+        .bind(crate::task::guard::wire(
+            &call.profile_snapshot.0.revision_id,
+        )?)
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(crate::lease::sql::RUNNER_STATUS_ACTIVE)
         .fetch_optional(connection)
@@ -108,9 +113,9 @@ async fn issue_on(connection: &mut PgConnection, call: &Call) -> Result<()> {
 
 fn encode(call: Call, payload: Payload, key: &SecretString) -> Result<ReservedDecision> {
     let packet = DecisionReservationResult::Dispatch {
-        call_id: call.id,
+        call_id: call.id.into(),
         dispatch: Box::new(DecisionDispatch {
-            assessment_id: call.assessment_id,
+            assessment_id: call.assessment_id.into(),
             attempt: call.attempt_number,
             assignment: call.profile_snapshot.0,
             request: payload.request.0,

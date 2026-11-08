@@ -74,6 +74,7 @@ impl Deliver for Scripted {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Seen {
     pub(super) event: String,
+    /// The turn's event id, as the log line spelled it.
     pub(super) event_id: Option<String>,
     pub(super) attempts: Option<i64>,
 }
@@ -137,10 +138,14 @@ impl Capture {
     /// The capture is global to the binary, so `named` alone answers for every
     /// test that ran beside this one. An assertion that an event did NOT
     /// happen is only true of the turn it dispatched, and reads this.
-    pub(super) fn named_for(&self, event: &str, event_id: &str) -> Vec<Seen> {
+    pub(super) fn named_for(&self, event: &str, event_id: &Uuid7) -> Vec<Seen> {
         self.named(event)
             .into_iter()
-            .filter(|seen| seen.event_id.as_deref() == Some(event_id))
+            .filter(|seen| {
+                seen.event_id
+                    .as_deref()
+                    .is_some_and(|logged| event_id == logged)
+            })
             .collect()
     }
 }
@@ -184,14 +189,14 @@ pub(super) fn capture() -> Capture {
 }
 
 /// A job the lanes carry, addressed to the fixture fleet.
-pub(super) fn job(id: EventId, event_id: &str) -> Box<OutboundDelivery> {
+pub(super) fn job(id: EventId, event_id: &Uuid7) -> Box<OutboundDelivery> {
     Box::new(OutboundDelivery {
         id,
         provider: PROVIDER.to_owned(),
         destination: DESTINATION.to_owned(),
-        workspace_id: WORKSPACE.to_owned(),
-        fleet_id: FLEET.to_owned(),
-        event_id: event_id.to_owned(),
+        workspace_id: WORKSPACE.clone(),
+        fleet_id: FLEET.clone(),
+        event_id: event_id.clone(),
         answer: ANSWER.to_owned(),
     })
 }

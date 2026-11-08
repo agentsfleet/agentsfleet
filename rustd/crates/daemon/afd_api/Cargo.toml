@@ -57,7 +57,7 @@ utoipa = { workspace = true, optional = true }
 # The attribute vocabulary a span carries. The dependency points this way on
 # purpose: a route template is a fact here and a string there.
 af_observability.workspace = true
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
 axum = { workspace = true, features = ["json", "matched-path", "query"] }

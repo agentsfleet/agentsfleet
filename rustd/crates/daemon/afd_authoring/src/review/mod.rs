@@ -144,8 +144,8 @@ async fn target(connection: &mut PgConnection, draft: &Context) -> Result<Option
         return Ok(None);
     };
     let revision: Option<Option<i64>> = sqlx::query_scalar(sql::TARGET)
-        .bind(fleet.as_str())
-        .bind(draft.workspace_id.as_str())
+        .bind(fleet)
+        .bind(&draft.workspace_id)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;

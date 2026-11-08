@@ -34,7 +34,7 @@ fn progress(id: &str, completed: u32) -> TaskActivity {
 async fn saved(run: &Held) -> TaskActivityHistory {
     let Json(history) = sqlx::query_scalar::<_, Json<TaskActivityHistory>>(
         "SELECT jsonb_build_object('items', task_activity, 'truncated', task_activity_truncated) \
-         FROM fleet.events WHERE fleet_id=$1::uuid AND event_id=$2",
+         FROM fleet.events WHERE fleet_id=$1 AND event_id=$2",
     )
     .bind(&run.fleet)
     .bind(&run.event_id)
@@ -55,7 +55,7 @@ async fn saved(run: &Held) -> TaskActivityHistory {
 /// the preflight so the regression exercises the write's ownership defense.
 async fn write(run: &Held, progress: TaskActivity) -> Option<Json<TaskActivityHistory>> {
     let target = afd_fleet::lease::activity::Target {
-        fleet_id: af_core::id::Uuid7::parse(&run.fleet).expect("fixture fleet"),
+        fleet_id: run.fleet.clone(),
         event_id: run.event_id.clone(),
         lease_created_at: run.now,
         event_created_at: run.now,
@@ -66,7 +66,7 @@ async fn write(run: &Held, progress: TaskActivity) -> Option<Json<TaskActivityHi
         .retain_task_activity(
             &target,
             &run.runner,
-            run.issued.lease_id.as_str(),
+            &run.issued.lease_id,
             &[TaskActivityRecord::TaskTransferProgress(progress)],
         )
         .await
@@ -86,7 +86,8 @@ async fn daemon_sequence_and_acknowledgements_survive_reordered_updates() {
                 &run.runner,
                 run.issued.lease_id.as_str(),
                 &[ActivityFrame::TaskTransferProgress(progress(
-                    &id, completed,
+                    id.as_str(),
+                    completed,
                 ))],
             )
             .await
@@ -114,7 +115,7 @@ async fn daemon_sequence_and_acknowledgements_survive_reordered_updates() {
 async fn bounded_history_retains_monotonic_sequence_and_truncation() {
     let run = held().await;
     for _ in 0..130 {
-        write(&run, progress(&afd_db::test_util::mint_id(), 1))
+        write(&run, progress(afd_db::test_util::mint_id().as_str(), 1))
             .await
             .expect("owned progress persists");
     }
@@ -143,20 +144,16 @@ async fn history_write_rejects_owner_that_expired_after_preflight() {
     let run = held().await;
     let target = run
         .leases
-        .load_activity_target(run.issued.lease_id.as_str(), &run.runner)
+        .load_activity_target(&run.issued.lease_id, &run.runner)
         .await
         .expect("preflight query")
         .expect("held target");
     assert!(target.timing_eligible);
     run.fixtures
-        .age(
-            Row::Lease(run.issued.lease_id.as_str()),
-            "lease_expires_at",
-            LAPSE,
-        )
+        .age(Row::Lease(&run.issued.lease_id), "lease_expires_at", LAPSE)
         .await;
     assert!(
-        write(&run, progress(&afd_db::test_util::mint_id(), 1))
+        write(&run, progress(afd_db::test_util::mint_id().as_str(), 1))
             .await
             .is_none()
     );
@@ -180,7 +177,7 @@ async fn contended_event_drops_progress_without_waiting_or_consuming_sequence() 
     let mut tx = sqlx::Connection::begin(&mut *connection)
         .await
         .expect("lock transaction");
-    sqlx::query("SELECT id FROM fleet.events WHERE fleet_id=$1::uuid AND event_id=$2 FOR UPDATE")
+    sqlx::query("SELECT event_id FROM fleet.events WHERE fleet_id=$1 AND event_id=$2 FOR UPDATE")
         .bind(&run.fleet)
         .bind(&run.event_id)
         .fetch_one(&mut *tx)
@@ -189,14 +186,14 @@ async fn contended_event_drops_progress_without_waiting_or_consuming_sequence() 
     let id = afd_db::test_util::mint_id();
     let dropped = tokio::time::timeout(
         std::time::Duration::from_secs(2),
-        write(&run, progress(&id, 1)),
+        write(&run, progress(id.as_str(), 1)),
     )
     .await
     .expect("contended cosmetic progress must not wait");
     assert!(dropped.is_none());
     tx.rollback().await.expect("release event");
     drop(connection);
-    let Json(history) = write(&run, progress(&id, 2))
+    let Json(history) = write(&run, progress(id.as_str(), 2))
         .await
         .expect("uncontended progress persists");
     assert_eq!(

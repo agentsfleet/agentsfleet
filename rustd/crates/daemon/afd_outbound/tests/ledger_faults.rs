@@ -12,6 +12,7 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{Dragonfly, OutboundQueue};
@@ -47,11 +48,11 @@ fn an_owed_row_addresses_the_delivery_it_came_from() {
     let addressed = owed
         .addressed()
         .expect("a row naming a connector and a destination is addressable");
-    assert_eq!(addressed.fleet_id, owed.fleet_id);
-    assert_eq!(addressed.workspace_id, owed.workspace_id);
+    assert_eq!(addressed.fleet_id, &owed.fleet_id);
+    assert_eq!(addressed.workspace_id, &owed.workspace_id);
     assert_eq!(addressed.provider, Provider::Slack);
     assert_eq!(addressed.destination, DESTINATION);
-    assert_eq!(addressed.event_id, owed.event_id);
+    assert_eq!(addressed.event_id, &owed.event_id);
     assert_eq!(addressed.answer, owed.answer);
 }
 
@@ -70,15 +71,20 @@ const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000
 /// A provider id no connector answers to: a model provider.
 const MODEL_PROVIDER: &str = "anthropic";
 
+/// A fixture identifier spelled in full, as a scan decodes it.
+fn id(text: &str) -> Uuid7 {
+    Uuid7::parse(text).expect("a fixture identifier is a canonical UUIDv7")
+}
+
 /// One scanned row, varied by its connector and destination.
 fn owed_row(provider: &str, destination: &str) -> Owed {
     Owed {
-        id: "01998000-0000-7000-8000-00000000000a".to_owned(),
-        fleet_id: "0199a0b0-0000-7000-8000-0000000000f1".to_owned(),
-        workspace_id: "workspace-7".to_owned(),
+        id: id("01998000-0000-7000-8000-00000000000a"),
+        fleet_id: id("0199a0b0-0000-7000-8000-0000000000f1"),
+        workspace_id: id("0199a0b0-0000-7000-8000-0000000000f7"),
         provider: provider.to_owned(),
         destination: destination.to_owned(),
-        event_id: "1700000000123-0".to_owned(),
+        event_id: id("0199a0b0-0000-7000-8000-0000000000e1"),
         answer: "the run finished".to_owned(),
     }
 }

@@ -1,5 +1,6 @@
 //! Execute both queue statements under PostgreSQL's actual prepared-plan cache.
 
+use af_core::id::Uuid7;
 use afd_fleet::lease::sql::{
     self,
     queue::{CLAIM_HEAD, SELECT_CANDIDATES},
@@ -9,10 +10,10 @@ use sqlx::{AssertSqlSafe, PgConnection};
 use super::run;
 
 pub(super) async fn prepare(connection: &mut PgConnection) {
-    run(connection, &format!("PREPARE gate_candidates (text,text,bigint,interval,text,text[],text,text,text,text,text[]) AS {SELECT_CANDIDATES}")).await;
+    run(connection, &format!("PREPARE gate_candidates (text,uuid,bigint,interval,text,uuid[],uuid,text,text,text,text[]) AS {SELECT_CANDIDATES}")).await;
     run(
         connection,
-        &format!("PREPARE gate_claim (text,text,interval,interval,text,text,text,text,text,text,text[]) AS {CLAIM_HEAD}"),
+        &format!("PREPARE gate_claim (uuid,uuid,interval,interval,text,text,text,text,text,text,text[]) AS {CLAIM_HEAD}"),
     )
     .await;
 }
@@ -22,7 +23,7 @@ pub(super) async fn release(connection: &mut PgConnection) {
     run(connection, "DEALLOCATE gate_claim").await;
 }
 
-pub(super) async fn candidates(connection: &mut PgConnection, runner: &str) -> serde_json::Value {
+pub(super) async fn candidates(connection: &mut PgConnection, runner: &Uuid7) -> serde_json::Value {
     let active = sql::FLEET_STATUS_ACTIVE;
     let runner_active = sql::RUNNER_STATUS_ACTIVE;
     let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
@@ -32,8 +33,8 @@ pub(super) async fn candidates(connection: &mut PgConnection, runner: &str) -> s
 
 pub(super) async fn claim(
     connection: &mut PgConnection,
-    fleet: &str,
-    runner: &str,
+    fleet: &Uuid7,
+    runner: &Uuid7,
 ) -> serde_json::Value {
     let runner_active = sql::RUNNER_STATUS_ACTIVE;
     let active = sql::LEASE_STATUS_ACTIVE;

@@ -22,7 +22,7 @@ async fn accepted(
     revision: &Uuid7,
 ) -> Result<Published> {
     let library: Option<String> = sqlx::query_scalar(sql::ACCEPTED)
-        .bind(revision.as_str())
+        .bind(revision)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

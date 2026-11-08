@@ -18,11 +18,10 @@ pub(crate) enum Fact<'a> {
     Removed,
 }
 
-/// Display facts and identity proven by one native mutation or sync claim.
+/// Display facts proven by one native mutation or sync claim.
 #[derive(Debug)]
 pub(crate) struct Receipt<'a> {
     pub(crate) schedule: &'a Schedule,
-    pub(crate) operation: &'a str,
     pub(crate) fact: Fact<'a>,
 }
 
@@ -32,18 +31,10 @@ impl Receipt<'_> {
         connection: &mut PgConnection,
         workspace: &Uuid7,
     ) -> Result<Announcement> {
-        let identity = format!(
-            "schedule:{}:{}:{}:{}",
-            self.fact.key(),
-            self.schedule.schedule_id,
-            self.schedule.resource_version,
-            self.operation
-        );
         afd_events::activity::record_on(
             connection,
             workspace,
             &self.schedule.fleet_id,
-            &identity,
             self.payload(),
         )
         .await
@@ -93,17 +84,5 @@ impl Fact<'_> {
             Some(DesiredStatus::Deleting) => ScheduleChange::RemovalRequested,
             Some(DesiredStatus::Active) | None => ScheduleChange::Changed,
         })
-    }
-
-    const fn key(self) -> &'static str {
-        match self {
-            Self::Changed(ScheduleChange::Created) => "created",
-            Self::Changed(ScheduleChange::Changed) => "changed",
-            Self::Changed(ScheduleChange::Paused) => "paused",
-            Self::Changed(ScheduleChange::RemovalRequested) => "removal_requested",
-            Self::Synced => "synced",
-            Self::Failed(_) => "failed",
-            Self::Removed => "removed",
-        }
     }
 }

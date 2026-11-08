@@ -93,7 +93,7 @@ impl Billing {
     pub async fn snapshot(&self, tenant: &Uuid7) -> Result<Wallet> {
         let mut connection = self.database.acquire().await?;
         let wallet: Option<Wallet> = sqlx::query_as(sql::SELECT_WALLET)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_SNAPSHOT))?;
@@ -155,15 +155,15 @@ where
 {
     match boundary {
         None => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_FIRST))
-            .bind(tenant.as_str())
+            .bind(tenant)
             .bind(i64::from(limit))
             .bind(sql::CHARGE_TYPE_AUTHORING)
             .bind(sql::work::FLEET_LEASE)
             .bind(sql::charge::STAGE),
         Some(after) => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_AFTER))
-            .bind(tenant.as_str())
+            .bind(tenant)
             .bind(after.created_at.to_sqlx())
-            .bind(after.id.as_str())
+            .bind(&after.id)
             .bind(i64::from(limit))
             .bind(sql::CHARGE_TYPE_AUTHORING)
             .bind(sql::work::FLEET_LEASE)
@@ -177,26 +177,26 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct ChargeRow {
     /// The charge's or settlement's identifier.
-    pub id: String,
+    pub id: Uuid7,
     /// Whose charge it is.
-    pub tenant_id: String,
+    pub tenant_id: Uuid7,
     /// The workspace it was incurred in. No foreign key on either source, so
     /// it outlives the workspace.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// The fleet it was incurred by. A fleet charge always names it, and the
     /// name OUTLIVES the fleet: no foreign key, so a purged fleet's charges
     /// still name themselves. A setup settlement names the fleet its draft was
     /// saved as, and nothing while the draft has none.
-    pub fleet_id: Option<String>,
+    pub fleet_id: Option<Uuid7>,
     /// That fleet's name. A fleet charge's is a snapshot taken when it was
     /// written, so a later rename never reaches it, and a fleet purged before
     /// the charge landed leaves its identifier here, equal to `fleet_id`. A
     /// setup settlement's is the saved fleet's current name.
     pub fleet_name: Option<String>,
     /// The event that triggered the work; a setup chat has none.
-    pub event_id: Option<String>,
+    pub event_id: Option<Uuid7>,
     /// The setup attempt a settlement paid for; a fleet charge has none.
-    pub authoring_attempt_id: Option<String>,
+    pub authoring_attempt_id: Option<Uuid7>,
     /// `stage` for one usage line of a fleet run, or
     /// [`sql::CHARGE_TYPE_AUTHORING`] for a setup chat.
     pub charge_type: String,

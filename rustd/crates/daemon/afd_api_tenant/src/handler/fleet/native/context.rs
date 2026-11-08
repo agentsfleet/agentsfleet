@@ -117,22 +117,21 @@ async fn current<D: Services>(
 }
 
 fn activity_page(receipts: Vec<afd_events::EventDetailRow>) -> CursorPage<SetupActivity> {
-    let more = receipts.len() > 25;
+    let next = receipts
+        .get(25)
+        .and(receipts.get(24))
+        .map(|last| afd_events::Cursor::after(last.row.created_at, &last.row.event_id).encode());
     let activities = receipts
         .into_iter()
         .take(25)
         .map(|event| SetupActivity {
-            event_id: event.row.event_id,
+            event_id: event.row.event_id.into(),
             event_type: event.row.event_type,
             status: event.row.status,
             request_json: event.request_json,
             created_at: event.row.created_at,
         })
         .collect::<Vec<_>>();
-    let next = more
-        .then(|| activities.last())
-        .flatten()
-        .map(|last| afd_events::Cursor::after(last.created_at, &last.event_id).encode());
     CursorPage {
         items: activities,
         total: None,

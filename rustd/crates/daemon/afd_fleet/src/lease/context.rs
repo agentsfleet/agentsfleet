@@ -2,7 +2,7 @@
 use super::{Leases, sql, standing::LiveLease};
 use crate::{
     Result,
-    error::{lease_not_found, query, row_malformed, stale_fence},
+    error::{lease_not_found, query, stale_fence},
 };
 use af_context::{
     Checkpoint, CheckpointStore as _,
@@ -72,8 +72,8 @@ async fn scope(
     fence: u64,
 ) -> Result<Scope> {
     let row: LiveLease = sqlx::query_as(sql::standing::SELECT_STANDING_SHARED)
-        .bind(lease.as_str())
-        .bind(runner.as_str())
+        .bind(lease)
+        .bind(runner)
         .bind(sql::LEASE_STATUS_ACTIVE)
         .fetch_optional(connection)
         .await
@@ -82,7 +82,7 @@ async fn scope(
     if !row.holds(fence) {
         return Err(stale_fence());
     }
-    let fleet = Uuid7::parse(&row.fleet_id).map_err(row_malformed("runner.leases", "fleet_id"))?;
+    let fleet = row.fleet_id;
     Ok(Scope::Run {
         lease: lease.clone(),
         fleet,

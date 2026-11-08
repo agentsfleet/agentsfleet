@@ -2,7 +2,7 @@
 //! grant half's statements live in [`super::grant_sql`].
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
-//! (`schema/1730_fleet_approval_gates.sql`). Every statement that answers a
+//! (`schema/20261108122600_fleet_approval_gates.sql`). Every statement that answers a
 //! gate is guarded on it, stamps it with `now()`, and counts what still waits
 //! by it, so the `status` word and the marker cannot disagree about which rows
 //! are open.

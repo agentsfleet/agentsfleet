@@ -103,13 +103,13 @@ fn known(call: &Call, usage: DecisionUsage, uncached: u32, digest: &str) -> Resu
     };
     let charged = rated.charged;
     let settlement = Settlement {
-        work: WorkKey::FleetLease(Call::id(&call.original_lease_id, "original_lease_id")?),
+        work: WorkKey::FleetLease(call.original_lease_id.clone()),
         payer: Account {
-            tenant: Call::id(&call.tenant_id, "tenant_id")?,
-            workspace: Call::id(&call.workspace_id, "workspace_id")?,
+            tenant: call.tenant_id.clone(),
+            workspace: call.workspace_id.clone(),
         },
         attribution: Attribution::Fleet {
-            fleet: Call::id(&call.fleet_id, "fleet_id")?,
+            fleet: call.fleet_id.clone(),
             fleet_name: call.fleet_name.clone(),
             event_id: call.source_admission_id.clone(),
         },

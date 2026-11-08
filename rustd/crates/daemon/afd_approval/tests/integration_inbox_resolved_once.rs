@@ -12,6 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 use afd_approval::{Decision, Resolution};
 use jiff::Timestamp;
@@ -28,7 +29,7 @@ const LATECOMER: &str = "human:latecomer";
 const NOTE: &str = "looks right";
 
 /// When `action`'s gate was resolved, straight from the table.
-async fn resolved_at(lane: &Lane, action: &str) -> Option<Timestamp> {
+async fn resolved_at(lane: &Lane, action: &Uuid7) -> Option<Timestamp> {
     sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(
         "SELECT resolved_at FROM fleet.approval_gates WHERE action_id = $1",
     )
@@ -53,7 +54,7 @@ async fn test_resolution_happens_once() {
 
     let first = match lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault")
     {
@@ -74,7 +75,7 @@ async fn test_resolution_happens_once() {
 
     let second = lane
         .inbox
-        .resolve(&action, Decision::Denied, LATECOMER, NOTE, None)
+        .resolve(action.as_str(), Decision::Denied, LATECOMER, NOTE, None)
         .await
         .expect("the second resolve must not fault");
     let standing = match second {
@@ -97,7 +98,7 @@ async fn a_resolved_gate_refuses_an_unguarded_rewrite() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
     lane.inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -142,7 +143,7 @@ async fn an_auto_killed_gate_owes_its_run_nothing() {
 
     let standing = match lane
         .inbox
-        .resolve(&action, Decision::Approved, LATECOMER, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, LATECOMER, NOTE, None)
         .await
         .expect("the resolve must not fault")
     {

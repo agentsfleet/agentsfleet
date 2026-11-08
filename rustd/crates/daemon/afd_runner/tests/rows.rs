@@ -10,6 +10,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_db::test_util::{EventKind, FleetEventSeed, RunnerPolicy, mint_id};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -30,10 +31,10 @@ pub(crate) const EVENT: EventKind<'static> = EventKind {
 
 const INSERT_LEASE: &str = "\
 INSERT INTO runner.leases
-  (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token,
    lease_expires_at, status, posted_message_count, created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+VALUES ($1, $2, $3, $4, $5, $6,
         coalesce($9::timestamptz, now()), 'platform', 'test', 'test', coalesce($9::timestamptz, now()), 1,
         $7::timestamptz, $8, 0, coalesce($9::timestamptz, now()),
         coalesce($9::timestamptz, now()))";
@@ -42,7 +43,7 @@ const INSERT_SLOT: &str = "\
 INSERT INTO runner.fleet_slots
   (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
    created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, 1, $3::timestamptz, $4::timestamptz,
+VALUES ($1, $2, 1, $3::timestamptz, $4::timestamptz,
         coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))";
 
 const INSERT_ATTEMPT: &str = "\
@@ -52,21 +53,21 @@ INSERT INTO authoring.attempts
    lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count,
    output_token_count, reported_runtime_ms, last_activity_sequence, created_at,
    updated_at)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, $6::uuid, 1, 1, $1::text,
+VALUES ($1, $2, $3, $4, $5, $6, $6, 1, 1, $1::text,
         '{}', $7, $8::timestamptz, $8::timestamptz, $9, false, 0, 0, 0, 0, now(), now())";
 
 /// Where a lease lives and what it owes.
 pub(crate) struct LeaseRow<'a> {
     /// The lease's own id.
-    pub(crate) id: &'a str,
+    pub(crate) id: &'a Uuid7,
     /// The runner holding it.
-    pub(crate) runner: &'a str,
+    pub(crate) runner: &'a Uuid7,
     /// The fleet it claims.
-    pub(crate) fleet: &'a str,
+    pub(crate) fleet: &'a Uuid7,
     /// The fleet's workspace.
-    pub(crate) workspace: &'a str,
+    pub(crate) workspace: &'a Uuid7,
     /// The workspace's tenant.
-    pub(crate) tenant: &'a str,
+    pub(crate) tenant: &'a Uuid7,
     /// Its status, as stored.
     pub(crate) status: &'a str,
     /// When it lapses.
@@ -76,15 +77,14 @@ pub(crate) struct LeaseRow<'a> {
 }
 
 /// Seeds the event a lease executes, then the lease, and answers the event's
-/// row id, which Postgres minted.
-pub(crate) async fn lease(connection: &mut PgConnection, row: LeaseRow<'_>) -> String {
-    let producer_key = format!("evt_{}", row.id);
-    let mut seed = FleetEventSeed::new(row.fleet, row.workspace, &producer_key, EVENT);
+/// id, which the lease names.
+pub(crate) async fn lease(connection: &mut PgConnection, row: LeaseRow<'_>) -> Uuid7 {
+    let event = mint_id();
+    let mut seed = FleetEventSeed::new(row.fleet, row.workspace, &event, EVENT);
     if let Some(instant) = row.stamped_at {
         seed = seed.at(instant);
     }
-    let event = seed
-        .insert(&mut *connection)
+    seed.insert(&mut *connection)
         .await
         .expect("the leased event seeds");
     sqlx::query(INSERT_LEASE)
@@ -106,7 +106,7 @@ pub(crate) async fn lease(connection: &mut PgConnection, row: LeaseRow<'_>) -> S
 /// Seeds a fleet's slot, last held by `runner`.
 pub(crate) async fn slot(
     connection: &mut PgConnection,
-    (fleet, runner): (&str, &str),
+    (fleet, runner): (&Uuid7, &Uuid7),
     lease_expires_at: Timestamp,
     hold_expires_at: Option<Timestamp>,
     stamped_at: Option<Timestamp>,
@@ -135,9 +135,9 @@ pub(crate) struct AttemptRow<'a> {
 /// Seeds one authoring attempt `runner` ran, and answers its id.
 pub(crate) async fn attempt(
     connection: &mut PgConnection,
-    (runner, workspace, tenant): (&str, &str, &str),
+    (runner, workspace, tenant): (&Uuid7, &Uuid7, &Uuid7),
     row: AttemptRow<'_>,
-) -> String {
+) -> Uuid7 {
     let id = mint_id();
     sqlx::query(INSERT_ATTEMPT)
         .bind(&id)

@@ -29,13 +29,13 @@ pub(crate) async fn record(
         _ => return Ok(false),
     };
     sqlx::query(sql::RECORD_FAILURE)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(verdict::reason(reason))
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     let unresolved: bool = sqlx::query_scalar(sql::UNRESOLVED)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(dispatch_status::PENDING)
         .bind(dispatch_status::UNKNOWN)
         .fetch_one(&mut *connection)
@@ -49,7 +49,7 @@ pub(crate) async fn record(
     // Late refusals retain attempt evidence even when Stop already finished
     // the message. Only a real transition earns its terminal event.
     let changed = sqlx::query(crate::sql::message::FAIL)
-        .bind(attempt.draft_id.as_str())
+        .bind(&attempt.draft_id)
         .bind(attempt.message_sequence)
         .bind(FAILED)
         .bind(verdict::reason(visible))

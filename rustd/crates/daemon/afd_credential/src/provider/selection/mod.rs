@@ -8,7 +8,7 @@
 
 use af_core::id::Uuid7;
 
-use crate::error::{Result, provider_malformed, query, row_malformed};
+use crate::error::{Result, provider_malformed, query};
 use crate::provider::cap;
 use crate::provider::endpoint::OPENAI_COMPATIBLE;
 use crate::provider::sql;
@@ -23,28 +23,6 @@ const CONTEXT_PLATFORM: &str = "active platform default";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_WORKSPACE: &str = "tenant primary workspace";
-
-/// The table a malformed identifier is reported against.
-const TABLE_PLATFORM_DEFAULTS: &str = "model.platform_defaults";
-
-/// The table a malformed identifier is reported against.
-const TABLE_SELECTIONS: &str = "model.tenant_selections";
-
-/// The table a malformed identifier is reported against.
-///
-/// `pub(crate)` because the activation reads the same bridge row off its own
-/// locking statement and must report a malformed id against the same table
-/// (RULE UFS: one spelling, not two).
-pub(crate) const TABLE_WORKSPACES: &str = "identity.workspaces";
-
-/// The column a malformed identifier is reported against.
-const COLUMN_SOURCE_WORKSPACE: &str = "source_workspace_id";
-
-/// The column a malformed identifier is reported against.
-pub(crate) const COLUMN_TENANT_MODEL: &str = "tenant_model_id";
-
-/// The column a malformed identifier is reported against.
-pub(crate) const COLUMN_ID: &str = "id";
 
 /// A selection pointing at a registry row that came back without its model.
 const FIELD_MODEL_NAME: &str = "model_name";
@@ -117,7 +95,7 @@ pub struct PlatformDefault {
 /// One [`sql::SELECT_TENANT_SELECTION`] row, by the names it gives its columns.
 #[derive(Debug, sqlx::FromRow)]
 pub(crate) struct SelectionRow {
-    tenant_model_id: Option<String>,
+    tenant_model_id: Option<Uuid7>,
     model_name: Option<String>,
     secret_ref: Option<String>,
     provider: Option<String>,
@@ -139,8 +117,7 @@ impl SelectionRow {
         let Some(pointer) = self.tenant_model_id else {
             return Ok(Selection::Platform);
         };
-        let tenant_model_id =
-            Uuid7::parse(&pointer).map_err(row_malformed(TABLE_SELECTIONS, COLUMN_TENANT_MODEL))?;
+        let tenant_model_id = pointer;
         let (Some(model), Some(secret_ref)) = (self.model_name, self.secret_ref) else {
             return Err(provider_malformed(FIELD_MODEL_NAME));
         };
@@ -158,7 +135,7 @@ impl SelectionRow {
 #[derive(Debug, sqlx::FromRow)]
 struct PlatformDefaultRow {
     provider: String,
-    source_workspace_id: String,
+    source_workspace_id: Uuid7,
     model_name: Option<String>,
     base_url: Option<String>,
     context_cap_tokens: Option<i32>,
@@ -177,10 +154,7 @@ impl PlatformDefaultRow {
             .ok_or_else(|| provider_malformed(FIELD_PLATFORM_MODEL))?;
         Ok(PlatformDefault {
             provider: self.provider.into_boxed_str(),
-            source_workspace_id: Uuid7::parse(&self.source_workspace_id).map_err(row_malformed(
-                TABLE_PLATFORM_DEFAULTS,
-                COLUMN_SOURCE_WORKSPACE,
-            ))?,
+            source_workspace_id: self.source_workspace_id.clone(),
             model: model.into_boxed_str(),
             base_url: self.base_url.map(String::into_boxed_str),
             context_cap_tokens: cap::stored(self.context_cap_tokens.unwrap_or_default()),
@@ -203,7 +177,7 @@ impl Providers {
     pub async fn selection(&self, tenant_id: &Uuid7) -> Result<Option<Selection>> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query_as::<_, SelectionRow>(sql::SELECT_TENANT_SELECTION)
-            .bind(tenant_id.as_str())
+            .bind(tenant_id)
             .bind(OPENAI_COMPATIBLE)
             .fetch_optional(&mut *connection)
             .await
@@ -236,19 +210,14 @@ impl Providers {
     /// invariant, since signup creates the primary workspace, and permanent.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, and an `id` column that is
-    /// not an identifier.
+    /// Reports a datastore that would not answer, and a row it cannot decode.
     pub(crate) async fn primary_workspace(&self, tenant_id: &Uuid7) -> Result<Option<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
-        let found: Option<String> = sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
-            .bind(tenant_id.as_str())
+        sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
+            .bind(tenant_id)
             .fetch_optional(&mut *connection)
             .await
-            .map_err(query(CONTEXT_WORKSPACE))?;
-
-        found
-            .map(|id| Uuid7::parse(&id).map_err(row_malformed(TABLE_WORKSPACES, COLUMN_ID)))
-            .transpose()
+            .map_err(query(CONTEXT_WORKSPACE))
     }
 }
 

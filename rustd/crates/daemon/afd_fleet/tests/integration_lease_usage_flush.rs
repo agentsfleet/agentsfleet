@@ -39,11 +39,11 @@ const OUTPUT_TOKENS: u32 = 100;
 const REQUEST_LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NOT NULL), \
      count(DISTINCT charged_nanos), COALESCE(min(seq), -1), COALESCE(max(seq), -1), \
      COALESCE(sum(input_token_count), 0)::BIGINT, COALESCE(min(charged_nanos), 0) \
-     FROM billing.usage_lines WHERE work_id = $1::uuid AND seq < $2";
+     FROM billing.usage_lines WHERE work_id = $1 AND seq < $2";
 
 /// Every nano this lease's lines charged, runtime lines included.
 const CHARGED: &str = "SELECT COALESCE(sum(charged_nanos), 0)::BIGINT \
-     FROM billing.usage_lines WHERE work_id = $1::uuid";
+     FROM billing.usage_lines WHERE work_id = $1";
 
 /// Requests `from..to`, as a runner numbers them.
 fn requests(held: &Held, from: usize, to: usize) -> RequestLines {
@@ -68,7 +68,7 @@ async fn renew(held: &Held, plane: &afd_fleet::lease::Plane, from: usize, to: us
     plane
         .renew(
             &held.runner,
-            held.issued.lease_id.as_str(),
+            &held.issued.lease_id,
             RenewRequest {
                 requests: requests(held, from, to),
             },
@@ -90,7 +90,7 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
         .await;
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let plane = held.fixtures.plane();
-    let lease = held.issued.lease_id.as_str();
+    let lease = &held.issued.lease_id;
 
     renew(&held, &plane, 0, LINES_MAX).await;
     // The answer was lost, so the runner sends the same body again.

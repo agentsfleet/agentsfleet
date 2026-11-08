@@ -4,6 +4,7 @@
 //! rungs, the climb, the observe-only path — and this module decides HOW each
 //! reading is taken.
 
+use af_core::id::Uuid7;
 use core::time::Duration;
 use std::time::Instant;
 
@@ -52,19 +53,19 @@ const POSTGRES: &str = "postgres";
 const SELECT_ADMISSION_HEAD: &str = include_str!("sql/select_admission_head.sql");
 
 /// Median candidate discovery latency over the serving query.
-pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<f64> {
+pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &Uuid7) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
     let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        let _candidates: Vec<String> = sqlx::query_scalar(SELECT_CANDIDATES)
+        let _candidates: Vec<Uuid7> = sqlx::query_scalar(SELECT_CANDIDATES)
             .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
             .bind(runner)
             .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
             .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
             .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-            .bind(Vec::<String>::new())
-            .bind(None::<&str>)
+            .bind(Vec::<Uuid7>::new())
+            .bind(None::<&Uuid7>)
             .bind(af_wire::task::CAPABILITY)
             .bind(af_wire::task::TaskState::Ready.as_str())
             .bind(af_wire::task::TaskState::Running.as_str())
@@ -83,12 +84,12 @@ pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<
 }
 
 /// Median indexed head lookup latency over the unsettled ledger.
-pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &str) -> Result<f64> {
+pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &Uuid7) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
     let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        let _head: Option<String> = sqlx::query_scalar(SELECT_ADMISSION_HEAD)
+        let _head: Option<Uuid7> = sqlx::query_scalar(SELECT_ADMISSION_HEAD)
             .bind(fleet)
             .fetch_optional(&mut *connection)
             .await?;

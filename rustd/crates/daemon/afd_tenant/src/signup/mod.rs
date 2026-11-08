@@ -188,7 +188,7 @@ impl Signups {
             .map_err(&raise)?;
 
         sqlx::query(sql::INSERT_TENANT)
-            .bind(tenant_id.as_str())
+            .bind(&tenant_id)
             .bind(tenant_name)
             .execute(&mut *transaction)
             .await
@@ -208,7 +208,7 @@ impl Signups {
             .await?;
 
         sqlx::query(sql::INSERT_WALLET)
-            .bind(tenant_id.as_str())
+            .bind(&tenant_id)
             .bind(STARTER_CREDIT_NANOS)
             .execute(&mut *transaction)
             .await
@@ -222,9 +222,9 @@ impl Signups {
             "a personal account was opened"
         );
         Ok(Bootstrapped {
-            user_id: user_id.as_str().to_owned(),
-            tenant_id: tenant_id.as_str().to_owned(),
-            workspace_id: workspace_id.as_str().to_owned(),
+            user_id,
+            tenant_id,
+            workspace_id,
             workspace_name,
             created: true,
         })
@@ -241,8 +241,8 @@ impl Signups {
     ) -> Result<()> {
         let raise = error::query(CONTEXT_OPEN);
         sqlx::query(sql::INSERT_USER)
-            .bind(user_id.as_str())
-            .bind(tenant_id.as_str())
+            .bind(user_id)
+            .bind(tenant_id)
             .bind(account.oidc_subject)
             .bind(account.email)
             .bind(account.display_name)
@@ -251,9 +251,9 @@ impl Signups {
             .map_err(&raise)?;
 
         sqlx::query(sql::INSERT_MEMBERSHIP)
-            .bind(membership_id.as_str())
-            .bind(tenant_id.as_str())
-            .bind(user_id.as_str())
+            .bind(membership_id)
+            .bind(tenant_id)
+            .bind(user_id)
             .bind(ROLE_OWNER)
             .execute(&mut **transaction)
             .await
@@ -277,8 +277,8 @@ impl Signups {
     ) -> Result<String> {
         let name = name::generate(&self.entropy)?;
         sqlx::query(crate::sql::workspace::INSERT_WORKSPACE)
-            .bind(workspace.as_str())
-            .bind(tenant.as_str())
+            .bind(workspace)
+            .bind(tenant)
             .bind(&name)
             .execute(&mut **transaction)
             .await
@@ -290,8 +290,8 @@ impl Signups {
 /// The account a subject already owns, by the names the statement aliases.
 #[derive(Debug, sqlx::FromRow)]
 struct ExistingRow {
-    user_id: String,
-    tenant_id: String,
-    workspace_id: String,
+    user_id: Uuid7,
+    tenant_id: Uuid7,
+    workspace_id: Uuid7,
     workspace_name: String,
 }

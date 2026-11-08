@@ -1,7 +1,7 @@
-SELECT d.id::text AS id,
-       d.workspace_id::text AS workspace_id,
-       d.tenant_id::text AS tenant_id,
-       d.user_id::text AS user_id
+SELECT d.id AS id,
+       d.workspace_id AS workspace_id,
+       d.tenant_id AS tenant_id,
+       d.user_id AS user_id
   FROM authoring.drafts d
   JOIN authoring.messages m ON m.draft_id = d.id
  WHERE d.status = $1 AND m.status = $2 AND m.sequence > d.cancelled_through_sequence

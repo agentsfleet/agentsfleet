@@ -2,7 +2,7 @@ WITH lease AS MATERIALIZED (
     SELECT l.id, l.fleet_id, l.posted_message_count, l.fencing_token, l.status,
            l.lease_expires_at
     FROM runner.leases l
-    WHERE l.id = $1::uuid
+    WHERE l.id = $1
     FOR NO KEY UPDATE OF l
 ), live AS MATERIALIZED (
     SELECT lease.id

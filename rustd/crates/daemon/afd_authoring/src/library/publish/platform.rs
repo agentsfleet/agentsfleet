@@ -97,12 +97,12 @@ async fn insert(
     label: &str,
     candidate: &crate::types::Candidate,
 ) -> Result<()> {
-    let id: Option<String> = sqlx::query_scalar(sql::INSERT_PLATFORM)
-        .bind(library.as_str())
+    let id: Option<Uuid7> = sqlx::query_scalar(sql::INSERT_PLATFORM)
+        .bind(library)
         .bind(PLATFORM_DRAFT)
         .bind(label)
         .bind(candidate.definition.description())
-        .bind(revision.as_str())
+        .bind(revision)
         .bind(1_i64)
         .bind(candidate.definition.runtime().name().as_str())
         .fetch_optional(connection)

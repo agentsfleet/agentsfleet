@@ -9,7 +9,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::id::Uuid7;
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_api_wire::admin::RunnerAdminAction;
 use afd_fleet::lease::Billed;
@@ -108,14 +107,13 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         .record_received(&held)
         .await
         .expect("the narrative log opens");
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let issued = fixtures
         .leases()
         .issue(
             &runner,
             &held,
             Billed {
-                tenant_id: &tenant_id,
+                tenant_id: &tenant,
                 posture: POSTURE,
                 provider: PROVIDER,
                 model: MODEL,
@@ -125,7 +123,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         .await
         .expect("the lease row must be written")
         .expect("the claim is still held");
-    let lease = issued.lease_id.as_str().to_owned();
+    let lease = issued.lease_id;
 
     fixtures
         .runners()

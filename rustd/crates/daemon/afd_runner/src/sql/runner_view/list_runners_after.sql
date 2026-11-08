@@ -1,4 +1,4 @@
-SELECT r.id::text AS id, r.host_id, r.sandbox_tier, r.status, r.labels::text AS labels,
+SELECT r.id AS id, r.host_id, r.sandbox_tier, r.status, r.labels::text AS labels,
        r.last_seen_at, r.created_at, statement_timestamp() AS checked_at,
        EXISTS (
          SELECT 1 FROM runner.leases l
@@ -9,8 +9,8 @@ SELECT r.id::text AS id, r.host_id, r.sandbox_tier, r.status, r.labels::text AS 
        r.capability_report::text AS capability_report, r.degraded_reason,
        r.sandbox_config::text AS sandbox_config,
        r.durable_tasks_enabled,
-       r.decision_platform_model_id::text AS decision_model_id
+       r.decision_platform_model_id AS decision_model_id
 FROM runner.runners r
-WHERE (r.created_at, r.id) < ($2::timestamptz, $3::uuid)
+WHERE (r.created_at, r.id) < ($2::timestamptz, $3)
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT $4::bigint

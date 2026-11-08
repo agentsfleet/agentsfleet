@@ -1,5 +1,5 @@
-SELECT id::text, page_number, digest, body FROM fleet.task_checkpoint_pages
-WHERE task_checkpoint_id = $1::uuid AND NOT $3
+SELECT id, page_number, digest, body FROM fleet.task_checkpoint_pages
+WHERE task_checkpoint_id = $1 AND NOT $3
 UNION ALL
-SELECT id::text, page_number, digest, body FROM fleet.task_base_pages WHERE task_base_id = $2::uuid AND $3
+SELECT id, page_number, digest, body FROM fleet.task_base_pages WHERE task_base_id = $2 AND $3
 ORDER BY page_number

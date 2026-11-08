@@ -7,6 +7,7 @@
 )]
 
 use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_dragonfly::{DragonflyConfig, DragonflyRole};
@@ -26,13 +27,13 @@ const LIVE_INDEX: u64 = 0x2000_0000;
 
 /// The fleet's admission rows, with whether each carries its receipt.
 const SELECT_ADMISSIONS: &str =
-    "SELECT id::text, delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1::uuid";
+    "SELECT id, delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1";
 
 #[test]
 fn test_an_identifier_passes_the_schemas_version_check() {
-    let id = identifier(KIND_FLEET, 0);
+    let id = identifier(KIND_FLEET, 0).expect("index 0 yields an identifier");
 
-    let groups: Vec<&str> = id.split('-').collect();
+    let groups: Vec<&str> = id.as_str().split('-').collect();
     assert_eq!(groups.len(), 5, "a UUID has five groups, got {id}");
     assert_eq!(
         groups.iter().map(|g| g.len()).collect::<Vec<_>>(),
@@ -44,16 +45,17 @@ fn test_an_identifier_passes_the_schemas_version_check() {
             .is_some_and(|version| version.starts_with('7')),
         "the character after the second dash must be 7 or `fleet.fleets` refuses the row: {id}"
     );
-    assert!(id.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
+    assert!(
+        id.as_str()
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-')
+    );
 }
 
 #[test]
 fn test_the_three_kinds_never_collide_for_one_index() {
-    let (t, w, f) = (
-        identifier(KIND_TENANT, 9),
-        identifier(KIND_WORKSPACE, 9),
-        identifier(KIND_FLEET, 9),
-    );
+    let id = |kind| identifier(kind, 9).expect("index 9 yields an identifier");
+    let (t, w, f) = (id(KIND_TENANT), id(KIND_WORKSPACE), id(KIND_FLEET));
     assert_ne!(t, w);
     assert_ne!(w, f);
     assert_ne!(t, f);
@@ -61,11 +63,9 @@ fn test_the_three_kinds_never_collide_for_one_index() {
 
 #[test]
 fn test_two_indexes_never_collide_within_a_kind() {
-    assert_ne!(identifier(KIND_FLEET, 1), identifier(KIND_FLEET, 2));
-    assert_ne!(
-        identifier(KIND_FLEET, 0),
-        identifier(KIND_FLEET, u32::MAX.into())
-    );
+    let fleet = |index| identifier(KIND_FLEET, index).expect("the index yields an identifier");
+    assert_ne!(fleet(1), fleet(2));
+    assert_ne!(fleet(0), fleet(u32::MAX.into()));
 }
 
 #[tokio::test]
@@ -93,7 +93,7 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     .expect("a ready fleet seeds");
 
     let mut connection = database.acquire().await.expect("a connection");
-    let rows: Vec<(String, bool)> = sqlx::query_as(SELECT_ADMISSIONS)
+    let rows: Vec<(Uuid7, bool)> = sqlx::query_as(SELECT_ADMISSIONS)
         .bind(&seeded.fleet)
         .fetch_all(&mut *connection)
         .await
@@ -132,13 +132,12 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
         .expect("repeat delivery");
     assert_eq!(first.delivery, afd_fleet::lease::Delivery::First);
     assert_eq!(again.delivery, afd_fleet::lease::Delivery::Repeat);
-    let delivered: bool = sqlx::query_scalar(
-        "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid",
-    )
-    .bind(admission)
-    .fetch_one(&mut *database.acquire().await.expect("connection"))
-    .await
-    .expect("durable delivery");
+    let delivered: bool =
+        sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
+            .bind(admission)
+            .fetch_one(&mut *database.acquire().await.expect("connection"))
+            .await
+            .expect("durable delivery");
     assert!(delivered);
     sweep::everything(&database, &prefix)
         .await

@@ -22,7 +22,7 @@ async fn test_event_delete_cascades_tool_call_details() {
     assert_eq!(status, 200);
     execute(
         &run,
-        "DELETE FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2",
+        "DELETE FROM fleet.events WHERE fleet_id = $1 AND event_id = $2",
     )
     .await;
     assert_eq!(rows(&run).await, 0);
@@ -43,7 +43,7 @@ async fn test_tool_call_details_grants_allow_runtime() {
             &format!(
                 "SELECT (has_table_privilege('api_runtime', \
                  'fleet.tool_calls', '{privilege}') \
-                 AND $1 <> '' AND $2 <> '')::int::bigint"
+                 AND $1 IS NOT NULL AND $2 IS NOT NULL)::int::bigint"
             ),
             None,
         )

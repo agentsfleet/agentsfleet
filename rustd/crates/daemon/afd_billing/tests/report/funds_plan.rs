@@ -22,7 +22,7 @@ const FOREIGN_HISTORY: u32 = 64;
 /// The tenant's wallet, which the funds read starts from.
 const INSERT_WALLET: &str = "\
 INSERT INTO billing.wallets (tenant_id, balance_nanos, created_at, updated_at)
-VALUES ($1::uuid, 0, now(), now())";
+VALUES ($1, 0, now(), now())";
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
@@ -62,12 +62,12 @@ async fn the_funds_read_scans_only_unsettled_lines_however_long_the_history() {
 
 async fn wallet(f: &Fixture) {
     let mut connection = f.admin.acquire().await.unwrap();
-    TenantSeed::new(f.tenant.as_str())
+    TenantSeed::new(&f.tenant)
         .insert(&mut *connection)
         .await
         .unwrap();
     sqlx::query(INSERT_WALLET)
-        .bind(f.tenant.as_str())
+        .bind(&f.tenant)
         .execute(&mut *connection)
         .await
         .unwrap();

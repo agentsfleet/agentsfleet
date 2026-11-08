@@ -52,9 +52,8 @@ const SUBJECT: &str = "user_2events";
 /// A well-formed fleet identifier the fixture addresses.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 
-/// An event identifier as a producer writes one — a Dragonfly stream id, which is
-/// exactly why nothing about its shape can be validated.
-const EVENT: &str = "1785699668169-0";
+/// A well-formed event identifier: the `UUIDv7` an event's row is keyed by.
+const EVENT: &str = "01924f4e-0000-7000-8000-0000000e7e01";
 
 /// The longest event identifier the expanded read will look up.
 const EVENT_ID_MAX_LEN: usize = 256;
@@ -79,6 +78,13 @@ const BAD_WORKSPACE_ID: Refusal = (
 const fn malformed(detail: &'static str) -> Refusal {
     (StatusCode::BAD_REQUEST, detail, error_code::INVALID_REQUEST)
 }
+
+/// What an event segment that names no event earns, before any store is asked.
+const EVENT_ABSENT: Refusal = (
+    StatusCode::NOT_FOUND,
+    "Event not found",
+    error_code::EVENT_NOT_FOUND,
+);
 
 /// What an unreachable datastore earns. Spelled out rather than imported:
 /// `afd_events` keeps the sentence private, and a byte-parity suite wants its
@@ -177,18 +183,18 @@ async fn every_route_reaches_the_store_once_its_path_is_valid() {
     }
 }
 
-/// An event identifier too long to look up is refused, and one at the bound
-/// is not.
+/// An event identifier too long to look up is malformed, and one at the bound
+/// that is not a `UUIDv7` is an absent event.
 ///
-/// `event_id` is TEXT written by the producer, so there is no shape to check —
-/// the bound only refuses an identifier long enough to be an attack on the
-/// index rather than a lookup. Both sides in one case, because the off-by-one a
-/// `>=` in place of a `>` would introduce is invisible from either half alone:
-/// it would refuse a legitimate identifier, and read as a missing event.
+/// The bound refuses an identifier long enough to be an attack on the index
+/// rather than a lookup; inside it, a segment that is not a `UUIDv7` names no
+/// event and earns the same 404 a missing one does. Both sides in one case,
+/// because the off-by-one a `>=` in place of a `>` would introduce is invisible
+/// from either half alone: it would answer a 400 where a 404 belongs.
 #[tokio::test]
-async fn an_event_id_is_looked_up_up_to_the_length_bound_and_not_past_it() {
+async fn an_event_id_past_the_length_bound_is_malformed_and_one_at_it_is_absent() {
     let at_bound = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(EVENT_ID_MAX_LEN));
-    assert_refusal(authorised(&at_bound).await, DATASTORE_DOWN, "256 bytes").await;
+    assert_refusal(authorised(&at_bound).await, EVENT_ABSENT, "256 bytes").await;
 
     let past_it = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(EVENT_ID_MAX_LEN + 1));
     let expected = malformed("event_id must be 1-256 bytes");
@@ -209,8 +215,8 @@ fn the_absent_event_code_is_the_events_own_and_not_the_fleets() {
 
 /// The expanded read's template does not shadow the live tail's.
 ///
-/// `/events/stream` and `/events/{event_id}` are the same depth, and `event_id`
-/// is free-form TEXT — nothing about its shape excludes the word `stream`. What
+/// `/events/stream` and `/events/{event_id}` are the same depth, and the router
+/// reads nothing of `event_id`'s shape — nothing there excludes the word `stream`. What
 /// keeps them apart is that the router resolves a static segment ahead of a
 /// parameter, and what is pinned is that the two TEMPLATES the route table
 /// declares are still resolvable that way.
@@ -241,7 +247,7 @@ async fn the_expanded_reads_template_does_not_shadow_the_live_tail() {
         "the live tail keeps its own path"
     );
 
-    // And the parameter binds the WHOLE segment, separator and all.
+    // And the parameter binds the WHOLE segment, separators and all.
     let read = ask(EVENT).await;
     assert_eq!(read.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(read.into_body(), usize::MAX)

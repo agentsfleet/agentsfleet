@@ -4,6 +4,7 @@ use super::{
     dependency_waits::{seed_wait, wait_snapshot},
     fixture::Decisions,
 };
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_fleet::task::{CompletionScope, TaskLifecycle as _, VerifiedCompletion};
 
@@ -16,11 +17,12 @@ async fn completions_preserve_identity_attempt_order_and_cooldown_without_admiss
 async fn completions(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
-    seed_wait(case, &task.task_id, true).await;
+    let task_id = id(&task.task_id);
+    seed_wait(case, &task_id, true).await;
     let before = case.counts().await;
     let completion = completion(case);
     mismatches(&fixture, &completion).await;
-    fanout(&fixture, &task.task_id, &completion).await;
+    fanout(&fixture, &task_id, &completion).await;
     assert_eq!(case.counts().await, before);
     fixture.model.finish().await.expect("fixture cleanup");
 }
@@ -60,7 +62,7 @@ async fn mismatches(fixture: &Decisions<'_>, completion: &VerifiedCompletion) {
         );
     }
     let mut foreign = completion.clone();
-    foreign.scope = CompletionScope::Workspace(id(&mint_id()));
+    foreign.scope = CompletionScope::Workspace(mint_id());
     assert_eq!(
         fixture
             .tasks
@@ -70,7 +72,7 @@ async fn mismatches(fixture: &Decisions<'_>, completion: &VerifiedCompletion) {
         0
     );
     let mut other_fleet = case.scope.clone();
-    other_fleet.fleet_id = id(&mint_id());
+    other_fleet.fleet_id = mint_id();
     foreign.scope = CompletionScope::Fleet(other_fleet);
     assert_eq!(
         fixture
@@ -82,7 +84,7 @@ async fn mismatches(fixture: &Decisions<'_>, completion: &VerifiedCompletion) {
     );
 }
 
-async fn fanout(fixture: &Decisions<'_>, task: &str, completion: &VerifiedCompletion) {
+async fn fanout(fixture: &Decisions<'_>, task: &Uuid7, completion: &VerifiedCompletion) {
     let case = fixture.case;
     // Earlier attempts and unrelated workflows may be retained, but cannot signal this wait.
     let mut older = completion.clone();
@@ -134,7 +136,7 @@ async fn fanout(fixture: &Decisions<'_>, task: &str, completion: &VerifiedComple
     cooldown(fixture, task).await;
 }
 
-async fn cooldown(fixture: &Decisions<'_>, task: &str) {
+async fn cooldown(fixture: &Decisions<'_>, task: &Uuid7) {
     let case = fixture.case;
     let result = fixture
         .tasks
@@ -165,7 +167,7 @@ async fn cooldown(fixture: &Decisions<'_>, task: &str) {
             .expect("fixture consumed_admission_id")
             .is_null()
     );
-    let cooling: bool = sqlx::query_scalar("SELECT due_at >= cooldown_expires_at AND due_at > now() FROM fleet.task_waits WHERE task_id=$1::uuid")
+    let cooling: bool = sqlx::query_scalar("SELECT due_at >= cooldown_expires_at AND due_at > now() FROM fleet.task_waits WHERE task_id=$1")
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer"))
         .await.expect("cooldown retained");
     assert!(cooling);

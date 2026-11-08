@@ -105,7 +105,12 @@ pub(crate) async fn read<D: Services>(
     let call = parse_call_id(&path.call).ok_or_else(not_found)?;
     let found = services
         .events()
-        .tool_call(&owned.workspace, &fleet, &path.event, call)
+        .tool_call(
+            &owned.workspace,
+            &fleet,
+            &af_core::id::Uuid7::parse(&path.event).map_err(|_text| not_found())?,
+            call,
+        )
         .await
         .map_err(Refusal::at(EVENT_TOOL_CALL))?;
     let row = found.ok_or_else(not_found)?;

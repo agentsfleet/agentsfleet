@@ -98,7 +98,7 @@ pub(crate) struct Round {
     pub(crate) admin: Uuid7,
     pub(crate) workspace: Uuid7,
     /// The tenant both workspaces belong to.
-    tenant: String,
+    tenant: Uuid7,
     vault: Vault,
     database: Db,
     lane: TestDatabase,
@@ -150,8 +150,8 @@ impl Round {
 
         Self {
             connectors,
-            admin: Uuid7::parse(&admin).expect("a minted id is a v7 spelling"),
-            workspace: Uuid7::parse(&workspace).expect("a minted id is a v7 spelling"),
+            admin,
+            workspace,
             tenant,
             vault,
             database,
@@ -172,7 +172,7 @@ impl Round {
         let sealed = Sealer::new()
             .seal(&kek, &Aad::new(workspace.as_str(), name), body)
             .expect("the fixture body seals");
-        insert_secret(&self.database, workspace.as_str(), name, &sealed).await;
+        insert_secret(&self.database, workspace, name, &sealed).await;
     }
 
     /// The grant store the connectors write through, for verbs a round trip
@@ -196,8 +196,8 @@ impl Round {
     /// Drops this fixture's rows; the workspace cascade takes the secrets.
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        for workspace in [self.admin.as_str(), self.workspace.as_str()] {
-            sqlx::query("DELETE FROM identity.workspaces WHERE id = $1::uuid")
+        for workspace in [&self.admin, &self.workspace] {
+            sqlx::query("DELETE FROM identity.workspaces WHERE id = $1")
                 .bind(workspace)
                 .execute(&mut *connection)
                 .await
@@ -227,7 +227,7 @@ async fn queue() -> Dragonfly {
 }
 
 /// One tenant and its workspaces, which the vault's foreign key requires.
-async fn seed_rows(database: &Db, tenant: &str, workspaces: &[&str]) {
+async fn seed_rows(database: &Db, tenant: &Uuid7, workspaces: &[&Uuid7]) {
     let mut connection = database.acquire().await.expect("a pooled connection");
     TenantSeed::new(tenant)
         .name("a connect fixture")
@@ -245,7 +245,7 @@ async fn seed_rows(database: &Db, tenant: &str, workspaces: &[&str]) {
 /// Writes one sealed row the way an operator's save writes it.
 async fn insert_secret(
     database: &Db,
-    workspace: &str,
+    workspace: &Uuid7,
     name: &str,
     sealed: &af_crypto::envelope::Envelope,
 ) {
@@ -254,7 +254,7 @@ async fn insert_secret(
         "INSERT INTO vault.secrets \
            (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag, \
             secret_nonce, secret_ciphertext, secret_tag, kek_version, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
     )
     .bind(mint_id())
     .bind(workspace)

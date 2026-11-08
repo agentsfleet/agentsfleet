@@ -25,7 +25,7 @@ async fn private_stream_omits_text_and_ends_after_identity_only_deletion() {
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
     let frame = open.frame().await;
     assert!(frame.contains("event: draft.deleted"), "{frame}");
-    assert!(frame.contains(&open.draft));
+    assert!(frame.contains(open.draft.as_str()));
     assert!(!frame.contains("candidate_id"));
     assert!(!frame.contains("sequence"));
     open.closed().await;
@@ -38,8 +38,8 @@ async fn revoking_the_person_closes_an_existing_private_stream() {
     let mut open = Open::create().await;
     assert!(open.frame().await.contains("event: message.accepted"));
     assert!(open.frame().await.contains("event: candidate.changed"));
-    sqlx::query("DELETE FROM identity.users WHERE id=$1::uuid")
-        .bind(open.fixture.owner.as_str())
+    sqlx::query("DELETE FROM identity.users WHERE id=$1")
+        .bind(&open.fixture.owner)
         .execute(
             &mut *open
                 .fixture
@@ -75,11 +75,11 @@ async fn idle_private_stream_sends_an_observable_heartbeat_and_still_rechecks_ac
         "{frame}"
     );
     assert!(
-        !frame.contains(&open.draft),
+        !frame.contains(open.draft.as_str()),
         "heartbeat carries no private identifiers"
     );
-    sqlx::query("DELETE FROM identity.users WHERE id=$1::uuid")
-        .bind(open.fixture.owner.as_str())
+    sqlx::query("DELETE FROM identity.users WHERE id=$1")
+        .bind(&open.fixture.owner)
         .execute(
             &mut *open
                 .fixture

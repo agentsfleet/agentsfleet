@@ -14,7 +14,7 @@ use dashmap::try_result::TryResult;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::job;
+use super::{answer, job};
 use crate::lanes::{Destination, Job, LANE_DEPTH, Lanes};
 use crate::poster::{Deliver, Posters, Verdict};
 
@@ -118,7 +118,7 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
     let delivered = received
         .try_recv()
         .expect("the replacement receives the waiting job");
-    assert_eq!(delivered.event_id, format!("answer-{next}"));
+    assert_eq!(delivered.event_id, answer(next));
     assert_eq!(delivered.answer, format!("answer {next}"));
     assert!(matches!(
         received.try_recv(),
@@ -130,7 +130,7 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
                 .try_recv()
                 .expect("original queued jobs survive")
                 .event_id,
-            format!("answer-{n}")
+            answer(n)
         );
     }
     assert!(matches!(
@@ -156,7 +156,7 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
             .try_recv()
             .expect("the first queued job remains")
             .event_id,
-        "answer-0"
+        answer(0)
     );
     assert!(matches!(
         dispatch.as_mut().poll(&mut context),
@@ -170,7 +170,7 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
                 .try_recv()
                 .expect("each queued job arrives once")
                 .event_id,
-            format!("answer-{n}")
+            answer(n)
         );
     }
     assert!(matches!(
@@ -199,7 +199,7 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
                 .try_recv()
                 .expect("cancellation preserves queued jobs")
                 .event_id,
-            format!("answer-{n}")
+            answer(n)
         );
     }
     assert!(matches!(
@@ -215,7 +215,7 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
             .try_recv()
             .expect("a later send can use the lane")
             .event_id,
-        format!("answer-{cancelled}")
+        answer(cancelled)
     );
     lane.lanes.drain().await;
 }

@@ -6,6 +6,7 @@ use super::super::{
     interpretation::choose,
     reply::known_result,
 };
+use af_core::id::Uuid7;
 use af_wire::{
     decision::DecisionOutcome,
     task::{DecisionReceipt, DecisionTaskVersion, TaskDisposition, TaskReport, TaskState},
@@ -99,8 +100,8 @@ pub(super) fn assert_state(snapshot: &TaskSnapshot, state: TaskState, checkpoint
     assert!(snapshot.context.usage.running_nanos > 0);
 }
 
-pub(super) async fn checkpoint_row(case: &Case, checkpoint: &str) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(c) FROM fleet.task_checkpoints c WHERE id=$1::uuid")
+pub(super) async fn checkpoint_row(case: &Case, checkpoint: &Uuid7) -> Value {
+    sqlx::query_scalar("SELECT to_jsonb(c) FROM fleet.task_checkpoints c WHERE id=$1")
         .bind(checkpoint)
         .fetch_one(
             &mut *case
@@ -115,9 +116,9 @@ pub(super) async fn checkpoint_row(case: &Case, checkpoint: &str) -> Value {
         .expect("committed checkpoint retained")
 }
 
-pub(super) async fn counts(case: &Case, task: &str) -> (i64, i64, i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.admissions WHERE task_id=$1::uuid AND producer='task_continuation' AND settled_at IS NULL), (SELECT COALESCE(max(task_generation),0) FROM fleet.admissions WHERE task_id=$1::uuid AND producer='task_continuation' AND settled_at IS NULL), (SELECT count(*) FROM fleet.task_waits WHERE task_id=$1::uuid AND cancelled_at IS NULL), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$2::uuid), (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$3::uuid)")
-        .bind(task).bind(case.held.lease_key.as_str()).bind(&case.held.fleet)
+pub(super) async fn counts(case: &Case, task: &Uuid7) -> (i64, i64, i64, i64, i64) {
+    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.admissions WHERE task_id=$1 AND producer='task_continuation' AND settled_at IS NULL), (SELECT COALESCE(max(task_generation),0) FROM fleet.admissions WHERE task_id=$1 AND producer='task_continuation' AND settled_at IS NULL), (SELECT count(*) FROM fleet.task_waits WHERE task_id=$1 AND cancelled_at IS NULL), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$2), (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$3)")
+        .bind(task).bind(&case.held.lease_key).bind(&case.held.fleet)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("ledger observer"))
         .await.expect("native continuation, waits, accounting and admissions")
 }

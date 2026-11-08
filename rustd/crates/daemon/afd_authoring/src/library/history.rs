@@ -15,7 +15,7 @@ use sqlx::Connection as _;
 /// [`sql::HISTORY`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct Summary {
-    id: String,
+    id: Uuid7,
     revision: i64,
     canonical_digest: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -48,9 +48,9 @@ impl Setup {
         ))?;
         let after = paging::boundary(request.starting_after.as_deref(), &binding)?;
         let rows: Vec<Summary> = sqlx::query_as(sql::HISTORY)
-            .bind(entry.id.as_str())
+            .bind(&entry.id)
             .bind(after.as_ref().map(|(at, _)| at.to_sqlx()))
-            .bind(after.as_ref().map(|(_, id)| id.as_str()))
+            .bind(after.as_ref().map(|(_, id)| id))
             .bind(i64::from(request.limit) + 1)
             .fetch_all(&mut *tx)
             .await
@@ -62,7 +62,7 @@ impl Setup {
             .into_iter()
             .take(usize::try_from(request.limit).unwrap_or(usize::MAX))
         {
-            let id = Uuid7::parse(&row.id)?;
+            let id = row.id.clone();
             next_cursor = Some(paging::cursor(&binding, row.created_at, &id));
             items.push(RevisionSummary {
                 id,

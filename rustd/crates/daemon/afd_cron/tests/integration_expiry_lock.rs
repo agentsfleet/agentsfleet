@@ -14,6 +14,7 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use afd_api_wire::schedule::Patch;
@@ -29,17 +30,16 @@ const LAPSES_IN: Duration = Duration::from_millis(500);
 /// Hands the schedule to another syncer whose lease lapses `$3` past
 /// database time.
 const LEASE_LAPSES: &str = "UPDATE fleet.schedules \
-SET sync_token = $2::uuid, \
+SET sync_token = $2, \
     sync_lease_expires_at = date_trunc('milliseconds', clock_timestamp()) + $3::interval \
-WHERE id = $1::uuid";
+WHERE id = $1";
 
 /// Takes the schedule row's lock and writes nothing.
-const LOCK_SCHEDULE: &str =
-    "SELECT pg_backend_pid() FROM fleet.schedules WHERE id = $1::uuid FOR UPDATE";
+const LOCK_SCHEDULE: &str = "SELECT pg_backend_pid() FROM fleet.schedules WHERE id = $1 FOR UPDATE";
 
 /// Whether the schedule's sync lease is still live on database time.
 const LEASE_LIVE: &str =
-    "SELECT sync_lease_expires_at > clock_timestamp() FROM fleet.schedules WHERE id = $1::uuid";
+    "SELECT sync_lease_expires_at > clock_timestamp() FROM fleet.schedules WHERE id = $1";
 
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
@@ -47,18 +47,18 @@ const BLOCKING: &str =
 
 /// The one recipe-carrying schedule on the lane's fleet.
 const RECIPE_SCHEDULE: &str =
-    "SELECT id::text FROM fleet.schedules WHERE fleet_id = $1::uuid AND recipe IS NOT NULL";
+    "SELECT id FROM fleet.schedules WHERE fleet_id = $1 AND recipe IS NOT NULL";
 
 /// Commits another syncer's lease on `schedule`, lapsing in [`LAPSES_IN`],
 /// then takes the row's lock on `held`; answers the holder's backend.
 async fn lapse_and_lock(
     lane: &CronLane,
     held: &mut Transaction<'_, Postgres>,
-    schedule: &str,
+    schedule: &Uuid7,
 ) -> i32 {
     sqlx::query(LEASE_LAPSES)
         .bind(schedule)
-        .bind(CronLane::token().as_str())
+        .bind(CronLane::token())
         .bind(LAPSES_IN)
         .execute(&mut *lane.connection().await)
         .await
@@ -79,7 +79,7 @@ async fn hold_past_deadline(
     lane: &CronLane,
     held: Transaction<'_, Postgres>,
     pid: i32,
-    schedule: &str,
+    schedule: &Uuid7,
 ) {
     let mut probe = lane.connection().await;
     loop {
@@ -141,7 +141,7 @@ async fn test_expiry_checks_read_clock_after_lock() {
 
     // A schedule edit: the row lock, then the sync-lease read.
     let created = lane.settled("key-lapse-edit", "0 3 * * *").await;
-    let schedule = created.schedule_id.as_str().to_owned();
+    let schedule = created.schedule_id.clone();
     let patch: Patch =
         serde_json::from_value(serde_json::json!({"cron":"0 5 * * *"})).expect("an edit");
     let etag = created.etag();
@@ -162,7 +162,7 @@ async fn test_expiry_checks_read_clock_after_lock() {
     );
     let edited = edited.expect("a lease that lapsed in the wait no longer holds the schedule");
     assert_eq!(edited.cron, "0 5 * * *");
-    assert_eq!(edited.sync_token.as_deref(), Some(editor.as_str()));
+    assert_eq!(edited.sync_token.as_ref(), Some(&editor));
 
     // A recipe replacement: one locking read judges every inherited row.
     let recipes =
@@ -170,8 +170,8 @@ async fn test_expiry_checks_read_clock_after_lock() {
     replace_recipes(&lane, &recipes)
         .await
         .expect("the first recipe lands");
-    let inherited: String = sqlx::query_scalar(RECIPE_SCHEDULE)
-        .bind(fleet.as_str())
+    let inherited: Uuid7 = sqlx::query_scalar(RECIPE_SCHEDULE)
+        .bind(&fleet)
         .fetch_one(&mut *lane.connection().await)
         .await
         .expect("the recipe's schedule");

@@ -5,6 +5,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
@@ -19,7 +20,7 @@ use crate::wire::{
 ///
 /// `posted_message_count` is `NOT NULL`, so every lease carries it from the
 /// moment it is written, and the messages verb counts against it under the
-/// lease's fence. The lease names its event by row id (`fleet_event_id`); the
+/// lease's fence. The lease names its event by its id (`event_id`); the
 /// actor and type are read from the event, not copied onto the lease.
 const LEASE_SHAPE: &[&str] = &[
     "id",
@@ -27,7 +28,7 @@ const LEASE_SHAPE: &[&str] = &[
     "fleet_id",
     "workspace_id",
     "tenant_id",
-    "fleet_event_id",
+    "event_id",
     "event_created_at",
     "posture",
     "provider",
@@ -158,12 +159,13 @@ async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
 async fn assert_rows(run: &Scenario, lease_id: &str) {
     // `settled_at` is part of the recorded line shape; the relay fills it.
     relay_settled(run).await;
-    assert_shape(run, "runner.leases", "id = $1::uuid", lease_id, LEASE_SHAPE).await;
+    let lease = Uuid7::parse(lease_id).expect("the daemon answers a canonical lease id");
+    assert_shape(run, "runner.leases", "id = $1", &lease, LEASE_SHAPE).await;
     assert_shape(
         run,
         "runner.events",
-        "runner_id = $1::uuid",
-        run.runner_id.as_str(),
+        "runner_id = $1",
+        &run.runner_id,
         EVENT_SHAPE,
     )
     .await;
@@ -178,7 +180,7 @@ async fn assert_rows(run: &Scenario, lease_id: &str) {
     assert_shape(
         run,
         "memory.entries",
-        "fleet_id = $1::uuid",
+        "fleet_id = $1",
         &run.fleet,
         MEMORY_SHAPE,
     )
@@ -222,7 +224,7 @@ async fn assert_ledger_only_queue(run: &Scenario) {
     }
     let settled: bool = sqlx::query_scalar(
         "SELECT lease_fence IS NOT NULL AND delivered_at IS NOT NULL AND settled_at IS NOT NULL \
-         FROM fleet.admissions WHERE id = $1::uuid AND fleet_id = $2::uuid",
+         FROM fleet.admissions WHERE id = $1 AND fleet_id = $2",
     )
     .bind(&run.event_id)
     .bind(&run.fleet)

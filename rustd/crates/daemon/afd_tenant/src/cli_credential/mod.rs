@@ -53,9 +53,8 @@ use afd_db::constraint::violates_unique;
 use jiff::Timestamp;
 use sqlx::Acquire as _;
 
-use crate::sql::COLUMN_ID;
 use crate::sql::cli_credential as sql;
-use crate::{Result, error, stored};
+use crate::{Result, error};
 use afd_auth::minted::Minted;
 
 pub use self::machine::MachineName;
@@ -70,14 +69,9 @@ const CONTEXT_REVOKE: &str = "revoke cli-credential";
 /// The context the subject lookup reports under.
 const CONTEXT_SUBJECT: &str = "resolve subject user";
 
-/// The table a malformed user row is reported by.
-const TABLE_USERS: &str = "identity.users";
-/// The column a malformed user's tenant is reported by.
-const COLUMN_TENANT_ID: &str = "tenant_id";
-
 /// The partial index that holds a machine to one live credential.
 ///
-/// Must equal the name in `schema/1160_identity_cli_credentials.sql`: a hash or
+/// Must equal the name in `schema/20261108120800_identity_cli_credentials.sql`: a hash or
 /// primary-key collision is unique too, and no re-login resolves it.
 const MACHINE_CONSTRAINT: &str = "uq_cli_credentials_user_id_machine_name_live";
 
@@ -118,7 +112,7 @@ impl CliCredentials {
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_SUBJECT))?;
-        row.ok_or_else(error::unknown_subject)?.parse()
+        Ok(row.ok_or_else(error::unknown_subject)?.parse())
     }
 
     /// Mints this machine's credential, revoking whatever it left behind.
@@ -163,7 +157,7 @@ impl CliCredentials {
         // Zero rows is a first login, not a failure: there is nothing to
         // revoke, and the insert below is the whole of the work.
         sqlx::query(sql::REVOKE_CLI_CREDENTIAL_FOR_MACHINE)
-            .bind(request.user.as_str())
+            .bind(request.user)
             .bind(request.machine.as_str())
             .execute(&mut *transaction)
             .await
@@ -172,9 +166,9 @@ impl CliCredentials {
         // The one statement whose failure can be a RACE rather than a fault, so
         // it is the one classified rather than lifted.
         sqlx::query(sql::INSERT_CLI_CREDENTIAL)
-            .bind(id.as_str())
-            .bind(request.user.as_str())
-            .bind(request.tenant.as_str())
+            .bind(&id)
+            .bind(request.user)
+            .bind(request.tenant)
             .bind(request.machine.as_str())
             .bind(credential.digest().as_str())
             .bind(display_prefix(credential.expose()))
@@ -224,8 +218,8 @@ impl CliCredentials {
         let mut connection = self.database.acquire().await?;
         let revoked_at: Option<jiff_sqlx::Timestamp> =
             sqlx::query_scalar(sql::REVOKE_CLI_CREDENTIAL_BY_ID)
-                .bind(credential.as_str())
-                .bind(user.as_str())
+                .bind(credential)
+                .bind(user)
                 .fetch_optional(connection.as_mut())
                 .await
                 .map_err(error::query(CONTEXT_REVOKE))?;
@@ -243,23 +237,23 @@ impl CliCredentials {
 /// The user row a subject resolves to, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct UserRow {
-    id: String,
-    tenant_id: String,
+    id: Uuid7,
+    tenant_id: Uuid7,
     email: String,
     display_name: Option<String>,
     tenant_name: String,
 }
 
 impl UserRow {
-    /// The identity this row stores; both identifiers parse here.
-    fn parse(self) -> Result<UserIdentity> {
-        Ok(UserIdentity {
-            id: stored::uuid(TABLE_USERS, COLUMN_ID, &self.id)?,
-            tenant: stored::uuid(TABLE_USERS, COLUMN_TENANT_ID, &self.tenant_id)?,
+    /// The identity this row stores.
+    fn parse(self) -> UserIdentity {
+        UserIdentity {
+            id: self.id.clone(),
+            tenant: self.tenant_id.clone(),
             email: self.email,
             display_name: self.display_name,
             tenant_name: self.tenant_name,
-        })
+        }
     }
 }
 

@@ -35,7 +35,7 @@ const GRANT_APPROVED: &str = "approved";
 pub(super) async fn install(
     booted: &Booted,
     workspace: &Uuid7,
-    tenant: &str,
+    tenant: &Uuid7,
     fleet_name: &str,
     now: Timestamp,
     channel: Option<&str>,
@@ -50,7 +50,7 @@ pub(super) async fn install(
         ]);
         definition = Definition::parse(&value.to_string()).expect("the producer setup parses");
     }
-    let fleet = Uuid7::parse(&unique_ids().0).expect("a minted fleet id");
+    let fleet = unique_ids().0;
     let mut connection = booted
         .database
         .acquire()
@@ -90,29 +90,24 @@ async fn insert_fleet_row(
     definition: &Definition,
     fleet: &Uuid7,
     workspace: &Uuid7,
-    tenant: &str,
+    tenant: &Uuid7,
     at: Timestamp,
 ) {
     let stored = Stored::of(definition);
-    let tag = scenario_tag(fleet.as_str());
-    FleetSeed::new(
-        fleet.as_str(),
-        workspace.as_str(),
-        tenant,
-        FLEET_STATUS_ACTIVE,
-    )
-    .name(definition.runtime().name().as_str())
-    .at(at)
-    .tags(&[tag.as_str()])
-    .setup(stored.revision())
-    .insert(&mut *connection)
-    .await
-    .expect("the corpus fleet's row inserts");
+    let tag = scenario_tag(fleet);
+    FleetSeed::new(fleet, workspace, tenant, FLEET_STATUS_ACTIVE)
+        .name(definition.runtime().name().as_str())
+        .at(at)
+        .tags(&[tag.as_str()])
+        .setup(stored.revision())
+        .insert(&mut *connection)
+        .await
+        .expect("the corpus fleet's row inserts");
 }
 
 /// The GitHub grant, as a person's approval on the setup check leaves it.
 async fn approve(connection: &mut sqlx::PgConnection, fleet: &Uuid7, at: Timestamp) {
-    GrantSeed::new(fleet.as_str(), GITHUB_SERVICE, GRANT_APPROVED)
+    GrantSeed::new(fleet, GITHUB_SERVICE, GRANT_APPROVED)
         .approved(at)
         .at(at)
         .insert(connection)
@@ -133,8 +128,8 @@ pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uu
         .await
         .expect("a pooled connection");
     let required: Vec<String> =
-        sqlx::query_scalar("SELECT required_tags FROM fleet.fleets WHERE id = $1::uuid")
-            .bind(fleet.as_str())
+        sqlx::query_scalar("SELECT required_tags FROM fleet.fleets WHERE id = $1")
+            .bind(fleet)
             .fetch_one(&mut *connection)
             .await
             .expect("the installed fleet's tags read");

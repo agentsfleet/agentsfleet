@@ -1,6 +1,7 @@
 //! Semantic refusal preserves financial settlement through the ordinary report path.
 
 use super::fixture::{Case, exercise, id};
+use af_core::id::Uuid7;
 use af_wire::{
     report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry},
     task::{DecisionTaskVersion, TaskDisposition, TaskReport, TaskState},
@@ -13,7 +14,7 @@ pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_
         folded_through_sequence: None,
         task,
         lease_id: Cow::Borrowed(case.held.lease_key.as_str()),
-        event_id: Cow::Borrowed(&case.held.event_id),
+        event_id: Cow::Borrowed(case.held.event_id.as_str()),
         fencing_token: case.lease().fencing_token,
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -27,7 +28,7 @@ pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(&case.held.event_id),
+            last_event_id: Cow::Borrowed(case.held.event_id.as_str()),
             last_response: Cow::Borrowed("ordinary session cursor"),
         },
         tool_calls: None,
@@ -64,6 +65,7 @@ async fn task(case: &Case, disposition: TaskDisposition) -> TaskReport {
 }
 
 async fn settle(case: &Case, request: &ReportRequest<'_>, task_id: &str, reason: &str) {
+    let task_id = id(task_id);
     let mut plane = case.held.fixtures.plane();
     plane.task_reports = Some(Arc::new(case.tasks.clone()));
     let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
@@ -73,21 +75,21 @@ async fn settle(case: &Case, request: &ReportRequest<'_>, task_id: &str, reason:
         .expect("ordinary financial report");
     let snapshot = case
         .tasks
-        .read(&case.scope, &id(task_id))
+        .read(&case.scope, &task_id)
         .await
         .expect("settled task");
     assert_eq!(snapshot.context.state, TaskState::Blocked);
     assert_eq!(snapshot.context.generation, 2);
     assert_eq!(snapshot.context.stop_generation, 1);
     assert!(snapshot.context.usage.running_nanos > 0);
-    assert_accounted(case, task_id, reason).await;
+    assert_accounted(case, &task_id, reason).await;
     plane
         .report(&case.held.runner, request, now)
         .await
         .expect("terminal report retry");
     assert_eq!(
         case.tasks
-            .read(&case.scope, &id(task_id))
+            .read(&case.scope, &task_id)
             .await
             .expect("stable replay"),
         snapshot
@@ -151,10 +153,10 @@ async fn continuation_without_recovery_checkpoint_settles_but_never_wakes() {
     .await;
 }
 
-async fn assert_accounted(case: &Case, task_id: &str, reason: &str) {
+async fn assert_accounted(case: &Case, task_id: &Uuid7, reason: &str) {
     let stored: (String, i64) = sqlx::query_as(
-        "SELECT t.status_reason,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2::uuid) FROM fleet.tasks t WHERE t.id=$1::uuid",
-    ).bind(task_id).bind(case.held.lease_key.as_str())
+        "SELECT t.status_reason,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2) FROM fleet.tasks t WHERE t.id=$1",
+    ).bind(task_id).bind(&case.held.lease_key)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("financial observer"))
         .await.expect("task and measured charge committed together");
     assert_eq!(stored, (reason.to_owned(), 1));
@@ -216,6 +218,6 @@ fn invalid_reports(original: &TaskReport) -> Vec<TaskReport> {
     let mut unpaid_wait = original.clone();
     unpaid_wait.disposition = TaskDisposition::Waiting;
     let mut missing_call = unpaid_complete.clone();
-    missing_call.decision_call_id = Some(afd_db::test_util::mint_id());
+    missing_call.decision_call_id = Some(afd_db::test_util::mint_id().into());
     vec![malformed, stale, unpaid_complete, unpaid_wait, missing_call]
 }

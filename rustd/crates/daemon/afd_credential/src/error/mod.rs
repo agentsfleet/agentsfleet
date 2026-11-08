@@ -38,14 +38,6 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    #[error("a {table} row holds a value this daemon cannot read: {column}")]
-    RowMalformed {
-        table: &'static str,
-        column: &'static str,
-        #[source]
-        source: af_core::error::Error,
-    },
-
     #[error("a stored provider selection is malformed: {field}")]
     ProviderMalformed { field: &'static str },
 
@@ -111,9 +103,9 @@ impl Error {
             // describe read fails on a datastore that would not answer or a
             // row whose columns are not the types this build reads, and it
             // decrypts nothing that could fail differently.
-            ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Directory { .. } => (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR),
+            ErrorKind::Query { .. } | ErrorKind::Directory { .. } => {
+                (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR)
+            }
             // The provider family answers one code for the whole of it. The
             // finer `UZ-PROVIDER-*` codes belong to the tenant plane's handler;
             // declaring them on a path that cannot emit them would be an
@@ -179,7 +171,6 @@ impl Error {
             // a distinction an operator or a retrying client can use.
             ErrorKind::Directory { source } => source.is_datastore_unavailable(),
             _otherwise @ (ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
             | ErrorKind::ProviderMalformed { .. }
             | ErrorKind::ProviderSecretMissing
             | ErrorKind::DecisionCredentialMissing { .. }
@@ -249,21 +240,6 @@ af_core::error_lifts!(Error, ErrorKind:
 /// Reports a statement that would not run, naming what it was doing.
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| ErrorKind::Query { context, source }.into()
-}
-
-/// Reports a stored value this build cannot read, naming table and column.
-pub(crate) fn row_malformed(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(af_core::error::Error) -> Error {
-    move |source| {
-        ErrorKind::RowMalformed {
-            table,
-            column,
-            source,
-        }
-        .into()
-    }
 }
 
 /// Reports a stored provider selection this daemon cannot read.

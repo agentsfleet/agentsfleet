@@ -13,8 +13,7 @@ use crate::fake_model::{FakeModel, say};
 use crate::https::{Seen, Upstream};
 use crate::integration_tool_trace::stored_trace;
 
-const REMEMBERED: &str =
-    "SELECT content FROM memory.entries WHERE fleet_id = $1::uuid AND key = $2";
+const REMEMBERED: &str = "SELECT content FROM memory.entries WHERE fleet_id = $1 AND key = $2";
 
 /// GitHub-only evidence reaches the model and memory through native guarded reads.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

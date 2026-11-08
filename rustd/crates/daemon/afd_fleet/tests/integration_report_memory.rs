@@ -11,7 +11,6 @@
 use std::borrow::Cow;
 
 use af_core::error_code;
-use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
 use af_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
@@ -59,7 +58,7 @@ pub(crate) fn report<'a>(
         folded_through_sequence: None,
         task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
-        event_id: Cow::Borrowed(&held.event_id),
+        event_id: Cow::Borrowed(held.event_id.as_str()),
         fencing_token: token,
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -84,7 +83,7 @@ pub(crate) fn report<'a>(
 
 /// What the fleet's store holds, key and content, sorted.
 async fn stored(held: &Held) -> Vec<(String, String)> {
-    let fleet = Uuid7::parse(&held.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = held.fleet.clone();
     let mut window: Vec<(String, String)> =
         Memories::new(held.fixtures.database.clone(), Entropy::new())
             .hydrate(&fleet)

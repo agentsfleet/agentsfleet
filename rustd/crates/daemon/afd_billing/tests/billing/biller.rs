@@ -19,7 +19,7 @@ use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
 use afd_billing::limits::fleet_spend;
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
-use afd_db::test_util::{mint_id, mint_uuid7, unreachable_db};
+use afd_db::test_util::{mint_id, unreachable_db};
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -95,8 +95,8 @@ async fn the_recording_biller_passes_the_conformance_suite() {
     let biller = RecordingBiller::new();
     conformance::every_check(&biller, || {
         let payer = Account {
-            tenant: mint_uuid7(),
-            workspace: mint_uuid7(),
+            tenant: mint_id(),
+            workspace: mint_id(),
         };
         biller.fund(&payer.tenant, BALANCE);
         async move { payer }
@@ -109,7 +109,7 @@ async fn the_recording_biller_passes_the_conformance_suite() {
 async fn test_unsettled_lines_count_against_a_check() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     let mut connection = lane.pool.acquire().await.expect("the lane answers");
     log_lines(
         &mut *connection,
@@ -149,10 +149,10 @@ async fn test_unsettled_lines_count_against_a_check() {
 #[tokio::test]
 async fn test_billing_outage_fails_open() {
     let ask = Ask {
-        work: WorkKey::FleetLease(mint_uuid7()),
+        work: WorkKey::FleetLease(mint_id()),
         payer: Account {
-            tenant: mint_uuid7(),
-            workspace: mint_uuid7(),
+            tenant: mint_id(),
+            workspace: mint_id(),
         },
         next: LINE,
     };
@@ -178,7 +178,7 @@ async fn test_billing_outage_fails_open() {
 async fn test_usage_lines_deduplicate_on_sequence() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     let first = settlement(&lane, &payer, &work, vec![rated(0)]);
     biller.settle(&first).await.expect("settles");
     biller.settle(&first).await.expect("settles again");
@@ -186,10 +186,10 @@ async fn test_usage_lines_deduplicate_on_sequence() {
     let receipt = biller.settle(&next).await.expect("settles a new line");
     assert_eq!(receipt.settled_lines, 1, "only the new sequence is charged");
     let rows: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM billing.usage_lines WHERE work_type = $1 AND work_id = $2::uuid",
+        "SELECT count(*) FROM billing.usage_lines WHERE work_type = $1 AND work_id = $2",
     )
     .bind(work.work_type())
-    .bind(work.id().as_str())
+    .bind(work.id())
     .fetch_one(&mut *lane.pool.acquire().await.expect("the lane answers"))
     .await
     .expect("counts lines");
@@ -212,7 +212,7 @@ async fn test_unsettled_lines_are_resettled() {
         workspace: lane.workspace.clone(),
     };
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     let lines = settlement(&lane, &payer, &work, vec![rated(0)]);
     // The work's transaction logs the line and commits; the settlement never runs.
     let mut connection = lane.pool.acquire().await.expect("the lane answers");
@@ -281,10 +281,10 @@ async fn test_unsettled_lines_are_resettled() {
 async fn settled_at(lane: &Lane, work: &WorkKey) -> Vec<Option<String>> {
     sqlx::query_scalar(
         "SELECT settled_at::text FROM billing.usage_lines \
-          WHERE work_type = $1 AND work_id = $2::uuid ORDER BY seq",
+          WHERE work_type = $1 AND work_id = $2 ORDER BY seq",
     )
     .bind(work.work_type())
-    .bind(work.id().as_str())
+    .bind(work.id())
     .fetch_all(&mut *lane.pool.acquire().await.expect("the lane answers"))
     .await
     .expect("reads the lines")
@@ -295,7 +295,7 @@ async fn settled_at(lane: &Lane, work: &WorkKey) -> Vec<Option<String>> {
 async fn a_fleets_spend_is_the_sum_of_its_lines() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     biller
         .settle(&settlement(
             &lane,

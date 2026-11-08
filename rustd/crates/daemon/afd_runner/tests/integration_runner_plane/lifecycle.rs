@@ -27,7 +27,7 @@ const FRESH_FOR: Duration = Duration::from_millis(200);
 /// answers the instant stored.
 const BACKDATE_LAST_SEEN: &str = "\
 UPDATE runner.runners SET last_seen_at = statement_timestamp() - $2::interval
-WHERE id = $1::uuid RETURNING last_seen_at";
+WHERE id = $1 RETURNING last_seen_at";
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -94,15 +94,15 @@ async fn test_a_beat_that_waited_on_the_lock_past_the_threshold_records_the_tran
         .await
         .expect("a competing connection");
     let seen: jiff_sqlx::Timestamp = sqlx::query_scalar(BACKDATE_LAST_SEEN)
-        .bind(runner.as_str())
+        .bind(&runner)
         .bind(RUNNER_OFFLINE_AFTER.saturating_sub(FRESH_FOR))
         .fetch_one(&mut *holder)
         .await
         .expect("the last beat backdates");
 
     let mut held = holder.begin().await.expect("a competing transaction");
-    sqlx::query("SELECT 1 FROM runner.runners WHERE id = $1::uuid FOR UPDATE")
-        .bind(runner.as_str())
+    sqlx::query("SELECT 1 FROM runner.runners WHERE id = $1 FOR UPDATE")
+        .bind(&runner)
         .execute(&mut *held)
         .await
         .expect("the competing statement holds the row");

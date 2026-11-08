@@ -47,8 +47,8 @@ fn admission<'a>(lane: &'a EventsLane, delivery: &'a str) -> Admission<'a> {
 /// How many ledger rows the lane's fleet holds.
 async fn rows_for(lane: &EventsLane) -> i64 {
     let mut connection = lane.connection().await;
-    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
-        .bind(lane.fleet.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
+        .bind(&lane.fleet)
         .fetch_one(&mut *connection)
         .await
         .expect("the ledger answers")

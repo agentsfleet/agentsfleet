@@ -1,6 +1,6 @@
 WITH locked_slot AS MATERIALIZED (
   SELECT s.fleet_id FROM runner.fleet_slots s
-  WHERE s.fleet_id = $1::uuid
+  WHERE s.fleet_id = $1
   FOR UPDATE OF s SKIP LOCKED
 ), instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM locked_slot) locked
@@ -8,10 +8,10 @@ WITH locked_slot AS MATERIALIZED (
   INSERT INTO runner.fleet_slots AS s
     (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
      created_at, updated_at)
-  SELECT $1::uuid, $2::uuid, 1, instant.checked_at + $3::interval, NULL, now(), now()
+  SELECT $1, $2, 1, instant.checked_at + $3::interval, NULL, now(), now()
   FROM instant
   WHERE EXISTS (SELECT 1 FROM locked_slot)
-     OR NOT EXISTS (SELECT 1 FROM runner.fleet_slots WHERE fleet_id = $1::uuid)
+     OR NOT EXISTS (SELECT 1 FROM runner.fleet_slots WHERE fleet_id = $1)
   ON CONFLICT (fleet_id) DO UPDATE
     SET last_runner_id = EXCLUDED.last_runner_id,
         fencing_token = s.fencing_token + 1,
@@ -22,7 +22,7 @@ WITH locked_slot AS MATERIALIZED (
     WHERE s.lease_expires_at < (SELECT checked_at FROM instant)
       AND (s.hold_expires_at IS NULL
            OR s.hold_expires_at <= (SELECT checked_at FROM instant)
-           OR s.last_runner_id = $2::uuid
+           OR s.last_runner_id = $2
            OR NOT EXISTS (
              SELECT 1 FROM runner.runners r
              WHERE r.id = s.last_runner_id
@@ -30,17 +30,17 @@ WITH locked_slot AS MATERIALIZED (
                AND r.status = $5 AND r.degraded_reason IS NULL))
   RETURNING WITH (OLD AS prior) s.fencing_token, s.lease_expires_at,
             prior.hold_expires_at > (SELECT checked_at FROM instant) AS held,
-            prior.last_runner_id::text AS holder
+            prior.last_runner_id AS holder
 ), head AS MATERIALIZED (
   SELECT a.id FROM fleet.admissions a
   JOIN fleet.fleets f ON f.id = a.fleet_id AND f.workspace_id = a.workspace_id
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
-  JOIN runner.runners host ON host.id = $2::uuid
-  WHERE a.fleet_id = $1::uuid AND a.settled_at IS NULL
+  JOIN runner.runners host ON host.id = $2
+  WHERE a.fleet_id = $1 AND a.settled_at IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR EXISTS (
-      SELECT 1 FROM fleet.tasks t JOIN runner.runners r ON r.id = $2::uuid
+      SELECT 1 FROM fleet.tasks t JOIN runner.runners r ON r.id = $2
       WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.fleet_id AND t.workspace_id = a.workspace_id
         AND r.durable_tasks_enabled AND r.capability_report @> jsonb_build_object($8::text, true)
         AND t.status IN ($9, $10) AND t.terminal_at IS NULL
@@ -67,15 +67,14 @@ WITH locked_slot AS MATERIALIZED (
       UNION ALL
       (SELECT 1 FROM fleet.approval_gates g
       WHERE g.fleet_id = a.fleet_id AND g.resolved_at IS NULL
-        AND g.event_id = a.id::text
+        AND g.event_id = a.id
         AND g.expires_at > (SELECT checked_at FROM instant) LIMIT 1)))
   RETURNING a.id, a.workspace_id, a.actor, a.event_type, a.request_json,
             a.event_created_at, a.delivered_at
 ), prior_lease AS MATERIALIZED (
   SELECT l.id, l.runner_id, l.tenant_id, l.posture, l.model
-  FROM runner.leases l JOIN fleet.events e ON e.id = l.fleet_event_id
-  JOIN stamped a ON e.event_id = a.id::text
-  WHERE l.fleet_id = $1::uuid AND e.fleet_id = $1::uuid
+  FROM runner.leases l JOIN stamped a ON a.id = l.event_id
+  WHERE l.fleet_id = $1
   ORDER BY l.fencing_token DESC LIMIT 1
   FOR UPDATE OF l
 ), bumped AS (
@@ -90,12 +89,12 @@ WITH locked_slot AS MATERIALIZED (
   ON CONFLICT (runner_id) DO UPDATE
     SET expired_count = c.expired_count + 1, updated_at = now()
 )
-SELECT a.id::text AS event_id, a.workspace_id::text, a.actor, a.event_type,
+SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        a.request_json, a.event_created_at,
        a.delivered_at IS NOT NULL AS redelivered,
        slot.fencing_token, slot.lease_expires_at,
        COALESCE(slot.held, false) AS held, slot.holder,
-       b.tenant_id::text AS reused_tenant_id, b.posture AS reused_posture,
+       b.tenant_id AS reused_tenant_id, b.posture AS reused_posture,
        b.model AS reused_model
 FROM stamped a CROSS JOIN slot
 LEFT JOIN prior_lease b ON true

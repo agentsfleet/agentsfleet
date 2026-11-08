@@ -14,7 +14,7 @@ use af_core::error_code::{
 use af_crypto::entropy::Entropy;
 use af_wire::memory::{PINNED_CATEGORY, Visibility};
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_uuid7, unreachable_db};
+use afd_db::test_util::{TestDatabase, mint_id, unreachable_db};
 use afd_memory::error::detail::{DATABASE_ERROR, LIST_FAILED, OPERATION_FAILED, ROLE_SWITCH};
 use afd_memory::page::View;
 use afd_memory::{Memories, Owner, PgStore};
@@ -31,7 +31,7 @@ async fn test_a_runner_statement_the_database_refuses_answers_the_query_code() {
     let database = lane.open(DbRole::Api, &[]).await;
     let store = PgStore::new(database.clone(), Entropy::new());
     // Neither row exists, so the entry's foreign keys refuse the insert.
-    let (workspace, fleet) = (mint_uuid7(), mint_uuid7());
+    let (workspace, fleet) = (mint_id(), mint_id());
     let owner = Owner {
         workspace: &workspace,
         fleet: &fleet,
@@ -57,7 +57,7 @@ async fn test_an_operator_statement_the_database_refuses_answers_its_operation_s
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
     let store = PgStore::new(database.clone(), Entropy::new());
-    let (workspace, fleet) = (mint_uuid7(), mint_uuid7());
+    let (workspace, fleet) = (mint_id(), mint_id());
     let owner = Owner {
         workspace: &workspace,
         fleet: &fleet,
@@ -85,7 +85,7 @@ async fn test_an_upsert_whose_identifier_cannot_be_minted_answers_operation_fail
     let (entropy, ctrl) = Entropy::new_mocked();
     ctrl.fail_next();
     let store = PgStore::new(database.clone(), entropy);
-    let (workspace, fleet) = (mint_uuid7(), mint_uuid7());
+    let (workspace, fleet) = (mint_id(), mint_id());
     let owner = Owner {
         workspace: &workspace,
         fleet: &fleet,
@@ -111,7 +111,7 @@ async fn test_a_capture_whose_grants_cannot_be_read_reports_the_datastore_refusa
     let pushed = [delta("never_stored", PINNED_CATEGORY, Visibility::Fleet)];
 
     let refused = memories
-        .capture(&mint_uuid7(), &pushed, AT)
+        .capture(&mint_id(), &pushed, AT)
         .await
         .expect_err("a capture whose grants cannot be read is refused");
 
@@ -175,7 +175,7 @@ async fn roleless_store(lane: &TestDatabase) -> PgStore {
 async fn test_a_refused_role_switch_answers_by_who_asked() {
     let lane = TestDatabase::shared();
     let store = roleless_store(&lane).await;
-    let (workspace, fleet) = (mint_uuid7(), mint_uuid7());
+    let (workspace, fleet) = (mint_id(), mint_id());
     let owner = Owner {
         workspace: &workspace,
         fleet: &fleet,

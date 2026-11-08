@@ -50,7 +50,10 @@ impl Plane {
                 self.broker.connectors(),
             )
             .await?;
-        let branch = Self::repair_branch(&admitted.acquired.event_id, &admitted.installed.config);
+        let branch = Self::repair_branch(
+            admitted.acquired.event_id.as_str(),
+            &admitted.installed.config,
+        );
         let granted = self
             .gates
             .approved_integrations(&admitted.acquired.fleet_id)

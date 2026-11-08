@@ -1,6 +1,6 @@
 SELECT m.sequence,
        m.status,
-       m.candidate_id::text AS candidate_id,
+       m.candidate_id AS candidate_id,
        m.failure_reason,
        (SELECT d.failure_cause FROM authoring.attempts a
           JOIN authoring.dispatches d ON d.attempt_id = a.id
@@ -35,6 +35,6 @@ SELECT m.sequence,
                         WHERE rr.attempt_id = a.id)
          GROUP BY a.id, a.reported_runtime_ms
        ) u ON true
- WHERE m.draft_id = $1::uuid
+ WHERE m.draft_id = $1
  ORDER BY m.sequence DESC
  LIMIT $2

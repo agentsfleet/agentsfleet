@@ -35,9 +35,9 @@ use crate::rows::{LAPSE, Row};
 /// one is a unique-violation the moment a second test seeds its own fleet —
 /// see [`afd_db::test_util::mint_id`].
 struct Ids {
-    fleet: String,
-    workspace: String,
-    tenant: String,
+    fleet: Uuid7,
+    workspace: Uuid7,
+    tenant: Uuid7,
 }
 
 impl Ids {
@@ -100,7 +100,7 @@ async fn test_lease_affinity_race() {
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let runners: [Uuid7; CONTENDERS] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = ids.fleet.clone();
     let leases = fixtures.leases();
 
     // Every contender claims the same slot at the same instant. Awaited
@@ -151,7 +151,7 @@ async fn test_reclaim_bumps_fence() {
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = ids.fleet.clone();
     let leases = fixtures.leases();
 
     let first = leases
@@ -205,7 +205,7 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = ids.fleet.clone();
     let leases = fixtures.leases();
 
     let stale = leases

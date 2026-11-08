@@ -13,7 +13,7 @@ use afd_billing::rates::Estimate;
 use afd_billing::{ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, Posture};
 use jiff::Timestamp;
 
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 
 use crate::lane::{Lane, PROVIDER};
 
@@ -39,7 +39,7 @@ async fn should_resolve_the_payer_and_answer_none_for_an_unknown_workspace() {
     let payer = lane.accounts.payer(&lane.workspace).await.expect("answers");
     assert_eq!(payer, Some(lane.tenant.clone()));
 
-    let stranger = lane.accounts.payer(&mint_uuid7()).await.expect("answers");
+    let stranger = lane.accounts.payer(&mint_id()).await.expect("answers");
     assert_eq!(stranger, None, "a workspace with no row has no payer");
 }
 

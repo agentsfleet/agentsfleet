@@ -95,7 +95,7 @@ fn new_work_answer(
 fn binding_input(fixture: &Fixture, before: &Value, call_id: String) -> TaskBindingsInput {
     let mut binding = TaskBindingsInput {
         fencing_token: fixture.lease.fence,
-        source_admission_id: fixture.lease.source.clone(),
+        source_admission_id: fixture.lease.source.to_string(),
         accepted_revision_id: before
             .pointer("/accepted_revision_id")
             .expect("response field exists")

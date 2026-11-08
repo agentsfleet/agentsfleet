@@ -2,7 +2,7 @@
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use crate::support::DragonflyHarness;
+use crate::support::{DragonflyHarness, mint_id};
 use afd_dragonfly::{
     Capacity, Dedicated, Dragonfly, OUTBOUND_STREAM_KEY, OutboundJob, OutboundQueue, OutboundReader,
 };
@@ -19,14 +19,15 @@ async fn capacity_counts_outbound_state_and_reports_a_capped_walk() {
     let redis = Dragonfly::connect(&config).await.expect("connection");
     let queue = OutboundQueue::new(redis.clone());
     queue.ensure_group().await.expect("group");
+    let (workspace, fleet, event) = (mint_id(), mint_id(), mint_id());
     for _ in 0..5 {
         queue
             .enqueue(OutboundJob {
                 provider: "fixture",
                 destination: "destination",
-                workspace_id: "workspace",
-                fleet_id: "fleet",
-                event_id: "event",
+                workspace_id: &workspace,
+                fleet_id: &fleet,
+                event_id: &event,
                 answer: "answer",
             })
             .await

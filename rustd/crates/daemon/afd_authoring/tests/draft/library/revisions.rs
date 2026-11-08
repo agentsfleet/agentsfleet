@@ -114,13 +114,12 @@ async fn two_revisions_under_one_key_publish_one_and_the_waiter_replays_it() {
     let key = mint();
     let mut holder = case.base.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
-    let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE",
-    )
-    .bind(draft.id.as_str())
-    .fetch_one(&mut *held)
-    .await
-    .expect("hold the draft the way a capture locks it");
+    let pid: i32 =
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+            .bind(&draft.id)
+            .fetch_one(&mut *held)
+            .await
+            .expect("hold the draft the way a capture locks it");
     let (winner, waiter, ()) = tokio::join!(
         revise(&case, &first, &key, request.clone()),
         revise(&case, &first, &key, request),

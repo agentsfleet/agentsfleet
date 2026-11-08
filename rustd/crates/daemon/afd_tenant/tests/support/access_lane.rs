@@ -27,20 +27,20 @@ pub(crate) fn id(value: &str) -> Uuid7 {
 /// A person proven by `credential`, claiming `tenant` as `subject`.
 pub(crate) fn person(
     credential: PersonCredential,
-    tenant: &str,
+    tenant: &Uuid7,
     subject: &str,
     scopes: ScopeSet,
 ) -> Principal {
     Principal::Person(Person::new(
         credential,
-        id(tenant),
+        tenant.clone(),
         Subject::new(subject).expect("the fixture subject is not blank"),
         scopes,
     ))
 }
 
 /// A browser session for `subject`, whose token claims `tenant`.
-pub(crate) fn session(tenant: &str, subject: &str) -> Principal {
+pub(crate) fn session(tenant: &Uuid7, subject: &str) -> Principal {
     person(
         PersonCredential::SessionToken {
             workspace_scope: None,
@@ -52,9 +52,9 @@ pub(crate) fn session(tenant: &str, subject: &str) -> Principal {
 }
 
 /// The verdict for `tenant`'s workspace held with `role`.
-pub(crate) fn held(tenant: &str, role: Role) -> Access {
+pub(crate) fn held(tenant: &Uuid7, role: Role) -> Access {
     Access {
-        tenant: id(tenant),
+        tenant: tenant.clone(),
         grant: Grant::Membership(role),
     }
 }
@@ -64,27 +64,23 @@ pub(crate) fn held(tenant: &str, role: Role) -> Access {
 pub(crate) struct Account {
     /// What they are called, and what their account is named after.
     pub(crate) name: &'static str,
-    pub(crate) tenant: String,
-    pub(crate) user: String,
-    /// `user`, parsed once, for an invitee to borrow.
-    pub(crate) user_id: Uuid7,
+    pub(crate) tenant: Uuid7,
+    pub(crate) user: Uuid7,
     pub(crate) subject: String,
     /// Unique per run: the invites waiting for an address are read across
     /// every account, so a shared address would see another run's.
     pub(crate) email: String,
-    pub(crate) workspace: String,
+    pub(crate) workspace: Uuid7,
 }
 
 impl Account {
     /// A person called `name`, every identifier minted.
     pub(crate) fn minted(name: &'static str) -> Self {
-        let user = mint_id();
         let handle = name.to_lowercase();
         Self {
             name,
             tenant: mint_id(),
-            user_id: id(&user),
-            user,
+            user: mint_id(),
             subject: format!("user_{handle}_{}", mint_id()),
             email: format!("{handle}+{}@example.test", mint_id()),
             workspace: mint_id(),
@@ -108,7 +104,7 @@ impl Account {
     /// This person, accepting an invite.
     pub(crate) fn invitee(&self) -> Invitee<'_> {
         Invitee {
-            user: &self.user_id,
+            user: &self.user,
             email: &self.email,
         }
     }
@@ -151,7 +147,7 @@ impl Fixture {
 
     /// Removes the three accounts and releases the lane.
     pub(crate) async fn cleanup(self) {
-        let accounts = [&*self.john.tenant, &self.bob.tenant, &self.carol.tenant];
+        let accounts = [&self.john.tenant, &self.bob.tenant, &self.carol.tenant];
         delete_accounts(&self.database, &accounts).await;
         drop(self.team);
         drop(self.database);

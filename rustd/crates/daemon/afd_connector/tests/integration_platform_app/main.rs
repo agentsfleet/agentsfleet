@@ -99,7 +99,7 @@ impl Deployment {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         Self {
             vault: Vault::new(database.clone(), kek, Entropy::new()),
-            admin: Uuid7::parse(&admin).expect("a minted workspace id is a v7 spelling"),
+            admin: admin.clone(),
             database,
             lane,
         }
@@ -124,10 +124,10 @@ impl Deployment {
                (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag, \
                 secret_nonce, secret_ciphertext, secret_tag, kek_version, created_at, \
                 updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
         )
         .bind(mint_id())
-        .bind(self.admin.as_str())
+        .bind(&self.admin)
         .bind(&name)
         .bind(sealed.wrapped_dek())
         .bind(sealed.dek_nonce().as_slice())
@@ -144,8 +144,8 @@ impl Deployment {
     /// Drops this fixture's rows; the workspace cascade takes the bags with it.
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("DELETE FROM identity.workspaces WHERE id = $1::uuid")
-            .bind(self.admin.as_str())
+        sqlx::query("DELETE FROM identity.workspaces WHERE id = $1")
+            .bind(self.admin)
             .execute(&mut *connection)
             .await
             .expect("the fixture workspace must delete");

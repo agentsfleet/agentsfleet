@@ -78,26 +78,26 @@ fn test_migrations_are_in_ascending_version_order() {
     assert_eq!(distinct.len(), versions.len(), "two files claim one slot");
 }
 
-/// The slot-number derivation, run rather than compiled.
+/// The version derivation, run rather than compiled.
 ///
 /// Every production call site is a `static` initialiser, so the build proves
 /// every real filename derives correctly and nothing proves what the function
 /// does with anything else. `version_from_name` is the same body called at
-/// runtime, which is where the edges live: a name with no digits, a name whose
-/// digits are not followed by an underscore, a number wider than the slots in
-/// use.
+/// runtime, which is where the edges live.
 #[test]
-fn test_version_derivation_reads_the_leading_slot_number() {
+fn test_version_derivation_reads_the_leading_timestamp() {
     for (name, expected) in [
-        ("100_schemas.sql", 100),
-        ("0_zero.sql", 0),
-        ("890_fleet_activity_counter_triggers.sql", 890),
-        ("9223372036854775807_max.sql", i64::MAX),
+        ("20261108120000_schemas.sql", 20_261_108_120_000),
+        (
+            "20270301091500_fleet_events_priority.sql",
+            20_270_301_091_500,
+        ),
+        ("29991231235959_last.sql", 29_991_231_235_959),
     ] {
         assert_eq!(
             afd_db::migration::version_from_name(name),
             expected,
-            "{name} derived the wrong slot"
+            "{name} derived the wrong version"
         );
     }
 }
@@ -105,17 +105,26 @@ fn test_version_derivation_reads_the_leading_slot_number() {
 /// A filename the derivation refuses is a BUILD failure, and this is what that
 /// refusal looks like when the same code runs at runtime.
 ///
-/// Checked through a child process, because the refusal is a panic: in a
+/// Checked through `catch_unwind`, because the refusal is a panic: in a
 /// `static` initialiser it fails the build, which is the point, and there is no
 /// other way to observe the same branch.
 #[test]
-fn test_version_derivation_refuses_a_name_without_a_slot_number() {
-    for bad in ["schemas.sql", "100schemas.sql", "_100.sql", ""] {
+fn test_version_derivation_refuses_a_name_without_a_timestamp() {
+    for bad in [
+        "schemas.sql",
+        "1000_schemas.sql",
+        "2026110812000_short.sql",
+        "20261108120000schemas.sql",
+        "20261308120000_no_month_13.sql",
+        "20261100120000_no_day_0.sql",
+        "20261108240000_no_hour_24.sql",
+        "20261108126000_no_minute_60.sql",
+        "20261108120060_no_second_60.sql",
+        "1999123123595_old.sql",
+        "",
+    ] {
         let refused = std::panic::catch_unwind(|| afd_db::migration::version_from_name(bad));
-        assert!(
-            refused.is_err(),
-            "{bad:?} was accepted — a schema file with no slot number would apply as version 0"
-        );
+        assert!(refused.is_err(), "{bad:?} was accepted as a schema version");
     }
 }
 

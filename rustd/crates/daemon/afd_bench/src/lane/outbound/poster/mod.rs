@@ -194,7 +194,7 @@ impl Scripted {
 impl Deliver for Scripted {
     fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
         let at = Instant::now();
-        let scripted = self.behaviour_of(&job.fleet_id);
+        let scripted = self.behaviour_of(job.fleet_id.as_str());
         let (delay, verdict) = match scripted {
             Some(Behaviour::Fast) => (self.fast, Verdict::Delivered),
             Some(Behaviour::Slow) => (self.slow, Verdict::Delivered),

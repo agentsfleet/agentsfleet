@@ -52,7 +52,7 @@ enum During {
 #[derive(Debug)]
 struct Rotating {
     database: Db,
-    workspace: String,
+    workspace: Uuid7,
     during: During,
 }
 
@@ -67,7 +67,7 @@ impl Exchanger for Rotating {
                 let mut connection = self.database.acquire().await.expect("a pooled connection");
                 sqlx::query(
                     "UPDATE vault.secrets SET secret_tag = decode(repeat('00', 16), 'hex')
-                     WHERE workspace_id = $1::uuid AND key_name = $2",
+                     WHERE workspace_id = $1 AND key_name = $2",
                 )
                 .bind(&self.workspace)
                 .bind(CONNECTOR_ZOHO)
@@ -104,7 +104,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
     let minted = plane
         .mint(
             &owner.runner,
-            &requests::mint(&owner.lease, CONNECTOR_ZOHO),
+            &requests::mint(owner.lease.as_str(), CONNECTOR_ZOHO),
             fixtures.enrolled_at(),
         )
         .await
@@ -114,12 +114,11 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
 
 /// The stored handle's fields, opened the way the next mint will open them.
 async fn stored(fixtures: &Fixtures, owner: &Bound) -> Value {
-    let workspace = Uuid7::parse(&owner.workspace).expect("a seeded workspace id");
     let held = fixtures
         .plane()
         .vault
         .open(KeyRef {
-            workspace_id: &workspace,
+            workspace_id: &owner.workspace,
             name: CONNECTOR_ZOHO,
         })
         .await

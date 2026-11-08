@@ -10,6 +10,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_approval::{Decision, Inbox, Resolution};
@@ -43,12 +44,12 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
 
     let approved = lane.seed_gate(Window::Open).await;
     let _still_waiting = lane.seed_gate(Window::Open).await;
-    let before = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
     let outcome = lane
         .inbox
-        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(approved.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {
@@ -114,7 +115,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     let action = lane.seed_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("a queue that refuses the entry does not lose the continuation");
     assert_eq!(lane.status_of(&action).await, "approved");
@@ -155,7 +156,8 @@ async fn a_converged_continuation_announces_nothing() {
     let lane = Lane::isolated().await;
 
     let approved = lane.seed_gate(Window::Open).await;
-    let predecessor = lane.gate_column(&approved, "event_id").await;
+    let predecessor = Uuid7::parse(&lane.gate_column(&approved, "event_id").await)
+        .expect("the seeded gate held a run's event");
     let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
 
     // The lease path, played by hand: the same admission the resolve is about
@@ -164,9 +166,9 @@ async fn a_converged_continuation_announces_nothing() {
     let admitted = Admissions::for_tests(lane.pool.clone(), lane.queue.clone())
         .admit(Admission {
             producer: Producer::GateContinuation,
-            key: Key::Repeated(&approved),
-            fleet: lane.fleet.as_str(),
-            workspace: lane.workspace.as_str(),
+            key: Key::Repeated(approved.as_str()),
+            fleet: &lane.fleet,
+            workspace: &lane.workspace,
             actor: actor.as_str(),
             event_type: EventType::Continuation,
             request_json: CONTINUATION_BODY,
@@ -176,9 +178,9 @@ async fn a_converged_continuation_announces_nothing() {
         .expect("the admission ledger accepts the continuation");
     // The statement answers `inserted` first, which is the column this reads.
     let landed: bool = sqlx::query_scalar(afd_events::sql::INSERT_FLEET_EVENT)
-        .bind(lane.fleet.as_str())
-        .bind(admitted.stored.id.as_str())
-        .bind(lane.workspace.as_str())
+        .bind(&lane.fleet)
+        .bind(&admitted.stored.id)
+        .bind(&lane.workspace)
         .bind(&actor)
         .bind(EventType::Continuation.as_str())
         .bind(sqlx::types::Json(serde_json::json!({})))
@@ -191,7 +193,7 @@ async fn a_converged_continuation_announces_nothing() {
 
     // Read AFTER the pre-insert: that row moved the counter legitimately, and
     // what this test asserts is that the RESOLVE moves it no further.
-    let before = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
 
@@ -204,7 +206,7 @@ async fn a_converged_continuation_announces_nothing() {
 
     let outcome = lane
         .inbox
-        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(approved.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {

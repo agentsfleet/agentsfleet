@@ -1,5 +1,5 @@
 SELECT d.provider,
-       d.source_workspace_id::text AS source_workspace_id,
+       d.source_workspace_id AS source_workspace_id,
        m.model_name,
        d.base_url,
        m.context_cap_tokens

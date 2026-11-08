@@ -10,6 +10,7 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 use afd_api_wire::grant::status as grant_status;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
@@ -17,7 +18,7 @@ use afd_dragonfly::FleetStreams;
 
 use super::announce::Answer;
 use super::row::{StoredResolution, StoredWin};
-use super::{Inbox, NO_FILTER, Resolution, Resolved};
+use super::{Inbox, Resolution, Resolved};
 use crate::decision::Decision;
 use crate::request::KIND_INTEGRATION_GRANT;
 use crate::sql;
@@ -75,7 +76,14 @@ impl Inbox {
         detail: &str,
         fleet: Option<&str>,
     ) -> Result<Resolution> {
-        let scope = fleet.unwrap_or(NO_FILTER);
+        // Every gate's action and fleet are UUIDs: anything else names no gate.
+        let Ok(action) = Uuid7::parse(action) else {
+            return Ok(Resolution::NotFound);
+        };
+        let Ok(scope) = fleet.map(Uuid7::parse).transpose() else {
+            return Ok(Resolution::NotFound);
+        };
+        let (action, scope) = (&action, scope.as_ref());
         let mut connection = self.database.acquire().await?;
 
         let won = sqlx::query_as::<_, StoredWin>(sql::RESOLVE_GATE)
@@ -134,13 +142,13 @@ impl Inbox {
         // remembers to do afterwards: an approval that landed without one is
         // a run a person unblocked and nothing restarted.
         let continuation = if outcome.continues_the_run()
-            && let Some(event_id) = resolved.event_id.as_deref()
+            && let Some(event_id) = resolved.event_id.clone()
         {
-            self.continue_from(&resolved, event_id).await
+            self.continue_from(&resolved, &event_id).await
         } else {
             // Resolution already cleared the durable park. Notify a waiting
             // poll that the original delivery is available again.
-            self.wake_parked_delivery(&resolved.fleet_id).await;
+            self.wake_parked_delivery(resolved.fleet_id.as_str()).await;
             Ok(None)
         };
         // After the continuation, so an approval's frame carries the count the
@@ -149,9 +157,9 @@ impl Inbox {
         let counters =
             afd_events::fleet_counters_best_effort_on(connection, &resolved.fleet_id).await;
         self.announce(Answer {
-            fleet_id: &resolved.fleet_id,
-            gate_id: &resolved.gate_id,
-            event_id: resolved.event_id.as_deref(),
+            fleet_id: resolved.fleet_id.as_str(),
+            gate_id: resolved.gate_id.as_str(),
+            event_id: resolved.event_id.as_ref().map(Uuid7::as_str),
             status: &resolved.status,
             resolved_by: &resolved.resolved_by,
             pending_approvals,
@@ -175,14 +183,14 @@ impl Inbox {
     /// erase the fact that a person was ever asked.
     ///
     /// Idempotent on the gate's ACTION: the admission is keyed by it, and
-    /// the row insert carries the `(fleet_id, event_id)` conflict arm, so a
+    /// the row insert carries the `event_id` conflict arm, so a
     /// retried resolve continues the run exactly once.
     ///
     /// The row is announced on the fleet's tail as `event_received` when it
     /// lands here, and only here: the lease verb announces the rows it
     /// writes, and this one is already there when the runner pulls it, so a
     /// watcher would otherwise never see the continued run open.
-    async fn continue_from(&self, resolved: &Resolved, event_id: &str) -> Result<Option<String>> {
+    async fn continue_from(&self, resolved: &Resolved, event_id: &Uuid7) -> Result<Option<Uuid7>> {
         let actor = format!("{CONTINUATION_ACTOR_PREFIX}{event_id}");
         let kind = af_wire::event::EventType::Continuation.as_str();
         let admitted = self
@@ -192,7 +200,7 @@ impl Inbox {
                 // The gate's ACTION, which a retried resolve repeats: two
                 // people answering one gate, or one person's retry, continue
                 // the run exactly once.
-                key: afd_admission::Key::Repeated(&resolved.action_id),
+                key: afd_admission::Key::Repeated(resolved.action_id.as_str()),
                 fleet: &resolved.fleet_id,
                 workspace: &resolved.workspace_id,
                 actor: actor.as_str(),
@@ -205,7 +213,7 @@ impl Inbox {
             .await?;
 
         let (inserted, counters) = self
-            .insert_continuation(resolved, admitted.stored.id.as_str(), &actor, event_id)
+            .insert_continuation(resolved, &admitted.stored.id, &actor, event_id)
             .await?;
         // Once, on the write that landed the row: a retried resolve finds it
         // already there and announces nothing, as the lease verb does.
@@ -223,7 +231,7 @@ impl Inbox {
                 counters,
             };
             FleetStreams::new(self.queue.clone())
-                .publish_frame(&resolved.fleet_id, &frame)
+                .publish_frame(resolved.fleet_id.as_str(), &frame)
                 .await;
         }
 
@@ -238,9 +246,9 @@ impl Inbox {
     async fn insert_continuation(
         &self,
         resolved: &Resolved,
-        stored_id: &str,
+        stored_id: &Uuid7,
         actor: &str,
-        event_id: &str,
+        event_id: &Uuid7,
     ) -> Result<(bool, Option<FleetCounters>)> {
         let mut connection = self.database.acquire().await?;
         let landed = sqlx::query_as::<_, Landed>(afd_events::sql::INSERT_FLEET_EVENT)

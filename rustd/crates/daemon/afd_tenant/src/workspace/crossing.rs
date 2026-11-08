@@ -40,7 +40,7 @@ pub fn audit(principal: &Principal, access: &Access, workspace: &Uuid7, method: 
         target_tenant,
         target_workspace,
         method,
-        event = EVENT_CROSSING,
+        event = %EVENT_CROSSING,
         "a platform-scoped principal reached another tenant's workspace"
     );
 }

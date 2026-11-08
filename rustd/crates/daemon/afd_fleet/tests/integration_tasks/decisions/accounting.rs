@@ -92,7 +92,7 @@ async fn immutable_uncertainty(
         assert_eq!(fault.code(), error_code::TASK_REPLAY_CONFLICT);
     }
     let mut retry = (**input).clone();
-    retry.operation_id = afd_db::test_util::mint_id();
+    retry.operation_id = afd_db::test_util::mint_id().into();
     retry.retry_of = Some(call.to_owned());
     let retry = garde::Unvalidated::new(retry)
         .validate()
@@ -132,7 +132,7 @@ async fn throttled(case: &Case) {
         )
         .await;
     let mut retry = (*input).clone();
-    retry.operation_id = afd_db::test_util::mint_id();
+    retry.operation_id = afd_db::test_util::mint_id().into();
     retry.retry_of = Some(call.to_owned());
     let retry = garde::Unvalidated::new(retry)
         .validate()

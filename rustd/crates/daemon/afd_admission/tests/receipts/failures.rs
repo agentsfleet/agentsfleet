@@ -32,7 +32,7 @@ async fn a_refused_notification_is_logged_and_leaves_one_queued_row() -> Fallibl
         "notification failure",
     );
     let queued: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid AND settled_at IS NULL",
+        "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1 AND settled_at IS NULL",
     )
     .bind(&lane.fleet)
     .fetch_one(&mut *lane.database.acquire().await?)
@@ -65,7 +65,11 @@ async fn a_silent_notification_is_bounded_and_does_not_lose_acceptance() -> Fall
         "notification timeout",
     );
     let (server, admissions) = over_fake(&lane, &[]).await?;
-    let replayed = admit(&admissions, steer(&lane, &lane.fleet, ReplyTo::None)).await?;
+    let replayed = admit(
+        &admissions,
+        steer(&lane, lane.fleet.as_str(), ReplyTo::None),
+    )
+    .await?;
     assert!(replayed.replayed);
     assert_eq!(replayed.stored.id, admitted.stored.id);
     assert_eq!(
@@ -86,7 +90,7 @@ async fn an_invalid_fleet_scope_records_nothing_and_sends_no_notification() -> F
     let lane = Lane::seed().await?;
     let (server, admissions) = over_fake(&lane, &[]).await?;
     let wrong = afd_db::test_util::mint_id();
-    let mut request = steer(&lane, &lane.fleet, ReplyTo::None);
+    let mut request = steer(&lane, lane.fleet.as_str(), ReplyTo::None);
     request.workspace = &wrong;
     let refused = admissions
         .admit(request)
@@ -96,11 +100,10 @@ async fn an_invalid_fleet_scope_records_nothing_and_sends_no_notification() -> F
     assert!(refused.is_fleet_absent(), "{refused}");
     assert!(!refused.is_over_capacity());
     assert!(!server.seen().iter().any(|s| s.starts_with("SPUBLISH")));
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid")
-            .bind(&lane.fleet)
-            .fetch_one(&mut *lane.database.acquire().await?)
-            .await?;
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1")
+        .bind(&lane.fleet)
+        .fetch_one(&mut *lane.database.acquire().await?)
+        .await?;
     assert_eq!(count, 0);
     lane.cleanup().await;
     Ok(())

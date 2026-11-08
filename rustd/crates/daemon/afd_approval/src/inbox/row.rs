@@ -11,6 +11,7 @@
 //! through `jiff_sqlx`, which is why the rows are private and convert into the
 //! public shapes below.
 
+use af_core::id::Uuid7;
 use afd_api_wire::approval::GateStatus;
 use jiff::Timestamp;
 
@@ -18,15 +19,15 @@ use jiff::Timestamp;
 #[derive(Debug, Clone)]
 pub struct GateRow {
     /// The gate's own row id — what a decision addresses it by.
-    pub gate_id: String,
+    pub gate_id: Uuid7,
     /// The fleet that raised it.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// That fleet's name, joined rather than stored — see the statement.
     pub fleet_name: String,
     /// The workspace the gate belongs to.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// The action the gate is about.
-    pub action_id: String,
+    pub action_id: Uuid7,
     /// The tool asking.
     pub tool_name: String,
     /// The verb it wants.
@@ -71,7 +72,7 @@ pub struct Cursor<'a> {
     /// The last row's instant.
     pub created_at: Timestamp,
     /// The last row's id, breaking the tie.
-    pub gate_id: &'a str,
+    pub gate_id: &'a Uuid7,
 }
 
 /// What a queue read is narrowed by.
@@ -91,7 +92,7 @@ pub struct Filter<'a> {
     /// left `auto_killed` unreachable.
     pub status: Option<GateStatus>,
     /// Only gates raised by this fleet.
-    pub fleet_id: Option<&'a str>,
+    pub fleet_id: Option<&'a Uuid7>,
     /// Only gates of this type.
     pub gate_type: Option<&'a str>,
 }
@@ -116,13 +117,13 @@ pub enum Resolution {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resolved {
     /// The gate's row id.
-    pub gate_id: String,
+    pub gate_id: Uuid7,
     /// The action it gated.
-    pub action_id: String,
+    pub action_id: Uuid7,
     /// The workspace it belonged to.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// The fleet that raised it.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// Where it now stands.
     pub status: String,
     /// When it was resolved, on the database clock.
@@ -136,23 +137,23 @@ pub struct Resolved {
     /// `None` for a gate that held no run: the column is nullable for gates
     /// raised outside an event (an install-time integration grant), and a
     /// resolve of one must decode rather than fail after the row moved.
-    pub event_id: Option<String>,
+    pub event_id: Option<Uuid7>,
     /// The continuation this decision landed, when it landed one.
     ///
     /// `Some` only for an approval THIS caller won: a denial continues
     /// nothing, and a caller who lost the race did not write the row the
     /// winner already did.
-    pub continuation_event_id: Option<String>,
+    pub continuation_event_id: Option<Uuid7>,
 }
 
 /// One inbox row as the page and the by-id read return it.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct StoredGate {
-    gate_id: String,
-    fleet_id: String,
+    gate_id: Uuid7,
+    fleet_id: Uuid7,
     fleet_name: String,
-    workspace_id: String,
-    action_id: String,
+    workspace_id: Uuid7,
+    action_id: Uuid7,
     tool_name: String,
     action_name: String,
     gate_type: String,
@@ -198,16 +199,16 @@ impl From<StoredGate> for GateRow {
 /// The attribution a resolved gate reports, as both resolve reads return it.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct StoredResolution {
-    gate_id: String,
-    action_id: String,
-    workspace_id: String,
-    fleet_id: String,
+    gate_id: Uuid7,
+    action_id: Uuid7,
+    workspace_id: Uuid7,
+    fleet_id: Uuid7,
     status: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     resolved_at: Timestamp,
     resolved_by: String,
     detail: String,
-    event_id: Option<String>,
+    event_id: Option<Uuid7>,
 }
 
 impl From<StoredResolution> for Resolved {

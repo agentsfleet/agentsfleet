@@ -14,7 +14,6 @@
 
 use crate::seed;
 use crate::support;
-use af_core::id::Uuid7;
 use afd_fleet::lease::Billed;
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
@@ -35,7 +34,7 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
     } = seeded::<1>(&fixtures).await;
     let leases = fixtures.leases();
     let now = fixtures.enrolled_at();
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let tenant_id = tenant.clone();
     let billed = Billed {
         tenant_id: &tenant_id,
         posture: POSTURE,
@@ -51,9 +50,9 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
         .expect("the narrative log must open");
     let degrade = |reason: Option<&'static str>| {
         let fixtures = &fixtures;
-        let runner = runner.as_str().to_owned();
+        let runner = runner.clone();
         async move {
-            sqlx::query("UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1::uuid")
+            sqlx::query("UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1")
                 .bind(runner)
                 .bind(reason)
                 .execute(&mut *fixtures.database.acquire().await.expect("a connection"))
@@ -63,7 +62,7 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
     };
 
     let unknown = leases
-        .issue(&afd_db::test_util::mint_uuid7(), &held, billed, now)
+        .issue(&afd_db::test_util::mint_id(), &held, billed, now)
         .await
         .expect("an unknown host is a verdict");
     degrade(Some("cgroup controller missing")).await;
@@ -109,12 +108,11 @@ async fn an_event_absent_from_the_ledger_cannot_open_history() {
         error.to_string(),
         afd_fleet::Error::stale_fence().to_string()
     );
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id=$1::uuid")
-            .bind(&fleet)
-            .fetch_one(&mut *fixtures.database.acquire().await.expect("database"))
-            .await
-            .expect("history count");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id=$1")
+        .bind(&fleet)
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("database"))
+        .await
+        .expect("history count");
     assert_eq!(count, 0);
     fixtures.cleanup().await;
 }

@@ -57,16 +57,15 @@ pub(super) async fn catalogue(fixture: &Fixture, provider: &str, model: &str, ca
 /// How many rows each side of the activation wrote.
 pub(super) async fn written(fixture: &Fixture) -> (i64, i64) {
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    let selections: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM model.tenant_selections WHERE tenant_id = $1::uuid",
-    )
-    .bind(fixture.tenant.as_str())
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the selection count reads");
+    let selections: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM model.tenant_selections WHERE tenant_id = $1")
+            .bind(&fixture.tenant)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the selection count reads");
     let entries: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM model.tenant_models WHERE tenant_id = $1::uuid")
-            .bind(fixture.tenant.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM model.tenant_models WHERE tenant_id = $1")
+            .bind(&fixture.tenant)
             .fetch_one(&mut *connection)
             .await
             .expect("the entry count reads");
@@ -166,8 +165,8 @@ async fn an_activation_after_a_committed_delete_writes_nothing() {
         .await;
 
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2")
-        .bind(fixture.workspace.as_str())
+    sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2")
+        .bind(&fixture.workspace)
         .bind("doomed-key")
         .execute(&mut *connection)
         .await

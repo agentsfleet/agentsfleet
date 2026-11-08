@@ -31,6 +31,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, mint_id};
 use afd_db::{Db, Migrator};
@@ -60,7 +61,7 @@ const DECOY_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
 const SEED_SPREAD: &str = "
 WITH workspaces AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
-    SELECT uuidv7(), $1::uuid, 'plan-probe-' || w, $2::timestamptz
+    SELECT uuidv7(), $1, 'plan-probe-' || w, $2::timestamptz
       FROM generate_series(1, $3) w
     RETURNING id
 ), fleets AS (
@@ -68,7 +69,7 @@ WITH workspaces AS (
       (id, workspace_id, tenant_id, name, status, required_tags,
        memory_reads_workspace, memory_publishes_workspace, resource_version,
        created_at, updated_at)
-    SELECT uuidv7(), workspaces.id, $1::uuid, 'plan-probe-' || f, 'active',
+    SELECT uuidv7(), workspaces.id, $1, 'plan-probe-' || f, 'active',
            '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspaces, generate_series(1, $4) f
     RETURNING id, workspace_id
@@ -76,7 +77,7 @@ WITH workspaces AS (
 INSERT INTO fleet.events
   (fleet_id, workspace_id, event_id, actor, event_type, status, request_json,
    created_at, updated_at)
-SELECT fleets.id, fleets.workspace_id, 'plan-probe-' || e,
+SELECT fleets.id, fleets.workspace_id, uuidv7(),
        CASE WHEN e % 4 = 0 THEN 'cron:' || fleets.id || ':' || (e % 8) ELSE 'steer:api' END,
        CASE WHEN e % 8 = 0 THEN 'activity' ELSE 'chat' END, 'completed', '{}'::jsonb,
        $2::timestamptz + e * interval '1 millisecond',
@@ -113,7 +114,7 @@ pub(crate) async fn explain_generic(connection: &mut PgConnection, text: &str) -
 
 /// A database of this test's own, migrated from `schema/`, and the tenant
 /// its decoys belong to.
-pub(crate) async fn private_database() -> (TestDatabase, Db, String) {
+pub(crate) async fn private_database() -> (TestDatabase, Db, Uuid7) {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
     Migrator::new()
@@ -123,7 +124,7 @@ pub(crate) async fn private_database() -> (TestDatabase, Db, String) {
     let tenant = mint_id();
     let mut connection = db.acquire().await.expect("a private connection");
     // The one tenant every decoy workspace belongs to.
-    TenantSeed::new(tenant.as_str())
+    TenantSeed::new(&tenant)
         .name("plan-probe")
         .at(DECOY_AT)
         .insert(&mut *connection)
@@ -136,7 +137,7 @@ pub(crate) async fn private_database() -> (TestDatabase, Db, String) {
 /// Every text's generic plan against one decoy spread, which rolls back.
 async fn generic_plans(
     db: &Db,
-    tenant: &str,
+    tenant: &Uuid7,
     (workspaces, fleets, events): (i32, i32, i32),
 ) -> Vec<(&'static str, String)> {
     let mut connection = db.acquire().await.expect("a private connection");

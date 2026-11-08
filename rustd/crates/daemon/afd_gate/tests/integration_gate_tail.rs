@@ -16,6 +16,7 @@ mod fixture;
 use std::time::Duration;
 
 use af_crypto::entropy::Entropy;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::hub::Received;
 use afd_gate::gate::{Gates, Verdict, Waiting};
@@ -58,11 +59,12 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         .expect("the lane's Dragonfly accepts a subscriber");
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", fixture.fleet));
     tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+    let event = mint_id();
 
     assert_eq!(
         gates
             .check(
-                fixture.check("event-announced", &config_gates(APPROVE_EVERY_CHAT)),
+                fixture.check(&event, &config_gates(APPROVE_EVERY_CHAT)),
                 NOW,
             )
             .await,
@@ -83,7 +85,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let frame: serde_json::Value =
         serde_json::from_str(&message.payload).expect("the frame is JSON");
     assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));
-    assert_eq!(frame.get("event_id"), Some(&json!("event-announced")));
+    assert_eq!(frame.get("event_id"), Some(&json!(event)));
     assert!(
         frame
             .get("gate_id")
@@ -96,7 +98,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     );
     // The park's frame carries where the fleet stands, read on the insert's
     // own connection: the figures on the wire are the database's.
-    let counters = afd_events::fleet_counters(&fixture.database, fixture.fleet.as_str())
+    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(

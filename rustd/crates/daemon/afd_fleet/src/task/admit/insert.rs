@@ -1,5 +1,6 @@
 //! Typed writes use the transaction whose source and slot are already locked.
 
+use af_core::id::Uuid7;
 use af_wire::task::{TaskState, UNFINISHED_MAX};
 use sqlx::PgConnection;
 
@@ -27,16 +28,16 @@ pub(super) async fn item(
         })
     })?;
     sqlx::query(sql::INSERT_ITEM)
-        .bind(binding.item_id.as_str())
+        .bind(&binding.item_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(plan.source_admission_id.as_str())
+        .bind(&plan.source_admission_id)
         .bind(ordinal)
         .bind(&plan.digest)
         .bind(item.action().as_str())
         .bind(item.span().start)
         .bind(item.span().end)
-        .bind(binding.task_id.as_ref().map(af_core::id::Uuid7::as_str))
+        .bind(binding.task_id.as_ref())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -59,19 +60,13 @@ pub(super) async fn task(
     };
     let questions =
         serde_json::to_string(&item.questions).map_err(af_core::json::Unreadable::from)?;
-    sqlx::query_scalar::<_, String>(sql::INSERT_TASK)
-        .bind(
-            binding
-                .task_id
-                .as_ref()
-                .ok_or(TaskRefusal::InvalidTarget)?
-                .as_str(),
-        )
+    sqlx::query_scalar::<_, Uuid7>(sql::INSERT_TASK)
+        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(&current.tenant_id)
-        .bind(binding.item_id.as_str())
-        .bind(plan.accepted_revision_id.as_str())
+        .bind(&binding.item_id)
+        .bind(&plan.accepted_revision_id)
         .bind(&item.title)
         .bind(&item.objective)
         .bind(&questions)
@@ -102,15 +97,9 @@ pub(super) async fn lease(
     binding: &TaskBinding,
 ) -> Result<()> {
     sqlx::query(sql::BIND_LEASE)
-        .bind(
-            binding
-                .task_id
-                .as_ref()
-                .ok_or(TaskRefusal::InvalidTarget)?
-                .as_str(),
-        )
-        .bind(lease.lease_id.as_str())
-        .bind(lease.runner_id.as_str())
+        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
+        .bind(lease.lease_id)
+        .bind(lease.runner_id)
         .bind(afd_billing::biller::WorkKey::FleetLease(lease.lease_id.clone()).work_type())
         .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
         .bind(super::super::lease::SLICE_SECONDS)
@@ -123,18 +112,12 @@ pub(super) async fn lease(
 
 pub(super) async fn admission(
     connection: &mut PgConnection,
-    admission: &str,
+    admission: &Uuid7,
     binding: &TaskBinding,
 ) -> Result<()> {
     sqlx::query(sql::BIND_ADMISSION)
-        .bind(
-            binding
-                .task_id
-                .as_ref()
-                .ok_or(TaskRefusal::InvalidTarget)?
-                .as_str(),
-        )
-        .bind(binding.item_id.as_str())
+        .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
+        .bind(&binding.item_id)
         .bind(admission)
         .execute(connection)
         .await

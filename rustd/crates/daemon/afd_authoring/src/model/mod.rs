@@ -24,6 +24,13 @@ pub use provider::{Network, ProviderRequest, ProviderResponse, Transport};
 
 /// Model proposals use the same native types as drawer and activity edits.
 pub type ModelCallInput = af_wire::authoring::ModelCall<Definition, ConfigOp, InstructionEdit>;
+
+/// The call's dispatch id, which the wire carries as text and every statement
+/// binds as a `uuid`: parsed at the service boundary, where `af_wire` leaves
+/// validation.
+pub(crate) fn dispatch_id(request: &ModelCallInput) -> Result<Uuid7> {
+    Ok(Uuid7::parse(&request.dispatch_id)?)
+}
 /// A bounded result containing validated native proposal shapes.
 pub type ModelCallResult = af_wire::authoring::ModelResult<Definition, ConfigOp, InstructionEdit>;
 
@@ -47,13 +54,16 @@ pub(crate) mod dispatch_status {
 
 /// The `tenant_model_id` a model reference is stored as: NULL names the
 /// platform default, any other reference is the tenant model's own id.
-pub(crate) fn tenant_model(reference: &str) -> Option<&str> {
-    (reference != PLATFORM_MODEL_REF).then_some(reference)
+pub(crate) fn tenant_model(reference: &str) -> Result<Option<Uuid7>> {
+    if reference == PLATFORM_MODEL_REF {
+        return Ok(None);
+    }
+    Ok(Some(Uuid7::parse(reference)?))
 }
 
 /// The model reference a stored `tenant_model_id` spells.
-pub(crate) fn reference(tenant_model: Option<String>) -> String {
-    tenant_model.unwrap_or_else(|| PLATFORM_MODEL_REF.to_owned())
+pub(crate) fn reference(tenant_model: Option<Uuid7>) -> String {
+    tenant_model.map_or_else(|| PLATFORM_MODEL_REF.to_owned(), String::from)
 }
 
 pub(crate) async fn selected(

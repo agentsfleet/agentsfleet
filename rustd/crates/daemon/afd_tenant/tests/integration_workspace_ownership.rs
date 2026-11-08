@@ -5,6 +5,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_auth::principal::{PersonCredential, Principal, Runner};
 use afd_auth::scope::{Scope, ScopeSet};
@@ -13,7 +14,7 @@ use afd_db::test_util::{TestDatabase, mint_id};
 use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::access::{Access, Grant, Role};
 
-use crate::access_lane::{held, id, person};
+use crate::access_lane::{held, person};
 
 const SUBJECT: &str = "user_workspace_ownership";
 const UNKNOWN_SUBJECT: &str = "user_workspace_ownership_absent";
@@ -33,10 +34,10 @@ async fn ownership_preserves_credential_authority_and_platform_override() {
 }
 
 async fn verify_machine_and_terminal_credentials(workspaces: &Workspaces, fixture: &Fixture) {
-    let runner = Principal::Runner(Runner::new(id(&mint_id()), false));
+    let runner = Principal::Runner(Runner::new(mint_id(), false));
     assert_eq!(
         workspaces
-            .authorize(&runner, &id(&fixture.own_workspace))
+            .authorize(&runner, &fixture.own_workspace)
             .await
             .expect("runner denial is available"),
         None
@@ -56,7 +57,7 @@ async fn verify_machine_and_terminal_credentials(workspaces: &Workspaces, fixtur
         let principal = person(credential, &fixture.own_tenant, SUBJECT, ScopeSet::EMPTY);
         assert_eq!(
             workspaces
-                .authorize(&principal, &id(&fixture.own_workspace))
+                .authorize(&principal, &fixture.own_workspace)
                 .await
                 .expect("owned workspace resolves"),
             Some(held(&fixture.own_tenant, Role::Owner)),
@@ -64,7 +65,7 @@ async fn verify_machine_and_terminal_credentials(workspaces: &Workspaces, fixtur
         );
         assert_eq!(
             workspaces
-                .authorize(&principal, &id(&fixture.other_workspace))
+                .authorize(&principal, &fixture.other_workspace)
                 .await
                 .expect("foreign workspace denial resolves"),
             None
@@ -74,7 +75,7 @@ async fn verify_machine_and_terminal_credentials(workspaces: &Workspaces, fixtur
                 .tenant_of(&principal)
                 .await
                 .expect("credential tenant resolves without a query"),
-            Some(id(&fixture.own_tenant))
+            Some(fixture.own_tenant.clone())
         );
     }
 }
@@ -82,7 +83,7 @@ async fn verify_machine_and_terminal_credentials(workspaces: &Workspaces, fixtur
 async fn verify_session_authority(workspaces: &Workspaces, fixture: &Fixture) {
     let confined_elsewhere = person(
         PersonCredential::SessionToken {
-            workspace_scope: Some(id(&fixture.other_workspace)),
+            workspace_scope: Some(fixture.other_workspace.clone()),
         },
         &fixture.own_tenant,
         SUBJECT,
@@ -90,7 +91,7 @@ async fn verify_session_authority(workspaces: &Workspaces, fixture: &Fixture) {
     );
     assert_eq!(
         workspaces
-            .authorize(&confined_elsewhere, &id(&fixture.own_workspace))
+            .authorize(&confined_elsewhere, &fixture.own_workspace)
             .await
             .expect("workspace ceiling denial resolves"),
         None
@@ -106,7 +107,7 @@ async fn verify_session_authority(workspaces: &Workspaces, fixture: &Fixture) {
     );
     assert_eq!(
         workspaces
-            .authorize(&session, &id(&fixture.own_workspace))
+            .authorize(&session, &fixture.own_workspace)
             .await
             .expect("session workspace resolves"),
         Some(held(&fixture.own_tenant, Role::Owner)),
@@ -117,7 +118,7 @@ async fn verify_session_authority(workspaces: &Workspaces, fixture: &Fixture) {
             .tenant_of(&session)
             .await
             .expect("session tenant resolves"),
-        Some(id(&fixture.own_tenant))
+        Some(fixture.own_tenant.clone())
     );
 
     let claim_fallback = person(
@@ -133,7 +134,7 @@ async fn verify_session_authority(workspaces: &Workspaces, fixture: &Fixture) {
             .tenant_of(&claim_fallback)
             .await
             .expect("an absent user falls back to the claim"),
-        Some(id(&fixture.own_tenant))
+        Some(fixture.own_tenant.clone())
     );
 }
 
@@ -148,18 +149,18 @@ async fn verify_platform_override(workspaces: &Workspaces, fixture: &Fixture) {
     );
     assert_eq!(
         workspaces
-            .authorize(&operator, &id(&fixture.other_workspace))
+            .authorize(&operator, &fixture.other_workspace)
             .await
             .expect("platform override resolves"),
         Some(Access {
-            tenant: id(&fixture.other_tenant),
+            tenant: fixture.other_tenant.clone(),
             grant: Grant::Platform,
         }),
         "a crossing carries no role in the account it reaches"
     );
     assert_eq!(
         workspaces
-            .authorize(&operator, &id(&mint_id()))
+            .authorize(&operator, &mint_id())
             .await
             .expect("an absent override target resolves"),
         None
@@ -169,10 +170,10 @@ async fn verify_platform_override(workspaces: &Workspaces, fixture: &Fixture) {
 struct Fixture {
     lane: TestDatabase,
     database: afd_db::Db,
-    own_tenant: String,
-    other_tenant: String,
-    own_workspace: String,
-    other_workspace: String,
+    own_tenant: Uuid7,
+    other_tenant: Uuid7,
+    own_workspace: Uuid7,
+    other_workspace: Uuid7,
 }
 
 impl Fixture {
@@ -193,17 +194,17 @@ impl Fixture {
         sqlx::query(
             "WITH tenants AS ( \
                INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, 'own', now(), now()), ($2::uuid, 'other', now(), now()) \
+               VALUES ($1, 'own', now(), now()), ($2, 'other', now(), now()) \
              ), own_workspace AS ( \
                INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($3::uuid, $1::uuid, 'own', now()) \
+               VALUES ($3, $1, 'own', now()) \
              ), other_workspace AS ( \
                INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-               VALUES ($4::uuid, $2::uuid, 'other', now()) \
+               VALUES ($4, $2, 'other', now()) \
              ) \
              INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($6::uuid, $1::uuid, $5, 'fixture@example.test', NULL, now(), now())",
+             VALUES ($6, $1, $5, 'fixture@example.test', NULL, now(), now())",
         )
         .bind(&self.own_tenant)
         .bind(&self.other_tenant)
@@ -218,7 +219,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id IN ($1::uuid, $2::uuid)")
+        sqlx::query("DELETE FROM identity.tenants WHERE id IN ($1, $2)")
             .bind(&self.own_tenant)
             .bind(&self.other_tenant)
             .execute(&mut *connection)

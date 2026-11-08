@@ -172,7 +172,7 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 ## Implementation scope
 
 The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
-The checkpoint table is `schema/2160_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
+The checkpoint table is `schema/20261108124800_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
 
 Authoring admission and accounting live in `afd_authoring` (lease claim, model budget, dispatch, progress and receipt).
 The runner protocol lives in `af_wire` (authoring model, meter and lease payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.

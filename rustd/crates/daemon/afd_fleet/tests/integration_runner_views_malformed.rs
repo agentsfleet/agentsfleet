@@ -59,8 +59,8 @@ async fn overwrite_status(fixtures: &Fixtures, runner: &Uuid7) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE runner.runners SET status = $2 WHERE id = $1::uuid")
-        .bind(runner.as_str())
+    sqlx::query("UPDATE runner.runners SET status = $2 WHERE id = $1")
+        .bind(runner)
         .bind("unknown_state")
         .execute(&mut *connection)
         .await
@@ -76,10 +76,10 @@ async fn insert_unknown_event(fixtures: &Fixtures, runner: &Uuid7) {
     sqlx::query(
         "INSERT INTO runner.events \
          (id, runner_id, event_type, metadata, last_seen_at, created_at) \
-         VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, NULL, now())",
+         VALUES ($1, $2, $3, $4::jsonb, NULL, now())",
     )
-    .bind("0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0c")
-    .bind(runner.as_str())
+    .bind(afd_db::test_util::mint_id())
+    .bind(runner)
     .bind("unknown_event")
     .bind("{}")
     .execute(&mut *connection)

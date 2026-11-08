@@ -59,10 +59,10 @@ use afd_vault::StoredEnvelope;
 use jiff::Timestamp;
 use sqlx::{Acquire as _, Transaction};
 
-use crate::error::{Result, entropy_drained, query, row_malformed, vault_open};
+use crate::error::{Result, entropy_drained, query, vault_open};
 use crate::provider::cap;
 use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
-use crate::provider::selection::{COLUMN_ID, COLUMN_TENANT_MODEL, OwnModel, TABLE_WORKSPACES};
+use crate::provider::selection::OwnModel;
 use crate::provider::store::Providers;
 use crate::provider::vetted::{Refused, vet};
 use crate::provider::{SecretKind, sql};
@@ -70,15 +70,12 @@ use crate::provider::{SecretKind, sql};
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ACTIVATE: &str = "tenant provider activation";
 
-/// The table a malformed pointer is reported against.
-const TABLE_SELECTIONS: &str = "model.tenant_selections";
-
 /// One [`sql::LOCK_CREDENTIAL_FOR_ACTIVATION`] row, by its column names.
 #[derive(Debug, sqlx::FromRow)]
 struct LockedCredential {
     meta_provider: Option<String>,
     meta_has_key: Option<bool>,
-    workspace_id: String,
+    workspace_id: Uuid7,
     #[sqlx(flatten)]
     envelope: StoredEnvelope,
 }
@@ -86,7 +83,7 @@ struct LockedCredential {
 /// One [`sql::ACTIVATE_TENANT_MODEL`] row: the pointer written and its ceiling.
 #[derive(Debug, sqlx::FromRow)]
 struct Pointed {
-    tenant_model_id: String,
+    tenant_model_id: Uuid7,
     context_cap_tokens: i32,
 }
 
@@ -147,7 +144,7 @@ impl Providers {
 
         let Some(locked) =
             sqlx::query_as::<_, LockedCredential>(sql::LOCK_CREDENTIAL_FOR_ACTIVATION)
-                .bind(tenant_id.as_str())
+                .bind(tenant_id)
                 .bind(secret_ref)
                 .fetch_optional(&mut *transaction)
                 .await
@@ -174,8 +171,7 @@ impl Providers {
         // holds a connection and the credential's row lock, and acquiring a
         // second connection under both is how a bounded pool starves under
         // concurrent activations. The join already resolved this exact row.
-        let workspace = Uuid7::parse(&locked.workspace_id)
-            .map_err(row_malformed(TABLE_WORKSPACES, COLUMN_ID))?;
+        let workspace = locked.workspace_id.clone();
         let opened = open_envelope(locked.envelope, &workspace, secret_ref, self.vault_key())?;
         let vetted = match vet(opened.expose()) {
             Ok(vetted) => vetted,
@@ -239,8 +235,8 @@ impl Providers {
         transaction: &mut Transaction<'_, sqlx::Postgres>,
         tenant_id: &Uuid7,
     ) -> Result<bool> {
-        let held: Option<String> = sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
-            .bind(tenant_id.as_str())
+        let held: Option<Uuid7> = sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
+            .bind(tenant_id)
             .fetch_optional(&mut **transaction)
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;
@@ -259,8 +255,8 @@ impl Providers {
         now: Timestamp,
     ) -> Result<Activation> {
         sqlx::query(sql::INSERT_TENANT_MODEL_IF_ABSENT)
-            .bind(self.mint_entry_id(now)?.as_str())
-            .bind(tenant_id.as_str())
+            .bind(self.mint_entry_id(now)?)
+            .bind(tenant_id)
             .bind(model)
             .bind(secret_ref)
             .execute(&mut *transaction)
@@ -268,7 +264,7 @@ impl Providers {
             .map_err(query(CONTEXT_ACTIVATE))?;
 
         let pointed = sqlx::query_as::<_, Pointed>(sql::ACTIVATE_TENANT_MODEL)
-            .bind(tenant_id.as_str())
+            .bind(tenant_id)
             .bind(provider)
             .bind(model)
             .bind(secret_ref)
@@ -284,8 +280,7 @@ impl Providers {
             return Ok(Activation::ModelUnknown);
         };
         let own = OwnModel {
-            tenant_model_id: Uuid7::parse(&pointed.tenant_model_id)
-                .map_err(row_malformed(TABLE_SELECTIONS, COLUMN_TENANT_MODEL))?,
+            tenant_model_id: pointed.tenant_model_id.clone(),
             model: model.into(),
             secret_ref: secret_ref.into(),
             provider: Some(provider.into()),

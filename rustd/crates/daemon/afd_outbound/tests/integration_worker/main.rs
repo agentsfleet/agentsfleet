@@ -36,10 +36,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use af_core::id::Uuid7;
 use afd_dragonfly::{OutboundDelivery, OutboundJob};
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Posters, Verdict, Worker};
@@ -85,9 +86,16 @@ const MIN_BACKOFF_WAIT: Duration = Duration::from_millis(500);
 const READ_BLOCK: Duration = Duration::from_millis(500);
 
 /// A workspace id shaped like the ones the report path queues.
-const WORKSPACE_ID: &str = "0199a0b0-0000-7000-8000-000000000001";
+static WORKSPACE_ID: LazyLock<Uuid7> = LazyLock::new(|| id("0199a0b0-0000-7000-8000-000000000001"));
 /// See [`WORKSPACE_ID`].
-const FLEET_ID: &str = "0199a0b0-0000-7000-8000-000000000002";
+static FLEET_ID: LazyLock<Uuid7> = LazyLock::new(|| id("0199a0b0-0000-7000-8000-000000000002"));
+/// The event every answer queued here answers.
+static EVENT_ID: LazyLock<Uuid7> = LazyLock::new(|| id("0199a0b0-0000-7000-8000-000000000003"));
+
+/// A fixture identifier spelled in full.
+fn id(text: &str) -> Uuid7 {
+    Uuid7::parse(text).expect("a fixture identifier is a canonical UUIDv7")
+}
 /// The provider `dispatch` routes to the Slack poster, which is the one arm
 /// with a poster behind it.
 const PROVIDER: &str = "slack";
@@ -311,9 +319,9 @@ async fn a_queue_that_answers_and_refuses_is_not_reported_as_an_outage() {
         .enqueue(OutboundJob {
             provider: PROVIDER,
             destination: DESTINATION,
-            workspace_id: WORKSPACE_ID,
-            fleet_id: FLEET_ID,
-            event_id: "1700000000-0",
+            workspace_id: &WORKSPACE_ID,
+            fleet_id: &FLEET_ID,
+            event_id: &EVENT_ID,
             answer: "Aurora is healthy.",
         })
         .await

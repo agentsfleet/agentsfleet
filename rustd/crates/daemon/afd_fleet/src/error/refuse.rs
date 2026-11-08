@@ -31,6 +31,12 @@ pub(crate) fn lease_not_found() -> Error {
     Error::new(ErrorKind::LeaseNotFound)
 }
 
+/// The lease a runner named in text: one that is not a `UUIDv7` names no lease,
+/// so it is refused as not found rather than bound and refused by Postgres.
+pub(crate) fn wire_lease(text: &str) -> crate::error::Result<af_core::id::Uuid7> {
+    af_core::id::Uuid7::parse(text).map_err(|_text| lease_not_found())
+}
+
 /// Refuses a renewal for a lease that has moved on.
 pub(crate) fn lease_lost() -> Error {
     Error::new(ErrorKind::LeaseLost)

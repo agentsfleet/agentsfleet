@@ -1,5 +1,6 @@
 //! A full recovery page revisits skipped work before new arrivals can starve it.
 
+use af_core::id::Uuid7;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _};
 use sqlx::Connection as _;
 
@@ -48,7 +49,7 @@ async fn wrapped(case: &Case) {
 async fn full_page(
     oldest: &Decisions<'_>,
     later: &Decisions<'_>,
-) -> (DecisionMaintenanceCursor, [String; 2]) {
+) -> (DecisionMaintenanceCursor, [Uuid7; 2]) {
     let mut connection = oldest
         .case
         .held
@@ -80,8 +81,8 @@ async fn full_page(
 async fn recovered(
     oldest: &Decisions<'_>,
     later: &Decisions<'_>,
-    first: &str,
-    calls: &[String],
+    first: &Uuid7,
+    calls: &[Uuid7],
     cursor: &mut DecisionMaintenanceCursor,
 ) {
     let recovered = oldest
@@ -122,8 +123,8 @@ async fn drained(
     );
     assert_eq!(oldest.counts().await, (1, 1, 0));
     assert_eq!(later.counts().await, (101, 101, 0));
-    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.decision_calls WHERE original_lease_id IN ($1::uuid,$2::uuid) AND accounted_at IS NULL")
-        .bind(oldest.case.held.lease_key.as_str()).bind(later.case.held.lease_key.as_str())
+    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.decision_calls WHERE original_lease_id IN ($1,$2) AND accounted_at IS NULL")
+        .bind(&oldest.case.held.lease_key).bind(&later.case.held.lease_key)
         .fetch_one(&mut *oldest.case.held.fixtures.database.acquire().await.expect("complete retained reservations"))
         .await.expect("nothing remains reserved");
     assert_eq!(remaining, 0);

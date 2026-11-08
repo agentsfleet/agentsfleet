@@ -17,6 +17,7 @@
 pub mod cursor;
 
 use af_core::catalogue::{Metadata, Price};
+use af_core::id::Uuid7;
 use afd_admin::catalogue::{MetadataColumns, prices_for};
 use afd_db::Db;
 use jiff::Timestamp;
@@ -71,7 +72,7 @@ impl Models {
             .take(limit)
             .map(|row| CatalogueRow::from_row(row).map_err(unreadable_row))
             .collect::<Result<Vec<_>>>()?;
-        let ids: Vec<&str> = served.iter().map(|row| row.id.as_str()).collect();
+        let ids: Vec<&Uuid7> = served.iter().map(|row| &row.id).collect();
         let mut connection = self.database.acquire().await?;
         let mut prices = prices_for(
             connection.as_mut(),
@@ -89,7 +90,7 @@ impl Models {
         let models = served
             .into_iter()
             .map(|row| {
-                let schedule = prices.take(&row.id);
+                let schedule = prices.take(row.id.as_str());
                 row.served(schedule)
             })
             .collect();
@@ -178,7 +179,7 @@ pub struct Boundary {
     /// `lower(normalize(provider, NFKC))`, likewise.
     pub vendor_key: String,
     /// The row id breaking ties between folded twins.
-    pub id: String,
+    pub id: Uuid7,
 }
 
 /// The context a column this daemon cannot read reports under.
@@ -204,7 +205,7 @@ struct CatalogueRow {
     output_nanos_per_mtok: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     updated_at: Timestamp,
-    id: String,
+    id: Uuid7,
     display_key: String,
     vendor_key: String,
 }
