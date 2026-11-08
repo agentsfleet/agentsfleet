@@ -40,7 +40,7 @@ const MARK_DELIVERED: &str = "UPDATE fleet.admissions SET delivered_at = now() \
      WHERE fleet_id = $1 AND delivered_at IS NULL";
 
 /// The two indexes that hold only undelivered admissions, keyed on the fleet
-/// and the admission order (`schema/1720_fleet_admissions.sql`).
+/// and the admission order (`schema/20261108125100_fleet_admissions.sql`).
 const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_admissions_delivery_lookup"];
 
 /// Ledger history, most of it delivered, across many fleets of one workspace:

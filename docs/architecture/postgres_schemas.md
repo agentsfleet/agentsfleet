@@ -247,7 +247,7 @@ omit its model and review then resolves the tenant default.
 ## runner
 
 ```
- runners ◀── leases ··▶ fleet.events (fleet_event_id), fleet.fleets (fleet_id): opaque, no FK
+ runners ◀── leases ··▶ fleet.events (event_id), fleet.fleets (fleet_id): opaque, no FK
          ◀── events, lifetime_counters (1:1)
  fleet_slots (1 per fleet) ──▶ runners (last_runner_id), fleet.fleets
 ```
