@@ -132,6 +132,7 @@ there is no generic repository trait.
 | `api_keys` | Tenant automation tokens, hash only; outlive the admin who made them |  |
 | `cli_credentials` | One live CLI login per machine, hash only | (metadata columns are in §Settled) |
 | `user_preferences` | Small dashboard settings per (user, workspace) |  |
+| `device_sessions` | One CLI device login in flight; ciphertext sealed to the CLI, code kept as a peppered HMAC | no foreign key: a session exists before any user does; operator roles revoked (M244) |
 
 `invites.resolved_at` is NULL while an invite is pending and is set on accept or revoke. The
 "one pending invite per address" unique index and the "what is waiting for me" index read
@@ -334,7 +335,8 @@ that reads them (rule 7).
 | Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, usage lines (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
-| OAuth nonce (spent at the callback, or past `expires_at`) | the row, at its spend or by the expiry sweep | none | none; the row holds only a digest |
+| Device session (past `expires_at`) | the row, by the login sweeper | none | none; the row holds a sealed ciphertext and a code digest |
+| OAuth nonce (spent at the callback, or past `expires_at`) | the row, at its spend or by the login sweeper | none | none; the row holds only a digest |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), usage lines; slots (`last_runner_id` set NULL) | none |
 
 ## vault and memory

@@ -52,12 +52,12 @@ impl Fleet {
 
     /// Runs the device-flow service over a live, test-owned Dragonfly connection.
     ///
-    /// Only the session service is replaced. The remaining queue-backed seams
+    /// Only the session service is replaced. The remaining store-backed seams
     /// stay unreachable so a device-flow proof cannot accidentally broaden
     /// into a fleet, approval, or event integration test.
-    pub(crate) fn with_session_queue(mut self, queue: Dragonfly) -> Self {
+    pub(crate) fn with_session_store(mut self, database: Db) -> Self {
         self.logins = Logins::new(
-            afd_dragonfly::SessionStore::new(queue),
+            afd_tenant::session::SessionStore::new(database),
             SecretBytes::new(FIXTURE_PEPPER.to_vec()),
             Entropy::new(),
             FIXTURE_APP_URL,

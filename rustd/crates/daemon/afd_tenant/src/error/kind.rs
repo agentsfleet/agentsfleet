@@ -11,12 +11,6 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
-    #[error("the queue backing the tenant plane would not answer")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     #[error("statement failed during {context}")]
     Query {
         context: &'static str,

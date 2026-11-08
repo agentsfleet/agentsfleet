@@ -23,7 +23,7 @@
 //!
 //! # Why it lives in this crate
 //!
-//! It needs the queue, the entropy source and the message authentication code
+//! It needs the database, the entropy source and the message authentication code
 //! at once, and `afd_auth` deliberately reaches none of them — that crate is
 //! the portable half of authentication and stays datastore-free, exactly as
 //! `afd_state` exists because it cannot name `sqlx`. This crate is where the
@@ -32,20 +32,18 @@
 
 pub mod fingerprint;
 pub mod input;
+mod state;
+mod store;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::mac::HmacSha256Tag;
 use af_crypto::secret::SecretBytes;
-use afd_dragonfly::session::{
-    AbortReason, ApproveOutcome, SESSION_TTL, SessionState, SessionStore, VerifyOutcome,
-};
 use jiff::Timestamp;
 
-// Re-exported so the HTTP layer can name the state a poll reports without
-// taking a dependency on the queue crate: a status is a fact about the login,
-// and the login is this module's.
-pub use afd_dragonfly::session::SessionStatus;
+pub use self::state::SessionStatus;
+use self::state::{AbortReason, ApproveOutcome, VerifyOutcome};
+pub use self::store::{CONSUME_REPLAY_WINDOW, MAX_VERIFY_ATTEMPTS, SESSION_TTL, SessionStore};
 
 use crate::Result;
 use crate::error;
@@ -72,7 +70,7 @@ pub struct Sessions {
 }
 
 impl Sessions {
-    /// Binds the login surface to its queue, its pepper and its dashboard.
+    /// Binds the login surface to its store, its pepper and its dashboard.
     ///
     /// `app_url` is where a person goes to approve; a trailing slash on it is
     /// tolerated here rather than in configuration, because an operator setting
@@ -97,33 +95,20 @@ impl Sessions {
     ///
     /// # Errors
     /// Refuses a public key or a token name the bounds will not take, reports a
-    /// host that cannot draw entropy, and reports a queue that would not answer.
+    /// host that cannot draw entropy, and reports a store that would not answer.
     pub async fn open(&self, opening: &Opening<'_>, now: Timestamp) -> Result<Opened> {
         let session_id = self.entropy.uuid7(now)?;
-        let state = SessionState {
-            session_id: session_id.as_str().to_owned(),
-            status: SessionStatus::Pending,
-            cli_public_key: opening.public_key.as_str().to_owned(),
-            token_name: opening.token_name.as_str().to_owned(),
-            dashboard_public_key: None,
-            ciphertext: None,
-            nonce: None,
-            verification_code_hmac_hex: None,
-            verification_attempts: 0,
-            created_at: now,
-            expires_at: expiry_of(now),
-            approved_at: None,
-            consumed_at: None,
-            aborted_reason: None,
-            clerk_user_id: None,
-            consumed_client_fingerprint_hex: None,
-            consume_payload_expires_at: None,
-        };
-        self.store.put(&state).await?;
-
+        self.store
+            .open(
+                &session_id,
+                opening.public_key.as_str(),
+                opening.token_name.as_str(),
+            )
+            .await?;
+        let session_id = session_id.as_str().to_owned();
         Ok(Opened {
-            login_url: format!("{}{LOGIN_PATH}{}", self.app_url, state.session_id),
-            session_id: state.session_id,
+            login_url: format!("{}{LOGIN_PATH}{session_id}", self.app_url),
+            session_id,
         })
     }
 
@@ -136,15 +121,21 @@ impl Sessions {
     ///
     /// # Errors
     /// Refuses an id naming nothing held, and each terminal state with its own
-    /// registry code. Reports a queue that would not answer.
+    /// registry code. Reports a store that would not answer.
     pub async fn poll(&self, session_id: &str) -> Result<Waiting> {
-        let state = self.load(session_id).await?;
-        match state.status {
+        let id = parse_id(session_id)?;
+        let polled = self
+            .store
+            .get(&id)
+            .await?
+            .ok_or_else(error::session_missing)?;
+        let status = SessionStatus::parse(&polled.status).ok_or_else(error::session_missing)?;
+        match status {
             SessionStatus::Pending | SessionStatus::VerificationPending => Ok(Waiting {
-                status: state.status,
-                cli_public_key: state.cli_public_key,
-                token_name: state.token_name,
-                expires_at: state.expires_at,
+                status,
+                cli_public_key: polled.cli_public_key,
+                token_name: polled.token_name,
+                expires_at: polled.expires_at,
             }),
             SessionStatus::Consumed => Err(error::session_consumed()),
             SessionStatus::Expired => Err(error::session_expired()),
@@ -155,34 +146,32 @@ impl Sessions {
     /// Records one dashboard approval, once.
     ///
     /// The digest of the code is computed HERE and the six digits never leave
-    /// this frame: what the queue holds is a peppered message authentication
-    /// code, so a queue somebody can read is not a queue somebody can log in
+    /// this frame: what the row holds is a peppered message authentication
+    /// code, so a table somebody can read is not a table somebody can log in
     /// from.
     ///
     /// # Errors
     /// Refuses a field the bounds will not take, an id naming nothing held, and
-    /// a session already past pending. Reports a queue that would not answer.
+    /// a session already past pending. Reports a store that would not answer.
     pub async fn approve(
         &self,
         session_id: &str,
         approval: &Approval<'_>,
         approver: &str,
-        now: Timestamp,
     ) -> Result<()> {
         let id = parse_id(session_id)?;
         let digest = self.code_digest(id.as_str(), approval.verification_code.as_str());
         let outcome = self
             .store
             .approve(
-                &afd_dragonfly::session::Approval {
-                    session_id: id.as_str(),
+                &id,
+                &state::Approval {
                     dashboard_public_key: approval.dashboard_public_key.as_str(),
                     ciphertext: approval.ciphertext.as_str(),
                     nonce: approval.nonce.as_str(),
-                    code_hmac_hex: &digest,
+                    code: &digest,
                     approver,
                 },
-                now,
             )
             .await?;
 
@@ -190,13 +179,13 @@ impl Sessions {
             ApproveOutcome::Approved => Ok(()),
             ApproveOutcome::Missing => Err(error::session_missing()),
             ApproveOutcome::Conflict(status) => {
-                // The status the script found goes to the log and not the wire:
+                // The status the statement found goes to the log and not the wire:
                 // an approver learning that the session it lost the race for is
                 // `consumed` rather than `verification_pending` learns whether
                 // somebody completed a login, which is not its business.
                 // Hoisted: the `log` bridge duplicates field expressions and
                 // llvm-cov scores the dead copy.
-                let found = status.as_deref().unwrap_or("unknown");
+                let found = status.map_or("unknown", SessionStatus::as_str);
                 tracing::debug!(found, event = "auth_session_approve_conflict");
                 Err(error::session_already_approved())
             }
@@ -209,20 +198,19 @@ impl Sessions {
     /// Refuses a code that is not six digits before computing anything over it,
     /// an id naming nothing held, every terminal state, a session no human has
     /// approved, and a code that did not match — the last two separately,
-    /// because one says wait and the other says try again. Reports a queue that
+    /// because one says wait and the other says try again. Reports a store that
     /// would not answer.
     pub async fn verify(
         &self,
         session_id: &str,
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
-        now: Timestamp,
     ) -> Result<Redeemed> {
         let id = parse_id(session_id)?;
         let digest = self.code_digest(id.as_str(), code.as_str());
         let outcome = self
             .store
-            .verify_and_consume(id.as_str(), &digest, now, fingerprint.as_str())
+            .verify_and_consume(&id, &digest, fingerprint)
             .await?;
 
         match outcome {
@@ -233,7 +221,7 @@ impl Sessions {
             VerifyOutcome::Consumed => Err(error::session_consumed()),
             // The stored reason is not relayed. It is a closed set of three and
             // every one of them has the same remedy — log in again — so the
-            // sentence is fixed and the reason rides the queue for an operator.
+            // sentence is fixed and the reason stays on the row for an operator.
             VerifyOutcome::Aborted(reason) => {
                 tracing::debug!(reason, event = "auth_session_verify_aborted");
                 Err(error::session_aborted())
@@ -256,21 +244,11 @@ impl Sessions {
     /// per aborted session without the store taking an observer callback.
     ///
     /// # Errors
-    /// Reports a queue that would not answer.
+    /// Reports a store that would not answer.
     pub async fn cancel_all(&self, owner: &str) -> Result<Vec<String>> {
-        Ok(self
-            .store
-            .abort_all_for_owner(owner, AbortReason::ExplicitCancel)
-            .await?)
-    }
-
-    /// Reads one session, refusing an id that names nothing held.
-    async fn load(&self, session_id: &str) -> Result<SessionState> {
-        let id = parse_id(session_id)?;
         self.store
-            .get(id.as_str())
-            .await?
-            .ok_or_else(error::session_missing)
+            .abort_all_for_owner(owner, AbortReason::ExplicitCancel)
+            .await
     }
 
     /// The peppered digest of one session's code.
@@ -278,24 +256,12 @@ impl Sessions {
     /// The session id is bound into the message, so a code lifted from one
     /// session cannot be replayed against another even when the two happen to
     /// show the same six digits.
-    fn code_digest(&self, session_id: &str, code: &str) -> String {
+    fn code_digest(&self, session_id: &str, code: &str) -> HmacSha256Tag {
         HmacSha256Tag::compute_peppered(
             &self.code_pepper,
             &[session_id.as_bytes(), code.as_bytes()],
         )
-        .to_hex()
     }
-}
-
-/// When a session opened at `now` expires, from the store's own duration.
-///
-/// Derived rather than declared a second time: the queue expires the key on one
-/// value and the blob carries the same instant, and two constants would let
-/// them drift by exactly the amount nobody notices. The daemon's clock, not the
-/// database's: the session lives in Dragonfly, whose key time-to-live is the
-/// same span.
-fn expiry_of(now: Timestamp) -> Timestamp {
-    af_core::clock::after(now, SESSION_TTL)
 }
 
 /// Refuses a session id that is not a version 7 identifier.
@@ -310,11 +276,3 @@ fn parse_id(session_id: &str) -> Result<Uuid7> {
 
 mod response;
 pub use self::response::{Opened, Redeemed, Waiting};
-
-#[cfg(test)]
-#[test]
-fn a_session_expires_on_the_queues_own_ttl() {
-    let opened = Timestamp::constant(1_767_225_600, 0);
-    let window = expiry_of(opened).duration_since(opened);
-    assert_eq!(window.unsigned_abs(), SESSION_TTL);
-}

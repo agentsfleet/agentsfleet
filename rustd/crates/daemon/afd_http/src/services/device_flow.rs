@@ -25,39 +25,37 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
     ///
     /// # Errors
     /// Refuses an id naming nothing held and each terminal state with its own
-    /// registry code; reports a queue that would not answer.
+    /// registry code; reports a store that would not answer.
     fn poll(&self, session_id: &str) -> impl Future<Output = afd_tenant::Result<Waiting>> + Send;
 
     /// Records one dashboard approval.
     ///
     /// # Errors
     /// Refuses an id naming nothing held and a session already past pending;
-    /// reports a queue that would not answer.
+    /// reports a store that would not answer.
     fn approve(
         &self,
         session_id: &str,
         approval: &input::Approval<'_>,
         approver: &str,
-        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send;
 
     /// Presents a code, redeeming the session if it matches.
     ///
     /// # Errors
     /// Refuses every terminal state, a session no human has approved, and a
-    /// code that did not match; reports a queue that would not answer.
+    /// code that did not match; reports a store that would not answer.
     fn verify(
         &self,
         session_id: &str,
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
-        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send;
 
     /// Cancels every in-flight login `owner` holds, answering their ids.
     ///
     /// # Errors
-    /// Reports a queue that would not answer.
+    /// Reports a store that would not answer.
     fn cancel_all(
         &self,
         owner: &str,
@@ -86,9 +84,8 @@ impl DeviceFlow for afd_tenant::session::Sessions {
         session_id: &str,
         approval: &input::Approval<'_>,
         approver: &str,
-        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
-        Self::approve(self, session_id, approval, approver, now)
+        Self::approve(self, session_id, approval, approver)
     }
 
     fn verify(
@@ -96,9 +93,8 @@ impl DeviceFlow for afd_tenant::session::Sessions {
         session_id: &str,
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
-        now: Timestamp,
     ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send {
-        Self::verify(self, session_id, code, fingerprint, now)
+        Self::verify(self, session_id, code, fingerprint)
     }
 
     fn cancel_all(

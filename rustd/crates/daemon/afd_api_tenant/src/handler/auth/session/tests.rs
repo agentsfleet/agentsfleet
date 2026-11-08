@@ -19,10 +19,6 @@ const EVERY_STATUS: [SessionStatus; 5] = [
 #[test]
 fn every_status_is_spelled_as_the_store_spells_it() {
     for status in EVERY_STATUS {
-        assert_eq!(
-            serde_json::to_value(status).ok(),
-            Some(serde_json::Value::from(status_name(status))),
-            "{status:?}"
-        );
+        assert_eq!(status.as_str(), status_name(status), "{status:?}");
     }
 }

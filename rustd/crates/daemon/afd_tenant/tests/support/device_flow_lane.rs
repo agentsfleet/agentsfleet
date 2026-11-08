@@ -8,12 +8,11 @@
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::SecretBytes;
-use afd_dragonfly::SessionStore;
 use afd_tenant::session::input::Approval;
-use afd_tenant::session::{Fingerprint, Sessions};
+use afd_tenant::session::{Fingerprint, SessionStore, Sessions};
 use jiff::Timestamp;
 
-use crate::dragonfly_harness::DragonflyHarness;
+use crate::session_harness::SessionHarness;
 
 /// The dashboard this suite's login URLs are built against.
 pub(crate) const APP_URL: &str = "https://app-dev.agentsfleet.net/";
@@ -29,9 +28,9 @@ pub(crate) const APPROVER: &str = "user_2abcDEF";
 pub(crate) const NOW: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// The login surface, over the lane's queue.
-pub(crate) fn surface(harness: &DragonflyHarness) -> Sessions {
+pub(crate) fn surface(harness: &SessionHarness) -> Sessions {
     Sessions::new(
-        SessionStore::new(harness.redis.clone()),
+        SessionStore::new(harness.database.clone()),
         SecretBytes::new(b"c0ffee".repeat(8)),
         Entropy::new(),
         APP_URL,
