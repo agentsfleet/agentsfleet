@@ -194,6 +194,11 @@ async fn test_removed_member_stream_ends() {
     assert!(next_chunk(&mut wall_body).await.contains("event: hello"));
     let mut tail_body = open(&router, &members.tail(), &members.bob).await;
     assert!(next_chunk(&mut tail_body).await.contains("event: hello"));
+    assert!(
+        next_chunk(&mut tail_body)
+            .await
+            .contains("event: catching_up")
+    );
 
     members.remove_bob().await;
     // Past both beats on the paused clock, then real time again: each

@@ -36,6 +36,7 @@ pub mod error;
 pub mod fanin;
 pub mod frame;
 pub mod live;
+pub mod resubscribe;
 pub mod tail;
 
 use std::time::Duration;
@@ -47,6 +48,7 @@ pub use crate::frame::{
     DEFAULT_KIND, Data, Frame, KIND_ACCESS_REVOKED, KIND_CATCHING_UP, KIND_HELLO,
 };
 pub use crate::live::Live;
+pub use crate::resubscribe::Resubscribe;
 pub use crate::tail::tail;
 
 /// How often an idle stream proves that its transport still carries events.
