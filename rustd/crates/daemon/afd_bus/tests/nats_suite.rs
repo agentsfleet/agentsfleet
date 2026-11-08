@@ -63,6 +63,8 @@ async fn a_message_crosses_nodes_to_every_reader_once() -> TestResult {
 #[tokio::test]
 #[ignore = "needs live NATS: make test-integration-rustd"]
 async fn reconnect_gaps_every_subscription() -> TestResult {
+    let metrics = af_observability::test_util::Capture::install();
+    let reconnect_gaps = || metrics.sum("agentsfleet_bus_gaps_total", &[("cause", "reconnect")]);
     let seeds = seeds()?;
     let ns = namespace();
     let first = seeds.first().ok_or("node 1")?;
@@ -76,6 +78,7 @@ async fn reconnect_gaps_every_subscription() -> TestResult {
         settle(&publisher, subject, &mut [&mut subscription]).await?;
         subscriptions.push(subscription);
     }
+    let counted = reconnect_gaps();
     proxy.cut().await;
     tokio::time::sleep(Duration::from_millis(500)).await;
     proxy.restore();
@@ -91,6 +94,11 @@ async fn reconnect_gaps_every_subscription() -> TestResult {
             "exactly one gap: {before:?}"
         );
     }
+    assert_eq!(
+        reconnect_gaps() - counted,
+        3,
+        "one gap counted per subscription told"
+    );
     publisher.shutdown().await?;
     subscriber.shutdown().await?;
     Ok(())

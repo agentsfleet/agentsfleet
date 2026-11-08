@@ -3,7 +3,9 @@ use std::{sync::Arc, time::Instant};
 use af_core::id::Uuid7;
 use async_nats::Event;
 
-use super::{Cause, Tuning, hub::Channels, options_for, signals, spelling};
+use af_observability::metrics::label::bus::GapCause as Cause;
+
+use super::{Tuning, hub::Channels, options_for, signals, spelling};
 use crate::{Error, Received, Subject, error::ErrorKind};
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -43,13 +45,6 @@ fn a_publish_during_an_outage_is_a_backend_failure() {
     assert_eq!(error.reason(), "backend");
     assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
     assert!(error.to_string().contains("gap"), "{error}");
-}
-
-#[test]
-fn causes_spell_their_metric_labels() {
-    assert_eq!(Cause::Reconnect.as_str(), "reconnect");
-    assert_eq!(Cause::SlowConsumer.as_str(), "slow_consumer");
-    assert_eq!(Cause::PublishDebt.as_str(), "publish_debt");
 }
 
 #[test]

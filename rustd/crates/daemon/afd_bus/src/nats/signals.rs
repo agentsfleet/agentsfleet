@@ -18,31 +18,10 @@ use bytes::Bytes;
 use futures_util::StreamExt as _;
 use tokio::sync::Notify;
 
+use af_observability::{metrics::label::bus::GapCause as Cause, producers};
+
 use super::{Tuning, debt::Debt, hub};
 use crate::Result;
-
-/// Why a subscription was told frames may be missing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cause {
-    /// The client lost its server and found another.
-    Reconnect,
-    /// The client's buffer for one subscription overflowed.
-    SlowConsumer,
-    /// A publisher owed a marker after a failed or interrupted publish.
-    PublishDebt,
-}
-
-impl Cause {
-    /// Bounded label spelling.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Reconnect => "reconnect",
-            Self::SlowConsumer => "slow_consumer",
-            Self::PublishDebt => "publish_debt",
-        }
-    }
-}
 
 /// What the event callback has seen since the watcher last looked.
 #[derive(Debug)]
@@ -130,6 +109,7 @@ impl Signals {
 /// Tell every reader and return how many were told.
 pub(super) fn gap(channels: &hub::Channels, cause: Cause) -> usize {
     let subscriptions = channels.gap_all();
+    producers::bus::gaps(cause, u64::try_from(subscriptions).unwrap_or(u64::MAX));
     let cause_label = cause.as_str();
     tracing::warn!(event = "bus_gap_sent", cause = cause_label, subscriptions);
     subscriptions
