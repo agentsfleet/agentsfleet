@@ -67,7 +67,6 @@ async fn connect_and_declare(run: &Scenario) {
     // Prefer this fixture's fleet over unrelated ready marks left by other suites.
     Leases::new(
         run.booted.database.clone(),
-        run.booted.queue.clone(),
         afd_bus::dragonfly::publisher(run.booted.queue.clone()),
         Entropy::new(),
     )

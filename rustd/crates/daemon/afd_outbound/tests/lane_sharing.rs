@@ -14,9 +14,7 @@
 use std::time::Duration;
 
 use afd_db::test_util::mint_id;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::streams::EventId;
-use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
+use afd_outbound::Claimed;
 use afd_outbound::{Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
@@ -26,28 +24,15 @@ use tokio_util::sync::CancellationToken;
     reason = "shared support: the ceiling suite reads the high-water mark, this one does not"
 )]
 mod gated_poster;
-#[path = "support/hanging_queue.rs"]
-#[allow(
-    clippy::expect_used,
-    reason = "test support: an unmet precondition should fail the test loudly"
-)]
-#[allow(
-    dead_code,
-    reason = "shared support: each suite drives a different part of the fake"
-)]
-mod hanging_queue;
 #[path = "support/no_ledger.rs"]
 mod no_ledger;
 
 use self::gated_poster::Gated;
-use self::hanging_queue::HangingQueue;
 
 /// The thread an owed answer is addressed to, as a Slack producer records it.
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 
 const PROVIDER: &str = "slack";
-/// The deadline the client gives the fake for any one command.
-const REQUEST_DEADLINE: Duration = Duration::from_secs(2);
 /// How long the acknowledgement is waited for. Nothing here is held shut, so
 /// reaching this means the lanes stopped rather than that they were slow.
 const PATIENCE: Duration = Duration::from_secs(30);
@@ -58,28 +43,21 @@ const POLL: Duration = Duration::from_millis(5);
 /// acknowledge through a tracker nobody drains.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_clone_names_the_same_lanes() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
-        .with_request_timeout(REQUEST_DEADLINE);
-    let redis = Dragonfly::connect(&config)
-        .await
-        .expect("the fake queue answers a ping");
     let poster = Gated::default();
     let lanes = Lanes::new(
         Posters {
             slack: poster.clone(),
         },
-        OutboundQueue::new(redis),
         no_ledger::no_ledger(),
         token.clone(),
     );
     let second_holder = lanes.clone();
 
     lanes
-        .dispatch(Box::new(OutboundDelivery {
-            id: EventId::of("1700000000001-0"),
+        .dispatch(Box::new(Claimed {
+            id: afd_db::test_util::mint_id(),
+            token: String::new(),
             provider: PROVIDER.to_owned(),
             destination: DESTINATION.to_owned(),
             workspace_id: mint_id(),
@@ -90,12 +68,12 @@ async fn a_clone_names_the_same_lanes() {
         .await;
 
     tokio::time::timeout(PATIENCE, async {
-        while server.acks().is_empty() {
+        while poster.delivered().is_empty() {
             tokio::time::sleep(POLL).await;
         }
     })
     .await
-    .expect("the answer dispatched through one holder is acknowledged");
+    .expect("the answer dispatched through one holder is delivered");
 
     // Read through the OTHER holder: one lane map, so both see the same work.
     assert_eq!(second_holder.active(), lanes.active());
@@ -104,36 +82,30 @@ async fn a_clone_names_the_same_lanes() {
     second_holder.drain().await;
 }
 
-/// A delivery whose acknowledgement cannot be recorded is not retried here.
+/// A delivery whose stamp cannot be recorded is not retried here.
 ///
 /// The destination already took the answer. What failed is the RECORD of it,
-/// so the entry stays pending and the next process delivers it a second time —
-/// which is why the whole path is at-least-once and why the destination's own
-/// thread, not this ledger, is what a person reads. Retrying the delivery on
-/// an ack failure would send the answer twice within one process for nothing.
+/// so the claim lapses and a later claim delivers it a second time — which is
+/// why the whole path is at-least-once and why the destination's own thread,
+/// not this ledger, is what a person reads. Retrying in-process on a failed
+/// stamp would send the answer twice for nothing.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
+async fn a_delivery_survives_a_stamp_that_cannot_be_recorded() {
     let token = CancellationToken::new();
     let poster = Gated::default();
-    // A queue handle that opens no socket: the poster still answers, so the
-    // delivery happens and only the acknowledgement can fail.
-    let config =
-        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1/".to_owned());
     let lanes = Lanes::new(
         Posters {
             slack: poster.clone(),
         },
-        OutboundQueue::new(
-            Dragonfly::unreachable(&config).expect("a well-formed URL builds a handle"),
-        ),
         no_ledger::no_ledger(),
         token.clone(),
     );
     let event = mint_id();
 
     lanes
-        .dispatch(Box::new(OutboundDelivery {
-            id: EventId::of("1700000000002-0"),
+        .dispatch(Box::new(Claimed {
+            id: afd_db::test_util::mint_id(),
+            token: String::new(),
             provider: PROVIDER.to_owned(),
             destination: DESTINATION.to_owned(),
             workspace_id: mint_id(),
@@ -149,7 +121,7 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
         }
     })
     .await
-    .expect("the destination takes the answer even though the queue is gone");
+    .expect("the destination takes the answer even though the ledger is gone");
 
     // Waiting for the LANE to retire, not just for the first delivery. The
     // acknowledgement is attempted after the delivery returns, so asserting at
@@ -168,7 +140,7 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
     assert_eq!(
         poster.delivered(),
         vec![event.clone()],
-        "a failed acknowledgement must not make this process deliver twice"
+        "a failed stamp must not make this process deliver twice"
     );
 
     token.cancel();
@@ -178,6 +150,6 @@ async fn a_delivery_survives_an_acknowledgement_that_cannot_be_recorded() {
     assert_eq!(
         poster.delivered(),
         vec![event.clone()],
-        "the shutdown redelivered an answer whose acknowledgement had failed"
+        "the shutdown redelivered an answer whose stamp had failed"
     );
 }

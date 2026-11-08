@@ -157,6 +157,13 @@ async fn test_fleet_stream_opens_with_hello_before_any_activity() {
         hello.seq, 0,
         "a control frame rides the synthetic sequence, never the connection's"
     );
+    let catching_up = next_frame(&mut stream).await;
+    assert_eq!(
+        catching_up.data.text(),
+        r#"{"kind":"catching_up","dropped":0}"#,
+        "a fresh tail tells the client to backfill before live frames arrive"
+    );
+    assert_eq!(catching_up.seq, 0, "the catch-up is a control frame too");
 
     publisher
         .publish(&activity, &payload(0))

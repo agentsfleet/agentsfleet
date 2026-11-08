@@ -6,8 +6,8 @@
 
 use super::*;
 use crate::lanes::LANE_DEPTH;
+use crate::obligation::Claimed;
 use af_core::id::Uuid7;
-use afd_dragonfly::{OutboundDelivery, streams::EventId};
 
 mod capacity;
 
@@ -23,8 +23,9 @@ fn answer(number: impl std::fmt::LowerHex) -> Uuid7 {
 
 /// Every job here shares one workspace and fleet, so one destination.
 fn job(number: u32) -> Job {
-    Box::new(OutboundDelivery {
-        id: EventId::of(&format!("1700000000{number:03}-0")),
+    Box::new(Claimed {
+        id: afd_db::test_util::mint_id(),
+        token: String::new(),
         provider: "slack".to_owned(),
         destination: "thread".to_owned(),
         workspace_id: id("0199a0b0-0001-7000-8000-000000000001"),

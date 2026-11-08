@@ -14,15 +14,17 @@
 //! rows still exist. After that the order is forced by the foreign keys:
 //! fleets reference workspaces, workspaces reference tenants.
 
+use af_core::id::Uuid7;
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, OUTBOUND_STREAM_KEY};
 
-use crate::datastores::command::{RANGE_END, RANGE_START, XDEL, XRANGE};
 use crate::error::Result;
 use crate::fixture::RunPrefix;
 
 /// A run's runners, by the prefix in their host id.
 const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
+
+/// A run's owed answers, by row id.
+const DELETE_OBLIGATIONS: &str = include_str!("sql/delete_obligations.sql");
 
 /// A run's fleets; their revisions, events and slots go with them.
 const DELETE_FLEETS: &str = include_str!("sql/delete_fleets.sql");
@@ -76,58 +78,23 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     Ok(removed)
 }
 
-/// Delete the outbound entries this run appended, by the ids it was handed.
+/// Remove this run's owed answers by the row ids the lane handed out.
 ///
-/// The happy path: a lane holds every id `enqueue` returned, so it removes
-/// exactly those and never reads the shared stream to find them. Returns how
-/// many the server actually removed, which is what the ledger compares.
+/// The happy path: the lane holds every id it owed, so it removes exactly
+/// those. A run that failed before it could is covered by [`everything`]:
+/// deleting the run's fleets cascades to their obligations.
 ///
 /// # Errors
 ///
-/// `QueueUnavailable` when the stream will not answer.
-pub async fn outbound_entries(queue: &Dragonfly, ids: &[String]) -> Result<u64> {
+/// Whatever Postgres refused.
+pub async fn outbound_obligations(database: &Db, ids: &[Uuid7]) -> Result<u64> {
     if ids.is_empty() {
         return Ok(0);
     }
-    let mut del = redis::cmd(XDEL);
-    del.arg(OUTBOUND_STREAM_KEY);
-    for id in ids {
-        del.arg(id);
-    }
-    Ok(queue.command(XDEL, OUTBOUND_STREAM_KEY, &del).await?)
+    let mut connection = database.acquire().await?;
+    let removed = sqlx::query(DELETE_OBLIGATIONS)
+        .bind(ids)
+        .execute(&mut *connection)
+        .await?;
+    Ok(removed.rows_affected())
 }
-
-/// Remove this run's entries from the shared outbound stream by prefix.
-///
-/// The fallback for a run that failed before it could hand its ids to
-/// [`outbound_entries`]: the entries are found by the run prefix they carry
-/// in `workspace_id`. This reads the stream to do it, which on the rig is the
-/// run's own entries and little else; the paged, deployed-safe form of this
-/// scan is deferred with the deployed-environment follow-up.
-///
-/// # Errors
-///
-/// `QueueUnavailable` when the stream will not answer.
-pub async fn outbound_stream(queue: &Dragonfly, prefix: &RunPrefix) -> Result<u64> {
-    let mut range = redis::cmd(XRANGE);
-    range
-        .arg(OUTBOUND_STREAM_KEY)
-        .arg(RANGE_START)
-        .arg(RANGE_END);
-    let entries: Vec<(String, Vec<String>)> =
-        queue.command(XRANGE, OUTBOUND_STREAM_KEY, &range).await?;
-    let mine: Vec<String> = entries
-        .into_iter()
-        .filter(|(_id, fields)| {
-            fields.chunks(2).any(|pair| {
-                pair.first().is_some_and(|k| k == WORKSPACE_FIELD)
-                    && pair.get(1).is_some_and(|v| prefix.owns(v))
-            })
-        })
-        .map(|(id, _fields)| id)
-        .collect();
-    outbound_entries(queue, &mine).await
-}
-
-/// The entry field the outbound producer writes the workspace into.
-const WORKSPACE_FIELD: &str = "workspace_id";

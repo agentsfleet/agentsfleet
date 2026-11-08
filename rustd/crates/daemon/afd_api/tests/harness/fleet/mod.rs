@@ -73,7 +73,6 @@ impl Fleet {
             tasks: afd_fleet::task::Tasks::new(
                 afd_fleet::lease::Leases::new(
                     database.clone(),
-                    queue.clone(),
                     afd_bus::dragonfly::publisher(queue.clone()),
                     Entropy::new(),
                 ),

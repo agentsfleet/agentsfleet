@@ -32,21 +32,14 @@
 //! The poster escapes every text it sends (`crate::slack`), so a line is handed
 //! over as the fleet wrote it and escaped exactly once.
 
+use crate::obligation::Claimed;
 use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_connector::slack::Part;
-use afd_dragonfly::OutboundDelivery;
-use afd_dragonfly::streams::EventId;
 use tokio_util::sync::CancellationToken;
 
 use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
 use crate::slack::SlackPoster;
-
-/// The entry id an interim job carries.
-///
-/// The job never rides the stream, so it names no entry. The stream's minimum
-/// id, which no append ever mints, so it can never be mistaken for one.
-const UNQUEUED: &str = "0-0";
 
 /// Logged once per line, delivered or not; the text is never logged.
 const EVENT_POSTED: &str = "fleet_message_posted";
@@ -106,8 +99,11 @@ impl Interjector {
             text,
             part,
         } = interim;
-        let job = OutboundDelivery {
-            id: EventId::of(UNQUEUED),
+        // An interjection posts directly and is never claimed, so its row id
+        // and token are placeholders no ledger write ever reads.
+        let job = Claimed {
+            id: event_id.clone(),
+            token: String::new(),
             provider: provider.id().to_owned(),
             destination,
             workspace_id,
@@ -151,11 +147,11 @@ struct Line<'p> {
 }
 
 impl Deliver for Line<'_> {
-    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.slack.deliver_part(job, Some(&self.part))
     }
 
-    fn redeliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.slack.redeliver_part(job, Some(&self.part))
     }
 }

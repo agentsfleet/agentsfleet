@@ -30,5 +30,6 @@ pub mod http;
 pub mod library;
 pub mod memory;
 pub mod models;
+pub mod outbound;
 pub mod scheduler;
 pub mod task;

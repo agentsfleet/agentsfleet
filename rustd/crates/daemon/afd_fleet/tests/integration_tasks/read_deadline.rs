@@ -99,7 +99,6 @@ async fn single_pool(case: &Case) -> (Db, Tasks) {
     let tasks = Tasks::new(
         Leases::new(
             database.clone(),
-            case.held.fixtures.queue().clone(),
             afd_bus::dragonfly::publisher(case.held.fixtures.queue().clone()),
             Entropy::new(),
         ),

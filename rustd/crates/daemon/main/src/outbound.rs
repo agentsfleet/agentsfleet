@@ -4,157 +4,36 @@
 //! this file knows that this daemon runs one, and what it is built over. The
 //! split is [`crate::sweepers`]': the service crate stays unaware that a daemon
 //! process exists, and the process decides what it starts.
-//!
-//! # Why this one opens a connection the rest of the process does not share
-//!
-//! Every other Dragonfly caller in this binary goes through the one multiplexed
-//! [`Dragonfly`], because sharing a socket is what makes a pool unnecessary. This
-//! worker blocks on `XREADGROUP … BLOCK`, and a blocking command on a shared
-//! connection is not a slow command — it is a stopped process, since Dragonfly
-//! executes a connection's commands in order. So it dials its own, exactly as
-//! the pub/sub hub does, and [`afd_dragonfly::Dedicated`] is not `Clone` so nobody
-//! can join it there.
-//!
-//! # A worker that cannot dial does not stop the boot
-//!
-//! Dragonfly is already proven reachable by the time this runs — the shared handle
-//! pinged it, and `/readyz` reports on it. A second dial that fails here is a
-//! blip on a connection nothing else needs, and refusing to boot over it would
-//! take down the whole API to protect the return leg of one connector. It is
-//! logged and skipped: answers queue durably on the stream and the next process
-//! that starts delivers them.
 
-use af_core::error_code::{Coded as _, Logged};
+use af_crypto::entropy::Entropy;
 use afd_connector::Grants;
 use afd_db::Db;
-use afd_dragonfly::{
-    Dedicated, Dragonfly, DragonflyConfig, OutboundQueue, OutboundReader, outbound_consumer,
-};
-use afd_outbound::producer::Producer;
-use afd_outbound::{LONGEST_PARK, Posters, SlackPoster, Worker};
+use afd_outbound::{Posters, SlackPoster, Worker};
 
 use crate::supervisor::Supervisor;
 
-// Public for the same reason [`crate::sweepers`]'s names are: the boot test
-// asserts the supervisor's INVENTORY, and a test spelling this as a literal
-// would keep passing through a rename — leaving the worker unsupervised and the
-// assertion still green.
-
-/// The supervised name of the connector answer-delivery worker.
+/// The supervised name of the answer-delivery worker.
 pub const OUTBOUND_WORKER: &str = "connector:outbound";
 
-/// The supervised name of the owed-answer producer.
+/// Starts the answer-delivery worker under `supervisor`.
 ///
-/// Its own task rather than a turn of the worker's loop: the worker parks on a
-/// blocking read for whole seconds at a time, and a pass that had to wait for
-/// that park would run at the queue's idle cadence instead of its own.
-pub const OUTBOUND_PRODUCER: &str = "connector:outbound-producer";
-
-/// Starts the outbound worker under `supervisor`, if it can open its socket.
-///
-/// Called after the datastores are open and before the listener binds, for the
-/// reason the sweepers are: a worker reading through a pool that is not yet
-/// connected would fail its first pass for a reason unrelated to the rows.
-pub async fn spawn(
+/// It claims owed answers from `fleet.obligations` when `bus` pings it and on
+/// its own pass, so it needs no connection of its own (M244 §4).
+pub fn spawn(
     supervisor: &mut Supervisor,
-    config: &DragonflyConfig,
     database: &Db,
-    queue: &Dragonfly,
+    bus: afd_bus::Handle,
     grants: Grants,
     vendor_client: reqwest::Client,
     slack_api_base: String,
 ) {
-    let connection = match Dedicated::connect(config, LONGEST_PARK).await {
-        Ok(connection) => connection,
-        Err(failure) => {
-            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let Logged { error_code, reason } = failure.logged();
-            tracing::warn!(error_code, reason, event = "outbound_worker_connect_failed");
-            return;
-        }
-    };
-
     let worker = Worker::new(
-        OutboundReader::new(connection, outbound_consumer()),
-        OutboundQueue::new(queue.clone()),
         database.clone(),
+        bus,
         Posters {
             slack: SlackPoster::new(grants, vendor_client, slack_api_base),
         },
+        Entropy::new(),
     );
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));
-
-    // The recovery half. The report path appends an answer the moment it
-    // commits, so in a healthy deployment this finds nothing; it exists for the
-    // two cases that path cannot cover — a process that died between the commit
-    // and the append, and a queue that lost the entry afterwards.
-    let producer = Producer::new(OutboundQueue::new(queue.clone()), database.clone());
-    supervisor.spawn(OUTBOUND_PRODUCER, move |token| producer.run(token));
-}
-
-#[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking; the restriction set is for the daemon"
-    )]
-
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use af_crypto::entropy::Entropy;
-    use af_crypto::secret::Kek;
-    use afd_dragonfly::Dragonfly;
-    use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-
-    use crate::supervisor::Supervisor;
-
-    /// A worker whose dedicated connection will not open starts nothing, and
-    /// the warning carries the code beside the failure's sentence alone.
-    #[tokio::test]
-    async fn an_unconnected_outbound_worker_reason_carries_no_code_prefix() {
-        let config =
-            DragonflyConfig::from_url(DragonflyRole::Api, "redis://127.0.0.1:1".to_owned())
-                .with_connect_timeout(Duration::from_millis(25));
-        let queue = Dragonfly::unreachable(&config).expect("a lazy manager opens no socket");
-        let database = afd_db::test_util::unreachable_db();
-        let grants = afd_connector::Grants::new(
-            afd_vault::Vault::new(
-                database.clone(),
-                Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN])),
-                Entropy::new(),
-            ),
-            database.clone(),
-            Entropy::new(),
-        );
-        let mut supervisor = Supervisor::new();
-        let log = af_core::test_util::trace::Capture::install();
-
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "the worker never connects, so its poster client is never used and needs no bounds"
-        )]
-        super::spawn(
-            &mut supervisor,
-            &config,
-            &database,
-            &queue,
-            grants,
-            reqwest::Client::new(),
-            String::new(),
-        )
-        .await;
-
-        let line = log.only("outbound_worker_connect_failed");
-        let reason = line.field("reason").unwrap_or_default();
-        assert!(
-            line.field("error_code")
-                .is_some_and(|code| !code.is_empty())
-        );
-        assert!(
-            !reason.is_empty() && !reason.contains("[UZ-"),
-            "the code is the line's `error_code`, never the reason's prefix: {reason}"
-        );
-        assert!(supervisor.inventory().is_empty(), "no worker was started");
-    }
 }

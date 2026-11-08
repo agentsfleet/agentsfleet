@@ -121,8 +121,8 @@ impl ServingPlane {
     ///   outbound group takes it by value, so it is built after every group
     ///   that clones it.
     ///
-    /// The lease plane is last, because it takes the pool, the queue and the
-    /// key by value.
+    /// The lease plane is last, because it takes the pool and the key by
+    /// value.
     #[must_use]
     pub fn new(parts: PlaneParts) -> Self {
         let PlaneParts {
@@ -178,15 +178,7 @@ impl ServingPlane {
                 slack_api_base,
             },
         );
-        let mut leases = lease_plane(
-            database.clone(),
-            queue.clone(),
-            kek,
-            providers,
-            bus,
-            broker,
-            biller,
-        );
+        let mut leases = lease_plane(database.clone(), kek, providers, bus, broker, biller);
         let tasks = task_plane(
             &mut leases,
             task_admissions,
@@ -227,11 +219,10 @@ pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 /// The plane every runner verb acts through: leases, gates, grants, wallets,
 /// memory, provider keys, the chat thread and declared credentials.
 ///
-/// Takes the pool, the queue and the key by value, so [`ServingPlane::new`]
+/// Takes the pool and the key by value, so [`ServingPlane::new`]
 /// builds it after every other group has cloned what it needs.
 fn lease_plane(
     database: afd_db::Db,
-    queue: afd_dragonfly::Dragonfly,
     kek: Arc<af_crypto::secret::Kek>,
     providers: Providers,
     bus: afd_bus::Handle,
@@ -241,7 +232,7 @@ fn lease_plane(
     let activity_streams = bus.clone();
     Plane {
         task_reports: None,
-        leases: Leases::new(database.clone(), queue, bus.clone(), Entropy::new()),
+        leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
         // same table: a delivery that finds no grant asks through the crate

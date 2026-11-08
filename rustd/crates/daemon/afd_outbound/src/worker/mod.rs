@@ -1,336 +1,176 @@
-//! The supervised task: read a job, deliver it, acknowledge it, repeat.
+//! The claim loop: Postgres holds every owed answer, and the worker claims
+//! lane heads when it is pinged or when its pass comes round (M244 §4).
 //!
-//! # The loop, and the order it asks in
+//! ```text
+//!   report commits ──► af.outbound.wake (lossy) ─┐
+//!                                                 ├─► claim lane heads ─► lanes
+//!   every CLAIM_PASS ─────────────────────────────┘        (FOR UPDATE SKIP LOCKED)
+//! ```
 //!
-//! Pending first, ONCE. `XREADGROUP >` only ever hands out entries nobody has
-//! seen, so an entry a PREVIOUS process was handed and never acknowledged is
-//! re-offered by nothing — it sits in the pending list until somebody asks for
-//! it by name. That hand-over is what the resume read is for, and it is a
-//! question with an end: once it answers empty, this process has taken over
-//! everything the last one left.
+//! # A lost ping costs only latency
 //!
-//! Asking it every turn is a different thing and a broken one. The read asks
-//! from id `0`, so it answers with the OLDEST entry this consumer still holds,
-//! and the hand-off below returns before the lane has delivered and
-//! acknowledged. A per-turn pending read therefore re-reads the same in-flight
-//! entry and delivers it again each time while everything behind it waits —
-//! measured, one slow destination re-sent one answer thirty-two times and
-//! starved the other thirty-one jobs.
+//! The ping is at-most-once. A replica that misses it claims the row on its
+//! next pass, at most [`CLAIM_PASS`] later; a full batch claims again at once,
+//! so a backlog drains without waiting for passes.
 //!
-//! What recovers an entry THIS process dropped is not the pending list: it is
-//! the committed row in `fleet.obligations`, which the producer re-offers
-//! when it was queued and never delivered.
+//! # The claim is the ordering, and the lanes are the concurrency
 //!
-//! Then a blocking read, raced against the supervisor's token. `BLOCK` is what
-//! makes an answer leave the instant it is queued instead of up to a
-//! quarter-second later, and it is why this worker owns an
-//! [`afd_dragonfly::Dedicated`] connection: parking the shared one would park every
-//! other caller in the process behind it.
-//!
-//! # The read hands off; the lanes deliver
-//!
-//! A job read here is not delivered here. It goes to [`crate::lanes`] — the
-//! lane for its destination — and the loop reads on, so a destination that
-//! is slow to answer holds only its own lane and never the answers queued
-//! behind it for everyone else. Ordering within a destination is the lane's
-//! promise; this loop's is only that jobs reach the lanes in stream order.
-//!
-//! # Cancellation stops the READ, never a delivery
-//!
-//! A job in hand is finished. Abandoning one mid-post would leave a vendor call
-//! in flight with nothing to read its answer, and the durable stream would then
-//! redeliver a job that may well have landed. So the token is selected over at
-//! the reads and the hand-off, and inside a delivery it does one narrower
-//! thing: it stops the RETRY loop from starting another attempt. The attempt
-//! already running finishes, and a job whose last attempt failed is simply
-//! not acknowledged, which is the same thing as re-queuing it.
-//!
-//! That bounds a shutdown at one vendor deadline per in-flight lane rather
-//! than at the whole retry budget, which is what keeps the join inside
-//! [`agentsfleetd::supervisor::JOIN_TIMEOUT`] with room to spare.
-//!
-//! # Dropping the read future does not cancel the read
-//!
-//! The load-bearing fact behind Dimension 5.2. `tokio::select!` drops the
-//! losing branch, but the `XREADGROUP` has already been WRITTEN to the socket:
-//! Dragonfly may assign an entry to this consumer after this process has stopped
-//! caring. The entry is not lost — it is pending, under a consumer name the
-//! next process comes back to, and the pending-first read above is what finds
-//! it. This is exactly why [`afd_dragonfly::outbound_consumer`] must not carry a
-//! process id.
+//! Postgres hands out at most one held row per (provider, workspace) lane, so
+//! two answers to one thread cannot be in flight together on any replica. The
+//! lanes bound how many vendor calls this replica runs at once.
 
-use std::ops::ControlFlow;
 use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
+use af_crypto::entropy::Entropy;
+use afd_bus::{Handle, Subject, Subscription};
 use afd_db::Db;
-use afd_dragonfly::{OutboundDelivery, OutboundQueue, OutboundReader};
 use tokio_util::sync::CancellationToken;
 
-use crate::lanes::Lanes;
+use crate::lanes::{IN_FLIGHT_DELIVERIES, Lanes};
+use crate::obligation;
 use crate::poster::{Deliver, Posters};
 
-/// How long one blocking read parks before it answers empty.
-///
-/// A bound rather than a timeout: `BLOCK 0` waits forever, and a read that
-/// never returns is a task the supervisor cannot join even when it wins the
-/// race — the select would be waiting on a future that is not going to
-/// complete. Five seconds is long enough that an idle deployment issues twelve
-/// commands a minute, and short enough that nothing waits on it: cancellation
-/// does not wait out the interval, because the token is raced against the read
-/// rather than checked between reads.
-///
-/// The reader's connection is opened with the same span, so its reply deadline
-/// outlives every `BLOCK` this worker passes — see
-/// [`afd_dragonfly::Dedicated::connect`] for what happens when it does not.
-pub const LONGEST_PARK: Duration = Duration::from_secs(5);
+/// How often a replica claims without being pinged, by default.
+pub const CLAIM_PASS: Duration = Duration::from_secs(30);
 
-/// The pause a failed read costs before the next one.
-///
-/// Without it a read that fails INSTANTLY — a dropped socket answers in
-/// microseconds — turns the loop into a hot spin: hundreds of failed reads a
-/// second, each one a log line, on a task sharing its runtime with every
-/// request handler in the process. The pause is the same five seconds the
-/// healthy path parks for, so a failing Dragonfly is asked exactly as often as an
-/// idle one; it is raced against the token so a shutdown never waits it out.
-const READ_FAILURE_BACKOFF: Duration = LONGEST_PARK;
+/// Rows one claim takes: as many as the lanes deliver at once.
+const CLAIM_BATCH: i64 = 8;
+const _: () = assert!(
+    IN_FLIGHT_DELIVERIES == 8,
+    "a claim fills the lanes and no more"
+);
 
-/// The connector answer-delivery worker.
-#[derive(Debug)]
-pub struct Worker<S> {
-    reader: OutboundReader,
-    queue: OutboundQueue,
-    /// The obligation ledger, for stamping what a destination actually took.
-    database: Db,
-    posters: Posters<S>,
+/// Logged when a claim could not be made; the next pass retries.
+const EVENT_CLAIM_FAILED: &str = "outbound_claim_failed";
+
+/// What triggered a claim, for the claim counter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Via {
+    /// A committed report's ping.
+    Ping,
+    /// The periodic pass, or a full batch draining a backlog.
+    Scan,
 }
 
-/// What one turn of the loop found.
-enum Turn {
-    /// A job to deliver.
-    Job(Box<OutboundDelivery>),
-    /// Nothing was waiting.
-    Idle,
-    /// The read failed; the next turn comes after [`READ_FAILURE_BACKOFF`].
-    Failed,
-    /// The supervisor asked this task to stop.
-    Stopped,
+/// The outbound worker: claims owed answers and hands them to the lanes.
+#[derive(Debug)]
+pub struct Worker<S> {
+    database: Db,
+    bus: Handle,
+    posters: Posters<S>,
+    entropy: Entropy,
+    pass: Duration,
 }
 
 impl<S: Deliver + 'static> Worker<S> {
-    /// Binds the worker to its own reader, the shared queue, and its posters.
-    ///
-    /// The reader is taken by value because it owns a connection this worker
-    /// will park on — see [`afd_dragonfly::Dedicated`].
+    /// A worker claiming from `database`, pinged over `bus`.
     #[must_use]
-    pub const fn new(
-        reader: OutboundReader,
-        queue: OutboundQueue,
-        database: Db,
-        posters: Posters<S>,
-    ) -> Self {
+    pub const fn new(database: Db, bus: Handle, posters: Posters<S>, entropy: Entropy) -> Self {
         Self {
-            reader,
-            queue,
             database,
+            bus,
             posters,
+            entropy,
+            pass: CLAIM_PASS,
         }
     }
 
-    /// Runs until the supervisor cancels `token`.
-    ///
-    /// Returns rather than panicking on a queue that will not answer: a Dragonfly
-    /// blip must not take the delivery path down for the life of the process,
-    /// and the next turn of the loop re-reads. The one thing that ends this
-    /// function is cancellation.
+    /// Replaces how often the worker claims unpinged, such as from a
+    /// configuration file.
+    #[must_use]
+    pub const fn with_claim_pass(mut self, pass: Duration) -> Self {
+        self.pass = pass;
+        self
+    }
+
+    /// Claims and delivers until `token` is cancelled, then drains the lanes.
     pub async fn run(self, token: CancellationToken) {
-        // Idempotent, and at boot rather than per turn: an existing group answers
-        // `BUSYGROUP`, which is the steady state.
-        //
-        // A group lost AFTER this — deleted out of band, a failover onto an
-        // empty replica — is not repaired here, and that is deliberate rather
-        // than missed. Recreating it at the stream's end skips answers appended
-        // while it was gone, and recreating it at the beginning re-delivers
-        // answers already acknowledged, which for this stream means posting the
-        // same reply to a real channel twice. Resuming exactly where delivery
-        // stopped needs a durable record of the last acknowledged id, and
-        // `fleet.obligations` is now that record: an answer queued and
-        // never delivered is a receipted, unstamped row, and the producer
-        // re-offers it whatever the group did.
-        if let Err(failure) = self.queue.ensure_group().await {
-            report("outbound_group_ensure_failed", &failure.into());
-        }
-
-        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let consumer = self.reader.consumer().to_owned();
-        tracing::debug!(consumer, event = "outbound_worker_started");
-
         let Self {
-            mut reader,
-            queue,
             database,
+            bus,
             posters,
+            entropy,
+            pass,
         } = self;
-        let lanes = Lanes::new(posters, queue, database, token.clone());
-        // The pending list is drained ONCE, at start, and never consulted
-        // again. `next` below explains why consulting it per turn is a loop
-        // that re-delivers.
-        let mut resuming = true;
-        loop {
-            match Self::next(&mut reader, &token, &mut resuming).await {
-                Turn::Job(job) => {
-                    // Raced against the token because a full lane makes the
-                    // hand-off wait, and a shutdown must not wait behind it.
-                    // A job dropped here is already pending under this
-                    // consumer's name; nothing is lost by not queuing it.
-                    let stopped = tokio::select! {
-                        biased;
-                        () = token.cancelled() => true,
-                        () = lanes.dispatch(job) => false,
-                    };
-                    if stopped {
-                        break;
-                    }
-                }
-                Turn::Idle => {}
-                Turn::Failed => {
-                    if pause(&token).await.is_break() {
-                        break;
-                    }
-                }
-                Turn::Stopped => break,
+        let mut wake = bus.subscribe(&Subject::OutboundWake).await.ok();
+        let lanes = Lanes::new(posters, database.clone(), token.clone());
+        let mut via = Via::Scan;
+        while !token.is_cancelled() {
+            let claimed = claim_once(&database, &entropy, &lanes, via).await;
+            if claimed == Some(CLAIM_BATCH) {
+                via = Via::Scan;
+                continue;
             }
+            via = tokio::select! {
+                biased;
+                () = token.cancelled() => break,
+                () = pinged(&mut wake) => Via::Ping,
+                // A finished job may have freed its lane's next row.
+                () = lanes.finished() => Via::Scan,
+                () = tokio::time::sleep(pass) => Via::Scan,
+            };
         }
         lanes.drain().await;
-        tracing::debug!(consumer, event = "outbound_worker_shutdown");
-    }
-
-    /// The next job, if there is one — pending first, then a blocking read.
-    ///
-    /// A read that FAILS answers [`Turn::Failed`] rather than propagating: the
-    /// loop pauses, then re-reads. The pause is not optional — a failed
-    /// pending read never reaches the blocking read below, so nothing else in
-    /// this function would slow a loop whose socket is gone.
-    async fn next(
-        reader: &mut OutboundReader,
-        token: &CancellationToken,
-        resuming: &mut bool,
-    ) -> Turn {
-        // First, and before the pending list: a cancelled worker stops.
-        //
-        // The pending-first read below serves RESUME — a process finding what
-        // the LAST one was handed. It is not how this process finishes its own
-        // work, and consulting it after a cancellation is a loop that does not
-        // terminate: `deliver_and_ack` hands a job back at shutdown by leaving
-        // it UNACKNOWLEDGED on purpose, so the very next pending read returns
-        // that same entry, delivers it again, and hands it back again. The
-        // worker never reaches a stop it was already asked for.
-        //
-        // Leaving the entry is the whole point, and nothing is lost by stopping
-        // here: it stays in this consumer's pending list, and the next
-        // process's pending-first read is what picks it up. That hand-off is
-        // the "re-queues" half of Dimension 5.2.
-        if token.is_cancelled() {
-            return Turn::Stopped;
-        }
-
-        if *resuming && let Some(turn) = Self::resume(reader, token, resuming).await {
-            return turn;
-        }
-        Self::read_new(reader, token).await
-    }
-
-    /// The resume read: the next entry a PREDECESSOR was handed and never
-    /// acknowledged, or `None` once there are none left — which also ends
-    /// `resuming`, for good.
-    ///
-    /// A process that starts — or restarts after a crash — reaches its
-    /// predecessor's unacknowledged entries only through this;
-    /// [`Self::read_new`] offers new entries and never re-offers those.
-    ///
-    /// Raced against the token for the same reason the blocking read is, even
-    /// though this one asks for no BLOCK and normally answers at once. Its reply
-    /// deadline is the longest park plus the request timeout
-    /// (`Dedicated::connect`), so a peer that accepts the socket and then
-    /// answers nothing — a dropped packet filter, a frozen host, not a hangup,
-    /// which redials — parks the worker here for that whole allowance. That is
-    /// not shorter than `supervisor::JOIN_TIMEOUT`, so an unraced await here is
-    /// how this task lands in `ShutdownReport::abandoned` on an otherwise clean
-    /// stop.
-    ///
-    /// ONLY while resuming: consulting the pending list every turn re-reads the
-    /// same in-flight entry and delivers it again each time — the module note
-    /// above carries the measurement. Once it answers empty, this process has
-    /// taken over everything the last one left, and everything after is its
-    /// own, which [`Self::read_new`] delivers exactly once.
-    ///
-    /// What this deliberately does NOT do is recover an entry THIS process was
-    /// handed and then failed to acknowledge. That is not lost: the answer is a
-    /// committed row in `fleet.obligations`, and the producer's
-    /// undelivered scan re-offers it. The durable record is the recovery
-    /// mechanism; the pending list is only the hand-over.
-    async fn resume(
-        reader: &mut OutboundReader,
-        token: &CancellationToken,
-        resuming: &mut bool,
-    ) -> Option<Turn> {
-        let pending = tokio::select! {
-            biased;
-            () = token.cancelled() => return Some(Turn::Stopped),
-            read = reader.read_pending() => read,
-        };
-        match pending {
-            Ok(Some(job)) => Some(Turn::Job(Box::new(job))),
-            Ok(None) => {
-                *resuming = false;
-                None
-            }
-            Err(failure) => Some(Self::read_failed("outbound_read_pending_failed", failure)),
-        }
-    }
-
-    /// The blocking read for an entry nobody has seen, raced against the token.
-    async fn read_new(reader: &mut OutboundReader, token: &CancellationToken) -> Turn {
-        tokio::select! {
-            // Biased so a token that is already cancelled wins deterministically
-            // rather than by whichever future `select!` happened to poll first —
-            // an unbiased race here would occasionally start a five-second park
-            // during a shutdown that had already been requested.
-            biased;
-            () = token.cancelled() => Turn::Stopped,
-            read = reader.read_blocking(LONGEST_PARK) => match read {
-                Ok(Some(job)) => Turn::Job(Box::new(job)),
-                Ok(None) => Turn::Idle,
-                Err(failure) => Self::read_failed("outbound_read_next_failed", failure),
-            },
-        }
-    }
-
-    /// Reports a failed read, so both read paths answer a failure the same way.
-    fn read_failed(event: &'static str, failure: afd_dragonfly::Error) -> Turn {
-        report(event, &failure.into());
-        Turn::Failed
     }
 }
 
-/// Waits out [`READ_FAILURE_BACKOFF`], unless the supervisor cancels first.
-async fn pause(token: &CancellationToken) -> ControlFlow<()> {
-    tokio::select! {
-        // Biased for the reason the read's own race is: a token already
-        // cancelled must win deterministically, not by polling order.
-        biased;
-        () = token.cancelled() => ControlFlow::Break(()),
-        () = tokio::time::sleep(READ_FAILURE_BACKOFF) => ControlFlow::Continue(()),
+/// Claims one batch and dispatches it; answers how many rows it took, or
+/// `None` when the claim failed.
+async fn claim_once<S: Deliver + 'static>(
+    database: &Db,
+    entropy: &Entropy,
+    lanes: &Lanes<S>,
+    via: Via,
+) -> Option<i64> {
+    let token = match entropy.uuid7(af_core::clock::now()) {
+        Ok(token) => token.as_str().to_owned(),
+        Err(failure) => {
+            report(EVENT_CLAIM_FAILED, &failure.into());
+            return None;
+        }
+    };
+    let claimed = match obligation::claim(database, CLAIM_BATCH, &token).await {
+        Ok(claimed) => claimed,
+        Err(failure) => {
+            report(EVENT_CLAIM_FAILED, &failure);
+            return None;
+        }
+    };
+    let count = i64::try_from(claimed.len()).unwrap_or(CLAIM_BATCH);
+    if count > 0 {
+        af_observability::producers::outbound::claims(via.label(), count.unsigned_abs());
+    }
+    for job in claimed {
+        lanes.dispatch(Box::new(job)).await;
+    }
+    Some(count)
+}
+
+impl Via {
+    const fn label(self) -> af_observability::metrics::label::outbound::ClaimVia {
+        use af_observability::metrics::label::outbound::ClaimVia;
+        match self {
+            Self::Ping => ClaimVia::Ping,
+            Self::Scan => ClaimVia::Scan,
+        }
     }
 }
 
-/// Logs a failure the loop is choosing to continue past.
-///
-/// One site, so every swallowed failure is logged the same way and none is
-/// swallowed silently, with no call site left to remember it on its own. The
-/// lanes report through it too.
+/// Returns on the next ping, or never when the subscription is gone; the pass
+/// then carries the worker alone.
+async fn pinged(wake: &mut Option<Subscription>) {
+    let Some(subscription) = wake.as_mut() else {
+        return std::future::pending().await;
+    };
+    if subscription.recv().await.is_err() {
+        *wake = None;
+        std::future::pending::<()>().await;
+    }
+}
+
+/// Logs a failure the loop continues past.
 pub(crate) fn report(event: &'static str, failure: &crate::Error) {
-    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let Logged { error_code, reason } = failure.logged();
     tracing::warn!(error_code, reason, event);
 }

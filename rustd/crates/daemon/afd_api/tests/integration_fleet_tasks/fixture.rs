@@ -58,7 +58,6 @@ impl<'lane> Tasks<'lane> {
             .expect("lazy task control queue");
         let leases = afd_fleet::lease::Leases::new(
             self.base.database.clone(),
-            queue.clone(),
             afd_bus::dragonfly::publisher(queue.clone()),
             Entropy::new(),
         );

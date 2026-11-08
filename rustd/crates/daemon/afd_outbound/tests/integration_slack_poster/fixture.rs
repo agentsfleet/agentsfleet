@@ -12,8 +12,7 @@ use afd_connector::{Grants, Provider};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
-use afd_dragonfly::OutboundDelivery;
-use afd_dragonfly::streams::EventId;
+use afd_outbound::Claimed;
 use afd_vault::{SecretBody, SecretName, Vault};
 
 use super::{ANSWER, BOT_USER, CHANNEL, THREAD};
@@ -90,9 +89,10 @@ impl Fixture {
     }
 
     /// The job the queue would have handed the worker.
-    pub(super) fn job(&self) -> OutboundDelivery {
-        OutboundDelivery {
-            id: EventId::of("1700000000001-0"),
+    pub(super) fn job(&self) -> Claimed {
+        Claimed {
+            id: afd_db::test_util::mint_id(),
+            token: String::new(),
             provider: Provider::Slack.id().to_owned(),
             destination: format!(r#"{{"channel_id":"{CHANNEL}","thread_ts":"{THREAD}"}}"#),
             workspace_id: self.workspace.clone(),

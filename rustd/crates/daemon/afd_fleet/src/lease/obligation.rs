@@ -20,7 +20,6 @@
 
 use af_core::id::Uuid7;
 use afd_connector::Provider;
-use afd_dragonfly::OutboundJob;
 use afd_outbound::obligation::{self, Delivery};
 use jiff::Timestamp;
 use sqlx::PgConnection;
@@ -143,25 +142,35 @@ impl Leases {
         now: Timestamp,
     ) -> Result<Option<Uuid7>> {
         let row_id = self.entropy().uuid7(now)?;
-
-        let written = obligation::owe(connection, &row_id, delivery).await?;
+        // The report's own token, so no holder's write matches it until a
+        // claim replaces it.
+        let token = self.entropy().uuid7(now)?;
+        let written = obligation::owe(connection, &row_id, token.as_str(), delivery).await?;
         Ok(written.then_some(row_id))
     }
 
-    /// Append an owed answer to the delivery queue, then receipt the row.
+    /// Ping the outbound workers that an owed answer committed.
     ///
-    /// The second and third of the three steps, run after the transaction
-    /// committed the first. Both are allowed to fail: what they leave behind is
-    /// a committed obligation with no receipt, which is precisely the set the
-    /// producer re-appends. That is why this is the fast path and not the only
-    /// path — losing it costs an answer some latency and never the answer.
+    /// At most once: a lost ping costs the answer up to one claim pass of
+    /// latency and never the answer, because the row is free to claim the
+    /// moment its report committed (M244 §4).
     ///
-    /// # Errors
-    /// Reports a queue that would not accept the entry, and a datastore that
-    /// would not record the receipt.
-    pub async fn queue_delivery(&self, owed: &Uuid7, delivery: Delivery<'_>) -> Result<()> {
-        let entry = self.outbound().enqueue(OutboundJob::from(delivery)).await?;
-        obligation::receipt(self.pool(), owed, entry.as_str()).await?;
-        Ok(())
+    /// Answers whether the bus took the ping; a refusal is logged here, once.
+    pub async fn wake_delivery(&self, owed: &Uuid7) -> bool {
+        let pinged = self
+            .streams()
+            .publish(&afd_bus::Subject::OutboundWake, owed.as_str())
+            .await;
+        if let Err(error) = &pinged {
+            let error_code = error.code().as_str();
+            let reason = error.reason();
+            tracing::info!(
+                event = "outbound_wake_lost",
+                error_code,
+                reason,
+                "the answer waits for the next claim pass"
+            );
+        }
+        pinged.is_ok()
     }
 }

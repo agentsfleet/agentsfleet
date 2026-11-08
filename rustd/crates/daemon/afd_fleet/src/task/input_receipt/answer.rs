@@ -5,7 +5,6 @@ use crate::{
     error::query,
     lease::{
         Leases,
-        obligation::ReplyDestination,
         verdict::{Terminal, Verdict},
     },
     task::{TaskRefusal, Tasks, guard::LeaseRow},
@@ -25,10 +24,6 @@ struct Source {
 pub(super) struct Completion {
     closed: Option<afd_events::Closed>,
     owed: Option<Uuid7>,
-    reply: Option<ReplyDestination>,
-    fleet: Uuid7,
-    workspace: Uuid7,
-    source: Uuid7,
     answer: String,
 }
 
@@ -121,10 +116,6 @@ pub(super) async fn finish(
     Ok(Some(Completion {
         closed,
         owed,
-        reply,
-        fleet: current.fleet_id.clone(),
-        workspace: current.workspace_id.clone(),
-        source: crate::task::guard::wire(&input.source_admission_id)?,
         answer,
     }))
 }
@@ -137,23 +128,8 @@ impl Completion {
                 .publish_completion(&closed, Some(&self.answer))
                 .await;
         }
-        if let (Some(owed), Some(reply)) = (self.owed, self.reply)
-            && let Err(error) = tasks
-                .leases
-                .queue_delivery(
-                    &owed,
-                    Delivery {
-                        fleet_id: &self.fleet,
-                        workspace_id: &self.workspace,
-                        provider: reply.provider,
-                        destination: &reply.address,
-                        event_id: &self.source,
-                        answer: &self.answer,
-                    },
-                )
-                .await
-        {
-            tracing::warn!(event = "dt_input_reply_deferred", error_code = %error.code());
+        if let Some(owed) = self.owed {
+            tasks.leases.wake_delivery(&owed).await;
         }
     }
 }

@@ -37,7 +37,6 @@ async fn test_concurrent_claims_lease_one_row() {
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let replica = Leases::new(
         fixtures.open(DbRole::Api).await,
-        crate::queue::unreachable(),
         afd_bus::dragonfly::publisher(crate::queue::unreachable()),
         af_crypto::entropy::Entropy::new(),
     );

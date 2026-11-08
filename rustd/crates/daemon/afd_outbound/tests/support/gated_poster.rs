@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afd_dragonfly::OutboundDelivery;
+use afd_outbound::Claimed;
 use afd_outbound::{Deliver, Verdict};
 use dashmap::DashMap;
 use tokio::sync::Notify;
@@ -69,7 +69,7 @@ impl Gated {
 }
 
 impl Deliver for Gated {
-    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
         let gate = self
             .inner
             .gates

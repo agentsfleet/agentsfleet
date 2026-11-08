@@ -306,3 +306,15 @@ fn every_bus_gap_cause_records() {
         producers::bus::gaps(cause, 3);
     }
 }
+
+/// The outbound claim producer fires for every trigger.
+#[test]
+fn every_outbound_claim_trigger_records() {
+    install();
+    for via in af_observability::metrics::label::outbound::ClaimVia::ALL
+        .iter()
+        .copied()
+    {
+        producers::outbound::claims(via, 2);
+    }
+}

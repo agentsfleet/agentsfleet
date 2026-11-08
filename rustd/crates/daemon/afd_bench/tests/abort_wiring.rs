@@ -39,7 +39,6 @@ async fn test_a_run_aborts_when_the_target_starts_failing() {
     .expect("a lazy handle opens no socket and cannot fail");
     let leases = Leases::new(
         afd_db::test_util::unreachable_db(),
-        (queue).clone(),
         afd_bus::dragonfly::publisher(queue),
         Entropy::new(),
     );

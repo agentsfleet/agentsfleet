@@ -52,7 +52,6 @@ pub(crate) fn queue() -> Dragonfly {
 pub(crate) fn leases() -> Leases {
     Leases::new(
         database(),
-        queue(),
         afd_bus::dragonfly::publisher(queue()),
         Entropy::new(),
     )
