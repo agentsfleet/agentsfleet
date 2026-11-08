@@ -53,18 +53,25 @@ const COMMIT: &str = match option_env!("GIT_COMMIT") {
 pub struct ReadyInputs {
     /// Whether Postgres answered.
     pub database: bool,
-    /// Whether Dragonfly answered.
+    /// Whether the bus answered. Reported, never gating (M244 §6).
     pub queue: bool,
 }
 
 /// Whether an instance reporting `inputs` should take traffic.
 ///
+/// Only the database gates. The bus carries signals that Postgres backs up,
+/// so a broker outage costs latency; pulling every replica over it would turn
+/// that into a full outage.
+///
 /// Pure because the decision is the part worth testing, and it needs no
 /// datastore to test.
 #[must_use]
 pub const fn ready_decision(inputs: ReadyInputs) -> bool {
-    inputs.database && inputs.queue
+    inputs.database
 }
+
+/// Logged when readiness holds while the bus does not answer.
+const EVENT_BUS_UNAVAILABLE: &str = "bus_unavailable_at_readyz";
 
 /// What `/readyz` consults.
 ///
@@ -127,8 +134,9 @@ pub(super) async fn healthz() -> Response {
     operation_id = "readyz",
     summary = "Readiness probe",
     description = concat!(
-        "Returns 200 when the database and event queue are available, or 503 otherwise. ",
-        "This check remains available when the server is busy.",
+        "Returns 200 when the database is available, or 503 otherwise. `queue` reports ",
+        "whether the event bus answered; a bus outage delays notifications but does not ",
+        "make the instance unready. This check remains available when the server is busy.",
     ),
     responses(
         (status = 200, description = "Every dependency this instance needs is reachable", body = Readiness),
@@ -139,6 +147,14 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
     let inputs = dependencies.probe().await;
     let ready = ready_decision(inputs);
     let status = if ready {
+        if !inputs.queue {
+            // `warn` once per probe: an operator should see the bus is down,
+            // and the instance keeps serving because Postgres backs every signal.
+            tracing::warn!(
+                event = EVENT_BUS_UNAVAILABLE,
+                "the bus did not answer; readiness holds on the database"
+            );
+        }
         tracing::trace!(
             database = inputs.database,
             queue = inputs.queue,
