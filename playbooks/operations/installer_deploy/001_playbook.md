@@ -1,15 +1,24 @@
-# `agentsfleet.dev` Installer Deployment
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
 
-**Owners:** Vercel deploys; 🦉 Orly verifies; 🤠 Indy repairs project or domain
-ownership when required.
-**Scope:** routine installer changes. First-install setup belongs in founding
-step 01.
+# Deploy the `agentsfleet.dev` installer
 
-Vercel serves `ui/agentsfleet.dev/dist/` as a static site. The repository has
-no installer deploy script and no Vercel credential in GitHub Actions. A Pull
-Request (PR) creates a preview; merging `main` creates the production deploy.
+## What this does
 
-The required Vercel project settings are:
+Vercel serves `ui/agentsfleet.dev/dist/` as a static site.
+A Pull Request (PR) creates a preview, and a merge to `main` deploys production.
+The repository has no installer deploy script and no Vercel credential in GitHub Actions.
+First-install setup belongs in founding step 01.
+`dist/vercel.json` rewrites `/` to `/install.sh` and sets `Content-Type: text/x-shellscript` and `Cache-Control: public, max-age=300`.
+
+## Before you begin
+
+The Vercel project must hold these settings; 🤠 Indy repairs project or domain ownership.
 
 | Setting | Value |
 |---|---|
@@ -20,24 +29,17 @@ The required Vercel project settings are:
 | Root directory | `ui/agentsfleet.dev/dist` |
 | Production domain | `agentsfleet.dev` |
 
-`dist/vercel.json` rewrites `/` to `/install.sh`, sets the shell-script content
-type, and sets the cache policy.
-
-## Deploy
+## Steps
 
 1. Change `ui/agentsfleet.dev/dist/install.sh` or `vercel.json`.
-2. Run the installer checks through the repository verification commands.
-3. Open a PR and verify its Vercel preview.
-4. Merge only after the preview and repository checks are green. Vercel then
-   deploys `main` to production.
+2. Run the repository verification commands.
+3. Open a PR and check its Vercel preview.
+   If the preview is missing or the domain is detached, stop; 🤠 Indy repairs it.
+4. Merge once the preview and checks are green.
 
-If the preview is absent or the production domain is not attached to the
-project above, stop. 🤠 Indy must repair the Vercel project or domain before the
-deployment can be accepted.
+## Verify it works
 
-## Verify
-
-These commands are read-only:
+🦉 The agent runs these read-only checks.
 
 ```bash
 dig +short A agentsfleet.dev
@@ -46,7 +48,11 @@ head -1 /tmp/agentsfleet-install.sh
 curl -sSI https://agentsfleet.dev/install.sh | grep -i content-type
 ```
 
-Acceptance requires a non-empty DNS answer, successful Transport Layer
-Security (TLS), a `#!/usr/bin/env bash` first line, and the shell-script content
-type. A complete install also requires the published `@agentsfleet/cli` version
-to match `VERSION`; the production release route owns that check.
+```text
+<varies: one or more IP addresses>
+#!/usr/bin/env bash
+content-type: text/x-shellscript; charset=utf-8
+```
+
+The `curl` download must succeed over Transport Layer Security (TLS).
+A complete install also needs the published `@agentsfleet/cli` version to match `VERSION`; the production release route checks that.

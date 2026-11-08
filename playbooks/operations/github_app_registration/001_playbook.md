@@ -1,129 +1,64 @@
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Register the GitHub App
 
-**Owners:** 🤠 Indy for GitHub settings and 1Password; 🦉 Orly for secret sync
-and verification
-**Updated:** Sep 24, 2026
-**Prerequisite:** the target environment's admin bootstrap is complete, its API
-host passes `/readyz`, and its dashboard is reachable
+## What this does
 
-Create a separate GitHub App for development and production. Complete
-development first, including live acceptance, before repeating the same steps
-for production.
+Creates one GitHub App per environment and stores it as the `github-app` bag.
+Finish development, including live acceptance, before production.
+Indy owns GitHub settings and 1Password; the agent syncs and verifies.
 
-| Environment | App name | API base | Installation scope |
-|---|---|---|---|
-| Development | `agentsfleet-dev` or another unique name | `https://api-dev.agentsfleet.net` | Owner test account |
-| Production | `agentsfleet` or another unique name | `https://api.agentsfleet.net` | Any account |
+| Environment | App name | `APP_HOST` | `API_BASE` | Install on |
+|---|---|---|---|---|
+| Development | `agentsfleet-dev` or another unique name | `app-dev.agentsfleet.net` | `https://api-dev.agentsfleet.net` | Owner test account |
+| Production | `agentsfleet` or another unique name | `app.agentsfleet.net` | `https://api.agentsfleet.net` | Any account |
 
-## 1. Indy: register the app
+## Before you begin
 
-In GitHub **Settings → Developer settings → GitHub Apps**, create the app:
+The environment's [admin bootstrap](../admin_bootstrap/001_playbook.md) is complete, `/readyz` passes and the dashboard is reachable.
 
-- Homepage URL: the matching dashboard URL.
-- Callback URL: `https://<APP_HOST>/api/connectors/github/callback`. Use
-  `app-dev.agentsfleet.net` for development and `app.agentsfleet.net` for
-  production.
-- Enable **Request user authorization during installation**. The dashboard
-  callback uses the one-time authorization `code` and the current signed-in
-  person to verify a claimed installation or discover one accessible install.
-- Keep webhooks active with
-  `<API_BASE>/v1/ingress/github` and a new high-entropy webhook secret.
-- Keep Secure Sockets Layer (SSL) verification enabled.
-- Subscribe to **Pull request**, **Workflow run**, and **Deployment status**.
-- Set the minimum repository permissions:
-  - Metadata: read-only.
-  - Contents: read and write.
-  - Pull requests: read and write.
-  - Actions: read-only.
-  - Checks: read-only.
-  - Deployments: read-only.
+## Steps
 
-Indy accepts the changed permissions on each existing installation before the
-incident drill. The development installation goes first. A pending permission
-request leaves the fleet unable to read checks or open a draft fix.
+1. Indy opens GitHub **Settings → Developer settings → GitHub Apps** and creates the app:
+   - Homepage URL: `https://<APP_HOST>`.
+   - Callback URL: `https://<APP_HOST>/api/connectors/github/callback`.
+   - **Request user authorization during installation**: on. The callback uses the one-time `code` and the signed-in person to verify or discover an installation.
+   - Webhook: active, URL `<API_BASE>/v1/ingress/github`, a new high-entropy secret, Secure Sockets Layer (SSL) verification on.
+   - Events: **Pull request**, **Workflow run**, **Deployment status**.
+   - Repository permissions: Metadata read-only; Contents read and write; Pull requests read and write; Actions, Checks and Deployments read-only.
 
-Add another permission only when a shipped fleet requires it. GitHub's current
-registration and least-privilege guidance is in
-[Registering a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
-and
-[Choosing permissions](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app).
+   Add a permission only when a shipped fleet needs it.
+   See [Registering a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app) and [Choosing permissions](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app).
+2. Indy accepts changed permissions on every existing installation before the incident drill, development first.
+   A pending request stops the fleet reading checks or opening a draft fix.
+3. Indy names the expected deployment integration for each mapped repository.
+4. Indy stores the `github-app` fields: `app_id` is the App ID, `app_slug` comes from `github.com/apps/<app_slug>`, and `private_key_pem` is the full Privacy-Enhanced Mail (PEM) key.
+5. Indy moves the downloaded key file to Trash and empties it.
+6. The agent syncs `github-app` with the [shared bag procedure](../admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag), then the control plane restarts.
 
-For every mapped repository, name the expected deployment integration. GitHub
-permits every push-capable identity to create a deployment status, so all of
-those identities are inside this first spine's trusted producer boundary. The
-`agentsfleet` handler accepts any signed status from the mapped GitHub
-installation. It does not verify the status creator or App identity, and this
-is GitHub-origin proof rather than Vercel attestation.
+Any identity that can push can create a deployment status.
+The handler accepts any signed status from the mapped installation and checks neither its creator nor App identity.
+That is GitHub-origin proof, not Vercel attestation.
 
-## 2. Indy: vault the six fields
+## Verify it works
 
-In the matching 1Password vault, create or update `github-app` with:
+1. Indy selects **Connect** in the dashboard.
+   With an existing App, GitHub authorizes the user and `agentsfleet` restores the workspace binding; otherwise Indy installs it on one test repository.
+2. The agent confirms the connector reads connected and the installation belongs to the expected tenant.
+3. Indy opens a test pull request.
+   The agent confirms exactly one intended fleet gets the delivery and posts a review with a short-lived installation token.
+4. Indy uses the expected integration to create a completed production deployment status on the merged test commit.
+   The agent confirms the signed delivery reaches `/v1/ingress/github` with the repository, commit, deployment, deployment-status, delivery and creator identifiers GitHub shows.
+5. The agent replays each delivery identifier and confirms no second fleet event, review or production result.
+6. Indy selects **Disconnect**; the dashboard reads **Not connected** while the App stays installed.
+7. Indy selects **Connect** again; the dashboard reads **Connected**.
 
-- `app_id` — the App Identifier (ID).
-- `app_slug` — the value from `github.com/apps/<app_slug>`.
-- `client_id`.
-- `client_secret`.
-- `private_key_pem` — the full Privacy-Enhanced Mail (PEM) private key.
-- `webhook_secret`.
-
-Use the 1Password application for secret entry. After the PEM field is saved,
-move the downloaded key file to Trash and empty it. Never paste a value into
-chat, a ticket, or a shell command.
-
-## 3. Orly: sync the platform bag
-
-After Indy approves the target, run:
-
-```bash
-ENV=dev \
-ALLOW_VAULT_READS=1 \
-ALLOW_PLATFORM_SECRET_WRITES=1 \
-  ./playbooks/lib/platform_secret_sync.sh github-app
-```
-
-Change `ENV` to `prod` only for the production run. The script creates or
-replaces the entire bag without putting the admin key or provider values in
-process arguments or output.
-
-The GitHub App identity loads when `agentsfleetd` starts. After all provider
-bags for this environment are synced, rerun the matching founding deployment
-step once before live acceptance.
-
-## 4. Indy and Orly: prove the live path
-
-1. Indy selects **Connect** in the dashboard. If the App already exists, GitHub
-   authorizes the user and `agentsfleet` restores the internal workspace
-   binding. If the App is absent, Indy installs it on one test repository.
-2. Orly confirms the connector reports connected and the installation belongs
-   to the expected tenant.
-3. Indy opens a test pull request; Orly confirms exactly one intended fleet
-   receives the delivery and can post a review with a short-lived installation
-   token.
-4. Indy uses the expected deployment integration to create a completed
-   production deployment status for the merged test commit. Orly confirms the
-   signed delivery reaches `/v1/ingress/github` and records the same repository,
-   commit, deployment identifier, deployment-status identifier, delivery identifier,
-   and creator identity shown by GitHub.
-5. Orly replays each delivery identifier and confirms no second fleet event,
-   review, or production result is created.
-6. Indy selects **Disconnect**. Orly confirms the dashboard reports **Not
-   connected** while the GitHub App remains installed. Indy selects **Connect**
-   again and confirms the dashboard returns to **Connected**.
-
-Record the development environment, repository, Pull Request (PR) URL, fleet
-identifier, expected deployment integration, received creator identity,
-deployment identifier, deployment-status identifier, and delivery identifier in the
-Pull Request (PR) Session Notes.
-Record no credential values. This is an audit record, not an enforceable
-single-writer rule.
-
-## Complete when
-
-- The exact environment URLs are configured and reachable.
-- The six-field bag exists in the admin workspace.
-- `agentsfleetd` has restarted after the sync.
-- The install, callback, Pull Request, deployment-status, outbound review, and
-  replay checks pass.
-- Pull Request (PR) Session Notes contain the expected deployment integration,
-  received creator identity, deployment identifier, deployment-status identifier,
-  and delivery identifier.
+Record in the Pull Request (PR) Session Notes: environment, repository, PR URL, fleet identifier, expected integration, received creator, deployment, deployment-status and delivery identifiers.
+Record no credential values.
+The record is an audit trail, not an enforced single-writer rule.

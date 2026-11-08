@@ -1,115 +1,97 @@
-# Deploy the Existing Development System
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
 
-**Owner:** Human
-**Executor:** Agent starts the run; Pipeline performs the deployment
-**Route:** Routine deployment; use the founding sequence after a wipe
+# Deploy the Development System
 
-## Readiness
+## What this does
 
-| Order | Executor | Action | Verifier | Required evidence | Blocks next |
-|---|---|---|---|---|---|
-| 1 | Agent | Confirm this is an existing development installation. | Agent | Steps 01 through 06 of the founding sequence have green evidence. | Yes |
-| 2 | Agent | Run the development deployment-input gate. | `02_preflight/00_gate.sh` | Green output with no missing deployment input. | Yes |
-| 3 | Agent | Report the exact commit and development target to the Human. Use `main`, or the reviewed candidate procedure below. | Human | The request approving this exact deployment. | Yes |
+`deploy-dev.yml` deploys the development API, tunnel, runner and dashboard, then runs acceptance.
+Every push to `main` starts it. `workflow_dispatch` redeploys a chosen ref through the same checks.
 
-Run the read-only gate:
+The founding steps use this page's [run commands](#steps) too.
+
+The workflow builds nothing.
+It promotes the build outputs of a successful `test.yml` run for the exact same source tree, and fails when none exists.
+
+## Before you begin
+
+1. Confirm founding steps 01 through 06 have green evidence. If not, stop and use [chronological setup](../../README.md#chronological-setup); never infer a rebuild.
+2. Run the read-only input gate:
+
+   ```bash
+   ENV=dev STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
+   ```
+
+   The last line is `✅ 002_preflight check complete (env: dev, stage: deployment)`.
+3. Report the exact commit and target to the Human. The Human's request to start this page authorizes the dispatch. A provider write still needs its own approval.
+
+> **Warning:** After a database wipe, set `DEV_RUNNER_READY` to `false` before the next deploy, including a push to `main`.
+> [Founding step 05](../../founding/05_runner_bootstrap_dev/001_playbook.md) sets it back to `true` after the new runner token is stored.
+
+## Steps
 
 ```bash
-ENV=dev STAGE=deployment \
-  ./playbooks/founding/02_preflight/00_gate.sh
+gh workflow run deploy-dev.yml --ref main --repo agentsfleet/agentsfleet
+run_id="$(gh run list --repo agentsfleet/agentsfleet --workflow deploy-dev.yml \
+  --branch main --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run watch "$run_id" --repo agentsfleet/agentsfleet --exit-status
 ```
 
-If the installation or its evidence is absent, stop and route to
-[`founding/README.md`](../../founding/README.md). Do not infer a rebuild.
+`gh run watch` exits 0 only when the run succeeds.
 
-## Deploy
+## Verify it works
 
-The Human's request to start this page authorizes the Agent to trigger the
-development workflow. External provider writes still require separate approval.
-
-```bash
-gh workflow run deploy-dev.yml \
-  --ref main \
-  --repo agentsfleet/agentsfleet
-
-run_id="$(
-  gh run list \
-    --repo agentsfleet/agentsfleet \
-    --workflow deploy-dev.yml \
-    --branch main \
-    --limit 1 \
-    --json databaseId \
-    --jq '.[0].databaseId'
-)"
-gh run watch "$run_id" \
-  --repo agentsfleet/agentsfleet \
-  --exit-status
-```
-
-## Verification
-
-### Reviewed development candidate
-
-When a development demonstration needs an unmerged runtime fix, first finish its local checks, standards review and commits.
-Indy approves the exact full commit, feature branch and development API/runner target before branch publication or workflow dispatch.
-That approval authorizes only the named development deployment; it grants neither production nor merge authority.
-
-Use the existing `deploy-dev.yml` workflow with the approved branch as `--ref`, keeping the workflow and authentication unchanged.
-Record the approval, dispatch time, workflow URL and returned `headSha`; it must equal the approved commit.
-A newer commit needs a new exact-revision approval.
-
-Require `check-credentials` and every enabled deployment/verification job to pass, including the runner deployment.
-Confirm the API commit stamp maps unambiguously to that revision.
-
-Record active runner identity and compare its installed executable checksum with the workflow's runner binary.
-An unavailable runner identity/checksum witness leaves runtime correlation incomplete.
-
-Only then trigger the reviewed demonstration fleet and retain its native event, addressed full tool records and actual answer.
-A successful deployment or processed event alone is not a successful demonstration.
-
-### Required pipeline jobs
-
-| Pipeline job | What it proves |
+| Job | Proves |
 |---|---|
-| `check-credentials` | Current development deployment inputs exist. |
-| `compile-runner` and `push-ghcr` | The exact commit built and its image was published. |
-| `deploy-fly` | The API and Cloudflare tunnel deployed. |
-| `deploy-metal` | The enabled development runner deployed and passed its host gate. |
-| `dashboard` | The dashboard and command-line outputs were built, their receipts assembled, and the prebuilt dashboard deployed. Acceptance depends on this job succeeding. |
-| `verify` | Public API health and readiness passed. |
-| `qa` | Dashboard smoke passed. |
-| `acceptance-e2e` | Prerequisites and one real fleet check passed. |
-| `acceptance-cli` | The worktree command-line client passed live acceptance. |
+| `check-credentials` | Development deployment inputs exist |
+| `build / promote` | The `test.yml` candidate for this tree verified; toolbox scanned and signed; image published |
+| `fly / deploy-fly` | OTLP collector, Dragonfly cluster and API deployed |
+| `metal / deploy-metal` | Runner deployed and passed its host gate; runs only when `DEV_RUNNER_READY == 'true'` |
+| `dashboard / dashboard` | Candidate command-line and dashboard builds made; prebuilt dashboard deployed; acceptance needs it |
+| `verify / verify` | Tunnel running; public `/healthz` and `/readyz` pass |
+| `acceptance / qa` | Dashboard smoke passed |
+| `acceptance / acceptance-e2e` | `make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy`: prerequisites and one real fleet |
+| `acceptance / acceptance-cli` | `make acceptance-cli`: the command-line client built from this commit, against `api-dev` |
+| `qualify-candidate` | Every gate, runner included, succeeded; uploads `development-candidate-<TREE>`, which `release.yml` requires |
 
-The Agent records the workflow URL, commit, each job result, and any intentionally
-skipped runner job. A skipped enabled job is a failure.
+Record the workflow URL, commit, every job result and any intended `deploy-metal` skip.
+Any other skipped job is a failure.
 
-`make acceptance-local` retains the full browser and command-line suites.
-Deployment uses `make acceptance-e2e ACCEPTANCE_SCOPE=post-deploy` for the short browser check.
-`ACCEPTANCE_SCOPE=ten-fleets` selects only ten concurrent fleets and prerequisites.
+`make acceptance-local` keeps the full browser and command-line suites.
+`ACCEPTANCE_SCOPE=ten-fleets` runs only ten concurrent fleets and their prerequisites.
+On 2026-10-25, Indy deferred ten-fleet acceptance to a manual run after a verified development deploy.
 
-Indy deferred ten-fleet acceptance to a manual run after merge and development deployment verification on 2026-10-25.
-The deployment summary reports `deferred-manual-by-Indy`; it does not report a ten-fleet pass.
-The manual workflow keeps its own fixture accounts, assertions, time limits and evidence uploads.
-
-After verifying the development deployment, Indy can start the ten-fleet check:
+The deploy summary reports `deferred-manual-by-Indy`, never a ten-fleet pass.
+Indy starts it with:
 
 ```bash
 gh workflow run acceptance-ten-fleets.yml --ref main --repo agentsfleet/agentsfleet
 ```
 
-GitHub returns after queuing the workflow. Inspect the resulting run and its
-`acceptance-ten-fleets-results` download for the test verdict and evidence.
+The command returns once GitHub queues the run.
+Read the verdict and evidence in that run's `acceptance-ten-fleets-results` download.
 
-## Failure handling
+## Deploy an unmerged development candidate
 
-The Agent diagnoses a red job from its logs. A live host mutation, provider
-write, or restart of work in flight requires Human approval. The Agent does not
-replace a failed Pipeline deployment with an unrecorded workstation deployment.
+Use this only when a development demonstration needs an unmerged runtime fix.
 
-**There is no shell in the API container.** The image is distroless — the
-daemon, a certificate bundle, a clock, and nothing else. `flyctl ssh console`
-into an API machine gives no prompt, and that is the image working as intended.
-Diagnose from `flyctl logs`, from `/readyz` and `/healthz`, and from the metrics
-families; the same rule holds here as in production, and development is where an
-operator should discover it.
+1. Finish the fix's local checks, standards review and commits.
+2. Indy approves the exact full commit, feature branch and development API and runner target. That approval covers only this deployment: no production, no merge.
+3. Dispatch `deploy-dev.yml` with the approved branch as `--ref`. Change neither the workflow nor its authentication.
+4. Record the approval, dispatch time, workflow URL and returned `headSha`. `headSha` must equal the approved commit; a newer commit needs a new approval.
+5. Require `check-credentials` and every enabled job to pass, runner deploy included. Confirm the API commit stamp maps to that revision alone.
+6. Record the active runner identity. Compare its installed executable checksum with the workflow's runner binary. Without that witness, runtime correlation is incomplete.
+7. Only then trigger the reviewed demonstration fleet. Keep its native event, full addressed tool records and actual answer. A deployment or a processed event alone is not a successful demonstration.
+
+## Common problems
+
+The Agent diagnoses a red job from its logs.
+A live host change, provider write or restart of work in flight needs Human approval.
+Never replace a failed Pipeline deploy with an unrecorded workstation deploy.
+
+The API container has no shell; [`ARCHITECTURE.md`](../../ARCHITECTURE.md#limits) says how to diagnose it.

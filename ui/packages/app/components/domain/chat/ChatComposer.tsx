@@ -16,12 +16,12 @@ import { SetupStatusFlap } from "./SetupStatusFlap";
 // DraftClient records this failure in view.error before rejecting the request.
 const errorAlreadyVisible = (): void => undefined;
 
-export function ChatComposer({ client, view, workspace, canStop, blocked, dirty, onOpenFleet }: { client: DraftClient; view: DraftView; workspace: string; canStop: boolean; blocked: boolean; dirty: boolean; onOpenFleet?: () => void }) {
+export function ChatComposer({ client, view, workspace, canStop, blocked, dirty, onOpenFleet, modelsHref }: { client: DraftClient; view: DraftView; workspace: string; canStop: boolean; blocked: boolean; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string }) {
   const stopDisabled = view.busy || view.pending || view.inaccessible || Boolean(view.draft && view.draft.state !== DRAFT_STATE.editing && !savedDraft(view));
   const disabled = stopDisabled || !view.model || blocked;
   const input = useRef<HTMLTextAreaElement>(null);
   return <>
-    <SetupStatusFlap view={view} workspace={workspace} dirty={dirty} onOpenFleet={onOpenFleet} />
+    <SetupStatusFlap view={view} workspace={workspace} dirty={dirty} onOpenFleet={onOpenFleet} modelsHref={modelsHref} />
     <ChatComposerFrame label="Setup chat composer" placeholder={view.fleet || view.preview?.setupRevision ? "Ask a question or change the setup…" : CHAT_PLACEHOLDER} inputRef={input} disabled={disabled} focusKey={view.focusRevision}
       toolbar={<ChatToolbar client={client} view={view} />}
       actions={canStop ? <Button variant="secondary" size="icon" aria-label="Stop authoring" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }}><SquareIcon className="size-4" /></Button>

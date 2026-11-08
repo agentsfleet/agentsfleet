@@ -1,29 +1,31 @@
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Preflight Readiness
 
-**Updated:** Jul 31, 2026
-**Owner:** Human
-**Executor:** Agent runs the gates; Pipeline repeats the deployment gate
-**Prerequisite:** `playbooks/founding/01_bootstrap/001_playbook.md`
+## What this does
 
-The gate has two chronological stages:
+`00_gate.sh` proves the vault holds what the next step needs, without printing a value.
 
-1. `bootstrap` proves the inputs needed to create infrastructure.
-2. `deployment` proves the provider outputs needed by the first application
-   deployment.
+| `STAGE` | Proves | Must be green before |
+|---|---|---|
+| `bootstrap` | Inputs that create infrastructure | [Step 03](../03_priming_infra/001_playbook.md) |
+| `deployment` | Provider outputs the first deployment reads | Any control-plane deployment |
 
-Values generated only after the first deployment are deliberately absent from
-both stages. Their owning runbooks gate them later.
+`ENV` is `all`, `dev` or `prod`; the default is `all`.
+`VAULT_DEV` and `VAULT_PROD` default to `ZMB_CD_DEV` and `ZMB_CD_PROD`.
+The gate needs `op` signed in, or `OP_SERVICE_ACCOUNT_TOKEN` set.
 
-## Execution and verification
+`deploy-dev.yml` and `release.yml` rerun the `deployment` gate in their `check-credentials` job.
 
-| Order | Executor | Action | Verifier | Required evidence |
-|---|---|---|---|---|
-| 1 | Human | Create provider accounts, service tokens, Clerk applications, and two administrator login identities. | Human | Account names and non-secret identifiers recorded. |
-| 2 | Human | Store bootstrap fields in 1Password. | Bootstrap gate | Green output for development and production. |
-| 3 | Human | Apply `tailnet-policy.hujson` in Tailscale. | Tailscale Secure Shell (SSH) tests | Every embedded test passes. |
-| 4 | Agent | Run the `bootstrap` gate for both environments. | `00_gate.sh` | Green local output. |
-| 5 | Human and Agent | Complete infrastructure priming and store generated outputs. | Deployment gate | Green output for both environments. |
-| 6 | Pipeline | Repeat the `deployment` gate before each control-plane deployment. | `check-credentials` job | Green job URL. |
+## Before you begin
+
+[Step 01](../01_bootstrap/001_playbook.md) is done.
 
 ## Bootstrap inputs
 
@@ -31,13 +33,13 @@ Development vault `ZMB_CD_DEV`:
 
 | Item | Fields |
 |---|---|
-| `fly-api-token` | `credential` |
-| `posthog-dev` | `credential` |
+| `fly-api-token`, `posthog-dev` | `credential` |
 | `clerk-dev` | `publishable-key`, `secret-key`, `webhook-secret`, `issuer` |
 | `e2e-fixtures-email` | `regular`, `admin` |
 | `agentsfleet-admin` | `username`, `credential` |
-| `encryption-master-key` | `credential` |
-| `auth-session-code-pepper` | `credential` |
+| `encryption-master-key`, `auth-session-code-pepper` | `credential` |
+
+Development also reads `ZMB_CD_PROD/discord-ci-webhook/credential`; both environments post to one channel.
 
 Production vault `ZMB_CD_PROD`:
 
@@ -49,77 +51,71 @@ Production vault `ZMB_CD_PROD`:
 | `clerk-prod` | `publishable-key`, `secret-key`, `webhook-secret`, `issuer` |
 | `e2e-fixtures-email` | `regular`, `admin` |
 | `agentsfleet-admin` | `username`, `credential` |
-| `encryption-master-key` | `credential` |
-| `auth-session-code-pepper` | `credential` |
+| `encryption-master-key`, `auth-session-code-pepper` | `credential` |
 | `tailscale` | `oauth-client-id`, `oauth-secret` |
-
-Development deployment preflight also reads
-`ZMB_CD_PROD/discord-ci-webhook/credential`, because development verdicts post
-to the shared public community channel rather than a duplicate development
-webhook.
-
-Run:
-
-```bash
-ENV=all STAGE=bootstrap \
-  ./playbooks/founding/02_preflight/00_gate.sh
-```
 
 ## Deployment inputs
 
-The `deployment` gate adds the fields needed to start the applications. Step 01
-creates the approval signing secret; infrastructure priming records the provider
-outputs:
+The `deployment` stage adds these, per environment (`<env>` is `dev` or `prod`):
 
-| Environment item | Fields |
+| Item | Fields |
 |---|---|
+| `approval-signing-secret` | `credential` (from step 01) |
+| `planetscale-<env>` | `api-connection-string` (port `6432`), `migrator-connection-string` (port `5432`) |
+| `dragonfly-<env>` | `api-url` |
+| `grafana-<env>` | `otlp-endpoint`, `instance-id`, `api-key` |
+| `cloudflare-tunnel-<env>` | `credential` |
 | `cloudflare-r2` | `account-id`, `access-key-id`, `secret-access-key`, `bucket` |
-| `cloudflare-tunnel-dev`, `cloudflare-tunnel-prod` | `credential` |
-| `planetscale-dev`, `planetscale-prod` | `api-connection-string`, `migrator-connection-string` |
-| `dragonfly-dev`, `dragonfly-prod` | `api-url` |
-| `approval-signing-secret` | `credential` |
-| `grafana-dev`, `grafana-prod` | `otlp-endpoint`, `instance-id`, `api-key` |
+| `toolbox-release-key` | `private-key`, `password`; always read from `ZMB_CD_PROD` |
 
-Run:
+The stage also fails when the two PlanetScale strings are equal or name the wrong port.
+With `ENV=all` or `ENV=prod` it runs `03_vercel_envs.sh`, which checks Vercel variables on preview and production targets.
 
-```bash
-ENV=all STAGE=deployment \
-  ./playbooks/founding/02_preflight/00_gate.sh
-```
+## Values created after the first deployment
 
-The deployment stage also verifies that:
-
-- the runtime and migrator database strings differ;
-- `03_vercel_envs.sh` confirms required Vercel variables exist on preview and
-  production targets for `ENV=all` and `ENV=prod`;
-- URLs have valid shapes;
-- no secret value is printed.
-
-## Post-deploy outputs
-
-Do not invent placeholders for these values:
+No gate requires these. Never store a placeholder.
 
 | Value | Created by |
 |---|---|
-| `agentsfleet-admin/platform_admin_workspace_id` | `operations/admin_bootstrap` after Clerk signup |
-| `agentsfleet-admin/api-key` | `operations/admin_bootstrap` from the dashboard's one-time reveal |
-| `github-app`, `slack-app`, `zoho-app`, `jira-app`, `linear-app` | the matching provider registration playbook |
+| `agentsfleet-admin/platform_admin_workspace_id`, `agentsfleet-admin/api-key` | `operations/admin_bootstrap` |
+| `github-app`, `slack-app`, `zoho-app`, `jira-app`, `linear-app` | the matching registration playbook |
 | `qstash` | `operations/qstash_registration` |
-| `smtp-relay` (`host`, `port`, `username`, `password`, `from_address`) | `operations/smtp_relay_registration`, once the sending domain is verified at the relay |
+| `smtp-relay` (`host`, `port`, `username`, `password`, `from_address`) | `operations/smtp_relay_registration`, after the relay verifies the sending domain |
 | `agentsfleet-fleets-investigation-service-token` | `operations/observability` |
-| runner `tailscale-hostname` and `deploy-user` | the environment runner-bootstrap step |
+| runner `tailscale-hostname`, `deploy-user` | the environment's runner bootstrap step |
 | runner `runner-token` | the dashboard **Add runner** action |
 
-The initial deployment does not need an admin workspace pointer. `agentsfleetd`
-starts its connector broker in static-only mode; admin bootstrap sets the
-pointer and restarts the service before provider connectors are enabled.
+The first deployment starts the connector broker in static-only mode.
+Admin bootstrap sets the workspace pointer and restarts the service.
 
-## Required result
+## Steps
 
-- The `bootstrap` gate is green before infrastructure priming.
-- The `deployment` gate is green before either initial control-plane
-  deployment.
-- No generated post-deploy field is required early or represented by a fake
-  value.
-- The Agent records the local gate output; each deployment records the
-  `check-credentials` job URL for the same inputs.
+1. The Human applies `playbooks/founding/02_preflight/tailnet-policy.hujson` in the Tailscale console. Every embedded Secure Shell (SSH) test must pass.
+2. The Agent runs the `bootstrap` gate:
+
+   ```bash
+   ENV=all STAGE=bootstrap ./playbooks/founding/02_preflight/00_gate.sh
+   ```
+
+   The last line is `✅ 002_preflight check complete (env: all, stage: bootstrap)`.
+3. After step 03 stores provider outputs, the Agent runs the `deployment` gate:
+
+   ```bash
+   ENV=all STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
+   ```
+
+   The last line is `✅ 002_preflight check complete (env: all, stage: deployment)`.
+
+## Common problems
+
+| Output | Fix |
+|---|---|
+| `✗ INVALID: <env> postgres api (PgBouncer) must name port 6432` | Store the PgBouncer string from [step 03](../03_priming_infra/001_playbook.md#2-create-datastores) |
+| `❌ 1Password auth missing` | Run `op signin` or set `OP_SERVICE_ACCOUNT_TOKEN` |
+| `✗ MISSING: op://<VAULT>/<ITEM>/<FIELD>` | Add that field, then rerun |
+| `✗ INVALID URL: op://<VAULT>/<ITEM>/<FIELD>` | Store an `https://` URL with no whitespace |
+
+## Verify it works
+
+Record the local gate output.
+Each deployment records its `check-credentials` job URL for the same inputs.
