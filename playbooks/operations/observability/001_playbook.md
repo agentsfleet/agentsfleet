@@ -1,121 +1,104 @@
-# Provision Grafana Observability
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
 
-**Owner:** 🦉 Orly, with 🤠 Indy for account access and alert routing
-**Applies to:** development and production independently
+# Set up Grafana observability
 
-This runbook installs one environment-scoped folder, six focused dashboards,
-and four Grafana-managed alerts. It never guesses a Grafana Cloud namespace or
-Prometheus datasource.
+## What this does
 
-**Read before applying to production.** Both environments use the same Grafana stack, namespace, datasource and ingest credential.
-No series carries a `deployment.environment` attribute.
+Installs one environment folder, six dashboards and four Grafana-managed alerts from `assets/`.
+The six `dashboard*.json` files and `alerts.json` are the source for apply, review and drift checks.
+Reconcile any change made in the Grafana editor back into them.
+Each run targets `ENV=dev` or `ENV=prod`; the gate refuses `all`.
 
-Applying to production today produces a second dashboard reading the same mixed series as the first.
-Confirm active producers before interpreting environment-specific pages. See
-`docs/architecture/observability.md` §Service Level Objectives.
+Both environments share one Grafana stack, namespace, datasource and ingest credential.
+No series carries `deployment.environment`, so a production apply adds a second dashboard over the same mixed series.
+Never claim development and production isolation; see `docs/architecture/observability.md` §Service Level Objectives.
 
-## 🤠 Indy handoff
+## Before you begin
 
-For each environment:
+🤠 Indy does these per environment.
 
-1. Confirm the `agentsfleetd` OTLP export settings (`OTEL_EXPORTER_OTLP_ENDPOINT`
-   and `OTEL_EXPORTER_OTLP_HEADERS`) are set for the environment — runtime metric families arrive via the daemon's
-   own exporter push; nothing scrapes the daemon. The gate's check arm probes
-   the datasource for live series and names any family that is absent.
-2. Create a Grafana service account that can read the selected datasource and
-   manage folders, dashboards, and alert rules.
-3. Enable Grafana's current alert-rule resource API. Grafana 12.4 installations
-   may require the `kubernetesAlertingRules` feature toggle.
-4. Confirm a notification policy routes alerts labelled
-   `service=agentsfleetd`.
-5. Store:
+1. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` for `agentsfleetd`.
+   The daemon pushes metrics through its Fly collector; nothing scrapes it.
+2. Create a Grafana service account that reads the datasource and manages folders, dashboards and alert rules.
+3. Enable Grafana's alert-rule resource API; Grafana 12.4 may need the `kubernetesAlertingRules` feature toggle.
+4. Confirm a notification policy routes alerts labelled `service=agentsfleetd`.
+5. Store these fields in item `agentsfleet-fleets-investigation-service-token`, in the vault `VAULT_DEV` or `VAULT_PROD` names:
+   `grafana-url` (HTTPS), `grafana-sa-token`, `grafana-namespace`, `prometheus-datasource-uid`, `loki-datasource-uid`.
+   The namespace is `default` for self-hosted organization 1.
+   Grafana Cloud uses `stacks-<stack-id>`; copy it from the stack's Swagger page.
+6. Tell the agent: `Grafana access and alert routing are ready for <environment>.`
 
-   | Vault | Item | Fields |
-   |---|---|---|
-   | `ZMB_CD_DEV` | `agentsfleet-fleets-investigation-service-token` | `grafana-url`, `grafana-sa-token`, `grafana-namespace`, `prometheus-datasource-uid`, `loki-datasource-uid` |
-   | `ZMB_CD_PROD` | `agentsfleet-fleets-investigation-service-token` | `grafana-url`, `grafana-sa-token`, `grafana-namespace`, `prometheus-datasource-uid`, `loki-datasource-uid` |
+## Steps
 
-For self-hosted Grafana organization 1, the namespace is `default`. Grafana
-Cloud uses `stacks-<stack-id>`; copy it from that stack's Swagger page rather
-than deriving it.
+Run each command for `dev`, then repeat with `prod`.
 
-Tell Orly: `Grafana access and alert routing are ready for <environment>.`
+1. 🦉 The agent checks assets, credentials and live data without writing.
 
-## 🦉 Orly execution
+   ```bash
+   ALLOW_VAULT_READS=1 ACTION=check ENV=dev ./playbooks/operations/observability/00_gate.sh
+   ```
 
-Inspect without writes:
+   ```text
+   PASS: Grafana assets are valid and reference source-owned metrics
+   PASS: development Grafana credentials are present
+   PASS: development Prometheus datasource scrapes agentsfleetd
+   PASS: development Loki datasource returns agentsfleetd logs
+   PASS: observability check completed for dev
+   ```
 
-```bash
-ALLOW_VAULT_READS=1 \
-  ACTION=check ENV=dev ./playbooks/operations/observability/00_gate.sh
-```
+2. 🤠 Indy authorizes the Grafana changes.
+3. 🦉 The agent applies them.
 
-After Indy authorizes the Grafana changes:
+   ```bash
+   ALLOW_VAULT_READS=1 ALLOW_OBSERVABILITY_WRITES=1 \
+     ACTION=apply ENV=dev ./playbooks/operations/observability/00_gate.sh
+   ```
 
-```bash
-ALLOW_VAULT_READS=1 \
-ALLOW_OBSERVABILITY_WRITES=1 \
-  ACTION=apply ENV=dev ./playbooks/operations/observability/00_gate.sh
-```
+   ```text
+   PASS: development Grafana alerts are current
+   PASS: observability apply completed for dev
+   ```
 
-Run the read-only drift check after the apply:
+4. 🦉 The agent runs the read-only drift check.
 
-```bash
-ALLOW_VAULT_READS=1 \
-  ACTION=verify ENV=dev ./playbooks/operations/observability/00_gate.sh
-```
+   ```bash
+   ALLOW_VAULT_READS=1 ACTION=verify ENV=dev ./playbooks/operations/observability/00_gate.sh
+   ```
 
-Repeat the three commands with `prod`. The provider allowlist currently accepts
-only `grafana`.
+   ```text
+   PASS: development Grafana resources match the repository
+   PASS: observability verify completed for dev
+   ```
 
-## Acceptance
+## Verify it works
 
-- The environment folder contains Overview, Chat latency, API & Database,
-  Scheduler, Models and Sandbox; their navigation links work.
-- Queries use the pinned Prometheus datasource. Chat latency uses a selectable
-  Tempo datasource and fleet identifier; that selection does not filter the
-  aggregate metric pages.
-- All four alert rules match the repository expressions.
-- Native renders agree with the dashboard's queries, labels and units.
+- The folder holds Overview, Chat latency, API & Database, Scheduler, Models and Sandbox, and their links work.
+- Queries use the pinned Prometheus datasource.
+  Chat latency also takes a Tempo datasource and fleet identifier, which do not filter the other pages.
+- The four alert rules match `alerts.json`; `runner-silent` uses the freshest last-seen epoch per runner.
 - `agentsfleet_api_in_flight_requests` returns at least one series.
-- Empty samples remain absent. Measured zero remains zero. Neither proves that
-  the complete export path is healthy.
-- Check collector logs for downstream refusal as well as SDK export-loss
-  counters. An acknowledged batch can still fail after entering its collector.
-- Attribute omissions are separate from lost records. An unmapped provider
-  omits `gen_ai.provider.name`, not the complete span.
-- `runner-silent` subtracts last-seen epochs from evaluation time and uses the
-  freshest reading per runner.
 - No token appears in process arguments or logs.
 
-The Grafana stack is shared across environments. A page's deployment title
-selects its configured datasource; it does not manufacture a missing
-resource/environment label. Do not claim dev/prod isolation without one.
-
-The daemon pushes runtime families through its Fly collector. The runner uses
-its dedicated host collector for its own spans and metric families. A family
-with no activity can have no series; verify a real lease before diagnosing it.
-
-### Why the JSON stays in the repository
-
-Six `dashboard*.json` definitions and `alerts.json` are the reproducible source
-for apply, review and drift checks. Grafana stores the applied copies. Changes
-made in its editor must be reconciled back into these assets.
+A missing series is not zero, and a zero does not prove the export path healthy.
+A family with no activity has no series; check a real lease first.
+An unmapped provider omits `gen_ai.provider.name`, not the whole span.
+Check collector logs for downstream and metrics-ingest refusals, plus SDK export-loss counters.
 
 ## Collector metric conversion
 
-Daemon counters and histograms accumulate in the source process before reaching the shared Fly collector endpoint.
-Each collector forwards these cumulative totals unchanged.
-Changing collectors therefore cannot split one daemon's running total.
+- The daemon accumulates cumulative totals in process; the Fly collector forwards them unchanged.
+- The Fly collector keeps `memory_limiter`, `delta_to_cumulative`, then `batch` for older producers.
+- The runner's host collector (`deploy/baremetal/otelcol-runner.yml`) still converts the runner's delta histograms.
+- `delta_to_cumulative` keeps at most 10,000 streams in memory and drops a stream idle for five minutes.
+  A restart or expired stream starts a new cumulative window.
+- The exporter queue is also in memory.
 
-The metrics pipeline retains memory admission, `delta_to_cumulative`, then batching for older producers during rollout.
-The runner's isolated host collector still converts its delta histograms.
-Traces and logs retain their pipelines.
+## Related pages
 
-The processor retains at most 10,000 streams and expires idle state after five
-minutes. A restart or expired stream starts a new cumulative window. This state
-is in memory; the existing exporter queue is also in memory.
-
-After deployment, read the delivery histogram in Prometheus and check the
-collector logs for metrics-ingest refusals. Configuration validation does not
-prove that the remote backend accepted an export.
+- [Read a chat's round trip at p95 and p99](002_round_trip_percentiles.md)

@@ -1,68 +1,42 @@
-# Register the Zoho Desk Application
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
 
-**Owners:** 🤠 Indy for Zoho settings and 1Password; 🦉 Orly for secret sync
-and verification
-**Updated:** Aug 16, 2026
-**Prerequisite:** the target environment's admin bootstrap is complete, its API
-host passes `/readyz`, and Indy can create a client in the Zoho API Console
+# Register the Zoho Desk application
 
-Register development first and repeat for production only after live
-development acceptance.
+## What this does
+
+Creates one Zoho server-based client per environment and stores it as the `zoho-app` bag.
+Repeat for production only after development acceptance.
+Indy owns Zoho settings and 1Password; the agent syncs and verifies.
 
 | Environment | Client name | Callback URL |
 |---|---|---|
 | Development | `agentsfleet-dev` | `https://app-dev.agentsfleet.net/api/connectors/zoho/callback` |
 | Production | `agentsfleet` | `https://app.agentsfleet.net/api/connectors/zoho/callback` |
 
-## 1. Indy: create and vault the client
+## Before you begin
 
-At the [Zoho API Console](https://api-console.zoho.com), create a
-**Server-based Application** with the matching callback URL.
+The environment's [admin bootstrap](../admin_bootstrap/001_playbook.md) is complete, `/readyz` passes and Indy can create a client in the [Zoho API Console](https://api-console.zoho.com).
 
-The connect request supplies exactly
-`Desk.organization.READ,Desk.basic.READ`. Scopes are granted during
-authorization, not stored on the client registration. The callback resolves
-the Zoho data center and stores the correct regional accounts base; do not add
-per-region callback URLs.
+## Steps
 
-The provider steps are described in
-[Zoho web server applications](https://www.zoho.com/developer/oauth/web-server-apps/overview.html)
-and the [Zoho Desk API documentation](https://desk.zoho.com/DeskAPIDocument).
+1. Indy creates a **Server-based Application** with the table's callback URL.
+   Add no per-region callback; the callback finds the data center and stores its regional accounts base.
+2. Indy stores the `zoho-app` fields: `client_id`, `client_secret`.
+3. The agent syncs `zoho-app` with the [shared bag procedure](../admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag), then the control plane restarts.
+   Token refresh uses the credentials `agentsfleetd` loaded at startup.
 
-In the matching 1Password vault, create or update `zoho-app` with:
+The connect request asks for exactly `Desk.organization.READ,Desk.basic.READ`; the client registration stores no scopes.
+See [Zoho web server applications](https://www.zoho.com/developer/oauth/web-server-apps/overview.html) and the [Zoho Desk API](https://desk.zoho.com/DeskAPIDocument).
 
-- `client_id`.
-- `client_secret`.
-
-Use the 1Password application. Never paste a value into chat, a ticket, or a
-shell command.
-
-## 2. Orly: sync the platform bag
-
-After Indy approves the target, run:
-
-```bash
-ENV=dev \
-ALLOW_VAULT_READS=1 \
-ALLOW_PLATFORM_SECRET_WRITES=1 \
-  ./playbooks/lib/platform_secret_sync.sh zoho-app
-```
-
-Change `ENV` to `prod` only for the production run. Refresh-token minting uses
-credentials captured when `agentsfleetd` starts, so rerun the matching
-founding deployment after all provider bags are synced.
-
-## 3. Indy and Orly: prove the live path
+## Verify it works
 
 1. Indy connects a test Zoho Desk organization from the dashboard.
-2. Orly confirms the callback completes for the expected tenant.
-3. Orly confirms the workspace's vaulted `zoho` credential has the organization-correct
-   regional accounts base.
-4. Orly proves one token refresh succeeds after the initial access token is no
-   longer current.
-
-## Complete when
-
-- The callback is exact and the two-field bag exists.
-- `agentsfleetd` has restarted after the sync.
-- A real connect and refresh pass for the correct Zoho data center.
+2. The agent confirms the callback completes for the expected tenant.
+3. The agent confirms the workspace's `zoho` credential holds the organization's regional accounts base.
+4. The agent proves one token refresh succeeds after the first access token expires.
