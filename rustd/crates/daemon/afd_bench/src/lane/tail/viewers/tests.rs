@@ -24,7 +24,7 @@ fn frame(payload: String) -> Frame {
         1,
         Arc::new(Message {
             channel: "bench".to_owned(),
-            payload,
+            payload: Arc::new(payload),
         }),
     )
 }

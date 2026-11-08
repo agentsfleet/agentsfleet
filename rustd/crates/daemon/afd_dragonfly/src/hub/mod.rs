@@ -80,7 +80,7 @@ pub struct Message {
     /// The channel it arrived on.
     pub channel: String,
     /// The payload, as published.
-    pub payload: String,
+    pub payload: Arc<String>,
 }
 
 /// The longest step production's redial schedule waits, and how long a

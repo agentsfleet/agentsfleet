@@ -56,6 +56,7 @@ pub fn admission_backlog_withdrawn() {
 /// The instruments the runner plane and the sweepers record through.
 #[derive(Debug)]
 pub struct Handles {
+    stream: runner::stream::Handles,
     signup_bootstrapped: Counter<u64>,
     signup_replayed: Counter<u64>,
     signup_failed: Counter<u64>,
@@ -97,6 +98,7 @@ impl Handles {
     pub(super) fn claim(instruments: &Instruments) -> Result<Self> {
         let runners = Arc::new(RunnerMetrics::new());
         let handles = Self {
+            stream: runner::stream::Handles::claim(instruments)?,
             runners: Arc::clone(&runners),
             signup_bootstrapped: instruments.counter_u64(&declared::SIGNUP_BOOTSTRAPPED_TOTAL)?,
             signup_replayed: instruments.counter_u64(&declared::SIGNUP_REPLAYED_TOTAL)?,

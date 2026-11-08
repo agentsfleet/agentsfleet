@@ -2,6 +2,100 @@
 
 use crate::metrics::label::closed_set;
 
+closed_set! {
+    /// Packet counters are cumulative; observers export only the delta.
+    StreamPacket {
+        /// Packets placed on the network.
+        Sent => "sent",
+        /// Packets the loss detector marked lost.
+        Lost => "lost",
+        /// Sent packets carrying retransmitted data.
+        Retransmitted => "retransmitted"
+    }
+}
+
+closed_set! {
+    /// Native protocol used for one connection attempt.
+    StreamTransport {
+        /// QUIC with verified TLS.
+        Http3 => "http3",
+        /// TCP with verified TLS.
+        Http2 => "http2"
+    }
+}
+
+closed_set! {
+    /// Final outcome; dropping an unfinished future remains visible.
+    StreamOutcome {
+        /// The operation completed.
+        Success => "success",
+        /// The socket or name lookup failed.
+        Network => "network",
+        /// The absolute deadline expired.
+        Timeout => "timeout",
+        /// Explicit cancellation won.
+        Cancelled => "cancelled",
+        /// A message or protocol rule was violated.
+        Protocol => "protocol",
+        /// The peer or channel closed.
+        Closed => "closed",
+        /// A local worker failed.
+        Worker => "worker",
+        /// Certificate verification or TLS configuration failed.
+        Tls => "tls",
+        /// The peer did not support the protocol.
+        Unsupported => "unsupported",
+        /// The caller dropped the future before its result.
+        Abandoned => "abandoned"
+    }
+}
+
+closed_set! {
+    /// Operation whose elapsed time or timeout is measured.
+    StreamStage {
+        /// Reserving frame memory.
+        Memory => "memory",
+        /// Receiving a partial frame.
+        Read => "read",
+        /// Sending a complete frame.
+        Write => "write",
+        /// Resolving and connecting a socket.
+        Connect => "connect",
+        /// Verifying the peer and starting HTTP.
+        Handshake => "handshake",
+        /// Waiting for response headers.
+        Open => "open",
+        /// Waiting for native workers to stop.
+        Close => "close"
+    }
+}
+
+closed_set! {
+    /// Only these failures permit the same trust policy over HTTP/2.
+    StreamFallback {
+        /// The QUIC socket could not connect.
+        Network => "network",
+        /// QUIC did not answer before its deadline.
+        Timeout => "timeout",
+        /// QUIC closed before opening the session.
+        Closed => "closed",
+        /// The peer does not support this QUIC version.
+        Unsupported => "unsupported"
+    }
+}
+
+closed_set! {
+    /// A hint is a bounded scheduling reminder; durable work stays in Postgres.
+    ReadyHint {
+        /// A new fleet entered the queue.
+        Added => "added",
+        /// The fleet already had a queued reminder.
+        Duplicate => "duplicate",
+        /// A new fleet replaced the oldest reminder.
+        Evicted => "evicted"
+    }
+}
+
 /// This one has been seen before, and the first delivery's answer stands.
 ///
 /// One spelling for one fact, shared by the sets that observe it. Named rather

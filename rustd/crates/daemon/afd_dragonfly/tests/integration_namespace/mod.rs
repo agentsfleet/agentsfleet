@@ -185,7 +185,7 @@ async fn deliver(publisher: &FleetStreams, subscription: &mut Subscription, payl
             panic!("expected a message");
         };
         assert_eq!(message.channel, channel);
-        assert_eq!(message.payload, payload);
+        assert_eq!(message.payload.as_str(), payload);
     })
     .await
     .expect("subscription confirms and receives within budget");

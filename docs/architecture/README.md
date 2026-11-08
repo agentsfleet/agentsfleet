@@ -41,6 +41,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | Can two runners hold the same fleet at once? | [`data_flow.md`](./data_flow.md) §"One active lease per fleet: the ownership model" |
 | How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §"Registering a runner" |
 | What are the runner protocol verbs? | [API reference](https://docs.agentsfleet.net/api-reference/introduction) › Runner plane |
+| What replaces runner polling, and how do HTTP/3 and HTTP/2 coexist? | [Runner stream implementation design](runner_protocol.md) |
 | What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
 | How does the Rust runner run a lease, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §"Process model", §"Workspace between leases" |
 | How should we evaluate SPACE and test a recoverable coding session? | [Coding sandbox evaluation](sandbox_evaluation.md) |

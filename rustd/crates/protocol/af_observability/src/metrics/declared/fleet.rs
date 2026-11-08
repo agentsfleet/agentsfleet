@@ -135,3 +135,40 @@ pub const RUNNER_ACTIVE_LEASES: Declared<GaugeKind> =
 /// Successful report answers, including idempotent retries.
 pub const RUNNER_REPORT_ANSWERS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_report_answers_total");
+
+/// Every native connection attempt, including failed HTTP/3 before fallback.
+pub const RUNNER_STREAM_CONNECT_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_connect_total");
+
+/// Complete native connection attempt duration, including name resolution.
+pub const RUNNER_STREAM_CONNECT_SECONDS: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_stream_connect_seconds");
+
+/// Bounded operations, including memory waits and cancelled futures.
+pub const RUNNER_STREAM_OPERATION_SECONDS: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_stream_operation_seconds");
+
+/// Transport failures that caused an HTTP/2 attempt.
+pub const RUNNER_STREAM_FALLBACK_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_fallback_total");
+
+/// Expired absolute deadlines, separated by the operation that stalled.
+pub const RUNNER_STREAM_TIMEOUTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_timeouts_total");
+
+/// Recent-work hints admitted, deduplicated or evicted by a replica.
+pub const FLEET_READY_WAKE_HINTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_fleet_ready_wake_hints_total");
+
+/// Native path round-trip measurements; unsupported measurements stay absent.
+pub const RUNNER_STREAM_NATIVE_RTT_SECONDS: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_stream_native_rtt_seconds");
+/// QUIC packet counter deltas, independent of application request success.
+pub const RUNNER_STREAM_NATIVE_PACKETS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_native_packets_total");
+/// QUIC probe timeout deltas across all paths on established connections.
+pub const RUNNER_STREAM_NATIVE_PTO_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_native_pto_total");
+/// Retransmitted stream bytes; distinct from the packet counter's unit.
+pub const RUNNER_STREAM_NATIVE_RETRANSMITTED_BYTES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_native_retransmitted_bytes_total");
