@@ -12,7 +12,7 @@ use std::{
 
 use async_nats::Subscriber;
 use futures_util::StreamExt as _;
-use tokio::{sync::broadcast, task::AbortHandle};
+use tokio::{sync::broadcast, task::JoinHandle};
 
 use crate::{Message, Received, Result, Subject, Subscription, error::ErrorKind};
 
@@ -54,7 +54,7 @@ struct Channel {
     sender: broadcast::Sender<Delivery>,
     readers: usize,
     generation: u64,
-    pump: Option<AbortHandle>,
+    pump: Option<JoinHandle<()>>,
 }
 
 #[derive(Debug, Default)]
@@ -142,7 +142,7 @@ impl Channels {
 
     /// Record the pump so the last reader can stop it. A channel whose
     /// readers already left stops the pump at once.
-    pub(super) fn started(&self, physical: &str, generation: u64, pump: AbortHandle) {
+    pub(super) fn started(&self, physical: &str, generation: u64, pump: JoinHandle<()>) {
         let mut state = self.lock();
         match state.channels.get_mut(physical) {
             Some(channel) if channel.generation == generation => channel.pump = Some(pump),
@@ -189,14 +189,17 @@ impl Channels {
             .sum()
     }
 
-    /// Stop every pump, so each reader sees its channel close.
-    pub(super) fn close(&self) {
+    /// Stop every pump, so each reader sees its channel close, and hand the
+    /// stopped tasks back for the caller to join.
+    #[must_use]
+    pub(super) fn close(&self) -> Vec<JoinHandle<()>> {
         let mut state = self.lock();
-        for (_, channel) in state.channels.drain() {
-            if let Some(pump) = channel.pump {
-                pump.abort();
-            }
-        }
+        state
+            .channels
+            .drain()
+            .filter_map(|(_, channel)| channel.pump)
+            .inspect(JoinHandle::abort)
+            .collect()
     }
 
     /// Readers on one subject.

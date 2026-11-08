@@ -178,8 +178,7 @@ impl Bus for Adapter {
                 physical.clone(),
                 generation,
             ));
-            live.channels
-                .started(&physical, generation, task.abort_handle());
+            live.channels.started(&physical, generation, task);
         }
         // The server holds the interest once the flush returns.
         tokio::time::timeout(self.deadline, live.client.flush()).await??;
@@ -190,8 +189,14 @@ impl Bus for Adapter {
         let Some(live) = self.live.write().await.take() else {
             return Ok(());
         };
+        // Every task this adapter started is stopped and joined before the
+        // client drains, so nothing it owns outlives the call, even while a
+        // subscriber still holds its stream.
         live.watcher.abort();
-        live.channels.close();
+        let _ = live.watcher.await;
+        for pump in live.channels.close() {
+            let _ = pump.await;
+        }
         live.client.drain().await?;
         Ok(())
     }
