@@ -16,12 +16,13 @@ const RUN_NOW: &str = "Investigate the failed build.";
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
+    let logs = af_core::test_util::trace::Capture::install();
     let case = Case::with_budgets(afd_admission::Budgets {
         deployment_backlog: 0,
     })
     .await;
     case.fund().await;
-    let blocked = save_with_a_blocked_first_run(&case).await;
+    let blocked = save_with_a_blocked_first_run(&case, &logs).await;
     let healthy = case
         .base
         .services(&Scope::ALL)
@@ -63,14 +64,17 @@ async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
 
 /// Saves with `run_now` while the admission backlog has no room: the fleet is
 /// active, its first run is `blocked`, and nothing was admitted.
-async fn save_with_a_blocked_first_run(case: &Case) -> Value {
+async fn save_with_a_blocked_first_run(
+    case: &Case,
+    logs: &af_core::test_util::trace::Capture,
+) -> Value {
     let (_, mut request) = case.request().await;
     request["start"] = json!({"kind":"run_now","message":RUN_NOW});
     let key = mint();
     let response = case.save(key.as_str(), &request).await;
     let status = response.status();
     let blocked = json_body(response).await;
-    assert_eq!(status, StatusCode::CREATED, "{blocked}");
+    assert_eq!(status, StatusCode::CREATED, "{blocked} {:?}", logs.events());
     assert_eq!(blocked["status"], "active");
     assert_eq!(blocked["start"]["state"], "blocked");
     assert_eq!(count(case, &blocked).await, 0);

@@ -5,6 +5,7 @@ use super::{Fleet, Method, StatusCode, json, json_body, mint, send};
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_policy_marker_change_refuses_new_admissions_but_preserves_accepted_replay() {
+    let logs = af_core::test_util::trace::Capture::install();
     let fleet = Fleet::create().await;
     let key = mint();
     let body = json!({"message":"Check the latest evidence","operation_id":key});
@@ -36,7 +37,7 @@ UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM incompatible) WHERE id=
     .await;
     let status = repeated.status();
     let repeated = json_body(repeated).await;
-    assert_eq!(status, StatusCode::ACCEPTED, "{repeated}");
+    assert_eq!(status, StatusCode::ACCEPTED, "{repeated} {:?}", logs.events());
     assert_eq!(repeated["event_id"], first["event_id"]);
     let new = json!({"message":"New work after the policy change","operation_id":mint()});
     let refused = send(
