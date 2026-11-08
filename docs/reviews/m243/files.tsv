@@ -171,6 +171,8 @@ CREATE	rustd/crates/protocol/af_stream/src/limits.rs	absent	Proposed shared tran
 CREATE	rustd/crates/protocol/af_stream/src/server.rs	absent	Proposed shared transport crate; native proof before integration
 CREATE	rustd/crates/protocol/af_stream/src/telemetry.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/protocol/af_stream/src/tls/boring.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/tls/key_exchange/mod.rs	absent	TLS 1.3 hybrid preference and negotiated group observations
+CREATE	rustd/crates/protocol/af_stream/src/tls/key_exchange/tests.rs	absent	Real TLS peers prove classical interoperability and reject TLS 1.2
 CREATE	rustd/crates/protocol/af_stream/src/tls/mod.rs	absent	Proposed shared transport crate; native proof before integration
 CREATE	rustd/crates/protocol/af_stream/tests/failures.rs	absent	Proposed shared transport crate; native proof before integration
 CREATE	rustd/crates/protocol/af_stream/tests/framing.rs	absent	Proposed shared transport crate; native proof before integration

@@ -143,3 +143,19 @@ async fn connect(
     )
     .await?)
 }
+
+/// The negotiated group is read from TLS, rather than inferred from the settings.
+#[tokio::test]
+async fn both_native_transports_negotiate_hybrid_post_quantum_key_exchange() -> Result {
+    let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
+    let host = fixture.serve().await?;
+    for transport in [Transport::H3, Transport::H2] {
+        let connection = connect(&fixture, &host, transport).await?;
+        assert_eq!(
+            connection.key_exchange(),
+            Some(af_stream::tls::KeyExchange::X25519MlKem768)
+        );
+        connection.close(deadline()).await?;
+    }
+    host.close().await
+}

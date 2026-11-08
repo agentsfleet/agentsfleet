@@ -48,12 +48,13 @@ The [failure design](failure-and-observability.md) defines recovery and verifica
 |---|---|
 | Worktree | `/workspace/agentsfleet-m243`, branch `feat/m243-runner-push-stream` |
 | Fetched base | `origin/main` at `61820b66a`, merged normally after #817; #816's native UUIDv7 changes remain included |
-| Existing commits | Draft [#819](https://github.com/agentsfleet/agentsfleet/pull/819), published foundation `55a6e51fd`; local main merge `bafef4bbe` |
+| Existing commits | Draft [#819](https://github.com/agentsfleet/agentsfleet/pull/819), published bus checkpoint `471c63d09`; main merge `bafef4bbe` |
 | Written code | Transport foundations and shared bus injection are written; gateway and runner session wiring remain due |
 | Package evidence | Earlier `cargo test -p af_wire --all-features`: 78 unit tests and 96 wire-suite tests passed |
 | HTTP/3 scratch evidence | Verified CA chain, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings, raw client worker exit after explicit close |
 | HTTP/2 scratch evidence | BoringSSL certificate verification, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings and client/server task exit |
 | Production adapter evidence | Bus migration passed 3,525 daemon-library tests and 158 daemon tests; live integration and final coverage remain due |
+| Hybrid key exchange | Real HTTP/3 and HTTP/2 peers negotiated X25519MLKEM768; classical TLS 1.3 peers remain identified; TLS 1.2 is refused |
 | Dependencies | Indy approved `libc = 0.2.189`; the workspace uses published `tokio-quiche 0.20.1` without a scratch override |
 | Current lint checkpoint | `make lint-all` passed, including rustfmt, workspace Clippy with all features and targets, dependency checks and the remaining repository linters |
 | Unit checkpoint | Runner checkpoint passed 1,749 tests; bus migration passed 3,525 library and 158 daemon tests; complete repository lane remains due |
@@ -96,7 +97,7 @@ He added, “so the claude agent can start”.
 The draft publishes the bus interface for M244 while M243 implementation and final verification continue.
 
 The draft must identify every pending gate and remain unready for merge.
-It does not claim that production publishers already use the bus or that runner sessions are wired into startup.
+Production publishers now use the bus; runner sessions still need startup wiring.
 
 ## How it behaves
 
@@ -330,7 +331,7 @@ Repeated reports retain existing lease-keyed billing idempotence and complete us
 `EDIT` and `DELETE` paths were checked against the fetched tree; `CREATE` paths are explicitly new.
 `AUDIT` rows name source hits whose dependent callers require review before implementation is complete.
 
-The inventory contains 493 paths: 114 creations, 274 edits, 20 deletions, one move, 80 audit paths and 3 deployment/build proposals.
+The inventory contains 495 paths: 116 creations, 274 edits, 20 deletions, one move, 80 audit paths and 3 deployment/build proposals.
 The two deployment paths and builder-image path require separate approval before edits.
 These are scope counts, not completed implementation changes.
 

@@ -112,9 +112,17 @@ Indy prefers post-quantum protection for runners connecting over external networ
 The pinned BoringSSL 5.4.0 source lists `X25519MLKEM768` first in `DefaultSupportedGroupIds`.
 Quiche 0.30.0 also exposes `Config::set_curves_list` for explicit group preferences.
 
-The implementation will require TLS 1.3 and prefer hybrid X25519 plus ML-KEM-768 on both native transports.
-Tests must inspect the negotiated key exchange rather than infer it from an encrypted connection.
-The final report must distinguish configured preference from observed negotiation.
+The implementation requires TLS 1.3 and prefers hybrid X25519 plus ML-KEM-768 on both native transports.
+Real HTTP/3 and HTTP/2 tests observed `X25519MLKEM768` after their verified handshakes.
+Separate peers forced X25519, P-256 and P-384; their negotiated groups remained correctly identified.
+
+A TLS 1.2-only peer was refused.
+The package test command passed eight unit tests, 19 transport tests and one exported-telemetry test.
+Evidence: `cargo test -p af_stream --all-features --no-fail-fast`, log `/workspace/scratch/m243-logs/m243-hybrid-af-stream-tests-v2.log`.
+
+BoringSSL's older `mozilla_modern` preset disables TLS 1.3.
+The implementation uses `mozilla_intermediate_v5` with an explicit TLS 1.3 minimum instead.
+The negotiated-group trace identifies key exchange separately from certificate authentication.
 
 Hybrid key exchange helps protect recorded traffic against future quantum decryption.
 The proposed ECDSA certificate signatures still authenticate the server through conventional cryptography.
