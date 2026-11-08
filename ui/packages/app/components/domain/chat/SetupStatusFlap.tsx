@@ -11,7 +11,7 @@ import { MESSAGE_STATE } from "@/lib/api/draft-types";
 import { setupActivity } from "@/lib/api/draft-activity";
 import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
 
-type Status = {label: string; icon: LucideIcon; busy?: boolean; confirmed?: boolean};
+type Status = {label: string; icon: LucideIcon; busy?: boolean; queued?: boolean; confirmed?: boolean};
 const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadIcon}, saving: {label: "Saving", icon: SaveIcon}, publishing: {label: "Publishing", icon: UploadIcon}};
 
 /** Only accepted fleet revisions and publication receipts receive a success tick. */
@@ -27,7 +27,7 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet}: {
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
       className="flex max-w-full flex-wrap items-center justify-center gap-x-sm gap-y-xs rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-stream">
       <Icon className={`size-3.5 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" />
-      <span data-chat-loading={status.busy}>{status.label}</span>
+      <span data-chat-loading={status.busy && !status.queued}>{status.label}</span>
       {status.confirmed && view.fleet ? onOpenFleet
         ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Button>
         : <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}
@@ -43,7 +43,7 @@ function setupStatus(view: DraftView, dirty: boolean): Status | null {
   if (view.optimistic) return {label: "Sending request", icon: UploadIcon, busy: true};
   if (chatRecovery(view).pending) {
     const refining = view.messages.some(message => message.state === MESSAGE_STATE.running);
-    return {label: refining ? "Refining setup" : "Waiting to refine setup", icon: refining ? SparklesIcon : ClockIcon, busy: true};
+    return {label: refining ? "Refining setup" : "Waiting to refine setup", icon: refining ? SparklesIcon : ClockIcon, busy: true, queued: !refining};
   }
   if (dirty) return {label: "Unsaved setup changes", icon: PencilIcon};
   const revision = view.fleet?.setup_revision;
