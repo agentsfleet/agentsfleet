@@ -226,7 +226,7 @@ impl Plane {
                     .await;
                 timing::completed(&lease, now, completed_at);
                 if let Some(owing) = owed {
-                    self.queue_owed_answer(&owing, &lease, answer).await;
+                    self.queue_owed_answer(&owing).await;
                 }
                 self.announce_folds(&lease, lease_id.as_str(), folds, answer)
                     .await;

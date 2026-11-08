@@ -142,7 +142,6 @@ async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_priv
     let held = Leased::boot(&mut supervisor, &qstash).await;
     let leases = afd_fleet::lease::Leases::new(
         held.run.booted.database.clone(),
-        held.run.booted.queue.clone(),
         afd_bus::dragonfly::publisher(held.run.booted.queue.clone()),
         Entropy::new(),
     );

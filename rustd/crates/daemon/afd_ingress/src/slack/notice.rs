@@ -80,10 +80,14 @@ impl Ingress {
     /// ledger that would not record it.
     pub async fn owe_notice(&self, owed: NoticeOwed<'_>, now: Timestamp) -> Result<Uuid7> {
         let row = self.entropy.uuid7(now)?;
+        // Unpinged: the notice is claimable at once, and the outbound claim
+        // pass takes it within one pass.
+        let token = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
         obligation::owe(
             connection.as_mut(),
             &row,
+            token.as_str(),
             Delivery {
                 fleet_id: owed.owner,
                 workspace_id: owed.workspace,

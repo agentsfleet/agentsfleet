@@ -37,7 +37,7 @@ impl<S: Deliver + 'static> Inner<S> {
             // one would mean the ceiling itself is gone, and stopping is the
             // only honest response to that.
             let Ok(_permit) = permit else { return };
-            self.deliver_and_ack(&job).await;
+            self.deliver(&job).await;
         }
     }
 

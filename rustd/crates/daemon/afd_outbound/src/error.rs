@@ -30,22 +30,17 @@ af_core::error_shell!(
 /// What actually went wrong. Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    /// The queue would not answer, or the connection to it would not open.
-    ///
-    /// The only failure that stops the worker's loop rather than one job: a
-    /// stream that cannot be read has no next job to move on to.
-    #[error("the queue holding the outbound answers would not answer")]
-    Queue {
+    /// The host could not draw the entropy a claim token is minted from.
+    #[error("a claim token could not be drawn")]
+    Entropy {
         #[source]
-        source: afd_dragonfly::Error,
+        source: af_crypto::error::Error,
     },
 
     /// The obligation ledger's pool would not hand out a connection.
     ///
-    /// Distinct from [`Self::Queue`] because the two stores fail for different
-    /// reasons and an operator acts on them differently: a queue outage stops
-    /// the worker's loop, while a ledger that will not answer leaves the
-    /// delivery itself unaffected and only the RECORD of it unwritten.
+    /// The ledger is the queue since M244, so an unanswered pool stops claims
+    /// until it answers again; nothing owed is lost meanwhile.
     #[error("the ledger holding the delivery obligations would not answer")]
     Ledger {
         #[source]
@@ -73,8 +68,6 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 /// One sample of each kind a caller can match on, for a crate wrapping this
 /// error to render in its own suite.
 ///
-/// The queue kind is left out: it wraps `afd_dragonfly`'s error, and a wrapper
-/// that needs a queue sample takes it from that crate's own builder.
 #[cfg(feature = "test-util")]
 #[must_use]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
@@ -105,8 +98,7 @@ impl Error {
         }
     }
 
-    /// Whether a store behind the ledger could not be reached: Postgres, or
-    /// the queue an obligation is announced on.
+    /// Whether the ledger could not be reached.
     ///
     /// The accessor `afd_admission` and its siblings carry, so a crate
     /// wrapping this error asks the question instead of comparing codes.
@@ -116,14 +108,13 @@ impl Error {
             // An unreachable store is the outage an operator retries against,
             // and a pool that will not hand out a connection is the same
             // outage. Anything either store ANSWERS is this daemon's own fault.
-            ErrorKind::Queue { source } => source.is_unavailable(),
             ErrorKind::Ledger { .. } => true,
-            ErrorKind::Query { .. } => false,
+            ErrorKind::Entropy { .. } | ErrorKind::Query { .. } => false,
         }
     }
 }
 
 af_core::error_lifts!(Error, ErrorKind:
-    afd_dragonfly::Error => Queue,
+    af_crypto::error::Error => Entropy,
     afd_db::Error => Ledger,
 );

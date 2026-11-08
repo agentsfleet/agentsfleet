@@ -48,10 +48,10 @@
 //! job's answer as the fleet wrote it, so an answer that names the channel
 //! shows the name and pages nobody.
 
+use crate::obligation::Claimed;
 use af_crypto::secret::SecretString;
 use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};
-use afd_dragonfly::OutboundDelivery;
 use serde::{Deserialize, Serialize};
 
 use crate::poster::{Deliver, Verdict};
@@ -164,7 +164,7 @@ impl SlackPoster {
     ///
     /// Answers a verdict directly on failure — see the module note on why
     /// nothing here is an error.
-    async fn inputs(&self, job: &OutboundDelivery, part: Option<&Part>) -> Result<Inputs, Verdict> {
+    async fn inputs(&self, job: &Claimed, part: Option<&Part>) -> Result<Inputs, Verdict> {
         let destination = destination(job)?;
         let workspace = &job.workspace_id;
 
@@ -189,7 +189,7 @@ impl SlackPoster {
     }
 
     /// The POST itself, with no pool connection held — see the module note.
-    async fn post(&self, job: &OutboundDelivery, inputs: &Inputs) -> Verdict {
+    async fn post(&self, job: &Claimed, inputs: &Inputs) -> Verdict {
         let text = escape::literal(&job.answer);
         // Strings and the marker's strings cannot fail to serialize; an empty
         // body on that unreachable arm is refused by Slack, never a delivery.
@@ -224,11 +224,7 @@ impl SlackPoster {
 
 impl SlackPoster {
     /// Posts `job` under the marker `part` names, once.
-    pub(crate) async fn deliver_part(
-        &self,
-        job: &OutboundDelivery,
-        part: Option<&Part>,
-    ) -> Verdict {
+    pub(crate) async fn deliver_part(&self, job: &Claimed, part: Option<&Part>) -> Verdict {
         match self.inputs(job, part).await {
             Ok(inputs) => self.post(job, &inputs).await,
             Err(verdict) => verdict,
@@ -237,11 +233,7 @@ impl SlackPoster {
 
     /// Posts `job` under the marker `part` names, unless the thread already
     /// holds a message carrying that marker.
-    pub(crate) async fn redeliver_part(
-        &self,
-        job: &OutboundDelivery,
-        part: Option<&Part>,
-    ) -> Verdict {
+    pub(crate) async fn redeliver_part(&self, job: &Claimed, part: Option<&Part>) -> Verdict {
         let inputs = match self.inputs(job, part).await {
             Ok(inputs) => inputs,
             Err(verdict) => return verdict,
@@ -287,11 +279,11 @@ impl SlackPoster {
 
 /// The answer: posted under the marker with no part.
 impl Deliver for SlackPoster {
-    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.deliver_part(job, None)
     }
 
-    fn redeliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.redeliver_part(job, None)
     }
 }

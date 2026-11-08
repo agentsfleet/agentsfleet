@@ -24,6 +24,7 @@ fn each_subject_has_its_documented_spelling() -> TestResult {
         format!("af.draft.{ID}.events")
     );
     assert_eq!(spelling(&Subject::Wake(15)), "af.wake.15");
+    assert_eq!(spelling(&Subject::OutboundWake), "af.outbound.wake");
     assert_eq!(
         spelling(&Subject::RunnerCommand(id)),
         format!("af.runner.{ID}.cmd")

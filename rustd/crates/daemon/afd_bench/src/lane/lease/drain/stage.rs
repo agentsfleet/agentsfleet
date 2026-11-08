@@ -128,12 +128,7 @@ pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Plan
     let database = stores.database.clone();
     Plane {
         task_reports: None,
-        leases: Leases::new(
-            database.clone(),
-            stores.queue.clone(),
-            stores.bus.clone(),
-            Entropy::new(),
-        ),
+        leases: Leases::new(database.clone(), stores.bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), stores.bus.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),
         // The daemon wraps this in its outage policy and metrics; a bench

@@ -53,6 +53,9 @@ pub(crate) enum ErrorKind {
     #[error("the lease path would not run")]
     LeasePathFaulted { source: afd_fleet::Error },
 
+    #[error("the outbound ledger would not take an owed answer")]
+    OutboundPathFaulted { source: afd_outbound::Error },
+
     #[error("the admission ledger would not answer")]
     LedgerUnreadable { source: afd_admission::Error },
 

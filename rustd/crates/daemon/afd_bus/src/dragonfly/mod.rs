@@ -94,5 +94,6 @@ pub(crate) fn channel(subject: &Subject) -> String {
         Subject::DraftEvents(draft) => format!("draft:{draft}:events"),
         Subject::Wake(shard) => format!("fleet:wake:{{{shard}}}"),
         Subject::RunnerCommand(runner) => format!("runner:{{{runner}}}:commands"),
+        Subject::OutboundWake => "outbound:wake".to_owned(),
     }
 }

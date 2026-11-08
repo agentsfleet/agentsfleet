@@ -1,19 +1,12 @@
 //! Giving up on an answer nobody can take.
 //!
-//! Two callers reach the same verdict from two directions. The lanes hold a
-//! queued job whose destination refused it for good, or whose cycles ran out;
-//! acknowledging was once ALL they did with such a job, so the row stayed
-//! undelivered and the producer's scan re-offered it every `LOST_AFTER`,
-//! forever. The producer holds a scanned row whose stored connector no
-//! connector answers to; skipping it left it in every scan, and a batch of
-//! them fills `BATCH_LIMIT` and starves every answer queued behind it. Both
-//! stamp the row here, so no scan offers it again.
+//! The lanes reach this for a claimed job whose destination refused it for
+//! good, or whose cycles ran out. Stamping the row is what keeps every later
+//! claim from offering it again.
 
-use af_core::id::Uuid7;
 use afd_db::Db;
-use afd_dragonfly::OutboundDelivery;
 
-use crate::obligation::{self, AbandonReason, Owed};
+use crate::obligation::{self, AbandonReason, Claimed};
 
 /// Logged when an answer is given up on — once per obligation.
 const EVENT_ABANDONED: &str = "outbound_delivery_abandoned";
@@ -21,47 +14,16 @@ const EVENT_ABANDONED: &str = "outbound_delivery_abandoned";
 /// Logged when the abandon stamp could not be written.
 const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
 
-/// Abandons a queued job's obligation, before its acknowledgement.
-pub(crate) async fn delivery(database: &Db, job: &OutboundDelivery, reason: AbandonReason) {
-    stamp(
-        database,
-        &job.provider,
-        &job.fleet_id,
-        &job.event_id,
-        reason,
-    )
-    .await;
-}
-
-/// Abandons a scanned row no queue entry could deliver.
-pub(crate) async fn row(database: &Db, owed: &Owed, reason: AbandonReason) {
-    stamp(
-        database,
-        &owed.provider,
-        &owed.fleet_id,
-        &owed.event_id,
-        reason,
-    )
-    .await;
-}
-
-/// Stamps the row and announces it — only when THIS call stamped it, so a
-/// duplicate entry for an answer already given up on says nothing twice.
+/// Stamps a claimed job's row abandoned and announces it — only when THIS call
+/// stamped it, so an answer already given up on says nothing twice.
 ///
-/// A stamp that fails is reported and nothing else: the caller acknowledges or
-/// moves on, and the row stays in the lost set to be offered again after the
-/// window — the at-least-once direction rather than a lost answer.
-async fn stamp(
-    database: &Db,
-    provider: &str,
-    fleet_id: &Uuid7,
-    event_id: &Uuid7,
-    reason: AbandonReason,
-) {
-    match obligation::abandon(database, fleet_id, event_id, reason).await {
+/// A stamp that fails is reported and nothing else: the claim lapses and the
+/// row is offered again, the at-least-once direction rather than a lost answer.
+pub(crate) async fn delivery(database: &Db, job: &Claimed, reason: AbandonReason) {
+    match obligation::abandon(database, job, reason).await {
         Ok(Some(attempt_count)) => Abandoned {
-            provider,
-            fleet_id: fleet_id.as_str(),
+            provider: &job.provider,
+            fleet_id: job.fleet_id.as_str(),
             reason: reason.as_str(),
             attempt_count,
         }
@@ -117,8 +79,9 @@ mod tests {
     /// fields the lanes build it from; its type has nowhere to put either.
     #[test]
     fn abandonment_is_logged_once_without_content() {
-        let job = OutboundDelivery {
-            id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
+        let job = Claimed {
+            id: afd_db::test_util::mint_id(),
+            token: "holder-token".to_owned(),
             provider: "slack".to_owned(),
             destination: r#"{"channel_id":"C0SECRET","thread_ts":"1700000000.000100"}"#.to_owned(),
             workspace_id: afd_db::test_util::mint_id(),

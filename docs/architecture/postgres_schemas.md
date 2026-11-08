@@ -234,7 +234,7 @@ there is no generic repository trait.
 | `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` keeps an array of at most 128 public stages / 120 KB; native sequence and truncation are separate typed columns, within the public 128 KiB ceiling |
 | `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | optional task/item association; `input_claim_lease_id` and `input_claim_fence` stamp a message a live run claimed |
 | `approval_gates` | A risky action waiting for a person |  |
-| `obligations` | An answer owed to a destination until delivered or abandoned |  |
+| `obligations` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` defers a released row |
 | `tool_calls` | Full arguments and output of each tool call |  |
 | `activity_counters` | Trigger-maintained dashboard totals |  |
 

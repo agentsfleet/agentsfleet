@@ -3,13 +3,12 @@
 use std::future::ready;
 use std::task::{Context, Poll, Waker};
 
+use crate::obligation::Claimed;
 use af_core::env::MapEnv;
 use afd_db::{
     Db,
     config::{DbRole, PoolConfig},
 };
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
 use dashmap::try_result::TryResult;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -22,7 +21,7 @@ use crate::poster::{Deliver, Posters, Verdict};
 struct UnusedPoster;
 
 impl Deliver for UnusedPoster {
-    fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Claimed) -> impl Future<Output = Verdict> + Send {
         ready(Verdict::Delivered)
     }
 }
@@ -54,16 +53,10 @@ fn full_lane() -> FullLane {
     let environment =
         MapEnv::from_pairs([(DbRole::Api.url_knob(), "postgres://nowhere/agentsfleet")]);
     let pool = PoolConfig::resolve(&environment, DbRole::Api).expect("lazy pool config resolves");
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        "redis://127.0.0.1:1/".to_owned(),
-    ))
-    .expect("an unused queue handle resolves");
     let lanes = Lanes::new(
         Posters {
             slack: UnusedPoster,
         },
-        OutboundQueue::new(queue),
         Db::unreachable(&pool),
         CancellationToken::new(),
     );

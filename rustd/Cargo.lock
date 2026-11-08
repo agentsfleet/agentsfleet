@@ -689,6 +689,7 @@ dependencies = [
  "afd_authoring",
  "afd_billing",
  "afd_bus",
+ "afd_connector",
  "afd_credential",
  "afd_db",
  "afd_dragonfly",
@@ -706,7 +707,6 @@ dependencies = [
  "jiff",
  "opentelemetry 0.33.1",
  "opentelemetry_sdk 0.33.1",
- "redis",
  "reqwest",
  "serde",
  "serde_json",
@@ -1189,16 +1189,15 @@ version = "0.75.0"
 dependencies = [
  "af_core",
  "af_crypto",
+ "af_observability",
+ "afd_bus",
  "afd_connector",
  "afd_db",
- "afd_dragonfly",
  "afd_vault",
  "backon",
  "dashmap",
  "http",
  "jiff",
- "jiff-sqlx",
- "redis",
  "reqwest",
  "serde",
  "serde_json",
@@ -1207,7 +1206,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

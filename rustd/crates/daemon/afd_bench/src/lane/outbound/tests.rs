@@ -9,7 +9,7 @@ use core::time::Duration;
 use std::collections::BTreeMap;
 
 use afd_db::test_util::mint_id;
-use afd_dragonfly::{EventId, OutboundDelivery};
+use afd_outbound::Claimed;
 use afd_outbound::Deliver as _;
 
 use super::poster::{Behaviour, Scripted};
@@ -111,8 +111,9 @@ async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_fo
     let mut behaviours = BTreeMap::new();
     behaviours.insert(fleet.to_string(), Behaviour::Slow);
     let poster = Scripted::new(behaviours, Duration::ZERO, slow);
-    let job = OutboundDelivery {
-        id: EventId::of("1-0"),
+    let job = Claimed {
+        id: mint_id(),
+        token: String::new(),
         provider: "slack".to_owned(),
         destination: DESTINATION.to_owned(),
         workspace_id: mint_id(),
@@ -127,7 +128,7 @@ async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_fo
     assert_eq!(poster.settled(), 1, "the answer is what settles it");
 
     let seen = poster.seen();
-    let asked = seen.attempts()["1-0"][0].at;
+    let asked = seen.attempts()[job.id.as_str()][0].at;
     assert_eq!(
         window_end(&seen, asked).saturating_duration_since(asked),
         slow,

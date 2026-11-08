@@ -203,7 +203,6 @@ impl Fixtures {
     pub(crate) fn leases(&self) -> Leases {
         Leases::new(
             self.database.clone(),
-            self.queue().clone(),
             afd_bus::dragonfly::publisher(self.queue().clone()),
             Entropy::new(),
         )
@@ -218,7 +217,6 @@ impl Fixtures {
     pub(crate) fn leases_with_dead_queue(&self) -> Leases {
         Leases::new(
             self.database.clone(),
-            crate::queue::unreachable(),
             afd_bus::dragonfly::publisher(crate::queue::unreachable()),
             Entropy::new(),
         )

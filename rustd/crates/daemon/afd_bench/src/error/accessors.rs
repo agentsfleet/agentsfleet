@@ -26,6 +26,7 @@ impl Error {
             | ErrorKind::AcknowledgementMissing { .. }
             | ErrorKind::SteerPathFaulted { .. }
             | ErrorKind::LeasePathFaulted { .. }
+            | ErrorKind::OutboundPathFaulted { .. }
             | ErrorKind::LedgerUnreadable { .. }
             | ErrorKind::CounterUnreadable { .. }
             | ErrorKind::VariableUnreadable { .. }

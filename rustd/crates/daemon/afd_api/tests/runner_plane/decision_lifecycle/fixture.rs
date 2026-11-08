@@ -96,7 +96,6 @@ impl Fixture {
         let admissions = Admissions::for_tests(database.clone(), queue.clone());
         let leases = Leases::new(
             database.clone(),
-            (queue).clone(),
             afd_bus::dragonfly::publisher(queue),
             Entropy::new(),
         );

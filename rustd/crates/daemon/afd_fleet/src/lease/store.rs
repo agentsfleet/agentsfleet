@@ -13,15 +13,14 @@
 use af_crypto::entropy::Entropy;
 use afd_bus::Handle;
 use afd_db::Db;
+use afd_dragonfly::Doorbell;
 use afd_dragonfly::doorbell::Waited;
-use afd_dragonfly::{Doorbell, Dragonfly, OutboundQueue};
 
-/// Queue selection and lease writes use Postgres. Dragonfly carries the live
-/// tail, outbound delivery and disposable recent-work notifications.
+/// Queue selection, lease writes and owed answers use Postgres. The bus
+/// carries the live tail and the disposable notifications.
 #[derive(Debug, Clone)]
 pub struct Leases {
     database: Db,
-    queue: Dragonfly,
     bus: Handle,
     entropy: Entropy,
     doorbell: Doorbell,
@@ -29,12 +28,11 @@ pub struct Leases {
 }
 
 impl Leases {
-    /// A store reading and writing through `database` and `queue`.
+    /// A store reading and writing through `database`, announcing on `bus`.
     #[must_use]
-    pub fn new(database: Db, queue: Dragonfly, bus: Handle, entropy: Entropy) -> Self {
+    pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {
             database,
-            queue,
             bus,
             entropy,
             doorbell: Doorbell::new(),
@@ -88,15 +86,6 @@ impl Leases {
     /// The fleet event streams, bound to this store's connection.
     pub(crate) fn streams(&self) -> Handle {
         self.bus.clone()
-    }
-
-    /// The outbound delivery queue, bound to this store's connection.
-    ///
-    /// Constructed per call for the reason [`Leases::streams`] is: the handle is
-    /// a thin wrapper over the shared connection, and keeping `queue` private
-    /// means no caller can reach past the verbs this store exposes.
-    pub(crate) fn outbound(&self) -> OutboundQueue {
-        OutboundQueue::new(self.queue.clone())
     }
 
     /// The pool this store reads through, for the sibling modules that add

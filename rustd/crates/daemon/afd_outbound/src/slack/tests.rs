@@ -7,9 +7,10 @@ fn verdict(status: u16, payload: &str) -> Verdict {
 }
 
 /// A job carrying `address`, with every other field well formed.
-fn job(address: &str) -> OutboundDelivery {
-    OutboundDelivery {
-        id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
+fn job(address: &str) -> Claimed {
+    Claimed {
+        id: afd_db::test_util::mint_id(),
+        token: String::new(),
         provider: Provider::Slack.id().to_owned(),
         destination: address.to_owned(),
         workspace_id: mint_id(),

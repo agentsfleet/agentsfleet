@@ -16,8 +16,8 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::obligation::Claimed;
 use afd_connector::Provider;
-use afd_dragonfly::OutboundDelivery;
 use backon::Retryable as _;
 use tokio_util::sync::CancellationToken;
 
@@ -81,7 +81,7 @@ pub trait Deliver: Send + Sync {
     /// could return `Err` would push the decision of what to do about it into
     /// the worker's loop — where the answer would have to be invented again per
     /// provider.
-    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send;
+    fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send;
 
     /// Attempts delivery again, when an earlier attempt may have landed
     /// without its verdict saying so.
@@ -89,7 +89,7 @@ pub trait Deliver: Send + Sync {
     /// Defaults to [`Self::deliver`]: a destination that cannot be asked what
     /// it already holds is posted to again, at least once over at most once.
     /// A poster that CAN ask overrides this to look before it posts.
-    fn redeliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.deliver(job)
     }
 }
@@ -113,7 +113,7 @@ pub struct Posters<S> {
 /// leaving it unacknowledged would redeliver it forever.
 pub async fn dispatch<S: Deliver>(
     posters: &Posters<S>,
-    job: &OutboundDelivery,
+    job: &Claimed,
     attempt: Attempt,
 ) -> Verdict {
     let Some(provider) = Provider::parse(&job.provider) else {
@@ -151,7 +151,7 @@ pub async fn dispatch<S: Deliver>(
 /// [`Attempt::Repeat`], because the attempt it follows may have landed.
 pub async fn deliver_with_retry<S: Deliver>(
     posters: &Posters<S>,
-    job: &OutboundDelivery,
+    job: &Claimed,
     token: &CancellationToken,
     opening: Attempt,
 ) -> Verdict {
@@ -195,7 +195,7 @@ pub async fn deliver_with_retry<S: Deliver>(
 /// (LOG-RENAME, `.orly/standards/domains/logging.md`), and `reason` is what separates the
 /// two cases it covers — a provider no connector answers to, and one that
 /// connects but has no answer surface yet.
-fn unroutable(job: &OutboundDelivery, reason: &'static str) -> Verdict {
+fn unroutable(job: &Claimed, reason: &'static str) -> Verdict {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let provider = job.provider.as_str();

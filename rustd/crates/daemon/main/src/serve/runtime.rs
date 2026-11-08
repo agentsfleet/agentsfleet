@@ -196,11 +196,11 @@ pub(super) async fn spawn_background(
     supervisor: &mut Supervisor,
     config: &BootConfig,
     database: &Db,
-    queue: &Dragonfly,
     kek: &Arc<Kek>,
     bus: afd_bus::Handle,
     outbound_client: reqwest::Client,
 ) {
+    let outbound_bus = bus.clone();
     supervisor.spawn(crate::HUB_PUMP, async move |token| {
         token.cancelled().await;
         if let Err(error) = bus.shutdown().await {
@@ -214,15 +214,14 @@ pub(super) async fn spawn_background(
         }
     });
     // The connector answer-delivery worker, beside the sweepers `serve`
-    // spawned just before this, and for the same reason. Its own Dragonfly connection, because it blocks on the stream — see
-    // `crate::outbound`. It opens its own grant store over the SAME key the
-    // plane seals with, which is why the KEK arrives shared rather than
-    // rebuilt here.
+    // spawned just before this, and for the same reason. It claims from
+    // Postgres and is pinged over the bus — see `crate::outbound`. It opens its
+    // own grant store over the SAME key the plane seals with, which is why the
+    // KEK arrives shared rather than rebuilt here.
     crate::outbound::spawn(
         supervisor,
-        config.redis(),
         database,
-        queue,
+        outbound_bus,
         afd_connector::Grants::new(
             afd_vault::Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
             database.clone(),
@@ -230,6 +229,5 @@ pub(super) async fn spawn_background(
         ),
         outbound_client,
         config.slack_api_base().to_owned(),
-    )
-    .await;
+    );
 }

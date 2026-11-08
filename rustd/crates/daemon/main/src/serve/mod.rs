@@ -216,7 +216,6 @@ async fn serve_plane(
         supervisor,
         config,
         &runtime.database,
-        &runtime.queue,
         &runtime.kek,
         runtime.bus,
         runtime.outbound_client,

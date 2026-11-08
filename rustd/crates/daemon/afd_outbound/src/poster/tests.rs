@@ -14,15 +14,16 @@ struct Counting {
 }
 
 impl Deliver for Counting {
-    fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.calls.fetch_add(1, Ordering::Relaxed);
         std::future::ready(Verdict::Delivered)
     }
 }
 
-fn job(provider: &str) -> OutboundDelivery {
-    OutboundDelivery {
-        id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
+fn job(provider: &str) -> Claimed {
+    Claimed {
+        id: afd_db::test_util::mint_id(),
+        token: String::new(),
         provider: provider.to_owned(),
         destination: DESTINATION.to_owned(),
         workspace_id: mint_id(),
@@ -118,11 +119,11 @@ impl Recording {
 }
 
 impl Deliver for Recording {
-    fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.answer(Attempt::First)
     }
 
-    fn redeliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, _job: &Claimed) -> impl Future<Output = Verdict> + Send {
         self.answer(Attempt::Repeat)
     }
 }

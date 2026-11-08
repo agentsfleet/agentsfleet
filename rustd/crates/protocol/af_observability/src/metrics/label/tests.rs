@@ -5,13 +5,16 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use crate::metrics::declared::{billing, bus, database, fleet, http, library, scheduler, task};
+use crate::metrics::declared::{
+    billing, bus, database, fleet, http, library, outbound, scheduler, task,
+};
 use crate::metrics::label::billing as billing_labels;
 use crate::metrics::label::bus as bus_labels;
 use crate::metrics::label::database as database_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
+use crate::metrics::label::outbound as outbound_labels;
 use crate::metrics::label::scheduler as scheduler_labels;
 use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
@@ -40,7 +43,7 @@ fn label_products() -> Vec<(&'static str, usize)> {
     let mut products = pool_schedule_products();
     products.extend(fold_products());
     products.extend(stream_products());
-    products.push((bus::GAPS.wire_name(), bus_labels::GapCause::ALL.len()));
+    products.extend(transport_products());
     products.extend([
         (
             task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
@@ -136,6 +139,17 @@ fn label_products() -> Vec<(&'static str, usize)> {
         ),
     ]);
     products
+}
+
+/// The bus and outbound families M244 added.
+fn transport_products() -> [(&'static str, usize); 2] {
+    [
+        (bus::GAPS.wire_name(), bus_labels::GapCause::ALL.len()),
+        (
+            outbound::CLAIMS.wire_name(),
+            outbound_labels::ClaimVia::ALL.len(),
+        ),
+    ]
 }
 
 fn stream_products() -> [(&'static str, usize); 8] {
@@ -248,6 +262,7 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
     }
     vec![
         set!(crate::metrics::label::bus::GapCause),
+        set!(crate::metrics::label::outbound::ClaimVia),
         set!(crate::metrics::label::fleet::StreamPacket),
         set!(crate::metrics::label::fleet::StreamTransport),
         set!(crate::metrics::label::fleet::StreamOutcome),

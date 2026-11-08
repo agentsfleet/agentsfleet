@@ -124,6 +124,7 @@ pub fn spelling(subject: &Subject) -> String {
         Subject::DraftEvents(draft) => format!("af.draft.{draft}.events"),
         Subject::Wake(shard) => format!("af.wake.{shard}"),
         Subject::RunnerCommand(runner) => format!("af.runner.{runner}.cmd"),
+        Subject::OutboundWake => "af.outbound.wake".to_owned(),
     }
 }
 

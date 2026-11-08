@@ -114,7 +114,6 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     .expect("fixture runner");
     let leases = afd_fleet::lease::Leases::new(
         database.clone(),
-        queue.clone(),
         afd_bus::dragonfly::publisher(queue.clone()),
         af_crypto::entropy::Entropy::new(),
     );

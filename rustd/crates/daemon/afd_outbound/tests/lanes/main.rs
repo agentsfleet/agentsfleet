@@ -16,29 +16,15 @@
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::streams::EventId;
-use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
-use afd_outbound::{IN_FLIGHT_DELIVERIES, Lanes, Posters};
+use afd_outbound::{Claimed, IN_FLIGHT_DELIVERIES, Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
 #[path = "../support/gated_poster.rs"]
 mod gated_poster;
-#[path = "../support/hanging_queue.rs"]
-#[allow(
-    clippy::expect_used,
-    reason = "test support: an unmet precondition should fail the test loudly"
-)]
-#[allow(
-    dead_code,
-    reason = "shared support: the read suite grades the reads, the lane suite the acks"
-)]
-mod hanging_queue;
 #[path = "../support/no_ledger.rs"]
 mod no_ledger;
 
 use self::gated_poster::Gated;
-use self::hanging_queue::HangingQueue;
 
 mod contention;
 
@@ -66,9 +52,6 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// The gap between two looks at a condition.
 const POLL: Duration = Duration::from_millis(5);
 
-/// The deadline the client gives the fake for any one command.
-const REQUEST_DEADLINE: Duration = Duration::from_secs(2);
-
 const PROVIDER: &str = "slack";
 const FLEET_ID: &str = "0199a0b0-0000-7000-8000-0000000000f1";
 /// The workspace whose destination a test holds shut, by number.
@@ -93,9 +76,10 @@ fn event(w: usize, n: u32) -> Uuid7 {
 }
 
 /// A job addressed to workspace `w`, numbered `n` in both of its ids.
-fn job(w: usize, n: u32) -> Box<OutboundDelivery> {
-    Box::new(OutboundDelivery {
-        id: EventId::of(&format!("1700000000{n:03}-0")),
+fn job(w: usize, n: u32) -> Box<Claimed> {
+    Box::new(Claimed {
+        id: event(w, n),
+        token: String::new(),
         provider: PROVIDER.to_owned(),
         destination: DESTINATION.to_owned(),
         workspace_id: workspace(w),
@@ -105,19 +89,13 @@ fn job(w: usize, n: u32) -> Box<OutboundDelivery> {
     })
 }
 
-/// Lanes over a fresh fake queue, and the poster they deliver through.
-async fn lanes_against(server: &HangingQueue, token: &CancellationToken) -> (Lanes<Gated>, Gated) {
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
-        .with_request_timeout(REQUEST_DEADLINE);
-    let redis = Dragonfly::connect(&config)
-        .await
-        .expect("the fake queue answers a ping");
+/// Lanes over no ledger, and the poster they deliver through.
+fn lanes_against(token: &CancellationToken) -> (Lanes<Gated>, Gated) {
     let poster = Gated::default();
     let lanes = Lanes::new(
         Posters {
             slack: poster.clone(),
         },
-        OutboundQueue::new(redis),
         no_ledger::no_ledger(),
         token.clone(),
     );
@@ -143,9 +121,8 @@ where
 /// it is still waiting.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_destination_does_not_hold_unrelated_answers() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
     let gate = poster.shut(&workspace(SLOW_WORKSPACE));
 
     lanes.dispatch(job(SLOW_WORKSPACE, 1)).await;
@@ -154,7 +131,7 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
 
     await_until(
         "the fast workspace's two answers to be acknowledged",
-        || server.acks().len() == 2,
+        || poster.delivered().len() == 2,
     )
     .await;
     assert_eq!(
@@ -169,17 +146,17 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
 
     gate.notify_one();
     await_until("the slow answer to be acknowledged", || {
-        server.acks().len() == 3
+        poster.delivered().len() == 3
     })
     .await;
     assert_eq!(
-        server.acks(),
+        poster.delivered(),
         vec![
-            "1700000000002-0".to_owned(),
-            "1700000000003-0".to_owned(),
-            "1700000000001-0".to_owned(),
+            event(FAST_WORKSPACE, 2),
+            event(FAST_WORKSPACE, 3),
+            event(SLOW_WORKSPACE, 1),
         ],
-        "every delivered answer is acknowledged by its stream id"
+        "every answer is delivered once, the held one last"
     );
 
     token.cancel();
@@ -190,16 +167,15 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
 /// long each takes, and are acknowledged in that order.
 #[tokio::test(flavor = "multi_thread")]
 async fn answers_to_one_destination_leave_in_the_order_they_were_queued() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     let count = 12_u32;
     for n in 1..=count {
         lanes.dispatch(job(FAST_WORKSPACE, n)).await;
     }
     await_until("every answer to be acknowledged", || {
-        server.acks().len() == count as usize
+        poster.delivered().len() == count as usize
     })
     .await;
 
@@ -223,9 +199,8 @@ async fn answers_to_one_destination_leave_in_the_order_they_were_queued() {
 /// never passes the ceiling, and every one of them is still delivered.
 #[tokio::test(flavor = "multi_thread")]
 async fn in_flight_deliveries_never_exceed_the_ceiling() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     let destinations = 5 * IN_FLIGHT_DELIVERIES;
     for n in 0..destinations {
@@ -234,7 +209,7 @@ async fn in_flight_deliveries_never_exceed_the_ceiling() {
             .await;
     }
     await_until("every destination's answer to be acknowledged", || {
-        server.acks().len() == destinations
+        poster.delivered().len() == destinations
     })
     .await;
 
@@ -258,20 +233,19 @@ async fn in_flight_deliveries_never_exceed_the_ceiling() {
 /// delivered.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retired_lane_is_replaced_and_order_survives_the_hand_over() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     lanes.dispatch(job(FAST_WORKSPACE, 1)).await;
     await_until("the first answer to be acknowledged", || {
-        server.acks().len() == 1
+        poster.delivered().len() == 1
     })
     .await;
     await_until("the lane to retire", || lanes.active() == 0).await;
 
     lanes.dispatch(job(FAST_WORKSPACE, 2)).await;
     await_until("the second answer to be acknowledged", || {
-        server.acks().len() == 2
+        poster.delivered().len() == 2
     })
     .await;
     assert_eq!(
@@ -288,10 +262,9 @@ async fn a_retired_lane_is_replaced_and_order_survives_the_hand_over() {
 /// still queued behind it is neither delivered nor acknowledged, so the next
 /// process finds it pending.
 #[tokio::test(flavor = "multi_thread")]
-async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledged() {
-    let server = HangingQueue::spawn().await;
+async fn cancellation_finishes_the_job_in_hand_and_starts_nothing_else() {
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
     let gate = poster.shut(&workspace(SLOW_WORKSPACE));
 
     lanes.dispatch(job(SLOW_WORKSPACE, 1)).await;
@@ -311,11 +284,6 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
         vec![event(SLOW_WORKSPACE, 1)],
         "the delivery in hand finished; nothing queued behind it was started"
     );
-    assert_eq!(
-        server.acks(),
-        vec!["1700000000001-0".to_owned()],
-        "only the finished delivery is acknowledged; the rest stay pending"
-    );
 }
 
 /// A job that lands while its lane is retiring is delivered IN ORDER with the
@@ -330,9 +298,8 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
 /// so reaching it means aiming at it repeatedly rather than once.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_job_rescued_from_a_retiring_lane_is_not_overtaken() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     let rounds = 60_u32;
     for round in 0..rounds {
@@ -340,7 +307,7 @@ async fn a_job_rescued_from_a_retiring_lane_is_not_overtaken() {
         lanes.dispatch(job(FAST_WORKSPACE, round * 2 + 2)).await;
         let acknowledged = (round as usize + 1) * 2;
         await_until("the pair to be acknowledged", || {
-            server.acks().len() == acknowledged
+            poster.delivered().len() == acknowledged
         })
         .await;
     }

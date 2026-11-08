@@ -25,7 +25,6 @@ impl Replica {
         let database = lane.open(DbRole::Api, &[]).await;
         let leases = Leases::new(
             database.clone(),
-            (crate::queue::connect().await).clone(),
             afd_bus::dragonfly::publisher(crate::queue::connect().await),
             Entropy::new(),
         );
