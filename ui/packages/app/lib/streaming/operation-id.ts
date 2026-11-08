@@ -1,11 +1,11 @@
 import { v7 } from "uuid";
 
 // A steer's operation id: the caller's own name for one send, repeated on every
-// retry so the daemon admits it once (`afd_wire::event::SteerRequest`). Minted
+// retry so the daemon admits it once (`af_wire::event::SteerRequest`). Minted
 // here, in the browser, because only the sender can tell a retried POST from a
 // person pressing Send twice — the bytes on the wire are identical.
 //
-// A UUID v7 — the shape the daemon mints its own row ids in (`afd_core::id::
+// A UUID v7 — the shape the daemon mints its own row ids in (`af_core::id::
 // Uuid7`) — from the `uuid` package the command line already depends on. It
 // orders ids by send time and keeps them strictly increasing within a document,
 // and draws its random bits from `crypto.getRandomValues`, which every origin

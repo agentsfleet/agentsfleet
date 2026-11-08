@@ -1,10 +1,12 @@
-# Scenario — GitHub PR reviewer (the golden path)
+# Scenario: GitHub PR reviewer (the golden path)
 
 > Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/quickstart](https://docs.agentsfleet.net/quickstart) and [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
 
-> References: [`../api_resources.md`](../api_resources.md) (drafts, Save and the Library), [`../data_flow.md`](../data_flow.md) (trigger/execute loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
->
-> It follows one persona — **John Doe** — saving the `github-pr-reviewer` fleet through terminal chat in the Command-Line Interface (CLI), connecting the shared GitHub App to his workspace, binding a repository to the fleet, and watching the fleet read a Pull Request (PR); the review post is refused at egress today (§4). Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
+> References: [`../api_resources.md`](../api_resources.md) (drafts, Save and the Library), [`../data_flow.md`](../data_flow.md) (`trigger/execute` loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
+
+> It follows one persona, **John Doe**, saving the `github-pr-reviewer` fleet through terminal chat in the Command-Line Interface (CLI). He connects the shared GitHub App to his workspace, binds a repository, and watches the fleet read a Pull Request (PR). The review post is refused at egress today (§4).
+
+> Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
 
 **Outcome under test:** from a published GitHub Pull Request reviewer Library revision to a posted review comment, with the fleet running its reviewed instructions against a repository-bound App event and using a short-lived installation token for runtime GitHub API calls. Today the run reads the diff and the review post is refused at egress (§4). This scenario is **not yet proven**: it becomes green only when the repository-bound Pull Request integration test passes end to end.
 
@@ -59,7 +61,7 @@ sequenceDiagram
 
 ---
 
-## 1. Save — from a Library revision to a fleet
+## 1. Save: from a Library revision to a fleet
 
 A platform admin publishes a reviewed draft candidate through `POST` and `PATCH /v1/admin/fleet-libraries`. John opens a private draft pinned to that revision:
 
@@ -73,29 +75,29 @@ Get `<MODEL_REF>` from the [authoring model list](../user_flow.md#80-the-wedge-s
 
 ## 2. Two layers: the immutable revision and the live fleet
 
-The fleet runs the instructions and policy of its selected setup revision in `fleet.revisions`, read fresh by every claim (`rustd/crates/afd_fleet/src/lease/installed.rs`). The Library revision it started from stays immutable; a later improvement appends a new fleet revision through review and changes no Library entry.
+The fleet runs the instructions and policy of its selected setup revision in `fleet.revisions`, read fresh by every claim (`rustd/crates/daemon/afd_fleet/src/lease/installed.rs`). The Library revision it started from stays immutable; a later improvement appends a new fleet revision through review and changes no Library entry.
 
 ## 3. Connect the App, bind the repository, then receive the PR
 
-1. **Platform setup and workspace connection.** The shared App's setup and John's user-authorization flow are in [`../connectors.md`](../connectors.md) §"GitHub App: platform setup to fleet execution". The App must already be installed on `acme/payments`; an installation already owned by another workspace returns 403 without changing either workspace.
-2. **Fleet subscription.** The saved fleet's webhook trigger declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in its reviewed setup. The App installation is the widest set of repositories; this list picks the ones this fleet hears. A fleet with no `repositories` list receives no App traffic (`serves_repository` in `rustd/crates/afd_ingress/src/binding/mod.rs:250-256`).
+1. **Platform setup and workspace connection**. The shared App's setup and John's user-authorization flow are in [`../connectors.md`](../connectors.md) §"GitHub App: platform setup to fleet runs". The App must already be installed on `acme/payments`; an installation already owned by another workspace returns 403 without changing either workspace.
+2. **Fleet subscription.** The saved fleet's webhook trigger declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in its reviewed setup. The App installation is the widest set of repositories; this list picks the ones this fleet hears. A fleet with no `repositories` list receives no App traffic (`serves_repository` in `rustd/crates/daemon/afd_ingress/src/binding/mod.rs:250-256`).
 3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, then resolves the installation.
 
    It selects only active and approved fleets matching `acme/payments` plus `pull_request`. Each fleet's `fleet.admissions` row is keyed by fleet and body digest. A best-effort notification prioritizes pickup; every poll also queries Postgres ([`../lease_flow.md`](../lease_flow.md#admission-commits-the-queue-row)).
 
 4. **The authorisation, once, at Save.** Save raises a `github` grant check. John approves it, then runs `agentsfleet resume <FLEET_ID>`; activation rechecks all setup checks under lock.
 
-   Approval alone does not resume setup (`rustd/crates/afd_authoring/src/creation/patch.rs`). Grant scope and revocation belong in [connector trust anchors](../connectors.md#trust-anchors). To narrow repository reach, apply a reviewed improvement with a shorter `repositories` list.
+   Approval alone does not resume setup (`rustd/crates/daemon/afd_authoring/src/creation/patch.rs`). Grant scope and revocation belong in [connector trust anchors](../connectors.md#trust-anchors). To narrow repository reach, apply a reviewed improvement with a shorter `repositories` list.
 
    There is no per-event approval. A repository-write gate was raised on every first-encounter event until M202: a continuation carries a fresh event identifier, so each model turn re-parked, and one steer produced three cards and zero review comments. The grant replaced it because the grant already carried everything the card asked about.
 
-The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It verifies with the `webhook_secret` field of the workspace's `github` secret, does not require `repositories`, and is not the default App path (`rustd/crates/afd_api_ingress/src/handler/webhook/github_route.rs`).
+The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It verifies with the `webhook_secret` field of the workspace's `github` secret and does not require `repositories`. It is not the default App path (`rustd/crates/daemon/afd_api_ingress/src/handler/webhook/github_route.rs`).
 
-## 4. The run — the reviewed instructions drive the review
+## 4. The run: the reviewed instructions drive the review
 
 A runner leases the event, and the model reads the PR diff through `http_request` with a per-lease installation token substituted at egress. The review POST is refused at egress with `RequestPolicyNotAllowed`, because no write rule admits `/pulls/{n}/reviews` and instructions cannot widen the rules ([`../lease_flow.md`](../lease_flow.md) §"3. `github-pr-reviewer` end to end" and §"4. How AGENT BOB 01 can reply").
 
-The gate + billing path is identical to every other event — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
+The gate + billing path is identical to every other event; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
 
 ## 5. What John sees after the integration test proves the path
 

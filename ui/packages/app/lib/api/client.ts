@@ -139,7 +139,7 @@ export function classifyTransportFailure(cause: unknown, path: string): unknown 
 }
 
 // The RFC 7807 problem+json shape every error body carries — see
-// rustd/crates/afd_http/src/envelope.rs, ProblemResponse.
+// rustd/crates/daemon/afd_http/src/envelope.rs, ProblemResponse.
 type ProblemBody = {
   detail?: string;
   title?: string;

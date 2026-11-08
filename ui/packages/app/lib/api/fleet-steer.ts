@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 import { HTTP_STATUS_UNAUTHORIZED } from "./errors";
-import { steerMessagesUrl, type SteerAccepted, type SteerRequest } from "./fleets-types";
+import { STEER_DISPOSITION, steerMessagesUrl, type SteerAccepted, type SteerRequest } from "./fleets-types";
 import { ERROR_CODE } from "@/lib/errors";
 
 /** A steer's answer: the daemon's 202, or a refusal's status and code. */
@@ -23,7 +23,20 @@ const NO_ANSWER = "The steer got no answer";
 const NO_RECEIPT = "The steer was answered without a receipt";
 const SIGNED_OUT = "Not authenticated";
 
-const AcceptedSchema = z.object({ status: z.string(), event_id: z.string(), replayed: z.boolean() });
+// The dashboard and the daemon deploy separately, and a local `next dev` talks
+// to whatever daemon the dev API runs. One that predates `disposition` answers
+// a 202 without it, and every such send started a run of its own, so an absent
+// field reads as `started` instead of discarding a receipt that proves the
+// daemon holds the message.
+const AcceptedSchema = z.object({
+  status: z.string(),
+  event_id: z.string(),
+  replayed: z.boolean(),
+  disposition: z
+    .enum([STEER_DISPOSITION.STARTED, STEER_DISPOSITION.FOLDED, STEER_DISPOSITION.QUEUED])
+    .default(STEER_DISPOSITION.STARTED),
+  folded_into_event_id: z.string().nullish().transform((runEventId) => runEventId ?? null),
+});
 // The route answers a refusal as the daemon's problem body does.
 const RefusalSchema = z.object({ detail: z.string().optional(), error_code: z.string().optional() });
 

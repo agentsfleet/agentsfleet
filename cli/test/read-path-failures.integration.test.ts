@@ -17,8 +17,8 @@
 //     exit-code mapping. This file proves the wired read path inherits the
 //     same boundedness and renders the right exit codes.
 //
-// Real UZ codes used here — declared in rustd/crates/afd_core/src/error_code/,
-// with the status each answers in rustd/crates/afd_core/src/problem/. The
+// Real UZ codes used here — declared in rustd/crates/foundation/af_core/src/error_code/,
+// with the status each answers in rustd/crates/foundation/af_core/src/problem/. The
 // detail strings below are this file's fixtures, not the registry's titles:
 //   UZ-INTERNAL-002  (500, "Database error")            INTERNAL_DB_QUERY
 //   UZ-API-002       (503, "Event-stream capacity …")   SSE_STREAM_CAP

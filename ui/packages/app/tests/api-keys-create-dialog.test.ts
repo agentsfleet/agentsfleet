@@ -105,7 +105,7 @@ describe("CreateApiKeyDialog component", () => {
   it("name collision keeps the dialog open and reveals no key", async () => {
     // ApiError.message is user_message ?? detail (client.ts) —
     // UZ-APIKEY-005's friendly copy is its `user_message` in
-    // rustd/crates/afd_core/src/problem/auth.rs.
+    // rustd/crates/foundation/af_core/src/problem/auth.rs.
     createApiKeyActionMock.mockResolvedValue({
       ok: false,
       error: "An API key with that name already exists. Pick a different name for this tenant.",

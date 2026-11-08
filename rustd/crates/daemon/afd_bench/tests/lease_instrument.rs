@@ -1,0 +1,88 @@
+//! The daemon's lease counters, read back in this process.
+//!
+//! # Why an integration binary and not the unit suite
+//!
+//! `producers::install` writes a process-wide `OnceLock`. Installing from the
+//! unit suite would flip `installed()` to `Some` for every other test in that
+//! binary, mid-run and in whatever order the harness chose. Here the process is
+//! this file's own, so the install is total and ordered — the same reason
+//! `af_observability`'s own `producers_drive.rs` lives beside its unit tests
+//! rather than inside them.
+
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use af_observability::producers;
+use afd_bench::instrument::{LeaseInstrument, PollCounters};
+
+/// Candidates the fake poll claims to have examined.
+const CANDIDATES: u64 = 11;
+
+/// Both counter readings live in ONE test on purpose.
+///
+/// The instruments are process-global — `producers::install` writes a
+/// `OnceLock` and every producer records into the same set — while the harness
+/// runs tests on parallel threads. Two tests each asserting an exact delta
+/// around their own producer call would see each other's increments, which is
+/// not a flaky test so much as a true statement about the counter. The same
+/// property binds a lane: it reads a delta around its own window and must be
+/// the only thing polling in that process.
+#[test]
+fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
+    let instrument = LeaseInstrument::install().expect("the census must install");
+
+    let before_worked = instrument.read().expect("the counters must be readable");
+    producers::fleet::lease_polled(CANDIDATES);
+    let worked = instrument
+        .read()
+        .expect("the counters must be readable")
+        .since(before_worked);
+
+    assert_eq!(
+        worked.polls, 1,
+        "one call to the producer is one poll, read off the instrument the \
+         daemon publishes rather than off a wrapper this crate wrote"
+    );
+    assert_eq!(worked.candidates, CANDIDATES);
+
+    // A second install hands back the first instrument rather than building
+    // a provider nothing records into: it reads exactly what the first reads.
+    let again = LeaseInstrument::install().expect("a second install must succeed");
+    assert_eq!(
+        again.read().expect("readable"),
+        instrument.read().expect("readable"),
+        "a later install that built its own provider would read zero forever"
+    );
+
+    // An idle poll examines nothing: the poll counts and the candidates do
+    // not, so fan-out per poll falls as polls go idle.
+    let before_idle = instrument.read().expect("readable");
+    producers::fleet::lease_polled(0);
+    let idle = instrument.read().expect("readable").since(before_idle);
+
+    assert_eq!(idle.polls, 1);
+    assert_eq!(idle.candidates, 0, "an idle poll examines no fleet");
+}
+
+#[test]
+fn test_a_delta_never_runs_backwards() {
+    let later = PollCounters {
+        polls: 5,
+        candidates: 50,
+    };
+    let earlier = PollCounters {
+        polls: 9,
+        candidates: 90,
+    };
+
+    let delta = later.since(earlier);
+
+    assert_eq!(
+        delta,
+        PollCounters::default(),
+        "a reading that looks older than its baseline saturates to zero rather \
+         than wrapping to a number somebody reports as throughput"
+    );
+}

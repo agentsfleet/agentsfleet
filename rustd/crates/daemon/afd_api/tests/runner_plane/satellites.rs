@@ -1,0 +1,306 @@
+//! Parsing and response shapes owned by the small runner handlers.
+
+use afd_auth::directory::Liveness;
+use http::{Method, StatusCode};
+
+use super::{FLEET_ID, LEASE_ID, RUNNER_TOKEN, code_of};
+use crate::harness::{Fleet, json_body, runner_id, send};
+
+#[tokio::test]
+async fn runner_lease_satellite_routes_parse_and_render() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+
+    let mint_path = "/v1/runners/me/credentials/mint";
+    let malformed = send(&router, Method::POST, mint_path, Some(RUNNER_TOKEN), "{}").await;
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code_of(malformed).await, "UZ-REQ-001");
+
+    // Refused before the plane is asked: the stub would answer 503 below.
+    for lease in ["x", &"a".repeat(4_096)] {
+        let body = format!(r#"{{"lease_id":"{lease}","integration":"github","scope":null}}"#);
+        let refused = send(&router, Method::POST, mint_path, Some(RUNNER_TOKEN), &body).await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{}", lease.len());
+        assert_eq!(code_of(refused).await, "UZ-REQ-001");
+    }
+
+    let unconfigured = send(
+        &router,
+        Method::POST,
+        mint_path,
+        Some(RUNNER_TOKEN),
+        &format!(r#"{{"lease_id":"{LEASE_ID}","integration":"github","scope":null}}"#),
+    )
+    .await;
+    assert_eq!(unconfigured.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(code_of(unconfigured).await, "UZ-CRED-002");
+}
+
+/// A 409 names the state that refuses it: a memory verb fenced out says
+/// `superseded`, and a mint the GitHub App refuses says `reconnect_required`.
+/// The plane decides the refusal; the route decides how it renders.
+#[tokio::test]
+async fn runner_conflicts_name_the_state_that_refuses_them() {
+    let fenced = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .with_lease_refusal(afd_fleet::Error::stale_fence)
+        .router();
+    let memory_path = format!("/v1/runners/me/memory/{FLEET_ID}");
+    let recall_path = format!("{memory_path}/recall");
+    let recall = format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":1,"query":"x","limit":5}}"#);
+    let capture = format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":7,"memory":[]}}"#);
+    for (method, path, body) in [
+        (Method::GET, &memory_path, ""),
+        (Method::POST, &recall_path, recall.as_str()),
+        (Method::POST, &memory_path, capture.as_str()),
+    ] {
+        let refused = send(&fenced, method.clone(), path, Some(RUNNER_TOKEN), body).await;
+        assert_eq!(refused.status(), StatusCode::CONFLICT, "{method} {path}");
+        let document = json_body(refused).await;
+        assert_eq!(
+            (document.get("error_code"), document.get("current_state")),
+            (
+                Some(&serde_json::json!("UZ-RUN-005")),
+                Some(&serde_json::json!("superseded"))
+            ),
+            "{method} {path}"
+        );
+    }
+
+    let revoked = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .with_lease_refusal(afd_fleet::Error::github_reconnect_required)
+        .router();
+    let minted = send(
+        &revoked,
+        Method::POST,
+        "/v1/runners/me/credentials/mint",
+        Some(RUNNER_TOKEN),
+        &format!(r#"{{"lease_id":"{LEASE_ID}","integration":"github","scope":null}}"#),
+    )
+    .await;
+    assert_eq!(minted.status(), StatusCode::CONFLICT);
+    let document = json_body(minted).await;
+    assert_eq!(
+        (document.get("error_code"), document.get("current_state")),
+        (
+            Some(&serde_json::json!("UZ-GH-001")),
+            Some(&serde_json::json!("reconnect_required"))
+        )
+    );
+}
+
+/// A batch of live-tail frames is acknowledged with `{"ok":true}`, not a bare
+/// 202.
+///
+/// A generated client types a 202 with no content as returning nothing, so the
+/// assertion is on the bytes, not the status alone.
+#[tokio::test]
+async fn runner_activity_is_acknowledged_with_a_body() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let path = format!("/v1/runners/me/leases/{LEASE_ID}/activity");
+
+    let accepted = send(
+        &router,
+        Method::POST,
+        &path,
+        Some(RUNNER_TOKEN),
+        r#"{"frames":[{"fleet_response_chunk":{"text":"hello","text_kind":"answer"}}]}"#,
+    )
+    .await;
+
+    assert_eq!(accepted.status(), StatusCode::ACCEPTED);
+    let body = json_body(accepted).await;
+    assert_eq!(
+        body,
+        serde_json::json!({"ok": true}),
+        "a runner reads one acknowledgement shape"
+    );
+}
+
+#[tokio::test]
+async fn runner_tool_call_records_validate_and_render() {
+    use af_wire::tool_detail::DETAIL_POST_MAX_BYTES;
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let path = format!("/v1/runners/me/leases/{LEASE_ID}/tool-calls");
+
+    let malformed = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), "{}").await;
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code_of(malformed).await, "UZ-REQ-001");
+
+    let oversized = format!(
+        r#"{{"fencing_token":7,"calls":[],"pad":"{}"}}"#,
+        "a".repeat(DETAIL_POST_MAX_BYTES)
+    );
+    let refused = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), &oversized).await;
+    assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(code_of(refused).await, "UZ-REQ-002");
+
+    let kept = send(
+        &router,
+        Method::POST,
+        &path,
+        Some(RUNNER_TOKEN),
+        r#"{"fencing_token":7,"calls":[1,2]}"#,
+    )
+    .await;
+    assert_eq!(kept.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(kept).await,
+        serde_json::json!({"stored_count": 2, "skipped_count": 0})
+    );
+}
+
+/// A plane holding no lease refuses every schedule and message verb as a lease
+/// this runner does not hold, before any body field is acted on.
+#[tokio::test]
+async fn runner_schedule_and_message_verbs_refuse_a_lease_not_held() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let schedules = format!("/v1/runners/me/leases/{LEASE_ID}/schedules");
+    let messages = format!("/v1/runners/me/leases/{LEASE_ID}/messages");
+    let listed = format!("{schedules}?fencing_token=1");
+    let created = r#"{"fencing_token":1,"cron":"0 9 * * 1","message":"weekly check"}"#;
+    let posted = r#"{"fencing_token":1,"text":"halfway there"}"#;
+
+    for (method, path, body) in [
+        (Method::GET, &listed, ""),
+        (Method::POST, &schedules, created),
+        (Method::POST, &messages, posted),
+    ] {
+        let refused = send(&router, method.clone(), path, Some(RUNNER_TOKEN), body).await;
+        assert_eq!(refused.status(), StatusCode::NOT_FOUND, "{method} {path}");
+        assert_eq!(code_of(refused).await, "UZ-RUN-006", "{method} {path}");
+    }
+}
+
+/// The lease kinds a runner accepts, as every poll body must name them.
+const ACCEPTED_KINDS: &str = r#""accepted_kinds":["fleet","authoring"]"#;
+
+/// A poll must say which lease kinds it accepts, and any hold it names must be
+/// a fleet identity. A body short of either is refused before placement runs,
+/// so a runner cannot be handed a kind it never agreed to take.
+#[tokio::test]
+async fn runner_lease_poll_refuses_a_body_without_kinds_or_with_unreadable_holds() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let unreadable = format!(r#"{{"holds":["not-a-fleet"],{ACCEPTED_KINDS}}}"#);
+    let held = format!(r#"{{"holds":["{FLEET_ID}"],{ACCEPTED_KINDS}}}"#);
+
+    for body in [
+        "",
+        "not-json",
+        r#"{"holds":[]}"#,
+        r#"{"accepted_kinds":[]}"#,
+        &unreadable,
+    ] {
+        let polled = send(
+            &router,
+            Method::POST,
+            af_wire::paths::RUNNER_LEASES,
+            Some(RUNNER_TOKEN),
+            body,
+        )
+        .await;
+        assert_eq!(polled.status(), StatusCode::BAD_REQUEST, "{body}");
+    }
+    let polled = send(
+        &router,
+        Method::POST,
+        af_wire::paths::RUNNER_LEASES,
+        Some(RUNNER_TOKEN),
+        &held,
+    )
+    .await;
+    assert_eq!(polled.status(), StatusCode::OK, "{held}");
+}
+
+/// The fleets a poll's body names reach the lease plane as the runner's holds,
+/// and a body naming none hands it none.
+#[tokio::test]
+async fn runner_lease_poll_hands_its_holds_to_the_plane() {
+    let fleet = Fleet::new().with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live);
+    let plane = fleet.lease_plane();
+    let router = fleet.router();
+    let held = format!(r#"{{"holds":["{FLEET_ID}"],{ACCEPTED_KINDS}}}"#);
+    let holding_nothing = format!("{{{ACCEPTED_KINDS}}}");
+
+    for body in [held.as_str(), holding_nothing.as_str()] {
+        let polled = send(
+            &router,
+            Method::POST,
+            af_wire::paths::RUNNER_LEASES,
+            Some(RUNNER_TOKEN),
+            body,
+        )
+        .await;
+        assert_eq!(polled.status(), StatusCode::OK, "{body}");
+    }
+
+    assert_eq!(
+        plane.polled_holds(),
+        [vec![FLEET_ID.to_owned()], Vec::new()]
+    );
+}
+
+/// A mint the plane grants is rendered as the token and its expiry, nothing
+/// else: no registry code, no lease id echoed back.
+#[tokio::test]
+async fn a_granted_mint_renders_only_the_token_and_its_expiry() {
+    const TOKEN: &str = "fixture-minted-token";
+    const EXPIRES_AT: jiff::Timestamp = jiff::Timestamp::constant(1_760_000_600, 0);
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .with_lease_minting(TOKEN, EXPIRES_AT)
+        .router();
+    let minted = send(
+        &router,
+        Method::POST,
+        "/v1/runners/me/credentials/mint",
+        Some(RUNNER_TOKEN),
+        &format!(r#"{{"lease_id":"{LEASE_ID}","integration":"github","scope":null}}"#),
+    )
+    .await;
+    assert_eq!(minted.status(), StatusCode::OK);
+    assert_eq!(
+        json_body(minted).await,
+        serde_json::json!({"token": TOKEN, "expires_at": "2025-10-09T09:03:20Z"})
+    );
+}
+
+/// A path lease id that is not an identifier is refused before the plane is
+/// asked, which here would have answered success.
+#[tokio::test]
+async fn lease_routes_refuse_a_path_id_that_is_not_an_identifier() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    for (suffix, body) in [
+        ("renew", ""),
+        ("activity", r#"{"frames":[]}"#),
+        ("tool-calls", r#"{"fencing_token":7,"calls":[]}"#),
+    ] {
+        let path = format!("/v1/runners/me/leases/x/{suffix}");
+        let refused = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), body).await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{suffix}");
+        assert_eq!(code_of(refused).await, "UZ-REQ-001", "{suffix}");
+    }
+    let activity = format!("/v1/runners/me/leases/{LEASE_ID}/activity");
+    let unreadable = send(
+        &router,
+        Method::POST,
+        &activity,
+        Some(RUNNER_TOKEN),
+        "not-json",
+    )
+    .await;
+    assert_eq!(unreadable.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(code_of(unreadable).await, "UZ-REQ-001");
+}

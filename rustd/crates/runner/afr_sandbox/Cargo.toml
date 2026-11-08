@@ -1,0 +1,134 @@
+[package]
+name = "afr_sandbox"
+description = "The runner's sandbox engines: the interface every engine meets, and the hardened bubblewrap engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[package.metadata.cargo-shear]
+# Used by agentsfleetd/tests/support/https.rs, which the Linux-only kernel_lane
+# example includes through `#[path]`, a module path the source scan does not
+# follow (and macOS compiles the module out).
+ignored = ["hyper-util", "rcgen", "reqwest", "rustls", "tokio-rustls"]
+
+[lints]
+workspace = true
+
+[dependencies]
+af_core.workspace = true
+# Every sandbox serves the same executor, which is what makes a second engine
+# an addition rather than a rewrite.
+afr_executor.workspace = true
+async-trait.workspace = true
+# The executor's socket answers a few milliseconds after the sandbox starts;
+# a constant-delay retry waits for it without a hand-written loop.
+backon.workspace = true
+# The sandbox entry's two descriptor flags, parsed once here for the runner
+# binary and the kernel lane alike.
+clap.workspace = true
+# The toolbox image is named by its SHA-256, streamed through the hasher.
+digest-io.workspace = true
+hex.workspace = true
+# A toolbox image is staged in a copy of its own and published with one
+# rename; a copy that is refused is removed when it drops.
+tempfile.workspace = true
+# A toolbox release: its manifest's signature checked against the key the
+# runner is built with (ECDSA P-256 over SHA-256, as `cosign` signs), the key
+# read from its PEM, the signature from its base64, and the manifest's fields
+# parsed and bounded before admission reads one.
+aws-lc-rs.workspace = true
+base64.workspace = true
+garde.workspace = true
+# The digest's charset, a rule garde does not ship.
+af_validate.workspace = true
+rustls-pki-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+# The process status a sandbox reads before it serves.
+procfs-core.workspace = true
+# The system calls the engine makes directly: whether the probe may execute
+# bubblewrap on every platform, and on Linux the mounts, ownership and
+# process calls a sandbox is built with. The executor links it already.
+rustix.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+tracing.workspace = true
+# The in-sandbox process logs to the error stream the supervisor drains.
+tracing-subscriber.workspace = true
+# A warm slot is named like a lease: unique, so a restart never meets its own
+# leftovers under the same name.
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The kernel interfaces a sandbox confines itself with, each the crate Codex's
+# own `linux-sandbox` uses.
+landlock.workspace = true
+libc.workspace = true
+seccompiler.workspace = true
+# The egress scope: the veth pair, its addresses and its route over route
+# netlink, the host-side allowlist over nf_tables.
+netlink-sys.workspace = true
+netlink-packet-core.workspace = true
+netlink-packet-route.workspace = true
+netlink-packet-netfilter.workspace = true
+# The bubblewrap launcher's error stream, read a line at a time with a cap;
+# the launcher is Linux-only, so the library links these only there.
+futures-util.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
+
+[features]
+# M-TEST-UTIL. What the kernel lane proves egress against: the host's egress
+# objects, a killed run's leftovers, and a host past the sandbox's link.
+test-util = []
+
+[dev-dependencies]
+af_crypto.workspace = true
+af_core = { workspace = true, features = ["test-util"] }
+af_wire.workspace = true
+afr_agent.workspace = true
+# The kernel lane's lease and credential expiries are jiff instants.
+jiff.workspace = true
+af_providers = { workspace = true, features = ["test-util"] }
+axum = { workspace = true, features = ["json"] }
+hyper.workspace = true
+hyper-util.workspace = true
+rcgen.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+# The kernel lane drives the runner's real sandbox-side tools through its
+# catalog, with a lease whose egress sends nothing.
+af_egress = { workspace = true, features = ["test-util"] }
+afr_tools = { workspace = true, features = ["test-util"] }
+# The supervisor's own host-side checkout, so the kernel lane proves the clone
+# that ships rather than a copy of it. A dev-dependency cycle: the example links
+# the one `afr_sandbox` library the supervisor does.
+afr_supervisor = { workspace = true, features = ["test-util"] }
+bytes.workspace = true
+# The warm-slot suite polls a claim once, and the kernel lane joins its budgets.
+futures-util.workspace = true
+libtest-mimic.workspace = true
+serde_json.workspace = true
+# The checkout's interrupt in the kernel lane.
+tokio-util.workspace = true
+tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
+
+# The kernel lane proves egress with the `test-util` far host; run without it,
+# it refuses to build rather than skip those trials.
+[[example]]
+name = "kernel_lane"
+required-features = ["test-util"]
+
+# Confines a child process and reads back what it said; it has its own `main`
+# because confinement cannot be undone inside a harness with tests left to run.
+[[test]]
+name = "confine"
+path = "tests/confine.rs"
+harness = false

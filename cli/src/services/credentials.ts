@@ -71,7 +71,7 @@ const loadRecord = (
 // path already wrote.
 //
 // The value is matched against the minted credential's full declared shape,
-// mirroring `accepts_shape` in rustd/crates/afd_auth/src/authenticate.rs, so a
+// mirroring `accepts_shape` in rustd/crates/daemon/afd_auth/src/authenticate.rs, so a
 // truncated paste fails here rather than at the server.
 const isPersistable = (token: string): boolean => CLI_CREDENTIAL_PATTERN.test(token);
 

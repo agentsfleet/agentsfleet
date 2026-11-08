@@ -6,7 +6,7 @@ import { truncate } from "@/lib/utils";
 // sandbox paths, lines, and terminal output. Split out of `tool-call-copy` so
 // every copy map shares one reading.
 
-/** `afd_wire::tool_trace::ARGS_LEAF_MAX_BYTES`: the runner cuts any longer
+/** `af_wire::tool_trace::ARGS_LEAF_MAX_BYTES`: the runner cuts any longer
  * argument string to this many bytes, on a character boundary, unmarked. */
 export const ARGS_LEAF_MAX_BYTES = 256;
 /** Marks text the runner may have cut short at its argument leaf cap. */

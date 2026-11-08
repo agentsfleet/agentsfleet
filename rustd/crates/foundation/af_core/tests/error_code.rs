@@ -1,0 +1,200 @@
+//! The registry is the one source of truth for the codes a client can receive.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use std::collections::BTreeSet;
+
+use af_core::error_code::{self, Coded, ErrorCode, Logged, REGISTRY};
+use af_core::limits::WorkerCount;
+
+/// Catches a code declared twice under two names, or a typo'd spelling that
+/// would reach a client as an unmatched code.
+#[test]
+fn test_error_registry_unique() {
+    let mut seen = BTreeSet::new();
+    for code in REGISTRY {
+        assert!(
+            seen.insert(code.as_str()),
+            "code {} is declared more than once",
+            code.as_str()
+        );
+        assert_registry_spelling(*code);
+    }
+    assert_eq!(
+        seen.len(),
+        REGISTRY.len(),
+        "REGISTRY length disagrees with its distinct codes"
+    );
+    assert_every_named_code_is_registered();
+}
+
+/// Every named constant is reachable from REGISTRY. A code added above the list
+/// but not into it is invisible to every check in this file.
+fn assert_every_named_code_is_registered() {
+    for named in [
+        error_code::UUIDV7_INVALID_ID_SHAPE,
+        error_code::INVALID_REQUEST,
+        error_code::PAYLOAD_TOO_LARGE,
+        error_code::VAULT_DATA_INVALID,
+        error_code::INTERNAL_OPERATION_FAILED,
+        error_code::INTERNAL_DB_UNAVAILABLE,
+        error_code::INTERNAL_DB_QUERY,
+        error_code::STARTUP_MIGRATION_CHECK,
+        error_code::STARTUP_DRAGONFLY_CONNECT,
+        error_code::AUTH_INSUFFICIENT_SCOPE,
+        error_code::AUTH_UNAUTHORIZED,
+        error_code::AUTH_TOKEN_EXPIRED,
+        error_code::AUTH_UNAVAILABLE,
+        error_code::AUTH_CLI_CREDENTIAL_REVOKED,
+        error_code::APIKEY_REVOKED,
+        error_code::RUN_INVALID_RUNNER_TOKEN,
+        error_code::RUN_STALE_FENCING_TOKEN,
+        error_code::RUN_LEASE_NOT_FOUND,
+        error_code::RUN_ADMIN_STATE_BLOCKED,
+        error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+        error_code::RUN_LEASE_LOST,
+        error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        error_code::RUN_RENEW_BODY_MALFORMED,
+        error_code::RUN_BUDGET_EXCEEDED,
+        // Was omitted when it was declared, which is the exact gap this list
+        // exists to close — a code reachable from no check is a code that can
+        // quietly lose its entry.
+        error_code::AGENTSFLEET_CREDENTIAL_MISSING,
+        error_code::API_BACKPRESSURE,
+        error_code::TOOL_CALL_NOT_FOUND,
+    ] {
+        assert!(
+            REGISTRY.contains(&named),
+            "{} is declared but missing from REGISTRY",
+            named.as_str()
+        );
+    }
+}
+
+/// The property the grammar exists to guarantee, checked rather than restated:
+/// three segments, `UZ`, a non-empty upper-case-alphanumeric family, and
+/// exactly three digits.
+fn assert_registry_spelling(code: ErrorCode) {
+    let text = code.as_str();
+    let mut parts = text.split('-');
+    assert_eq!(parts.next(), Some("UZ"), "{text} must start with UZ");
+
+    let family = parts.next().unwrap_or_default();
+    assert!(!family.is_empty(), "{text} has an empty family");
+    assert!(
+        family
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()),
+        "{text} family must be upper-case alphanumeric"
+    );
+
+    let number = parts.next().unwrap_or_default();
+    assert_eq!(number.len(), 3, "{text} must end in exactly three digits");
+    assert!(
+        number.chars().all(|c| c.is_ascii_digit()),
+        "{text} must end in exactly three digits"
+    );
+    assert_eq!(parts.next(), None, "{text} has more than three segments");
+}
+
+#[test]
+fn should_render_the_code_as_its_wire_string() {
+    let code = error_code::INVALID_REQUEST;
+    assert_eq!(code.as_str(), "UZ-REQ-001");
+    assert_eq!(code.to_string(), "UZ-REQ-001");
+    assert_eq!(serde_json::to_string(&code).unwrap(), "\"UZ-REQ-001\"");
+}
+
+/// The const asserts only prove the two DECLARED codes are well formed; nothing
+/// there exercises the reject branches. Calling `declare` outside a const
+/// context runs the same grammar at runtime, so a validator that accepted
+/// anything would be caught here rather than shipping unnoticed.
+#[test]
+fn should_accept_well_formed_codes_at_declaration() {
+    for good in [
+        "UZ-REQ-001",
+        "UZ-UUIDV7-009",
+        "UZ-A-000",
+        "UZ-INTERNAL-999",
+        "UZ-0-123",
+    ] {
+        assert_eq!(ErrorCode::declare(good).as_str(), good);
+    }
+}
+
+macro_rules! rejects {
+    ($name:ident, $code:literal) => {
+        #[test]
+        #[should_panic(expected = "UZ-<FAMILY>-<NNN>")]
+        fn $name() {
+            let _ = ErrorCode::declare($code);
+        }
+    };
+}
+
+rejects!(should_reject_an_empty_code, "");
+rejects!(should_reject_a_missing_prefix, "XY-REQ-001");
+rejects!(should_reject_a_lowercase_prefix, "uz-REQ-001");
+rejects!(should_reject_an_empty_family, "UZ--001");
+rejects!(should_reject_a_lowercase_family, "UZ-req-001");
+rejects!(should_reject_two_digits, "UZ-REQ-01");
+// audit-error-codes: intentional-fake — the four-digit number IS the subject here.
+rejects!(should_reject_four_digits, "UZ-REQ-0001");
+rejects!(should_reject_a_non_digit_number, "UZ-REQ-00A");
+rejects!(should_reject_a_missing_number, "UZ-REQ");
+rejects!(should_reject_a_trailing_segment, "UZ-REQ-001-X");
+rejects!(
+    should_reject_a_family_separator_in_the_family,
+    "UZ-RE_Q-001"
+);
+
+/// Every declared code is found by its own spelling, and nothing else is.
+#[test]
+fn test_lookup_finds_declared_codes_only() {
+    for code in REGISTRY {
+        assert_eq!(ErrorCode::lookup(code.as_str()), Some(*code));
+    }
+
+    assert_eq!(
+        ErrorCode::lookup("UZ-RUN-011"),
+        Some(error_code::RUN_LEASE_LOST)
+    );
+    for unknown in ["UZ-NOPE-999", "uz-run-011", "UZ-RUN-11", ""] {
+        assert_eq!(ErrorCode::lookup(unknown), None, "{unknown:?}");
+    }
+}
+
+/// Code that logs a failure from any crate reads the same code and reason the
+/// crate's own accessors answer, through the trait every error shell
+/// implements.
+#[test]
+fn test_every_shelled_error_names_its_code_through_the_trait() {
+    fn named(failure: &impl Coded) -> (ErrorCode, String) {
+        (failure.code(), failure.told())
+    }
+    let failure = WorkerCount::new(0).unwrap_err();
+
+    let (code, told) = named(&failure);
+
+    assert_eq!(code, failure.code());
+    assert_eq!(code.as_str(), "UZ-REQ-001");
+    assert_eq!(told, failure.told());
+    assert!(
+        !told.contains(code.as_str()) && failure.to_string().contains(&told),
+        "the reason is the shown failure without its code: {told}"
+    );
+}
+
+/// A log line's two failure fields are the code and the reason the trait
+/// answers, under the names the line carries them.
+#[test]
+fn test_logged_carries_the_code_and_reason_under_their_field_names() {
+    let failure = WorkerCount::new(0).unwrap_err();
+
+    let Logged { error_code, reason } = failure.logged();
+
+    assert_eq!(error_code, failure.code().as_str());
+    assert_eq!(reason, failure.told());
+}

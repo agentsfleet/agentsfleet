@@ -1,5 +1,5 @@
 // Cross-cutting failure-mode coverage. Error codes mirror the daemon's
-// error registry (rustd/crates/afd_core/src/error_code/) so tests reflect
+// error registry (rustd/crates/foundation/af_core/src/error_code/) so tests reflect
 // real production failure shapes rather than invented ones.
 //
 // Each scenario answers: "if the user hits this exact UZ-XXX-NNN response

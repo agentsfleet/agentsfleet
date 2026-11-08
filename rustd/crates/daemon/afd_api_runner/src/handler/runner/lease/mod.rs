@@ -1,0 +1,74 @@
+//! The shared runner poll serves exactly one explicitly accepted work kind.
+
+mod input;
+
+use crate::{
+    auth::RunnerIdentity,
+    services::{Leasing as _, Services},
+};
+#[cfg(feature = "openapi")]
+use af_wire::lease::LeaseRequest;
+use afd_http::handler::Refusal;
+use axum::{
+    body::Bytes,
+    extract::State,
+    response::{IntoResponse as _, Response},
+};
+use http::{StatusCode, header};
+use std::sync::Arc;
+
+const EVENT: &str = "runner_lease_failed";
+
+/// Place work under the authenticated host and explicit protocol selection.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = af_wire::paths::RUNNER_LEASES,
+    tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_lease",
+    summary = "Request the next work assignment",
+    description = concat!(
+        "Returns the next work assignment, or how long to wait before polling again. ",
+        "Previously held fleet sandboxes are preferred. Required `accepted_kinds` selects ",
+        "fleet work, private setup work, or both. Budget, approval, and policy checks ",
+        "happen before assignment.",
+    ),
+    request_body = LeaseRequest<'_>,
+    responses(
+        (status = 200, description = "A lease to run, or a backoff to wait out", body = af_wire::lease::LeaseResponse<'_>),
+        (status = 400, description = "Invalid polling body or kind selection"),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
+pub(crate) async fn handle<D: Services>(
+    State(services): State<Arc<D>>,
+    RunnerIdentity(runner): RunnerIdentity,
+    body: Bytes,
+) -> Result<Response, Refusal> {
+    let request = input::read(&body)?;
+    let body = services
+        .leases()
+        .lease(
+            services.authoring(),
+            runner.id(),
+            &request.held,
+            request.accepted,
+            runner.is_degraded(),
+            services.now(),
+        )
+        .await
+        .map_err(Refusal::at(EVENT))?;
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        body,
+    )
+        .into_response())
+}

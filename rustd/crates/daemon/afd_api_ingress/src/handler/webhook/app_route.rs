@@ -1,0 +1,337 @@
+//! `POST /v1/ingress/{provider}` — one App's deliveries, fanned out.
+//!
+//! Where [`super::github_route`] serves a fleet whose id the URL carries, this
+//! serves an INSTALLATION whose fleets have to be looked up: a provider App
+//! posts every event for every repository in an organisation to one URL,
+//! signed with one secret that belongs to this deployment rather than to any
+//! workspace.
+//!
+//! # Why almost every answer here is a 200
+//!
+//! An App receives far more than it is asked to act on. Events for repositories
+//! nobody subscribed, event kinds no fleet declared, installations connected to
+//! no workspace, green builds, label edits — all correctly signed, all real,
+//! none of them waking anything. Each answers 200 with the reason, because a
+//! 4xx would put a delivery nobody can act on into GitHub's three-day retry
+//! loop and change none of them. `UZ-WH-021` and `UZ-WH-022` exist to be
+//! REASONS in that shape rather than statuses.
+//!
+//! The exceptions are the two things a sender can actually fix: a body past the
+//! cap, and a signature that did not verify.
+//!
+//! # Why repair traffic is dropped here
+//!
+//! Signed workflow completions first match native task waits. Ordinary
+//! investigation classification still drops repair-branch traffic; completion
+//! evidence cannot fan out an unrelated investigation.
+
+use std::sync::Arc;
+
+use af_core::error_code;
+use af_webhook::Scheme;
+use afd_ingress::{Delivery, Fanout, Surface};
+use axum::extract::{Path, State};
+use axum::response::{IntoResponse as _, Response};
+use axum::{Json, body::Bytes};
+use http::{HeaderMap, StatusCode};
+
+use crate::handler::{Refusal, webhook};
+use crate::services::{Services, WebhookIngress as _};
+use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
+
+use super::github::{self, Ingest, Policy};
+/// The two bodies this route answers with. Public wire, so `af_wire` owns
+/// the shape and this route names it.
+use afd_api_wire::ingress::{AppIngressAnswer, FannedOut, Pong};
+
+/// The scoped event a failed append is logged under.
+const EVENT_APPEND: &str = "app_ingress_append_failed";
+
+/// The scoped event a dropped delivery is logged under.
+const EVENT_DROPPED: &str = "app_ingress_dropped";
+
+/// The one provider this daemon serves an App ingress for; its signature
+/// scheme is [`SCHEME_GITHUB`].
+const PROVIDER_GITHUB: &str = "github";
+
+/// The vault key the GitHub App's own webhook secret is stored under.
+///
+/// An operator stores the secret once under this exact name and every request
+/// reads it back by the same name, so renaming it strands the stored secret.
+const APP_IDENTITY_GITHUB: &str = "github-app";
+
+/// The scheme a GitHub App signs its deliveries under: the hex HMAC over the
+/// body in `x-hub-signature-256`, the one [`Scheme::source`] names `github`.
+const SCHEME_GITHUB: Scheme = Scheme::BodyHex;
+
+/// The delivery kind an App sends to prove the endpoint answers.
+///
+/// Answered before any routing: a `ping` carries no repository and belongs to
+/// no fleet, and running it through the subscriber lookup would report "nobody
+/// subscribed" for a delivery that was never about a subscription.
+const EVENT_PING: &str = "ping";
+
+/// The refusal a path naming no served provider earns.
+const DETAIL_UNKNOWN_PROVIDER: &str = "Unknown App ingress provider";
+
+/// The refusal a delivery matching more fleets than the ceiling earns.
+const DETAIL_TOO_MANY: &str = "This delivery matches more fleets than one event may wake.";
+
+/// What a `ping` is answered with.
+const STATUS_PONG: &str = "pong";
+
+/// What an App-driven wake records as the actor.
+///
+/// The App, not the person whose push produced the event and not the fleet's
+/// owner: recording either would let an actor-shaped assertion certify that a
+/// human woke this fleet when an installation did.
+const ACTOR_APP_GITHUB: &str = "github-app";
+
+/// `POST /v1/ingress/{provider}`.
+///
+/// # Errors
+/// `UZ-CONN-004` for a provider this daemon serves no App for, `UZ-WH-030` for
+/// a body past the cap, the wall's own refusals, `UZ-WH-002` for a verified
+/// body that is not the event its header claims, and `UZ-WH-022` for a delivery
+/// matching more fleets than one event may wake.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    post,
+    path = "/v1/ingress/{provider}",
+    tag = afd_http::openapi::tag::WEBHOOKS,
+    operation_id = "ingest_connector_webhook",
+    summary = "Receive a provider event",
+    description = concat!(
+        "Receives signed GitHub events and starts runs for matching subscribed fleets. ",
+        "Duplicate deliveries do not start another run. Repair pull requests, workflow ",
+        "results, and `deployment_status` deliveries do not start unrelated investigations. ",
+        "Verified workflow completions may request an independent read for an existing task wait.",
+    ),
+    request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
+    params(
+        afd_http::openapi::path::Provider,
+        ("X-GitHub-Event" = String, Header, description = "GitHub event type, currently `ping`, `pull_request`, `workflow_run`, or `deployment_status`."),
+        ("X-GitHub-Delivery" = String, Header, description = "Delivery identifier supplied by GitHub."),
+        ("X-Hub-Signature-256" = String, Header, description = "Hash-based Message Authentication Code (HMAC)-SHA256 of the raw body, prefixed with `sha256=`."),
+    ),
+    responses(
+        (status = 200, description = "A handshake echoed, or a delivery acknowledged and not acted on", body = AppIngressAnswer<'_>),
+        (status = 202, description = "The delivery fanned out to the fleets it matched", body = FannedOut),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNVERIFIED),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
+pub(crate) async fn receive<D: Services>(
+    State(services): State<Arc<D>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, Refusal> {
+    if !provider.eq_ignore_ascii_case(PROVIDER_GITHUB) {
+        return Err(Refusal::coded(
+            error_code::CONNECTOR_UNKNOWN,
+            DETAIL_UNKNOWN_PROVIDER,
+        ));
+    }
+
+    // Before the hash, and so before any work this delivery could have asked
+    // for. `Bytes::len` is the buffered length; `webhook::BUFFER_CEILING` is
+    // the layer that stopped a larger one from being buffered at all.
+    webhook::within_cap(&body)?;
+
+    let event = text(&headers, HEADER_EVENT)
+        .ok_or_else(|| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?
+        .to_owned();
+
+    // Nothing above this line has read the body as anything but bytes.
+    let proven = webhook::verified_app(
+        &services,
+        SCHEME_GITHUB,
+        APP_IDENTITY_GITHUB,
+        &headers,
+        body,
+    )
+    .await?;
+
+    // A ping proves the endpoint, and proves it AFTER the signature: an
+    // unverified ping answered `pong` would tell a prober the path exists.
+    if event == EVENT_PING {
+        return Ok((
+            StatusCode::OK,
+            Json(AppIngressAnswer::Pong(Pong {
+                status: STATUS_PONG.into(),
+            })),
+        )
+            .into_response());
+    }
+
+    route(&services, &event, proven.body).await
+}
+
+/// A verified delivery, from its payload to its appends.
+///
+/// Split from [`receive`] so the wall crossing and the routing read as the two
+/// separate concerns they are: everything here runs on a body that has already
+/// proved itself, and nothing here can reach the body that has not.
+async fn route<D: Services>(
+    services: &Arc<D>,
+    event: &str,
+    body: Bytes,
+) -> Result<Response, Refusal> {
+    // ONE parse, read twice: the routing fields and the classification both
+    // come off this read, so this file walks no JSON of its own.
+    let delivery = github::Delivery::read(event, &body).map_err(|_unreadable| {
+        Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER)
+    })?;
+
+    // Both are the installation's, not a fleet's, and a delivery missing either
+    // is one this surface cannot route rather than one it should refuse.
+    let (Some(installation), Some(repository)) = (delivery.installation(), delivery.repository())
+    else {
+        return Ok(dropped(event, webhook::REASON_UNSUPPORTED_EVENT));
+    };
+
+    let Some(workspace) = services
+        .ingress()
+        .installation_workspace(PROVIDER_GITHUB, &installation.to_string())
+        .await
+        .map_err(Refusal::at(EVENT_DROPPED))?
+    else {
+        return Ok(dropped(
+            event,
+            error_code::WEBHOOK_INSTALL_NOT_MAPPED.as_str(),
+        ));
+    };
+
+    if let Some(completion) = delivery.completion(
+        afd_fleet::task::CompletionScope::Workspace(workspace.clone()),
+        afd_ingress::replay_id(&body),
+    ) {
+        services
+            .tasks()
+            .record_github_completion(&completion)
+            .await
+            .map_err(Refusal::at(EVENT_DROPPED))?;
+    }
+
+    let digest = match delivery.classify(Policy::AppIngress, services.now()) {
+        Ingest::Accept(digest) => digest,
+        Ingest::Ignore(reason) => return Ok(dropped(event, reason)),
+        Ingest::Unsupported => return Ok(dropped(event, webhook::REASON_UNSUPPORTED_EVENT)),
+    };
+
+    let subscribers = services
+        .ingress()
+        .subscribers(&workspace, PROVIDER_GITHUB, repository, event)
+        .await
+        .map_err(Refusal::at(EVENT_DROPPED))?;
+
+    let fleets = match subscribers {
+        Fanout::To(fleets) => fleets,
+        Fanout::Nobody => {
+            return Ok(dropped(
+                event,
+                error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str(),
+            ));
+        }
+        // Refused rather than truncated. Waking the first hundred of a hundred
+        // and one is a silent, order-dependent choice about whose fleet runs,
+        // and the operator who wired it that way is the one who has to know.
+        Fanout::TooMany(_matched) => {
+            return Err(Refusal::coded(
+                error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND,
+                DETAIL_TOO_MANY,
+            ));
+        }
+    };
+
+    fan_out(services, &fleets, &digest, &body).await
+}
+
+/// Appends the delivery once per subscribed fleet.
+///
+/// Sequential rather than concurrent: the fan-out is bounded at
+/// [`afd_ingress::MAX_FANOUT`] and each append is one round trip, so the
+/// latency this saves is not worth a hundred simultaneous claims against one
+/// connection pool on a public endpoint.
+///
+/// A single failed append fails the whole delivery. That is deliberate and it
+/// is what makes a REDELIVERY safe: the claim is per fleet, so the fleets that
+/// already appended answer `replayed` and only the ones that did not are
+/// appended again.
+///
+/// The redelivery is not GitHub's. GitHub does not automatically redeliver a
+/// failed webhook — a delivery fails when this handler is down or takes longer
+/// than ten seconds, and recovering it is a manual click in the App's delivery
+/// log or an operator script walking the REST API. So a leg that fails BEFORE
+/// its admission row commits, and every leg after it in this loop, is not
+/// merely delayed: nothing holds that work and no sender will offer it again.
+///
+/// Which makes the loop's order load-bearing and the ten seconds a deadline
+/// rather than a target — signature verification, fleet resolution and one
+/// admission per subscribed fleet all spend the same budget, and fan-out width
+/// is what spends it fastest.
+async fn fan_out<D: Services>(
+    services: &Arc<D>,
+    fleets: &[afd_ingress::Binding],
+    digest: &str,
+    body: &Bytes,
+) -> Result<Response, Refusal> {
+    let event_id = afd_ingress::replay_id(body);
+    let mut enqueued = 0;
+
+    for binding in fleets {
+        let appended = services
+            .ingress()
+            .deliver(
+                Surface::App,
+                binding,
+                &Delivery {
+                    event_id: &event_id,
+                    actor: ACTOR_APP_GITHUB,
+                    request_json: digest,
+                },
+            )
+            .await
+            .map_err(Refusal::at(EVENT_APPEND))?;
+
+        if !appended.replayed {
+            enqueued += 1;
+        }
+    }
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(FannedOut {
+            matched: fleets.len(),
+            enqueued,
+        }),
+    )
+        .into_response())
+}
+
+/// The 200 a deliberately-dropped delivery answers with.
+///
+/// Logged as well as answered, which the per-fleet route does not need to do:
+/// there, a drop is visible to whoever configured the URL. Here the sender is
+/// an App that will never look, and an operator asking "why did my fleet not
+/// run" has only this line to read.
+fn dropped(event: &str, reason: &str) -> Response {
+    tracing::info!(
+        provider = PROVIDER_GITHUB,
+        delivery_event = event,
+        reason,
+        event = EVENT_DROPPED,
+    );
+    (
+        StatusCode::OK,
+        Json(AppIngressAnswer::Ignored(webhook::Ignored {
+            ignored: reason.into(),
+        })),
+    )
+        .into_response()
+}

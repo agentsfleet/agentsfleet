@@ -5,11 +5,17 @@ Each one is falsifiable by grep; the migration table at the bottom is the
 scoreboard. The backend has had this kind of doctrine for a year
 (`runner_fleet.md`, `data_flow.md`); the front end gets its own here.
 
-Stack facts this doc assumes: Turbopack dev/build, React Compiler off until
-annotated (`next.config.ts`), Clerk for auth (`auth()` server-side), all
-backend traffic through server reads/actions or authenticated same-origin
-`/live` route handlers. The server uses `NEXT_PUBLIC_API_URL`, which throws when unset
-(`lib/api/client.ts` `requireApiOrigin()`); no silent backend guessing.
+Stack facts this page assumes:
+
+- Turbopack dev/build.
+
+- The React Compiler in annotation mode, so only annotated components compile (`next.config.ts`).
+
+- Clerk for auth (`auth()` server-side).
+
+- All backend traffic through server reads, actions or authenticated same-origin `/live` route handlers.
+
+- The server uses `NEXT_PUBLIC_API_URL`, which throws when unset (`lib/api/client.ts` `requireApiOrigin()`); no silent backend guessing.
 
 ## Chat workspace
 
@@ -24,35 +30,44 @@ The authoring API and workspace chat adapters are implemented. The [original API
 ## The five statements
 
 **1 · The server fetches. The client reacts.**
+
 Backend authentication happens in a Server Component, Server Action or
 authenticated route handler. The token comes from `auth()` on the server.
 Stateful setup requests use the browser's same-origin cookie through the
 whitelisted `/live/v1/workspaces/{workspaceId}/...` proxy; they carry no browser bearer.
+
 The proxy authenticates upstream requests, bounds their bodies and checks write origins
 (`lib/api/setup-proxy/`). Browser setup state lives in `lib/api/drafts.ts`.
 
-`app/cli-auth/[session_id]/page.tsx` is another deliberate browser transport. That page is the command-line
-handoff: it derives an Elliptic-Curve Diffie-Hellman key in the browser and
-posts the encrypted result, so the call cannot move to the server without
-moving the private key with it. It is the documented exception
+`app/cli-auth/[session_id]/page.tsx` is another deliberate browser transport, the command-line
+handoff. It derives an Elliptic-Curve Diffie-Hellman key in the browser and
+posts the encrypted result. The call cannot move to the server without moving
+the private key with it.
+
+It is the documented exception
 ([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
 separate from the setup proxy.
-Every server fetch runs under one policy, `lib/api/retry.ts`: a declared
-schedule with a 20 s deadline, a 10 s `Retry-After` cap, full jitter, and a
-replay gate read from where the failure happened. A write the server may hold
-is never sent twice on a gateway error or a client timeout; a socket the
-transport reported dropping is sent again whatever the method, because a reply
-nobody saw is usually a request that never ran. The price is named rather than
-hidden: a reset arriving after the server accepted a write can double it, and
-an idempotency key is what would retire that. The policy's dependency,
-`effect`, is server-only:
-a client component reads status facts from `lib/api/errors.ts`, and
+
+Every server fetch runs under one policy, `lib/api/retry.ts`. The policy is a
+declared schedule: a 20 s deadline, a 10 s `Retry-After` cap and full jitter.
+A replay gate is read from where the failure happened.
+
+A write the server may hold is never sent twice on a gateway error or a client
+timeout. A socket the transport reported dropping is sent again whatever the method. A reply nobody saw is usually a request that never ran.
+
+The price is named rather than hidden. A reset arriving after the server
+accepted a write can double it, and an idempotency key is what would retire
+that.
+
+The policy's dependency, `effect`, is server-only.
+A client component reads status facts from `lib/api/errors.ts`, and
 `.size-limit.mjs` fails the build if the runtime reaches a client chunk.
 
 **2 · `"use client"` marks a leaf, never a branch.**
-The directive goes on the smallest interactive unit — a button, a form, a
+
+The directive goes on the smallest interactive unit: a button, a form, a
 menu. When a client file imports a component that renders data, the
-boundary is drawn too high: everything below a client boundary ships to the
+boundary is drawn too high. Everything below a client boundary ships to the
 browser whether it needs to or not.
 
 **3 · Every route paints a shell before it paints data.**
@@ -61,22 +76,24 @@ browser whether it needs to or not.
 The header, navigation and frame render immediately.
 `force-dynamic` with no `Suspense` makes the whole page wait on the slowest call.
 
-Exception on record: the fleet wall (`w/[workspaceId]/fleets/page.tsx`) blocks its header on data to avoid painting "Fleets" over a first-run checklist.
+Exception on record: the fleet wall (`fleets/page.tsx`) keeps its whole page frame inside the data region. The page waits for its first read behind the shared `RouteLoading` fallback.
 That choice does not set a precedent.
 
 **4 · Mutations feel instant.**
+
 Writes go through a Server Action wrapped in `useActionState`, with
 `useOptimistic` painting the result before the server confirms. React 19
 added these primitives so `useState` + `useEffect` + `fetch` chains stop
 reimplementing them badly.
 
 **5 · `useEffect` is for subscriptions, not for loading.**
-Event streams, timers, observers — yes. Fetching on mount — no; that is
+
+Event streams, timers, observers: yes. Fetching on mount: no. That is
 statement 1 in disguise, and it guarantees a blank frame plus a waterfall.
 
 ## The two shapes
 
-Today — client-heavy path:
+Today, the client-heavy path:
 
 ```
  Browser                      Next server                 agentsfleetd
@@ -93,7 +110,7 @@ Today — client-heavy path:
   first interaction ═══════════════════════════════▶ late
 ```
 
-Target — shell first, stream the rest, mutate optimistically:
+Target: shell first, stream the rest, mutate optimistically:
 
 ```
  Browser                      Next server                 agentsfleetd
@@ -115,7 +132,7 @@ The bar between the worlds:
 
 ```
   ┌──────────────────── SERVER ────────────────────┐
-  │  layout.tsx   page.tsx   lib/api/*   actions/* │  ← tokens, fetches, secrets
+  │  layouts   pages   server reads   actions      │  ← tokens, fetches, secrets
   │  Suspense boundaries drawn here                │
   └────────────────────┬───────────────────────────┘
                        │  props: plain data only
@@ -131,47 +148,50 @@ Run the greps, then move the numbers. Every row is measurable in one command,
 so a stale row is a choice. Re-measure at any milestone that touches the app
 and update this table in the same diff.
 
-Measured Oct 14, 2026 against `ui/packages/app`: 210 non-test `.tsx` files
+Measured Nov 07, 2026 against `ui/packages/app`: 280 non-test `.tsx` files
 under `app` and `components`.
 
 | Signal | Today | Target | Grep |
 |---|---|---|---|
-| `"use client"` files | 148 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
-| `useEffect` files | 39 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
+| `"use client"` files | 204 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
+| `useEffect` files | 53 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
 | `useActionState` | 0 | every form | `grep -rl useActionState app components \| wc -l` |
-| `useOptimistic` | 5 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
-| `Suspense` files | 5 | every data route | `grep -rl Suspense app \| wc -l` |
+| `useOptimistic` | 3 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
+| `Suspense` files | 6 | every data route | `grep -rl Suspense app \| wc -l` |
 
-The first two moved away from target as the app grew. `useOptimistic` moved
-from one surface to five — secrets delete, runner state, the approvals inbox,
-the fleet kill switch and workspace library removal — each reconciling inside
-the transition that set it,
-so the row is now a pattern rather than an exception. The one `useEffect` file
-the chat's summary strip gained is statement 5 as written: a subscription to
-the fleet stream (`useFleetRunSummary`, selecting the two identity-stable
-slices the strip reads so a streaming reply's chunks re-render nothing), never
-a load — a completion frame carries the row and the fleet facts, so the strip
-moves with no request behind it. `ChatView` itself has no effect left.
-`useActionState` and `Suspense` have not moved. All of it is the point of
-keeping the table.
+The first two keep moving away from target as the app grows. `useOptimistic`
+lives in three surfaces today: secrets delete, runner state and the fleet kill
+switch, each reconciling inside the transition that set it.
+
+The chat's summary strip owns one `useEffect`, and it is statement 5 as written. It is a subscription to the fleet stream (`useFleetRunSummary`), never a load.
+
+It selects the two identity-stable slices the strip reads, so a streaming
+reply's chunks re-render nothing. A completion frame carries the row and the
+fleet facts, so the strip moves with no request behind it.
+
+`ChatView` itself has no effect left. `useActionState` has not moved, and
+`Suspense` covers six files. All of it is the point of keeping the table.
 
 The Models route is the worked example. `ModelCatalogueProvider` fetched the
-entire global model catalogue in a mount effect, so every visit to Models
-paid for data most visits never opened a dialog to use; it now loads on
-intent — dialog open, focus, or an eligible hover.
+entire global model catalogue in a mount effect. Every visit to Models paid for
+data most visits never opened a dialog to use.
+
+It now loads on intent: dialog open, focus, or an eligible hover.
 
 Statement 3 covered the route too, which previously awaited every read before
 painting a pixel. It now renders its header immediately and streams an
 exported async data region under `Suspense`, matching `ApprovalsData`.
 
 One boundary worth recording, because it is easy to get backwards: those
-regions never REJECT. Suspense there buys latency, not error handling — a
-rejected promise throws in render and needs an ErrorBoundary, which would
-collapse "this read failed" and "this library is empty" into one
-undifferentiated fallback. Keeping them distinct is what lets a user whose
-read failed see a retry instead of being told they have nothing.
+regions never REJECT. Suspense there buys latency, not error handling.
 
-Migration happens route by route inside normal milestone work — statement
+A rejected promise throws in render and needs an ErrorBoundary. That would collapse "this read failed" and "this library is empty" into one
+undifferentiated fallback.
+
+Keeping them distinct is what lets a user whose read failed see a retry
+instead of being told they have nothing.
+
+Migration happens route by route inside normal milestone work. Statement
 compliance is checked for touched files at review, not by a big-bang
 refactor. The PLAN quality-ceiling line (operating model) is where a
 larger cut gets proposed when a route's patch fights these statements.
@@ -205,6 +225,7 @@ Subject disposal, logout, revocation and deletion clear private buffers. Hiding 
 The private setup, workspace activity and fleet activity proxies bound stream handshakes to 30 seconds and rotate established bodies at 240 seconds from request start.
 `StreamLifetime` forwards bytes on demand, ends rotation cleanly, and aborts the upstream request.
 Browser cancellation, request cancellation, upstream failure and ordinary completion release timers and the upstream reader.
+
 The proxies forward `Last-Event-ID` unchanged. Private setup reconnects retain the authorized subject and recover durable messages through the existing client. Runtime event streams use connection-local counters; the daemon ignores the header and the client recovers gaps through the durable events list.
 
 A shared Definition powers instruction edits, model proposals and checked saves. Save retains one fleet identity with visible setup checks and keeps authoring open. When an initial run is requested, Pending remains until its committed admission is confirmed with its expected event identity.
@@ -214,9 +235,10 @@ Save does not publish a Library entry. Models and billing resolve from the works
 Runtime controls and shared fleet history retain their existing authority. See [fleet_definitions.md](fleet_definitions.md#validated-definition), [data_flow.md](data_flow.md#fleet-creation-and-setup-recovery), and [API resources](api_resources.md).
 
 The **Instructions** dialog edits the current instructions before Save. Opening it requests no run and creates no fleet. Publication remains an explicit action in the chat menu.
-The saved view separates setup readiness from first-run admission; an accepted run can still be running.
 
+The saved view separates setup readiness from first-run admission; an accepted run can still be running.
 The inline receipt shows `Save done vN`; readiness remains separate from the saved version.
+
 The saved response supplies the Definition when present; otherwise the view retains the reviewed candidate's Definition. Unknown trigger or access data stays unconfirmed.
 
 ### One fleet workspace
@@ -237,6 +259,8 @@ Saving a revision keeps authoring open. An explicit chat Save shows `Saving setu
 
 Existing runs keep their pinned revision; new runs use the saved version.
 Fleet messages, setup receipts and integration activity share one chronological conversation. **Saved memories** opens from **Fleet actions**; **Your fleets** opens the listing.
+
+A message sent while the fleet's run is live folds into that run. The row shows `Added to the current run` until the run answers it, and the view waits on the message's own event.
 
 Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame`.
 Effects own connections and cleanup; render stays pure and Hooks remain static.

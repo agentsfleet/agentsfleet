@@ -18,7 +18,7 @@ export type ApiError = {
 // ── Fleets ──
 
 // The server projects each trigger in the native definition into fleet list
-// rows, served as `FleetSummary` in rustd/crates/afd_api_wire/src/fleet/collection.rs.
+// rows, served as `FleetSummary` in rustd/crates/daemon/afd_api_wire/src/fleet/collection.rs.
 // Tagged union by `type` — webhook
 // carries source + events; cron carries the raw schedule expression; mention
 // carries the chat provider and the one channel it answers in.
@@ -84,7 +84,7 @@ export const PROVIDER_MODE = {
 
 // Provider id that opts a self-managed credential into a custom OpenAI-compatible
 // endpoint. Mirrors the backend resolver
-// (`rustd/crates/afd_credential/src/provider/endpoint/mod.rs` →
+// (`rustd/crates/daemon/afd_credential/src/provider/endpoint/mod.rs` →
 // `OPENAI_COMPATIBLE`) and the CLI's `constants/custom-endpoint.ts`: a
 // credential carrying this provider requires a `base_url` (https, SSRF-validated
 // server-side), forbidden for every named provider. The literal lives here once
@@ -127,7 +127,7 @@ export type TenantProvider = {
 
 // ── Tenant model registry ──
 // One row per configured `(model_id, secret_ref)` pair — see
-// rustd/crates/afd_api_tenant/src/handler/tenant/model_entry/mod.rs for the wire
+// rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/mod.rs for the wire
 // shape. `provider`/`base_url`/`context_cap_tokens`/rates ride the
 // `emit_null_optional_fields=false` shape (omitted, never null) — same
 // convention as `Secret` in lib/api/secrets.ts.

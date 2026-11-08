@@ -5,7 +5,7 @@
 // /approve which the CLI never touches.
 //
 // Server response shapes (confirmed against
-// rustd/crates/afd_api_tenant/src/handler/auth/session/mod.rs and its session/
+// rustd/crates/daemon/afd_api_tenant/src/handler/auth/session/mod.rs and its session/
 // submodules):
 //
 //   POST /v1/auth/sessions
@@ -58,7 +58,7 @@ const MAX_CLI_VERIFY_ATTEMPTS = 2;
 
 // Server code for a malformed verification code (not 6 digits). Identifier
 // matches ERR_INVALID_VERIFICATION_CODE, declared in
-// rustd/crates/afd_core/src/error_code/auth.rs.
+// rustd/crates/foundation/af_core/src/error_code/auth.rs.
 const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 
 // Re-export the device-flow wire shapes + platform default from their sibling

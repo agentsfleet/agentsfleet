@@ -4,7 +4,7 @@ import type { ActionResult } from "@/lib/actions/with-token";
 
 /**
  * Defence-in-depth: gate a server action on the specific operator scope its
- * backend route enforces (the route tables under rustd/crates/afd_http/src/route/,
+ * backend route enforces (the route tables under rustd/crates/daemon/afd_http/src/route/,
  * e.g. `runner_ops.rs` and `admin.rs`) before the round-trip. The
  * backend independently 403s a token missing the scope (`UZ-AUTH-022`) — this
  * just fails fast so the UI never round-trips a request the token can't

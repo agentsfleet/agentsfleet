@@ -1,0 +1,132 @@
+//! Hand-written `Debug` for every wire type that carries a secret.
+//!
+//! One module rather than an impl beside each type, so "are secrets redacted?"
+//! is a question with ONE place to look. A derived `Debug` on any of these would
+//! put a provider key, a tenant's whole secret map, a minted credential, or a
+//! runner's bearer token into the first log line that formats a lease. The mint
+//! reply in particular is secret: never logged, never echoed into a frame.
+//!
+//! Redaction is on `Debug` ONLY. `Serialize` still emits the real value, because
+//! these types exist to put it on the wire; the round-trip fixtures would fail
+//! immediately otherwise. `tests/redaction.rs` proves both halves.
+//!
+//! Adding a secret-bearing field to a type below means extending its impl here.
+//! `missing_debug_implementations` is denied workspace-wide, so a type cannot
+//! simply drop `Debug` to dodge the question. `afd_api_wire`'s own `redact`
+//! module holds the daemon-only types' impls and renders through the helpers
+//! exported here, so the redacted spelling stays one constant.
+
+use std::fmt::{self, Debug, Formatter};
+
+use crate::credentials::MintCredentialResponse;
+use crate::policy::ExecutionPolicy;
+use crate::runner::RegisterResponse;
+use crate::task::{DecisionDispatch, DecisionRecorded, DecisionReservationResult};
+
+/// What a redacted field renders as. One spelling, so a log grep for leaked
+/// credentials has exactly one negative to look for.
+pub const REDACTED: &str = "<redacted>";
+/// The field name a runner's bearer token renders under, in either crate.
+pub const RUNNER_TOKEN_FIELD: &str = "runner_token";
+
+/// Renders a secret as its length only.
+///
+/// The length is safe and occasionally decisive — "the key is 0 bytes" is the
+/// difference between a misconfigured credential and a rejected one, and reading
+/// it off a log beats reproducing the request.
+#[must_use]
+pub fn redacted(secret: &str) -> String {
+    format!("{REDACTED} ({} bytes)", secret.len())
+}
+
+impl Debug for ExecutionPolicy<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExecutionPolicy")
+            .field("network_policy", &self.network_policy)
+            .field("tools", &self.tools)
+            // The whole map is the tenant's secrets; even its KEYS name the
+            // integrations a tenant has connected, so only the count is shown.
+            .field(
+                "secrets_map",
+                &self.secrets_map.as_ref().map(|value| match value {
+                    serde_json::Value::Object(map) => {
+                        format!("{REDACTED} ({} entries)", map.len())
+                    }
+                    serde_json::Value::Null
+                    | serde_json::Value::Bool(_)
+                    | serde_json::Value::Number(_)
+                    | serde_json::Value::String(_)
+                    | serde_json::Value::Array(_) => REDACTED.to_owned(),
+                }),
+            )
+            .field("mintable", &self.mintable)
+            .field("provider", &self.provider)
+            .field("api_key", &redacted(&self.api_key))
+            .field("inference_host", &self.inference_host)
+            .field("base_url", &self.base_url)
+            .field("repository_binding", &self.repository_binding)
+            .field("http_origin_policies", &self.http_origin_policies)
+            .field("context", &self.context)
+            .finish()
+    }
+}
+
+impl Debug for RegisterResponse<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RegisterResponse")
+            .field("runner_id", &self.runner_id)
+            // Revealed once at enrollment and never re-readable; the daemon
+            // stores only its hash, so a log line is the one place it could
+            // survive in plaintext.
+            .field(RUNNER_TOKEN_FIELD, &redacted(&self.runner_token))
+            .field("assigned_policy", &self.assigned_policy)
+            .finish()
+    }
+}
+
+impl Debug for MintCredentialResponse<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MintCredentialResponse")
+            .field("token", &redacted(&self.token))
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+impl Debug for DecisionDispatch<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DecisionDispatch")
+            .field("call_id", &self.request.call_id)
+            .field("model_id", &self.assignment.profile.model_id)
+            .field("profile_revision", &self.assignment.revision_id)
+            .field("api_key", &redacted(&self.api_key))
+            .field("expires_at", &self.expires_at)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Debug for DecisionReservationResult<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dispatch { call_id, dispatch } => f
+                .debug_struct("DecisionReservationResult::Dispatch")
+                .field("call_id", call_id)
+                .field("dispatch", dispatch)
+                .finish(),
+            Self::Existing { call_id, state, .. } => f
+                .debug_struct("DecisionReservationResult::Existing")
+                .field("call_id", call_id)
+                .field("state", state)
+                .finish(),
+        }
+    }
+}
+
+impl Debug for DecisionRecorded {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DecisionRecorded")
+            .field("call_id", &self.request.call_id)
+            .field("disposition", &self.disposition)
+            .finish_non_exhaustive()
+    }
+}

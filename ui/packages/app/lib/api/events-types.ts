@@ -5,10 +5,10 @@ export type EventsQuery = {
   cursor?: string;
   actor?: string;
   // Prefix filter on the event actor — the server matches `actor LIKE '<prefix>%'`
-  // (`prefix_to_like` in rustd/crates/afd_events/src/history/filter.rs).
+  // (`prefix_to_like` in rustd/crates/daemon/afd_events/src/history/filter.rs).
   // Mutually exclusive with `actor`; the server 400s if both are sent
   // (`DETAIL_ACTOR_AMBIGUOUS` in
-  // rustd/crates/afd_api_tenant/src/handler/event/query.rs). Onboarding uses `actor_prefix=steer:` to detect the first steer.
+  // rustd/crates/daemon/afd_api_tenant/src/handler/event/query.rs). Onboarding uses `actor_prefix=steer:` to detect the first steer.
   actor_prefix?: string;
   since?: string;
   fleet_id?: string;
@@ -30,11 +30,11 @@ export function buildQuery(opts?: EventsQuery): string {
 
 // Live frames published on `fleet:{id}:activity` (Redis pub/sub), fanned out
 // as SSE messages by the backend handler. `hello`, `catching_up` and
-// `access_revoked` are rustd/crates/afd_sse/src/frame/mod.rs's `KIND_*` control
+// `access_revoked` are rustd/crates/daemon/afd_sse/src/frame/mod.rs's `KIND_*` control
 // frames. The four mid-run frames are the
-// `Published` enum in rustd/crates/afd_fleet/src/lease/activity/mod.rs, where the
+// `Published` enum in rustd/crates/daemon/afd_fleet/src/lease/activity/mod.rs, where the
 // runner's wire vocabulary becomes this one. The two brackets and the two gate
-// frames are the daemon's own `TailFrame` in rustd/crates/afd_api_wire/src/tail/mod.rs:
+// frames are the daemon's own `TailFrame` in rustd/crates/daemon/afd_api_wire/src/tail/mod.rs:
 // `event_admitted` when a person's message is accepted, before any runner has
 // it, `event_received` when the lease opens the row, `event_complete` with the
 // whole row when a report or a refusal closes it, `gate_opened` and

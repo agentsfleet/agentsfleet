@@ -4,7 +4,7 @@ import { seedCatalogue } from "./seed";
 import { catalogueFixture, MODEL_NAME, modelFixture, priceFixture } from "./test-fixtures";
 
 const database = openIntegrationDatabase();
-const CRATES = new URL("../../rustd/crates/", import.meta.url);
+const CRATES = new URL("../../rustd/crates/daemon/", import.meta.url);
 const FIRST_PAGE = new URL("afd_tenant/src/sql/models/select_library_page_first.sql", CRATES).pathname;
 const AFTER_PAGE = new URL("afd_tenant/src/sql/models/select_library_page_after.sql", CRATES).pathname;
 const REGISTRY_RATES = new URL("afd_credential/src/provider/entries/sql/select_rates_for_pairs.sql", CRATES).pathname;

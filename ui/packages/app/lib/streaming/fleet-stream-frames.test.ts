@@ -3,7 +3,7 @@ import { type EventRow, type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { HEADLINE, OUTCOME, THREAD_STATUS } from "@/lib/events/event-summary";
 import { maxServerCreatedAt, mergeBackfill, rfc3339Seconds } from "./fleet-stream-frames";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_EVENT_STATUS, FOLDED_OUTCOME, type FleetEvent } from "./fleet-stream-row";
 import { MS_PER_SECOND, evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 
 // The merge and the watermark: how a page of durable rows folds into the
@@ -24,6 +24,19 @@ describe("mergeBackfill", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0]?.status).toBe(AGENTSFLEET_EVENT_STATUS.RECEIVED);
     expect(merged[0]).toBe(live);
+  });
+
+  // The received frame fell in a gap, so the page is the only word that the
+  // message's own run began after the run it was labelled folded into ended.
+  it("should start a send labelled folded when a server page says its run began", () => {
+    const live = evt({ id: "e1", status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME, text: "and also this" });
+    const merged = mergeBackfill([live], [
+      row({ event_id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, response_text: null }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ text: "and also this", status: AGENTSFLEET_EVENT_STATUS.RECEIVED });
+    expect(merged[0]?.outcome).not.toBe(FOLDED_OUTCOME);
   });
 
   it("dedupes by id and sorts the union oldest-first", () => {

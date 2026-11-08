@@ -6,7 +6,7 @@ import { isInstant } from "../lib/instant.ts";
 import { nanosSchema } from "../lib/nanos.ts";
 import { decimal } from "./chat/protocol.ts";
 
-// FleetSummary in rustd/crates/afd_api_wire/src/fleet/collection.rs.
+// FleetSummary in rustd/crates/daemon/afd_api_wire/src/fleet/collection.rs.
 const FleetSummarySchema = Schema.Struct({
   id: Schema.String, name: Schema.String, status: Schema.String,
   events_processed: decimal, budget_used_nanos: nanosSchema,

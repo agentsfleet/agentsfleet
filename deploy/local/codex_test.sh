@@ -78,7 +78,7 @@ if [ "$TEST_REPLACE" = 0 ]; then acceptance_trust_certificate "$TEST_CERTIFICATE
             self.assertIn(foreign.read_text().strip(), kept)
 
     def toolbox(self, version):
-        source = self.root / 'rustd/crates/afr_sandbox/src/toolbox/manifest/mod.rs'
+        source = self.root / 'rustd/crates/runner/afr_sandbox/src/toolbox/manifest/mod.rs'
         source.parent.mkdir(parents=True, exist_ok=True)
         (self.root / 'VERSION').write_text('0.71.0\n')
         key = self.root / 'key.pem'

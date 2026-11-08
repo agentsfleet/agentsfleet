@@ -1,0 +1,158 @@
+//! The sentences this plane's refusals carry.
+//!
+//! Every one is pinned byte for byte, because a dashboard branches on some of
+//! them and a client prints the rest.
+
+/// The detail a caller is told when the database cannot be reached.
+pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE;
+
+/// The detail a caller is told when a statement would not run.
+pub use af_core::error::DETAIL_DATABASE_ERROR;
+
+/// The detail a caller is told when the queue cannot be reached.
+pub use af_core::error::DETAIL_QUEUE_UNAVAILABLE;
+
+/// The device-flow refusal for a public key this daemon will not store.
+pub const DETAIL_SESSION_PUBLIC_KEY: &str = "The supplied public_key is malformed";
+
+/// Its refusal for a credential label that is not one.
+pub const DETAIL_SESSION_TOKEN_NAME: &str = "token_name must be 1-64 characters of printable ASCII";
+
+/// Its refusal for a relayed envelope that is absent or oversized.
+pub const DETAIL_SESSION_CIPHERTEXT: &str = "ciphertext is missing, empty, or malformed";
+
+/// Its refusal for a nonce that is absent or the wrong width.
+pub const DETAIL_SESSION_NONCE: &str = "nonce is missing, empty, or the wrong length";
+
+/// Its refusal for a code that is not six digits, raised before any compare.
+pub const DETAIL_SESSION_CODE_SHAPE: &str = "verification_code must be exactly 6 ASCII digits";
+
+/// Its refusal for a session id naming nothing this daemon holds.
+pub const DETAIL_SESSION_MISSING: &str =
+    "Session was not found. It may have expired or been invalidated";
+
+/// Its refusal for a session whose five-minute window closed.
+pub const DETAIL_SESSION_EXPIRED: &str = "Session expired";
+
+/// Its refusal for a session already redeemed.
+pub const DETAIL_SESSION_CONSUMED: &str = "This login session has already been consumed";
+
+/// Its refusal for a session cancelled, superseded, or rate-limited.
+pub const DETAIL_SESSION_ABORTED: &str = "This login session was aborted";
+
+/// The verify dispatcher's terminal refusal on the attempt that trips the
+/// ceiling.
+///
+/// Its own sentence rather than [`DETAIL_SESSION_ABORTED`], and the difference
+/// is what the command line acts on: this one says stop prompting and log in
+/// again, where the generic abort could as easily mean somebody clicked cancel.
+pub const DETAIL_SESSION_RATE_LIMITED: &str = "Too many incorrect attempts — session aborted";
+
+/// Its refusal for a code presented before any human approved the session.
+pub const DETAIL_SESSION_NOT_APPROVED: &str = "Session not approved yet";
+
+/// Its refusal for a second approval of one session.
+pub const DETAIL_SESSION_ALREADY_APPROVED: &str = "This login session has already been approved";
+
+/// The verify dispatcher's refusal for six digits that did not match.
+pub const DETAIL_SESSION_CODE_REJECTED: &str = "Verification code did not match";
+
+/// Its refusal for a name outside the character set or the bound.
+pub const DETAIL_APIKEY_NAME: &str =
+    "key_name must be 1-64 chars, alphanumeric + hyphen + underscore";
+
+/// Its refusal for a description past its bound.
+pub const DETAIL_APIKEY_DESCRIPTION: &str = "description must be <=256 chars";
+
+/// Its refusal for an id naming no key this tenant holds.
+pub const DETAIL_APIKEY_NOT_FOUND: &str = "API key not found";
+
+/// Its refusal for a name this tenant already uses.
+pub const DETAIL_APIKEY_NAME_TAKEN: &str = "Key name already exists in this tenant";
+
+/// Its refusal for a revoke of an already-revoked key.
+pub const DETAIL_APIKEY_ALREADY_REVOKED: &str = "API key is already revoked";
+
+/// Its refusal for an attempt to bring a revoked key back.
+pub const DETAIL_APIKEY_READONLY_FIELD: &str =
+    "active cannot be set to true; mint a new key instead";
+
+/// Its refusal for a delete of a key that is still live.
+pub const DETAIL_APIKEY_MUST_REVOKE_FIRST: &str = "Active key must be revoked before deletion";
+
+/// The command-line credential surface's refusal for a label it cannot store.
+///
+/// Deliberately NOT a grammar. The surface accepts any name a machine actually
+/// has — spaces, apostrophes, any script — and refuses only a label that names
+/// nothing once trimmed or does not fit the column. See
+/// [`crate::cli_credential::MachineName`] for why the ASCII grammar this
+/// replaced was the wrong rule in the wrong layer.
+pub const DETAIL_CLI_CREDENTIAL_MACHINE_NAME: &str =
+    "machine_name must be 1-64 characters and not blank";
+
+/// Its refusal for an id naming no live credential this user holds.
+///
+/// One sentence for never-existed, already-revoked, and belongs-to-somebody-
+/// else: the revoke is owner-scoped in the statement, and distinguishing them
+/// would confirm another person's credential to whoever guessed its identifier.
+pub const DETAIL_CLI_CREDENTIAL_NOT_FOUND: &str = "Command-line credential not found";
+
+/// The refusal any verb answers a proven subject with no `identity.users` row with.
+///
+/// Family-neutral on purpose: the credential mint, the credential revoke and the
+/// caller-identity read all reach it, because "this credential is good and names
+/// nobody here" is one fact whoever asked.
+pub const DETAIL_UNKNOWN_SUBJECT: &str = "Authenticated subject has no user record";
+
+/// The create verb's refusal for a name carrying a character it will not store.
+///
+/// Control characters, bidirectional overrides and the line separators — the
+/// set the workspace-name parser refuses, because each of them lets a name lie
+/// about itself in a list or a log line.
+pub const DETAIL_WORKSPACE_NAME_INVALID: &str = "Workspace name contains unsupported characters";
+
+/// Its refusal for a name past the cap.
+///
+/// The sentence says "characters" where the rule counts Unicode code points,
+/// and stays that way: a client may be matching on it.
+pub const DETAIL_WORKSPACE_NAME_TOO_LONG: &str = "Workspace name must be 128 characters or fewer";
+
+/// Its refusal for a name this tenant already uses.
+pub const DETAIL_WORKSPACE_NAME_EXISTS: &str = "A workspace with this name already exists";
+
+/// Its refusal for a tenant claim naming no tenant row.
+///
+/// A 401 rather than a 403: the session itself is stale — its tenant is gone —
+/// so re-authenticating is exactly the remedy.
+pub const DETAIL_WORKSPACE_TENANT_VANISHED: &str = "Tenant on session does not exist";
+
+/// The catalogue read's report of a page statement that would not answer.
+///
+/// Answered under the library family's own transient code rather than the
+/// generic internal one.
+pub const DETAIL_LIBRARY_PAGE_UNAVAILABLE: &str = "Failed to build the catalogue page";
+
+/// Its refusal for a charges cursor it never issued.
+///
+/// Lower-case and terse where the keyset cursor's refusals are sentences,
+/// because this exact spelling is on the wire and a client may match on it.
+pub const DETAIL_CHARGES_CURSOR_INVALID: &str = "invalid cursor";
+
+/// The refusal an invite that can no longer be accepted earns: never issued,
+/// expired, revoked, or already somebody else's.
+pub const DETAIL_INVITE_NOT_FOUND: &str = "Invite not found";
+
+/// The refusal an accept from the wrong account earns. Names no address.
+pub const DETAIL_INVITE_EMAIL_MISMATCH: &str = "Invite is for another email address";
+
+/// The refusal inviting an address that belongs to the account earns.
+pub const DETAIL_INVITE_MEMBER: &str = "Address already a member";
+
+/// The refusal inviting an address with a pending invite earns.
+pub const DETAIL_INVITE_PENDING: &str = "Address already invited";
+
+/// The refusal removing an account's last owner earns.
+pub const DETAIL_MEMBER_LAST_OWNER: &str = "Account must keep an owner";
+
+/// The refusal an address that is not one earns.
+pub const DETAIL_INVITE_EMAIL_INVALID: &str = "email must be a valid address";

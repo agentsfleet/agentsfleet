@@ -56,7 +56,7 @@ case "$secret_name" in
   smtp-relay)
     # The invite email's relay. Five fields, no test field: the integration
     # lane seals its own bag pointing at a loopback relay instead
-    # (rustd/crates/afd_api/tests/integration_invite_email.rs).
+    # (rustd/crates/daemon/afd_api/tests/integration_invite_email.rs).
     field_refs=(
       "host|smtp-relay/host"
       "port|smtp-relay/port"
