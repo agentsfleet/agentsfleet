@@ -16,9 +16,9 @@ WITH heads AS (
      FOR UPDATE OF o SKIP LOCKED
 )
 UPDATE fleet.obligations o
-   SET receipt       = $2::text,
+   SET receipt          = $2::text,
        claim_expires_at = clock_timestamp() + $3::interval,
-       updated_at    = now()
+       updated_at       = now()
   FROM heads
  WHERE o.id = heads.id
 RETURNING o.id, o.fleet_id, o.workspace_id, o.provider, o.destination, o.event_id, o.answer

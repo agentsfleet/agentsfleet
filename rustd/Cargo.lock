@@ -1246,6 +1246,7 @@ dependencies = [
  "afd_api_wire",
  "afd_bus",
  "afd_dragonfly",
+ "async-trait",
  "futures-util",
  "serde_json",
  "thiserror 2.0.21",

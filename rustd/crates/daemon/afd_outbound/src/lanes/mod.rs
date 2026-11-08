@@ -133,6 +133,8 @@ struct Inner<S> {
     lanes: DashMap<Destination, mpsc::Sender<Job>>,
     tasks: TaskTracker,
     token: CancellationToken,
+    /// How often a delivery renews its claim.
+    renew: Duration,
     /// Rung after every finished job: a lane's next row may now be claimable.
     finished: Notify,
 }
@@ -142,6 +144,17 @@ impl<S: Deliver + 'static> Lanes<S> {
     /// `database`, and stopping on `token`.
     #[must_use]
     pub fn new(posters: Posters<S>, database: Db, token: CancellationToken) -> Self {
+        Self::renewing_every(posters, database, token, CLAIM_RENEW)
+    }
+
+    /// [`Lanes::new`], renewing each delivery's claim every `renew`.
+    #[must_use]
+    pub fn renewing_every(
+        posters: Posters<S>,
+        database: Db,
+        token: CancellationToken,
+        renew: Duration,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 posters,
@@ -150,6 +163,7 @@ impl<S: Deliver + 'static> Lanes<S> {
                 lanes: DashMap::new(),
                 tasks: TaskTracker::new(),
                 token,
+                renew,
                 finished: Notify::new(),
             }),
         }
@@ -194,16 +208,7 @@ impl<S: Deliver + 'static> Inner<S> {
         }
     }
 
-    /// Delivers one job with bounded retry, then acknowledges it.
-    ///
-    /// # Every terminal verdict acknowledges, including the exhausted one
-    ///
-    /// A job whose attempts ran out is acknowledged and logged, not left
-    /// pending. Leaving it would redeliver it on the next pass, forever, at
-    /// the head of its destination's lane — one undeliverable answer would
-    /// stop every answer to that workspace behind it. The durable stream's
-    /// job is to survive a CRASH, and a crash is precisely the case where the
-    /// ack never runs.
+    /// One delivery cycle of a claimed job; the worker hears when it ends.
     ///
     /// # The cycle is counted before it is run
     ///
@@ -212,7 +217,6 @@ impl<S: Deliver + 'static> Inner<S> {
     /// reached the counter, which is how `attempt_count` came to hold a tally
     /// of successes: the destination that refuses an answer forever is the row
     /// worth finding, and it is the one a success counter never records.
-    /// One delivery cycle of a claimed job; the worker hears when it ends.
     async fn deliver(&self, job: &Claimed) {
         self.deliver_once(job).await;
         self.finished.notify_one();
@@ -243,7 +247,7 @@ impl<S: Deliver + 'static> Inner<S> {
     /// Renews `job`'s claim until it is lost; never returns while it holds.
     async fn renewing(&self, job: &Claimed) {
         loop {
-            tokio::time::sleep(CLAIM_RENEW).await;
+            tokio::time::sleep(self.renew).await;
             match obligation::renew(&self.database, job).await {
                 Ok(true) => {}
                 Ok(false) => return,
@@ -311,15 +315,10 @@ impl<S: Deliver + 'static> Inner<S> {
 
     /// Records that a destination took this answer.
     ///
-    /// Stamped BEFORE the acknowledgement, because the two record different
-    /// facts and only this one says a person received anything. The ack fires
-    /// for an EXHAUSTED job too, so an ack-time stamp would mark undeliverable
-    /// answers delivered.
-    ///
-    /// A failure here leaves the row receipted and unstamped, which the
-    /// recovery scan reads as "queued and never received" and re-offers. That
-    /// costs a duplicate message in a thread; the opposite error — marking
-    /// delivered what was not — loses the answer silently.
+    /// A failure here leaves the row claimed and unstamped; the claim lapses
+    /// and the next holder posts it again. That costs a duplicate message in a
+    /// thread; the opposite error — marking delivered what was not — loses the
+    /// answer silently.
     async fn stamp_delivered(&self, job: &Claimed, attempts: Option<i64>) {
         match crate::obligation::stamp_delivered(&self.database, job).await {
             Ok(true) => {}

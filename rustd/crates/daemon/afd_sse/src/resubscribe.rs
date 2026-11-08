@@ -49,8 +49,8 @@ impl Resubscribe {
 }
 
 enum State {
-    /// Waiting to subscribe; `announced` once the viewer has been told.
-    Subscribing { attempt: u32, announced: bool },
+    /// Waiting to subscribe; the opening `catching_up` already told the viewer.
+    Subscribing { attempt: u32 },
     Tailing {
         subscription: Subscription,
         seq: u64,
@@ -71,20 +71,18 @@ pub(crate) fn resilient(
             seq: 0,
         },
         // The opening `catching_up` already told the viewer about this loss.
-        None => State::Subscribing {
-            attempt: 1,
-            announced: true,
-        },
+        None => State::Subscribing { attempt: 1 },
     };
     stream::unfold((live, subject, start), async |(live, subject, state)| {
         let mut state = state;
         loop {
             state = match state {
-                State::Subscribing { attempt, announced } => {
-                    if attempt > 0 {
-                        tokio::time::sleep(live.resubscribe().wait(attempt - 1)).await;
-                    }
+                State::Subscribing { attempt } => {
+                    let wait = live.resubscribe().wait(attempt.saturating_sub(1));
+                    tokio::time::sleep(wait).await;
                     match live.subscribe(&subject).await {
+                        // Frames published while the tail was down are gone:
+                        // the viewer backfills from the events list.
                         Some(subscription) => {
                             let next = State::Tailing {
                                 subscription,
@@ -92,16 +90,8 @@ pub(crate) fn resilient(
                             };
                             return Some((Frame::catching_up(0), (live, subject, next)));
                         }
-                        None if !announced => {
-                            let next = State::Subscribing {
-                                attempt: attempt.saturating_add(1),
-                                announced: true,
-                            };
-                            return Some((Frame::catching_up(0), (live, subject, next)));
-                        }
                         None => State::Subscribing {
                             attempt: attempt.saturating_add(1),
-                            announced,
                         },
                     }
                 }
