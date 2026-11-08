@@ -36,9 +36,15 @@ async fn nonce_spends_once_under_contention() {
     let database = lane.open(DbRole::Api, &[]).await;
     let entropy = Entropy::new();
     let fresh = nonce::mint(&entropy).expect("the host has entropy");
-    nonce::remember(&database, &entropy, Provider::Jira, &fresh, Timestamp::now())
-        .await
-        .expect("the nonce is remembered");
+    nonce::remember(
+        &database,
+        &entropy,
+        Provider::Jira,
+        &fresh,
+        Timestamp::now(),
+    )
+    .await
+    .expect("the nonce is remembered");
 
     let barrier = Arc::new(Barrier::new(SPENDERS));
     let mut spenders = Vec::new();
@@ -51,7 +57,11 @@ async fn nonce_spends_once_under_contention() {
     }
     let mut won = 0;
     for spender in spenders {
-        if spender.await.expect("a spender ran").expect("the store answered") {
+        if spender
+            .await
+            .expect("a spender ran")
+            .expect("the store answered")
+        {
             won += 1;
         }
     }
@@ -72,15 +82,24 @@ async fn one_providers_nonce_never_spends_under_another() {
     let database = lane.open(DbRole::Api, &[]).await;
     let entropy = Entropy::new();
     let fresh = nonce::mint(&entropy).expect("the host has entropy");
-    nonce::remember(&database, &entropy, Provider::Slack, &fresh, Timestamp::now())
-        .await
-        .expect("the nonce is remembered");
+    nonce::remember(
+        &database,
+        &entropy,
+        Provider::Slack,
+        &fresh,
+        Timestamp::now(),
+    )
+    .await
+    .expect("the nonce is remembered");
 
     let crossed = nonce::consume(&database, Provider::Linear, &fresh)
         .await
         .expect("the store answered");
 
-    assert!(!crossed, "a Linear callback cannot spend a Slack connect's nonce");
+    assert!(
+        !crossed,
+        "a Linear callback cannot spend a Slack connect's nonce"
+    );
     assert!(
         nonce::consume(&database, Provider::Slack, &fresh)
             .await
