@@ -368,7 +368,7 @@ Use a labelled pencil action for editing and a neighboring summary toggle.
 `ChatSummaryProvider` owns only disclosure state; existing task providers retain request ownership.
 The summary starts closed and opens directly as a desktop sidebar or mobile drawer.
 Keep durable tasks visible; omit empty Outputs and Changes sections.
-The saved setup editor returns to its fleet conversation; the conversation returns to Your fleets.
+The saved setup editor returns to its fleet conversation. Use workspace navigation to switch fleets.
 Keep workspace navigation visible beside fleet setup and conversation on desktop.
 
 ### Chat state and activity

@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { ArrowLeftIcon } from "lucide-react";
-import { Badge, Button, PageTitle } from "@agentsfleet/design-system";
+import { Badge, PageTitle } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetDetail } from "@/lib/types";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
@@ -24,7 +22,6 @@ export function FleetHeader({
 }) {
   return (
     <div className="fleet-chat-heading flex shrink-0 items-center justify-between gap-md px-xl pb-sm pt-5 sm:px-chat-inset">
-      <Button asChild variant="ghost" size="icon" aria-label="Back to your fleets" title="Your fleets"><Link href={`/w/${workspaceId}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button>
       <div className="min-w-0 flex-1">
         <PageTitle size="chat" className="truncate">{fleet.name}</PageTitle>
         <p className="mt-xs truncate text-eyebrow text-muted-foreground">{agentDisplayName(fleet.id)}</p>
