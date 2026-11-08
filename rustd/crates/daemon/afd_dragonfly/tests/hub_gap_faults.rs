@@ -77,7 +77,9 @@ pub(crate) async fn deliver(
     loop {
         fake.publish(channel, payload);
         match tokio::time::timeout(RETRY, reader.recv()).await {
-            Ok(Ok(Received::Message(message))) if message.payload == payload => return gaps,
+            Ok(Ok(Received::Message(message))) if message.payload.as_str() == payload => {
+                return gaps;
+            }
             Ok(Ok(Received::Gap)) => gaps += 1,
             Ok(Ok(Received::Message(_) | Received::Lagged(_))) | Err(_) => {}
             Ok(Err(closed)) => panic!("the reader's channel closed: {closed}"),
@@ -136,7 +138,7 @@ async fn test_dispatch_continues_during_slow_subscribe() {
         .expect("a frame waited on the held subscribe")
         .expect("the hub stays open");
     assert!(
-        matches!(&received, Received::Message(message) if message.payload == "during-the-hold"),
+        matches!(&received, Received::Message(message) if message.payload.as_str() == "during-the-hold"),
         "the frame published during the hold, got {received:?}"
     );
     assert!(

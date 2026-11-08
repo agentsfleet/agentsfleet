@@ -18,9 +18,9 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Status:** IN_PROGRESS
 
-**Implementation branch:** `feat/m243-runner-push-stream`, worktree `/workspace/agentsfleet-m243`, based on `origin/main` `21e81eba7`.
+**Implementation branch:** `feat/m243-runner-push-stream`, worktree `/workspace/agentsfleet-m243`, rebased onto `origin/main` `a5155b6f8` after #816 merged.
 
-**Transport revision:** Nov 08, 2026. HTTP/3 first, HTTP/2 fallback, direct runner-to-daemon connectivity; design review and transport evidence remain pending.
+**Transport revision:** Nov 08, 2026. Indy approved HTTP/3 first, HTTP/2 fallback and direct runner-to-daemon connectivity. Production wiring and final verification remain due.
 
 **Priority:** P1, operators see work start late and a kill that never stops a run; every self-hosted runner will take this path
 
@@ -108,11 +108,12 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/{afd_admission,afd_approval,afd_authoring,afd_events,afd_fleet,afd_gate,afd_sse,afd_api_tenant,afd_http,afd_api_runner,afd_api_operator,afd_api,afd_bench}/Cargo.toml` and their bus-owning constructors and module indexes | EDIT | inject the one boot-selected bus into every caller; remove direct pub/sub dependencies where unused |
 | `rustd/crates/daemon/main/Cargo.toml`, `rustd/crates/daemon/main/tests/daemon_suite.rs`, `rustd/crates/daemon/main/tests/support/{e2e_wire,e2e_tail,e2e_speaking,e2e_schedules}.rs`, `rustd/crates/protocol/af_wire/tests/wire_suite.rs` | EDIT | register carrier/protocol tests and convert shared harnesses that call retired routes |
 | `docs/architecture/push_scheduler.md` | EDIT | §M243 status; retires "no cancel channel" and "not a general scheduler"; §8's baseline row |
+| `docs/architecture/datastore_scaling.md` | EDIT | Indy's requested NATS decision record; preserve the current deployment description until M244 replaces it |
 | `docs/architecture/runner_fleet.md`, `lease_flow.md`, `data_flow.md`, `scaling.md`, `observability.md`, `api_resources.md`, `runner_execution.md`, `user_flow.md`, `scenarios/fleet-to-fleet.md`, `scenarios/slack-incident-responder.md` | EDIT | §7: the held heartbeat, the poll, the retired routes, kill and the idle-cost knob, described as the stream |
 | `docs/AUTH.md` | EDIT | §7: auth once per connection, revocation pushed with its backstop, the grant re-check |
 | `docs/metrics.census.tsv` | EDIT | §4, §7: stream health, fallback and recovery families in; wake answers out |
 | `public/openapi.json` | EDIT | §7: regenerated from `rustd/` with `--no-banner` |
-| `schema/1810_runner_leases.sql`, `schema/1800_runner_runners.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | §3: edit table files for the cancel marker and owning connection; recheck names after the data-layer follow-up lands |
+| `schema/20261108123200_runner_leases.sql`, `schema/20261108123100_runner_runners.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | §3: edit table files for the cancel marker and owning connection; recheck names after the data-layer follow-up lands |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/daemon/afd_bus/**` | EDIT, CREATE | §2: bus, wake and Dragonfly adapter; §1, §6: native HTTP/3 and HTTP/2 carrier dependencies |
 | `rustd/crates/daemon/afd_dragonfly/src/lib.rs`, `doorbell/**` | EDIT, DELETE | §2: the doorbell moves to `afd_bus::wake` |
 | `rustd/crates/daemon/afd_admission/src/wake.rs`, `afd_approval/src/inbox/announce.rs`, `afd_approval/src/inbox/resolve/mod.rs`, `afd_authoring/src/model/progress/context.rs`, `publish.rs`, `afd_events/src/activity.rs`, `afd_events/src/steer/mod.rs`, `afd_fleet/src/lease/bracket.rs`, `afd_gate/src/gate/park.rs`, `afd_sse/src/fanin.rs`, `live.rs`, `ceiling.rs`, `afd_api_tenant/src/handler/draft/stream/mod.rs` | EDIT | §2: every production publisher and subscriber goes through `afd_bus::Handle` |
@@ -163,6 +164,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `make lint-all` (clippy `-D warnings`, `cargo shear`) | yes, new bus and gateway crates plus carrier dependencies | each dependency lands with its first caller (HLP) |
 | Route inventory and meta-total tests | yes, one route in, six out | `INVENTORY` and the counts change in the commit that changes the routes |
 | Metrics census and producer tests | yes | census rows, declarations and producers move together |
+| Rust aggregate and patch coverage | yes | `make test-coverage-rustd`: at least 98.5% overall lines and 97.5% changed lines; include the kernel report when merging shards |
 | OpenAPI and error-registry parity | yes | regenerate `public/openapi.json`; each code lands with its registry row and problem entry |
 | Linux-only lanes | yes, `afr_sandbox/examples/kernel_lane` | linted and tested on Linux in a Codex cloud task |
 | File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, the session and the downlink grow | split by concern: `session/{hello,frames,recheck}.rs`, `downlink/{connect,dispatch,reconnect}.rs` |
@@ -513,16 +515,25 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 
   > Indy: "No legacy support to think about in this PR." — context: replace existing code, SQL, schema, routes and tests in place; add no compatibility surface.
 
-- **Implementer source checks:** fetched `origin/main` remains `21e81eba7`; M242 landed in #815. A wire-type draft and its package tests exist, but native transport and production wiring remain unimplemented.
+- **Implementer source checks:** fetched `origin/main` remains `21e81eba7`; M242 landed in #815. Wire types, bounded framing, native adapters and the bus adapter are written. Gateway, runner integration and complete bus migration remain due.
 - **Owner implementation approval:** Indy approved the [design packet](../../reviews/m243/implementation-signoff.md) with "Other than than the I am sign off / approve the implementation." and "Yes keep going to a PR". The shared `af_stream` crate, fourth `work` lane, private Fly deployment scope and native proof gates now govern implementation. BoringSSL is scoped to both new runner carriers; a project-wide Rustls removal remains separate.
 - **Current owner constraints:** "Private Fly routing is what we will support, for external runners, i suggest we ask folks to have HTTP/3 QUIC or HTTP/2 enabled." Also: "If you find doing cast, get it signedoff / approved with indy" and "I dont wish to build the hot switch from http/2 to http/3 now". Apply those constraints to routing prerequisites, changed SQL and reconnect behavior.
 - **M244 alignment:** its source specifies core NATS behind `afd_bus::Bus`, no JetStream or key-value store, neutral `Message`/`Lagged`/`Gap`, and durable facts moved to Postgres before Dragonfly deletion. M243 builds that replaceable signal boundary and keeps runners free of broker credentials.
 - **Reference study:** cloned RustAPI, Quiche and Neqo outside this worktree at the owner's request. [Source findings](../../reviews/m243/transport-and-toon-research.md) distinguish production library history from the unverified native adapter and TOON model-input experiment.
-- **Inventory evidence:** [files.tsv](../../reviews/m243/files.tsv) resolves complete proposed paths against `origin/main` `21e81eba7`. It checks all existing paths for presence and proposed creations for absence; dependent audit rows remain due during implementation.
+- **Inventory evidence:** [files.tsv](../../reviews/m243/files.tsv) was reverified against merged `origin/main` `a5155b6f8`. Existing table paths now use #816's timestamp filenames. Recheck every final path again before closing the stream.
 - **Path corrections:** folding lives in `afr_supervisor/src/client/lease_verbs/mod.rs` and `verbs::FencedVerbs`; the proposed `client/folds.rs` and `inbox.rs` do not exist.
 - **Transport references:** Codex's inspected checkout is `748ab55ca7de0b647d9a7a9d9a8e70e00f28666d`. Its supervision patterns apply; its WebSocket dependencies do not.
 - **Review status:** the three fresh-context Elephant-Goldfish reviewers completed their first audit. Accepted corrections fix the three-lane mapping, connection-local binding, framing, response correlation, full renewal acknowledgements, aggregate recovery budget, grant authority fencing, task activity, drain order and test registration. Native evidence remains an implementation gate, not a claimed pass.
-- **Data dependency:** fetched `origin/fix/m242-fold-scope` at `d8ec02123` still lacks the promised `af_core/sqlx` feature and event-key rewrite. Recheck the completed follow-up before compiling new data access against it; carrier implementation can proceed independently.
+- **Data dependency:** #816 merged as `a5155b6f8`, including `af_core/sqlx`, native UUIDv7 bindings and timestamp table files. This branch was rebased onto that main revision. New data access keeps those native identifier types.
+- **Native adapter evidence:** the first production suite passed 14 tests, including four lanes per connection, framing failures and certificate refusals. Its log is `/workspace/scratch/m243-logs/native-cap-proof-tests-v1.log`. This run used a scratch dependency override; it proves neither the final dependency selection nor repository gates.
+- **Dependency approval:** Indy chose “Pin workspace libc to 0.2.189 and require full Linux gates (Recommended)”. The workspace and lockfile now use that released version with published `tokio-quiche 0.20.1`. The scratch override is absent from dependency resolution.
+- **Configuration request:** Indy asked, “I think these have to be configurable via toml or so”. Follow the existing typed environment resolver. `RUNNER_STREAM_HINT_CAPACITY` controls the per-replica queue, defaults to 64 and accepts 1–65,536; daemon boot wiring remains due.
+- **Fairness requirement:** a replica's bounded hint queue is scheduling look-ahead, never durable ownership. Its unconditional five-second database probe must run during continuous notifications. Add a 1,000-fleet test proving older eligible work progresses with available runner capacity; the bounded-buffer test alone proves no such guarantee.
+- **Coverage requirement:** Indy requested the Rust minimum gate. Main requires 98.5% overall line coverage and 97.5% changed-line coverage. The new crates automatically enter the substrate shard; final measurement remains due.
+- **Collector ownership:** the daemon installs `af_observability` producers, while the runner has its own collector and recorder. Transport startup must install the shared stream families in each process correctly. In-process capture tests alone cannot prove that a disconnected runner exports failed connection attempts.
+- **Early draft request:** Indy said, “well send the draft PR when you have the check, fmt clippy lints taken care”, then “so the claude agent can start”. Publish the current bus and transport work as a draft after those checks. Remaining implementation, integration, coverage and final shipping gates stay required before merge.
+- **Test environment:** process 1 is `tail`, and unreaped children caused two executor cleanup failures. The identical compiled executor suite passed 57 tests under existing `docker-init -s`; no executor source changed. Final Make lanes must run with that child reaper.
+- **Bus ownership:** the adapter preserves native subscription drop behavior and shares payload bytes across consumers. `shutdown` joins the three signal operations on `Bus`, so drain releases subscriptions through the same boundary. Adapter tests and full publisher/subscriber migration remain due.
 
 - **Consults** — source review on `main` `14539a73e` plus M241's branch, Nov 06, 2026:
   - Auth admits only `active` runners (`afd_state/src/credentials/rows.rs`), so cordon and drain refuse every call today; the stream keeps that by closing.

@@ -201,7 +201,7 @@ async fn deliver(streams: &FleetStreams, fleet: &str, payload: &str, reader: &mu
                 .expect("the publish reaches the owning node");
             if let Ok(Ok(Received::Message(message))) =
                 tokio::time::timeout(Duration::from_millis(200), reader.recv()).await
-                && message.payload == payload
+                && message.payload.as_str() == payload
             {
                 return;
             }

@@ -38,6 +38,7 @@ fn fold_products() -> [(&'static str, usize); 2] {
 fn label_products() -> Vec<(&'static str, usize)> {
     let mut products = pool_schedule_products();
     products.extend(fold_products());
+    products.extend(stream_products());
     products.extend([
         (
             task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
@@ -135,6 +136,39 @@ fn label_products() -> Vec<(&'static str, usize)> {
     products
 }
 
+fn stream_products() -> [(&'static str, usize); 8] {
+    let attempts =
+        fleet_labels::StreamTransport::ALL.len() * fleet_labels::StreamOutcome::ALL.len();
+    [
+        (fleet::RUNNER_STREAM_CONNECT_TOTAL.wire_name(), attempts),
+        (fleet::RUNNER_STREAM_CONNECT_SECONDS.wire_name(), attempts),
+        (
+            fleet::RUNNER_STREAM_OPERATION_SECONDS.wire_name(),
+            fleet_labels::StreamStage::ALL.len() * fleet_labels::StreamOutcome::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_FALLBACK_TOTAL.wire_name(),
+            fleet_labels::StreamFallback::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_TIMEOUTS_TOTAL.wire_name(),
+            fleet_labels::StreamStage::ALL.len(),
+        ),
+        (
+            fleet::FLEET_READY_WAKE_HINTS_TOTAL.wire_name(),
+            fleet_labels::ReadyHint::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_NATIVE_RTT_SECONDS.wire_name(),
+            fleet_labels::StreamTransport::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_NATIVE_PACKETS_TOTAL.wire_name(),
+            fleet_labels::StreamPacket::ALL.len(),
+        ),
+    ]
+}
+
 fn pool_schedule_products() -> Vec<(&'static str, usize)> {
     vec![
         (
@@ -211,6 +245,12 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         }};
     }
     vec![
+        set!(crate::metrics::label::fleet::StreamPacket),
+        set!(crate::metrics::label::fleet::StreamTransport),
+        set!(crate::metrics::label::fleet::StreamOutcome),
+        set!(crate::metrics::label::fleet::StreamStage),
+        set!(crate::metrics::label::fleet::StreamFallback),
+        set!(crate::metrics::label::fleet::ReadyHint),
         set!(crate::metrics::label::task::TaskOperation),
         set!(crate::metrics::label::task::TaskOutcome),
         set!(crate::metrics::label::database::PoolRole),

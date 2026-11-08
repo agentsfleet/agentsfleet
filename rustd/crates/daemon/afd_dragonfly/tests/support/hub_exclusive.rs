@@ -211,7 +211,7 @@ pub(crate) async fn deliver(
             // this reader's buffer, not a recovery: skip it. Payloads are
             // distinct per call, so a frame from before the kill can never
             // satisfy this one.
-            Ok(Ok(Received::Message(message))) if message.payload == payload => return,
+            Ok(Ok(Received::Message(message))) if message.payload.as_str() == payload => return,
             // A stale frame, a lag or gap notice, or an empty poll: publish
             // again and keep waiting.
             Ok(Ok(Received::Message(_) | Received::Lagged(..) | Received::Gap)) | Err(..) => {}

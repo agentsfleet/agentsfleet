@@ -529,6 +529,37 @@ Gaps left by M238, each named in M233_001:
 - The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026 (§2).
 - The edge reports nothing of its own (§3).
 
+## M243 runner stream instrumentation
+
+The M243 transport records connection attempts, eligible HTTP/2 fallbacks and bounded operation outcomes through `af_observability`.
+Its application startup wiring remains under development; the transport library and exported-family tests do not establish a serving runner session.
+The existing signal paths above remain authoritative until that integration lands.
+
+| Measurement | Diagnostic purpose |
+|---|---|
+| `runner_stream_connect_total` and `runner_stream_connect_seconds` | Every preferred and fallback attempt, including failures hidden by eventual success |
+| `runner_stream_operation_seconds` and `runner_stream_timeouts_total` | Memory, read, write, connection, handshake, opening and shutdown delays |
+| `runner_stream_fallback_total` | Finite reason that permitted an HTTP/2 attempt |
+| `runner_stream_native_rtt_seconds` and `runner_stream_native_packets_total` | Actual QUIC round-trip samples and sent, lost and retransmission-carrying packets |
+| `runner_stream_native_pto_total` and `runner_stream_native_retransmitted_bytes_total` | Probe timeouts and stream bytes sent again |
+| `fleet_ready_wake_hints_total` | Per-replica hint admission, deduplication and eviction pressure |
+
+Every family uses the `agentsfleet_` prefix; the [metric census](../metrics.census.tsv) fixes its units and label ceiling.
+Connection and operation observations record completion, cancellation, timeout and an abandoned future through automatic cleanup.
+Native samples are exported by an owned task outside QUIC I/O callbacks, including a final sample during explicit close.
+
+Operation spans carry a finite stage, outcome and elapsed time beneath the caller's session context.
+Runner and connection identifiers belong in traces rather than new metric labels.
+Bearer tokens, credential hashes, payloads and key material stay out of these observations.
+
+HTTP/2 has no QUIC measurements, so unsupported readings remain absent.
+Packet loss and probe timeouts describe the native network path; application answer deadlines still determine whether the daemon responds.
+Successful fallback must retain evidence of the failed HTTP/3 attempt.
+
+Daemon and runner startup must bind these measurements to their respective collectors.
+The daemon's process-wide producers alone cannot export a disconnected runner's failed connection attempts.
+The runner collector remains the owner of those client-side measurements.
+
 ## Library read stages are metrics, not spans
 
 The authenticated library reads record stage timing as fixed-cardinality

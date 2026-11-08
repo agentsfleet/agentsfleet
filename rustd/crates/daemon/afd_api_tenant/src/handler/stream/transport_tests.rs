@@ -28,7 +28,7 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 fn published(payload: &str) -> Arc<Message> {
     Arc::new(Message {
         channel: format!("fleet:{FLEET}:activity"),
-        payload: payload.to_owned(),
+        payload: Arc::new(payload.to_owned()),
     })
 }
 

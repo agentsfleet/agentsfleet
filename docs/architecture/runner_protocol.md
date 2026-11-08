@@ -49,6 +49,49 @@ Fly documents UDP support on its private IPv6 network separately from its public
 Sources: [Fly UDP networking](https://docs.fly.io/networking/udp-and-tcp/),
 [HTTP/3 connection establishment](https://www.rfc-editor.org/rfc/rfc9114.html#section-3.2).
 
+## Certificates and configuration
+
+The daemon presents one certificate chain and private key on both native listeners.
+The certificate's subject alternative names include the hostname in the runner stream URL.
+Runners verify that name and chain, then authenticate with their existing bearer token; they need no client certificate.
+
+For private Fly routing, use a private certificate authority (CA) or another issuer valid for the configured hostname.
+Distribute the CA's public certificate to runners when their operating system does not already trust it.
+The CA signing key stays outside daemon and runner runtime configuration.
+
+The implementation uses these configuration names:
+
+| Process | Environment variable | Purpose |
+|---|---|---|
+| Daemon | `RUNNER_STREAM_LISTEN_ADDR` | Private TCP and UDP listen address; proposed default `[::]:4443` |
+| Daemon | `RUNNER_STREAM_TLS_CERT_FILE` | PEM leaf certificate followed by its issuer chain |
+| Daemon | `RUNNER_STREAM_TLS_KEY_FILE` | PEM private key matching that leaf certificate |
+| Runner | `AGENTSFLEET_RUNNER_STREAM_URL` | HTTPS daemon origin; the client opens `/v1/runners/me/stream` there |
+| Runner | `RUNNER_STREAM_TLS_CA_CERT_FILE` | Trusted CA bundle for a private issuer; omitted for operating-system trust |
+| Runner | Existing `AGENTSFLEET_RUNNER_TOKEN` | Runner bearer credential, independent of certificate trust |
+| Runner | Existing `AGENTSFLEET_API_URL` | Endpoint for the remaining HTTP operations |
+
+These names are recorded before their configuration readers land; this page's implementation status still applies.
+A runner stream URL such as `https://agentsfleetd-dev.internal:4443` requires that exact hostname in the certificate.
+An external runner also needs a route to that private endpoint.
+
+Use the existing 1Password vault selected by `VAULT_DEV` for development and `VAULT_PROD` for production.
+The deployment workflow already selects those variables; never hardcode vault names into transport code.
+The proposed item fields are:
+
+| Item | Fields | Runtime delivery |
+|---|---|---|
+| `runner-stream-ca` | `certificate`, `private-key` | Distribute only the public certificate to runner trust bundles; keep the signing key out of runtime |
+| `agentsfleetd-runner-stream-tls` | `certificate-chain`, `private-key`, `server-name` | Stage the chain and leaf key as protected daemon files; the hostname is configuration metadata |
+
+Use separate CA and leaf items in each environment's vault.
+The existing runner item continues to hold the bearer credential.
+Creating items, delivering protected files and changing Fly configuration require their concrete reviewed deployment patch.
+
+Rotate leaf files through a daemon rollout, which drains sessions and lets runners reconnect using the current carrier preference.
+When rotating the CA, distribute the new trust anchor before serving certificates issued by it.
+Overlapping trust bundles allow that sequence without disabling certificate verification.
+
 ## One session and two carriers
 
 A runner has one serving session, identified by `runner.runners.connection_id`.
@@ -113,7 +156,9 @@ Wrong-lane messages are protocol errors.
 
 Each message is a four-byte, unsigned big-endian length followed by UTF-8 JSON.
 The length covers only the JSON bytes, with a maximum of 2 MiB.
-`tokio_util::codec::LengthDelimitedCodec` enforces framing and allocation bounds.
+The reader validates that prefix before reserving memory and reading into one zeroing payload buffer.
+
+Its reservation returns automatically on success, cancellation, timeout and failed I/O.
 
 Requests expecting answers carry a positive, session-local `request_id` that every answer echoes.
 The counter never repeats within a session; exhaustion ends that session.
@@ -181,6 +226,9 @@ The HTTP stream mapping may require refining this plan during the spike.
 `afd_bus::Bus` is the runtime-selected broker boundary.
 Its `publish`, `publish_batch` and `subscribe` methods use typed `Subject` values.
 An `Arc<dyn Bus>` handle permits the later broker replacement without changing publishers.
+
+Its synchronous `shutdown` closes the adapter's subscriptions during drain.
+Subscription streams own native release behavior, and message payloads share one allocation across consumers.
 
 The adapter translates backend-specific values into `Message`, `Lagged` and `Gap` outcomes.
 M244 supplies core NATS behind this interface and moves Dragonfly's durable responsibilities into Postgres before deleting Dragonfly.
@@ -315,7 +363,7 @@ An HTTP/2 fallback is visible as a transport outcome, not reported as an HTTP/3 
 
 The local HTTP/3 spike completed verified-certificate duplex exchange, a byte-identical 2 MiB payload and 120 seconds of application pings.
 The raw client worker reported exit after explicit close, without a client certificate configured.
-The HTTP/2 BoringSSL spike has completed duplex and payload exchange; its idle and cleanup checks remain in progress.
+The HTTP/2 BoringSSL spike also passed duplex, payload, 120-second ping and worker-exit checks.
 
 These scratch probes establish library behavior, not completion of production adapter or deployment tests.
 Fly development checks follow local implementation and repository gates, before the pull request.
