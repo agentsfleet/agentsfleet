@@ -55,6 +55,9 @@ const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 /// Where the lane extracted the Dragonfly certificate authority to.
 const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
+/// A seed nothing listens on.
+const NOWHERE_BUS: &str = "redis://127.0.0.1:1";
+
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
@@ -125,7 +128,27 @@ async fn test_readyz_dependency_probe() {
     );
     assert!(
         !afd_api::router::ready_decision(inputs),
-        "one dependency down is not ready"
+        "a database that is down is not ready"
+    );
+}
+
+/// A bus that answers nothing leaves the instance ready (M244 §6).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn readyz_stays_ready_through_a_bus_outage() {
+    let (database, _queue) = connected().await;
+
+    // A reserved port: every PING is refused at the socket.
+    let nowhere = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_BUS.to_owned())
+        .with_request_timeout(std::time::Duration::from_millis(250));
+    let bus = Dragonfly::unreachable(&nowhere).expect("a well-formed seed");
+    let probes = LiveDependencies::new(database, bus);
+    let inputs = probes.probe().await;
+    assert!(inputs.database, "the lane's Postgres answers");
+    assert!(!inputs.queue, "a bus that answers nothing is reported down");
+    assert!(
+        afd_api::router::ready_decision(inputs),
+        "Postgres backs every bus signal, so readiness holds"
     );
 }
 

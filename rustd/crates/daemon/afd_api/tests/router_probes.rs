@@ -1,5 +1,5 @@
 //! The two probes: liveness answers for the process alone, and readiness
-//! reports each dependency and fails closed on either.
+//! reports each dependency and fails closed on the database.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::indexing_slicing,
@@ -56,15 +56,15 @@ async fn test_readyz_is_green_when_every_dependency_answers() {
     assert_eq!(body["queue"], true);
 }
 
-/// One red dependency takes the instance out of rotation, and names itself.
+/// A red database takes the instance out of rotation, and names itself.
 #[tokio::test]
 async fn test_readyz_is_red_and_says_which_dependency() {
     let degraded = send(
         Method::GET,
         "/readyz",
         ReadyInputs {
-            database: true,
-            queue: false,
+            database: false,
+            queue: true,
         },
     )
     .await;
@@ -77,35 +77,48 @@ async fn test_readyz_is_red_and_says_which_dependency() {
 
     let body = json_body(degraded).await;
     assert_eq!(body["ready"], false);
+    assert_eq!(body["database"], false);
     assert_eq!(
-        body["database"], true,
+        body["queue"], true,
         "a healthy dependency still reports healthy — the fields are separate \
          so an operator knows which incident they have"
     );
-    assert_eq!(body["queue"], false);
 }
 
-/// The decision fails closed on either dependency.
-#[test]
-fn test_ready_decision_needs_every_dependency() {
-    assert!(ready_decision(ALL_HEALTHY));
-    for inputs in [
-        ReadyInputs {
-            database: false,
-            queue: true,
-        },
+/// A red bus is reported, and the instance stays in rotation: Postgres backs
+/// every signal the bus carries, so the outage costs latency only.
+#[tokio::test]
+async fn test_readyz_stays_green_and_reports_a_red_bus() {
+    let degraded = send(
+        Method::GET,
+        "/readyz",
         ReadyInputs {
             database: true,
             queue: false,
         },
-        ReadyInputs {
+    )
+    .await;
+
+    assert_eq!(degraded.status(), StatusCode::OK);
+    let body = json_body(degraded).await;
+    assert_eq!(body["ready"], true);
+    assert_eq!(body["database"], true);
+    assert_eq!(body["queue"], false, "the outage is still visible");
+}
+
+/// Only the database gates readiness.
+#[test]
+fn test_ready_decision_follows_the_database_alone() {
+    assert!(ready_decision(ALL_HEALTHY));
+    assert!(ready_decision(ReadyInputs {
+        database: true,
+        queue: false,
+    }));
+    for queue in [true, false] {
+        let inputs = ReadyInputs {
             database: false,
-            queue: false,
-        },
-    ] {
-        assert!(
-            !ready_decision(inputs),
-            "{inputs:?} must not be ready: ready_decision is an AND"
-        );
+            queue,
+        };
+        assert!(!ready_decision(inputs), "{inputs:?} must not be ready");
     }
 }

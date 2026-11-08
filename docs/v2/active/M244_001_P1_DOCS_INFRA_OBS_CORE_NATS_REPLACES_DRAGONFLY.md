@@ -124,7 +124,7 @@ Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outs
 | `.github/workflows/deploy-dev-fly.yml`, `release.yml`, `test-integration-rustd.yml`, `test-unit-rustd.yml` | EDIT | §8, Indy's approval: `NATS_URL` from `op://`, NATS apps before the daemon, compose service names |
 | `playbooks/founding/02_preflight/{001_playbook.md,02_credentials.sh,credentials_test.sh}`, `founding/01_bootstrap/001_playbook.md`, `founding/03_priming_infra/001_playbook.md`, `operations/credential_rotation/*`, `operations/ip_allowlisting/*`, `playbooks/ARCHITECTURE.md`, `playbooks/README.md`, `operations/explicit_dispatch_test.sh`, `operations/teardown/gate_env_test.sh` | EDIT | §8: `nats-{env}/api-url` items and checks |
 | `playbooks/operations/teardown/dragonfly/**` | DELETE | §8: nothing is left to flush once the apps are destroyed |
-| `public/openapi.json` | UNCHANGED | §6 changes no frame shape or route text; CHORE(close) regenerates and expects no diff |
+| `public/openapi.json` | EDIT (regenerated) | §6: the `/readyz` description and the `queue` field description, because the bus no longer gates readiness; no frame shape changes |
 
 Hits kept as records, apart from the table: `docs/v2/**`, `docs/reviews/**`, `playbooks/operations/acceptance/baselines/**`, the other committed `bench/baselines/*.rig.json` provenance, and `docs/RUST_ERROR_STANDARD.md:64-65` (DOC-S7). Same spelling, different meaning: `ui/packages/app/tests/fleet-tool-calls.runner.test.tsx`, a sample search query. The docs repository has no public surface to change: its only hits are the `UZ-STARTUP-004` row, whose title stays, and a historical changelog entry.
 
@@ -246,7 +246,7 @@ A fleet tail sends `hello`, then one `catching_up` with `dropped: 0` once the su
 - **Dimension 6.2** — an interest race is covered → Test `frame_before_interest_is_covered_by_backfill` (integration): a steer admitted on node 1 just after a node 3 subscription; the viewer receives the frame, or `catching_up` and then the row from the events route.
 - **Dimension 6.3** — DONE — a failed subscribe is not silent → Test `tail_subscribe_failure_sends_catching_up` (unit): a closed Bus client; the viewer receives `catching_up` within 1 s, never only heartbeats.
 - **Dimension 6.4** — DONE — a lost draft subscription resyncs → Test `draft_stream_resyncs_when_its_subscription_ends` (integration): the subscription is closed; the stream sends `draft.resync` and the next progress event.
-- **Dimension 6.5** — readiness survives a broker outage → Test `readyz_stays_ready_through_a_bus_outage` (integration): all seeds behind a cut proxy; `/readyz` answers 200 and a steer is accepted.
+- **Dimension 6.5** — DONE for the probe; §7 re-points it at NATS — readiness survives a broker outage → Test `readyz_stays_ready_through_a_bus_outage` (integration): all seeds behind a cut proxy; `/readyz` answers 200 and a steer is accepted. Until §7 makes NATS the production bus, the test probes an unreachable bus seed. `test_admitted_publish_failure_still_accepts` proves that a steer is accepted when its publish fails.
 
 ### §7 — Delete Dragonfly, and replace its rules
 
@@ -377,6 +377,8 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
 - **Patch-vs-refactor verdict:** a **refactor** because one store is replaced and five of its jobs change homes, behind a seam M243 already cut.
 
 ## Discovery (consult log)
+
+- **Readiness text (implementation finding, Nov 09, 2026: 03:40 AM)**: the Files Changed row said §6 leaves `public/openapi.json` unchanged. That was wrong. Once the bus stops gating, the `/readyz` sentence "Returns 200 when the database and event queue are available" is false. The route text and the `Readiness.queue` description now say the field reports the bus and does not gate. The wire shape is unchanged: `queue` stays as a reported field. The docs-repository page follows on its own branch at CHORE(close).
 
 - **Consults** — Source review on `main` `14539a73e`, Nov 06, 2026:
   - `afd_dragonfly` has 19 importing crates plus the workspace manifest (`rustd/Cargo.toml:129`); `redis` 1.8.1 is pinned in `Cargo.lock`; `async-nats` is absent.
