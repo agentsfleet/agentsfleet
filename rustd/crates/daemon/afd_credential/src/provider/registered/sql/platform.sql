@@ -2,7 +2,7 @@ WITH locked AS MATERIALIZED (
     SELECT p.provider, m.model_name AS model, m.id AS platform_model_id,
            m.context_cap_tokens AS context_window_tokens,
            s.id AS secret_id, s.meta_base_url, sha256(s.secret_ciphertext) AS secret_digest,
-           r.resource_version, s.workspace_id::text AS workspace_id, s.key_name,
+           r.resource_version, s.workspace_id AS workspace_id, s.key_name,
            m.inference
       FROM model.platform_defaults p
       JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
@@ -10,7 +10,7 @@ WITH locked AS MATERIALIZED (
      CROSS JOIN model.catalogue_version r
      WHERE p.active AND s.meta_has_key
        AND s.meta_provider = p.provider
-       AND EXISTS (SELECT 1 FROM identity.tenants WHERE id = $1::uuid)
+       AND EXISTS (SELECT 1 FROM identity.tenants WHERE id = $1)
        AND $2::text IS NOT NULL
      ORDER BY p.provider LIMIT 1
        FOR SHARE OF p, s, m, r

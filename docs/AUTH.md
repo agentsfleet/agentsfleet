@@ -259,7 +259,7 @@ It arises *after* one, and only because the credential is durable: the row outli
 
 The Rust handler answers every event type other than `user.created` with `200 {"ignored":"<event type>"}` (`identity_route.rs`). A destructive delete does not belong in the milestone that opens accounts. The gap is visible in the answer rather than hidden behind a 404.
 
-Until teardown lands there is no `DELETE FROM identity.users`, so `1160_identity_cli_credentials.sql`'s `ON DELETE CASCADE` never fires and the credential row outlives the person indefinitely. The same branch also covers the cases a teardown webhook would miss anyway:
+Until teardown lands there is no `DELETE FROM identity.users`, so `20261108120800_identity_cli_credentials.sql`'s `ON DELETE CASCADE` never fires and the credential row outlives the person indefinitely. The same branch also covers the cases a teardown webhook would miss anyway:
 
 - a wiped Clerk development instance replays no per-user events
 - a delivery can be lost or rejected
@@ -331,7 +331,7 @@ a sign-up method that admits unverified addresses is ever enabled.
 delivery for a subject already opened must answer exactly as the first did. The
 handler reads before it writes and reports the replay. That pre-read is an
 optimisation, not the arbiter: two concurrent deliveries can both pass it, so the
-second trips `uq_users_oidc_subject` (`schema/1120_identity_users.sql`), re-reads what the
+second trips `uq_users_oidc_subject` (`schema/20261108120400_identity_users.sql`), re-reads what the
 winner committed, and answers as a replay. An index holds under concurrency and a
 read never can.
 
@@ -788,7 +788,7 @@ A per-process memo used to front this read, with entries living at most `HEARTBE
 
 What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll. It returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER` = 1 s), so an idle runner authenticates about once a second per worker.
 
-The sizing assumes ~100 runners (`runner.runners`, `schema/1800_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
+The sizing assumes ~100 runners (`runner.runners`, `schema/20261108123100_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
 
 It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner treats as retryable (`Error::is_retryable`, `rustd/crates/runner/afr_supervisor/src/error/mod.rs`), **not** as a token refusal. Only a refused token stops the runner (`rustd/crates/runner/afr_supervisor/src/halt/mod.rs`), so an outage cannot shut a healthy fleet down.
 

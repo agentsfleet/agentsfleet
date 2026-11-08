@@ -67,7 +67,7 @@ afd_dragonfly.workspace = true
 redis.workspace = true
 # Identifiers, the clock the pass is given, and the environment source the
 # daemon's own pool config resolves through.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The entropy surface a lease mints its identifiers from.
 # The ledger a steer is admitted through. The lane builds one so its
 # measured cost is the production path's, not a shortcut around it.

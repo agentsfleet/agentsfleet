@@ -1,5 +1,7 @@
 //! Billing carried from an earlier attempt of the same admitted event.
 
+use af_core::id::Uuid7;
+
 /// The billing a reclaimed lease carries FORWARD rather than re-charging.
 ///
 /// The billing must not be
@@ -9,7 +11,7 @@
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Reused {
     /// The tenant the original lease debited.
-    pub tenant_id: String,
+    pub tenant_id: Uuid7,
     /// The billing posture it was charged under.
     pub posture: String,
     /// The model it was charged for.

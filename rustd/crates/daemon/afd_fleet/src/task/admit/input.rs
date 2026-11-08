@@ -6,12 +6,13 @@ use super::super::{
 };
 use super::{prepare::Wake, source::Source};
 use crate::{Result, error::query};
+use af_core::id::Uuid7;
 use af_wire::task::{TaskInputAction, TaskState};
 use sqlx::PgConnection;
 
 #[derive(sqlx::FromRow)]
 struct Origin {
-    source: String,
+    source: Uuid7,
     generation: i64,
     state: String,
     queued: bool,
@@ -40,9 +41,9 @@ pub(super) async fn wake(
     let origin: Origin = fetch::rows(
         tasks.leases.pool(),
         sqlx::query_as(include_str!("sql/input_origin.sql"))
-            .bind(id.as_str())
-            .bind(scope.fleet_id.as_str())
-            .bind(scope.workspace_id.as_str()),
+            .bind(id)
+            .bind(&scope.fleet_id)
+            .bind(&scope.workspace_id),
         None,
         "prepare human-input continuation",
     )
@@ -67,7 +68,7 @@ pub(super) async fn wake(
             generation
                 .checked_add(1)
                 .ok_or(TaskRefusal::LimitExhausted)?,
-            &guard::id(&origin.source, "source_admission_id")?,
+            &origin.source,
         )
         .with_reply(
             origin.reply_provider.as_deref(),
@@ -89,7 +90,7 @@ pub(super) async fn accept(
         return Ok(false);
     };
     let locked: Locked = sqlx::query_as(super::super::sql::LOCK_TASK)
-        .bind(id.as_str())
+        .bind(id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(&mut *connection)
@@ -117,37 +118,36 @@ pub(super) async fn accept(
         }
     }
     if queue {
-        super::super::waits::cancel(connection, id.as_str()).await?;
+        super::super::waits::cancel(connection, id).await?;
     }
     let (sequence, generation): (i64, i64) = sqlx::query_as(include_str!("sql/input_cursor.sql"))
-        .bind(id.as_str())
+        .bind(id)
         .bind(queue)
         .bind(TaskState::Ready.as_str())
         .fetch_one(&mut *connection)
         .await
         .map_err(query("allocate accepted input sequence"))?;
     if queue {
-        super::super::continuation::retire(connection, id.as_str()).await?;
+        super::super::continuation::retire(connection, id).await?;
     }
     let message = source.message()?;
     let span = usize::try_from(item.span().start.unsigned_abs()).unwrap_or(usize::MAX)
         ..usize::try_from(item.span().end.unsigned_abs()).unwrap_or(usize::MAX);
     sqlx::query(include_str!("sql/input.sql"))
-        .bind(binding.item_id.as_str())
-        .bind(id.as_str())
+        .bind(&binding.item_id)
+        .bind(id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(sequence)
         .bind(message.get(span).ok_or(TaskRefusal::InputAmbiguous)?)
         .bind(item.interpretation())
-        .bind(lease.lease_id.as_str())
+        .bind(lease.lease_id)
         .bind(current.fence)
         .bind(generation)
         .execute(connection)
         .await
         .map_err(query("retain accepted text and input interpretation"))?;
-    binding.applies_here =
-        current.task_id.as_deref() == Some(id.as_str()) && state == TaskState::Running;
+    binding.applies_here = current.task_id.as_ref() == Some(id) && state == TaskState::Running;
     binding.input_sequence = Some(row::counter(sequence, "input sequence")?);
     binding.task_generation = Some(row::counter(generation, "generation")?);
     Ok(queue)

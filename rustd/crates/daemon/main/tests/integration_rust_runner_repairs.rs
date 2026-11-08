@@ -219,7 +219,7 @@ async fn test_incident_repairer_ships_or_stops() {
         .and_then(|request| request.headers.get("authorization"))
         .and_then(|value| value.to_str().ok());
     assert_eq!(key, Some("ApiKey es_fixture_key"));
-    assert_repaired_on_named_branch(AGENTSFLEET, &run.event_id, &seen, &asked);
+    assert_repaired_on_named_branch(AGENTSFLEET, run.event_id.as_str(), &seen, &asked);
     assert_token_stayed_on_the_wire(&seen, &asked);
 
     let second = run.enqueue_event(EventType::Chat).await;

@@ -5,8 +5,6 @@
 //! other digested field, so the property each proves is that the rows stored
 //! before it still hash as they did.
 
-use af_core::id::Uuid7;
-
 use super::*;
 
 /// The digest [`sample`] had before admissions carried a destination.
@@ -22,7 +20,14 @@ const DIGEST_BEFORE_DESTINATIONS: &str =
 const CONNECTOR: &str = "slack";
 
 /// An event id as the ledger mints it: the admission row's `UUIDv7`.
-const RESUMED: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0177";
+static RESUMED: std::sync::LazyLock<Uuid7> = std::sync::LazyLock::new(|| {
+    afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0177")
+});
+
+/// [`RESUMED`] as the identifier a reply inherits from.
+fn resumed() -> Uuid7 {
+    RESUMED.clone()
+}
 
 /// Two thread addresses that differ only in the thread.
 const THREAD_A: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
@@ -66,7 +71,9 @@ fn every_destination_digests_apart() {
         }
         .payload_digest(),
         Admission {
-            reply: Reply::Inherit { event_id: THREAD_A },
+            reply: Reply::Inherit {
+                event_id: &resumed(),
+            },
             ..sample()
         }
         .payload_digest(),
@@ -101,28 +108,10 @@ fn a_reply_binds_at_most_one_pair() {
         (Some(CONNECTOR), Some(THREAD_A), None)
     );
 
-    let inherited = ReplyBinds::from(Reply::Inherit { event_id: RESUMED });
+    let resumed = resumed();
+    let inherited = ReplyBinds::from(Reply::Inherit { event_id: &resumed });
     assert_eq!(
-        (
-            inherited.connector,
-            inherited.address,
-            inherited.inherited.as_ref().map(Uuid7::as_str)
-        ),
-        (None, None, Some(RESUMED))
+        (inherited.connector, inherited.address, inherited.inherited),
+        (None, None, Some(resumed.clone()))
     );
-}
-
-/// An event id that is not a row id copies no destination, and never reaches
-/// the statement's `::uuid` cast to be refused there — the retired
-/// `<millis>-<n>` spelling included.
-#[test]
-fn an_id_that_names_no_row_inherits_nothing() {
-    for foreign in ["not-a-ledger-id", "1700000000000-7", ""] {
-        let binds = ReplyBinds::from(Reply::Inherit { event_id: foreign });
-        assert_eq!(
-            (binds.connector, binds.address, binds.inherited),
-            (None, None, None),
-            "{foreign:?} bound a destination"
-        );
-    }
 }

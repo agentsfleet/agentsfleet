@@ -27,21 +27,21 @@ pub(crate) struct Person {
 /// [`sql::access::PERSON`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct PersonRow {
-    user_id: String,
-    owner_id: String,
+    user_id: Uuid7,
+    owner_id: Uuid7,
     personal_owner: bool,
 }
 
 pub(crate) async fn current(connection: &mut PgConnection, access: Access<'_>) -> Result<Person> {
     let row: PersonRow = sqlx::query_as(sql::access::PERSON)
-        .bind(access.workspace.as_str())
+        .bind(access.workspace)
         .bind(access.subject)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?
         .ok_or(ErrorKind::Hidden)?;
     if !row.personal_owner {
-        let membership: Option<String> = sqlx::query_scalar(sql::access::MEMBER)
+        let membership: Option<Uuid7> = sqlx::query_scalar(sql::access::MEMBER)
             .bind(&row.owner_id)
             .bind(&row.user_id)
             .fetch_optional(connection)
@@ -52,7 +52,7 @@ pub(crate) async fn current(connection: &mut PgConnection, access: Access<'_>) -
         }
     }
     Ok(Person {
-        id: Uuid7::parse(&row.user_id)?,
-        owner: Uuid7::parse(&row.owner_id)?,
+        id: row.user_id.clone(),
+        owner: row.owner_id.clone(),
     })
 }

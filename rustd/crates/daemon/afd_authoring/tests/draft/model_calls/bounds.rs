@@ -87,16 +87,16 @@ async fn usage_beyond_the_physical_output_or_combined_context_is_uncertain() {
         );
         assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, true));
         assert_eq!(provider.count(), 1);
-        let visible: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1::uuid AND (result IS NOT NULL OR native_reply IS NOT NULL)")
-            .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("private output is fenced");
+        let visible: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches WHERE attempt_id=$1 AND (result IS NOT NULL OR native_reply IS NOT NULL)")
+            .bind(attempt.id).fetch_one(&mut *f.connection().await).await.expect("private output is fenced");
         assert_eq!(visible, 0);
         f.cleanup().await;
     }
 }
 
 async fn set_context(f: &Fixture, tokens: i32) {
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=$2,inference=jsonb_set(inference,'{max_output_tokens}',to_jsonb($2::integer)) WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str()).bind(tokens)
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=$2,inference=jsonb_set(inference,'{max_output_tokens}',to_jsonb($2::integer)) WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model")).bind(tokens)
         .execute(&mut *f.connection().await).await.expect("configured context and output ceiling");
 }
 
@@ -107,8 +107,8 @@ async fn spent_output_cannot_create_a_dispatch() {
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
-    sqlx::query("UPDATE authoring.attempts SET output_token_count=8192 WHERE id=$1::uuid")
-        .bind(attempt.id.as_str())
+    sqlx::query("UPDATE authoring.attempts SET output_token_count=8192 WHERE id=$1")
+        .bind(&attempt.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("spent output");
@@ -132,8 +132,8 @@ async fn a_missing_wallet_cannot_create_a_dispatch() {
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     let provider = Arc::new(Provider::known());
     let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
-    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id=$1::uuid")
-        .bind(f.tenant.as_str())
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id=$1")
+        .bind(&f.tenant)
         .execute(&mut *f.connection().await)
         .await
         .expect("owner wallet missing");

@@ -86,7 +86,7 @@ impl Directory {
     pub async fn list(&self, workspace: &Uuid7) -> Result<Vec<SecretSummary>> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query_as::<_, ProjectionRow>(sql::SELECT_SECRET_PROJECTIONS)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .fetch_all(connection.as_mut())
             .await
             .map_err(query(CONTEXT_LIST))?;

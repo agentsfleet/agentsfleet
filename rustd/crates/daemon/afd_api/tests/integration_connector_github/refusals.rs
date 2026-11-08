@@ -33,7 +33,7 @@ async fn assert_ownership_refused(
         !fixture
             .routed_to(PROVIDER, account)
             .await
-            .contains(&fixture.workspace.as_str().to_owned()),
+            .contains(&fixture.workspace),
         "a refused ownership routes nothing to the workspace"
     );
 }

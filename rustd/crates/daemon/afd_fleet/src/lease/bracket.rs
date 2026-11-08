@@ -95,7 +95,7 @@ impl Leases {
         counters: Option<FleetCounters>,
     ) {
         let frame = TailFrame::EventReceived {
-            event_id: Cow::Borrowed(&acquired.event_id),
+            event_id: Cow::Borrowed(acquired.event_id.as_str()),
             actor: Cow::Borrowed(&acquired.actor),
             event_type: Cow::Borrowed(&acquired.event_type),
             created_at: opened_at,
@@ -118,7 +118,7 @@ impl Leases {
             counters: Some(closed.counters),
         };
         self.streams()
-            .publish_frame(&closed.row.fleet_id, &frame)
+            .publish_frame(closed.row.fleet_id.as_str(), &frame)
             .await
     }
 }

@@ -23,16 +23,16 @@ use self::support::{CronLane, SEED_AT};
 
 /// The fleet's recipe rows, slot first: `(slot, desired, sync)`.
 const RECIPE_ROWS: &str = "SELECT (recipe->>'slot')::bigint, desired_status, sync_status \
-FROM fleet.schedules WHERE fleet_id = $1::uuid AND recipe IS NOT NULL ORDER BY 1";
+FROM fleet.schedules WHERE fleet_id = $1 AND recipe IS NOT NULL ORDER BY 1";
 
 /// Pushes a slot's stored recipe revision to the largest a counter holds.
 const REVISION_AT_CEILING: &str = "UPDATE fleet.schedules \
 SET recipe = jsonb_set(recipe, '{recipe_revision}', to_jsonb(9223372036854775807::bigint)) \
-WHERE fleet_id = $1::uuid AND recipe IS NOT NULL";
+WHERE fleet_id = $1 AND recipe IS NOT NULL";
 
 /// The stored recipe revision of every recipe row on the fleet.
 const REVISIONS: &str = "SELECT (recipe->>'recipe_revision')::bigint FROM fleet.schedules \
-WHERE fleet_id = $1::uuid AND recipe IS NOT NULL";
+WHERE fleet_id = $1 AND recipe IS NOT NULL";
 
 /// `count` distinct recipes, one per hour of the day.
 fn recipes(count: usize) -> Vec<Recipe> {
@@ -81,7 +81,7 @@ async fn replace(lane: &CronLane, recipes: &[Recipe]) -> afd_cron::Result<()> {
 /// The fleet's recipe rows as `(slot, desired, sync)`, slot first.
 async fn rows(lane: &CronLane) -> Vec<(i64, String, String)> {
     sqlx::query_as(RECIPE_ROWS)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .fetch_all(&mut *lane.connection().await)
         .await
         .expect("read the recipe rows")
@@ -91,7 +91,7 @@ async fn rows(lane: &CronLane) -> Vec<(i64, String, String)> {
 #[ignore = "needs the lane's Postgres"]
 async fn a_fleet_outside_the_callers_workspace_is_refused_as_absent() {
     let lane = CronLane::open().await;
-    let elsewhere = Uuid7::parse(&mint_id()).expect("a minted workspace id is canonical");
+    let elsewhere = mint_id();
 
     let refused = replace_in(&lane, &elsewhere, &recipes(1))
         .await
@@ -162,7 +162,7 @@ async fn a_recipe_revision_at_its_ceiling_refuses_a_changed_base() {
         .await
         .expect("the first recipe lands");
     sqlx::query(REVISION_AT_CEILING)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .execute(&mut *lane.connection().await)
         .await
         .expect("push the stored revision to its ceiling");
@@ -179,7 +179,7 @@ async fn a_recipe_revision_at_its_ceiling_refuses_a_changed_base() {
         "the counter will be no lower next time"
     );
     let revisions: Vec<i64> = sqlx::query_scalar(REVISIONS)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .fetch_all(&mut *lane.connection().await)
         .await
         .expect("read the revisions");

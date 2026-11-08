@@ -21,7 +21,7 @@ use std::sync::{
 
 const KEY: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
 const TEXT: &str = "Check setup with this credential";
-const LEDGER: &str = "SELECT a.status,a.usage_unknown,(SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id) FROM authoring.attempts a WHERE id=$1::uuid";
+const LEDGER: &str = "SELECT a.status,a.usage_unknown,(SELECT count(*) FROM authoring.dispatches WHERE attempt_id=a.id) FROM authoring.attempts a WHERE id=$1";
 
 #[derive(Debug)]
 struct Provider {
@@ -98,7 +98,7 @@ async fn call<T: Transport + 'static>(
 
 async fn state(f: &Fixture, lease: &Claimed) -> (String, bool, i64) {
     sqlx::query_as(LEDGER)
-        .bind(&lease.attempt_id)
+        .bind(Uuid7::parse(&lease.attempt_id).expect("attempt"))
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("durable accounting state")
@@ -180,8 +180,8 @@ async fn should_reject_before_intent_when_gemini_key_decodes_to_a_newline() {
 
 async fn malformed_key(api: InferenceApi, key: &str) {
     let f = funded(2).await;
-    sqlx::query("UPDATE model.platform_models SET inference=jsonb_set(inference,'{api}',$2::jsonb) WHERE id=$1::uuid")
-        .bind(f.catalogue[0].as_str())
+    sqlx::query("UPDATE model.platform_models SET inference=jsonb_set(inference,'{api}',$2::jsonb) WHERE id=$1")
+        .bind(&f.catalogue[0])
         .bind(json!(api))
         .execute(&mut *f.connection().await)
         .await

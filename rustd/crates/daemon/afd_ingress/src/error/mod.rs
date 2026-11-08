@@ -28,7 +28,7 @@ mod raise;
 
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
-pub(crate) use self::raise::{query, row_unreadable, stored_fleet, stored_status};
+pub(crate) use self::raise::{query, row_unreadable, stored_status};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -121,8 +121,6 @@ pub(crate) enum ErrorKind {
 
 /// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
 pub(crate) const COLUMN_STATUS: &str = "status";
-/// See [`COLUMN_STATUS`].
-pub(crate) const COLUMN_WORKSPACE: &str = "workspace_id";
 /// See [`COLUMN_STATUS`].
 pub(crate) const COLUMN_FLEET: &str = "id";
 

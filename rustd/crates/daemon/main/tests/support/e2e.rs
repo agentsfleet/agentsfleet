@@ -123,10 +123,15 @@ pub(crate) fn dragonfly_config() -> afd_dragonfly::DragonflyConfig {
 /// Process id and a counter, in a version-7 spelling because every one of these
 /// columns CHECKs the version nibble — a random UUID is refused by the schema
 /// rather than by the code under test.
-pub(crate) fn unique_ids() -> (String, String, String) {
+pub(crate) fn unique_ids() -> (Uuid7, Uuid7, Uuid7) {
     let run = SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let id = |slot: u32| format!("0195b4ba-8d3a-7{run:03x}-8abc-{pid:08x}{slot:04x}");
+    let id = |slot: u32| {
+        Uuid7::parse(&format!(
+            "0195b4ba-8d3a-7{run:03x}-8abc-{pid:08x}{slot:04x}"
+        ))
+        .expect("a scenario id is a canonical UUIDv7")
+    };
     (id(1), id(2), id(3))
 }
 
@@ -141,13 +146,13 @@ pub(crate) struct Scenario {
     /// Where to send requests, already spelled as an origin.
     pub(crate) base: String,
     /// The fleet holding the seeded event.
-    pub(crate) fleet: String,
+    pub(crate) fleet: Uuid7,
     /// Its workspace.
-    pub(crate) workspace: String,
+    pub(crate) workspace: Uuid7,
     /// Its billing tenant.
-    pub(crate) tenant: String,
+    pub(crate) tenant: Uuid7,
     /// The admission identifier shared by the lease, report, and narrative.
-    pub(crate) event_id: String,
+    pub(crate) event_id: Uuid7,
     /// The enrolled runner's durable identifier.
     pub(crate) runner_id: Uuid7,
     /// Its bearer token, revealed once at enrolment.
@@ -250,12 +255,12 @@ pub(crate) async fn scenario_with(
 
 impl Scenario {
     /// Admits another event under this scenario's ready fleet.
-    pub(crate) async fn enqueue_event(&self, event_type: EventType) -> String {
+    pub(crate) async fn enqueue_event(&self, event_type: EventType) -> Uuid7 {
         enqueue(&self.booted, &self.fleet, &self.workspace, event_type).await
     }
 
     /// Puts an event of a type this daemon cannot name on the fleet's stream.
-    pub(crate) async fn enqueue_unsupported_event(&self, event_type: &str) -> String {
+    pub(crate) async fn enqueue_unsupported_event(&self, event_type: &str) -> Uuid7 {
         enqueue_unsupported(
             &self.booted,
             &self.fleet,

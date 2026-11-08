@@ -4,22 +4,14 @@ use std::error::Error as _;
 
 use af_core::error_code;
 
-use super::{Error, row};
+use super::Error;
 
 #[test]
-fn query_and_row_failures_keep_causes_behind_safe_details() -> Result<(), &'static str> {
+fn a_query_failure_keeps_its_cause_behind_a_safe_detail() {
     let query = super::query("listing models")(sqlx::Error::Protocol(
         "fixture administration query".into(),
     ));
     assert_error(&query, error_code::INTERNAL_DB_QUERY, "Database error");
-
-    let malformed_id = af_core::id::Uuid7::parse("not-an-id")
-        .err()
-        .ok_or("the malformed identifier fixture unexpectedly parsed")?;
-    let malformed = row("model.platform_models", "id")(malformed_id);
-    assert_error(&malformed, error_code::INTERNAL_DB_QUERY, "Database error");
-
-    Ok(())
 }
 
 #[test]

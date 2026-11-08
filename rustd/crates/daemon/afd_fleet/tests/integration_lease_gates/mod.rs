@@ -150,11 +150,11 @@ struct Ready {
     /// The runner that will claim the event.
     runner: Uuid7,
     /// The fleet holding it.
-    fleet: String,
+    fleet: Uuid7,
     /// The logical event id, which the event row addresses.
-    event_id: String,
+    event_id: Uuid7,
     /// Its billing tenant.
-    tenant: String,
+    tenant: Uuid7,
 }
 
 /// Seeds [`Ready`], enqueuing a `chat` rather than `seed`'s `steer`.
@@ -202,7 +202,11 @@ async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> String 
 ///
 /// Every stop answers identical bytes — `pull.rs`'s module note says so — so
 /// the ANSWER cannot tell one ending from another. The row can.
-async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(String, String)> {
+async fn terminal_of(
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+    event: &Uuid7,
+) -> Option<(String, String)> {
     let mut connection = fixtures
         .database
         .acquire()
@@ -210,7 +214,7 @@ async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(S
         .expect("a pooled connection");
     let row = sqlx::query(
         "SELECT status, COALESCE(failure_reason, '') \
-           FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2",
+           FROM fleet.events WHERE fleet_id = $1 AND event_id = $2",
     )
     .bind(fleet)
     .bind(event)
@@ -226,10 +230,10 @@ async fn terminal_of(fixtures: &Fixtures, fleet: &str, event: &str) -> Option<(S
 }
 
 /// Replaces a seeded fleet's status.
-async fn set_status(fixtures: &Fixtures, fleet: &str, status: &str) {
+async fn set_status(fixtures: &Fixtures, fleet: &Uuid7, status: &str) {
     execute(
         fixtures,
-        "UPDATE fleet.fleets SET status = $2 WHERE id = $1::uuid",
+        "UPDATE fleet.fleets SET status = $2 WHERE id = $1",
         fleet,
         status,
     )
@@ -237,12 +241,13 @@ async fn set_status(fixtures: &Fixtures, fleet: &str, status: &str) {
 }
 
 /// Replaces a seeded fleet's stored configuration.
-async fn set_config(fixtures: &Fixtures, fleet: &str, config_json: &str) {
+async fn set_config(fixtures: &Fixtures, fleet: &Uuid7, config_json: &str) {
     fixtures.native_config(fleet, config_json).await;
 }
 
-/// One two-parameter statement against the fixture database.
-async fn execute(fixtures: &Fixtures, statement: &'static str, first: &str, second: &str) {
+/// One two-parameter statement against the fixture database, keyed by the
+/// identifier `first`.
+async fn execute(fixtures: &Fixtures, statement: &'static str, first: &Uuid7, second: &str) {
     let mut connection = fixtures
         .database
         .acquire()

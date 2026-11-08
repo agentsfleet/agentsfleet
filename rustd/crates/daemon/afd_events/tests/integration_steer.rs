@@ -1,6 +1,7 @@
 //! Steers preserve their identity and envelope in the serving queue.
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_events::{ACTOR_MACHINE, Steer};
 
@@ -9,10 +10,10 @@ use crate::support::EventsLane;
 
 #[derive(Debug, sqlx::FromRow)]
 struct Envelope {
-    id: String,
+    id: Uuid7,
     actor: String,
     event_type: String,
-    workspace: String,
+    workspace: Uuid7,
     request_json: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: jiff::Timestamp,
@@ -34,9 +35,9 @@ async fn test_steer_returns_the_queued_identity_and_preserves_its_envelope() {
         .expect("admitted");
     let mut connection = lane.connection().await;
     let row = sqlx::query_as::<_, Envelope>(
-        "SELECT id::text, actor, event_type, workspace_id::text AS workspace,
+        "SELECT id, actor, event_type, workspace_id AS workspace,
                 request_json, event_created_at AS created_at
-           FROM fleet.admissions WHERE fleet_id = $1::uuid AND settled_at IS NULL",
+           FROM fleet.admissions WHERE fleet_id = $1 AND settled_at IS NULL",
     )
     .bind(&lane.fleet)
     .fetch_one(&mut *connection)

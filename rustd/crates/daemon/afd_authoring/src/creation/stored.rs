@@ -94,8 +94,8 @@ pub(super) struct Stored {
 /// [`super::sql::LOCKED`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 pub(super) struct StoredRow {
-    id: String,
-    workspace_id: String,
+    id: Uuid7,
+    workspace_id: Uuid7,
     name: String,
     status: String,
     setup_stream_ready: Option<bool>,
@@ -108,12 +108,12 @@ pub(super) struct StoredRow {
     memory_reads_workspace: bool,
     memory_publishes_workspace: bool,
     head_revision: i64,
-    head_revision_id: String,
+    head_revision_id: Uuid7,
     definition: String,
     runtime_model_ref: Option<String>,
     review_context: Option<String>,
     review_digest: Option<String>,
-    source_candidate_id: Option<String>,
+    source_candidate_id: Option<Uuid7>,
     canonical_digest: String,
     policy_semantics: String,
     events_processed: i64,
@@ -134,8 +134,9 @@ impl StoredRow {
             context: frozen.context,
             candidate_id: Uuid7::parse(
                 self.source_candidate_id
-                    .as_deref()
-                    .ok_or_else(|| absent("source_candidate_id"))?,
+                    .as_ref()
+                    .ok_or_else(|| absent("source_candidate_id"))?
+                    .as_str(),
             )?,
             candidate_revision: frozen.candidate_revision,
             canonical_digest: self.canonical_digest,
@@ -143,8 +144,8 @@ impl StoredRow {
             review_digest: self.review_digest.ok_or_else(|| absent("review_digest"))?,
         };
         Ok(Stored {
-            id: Uuid7::parse(&self.id)?,
-            workspace_id: Uuid7::parse(&self.workspace_id)?,
+            id: self.id.clone(),
+            workspace_id: self.workspace_id.clone(),
             name: self.name,
             status: self.status,
             accepted,
@@ -158,7 +159,7 @@ impl StoredRow {
             runtime_model_ref: self.runtime_model_ref,
             resource_version: self.resource_version,
             head_revision: self.head_revision,
-            head_revision_id: Uuid7::parse(&self.head_revision_id)?,
+            head_revision_id: self.head_revision_id.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
             events_processed: self.events_processed,

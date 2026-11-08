@@ -7,6 +7,7 @@
 )]
 
 use crate::support::Fixtures;
+use af_core::id::Uuid7;
 use af_fleet_runtime::{
     Definition,
     definition::{POLICY_SEMANTICS, canonical_digest},
@@ -20,22 +21,22 @@ use serde_json::{Value, json};
 const APPEND_HEAD_REVISION: &str = "\
 WITH next AS (
     SELECT coalesce(max(revision), 0) + 1 AS revision
-    FROM fleet.revisions WHERE fleet_id = $1::uuid
+    FROM fleet.revisions WHERE fleet_id = $1
 ), appended AS (
     INSERT INTO fleet.revisions
       (id, fleet_id, revision, definition, canonical_digest, policy_semantics,
        runtime_model_ref, created_at)
-    SELECT $2::uuid, $1::uuid, next.revision, $3::jsonb, $4, $5, $6, now() FROM next
+    SELECT $2, $1, next.revision, $3::jsonb, $4, $5, $6, now() FROM next
     RETURNING id
 )
 UPDATE fleet.fleets SET head_revision_id = (SELECT id FROM appended), updated_at = now()
-WHERE id = $1::uuid";
+WHERE id = $1";
 
 /// The fleet's head definition with its config replaced by `$2`, unparsed.
 const CORRUPT_HEAD_DEFINITION: &str = "\
 SELECT jsonb_set(r.definition, '{config}', $2::jsonb)::text
 FROM fleet.fleets f JOIN fleet.revisions r ON r.id = f.head_revision_id
-WHERE f.id = $1::uuid";
+WHERE f.id = $1";
 
 /// A native setup definition wrapping `config`, as Save would parse it.
 pub(crate) fn definition(config: &str) -> Definition {
@@ -51,7 +52,7 @@ pub(crate) fn definition(config: &str) -> Definition {
 impl Fixtures {
     /// Makes `config` the fleet's head revision without parsing it, as a
     /// stored row written by an older daemon could hold.
-    pub(crate) async fn corrupt_native_config(&self, fleet: &str, config: &str) {
+    pub(crate) async fn corrupt_native_config(&self, fleet: &Uuid7, config: &str) {
         let mut connection = self.database.acquire().await.expect("fault connection");
         let corrupt: String = sqlx::query_scalar(CORRUPT_HEAD_DEFINITION)
             .bind(fleet)
@@ -71,11 +72,11 @@ impl Fixtures {
         .await;
     }
 
-    pub(crate) async fn native_config(&self, fleet: &str, config: &str) {
+    pub(crate) async fn native_config(&self, fleet: &Uuid7, config: &str) {
         self.native_definition(fleet, &definition(config)).await;
     }
 
-    pub(crate) async fn native_definition(&self, fleet: &str, definition: &Definition) {
+    pub(crate) async fn native_definition(&self, fleet: &Uuid7, definition: &Definition) {
         let stored = serde_json::to_string(definition).expect("Definition JSON");
         let digest = canonical_digest(definition).expect("canonical digest");
         let model = Some(afd_credential::provider::PLATFORM_MODEL_REF);
@@ -87,7 +88,7 @@ impl Fixtures {
     /// given: a test of a revision Save would refuse writes it here.
     pub(crate) async fn append_head(
         &self,
-        fleet: &str,
+        fleet: &Uuid7,
         definition: &str,
         digest: &str,
         semantics: &str,

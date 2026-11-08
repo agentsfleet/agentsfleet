@@ -43,7 +43,10 @@ use crate::support::Fixtures;
 /// process inserted it, and left alone if it was already there. A row that
 /// outlived its run pointed at a workspace whose key was gone, and the next
 /// run's provider resolution failed on it.
-pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) -> PlatformDefault {
+pub(super) async fn seed_provider_resolution(
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+) -> PlatformDefault {
     let workspace = workspace_of(fixtures, fleet).await;
     // The defaults row's foreign key requires `(PROVIDER, MODEL)` priced.
     fixtures.seed_model_rate(PROVIDER, MODEL).await;
@@ -62,12 +65,12 @@ pub(super) async fn seed_provider_resolution(fixtures: &Fixtures, fleet: &str) -
 }
 
 /// Seals a provider credential for `workspace` under the lane's key.
-async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
+async fn seed_provider_key(fixtures: &Fixtures, workspace: &Uuid7) {
     let kek = Kek::from_hex(FIXTURE_KEK_HEX).expect("the lane key is well formed");
     let sealed = Sealer::new()
         .seal(
             &kek,
-            &Aad::new(workspace, PROVIDER),
+            &Aad::new(workspace.as_str(), PROVIDER),
             PROVIDER_KEY_BODY.as_bytes(),
         )
         .expect("the fixture credential seals");
@@ -82,7 +85,7 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
            (id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonce, \
             dek_tag, secret_nonce, secret_ciphertext, secret_tag, created_at, updated_at, \
             meta_kind, meta_provider, meta_has_key) \
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, now(), now(), \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now(), \
                  $11, $3, TRUE) \
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
@@ -103,23 +106,21 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &str) {
 }
 
 /// The workspace a seeded fleet belongs to.
-pub(super) async fn workspace_of(fixtures: &Fixtures, fleet: &str) -> String {
+pub(super) async fn workspace_of(fixtures: &Fixtures, fleet: &Uuid7) -> Uuid7 {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query_scalar::<_, String>(
-        "SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid",
-    )
-    .bind(fleet)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("a seeded fleet has a workspace")
+    sqlx::query_scalar::<_, Uuid7>("SELECT workspace_id FROM fleet.fleets WHERE id = $1")
+        .bind(fleet)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("a seeded fleet has a workspace")
 }
 
 /// Seeds one usage line costing `nanos` for `fleet`.
-pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str, nanos: i64) {
+pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &Uuid7, nanos: i64) {
     let workspace = workspace_of(fixtures, &ready.fleet).await;
     let mut connection = fixtures
         .database
@@ -133,16 +134,16 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
             cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
             cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
             charged_nanos, created_at, updated_at) \
-         VALUES ($7::uuid, $8, $7::uuid, 0, $1::uuid, $2::uuid, $3::uuid, $3, $4, 'anthropic', \
+         VALUES ($7, $8, $7, 0, $1, $2, $3, $3, $4, 'anthropic', \
                  $5, 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $6, now(), now())",
     )
     .bind(tenant)
     .bind(&workspace)
     .bind(&ready.fleet)
-    .bind(format!("event-lease-gates-spent-{}", ready.fleet))
+    .bind(mint_id())
     .bind(MODEL)
     .bind(nanos)
-    .bind(afd_db::test_util::mint_uuid7().as_str())
+    .bind(mint_id())
     .bind(afd_billing::sql::work::FLEET_LEASE)
     .execute(&mut *connection)
     .await
@@ -160,7 +161,7 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &str,
 /// rather than by forging the key by hand.
 ///
 /// The gate expires one [`GATE_WINDOW`] after the database's `now()`.
-pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) -> String {
+pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) -> Uuid7 {
     let workspace = workspace_of(fixtures, &ready.fleet).await;
     let action_id = mint_id();
 
@@ -174,7 +175,7 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
            (id, fleet_id, workspace_id, action_id, tool_name, action_name, \
             gate_type, proposed_action, evidence, blast_radius, expires_at, \
             resolved_by, status, detail, created_at, updated_at, event_id) \
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'chat', 'run', \
+         VALUES ($1, $2, $3, $4, 'chat', 'run', \
                  $5, 'run the event', '{}'::jsonb, 'one fleet', \
                  now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8)",
     )
@@ -190,11 +191,14 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
     .await
     .expect("the gate row must insert");
 
-    let fleet = Uuid7::parse(&ready.fleet).expect("a seeded fleet id parses");
-    let action = Uuid7::parse(&action_id).expect("the fixture action id parses");
     fixtures
         .gates()
-        .record(&fleet, &ready.event_id, &GateRef::new(action), GATE_WINDOW)
+        .record(
+            &ready.fleet,
+            ready.event_id.as_str(),
+            &GateRef::new(action_id.clone()),
+            GATE_WINDOW,
+        )
         .await
         .expect("the gate reference must be recorded");
     action_id
@@ -236,7 +240,7 @@ pub(super) async fn seed_write_gate(
             gate_type, proposed_action, evidence, blast_radius, expires_at, \
             resolved_by, status, detail, created_at, updated_at, event_id, \
             stated_binding, spend_count, spend_ceiling) \
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'chat', 'author', \
+         VALUES ($1, $2, $3, $4, 'chat', 'author', \
                  $5, 'author a branch', '{}'::jsonb, 'one repository', \
                  now() + $6::interval, 'fixture:human', $7, '', now(), now(), $8, \
                  $9::jsonb, 0, $10)",
@@ -255,5 +259,5 @@ pub(super) async fn seed_write_gate(
     .await
     .expect("the write gate row must insert");
 
-    Uuid7::parse(&gate_id).expect("the fixture gate id is a v7 spelling")
+    gate_id
 }

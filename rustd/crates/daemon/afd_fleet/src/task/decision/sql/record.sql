@@ -10,5 +10,5 @@ SET status = $2,
     failure_recorded_at = CASE WHEN c.failure_receipt_digest IS NULL AND $7::text IS NOT NULL
                               THEN instant.at ELSE c.failure_recorded_at END,
     reported_model = COALESCE(c.reported_model, $9), updated_at = instant.at
-FROM instant WHERE c.id = $1::uuid
+FROM instant WHERE c.id = $1
 RETURNING c.updated_at AS at

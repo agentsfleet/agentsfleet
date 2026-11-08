@@ -42,7 +42,7 @@ fn statement<'a>(
     task_id: &'a Uuid7,
 ) -> QueryAs<'a, Postgres, TaskRow, PgArguments> {
     sqlx::query_as(sql::READ)
-        .bind(task_id.as_str())
-        .bind(scope.fleet_id.as_str())
-        .bind(scope.workspace_id.as_str())
+        .bind(task_id)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
 }

@@ -22,11 +22,11 @@ async fn an_applied_revision_records_its_origin_once() {
         assert_eq!(replay.status(), StatusCode::CREATED);
         assert_eq!(json_body(replay).await["setup_revision"], "2");
         let receipt: serde_json::Value = sqlx::query_scalar(
-            "SELECT request_json::jsonb FROM fleet.events WHERE fleet_id=$1::uuid \
+            "SELECT request_json::jsonb FROM fleet.events WHERE fleet_id=$1 \
              AND event_type='activity' AND request_json::jsonb->>'kind'='setup_saved' \
              AND request_json::jsonb->>'revision'='2'",
         )
-        .bind(fleet.saved["id"].as_str().expect("accepted fleet ID"))
+        .bind(crate::authoring::id_field(&fleet.saved["id"]))
         .fetch_one(
             &mut *fleet
                 .case
@@ -96,15 +96,15 @@ async fn an_improvement_advances_only_setup_and_replays_after_the_private_draft_
 
 /// The instructions revision 1 still stores, read straight from the table.
 async fn original_instructions(fleet: &Fleet) -> String {
-    sqlx::query_scalar("SELECT definition->>'instructions_md' FROM fleet.revisions WHERE fleet_id=$1::uuid AND revision=1")
-        .bind(fleet.saved["id"].as_str().expect("fleet ID")).fetch_one(&mut *fleet.case.base.db.acquire().await.expect("old setup connection"))
+    sqlx::query_scalar("SELECT definition->>'instructions_md' FROM fleet.revisions WHERE fleet_id=$1 AND revision=1")
+        .bind(crate::authoring::id_field(&fleet.saved["id"])).fetch_one(&mut *fleet.case.base.db.acquire().await.expect("old setup connection"))
         .await.expect("immutable original setup")
 }
 
 /// How many Library rows the fleet's tenant owns.
 async fn library_count(fleet: &Fleet) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.library_entries WHERE tenant_id=$1::uuid")
-        .bind(fleet.case.base.tenant.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM authoring.library_entries WHERE tenant_id=$1")
+        .bind(&fleet.case.base.tenant)
         .fetch_one(
             &mut *fleet
                 .case

@@ -70,7 +70,7 @@ pub(super) async fn stage(
     let tag = prefix.name(TAG_SUFFIX);
     let mut fleets = Vec::new();
     for index in 0..parameters.fleets {
-        let fleet = seed::identities(INDEX_BASE + index);
+        let fleet = seed::identities(INDEX_BASE + index)?;
         seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
         ledger.created(ROWS_PER_FLEET);
         fleets.push(fleet);

@@ -18,13 +18,13 @@ async fn accepted_replays_share_slot_and_lease_read_locks() {
             .expect("accepted plan");
         let mut connection = case.held.fixtures.database.acquire().await.expect("reader");
         let mut reader = connection.begin().await.expect("authority read");
-        sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1::uuid FOR SHARE")
+        sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1 FOR SHARE")
             .bind(&case.held.fleet)
             .fetch_one(&mut *reader)
             .await
             .expect("shared slot lock");
-        sqlx::query("SELECT id FROM runner.leases WHERE id=$1::uuid FOR SHARE")
-            .bind(case.held.lease_key.as_str())
+        sqlx::query("SELECT id FROM runner.leases WHERE id=$1 FOR SHARE")
+            .bind(&case.held.lease_key)
             .fetch_one(&mut *reader)
             .await
             .expect("shared lease lock");
@@ -48,22 +48,42 @@ async fn accepted_replays_share_slot_and_lease_read_locks() {
 async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
     exercise(async |case| {
         let plan = case.plan("fenced-receipt", 1);
-        let first = case.tasks.bind(case.lease(), &plan).await.expect("accepted plan");
+        let first = case
+            .tasks
+            .bind(case.lease(), &plan)
+            .await
+            .expect("accepted plan");
         let mut connection = case.held.fixtures.database.acquire().await.expect("writer");
         let mut writer = connection.begin().await.expect("authority write");
-        let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid() FROM runner.fleet_slots WHERE fleet_id=$1::uuid FOR UPDATE")
-            .bind(&case.held.fleet).fetch_one(&mut *writer).await.expect("exclusive slot lock");
+        let pid: i32 = sqlx::query_scalar(
+            "SELECT pg_backend_pid() FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE",
+        )
+        .bind(&case.held.fleet)
+        .fetch_one(&mut *writer)
+        .await
+        .expect("exclusive slot lock");
         let change = async {
             waiting(case, pid).await;
-            sqlx::query("UPDATE runner.fleet_slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1::uuid")
-                .bind(&case.held.fleet).execute(&mut *writer).await.expect("new authority fence");
+            sqlx::query(
+                "UPDATE runner.fleet_slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1",
+            )
+            .bind(&case.held.fleet)
+            .execute(&mut *writer)
+            .await
+            .expect("new authority fence");
             writer.commit().await.expect("release writer");
         };
         let (replay, ()) = tokio::join!(case.tasks.bind(case.lease(), &plan), change);
-        assert_eq!(replay.expect_err("old fence cannot read an execution receipt").code(), error_code::RUN_STALE_FENCING_TOKEN);
+        assert_eq!(
+            replay
+                .expect_err("old fence cannot read an execution receipt")
+                .code(),
+            error_code::RUN_STALE_FENCING_TOKEN
+        );
         assert_eq!(case.counts().await, (1, 1, 1));
         assert_eq!(first.items.len(), 1);
-    }).await;
+    })
+    .await;
 }
 
 async fn waiting(case: &Case, pid: i32) {

@@ -154,17 +154,17 @@ async fn a_fire_for_a_schedule_this_daemon_no_longer_has_resolves_to_nothing() {
 const UNREADABLE_WORDS: [(&str, &str, &str); 3] = [
     (
         "source",
-        "UPDATE fleet.schedules SET source = $2 WHERE id = $1::uuid",
+        "UPDATE fleet.schedules SET source = $2 WHERE id = $1",
         "carrier-pigeon",
     ),
     (
         "desired_status",
-        "UPDATE fleet.schedules SET desired_status = $2 WHERE id = $1::uuid",
+        "UPDATE fleet.schedules SET desired_status = $2 WHERE id = $1",
         "hibernating",
     ),
     (
         "sync_status",
-        "UPDATE fleet.schedules SET sync_status = $2 WHERE id = $1::uuid",
+        "UPDATE fleet.schedules SET sync_status = $2 WHERE id = $1",
         "pending",
     ),
 ];
@@ -172,12 +172,12 @@ const UNREADABLE_WORDS: [(&str, &str, &str); 3] = [
 /// Puts every word [`UNREADABLE_WORDS`] plants back to one this build reads.
 const RESTORE_WORDS: &str = "UPDATE fleet.schedules \
      SET source = 'api', desired_status = 'active', sync_status = 'syncing' \
-     WHERE id = $1::uuid";
+     WHERE id = $1";
 
 /// Runs `statement` against one schedule, binding `word` as `$2` when given.
 async fn run_on(lane: &CronLane, statement: &'static str, schedule: &Uuid7, word: Option<&str>) {
     let mut connection = lane.connection().await;
-    let query = sqlx::query(statement).bind(schedule.as_str());
+    let query = sqlx::query(statement).bind(schedule);
     let query = match word {
         Some(word) => query.bind(word),
         None => query,

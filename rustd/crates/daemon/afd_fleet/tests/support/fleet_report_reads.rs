@@ -13,6 +13,7 @@
 )]
 
 use crate::support::Fixtures;
+use af_core::id::Uuid7;
 use afd_db::test_util::{ModelSeed, mint_id};
 
 /// The fixture model routes through Anthropic Messages.
@@ -22,7 +23,7 @@ const MESSAGES_INFERENCE: &str =
 /// Gives a tenant a balance, or resets the one it has.
 const UPSERT_WALLET: &str = "\
 INSERT INTO billing.wallets (tenant_id, balance_nanos, exhausted_at, created_at, updated_at)
-VALUES ($1::uuid, $2, NULL, now(), now())
+VALUES ($1, $2, NULL, now(), now())
 ON CONFLICT (tenant_id) DO UPDATE
   SET balance_nanos = EXCLUDED.balance_nanos, updated_at = now()";
 
@@ -46,7 +47,7 @@ impl Fixtures {
     /// rather than caching. A tenant with NO wallet row is a different case
     /// entirely — it is admitted — so a suite proving the exhausted refusal has
     /// to seed a row holding zero, not skip the seed.
-    pub(crate) async fn seed_wallet(&self, tenant: &str, nanos: i64) {
+    pub(crate) async fn seed_wallet(&self, tenant: &Uuid7, nanos: i64) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(UPSERT_WALLET)
             .bind(tenant)
@@ -81,9 +82,9 @@ impl Fixtures {
     }
 
     /// A tenant's current balance, or `None` when it has no wallet row.
-    pub(crate) async fn balance(&self, tenant: &str) -> Option<i64> {
+    pub(crate) async fn balance(&self, tenant: &Uuid7) -> Option<i64> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1")
             .bind(tenant)
             .fetch_optional(&mut *connection)
             .await
@@ -94,7 +95,7 @@ impl Fixtures {
     ///
     /// One per slice that measured something, and the same count however many
     /// times a report is re-sent: a line is stored once per `(work, seq)`.
-    pub(crate) async fn ledger_rows(&self, event: &str) -> i64 {
+    pub(crate) async fn ledger_rows(&self, event: &Uuid7) -> i64 {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE event_id = $1")
             .bind(event)
@@ -104,15 +105,13 @@ impl Fixtures {
     }
 
     /// Whether the admission can still be claimed after a report attempt.
-    pub(crate) async fn admission_settled(&self, event: &str) -> bool {
+    pub(crate) async fn admission_settled(&self, event: &Uuid7) -> bool {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar(
-            "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1::uuid",
-        )
-        .bind(event)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the admission settlement read must run")
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+            .bind(event)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the admission settlement read must run")
     }
 
     /// Ends an event out of band, as an earlier delivery of the same logical
@@ -120,11 +119,11 @@ impl Fixtures {
     ///
     /// Exercises a report whose narrative row ended before the report arrived.
     /// The terminal write must preserve that earlier outcome.
-    pub(crate) async fn end_event(&self, fleet: &str, event: &str, status: &str) {
+    pub(crate) async fn end_event(&self, fleet: &Uuid7, event: &Uuid7, status: &str) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(
             "UPDATE fleet.events SET status = $3::text \
-             WHERE fleet_id = $1::uuid AND event_id = $2",
+             WHERE fleet_id = $1 AND event_id = $2",
         )
         .bind(fleet)
         .bind(event)

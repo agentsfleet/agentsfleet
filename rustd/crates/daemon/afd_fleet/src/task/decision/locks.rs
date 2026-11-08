@@ -1,5 +1,6 @@
 //! Maintenance skips contention in the ordinary financial parent-lock order.
 
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 use super::{row::Call, sql};
@@ -24,13 +25,13 @@ impl Mode {
     }
 
     pub(super) async fn parents(self, connection: &mut PgConnection, call: &Call) -> Result<()> {
-        sqlx::query_scalar::<_, String>(self.statement(sql::LOCK_PARENT, sql::TRY_PARENT))
+        sqlx::query_scalar::<_, Uuid7>(self.statement(sql::LOCK_PARENT, sql::TRY_PARENT))
             .bind(&call.fleet_id)
             .bind(&call.workspace_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query("protect any remaining decision parent"))?;
-        sqlx::query_scalar::<_, String>(
+        sqlx::query_scalar::<_, Uuid7>(
             self.statement(crate::task::sql::LOCK_SCOPE_SLOT, sql::TRY_SLOT),
         )
         .bind(&call.fleet_id)

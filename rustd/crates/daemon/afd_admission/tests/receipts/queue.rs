@@ -67,7 +67,7 @@ pub(super) async fn confirm(
     lane: &Lane,
 ) -> Fallible<afd_admission::Confirmation> {
     admissions
-        .confirm(Producer::Steer, &lane.fleet)
+        .confirm(Producer::Steer, lane.fleet.as_str())
         .await?
         .ok_or_else(|| "the committed row confirms".into())
 }
@@ -78,7 +78,7 @@ pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Falli
     let (server, admissions) = over_fake(lane, rules).await?;
     let (outcome, events) = recording(admissions.admit(Admission {
         producer: Producer::Steer,
-        key: Key::Repeated(&lane.fleet),
+        key: Key::Repeated(lane.fleet.as_str()),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: ACTOR,

@@ -6,14 +6,9 @@
 mod claim;
 mod refusals;
 
-use af_core::id::Uuid7;
 use af_core::money::NANOS_PER_USD;
 use af_fleet_runtime::Definition;
 use serde_json::json;
-
-fn id(fleet: &str) -> Uuid7 {
-    Uuid7::parse(fleet).expect("fixture fleet UUIDv7")
-}
 
 fn definition() -> Definition {
     Definition::parse(

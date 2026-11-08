@@ -1,6 +1,7 @@
 //! A lost response can be retried without accepting a second message.
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use af_core::id::Uuid7;
 use afd_events::{ACTOR_MACHINE, Steer};
 
 use crate::support::EventsLane;
@@ -67,11 +68,11 @@ pub(crate) async fn admissions_for(lane: &EventsLane, operation: &str) -> i64 {
     .expect("admission count")
 }
 
-pub(crate) async fn queued_ids(lane: &EventsLane) -> Vec<String> {
+pub(crate) async fn queued_ids(lane: &EventsLane) -> Vec<Uuid7> {
     let mut connection = lane.connection().await;
     sqlx::query_scalar(
-        "SELECT id::text FROM fleet.admissions
-         WHERE fleet_id = $1::uuid AND settled_at IS NULL ORDER BY created_at, sequence",
+        "SELECT id FROM fleet.admissions
+         WHERE fleet_id = $1 AND settled_at IS NULL ORDER BY created_at, sequence",
     )
     .bind(&lane.fleet)
     .fetch_all(&mut *connection)

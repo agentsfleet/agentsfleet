@@ -18,8 +18,8 @@ async fn destination_lookup_is_scoped_to_the_admission_and_fleet() -> Fallible {
         connector: CONNECTOR,
         address: THREAD,
     };
-    let admitted = admit(&admissions, steer(&lane, &mint_id(), stated)).await?;
-    let id = admitted.stored.id.as_str();
+    let admitted = admit(&admissions, steer(&lane, mint_id().as_str(), stated)).await?;
+    let id = &admitted.stored.id;
     let mut connection = lane.database.acquire().await?;
 
     let found: Option<(String, String)> = sqlx::query_as(sql::SELECT_REPLY_DESTINATION)
@@ -54,18 +54,17 @@ async fn an_inherited_destination_is_copied_from_the_named_row() -> Fallible {
         connector: CONNECTOR,
         address: THREAD,
     };
-    let earlier = admit(&admissions, steer(&lane, &mint_id(), stated)).await?;
+    let earlier = admit(&admissions, steer(&lane, mint_id().as_str(), stated)).await?;
     let inherited = ReplyTo::Inherit {
         event_id: &earlier.stored.id,
     };
-    let later = admit(&admissions, steer(&lane, &mint_id(), inherited)).await?;
+    let later = admit(&admissions, steer(&lane, mint_id().as_str(), inherited)).await?;
 
-    let copied: (Option<String>, Option<String>) = sqlx::query_as(
-        "SELECT reply_provider, reply_address FROM fleet.admissions WHERE id = $1::uuid",
-    )
-    .bind(&later.stored.id)
-    .fetch_one(&mut *lane.database.acquire().await?)
-    .await?;
+    let copied: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT reply_provider, reply_address FROM fleet.admissions WHERE id = $1")
+            .bind(&later.stored.id)
+            .fetch_one(&mut *lane.database.acquire().await?)
+            .await?;
     assert_eq!(
         copied,
         (Some(CONNECTOR.to_owned()), Some(THREAD.to_owned()))

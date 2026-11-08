@@ -5,17 +5,18 @@ use crate::{
     error::query,
     task::{TaskScope, Tasks, guard, transaction},
 };
+use af_core::id::Uuid7;
 use af_wire::task::TaskState;
 use std::time::Duration;
 
 #[derive(sqlx::FromRow)]
 struct Expired {
     #[sqlx(rename = "task_id")]
-    task: String,
+    task: Uuid7,
     #[sqlx(rename = "fleet_id")]
-    fleet: String,
+    fleet: Uuid7,
     #[sqlx(rename = "workspace_id")]
-    workspace: String,
+    workspace: Uuid7,
 }
 
 pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
@@ -43,10 +44,10 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
 
 async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
     let scope = TaskScope {
-        fleet_id: guard::id(&owner.fleet, "fleet_id")?,
-        workspace_id: guard::id(&owner.workspace, "workspace_id")?,
+        fleet_id: owner.fleet.clone(),
+        workspace_id: owner.workspace.clone(),
     };
-    let task = guard::id(&owner.task, "task_id")?;
+    let task = owner.task.clone();
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     guard::scope(&mut tx, &scope).await?;

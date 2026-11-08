@@ -11,7 +11,7 @@ use afd_fleet::task::{PreparedPlan, TaskBindings, TaskLease, TaskLifecycle as _,
 use futures_util::future::join_all;
 use tokio::sync::Barrier;
 
-use super::fixture::{Case, GOALS, exercise, id, questions};
+use super::fixture::{Case, GOALS, exercise, questions};
 
 const CALLERS: usize = 100;
 
@@ -132,8 +132,7 @@ async fn replay_after_revision(case: &Case, plan: &PreparedPlan, first: &TaskBin
     let tasks = &case.tasks;
     case.held
         .fixtures
-        .native_config(
-            &case.held.fleet,
+        .native_config(&case.held.fleet,
             r#"{"name":"updated-repair-setup","x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"}}}"#,
         )
         .await;
@@ -197,7 +196,7 @@ async fn ownership(case: &Case) {
         .expect("current owner still binds");
     assert_eq!(accepted.items.len(), 2);
     let foreign = TaskScope {
-        workspace_id: id(&afd_db::test_util::mint_id()),
+        workspace_id: afd_db::test_util::mint_id(),
         ..case.scope.clone()
     };
     let task = accepted
@@ -226,21 +225,20 @@ async fn ownership(case: &Case) {
 
 /// Native receipts preserve the database ceiling rather than restarting a slice on replay.
 async fn stored_deadline(case: &Case, reply: &TaskBindings) {
-    let stored: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "SELECT task_execution_deadline_at FROM runner.leases WHERE id=$1::uuid",
-    )
-    .bind(case.lease().lease_id.as_str())
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
+    let stored: jiff_sqlx::Timestamp =
+        sqlx::query_scalar("SELECT task_execution_deadline_at FROM runner.leases WHERE id=$1")
+            .bind(case.lease().lease_id)
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("deadline connection"),
+            )
             .await
-            .expect("deadline connection"),
-    )
-    .await
-    .expect("bound lease deadline");
+            .expect("bound lease deadline");
     assert_eq!(reply.execution_deadline, stored.to_jiff());
     let input = case
         .tasks

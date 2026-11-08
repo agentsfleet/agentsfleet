@@ -24,19 +24,14 @@ impl Lane {
     pub(crate) async fn fleet_at(&self, workspace: &Uuid7, at: Timestamp) -> Uuid7 {
         let id = mint();
         let name = format!("fleet-{id}");
-        FleetSeed::new(
-            id.as_str(),
-            workspace.as_str(),
-            self.tenant.as_str(),
-            ACTIVE,
-        )
-        .name(&name)
-        .native_setup()
-        .versions(INITIAL_VERSION, INITIAL_VERSION)
-        .at(at)
-        .insert(&mut *self.connection().await)
-        .await
-        .expect("seeding a fleet");
+        FleetSeed::new(&id, workspace, &self.tenant, ACTIVE)
+            .name(&name)
+            .native_setup()
+            .versions(INITIAL_VERSION, INITIAL_VERSION)
+            .at(at)
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("seeding a fleet");
         id
     }
 
@@ -50,18 +45,13 @@ impl Lane {
     pub(crate) async fn fleet_without_setup(&self) -> Uuid7 {
         let id = mint();
         let name = format!("fleet-{id}");
-        FleetSeed::new(
-            id.as_str(),
-            self.workspace.as_str(),
-            self.tenant.as_str(),
-            ACTIVE,
-        )
-        .name(&name)
-        .versions(INITIAL_VERSION, INITIAL_VERSION)
-        .at(NOW)
-        .insert(&mut *self.connection().await)
-        .await
-        .expect("seeding a fleet with no setup");
+        FleetSeed::new(&id, &self.workspace, &self.tenant, ACTIVE)
+            .name(&name)
+            .versions(INITIAL_VERSION, INITIAL_VERSION)
+            .at(NOW)
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("seeding a fleet with no setup");
         id
     }
 
@@ -70,9 +60,9 @@ impl Lane {
     pub(crate) async fn kill(&self, fleet: &Uuid7) -> String {
         let version: i64 = sqlx::query_scalar(
             "UPDATE fleet.fleets SET status = $2, resource_version = resource_version + 1 \
-             WHERE id = $1::uuid RETURNING resource_version",
+             WHERE id = $1 RETURNING resource_version",
         )
-        .bind(fleet.as_str())
+        .bind(fleet)
         .bind(KILLED)
         .fetch_one(&mut *self.connection().await)
         .await
@@ -83,8 +73,8 @@ impl Lane {
     /// The tag a purge must present for a fleet left where it is.
     pub(crate) async fn tag(&self, fleet: &Uuid7) -> String {
         let version: i64 =
-            sqlx::query_scalar("SELECT resource_version FROM fleet.fleets WHERE id = $1::uuid")
-                .bind(fleet.as_str())
+            sqlx::query_scalar("SELECT resource_version FROM fleet.fleets WHERE id = $1")
+                .bind(fleet)
                 .fetch_one(&mut *self.connection().await)
                 .await
                 .expect("reading a fleet's version");

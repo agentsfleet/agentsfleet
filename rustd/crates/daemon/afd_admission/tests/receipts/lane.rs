@@ -1,5 +1,6 @@
 //! A stopped fleet and its owned parents isolate each ledger test.
 
+use af_core::id::Uuid7;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, DbRole};
 use jiff::Timestamp;
@@ -16,9 +17,9 @@ const FLEET_STOPPED: &str = "stopped";
 pub(crate) struct Lane {
     handle: TestDatabase,
     pub(super) database: Db,
-    tenant: String,
-    pub(super) workspace: String,
-    pub(super) fleet: String,
+    tenant: Uuid7,
+    pub(super) workspace: Uuid7,
+    pub(super) fleet: Uuid7,
 }
 
 impl Lane {
@@ -61,15 +62,12 @@ impl Lane {
     /// cannot be had leaves the rows, which no other case addresses.
     pub(crate) async fn cleanup(self) {
         for (table, id) in [
-            ("DELETE FROM fleet.fleets WHERE id = $1::uuid", &self.fleet),
+            ("DELETE FROM fleet.fleets WHERE id = $1", &self.fleet),
             (
-                "DELETE FROM identity.workspaces WHERE id = $1::uuid",
+                "DELETE FROM identity.workspaces WHERE id = $1",
                 &self.workspace,
             ),
-            (
-                "DELETE FROM identity.tenants WHERE id = $1::uuid",
-                &self.tenant,
-            ),
+            ("DELETE FROM identity.tenants WHERE id = $1", &self.tenant),
         ] {
             if let Ok(mut connection) = self.database.acquire().await {
                 let _removed = sqlx::query(table).bind(id).execute(&mut *connection).await;

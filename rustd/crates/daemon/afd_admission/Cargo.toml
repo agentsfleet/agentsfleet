@@ -17,7 +17,7 @@ workspace = true
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The row identifier's entropy. Held by the ledger rather than drawn per call
 # — see `Admissions`.
 af_crypto.workspace = true

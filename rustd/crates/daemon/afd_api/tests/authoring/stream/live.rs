@@ -41,8 +41,8 @@ impl Live {
             .to_owned();
         let document = json_body(created).await;
         let draft = Uuid7::parse(document["id"].as_str().expect("draft")).expect("draft UUIDv7");
-        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1::uuid")
-            .bind(draft.as_str())
+        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1")
+            .bind(&draft)
             .execute(&mut *f.db.acquire().await.expect("message connection"))
             .await
             .expect("leased message state");
@@ -100,7 +100,7 @@ impl Live {
 
     pub(super) async fn mutate(&self, statement: &'static str) {
         sqlx::query(statement)
-            .bind(self.draft.as_str())
+            .bind(&self.draft)
             .execute(&mut *self.f.db.acquire().await.expect("mutation connection"))
             .await
             .expect("fixture state transition");

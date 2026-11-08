@@ -19,21 +19,22 @@ use super::{
     github::{BoundPr, status::Snapshot},
 };
 use crate::{Result, error::query};
+use af_core::id::Uuid7;
 use sqlx::{PgConnection, types::Json};
 
 pub(in crate::task) async fn arm(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    task: &str,
+    task: &Uuid7,
     lease: &af_core::id::Uuid7,
     target: &BoundPr,
     dependency: &Snapshot,
 ) -> Result<()> {
     let id = tasks.leases.entropy().uuid7(af_core::clock::now())?;
     sqlx::query(include_str!("sql/arm.sql"))
-        .bind(id.as_str())
+        .bind(&id)
         .bind(task)
-        .bind(lease.as_str())
+        .bind(lease)
         .bind(
             i64::try_from(target.installation_id)
                 .map_err(crate::error::task_target_counter("installation_id"))?,
@@ -51,13 +52,13 @@ pub(in crate::task) async fn arm(
         .map_err(query("arm exact-head wait before releasing execution"))?;
     tracing::info!(
         event = "dt_wait_armed",
-        task_id = task,
-        wait_id = id.as_str()
+        task_id = %task,
+        wait_id = %id.as_str()
     );
     Ok(())
 }
 
-pub(in crate::task) async fn cancel(connection: &mut PgConnection, task: &str) -> Result<()> {
+pub(in crate::task) async fn cancel(connection: &mut PgConnection, task: &Uuid7) -> Result<()> {
     sqlx::query(include_str!("sql/cancel.sql"))
         .bind(task)
         .execute(connection)

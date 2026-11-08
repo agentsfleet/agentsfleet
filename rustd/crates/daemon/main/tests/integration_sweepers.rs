@@ -44,20 +44,20 @@ const INSERT_LINE: &str = "INSERT INTO billing.usage_lines \
       requested_at, input_token_count, cached_input_token_count, cache_write_token_count, \
       cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
       unpriced_token_count, charged_nanos, created_at, updated_at) \
-     VALUES ($1::uuid, $2, $3::uuid, 0, $4::uuid, $4::uuid, 'fixture', 'fixture', 'platform', \
+     VALUES ($1, $2, $3, 0, $4, $4, 'fixture', 'fixture', 'platform', \
              now(), 0, 0, 0, 0, 0, 0, 0, 0, $5, now(), now())";
 
 /// A receipt two days old, past the one-day replay window.
 const INSERT_EXPIRED_RECEIPT: &str = "INSERT INTO authoring.replay_receipts \
      (id, workspace_id, user_id, scope, operation_id, request_digest, resource_id, created_at) \
-     VALUES ($1::uuid, $2::uuid, $2::uuid, $3, $1::uuid, 'digest', $2::uuid, \
+     VALUES ($1, $2, $2, $3, $1, 'digest', $2, \
              now() - interval '2 days')";
 
 /// How many of this tenant's lines are still unsettled, and whether the
 /// receipt survives.
 const LEFT_BEHIND: &str = "SELECT \
-     (SELECT count(*) FROM billing.usage_lines WHERE tenant_id = $1::uuid AND settled_at IS NULL), \
-     (SELECT count(*) FROM authoring.replay_receipts WHERE id = $2::uuid)";
+     (SELECT count(*) FROM billing.usage_lines WHERE tenant_id = $1 AND settled_at IS NULL), \
+     (SELECT count(*) FROM authoring.replay_receipts WHERE id = $2)";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]

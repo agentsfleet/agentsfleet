@@ -74,15 +74,13 @@ async fn setup(status: u16) -> (Fixture, Attempt, Arc<Provider>, ModelCalls) {
     let f = Fixture::create().await;
     let inference = json!({"api":"responses","base_url":"https://api.openai.com/v1",
         "dialect":"openai","max_output_tokens":8192});
-    sqlx::query(
-        "UPDATE model.platform_models SET context_cap_tokens=$3,inference=$2 WHERE id=$1::uuid",
-    )
-    .bind(f.catalogue.first().expect("owned model").as_str())
-    .bind(inference)
-    .bind(NATIVE_WINDOW)
-    .execute(&mut *f.connection().await)
-    .await
-    .expect("owned native route");
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=$3,inference=$2 WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model"))
+        .bind(inference)
+        .bind(NATIVE_WINDOW)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("owned native route");
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
     compaction::history(&f, &attempt, PRIOR_EXCHANGES).await;
     let provider = Arc::new(Provider {
@@ -141,9 +139,9 @@ async fn native_count_releases_authoring_locks_and_fresh_result_can_commit() {
     assert_eq!(provider.paid.load(Ordering::Relaxed), 1);
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
     let generation: (i64, i64) = sqlx::query_as(
-        "SELECT resource_version,(document->>'generation')::bigint FROM memory.context_checkpoints WHERE draft_id=$1::uuid",
+        "SELECT resource_version,(document->>'generation')::bigint FROM memory.context_checkpoints WHERE draft_id=$1",
     )
-    .bind(attempt.draft.id.as_str())
+    .bind(&attempt.draft.id)
     .fetch_one(&mut *f.connection().await)
     .await
     .expect("summary committed");
@@ -197,8 +195,8 @@ async fn changed_source_stop_and_revoked_credential_during_count_prevent_paid_di
         if matches!(change, Change::Checkpoint) {
             assert_eq!(provider.paid.load(Ordering::Relaxed), 0);
             assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
-            let goal: String = sqlx::query_scalar("SELECT document->'summary'->>'goal' FROM memory.context_checkpoints WHERE draft_id=$1::uuid")
-                .bind(attempt.draft.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("the competing notes survive");
+            let goal: String = sqlx::query_scalar("SELECT document->'summary'->>'goal' FROM memory.context_checkpoints WHERE draft_id=$1")
+                .bind(attempt.draft.id).fetch_one(&mut *f.connection().await).await.expect("the competing notes survive");
             assert_eq!(goal, "competing private notes");
         } else {
             assert_no_paid_state(&f, &attempt, &provider).await;
@@ -210,8 +208,8 @@ async fn changed_source_stop_and_revoked_credential_during_count_prevent_paid_di
 async fn mutate(f: &Fixture, attempt: &Attempt, change: Change) {
     match change {
         Change::History => {
-            sqlx::query("UPDATE authoring.messages SET answer_text='changed during native count' WHERE draft_id=$1::uuid AND sequence=1")
-                .bind(attempt.draft.id.as_str()).execute(&mut *f.connection().await).await.expect("source mutation commits");
+            sqlx::query("UPDATE authoring.messages SET answer_text='changed during native count' WHERE draft_id=$1 AND sequence=1")
+                .bind(&attempt.draft.id).execute(&mut *f.connection().await).await.expect("source mutation commits");
         }
         Change::Stop => {
             f.drafts
@@ -223,8 +221,8 @@ async fn mutate(f: &Fixture, attempt: &Attempt, change: Change) {
             compaction::competing(f, attempt).await;
         }
         Change::Credential => {
-            sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-                .bind(f.model.as_str())
+            sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+                .bind(&f.model)
                 .execute(&mut *f.connection().await)
                 .await
                 .expect("revoke selected credential");
@@ -283,12 +281,11 @@ async fn unavailable_native_count_leaves_no_paid_intent_usage_or_checkpoint() {
 async fn assert_no_paid_state(f: &Fixture, attempt: &Attempt, provider: &Provider) {
     assert_eq!(provider.paid.load(Ordering::Relaxed), 0);
     assert_eq!(fixture::receipts(f, attempt).await, (0, 0, false));
-    let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM memory.context_checkpoints WHERE draft_id=$1::uuid",
-    )
-    .bind(attempt.draft.id.as_str())
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("checkpoint census");
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM memory.context_checkpoints WHERE draft_id=$1")
+            .bind(&attempt.draft.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("checkpoint census");
     assert_eq!(count, 0);
 }

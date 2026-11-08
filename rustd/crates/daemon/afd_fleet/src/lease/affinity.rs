@@ -104,7 +104,7 @@ struct Won {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     lease_expires_at: Timestamp,
     held: bool,
-    holder: Option<String>,
+    holder: Option<Uuid7>,
 }
 
 impl Leases {
@@ -131,8 +131,8 @@ impl Leases {
     ) -> Result<Option<Claimed>> {
         let mut connection = self.pool().acquire().await?;
         let won: Option<Won> = sqlx::query_as(sql::lease::CLAIM_FLEET_SLOT)
-            .bind(fleet_id.as_str())
-            .bind(runner_id.as_str())
+            .bind(fleet_id)
+            .bind(runner_id)
             .bind(ttl)
             .bind(RUNNER_OFFLINE_AFTER)
             .bind(sql::RUNNER_STATUS_ACTIVE)
@@ -142,7 +142,7 @@ impl Leases {
         let Some(won) = won else {
             return Ok(None);
         };
-        let outcome = held_claim(won.held, won.holder.as_deref(), runner_id);
+        let outcome = held_claim(won.held, won.holder.as_ref().map(Uuid7::as_str), runner_id);
         if outcome == Some(HeldClaim::OtherAfterLapse) {
             producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);
         }
@@ -172,7 +172,7 @@ impl Leases {
     pub async fn release(&self, fleet_id: &Uuid7, fence: Fence) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(fence.as_i64())
             .execute(&mut *connection)
             .await
@@ -226,7 +226,7 @@ impl Leases {
         asked_hold: Option<Timestamp>,
     ) -> Result<()> {
         sqlx::query(sql::lease::RELEASE_FLEET_SLOT)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(fence.as_i64())
             .bind(asked_hold.map(jiff_sqlx::ToSqlx::to_sqlx))
             .bind(SANDBOX_HOLD_IDLE)

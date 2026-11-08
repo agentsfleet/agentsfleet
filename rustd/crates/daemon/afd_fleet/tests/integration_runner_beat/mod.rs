@@ -24,6 +24,7 @@ use crate::requests;
 use crate::support;
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use af_core::timing::RUNNER_OFFLINE_AFTER;
 use af_crypto::entropy::Entropy;
 use af_wire::runner::{
@@ -38,7 +39,7 @@ use crate::rows::Row;
 
 /// Asserts `runner`'s last beat landed on the database clock since this
 /// fixture opened: the row's liveness moved, and moved to `now()`.
-pub(super) async fn assert_seen_now(fixtures: &Fixtures, runner: &str) {
+pub(super) async fn assert_seen_now(fixtures: &Fixtures, runner: &Uuid7) {
     let seen = fixtures
         .instant(Row::Runner(runner), "last_seen_at")
         .await
@@ -63,7 +64,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
         .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
 
     let beat = HeartbeatRequest {
         capability_report: Some(capable()),
@@ -120,7 +121,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
         .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
 
     // The first beat transitions; the second is a heartbeat inside the window.
     for beat in 1..=2_u32 {
@@ -183,7 +184,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
         .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
 
     // Past `MAX_REPORT_CONTROLLERS`, which is a persistence-amplification
     // attempt rather than a capability claim.
@@ -241,7 +242,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
         .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     let (entropy, entropy_control) = Entropy::new_mocked();
     entropy_control.fail_next();
     let runners = Runners::new(fixtures.database.clone(), entropy);

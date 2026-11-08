@@ -3,6 +3,7 @@
 //! The statement returns facts and never a verdict, so the order below is one
 //! typed function a unit test reads, and the SQL holds no outcome spellings.
 
+use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 
 use crate::Repeated;
@@ -24,9 +25,9 @@ pub(crate) struct Answer {
     /// Whether this statement wrote the stored row.
     pub(crate) inserted: bool,
     /// The stored row: this statement's, or the one the key already held.
-    pub(crate) id: Option<String>,
+    pub(crate) id: Option<Uuid7>,
     pub(crate) digest: Option<String>,
-    pub(crate) fleet: Option<String>,
+    pub(crate) fleet: Option<Uuid7>,
     pub(crate) created_at: Option<jiff_sqlx::Timestamp>,
 }
 

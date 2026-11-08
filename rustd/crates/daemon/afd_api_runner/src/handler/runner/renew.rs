@@ -91,11 +91,12 @@ pub(crate) async fn handle<D: Services>(
     Path(lease_id): Path<String>,
     body: Bytes,
 ) -> Response {
-    // Parsed first, so the lease lookup's `::uuid` cast never decides the
-    // answer: a value that cannot name any lease is the caller's mistake.
-    if let Err(refusal) = super::schedule::lease(&lease_id) {
-        return refusal.into_response();
-    }
+    // Parsed first: a value that cannot name any lease is the caller's
+    // mistake, answered before any statement runs.
+    let lease_id = match super::schedule::lease(&lease_id) {
+        Ok(lease_id) => lease_id,
+        Err(refusal) => return refusal.into_response(),
+    };
     let request = match requests(&body) {
         Ok(request) => request,
         Err(detail) => {

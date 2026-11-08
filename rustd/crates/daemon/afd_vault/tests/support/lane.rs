@@ -29,7 +29,7 @@ use af_crypto::envelope::Envelope;
 use af_crypto::secret::Kek;
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_uuid7};
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_vault::{Directory, SecretBody, SecretName, Vault};
 use jiff::Timestamp;
 use serde_json::value::RawValue;
@@ -68,8 +68,8 @@ impl Lane {
         let pool = database.open(DbRole::Api, &[]).await;
         let kek = Arc::new(Kek::from_hex(KEK_HEX).expect("the fixture key is well formed"));
         let lane = Self {
-            tenant: mint_uuid7(),
-            workspace: mint_uuid7(),
+            tenant: mint_id(),
+            workspace: mint_id(),
             vault: Vault::new(pool.clone(), Arc::clone(&kek), Entropy::new()),
             database,
             pool,
@@ -91,8 +91,8 @@ impl Lane {
 
     /// A second workspace under the same tenant, for the cross-workspace proofs.
     pub(crate) async fn another_workspace(&self) -> Uuid7 {
-        let workspace = mint_uuid7();
-        WorkspaceSeed::new(workspace.as_str(), self.tenant.as_str())
+        let workspace = mint_id();
+        WorkspaceSeed::new(&workspace, &self.tenant)
             .insert(&mut *self.connection().await)
             .await
             .expect("seeding a second workspace");
@@ -114,9 +114,9 @@ impl Lane {
     pub(crate) async fn meta_columns(&self, name: &str) -> Option<StoredProjection> {
         sqlx::query(
             "SELECT meta_kind, meta_provider, meta_base_url, meta_has_key \
-               FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2",
+               FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
         )
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(name)
         .fetch_optional(&mut *self.connection().await)
         .await
@@ -137,9 +137,9 @@ impl Lane {
     pub(crate) async fn opened(&self, name: &str) -> String {
         let row = sqlx::query(
             "SELECT dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, kek_version \
-               FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2",
+               FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
         )
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(name)
         .fetch_one(&mut *self.connection().await)
         .await
@@ -177,9 +177,9 @@ impl Lane {
         sqlx::query(
             "UPDATE vault.secrets \
                 SET secret_ciphertext = set_byte(secret_ciphertext, 0, get_byte(secret_ciphertext, 0) # 255) \
-              WHERE workspace_id = $1::uuid AND key_name = $2",
+              WHERE workspace_id = $1 AND key_name = $2",
         )
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(name)
         .execute(&mut *self.connection().await)
         .await
@@ -207,14 +207,14 @@ impl Lane {
                 dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, \
                 kek_version, created_at, updated_at, \
                 meta_kind, meta_provider, meta_base_url, meta_has_key) \
-             SELECT $3::uuid, workspace_id, $4, \
+             SELECT $3, workspace_id, $4, \
                     dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, \
                     kek_version, now(), now(), $5, $6, $7, $8 \
-               FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2",
+               FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
         )
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(borrow_envelope_from)
-        .bind(mint_uuid7().as_str())
+        .bind(mint_id())
         .bind(name)
         .bind(kind)
         .bind(provider)
@@ -230,10 +230,10 @@ impl Lane {
         sqlx::query(
             "INSERT INTO model.tenant_models \
                (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $4, now(), now())",
+             VALUES ($1, $2, $3, $4, now(), now())",
         )
-        .bind(mint_uuid7().as_str())
-        .bind(self.tenant.as_str())
+        .bind(mint_id())
+        .bind(&self.tenant)
         .bind(model_id)
         .bind(secret_ref)
         .execute(&mut *self.connection().await)
@@ -243,20 +243,18 @@ impl Lane {
 
     /// Removes every registry entry naming `secret_ref`.
     pub(crate) async fn clear_model_entries(&self, secret_ref: &str) {
-        sqlx::query(
-            "DELETE FROM model.tenant_models WHERE tenant_id = $1::uuid AND secret_ref = $2",
-        )
-        .bind(self.tenant.as_str())
-        .bind(secret_ref)
-        .execute(&mut *self.connection().await)
-        .await
-        .expect("clearing model registry entries");
+        sqlx::query("DELETE FROM model.tenant_models WHERE tenant_id = $1 AND secret_ref = $2")
+            .bind(&self.tenant)
+            .bind(secret_ref)
+            .execute(&mut *self.connection().await)
+            .await
+            .expect("clearing model registry entries");
     }
 
     /// How many secret rows a workspace holds.
     pub(crate) async fn secret_count(&self, workspace: &Uuid7) -> i64 {
-        sqlx::query("SELECT count(*) FROM vault.secrets WHERE workspace_id = $1::uuid")
-            .bind(workspace.as_str())
+        sqlx::query("SELECT count(*) FROM vault.secrets WHERE workspace_id = $1")
+            .bind(workspace)
             .fetch_one(&mut *self.connection().await)
             .await
             .expect("counting secrets")
@@ -281,11 +279,11 @@ impl Lane {
     /// Seeds the tenant and the workspace every fixture secret lands in.
     async fn seed_tenant_and_workspace(&self) {
         let mut connection = self.connection().await;
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .insert(&mut *connection)
             .await
             .expect("seeding a tenant");
-        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .insert(&mut *connection)
             .await
             .expect("seeding a workspace");

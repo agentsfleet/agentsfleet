@@ -1,6 +1,7 @@
 //! What a producer asks the ledger for: who is asking, what the work is keyed
 //! on, where its answer goes, and the digest a retry is checked against.
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use sha2::{Digest as _, Sha256};
 
@@ -108,9 +109,8 @@ pub enum Reply<'a> {
     /// the admission's own statement so no read can race the write.
     Inherit {
         /// The id of the event whose destination is copied: its admission row's
-        /// `UUIDv7`. An id this ledger never minted, or an event recorded with
-        /// none, copies none.
-        event_id: &'a str,
+        /// `UUIDv7`. An event recorded with no destination copies none.
+        event_id: &'a Uuid7,
     },
 }
 
@@ -125,9 +125,9 @@ pub struct Admission<'a> {
     /// What this unit of work is deduplicated on.
     pub key: Key<'a>,
     /// The fleet to run it.
-    pub fleet: &'a str,
+    pub fleet: &'a Uuid7,
     /// The workspace the fleet belongs to.
-    pub workspace: &'a str,
+    pub workspace: &'a Uuid7,
     /// Who the history records as having woken the fleet.
     pub actor: &'a str,
     /// How the event entered the system.
@@ -167,7 +167,7 @@ impl Admission<'_> {
         for part in [
             self.actor,
             self.event_type.as_str(),
-            self.workspace,
+            self.workspace.as_str(),
             self.request_json,
         ] {
             absorb(part);
@@ -180,7 +180,7 @@ impl Admission<'_> {
                     .for_each(absorb);
             }
             Reply::Inherit { event_id } => {
-                [DIGEST_REPLY_INHERIT, event_id]
+                [DIGEST_REPLY_INHERIT, event_id.as_str()]
                     .into_iter()
                     .for_each(absorb);
             }

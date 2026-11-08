@@ -53,7 +53,7 @@ impl Drafts {
         }
         let cutoff = through.max(draft.cancelled_through_sequence);
         let stopped: Vec<i64> = sqlx::query_scalar(sql::message::CANCEL)
-            .bind(id.as_str())
+            .bind(id)
             .bind(cutoff)
             .bind(CANCELLED)
             .bind(QUEUED)
@@ -63,7 +63,7 @@ impl Drafts {
             .map_err(query(CONTEXT))?;
         if cutoff > draft.cancelled_through_sequence {
             sqlx::query(sql::draft::CANCEL)
-                .bind(id.as_str())
+                .bind(id)
                 .bind(cutoff)
                 .execute(&mut *tx)
                 .await

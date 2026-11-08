@@ -28,9 +28,9 @@ async fn assignment_observes_committed_catalogue_changes_after_lock_contention()
         let mut connection = fixture.owner.acquire().await.expect("catalogue writer");
         let mut transaction = connection.begin().await.expect("hold model lock");
         let blocker: i32 = sqlx::query_scalar(
-            "SELECT pg_backend_pid() FROM model.platform_models WHERE id=$1::uuid FOR UPDATE",
+            "SELECT pg_backend_pid() FROM model.platform_models WHERE id=$1 FOR UPDATE",
         )
-        .bind(model.model.id.as_str())
+        .bind(&model.model.id)
         .fetch_one(&mut *transaction)
         .await
         .expect("locked model");
@@ -75,27 +75,23 @@ async fn finish_case(fixture: Fixture, model: DecisionModelFixture, runner: Uuid
 async fn stage_change(connection: &mut PgConnection, model: &Uuid7, change: CatalogueChange) {
     match change {
         CatalogueChange::Disable => {
-            sqlx::query(
-                "UPDATE model.platform_models SET decision_enabled=false WHERE id=$1::uuid",
-            )
-            .bind(model.as_str())
-            .execute(connection)
-            .await
-            .expect("disable while assignment waits");
+            sqlx::query("UPDATE model.platform_models SET decision_enabled=false WHERE id=$1")
+                .bind(model)
+                .execute(connection)
+                .await
+                .expect("disable while assignment waits");
         }
         CatalogueChange::Revise => {
             let next = mint_id();
-            sqlx::query("INSERT INTO model.decision_revisions (id,platform_model_id,revision,definition,created_at) SELECT $2::uuid,m.id,$3,jsonb_set(d.definition,'{revision}',to_jsonb($3::text)),now() FROM model.platform_models m JOIN model.decision_revisions d ON d.id=m.decision_revision_id WHERE m.id=$1::uuid")
-                .bind(model.as_str()).bind(&next).bind("reviewed-2")
+            sqlx::query("INSERT INTO model.decision_revisions (id,platform_model_id,revision,definition,created_at) SELECT $2,m.id,$3,jsonb_set(d.definition,'{revision}',to_jsonb($3::text)),now() FROM model.platform_models m JOIN model.decision_revisions d ON d.id=m.decision_revision_id WHERE m.id=$1")
+                .bind(model).bind(&next).bind("reviewed-2")
                 .execute(&mut *connection).await.expect("new immutable revision in writer transaction");
-            sqlx::query(
-                "UPDATE model.platform_models SET decision_revision_id=$2::uuid WHERE id=$1::uuid",
-            )
-            .bind(model.as_str())
-            .bind(&next)
-            .execute(connection)
-            .await
-            .expect("select new reviewed revision");
+            sqlx::query("UPDATE model.platform_models SET decision_revision_id=$2 WHERE id=$1")
+                .bind(model)
+                .bind(&next)
+                .execute(connection)
+                .await
+                .expect("select new reviewed revision");
         }
     }
 }

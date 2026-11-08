@@ -34,8 +34,8 @@ async fn race(case: &Case) {
         .fetch_one(&mut *writer)
         .await
         .expect("writer pid");
-    sqlx::query("UPDATE runner.runners SET durable_tasks_enabled=false WHERE id=$1::uuid")
-        .bind(case.held.runner.as_str())
+    sqlx::query("UPDATE runner.runners SET durable_tasks_enabled=false WHERE id=$1")
+        .bind(&case.held.runner)
         .execute(&mut *writer)
         .await
         .expect("pending OFF edit");

@@ -10,7 +10,7 @@ use std::sync::Arc;
 /// renew, short enough that a renewal visibly extends it.
 const SHORTEN: &str = "UPDATE authoring.attempts \
 SET lease_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '10 seconds' \
-WHERE id=$1::uuid";
+WHERE id=$1";
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
@@ -19,7 +19,7 @@ async fn renewal_extends_only_a_live_slot_and_keeps_its_capability_binding() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     sqlx::query(SHORTEN)
-        .bind(a.id.as_str())
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("short live lease");
@@ -34,7 +34,7 @@ async fn renewal_extends_only_a_live_slot_and_keeps_its_capability_binding() {
     assert_eq!(renewed.remaining_output_tokens, 8192);
     assert_eq!(snapshot(&f, &a).await.2, before.2);
     sqlx::query(EXPIRE_NOW)
-        .bind(a.id.as_str())
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("expire at equality");
@@ -77,8 +77,8 @@ async fn a_renewal_whose_hold_the_biller_cannot_answer_extends_nothing_and_fails
     assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
     assert_eq!(snapshot(&f, &a).await, before, "the lease is not extended");
     let failure: Option<String> =
-        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1::uuid")
-            .bind(a.id.as_str())
+        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1")
+            .bind(a.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("the attempt");

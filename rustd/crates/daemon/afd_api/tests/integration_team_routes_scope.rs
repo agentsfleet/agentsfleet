@@ -8,6 +8,7 @@
 )]
 
 use af_core::error_code;
+use af_core::id::Uuid7;
 use http::{Method, StatusCode};
 use serde_json::json;
 
@@ -29,7 +30,8 @@ async fn test_owner_routes_never_reach_another_account() {
     let body = json!({ "email": format!("dave+{}@example.test", bob.user) }).to_string();
     let (status, invite) = call(&johns, Method::POST, INVITES, john, &body).await;
     assert_eq!(status, StatusCode::CREATED, "{invite}");
-    let invite = text(&invite, "id").expect("an id").to_owned();
+    let invite =
+        Uuid7::parse(text(&invite, "id").expect("an id")).expect("the invite id is a UUIDv7");
     let counted = members.email_attempts(&invite).await;
 
     let revoke = format!("{INVITES}/{invite}");
@@ -39,7 +41,7 @@ async fn test_owner_routes_never_reach_another_account() {
         StatusCode::NO_CONTENT,
         "nothing of theirs to revoke"
     );
-    let (status, problem) = send_again(&strangers, stranger, &invite).await;
+    let (status, problem) = send_again(&strangers, stranger, invite.as_str()).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{problem}");
     assert_eq!(
         harness::error_code(&problem),
@@ -56,12 +58,12 @@ async fn test_owner_routes_never_reach_another_account() {
 
     let (_, listed) = call(&johns, Method::GET, INVITES, john, "").await;
     assert!(
-        find(&listed, "id", &invite).is_some(),
+        find(&listed, "id", invite.as_str()).is_some(),
         "John's invite stands: {listed}"
     );
     let (_, roster) = call(&johns, Method::GET, MEMBERS, john, "").await;
     assert!(
-        find(&roster, "user_id", &bob.user).is_some(),
+        find(&roster, "user_id", bob.user.as_str()).is_some(),
         "Bob stays: {roster}"
     );
     another_account_cannot_revoke_an_accepted_invite(&members).await;
@@ -92,7 +94,7 @@ async fn another_account_cannot_revoke_an_accepted_invite(members: &Members) {
     );
     let (_, roster) = call(&johns, Method::GET, MEMBERS, john, "").await;
     assert!(
-        find(&roster, "user_id", &stranger.user).is_some(),
+        find(&roster, "user_id", stranger.user.as_str()).is_some(),
         "the stranger stays: {roster}"
     );
 }
@@ -120,11 +122,11 @@ async fn test_member_manages_only_own_account() {
     let (status, roster) = call(&bobs, Method::GET, MEMBERS, bob, "").await;
     assert_eq!(status, StatusCode::OK, "{roster}");
     assert!(
-        find(&roster, "user_id", &john.user).is_none(),
+        find(&roster, "user_id", john.user.as_str()).is_none(),
         "not Bob's roster: {roster}"
     );
     assert!(
-        find(&roster, "user_id", &bob.user).is_some(),
+        find(&roster, "user_id", bob.user.as_str()).is_some(),
         "Bob owns his own: {roster}"
     );
     members.cleanup().await;

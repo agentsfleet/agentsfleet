@@ -10,9 +10,9 @@ const BACKLOG: &str = "INSERT INTO fleet.admissions \
     request_json,event_created_at,created_at,updated_at) \
     SELECT uuidv7(),f.id,f.workspace_id,'steer','meter-plan-'||n,'fixture','fixture', \
     'chat','{}',now(),now(),now() FROM fleet.fleets f,generate_series(1,$2::integer) n \
-    WHERE f.id=$1::uuid";
+    WHERE f.id=$1";
 const PREPARE: &str = "PREPARE ledger_meter \
-    (text,text,bigint,text,boolean,interval,interval,text,boolean,text,bigint,bigint,text) AS ";
+    (uuid,uuid,bigint,text,boolean,interval,interval,text,boolean,text,bigint,bigint,text) AS ";
 
 pub(super) async fn assert_point_lookups(connection: &mut PgConnection, held: &Held) {
     run(connection, super::FORCE_GENERIC).await;
@@ -31,7 +31,7 @@ pub(super) async fn assert_point_lookups(connection: &mut PgConnection, held: &H
             let plan = meter_plan(connection, held, settles).await;
             assert_indexed_admissions(&plan, size, settles);
             let settled: bool = sqlx::query_scalar(
-                "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid",
+                "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id=$1",
             )
             .bind(&held.event_id)
             .fetch_one(&mut *connection)

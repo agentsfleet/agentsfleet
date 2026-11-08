@@ -52,8 +52,8 @@ impl Held {
             .fetch_one(&mut holder)
             .await
             .expect("holder identity");
-        sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE")
-            .bind(hot.id.as_str())
+        sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+            .bind(&hot.id)
             .execute(&mut holder)
             .await
             .expect("hot draft row hold");
@@ -98,8 +98,8 @@ impl Held {
     }
 
     async fn stored(&self) -> (i64, i64) {
-        sqlx::query_as("SELECT count(*), count(r.id) FROM authoring.messages m LEFT JOIN authoring.replay_receipts r ON r.resource_id=m.id AND r.scope=$2 WHERE m.draft_id=$1::uuid")
-            .bind(self.hot.id.as_str()).bind(format!("{}:draft:{}:message", self.fixture.workspace, self.hot.id))
+        sqlx::query_as("SELECT count(*), count(r.id) FROM authoring.messages m LEFT JOIN authoring.replay_receipts r ON r.resource_id=m.id AND r.scope=$2 WHERE m.draft_id=$1")
+            .bind(&self.hot.id).bind(format!("{}:draft:{}:message", self.fixture.workspace, self.hot.id))
             .fetch_one(&mut *self.fixture.connection().await).await.expect("durable accepted messages and receipts")
     }
 

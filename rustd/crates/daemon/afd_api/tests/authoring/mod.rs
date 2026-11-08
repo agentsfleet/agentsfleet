@@ -33,5 +33,12 @@ use af_core::money::NANOS_PER_USD;
 const FUNDED_NANOS: i64 = 1_000 * NANOS_PER_USD;
 
 fn mint() -> Uuid7 {
-    Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture UUIDv7")
+    afd_db::test_util::mint_id()
+}
+
+/// The identifier a response field carries, which a statement binds as a
+/// `uuid` rather than as the text the JSON spelled it in.
+fn id_field(field: &serde_json::Value) -> Uuid7 {
+    Uuid7::parse(field.as_str().expect("an identifier field is a string"))
+        .expect("an identifier field is a UUIDv7")
 }

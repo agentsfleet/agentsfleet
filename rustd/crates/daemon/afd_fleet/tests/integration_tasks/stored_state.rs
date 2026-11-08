@@ -42,16 +42,44 @@ async fn unreadable(case: &Case) {
         ("running", "{}", running_limit),
         ("running", questions.as_str(), 4_294_967_296_000_000_000),
     ] {
-        sqlx::query("UPDATE fleet.tasks SET status=$2,questions=$3::jsonb,max_running_nanos=$4 WHERE id=$1::uuid")
-            .bind(task.as_str()).bind(status).bind(saved_questions).bind(max_running)
-            .execute(&mut *case.held.fixtures.database.acquire().await.expect("isolated storage connection"))
-            .await.expect("schema-valid unreadable saved data");
+        sqlx::query(
+            "UPDATE fleet.tasks SET status=$2,questions=$3::jsonb,max_running_nanos=$4 WHERE id=$1",
+        )
+        .bind(task)
+        .bind(status)
+        .bind(saved_questions)
+        .bind(max_running)
+        .execute(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("isolated storage connection"),
+        )
+        .await
+        .expect("schema-valid unreadable saved data");
         unreadable_result(case, task, before.context.objective.as_ref()).await;
     }
-    sqlx::query("UPDATE fleet.tasks SET status=$2,questions=$3::jsonb,max_running_nanos=$4 WHERE id=$1::uuid")
-        .bind(task.as_str()).bind(before.context.state.as_str()).bind(&questions).bind(running_limit)
-        .execute(&mut *case.held.fixtures.database.acquire().await.expect("repair connection"))
-        .await.expect("restore owned saved values");
+    sqlx::query(
+        "UPDATE fleet.tasks SET status=$2,questions=$3::jsonb,max_running_nanos=$4 WHERE id=$1",
+    )
+    .bind(task)
+    .bind(before.context.state.as_str())
+    .bind(&questions)
+    .bind(running_limit)
+    .execute(
+        &mut *case
+            .held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("repair connection"),
+    )
+    .await
+    .expect("restore owned saved values");
     assert_eq!(
         tasks
             .read(scope, task)

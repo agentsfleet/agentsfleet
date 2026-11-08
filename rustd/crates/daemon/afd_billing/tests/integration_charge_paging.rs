@@ -29,12 +29,12 @@ async fn charge_pages_bound_usage_history_before_detail_joins() {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
     Migrator::new().run(&db).await.unwrap();
-    let tenant = Uuid7::parse(&fixture::tenant()).unwrap();
+    let tenant = fixture::tenant();
     let foreign = fixture::tenant();
     let billing = Billing::new(db.clone());
     let mut previous = 0;
     for size in HISTORY_SIZES {
-        for owner in [tenant.as_str(), &foreign] {
+        for owner in [&tenant, &foreign] {
             fixture::attempts(&db, owner, previous + 1, size).await;
             fixture::lines(&db, owner, previous + 1, size).await;
         }
@@ -63,7 +63,7 @@ async fn charge_pages_bound_usage_history_before_detail_joins() {
 fn boundary_at(second: i64) -> Boundary {
     Boundary {
         created_at: Timestamp::from_second(second).unwrap(),
-        id: Uuid7::parse(&mint_id()).unwrap(),
+        id: mint_id(),
     }
 }
 

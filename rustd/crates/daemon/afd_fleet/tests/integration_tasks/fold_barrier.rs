@@ -34,8 +34,8 @@ async fn claim_around_bound_continuations(case: &Case) {
     // The bind made this lease a durable task's, which claims nothing. Making
     // it a plain run again leaves the bound continuations as the only thing
     // that can stop the claim.
-    sqlx::query("UPDATE runner.leases SET task_id = NULL WHERE id = $1::uuid")
-        .bind(held.issued.lease_id.as_str())
+    sqlx::query("UPDATE runner.leases SET task_id = NULL WHERE id = $1")
+        .bind(&held.issued.lease_id)
         .execute(&mut *held.fixtures.database.acquire().await.expect("connection"))
         .await
         .expect("the lease becomes a plain run");
@@ -60,11 +60,11 @@ async fn claim_around_bound_continuations(case: &Case) {
 /// The unsettled, unparked, task-bound messages after the run's own.
 async fn waiting_task_bound(case: &Case) -> i64 {
     sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.admissions a WHERE a.fleet_id = $1::uuid \
+        "SELECT count(*) FROM fleet.admissions a WHERE a.fleet_id = $1 \
          AND a.task_id IS NOT NULL AND a.parked_at IS NULL AND a.settled_at IS NULL \
-         AND a.sequence > (SELECT sequence FROM fleet.admissions WHERE id = $2::uuid)",
+         AND a.sequence > (SELECT sequence FROM fleet.admissions WHERE id = $2)",
     )
-    .bind(case.scope.fleet_id.as_str())
+    .bind(&case.scope.fleet_id)
     .bind(&case.held.event_id)
     .fetch_one(
         &mut *case

@@ -202,7 +202,7 @@ async fn assert_pages(
 
 async fn assert_refused_edit(fixture: &Fixture, runner: &Uuid7, policy: &mut AssignedPolicy<'_>) {
     let before = fixture.history(runner).await.len();
-    policy.decision_model_id = Some(Cow::Owned(mint_id()));
+    policy.decision_model_id = Some(Cow::Owned(mint_id().into()));
     let labels = [Cow::Borrowed("must-not-land")];
     let refusal = fixture
         .runners

@@ -77,8 +77,8 @@ async fn test_an_assignment_that_will_not_decode_is_refused_on_the_beat_and_the_
     // The corruption and its removal are scaffolding, so they run as the lane
     // owner: `api_runtime` carries only what the routes under test need.
     let migrator = lane.open(DbRole::Migrator, &[]).await;
-    sqlx::query("UPDATE runner.runners SET sandbox_tier = 'not-a-tier' WHERE id = $1::uuid")
-        .bind(enrolled.runner_id.as_str())
+    sqlx::query("UPDATE runner.runners SET sandbox_tier = 'not-a-tier' WHERE id = $1")
+        .bind(&enrolled.runner_id)
         .execute(&mut *migrator.acquire().await.expect("a seeding connection"))
         .await
         .expect("the fixture corrupts the stored tier");
@@ -99,8 +99,8 @@ async fn test_an_assignment_that_will_not_decode_is_refused_on_the_beat_and_the_
     assert_eq!(me.status(), StatusCode::INTERNAL_SERVER_ERROR);
     // The lane is shared: a row left undecodable fails every platform-wide
     // runner page that reaches it, such as the operator list.
-    sqlx::query("DELETE FROM runner.runners WHERE id = $1::uuid")
-        .bind(enrolled.runner_id.as_str())
+    sqlx::query("DELETE FROM runner.runners WHERE id = $1")
+        .bind(enrolled.runner_id)
         .execute(&mut *migrator.acquire().await.expect("a cleanup connection"))
         .await
         .expect("the corrupted runner cleans up");
@@ -152,9 +152,9 @@ async fn test_a_beat_asking_to_be_held_answers_woken_after_its_liveness() {
     let reply = json_body(beat).await;
     let migrator = lane.open(DbRole::Migrator, &[]).await;
     let seen_after_enrolment: bool = sqlx::query_scalar(
-        "SELECT last_seen_at > $2::timestamptz FROM runner.runners WHERE id = $1::uuid",
+        "SELECT last_seen_at > $2::timestamptz FROM runner.runners WHERE id = $1",
     )
-    .bind(enrolled.runner_id.as_str())
+    .bind(&enrolled.runner_id)
     .bind(NOW.to_string())
     .fetch_one(&mut *migrator.acquire().await.expect("a reading connection"))
     .await

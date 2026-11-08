@@ -8,7 +8,7 @@
 -- $1 fleet · $2 lease · $3 fence · $4 read through sequence
 UPDATE fleet.admissions a
 SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
-WHERE a.fleet_id = $1::uuid
-  AND a.input_claim_lease_id = $2::uuid AND a.input_claim_fence = $3
+WHERE a.fleet_id = $1
+  AND a.input_claim_lease_id = $2 AND a.input_claim_fence = $3
   AND a.settled_at IS NULL AND a.sequence <= $4
-RETURNING a.id::text AS id
+RETURNING a.id AS id

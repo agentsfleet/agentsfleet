@@ -51,7 +51,7 @@ impl Vault {
     pub async fn load(&self, workspace: &Uuid7, name: &SecretName) -> Result<Option<SecretBytes>> {
         let mut connection = self.directory.database.acquire().await?;
         let row = sqlx::query_as::<_, crate::StoredEnvelope>(sql::SELECT_SECRET_ENVELOPE)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(name.as_str())
             .fetch_optional(connection.as_mut())
             .await
@@ -95,7 +95,7 @@ impl Vault {
         let selected: Vec<&str> = names.iter().map(SecretName::as_str).collect();
         let mut connection = self.directory.database.acquire().await?;
         let rows = sqlx::query_as::<_, NamedEnvelope>(sql::SELECT_NAMED_ENVELOPES)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(&selected)
             .fetch_all(connection.as_mut())
             .await

@@ -12,8 +12,8 @@ use super::*;
 fn marker(fixture: &Fixture) -> AnswerMarker {
     let job = fixture.job();
     AnswerMarker {
-        fleet_id: job.fleet_id,
-        event_id: job.event_id,
+        fleet_id: job.fleet_id.into(),
+        event_id: job.event_id.into(),
         part: None,
     }
 }

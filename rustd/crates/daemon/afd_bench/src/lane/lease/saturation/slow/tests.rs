@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
+use af_core::id::Uuid7;
+
 use super::{HOLD, Locker, write};
 use crate::abort::Abort;
 use crate::error::{ErrorKind, Result};
@@ -20,6 +22,11 @@ const POPULATION: u64 = 1;
 
 /// A window long enough that only a fake closes it.
 const WINDOW: Duration = Duration::from_secs(60);
+
+/// The one tenant the writer is handed.
+fn tenant() -> Uuid7 {
+    Uuid7::parse("0195b4ba-8d3a-7001-8abc-000000000001").expect("a canonical v7 identifier")
+}
 
 fn window() -> Shared {
     Shared {
@@ -35,12 +42,12 @@ struct Counting<'a> {
     shared: &'a Shared,
     holds: u64,
     refuses: bool,
-    seen: Vec<(String, Duration)>,
+    seen: Vec<(Uuid7, Duration)>,
 }
 
 impl Locker for Counting<'_> {
-    fn hold(&mut self, tenant: &str, hold: Duration) -> impl Future<Output = Result<()>> + Send {
-        self.seen.push((tenant.to_owned(), hold));
+    fn hold(&mut self, tenant: &Uuid7, hold: Duration) -> impl Future<Output = Result<()>> + Send {
+        self.seen.push((tenant.clone(), hold));
         if self.seen.len() as u64 >= self.holds {
             self.shared.leased.store(POPULATION, Ordering::Relaxed);
         }
@@ -61,11 +68,12 @@ async fn test_the_writer_holds_one_tenant_until_the_window_closes() {
         refuses: false,
         seen: Vec::new(),
     };
-    let holds = write(&mut locker, "tenant-a", &shared)
+    let tenant = tenant();
+    let holds = write(&mut locker, Some(&tenant), &shared)
         .await
         .expect("a scripted writer runs");
     assert_eq!(holds, 2);
-    assert_eq!(locker.seen, vec![("tenant-a".to_owned(), HOLD); 2]);
+    assert_eq!(locker.seen, vec![(tenant, HOLD); 2]);
 }
 
 #[tokio::test]
@@ -77,7 +85,7 @@ async fn test_a_writer_whose_connection_fails_ends_the_window() {
         refuses: true,
         seen: Vec::new(),
     };
-    write(&mut locker, "tenant-a", &shared)
+    write(&mut locker, Some(&tenant()), &shared)
         .await
         .expect_err("a lost writer is reported");
     assert_eq!(locker.seen.len(), 1, "the first refusal stops it");

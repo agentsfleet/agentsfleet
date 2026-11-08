@@ -3,7 +3,7 @@ SELECT m.model_name, m.provider, m.context_cap_tokens, p.input_nanos_per_mtok,
        m.display_name, m.context_source_url, m.context_verified_at, m.advanced,
        greatest(m.updated_at, (SELECT max(q.updated_at) FROM model.platform_model_prices q
                                WHERE q.platform_model_id = m.id)) AS updated_at,
-       m.id::text,
+       m.id,
        lower(normalize(model_name, NFKC)) AS display_key,
        lower(normalize(provider, NFKC)) AS vendor_key
 FROM model.platform_models m

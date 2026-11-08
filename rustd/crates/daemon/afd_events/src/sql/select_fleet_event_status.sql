@@ -1,1 +1,1 @@
-SELECT status FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2
+SELECT status FROM fleet.events WHERE fleet_id = $1 AND event_id = $2

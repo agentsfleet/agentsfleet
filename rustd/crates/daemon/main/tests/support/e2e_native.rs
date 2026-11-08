@@ -13,6 +13,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_fleet_runtime::Definition;
 use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use afd_db::test_util::SetupRevision;
@@ -23,17 +24,17 @@ use serde_json::{Value, json};
 const APPEND_HEAD_REVISION: &str = "\
 WITH next AS (
     SELECT coalesce(max(revision), 0) + 1 AS revision
-    FROM fleet.revisions WHERE fleet_id = $1::uuid
+    FROM fleet.revisions WHERE fleet_id = $1
 ), appended AS (
     INSERT INTO fleet.revisions
       (id, fleet_id, revision, definition, canonical_digest, policy_semantics,
        runtime_model_ref, created_at)
-    SELECT $2::uuid, $1::uuid, next.revision, $3::jsonb, $4, $5, $6, now() FROM next
+    SELECT $2, $1, next.revision, $3::jsonb, $4, $5, $6, now() FROM next
     RETURNING id
 )
 UPDATE fleet.fleets SET head_revision_id = (SELECT id FROM appended),
     resource_version = resource_version + 1, updated_at = now()
-WHERE id = $1::uuid";
+WHERE id = $1";
 
 /// What a seeded fleet's setup says about itself.
 const FIXTURE_DESCRIPTION: &str = "End-to-end fixture.";
@@ -85,7 +86,7 @@ pub(crate) fn definition(config: &str, instructions: &str) -> Definition {
 /// Apply changes a saved fleet's setup.
 pub(crate) async fn reselect(
     connection: &mut sqlx::PgConnection,
-    fleet: &str,
+    fleet: &Uuid7,
     definition: &Definition,
 ) {
     let stored = Stored::of(definition);

@@ -70,8 +70,8 @@ pub(crate) async fn rows(run: &Scenario) -> i64 {
     scalar(
         run,
         "SELECT count(*) FROM fleet.tool_calls t \
-         JOIN fleet.events e ON e.id = t.fleet_event_id \
-         WHERE t.fleet_id = $1::uuid AND e.event_id = $2",
+         JOIN fleet.events e ON e.event_id = t.event_id \
+         WHERE t.fleet_id = $1 AND e.event_id = $2",
         None,
     )
     .await
@@ -82,8 +82,8 @@ async fn rows_at(run: &Scenario, fence: u64) -> i64 {
     scalar(
         run,
         "SELECT count(*) FROM fleet.tool_calls t \
-         JOIN fleet.events e ON e.id = t.fleet_event_id \
-         WHERE t.fleet_id = $1::uuid AND e.event_id = $2 AND t.fencing_token = $3",
+         JOIN fleet.events e ON e.event_id = t.event_id \
+         WHERE t.fleet_id = $1 AND e.event_id = $2 AND t.fencing_token = $3",
         Some(fence),
     )
     .await
@@ -150,7 +150,7 @@ async fn test_stale_fence_tool_call_details_refused() {
     execute(
         &run,
         "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 \
-         WHERE fleet_id = $1::uuid AND $2 <> ''",
+         WHERE fleet_id = $1 AND $2 IS NOT NULL",
     )
     .await;
     let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(1, "x")]).await;
@@ -212,12 +212,12 @@ async fn plant_dead_record(run: &Scenario, fence: u64) {
         run,
         &format!(
             "INSERT INTO fleet.tool_calls \
-             (id, workspace_id, fleet_id, fleet_event_id, fencing_token, sequence, arguments, \
+             (id, workspace_id, fleet_id, event_id, fencing_token, sequence, arguments, \
               truncated_arguments, output, output_line_count, truncated, byte_count, \
               created_at, updated_at) \
-             SELECT '{dead}'::uuid, workspace_id, fleet_id, id, {fence}, 1, '{{}}'::jsonb, \
+             SELECT '{dead}'::uuid, workspace_id, fleet_id, event_id, {fence}, 1, '{{}}'::jsonb, \
                     false, 'dead', 1, false, 256, now(), now() \
-             FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2"
+             FROM fleet.events WHERE fleet_id = $1 AND event_id = $2"
         ),
     )
     .await;

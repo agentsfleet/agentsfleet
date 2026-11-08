@@ -23,15 +23,15 @@ impl History {
         };
         let scoped = match cursor {
             None => sqlx::query(super::statement::SELECT_THREAD_FILTERED)
-                .bind(workspace.as_str())
-                .bind(fleet.as_str())
+                .bind(workspace)
+                .bind(fleet)
                 .bind(event_type),
             Some(at) => sqlx::query(super::statement::SELECT_THREAD_FILTERED_AFTER)
-                .bind(workspace.as_str())
-                .bind(fleet.as_str())
+                .bind(workspace)
+                .bind(fleet)
                 .bind(event_type)
                 .bind(at.created_at.to_sqlx())
-                .bind(at.event_id.as_str()),
+                .bind(&at.event_id),
         };
         let mut connection = self.database.acquire().await?;
         scoped

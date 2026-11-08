@@ -62,7 +62,7 @@ const CONTEXT_RELEASED: &str = "runner lease released event";
 /// are escaped the way any JSON reader expects.
 #[derive(Debug, serde::Serialize)]
 struct Checkpoint<'a> {
-    last_event_id: &'a str,
+    last_event_id: &'a Uuid7,
     last_response: &'a str,
 }
 
@@ -87,7 +87,7 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
         outcome: Terminal<'_>,
     ) -> Result<Option<Closed>> {
         let Terminal {
@@ -98,7 +98,7 @@ impl Leases {
             tool_calls,
         } = outcome;
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(event_id)
             .bind(verdict.status())
             .bind(response_text)
@@ -116,8 +116,8 @@ impl Leases {
         let Some(row) = closed else {
             let fleet = fleet_id.as_str();
             tracing::warn!(
-                fleet_id = fleet,
-                agentsfleet_event_id = event_id,
+                fleet_id = %fleet,
+                agentsfleet_event_id = %event_id,
                 event = "terminal_write_skipped_nonreceived",
                 "the event was already terminal; the settled result stands"
             );
@@ -138,7 +138,7 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        event_ids: &[String],
+        event_ids: &[Uuid7],
         outcome: Terminal<'_>,
     ) -> Result<Vec<Closed>> {
         let Terminal {
@@ -149,7 +149,7 @@ impl Leases {
             tool_calls,
         } = outcome;
         let rows = sqlx::query(afd_events::sql::CLOSE_FOLDED_EVENTS)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(event_ids)
             .bind(verdict.status())
             .bind(response_text)
@@ -190,7 +190,7 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        last_event_id: &str,
+        last_event_id: &Uuid7,
         last_response: &str,
     ) -> Result<()> {
         // `Value`, then `Display`. `serde_json::to_string` is fallible in its
@@ -207,7 +207,7 @@ impl Leases {
         .to_string();
 
         sqlx::query(sql::session::UPSERT_FLEET_SESSION)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(&document)
             .execute(&mut *connection)
             .await
@@ -233,13 +233,13 @@ impl Leases {
 
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::report::INSERT_RUNNER_EVENT)
-            .bind(row_id.as_str())
-            .bind(runner_id.as_str())
+            .bind(row_id)
+            .bind(runner_id)
             .bind(afd_runner::sql::event_type::LEASE_RELEASED)
             .bind(afd_runner::sql::meta::LEASE_ID)
             .bind(lease_id)
             .bind(afd_runner::sql::meta::FLEET_ID)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
             .bind(event_id)
             .execute(&mut *connection)

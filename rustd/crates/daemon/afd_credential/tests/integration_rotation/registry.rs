@@ -201,7 +201,7 @@ async fn an_id_that_resolves_to_nothing_is_answered_by_each_write_verb_in_its_ow
     // parse is not what refuses this, which is the whole point of asking it
     // against a live table rather than at router tier.
     let stranger = afd_db::test_util::mint_id();
-    let stranger = Uuid7::parse(&stranger).expect("the minted id is UUIDv7");
+    let stranger = stranger.clone();
 
     // The delete is IDEMPOTENT: a caller retrying one it never saw the answer
     // to wants the row gone, and it is. Reporting "missing" would invite a

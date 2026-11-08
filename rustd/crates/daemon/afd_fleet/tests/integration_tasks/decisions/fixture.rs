@@ -57,14 +57,14 @@ impl<'a> Decisions<'a> {
             .acquire()
             .await
             .expect("frozen decision fixture");
-        sqlx::query("UPDATE runner.leases SET decision_snapshot=$2 WHERE id=$1::uuid")
-            .bind(case.held.lease_key.as_str())
+        sqlx::query("UPDATE runner.leases SET decision_snapshot=$2 WHERE id=$1")
+            .bind(&case.held.lease_key)
             .bind(Json(&assignment))
             .execute(&mut *connection)
             .await
             .expect("well-formed already-issued snapshot");
-        let revision: String =
-            sqlx::query_scalar("SELECT head_revision_id::text FROM fleet.fleets WHERE id=$1::uuid")
+        let revision: Uuid7 =
+            sqlx::query_scalar("SELECT head_revision_id FROM fleet.fleets WHERE id=$1")
                 .bind(&case.held.fleet)
                 .fetch_one(&mut *connection)
                 .await
@@ -99,7 +99,7 @@ impl<'a> Decisions<'a> {
             tasks,
             model,
             assignment,
-            revision: id(&revision),
+            revision,
             dependencies,
             vault,
         }
@@ -135,9 +135,9 @@ impl<'a> Decisions<'a> {
         task: Option<DecisionTaskVersion>,
     ) -> garde::Valid<DecisionReservationInput> {
         garde::Unvalidated::new(DecisionReservationInput {
-            operation_id: mint_id(),
+            operation_id: mint_id().into(),
             fencing_token: self.case.lease().fencing_token,
-            source_admission_id: self.case.held.event_id.clone(),
+            source_admission_id: self.case.held.event_id.clone().into(),
             assessment,
             task,
             retry_of: None,
@@ -206,7 +206,7 @@ impl<'a> Decisions<'a> {
             limits,
         );
         let plan = PreparedPlan::from_parts(
-            id(&self.case.held.event_id),
+            self.case.held.event_id.clone(),
             self.revision.clone(),
             "accepted-decision-goal".to_owned(),
             vec![item],
@@ -230,8 +230,8 @@ impl<'a> Decisions<'a> {
     }
 
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1::uuid), (SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1::uuid), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2)")
-            .bind(self.case.held.lease_key.as_str()).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
+        sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1), (SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2)")
+            .bind(&self.case.held.lease_key).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
             .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("financial counts"))
             .await.expect("retained financial and private row counts")
     }
@@ -242,15 +242,15 @@ impl<'a> Decisions<'a> {
     ) -> garde::Valid<DecisionReservationInput> {
         self.reservation(
             DecisionAssessment::Goal {
-                action_group_id: mint_id(),
+                action_group_id: mint_id().into(),
             },
             Some(task.clone()),
         )
     }
 
     pub(super) async fn call_snapshot(&self) -> (Value, Value) {
-        sqlx::query_as("SELECT to_jsonb(c), to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1::uuid")
-            .bind(self.case.lease().lease_id.as_str())
+        sqlx::query_as("SELECT to_jsonb(c), to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1")
+            .bind(self.case.lease().lease_id)
             .fetch_one(&mut *self.case.held.fixtures.database.acquire().await.expect("retained assessment observer"))
             .await.expect("complete call and private payload")
     }
@@ -261,7 +261,7 @@ pub(super) async fn lock_slot(connection: &mut sqlx::PgConnection, case: &Case) 
         .fetch_one(&mut *connection)
         .await
         .expect("owned blocker identity");
-    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1::uuid FOR UPDATE")
+    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE")
         .bind(&case.held.fleet)
         .execute(connection)
         .await
@@ -286,23 +286,22 @@ async fn assignment(case: &Case, model: &DecisionModelFixture) -> DecisionAssign
         .configuration
         .profile
         .clone();
-    let revision_id = sqlx::query_scalar(
-        "SELECT decision_revision_id::text FROM model.platform_models WHERE id=$1::uuid",
-    )
-    .bind(model.model.id.as_str())
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
+    let revision_id: Uuid7 =
+        sqlx::query_scalar("SELECT decision_revision_id FROM model.platform_models WHERE id=$1")
+            .bind(&model.model.id)
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("catalogue connection"),
+            )
             .await
-            .expect("catalogue connection"),
-    )
-    .await
-    .expect("immutable model revision");
+            .expect("immutable model revision");
     DecisionAssignment {
-        revision_id,
+        revision_id: revision_id.into(),
         profile: DecisionProfile {
             model_id: model.model.id.to_string(),
             revision: settings.revision,

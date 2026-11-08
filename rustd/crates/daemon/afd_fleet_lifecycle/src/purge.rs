@@ -65,14 +65,14 @@ impl Fleets {
             .map_err(error::query(CONTEXT_BEGIN))?;
         guard(&mut transaction, workspace, fleet, expected).await?;
         sqlx::query(sql::DELETE_ACTIVE_LEASES)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .bind(LEASE_STATUS_ACTIVE)
             .execute(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_LEASES))?;
-        let purged = sqlx::query_scalar::<_, String>(sql::DELETE_FLEET_IN_STATUS)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
+        let purged = sqlx::query_scalar::<_, Uuid7>(sql::DELETE_FLEET_IN_STATUS)
+            .bind(fleet)
+            .bind(workspace)
             .bind(FleetStatus::Killed.as_str())
             .fetch_optional(&mut *transaction)
             .await
@@ -98,8 +98,8 @@ async fn guard(
     expected: &str,
 ) -> Result<()> {
     let locked = sqlx::query_as::<_, LockedFleet>(sql::LOCK_FLEET)
-        .bind(fleet.as_str())
-        .bind(workspace.as_str())
+        .bind(fleet)
+        .bind(workspace)
         .fetch_optional(connection)
         .await
         .map_err(error::query(CONTEXT_PROBE))?

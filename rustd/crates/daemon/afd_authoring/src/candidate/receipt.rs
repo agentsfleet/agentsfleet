@@ -16,7 +16,7 @@ const CONTEXT: &str = "read or save authoring activity receipt";
 #[derive(sqlx::FromRow)]
 struct Receipt {
     request_digest: String,
-    candidate_id: Option<String>,
+    candidate_id: Option<Uuid7>,
     candidate_revision: Option<i64>,
 }
 
@@ -27,7 +27,7 @@ pub(super) async fn find(
     digest: &str,
 ) -> Result<Option<ActivityAccepted>> {
     let row: Option<Receipt> = sqlx::query_as(sql::RECEIPT)
-        .bind(attempt.as_str())
+        .bind(attempt)
         .bind(sequence)
         .fetch_optional(connection)
         .await
@@ -40,7 +40,7 @@ pub(super) async fn find(
         .candidate_id
         .zip(row.candidate_revision)
         .map(|(id, revision)| CandidateVersion {
-            id,
+            id: id.into(),
             revision: revision.to_string(),
         });
     Ok(Some(ActivityAccepted {
@@ -58,12 +58,14 @@ pub(super) async fn insert(
     digest: &str,
     candidate: Option<&CandidateVersion>,
 ) -> Result<()> {
+    // The wire carries the candidate's id as text; the column is a `uuid`.
+    let candidate = candidate.map(|c| Uuid7::parse(&c.id)).transpose()?;
     sqlx::query(sql::INSERT_RECEIPT)
-        .bind(id.as_str())
-        .bind(guarded.attempt.id.as_str())
+        .bind(id)
+        .bind(&guarded.attempt.id)
         .bind(sequence)
         .bind(digest)
-        .bind(candidate.map(|c| c.id.as_str()))
+        .bind(candidate.as_ref())
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

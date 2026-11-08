@@ -9,7 +9,7 @@ use axum::{Router, response::Response};
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
-const ADMISSIONS: &str = "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid";
+const ADMISSIONS: &str = "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1";
 /// The first run every Save-and-run case asks for.
 const RUN_NOW: &str = "Investigate the failed build.";
 
@@ -96,7 +96,7 @@ async fn resume(case: &Case, router: &Router, path: &str, tag: &str) -> Response
 
 async fn count(case: &Case, fleet: &Value) -> i64 {
     sqlx::query_scalar(ADMISSIONS)
-        .bind(fleet["id"].as_str().expect("fleet id"))
+        .bind(crate::authoring::id_field(&fleet["id"]))
         .fetch_one(&mut *case.base.db.acquire().await.expect("admission connection"))
         .await
         .expect("count this fleet's durable admissions")

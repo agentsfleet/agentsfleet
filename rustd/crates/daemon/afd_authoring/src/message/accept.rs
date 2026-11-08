@@ -138,16 +138,16 @@ impl Drafts {
         let ids = identifiers.as_ref().ok();
         let digest = message_digest(text, request.save)?;
         let admitted: Admission = sqlx::query_as(ADMIT)
-            .bind(draft.id.as_str())
+            .bind(&draft.id)
             .bind(sequence)
-            .bind(ids.map(|(message, _)| message.as_str()))
-            .bind(request.operation_id.as_str())
+            .bind(ids.map(|(message, _)| message))
+            .bind(&request.operation_id)
             .bind(QUEUED)
-            .bind(model::tenant_model(&draft.authoring_model_ref))
+            .bind(model::tenant_model(&draft.authoring_model_ref)?)
             .bind(text)
-            .bind(ids.map(|(_, receipt)| receipt.as_str()))
-            .bind(draft.workspace_id.as_str())
-            .bind(person.id.as_str())
+            .bind(ids.map(|(_, receipt)| receipt))
+            .bind(&draft.workspace_id)
+            .bind(&person.id)
             .bind(scope(&draft.workspace_id, &draft.id))
             .bind(&digest)
             .bind(replay::REPLAY_WINDOW)
@@ -180,8 +180,8 @@ async fn replayed(
         return Ok(None);
     };
     let sequence: Option<i64> = sqlx::query_scalar(sql::message::SEQUENCE)
-        .bind(message.as_str())
-        .bind(draft.as_str())
+        .bind(message)
+        .bind(draft)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -212,12 +212,12 @@ pub(crate) struct Insertion<'a> {
 /// key: a reservation that loses is a replay the caller already missed.
 pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'_>) -> Result<()> {
     sqlx::query(sql::message::INSERT)
-        .bind(insertion.id.as_str())
-        .bind(insertion.draft.as_str())
+        .bind(insertion.id)
+        .bind(insertion.draft)
         .bind(insertion.sequence)
-        .bind(insertion.operation.as_str())
+        .bind(insertion.operation)
         .bind(QUEUED)
-        .bind(model::tenant_model(insertion.model))
+        .bind(model::tenant_model(insertion.model)?)
         .bind(insertion.text)
         .bind(insertion.save)
         .execute(&mut *connection)
@@ -240,7 +240,7 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
         return Err(ErrorKind::Replay.into());
     }
     sqlx::query(sql::message::ADVANCE)
-        .bind(insertion.draft.as_str())
+        .bind(insertion.draft)
         .bind(insertion.sequence)
         .execute(connection)
         .await

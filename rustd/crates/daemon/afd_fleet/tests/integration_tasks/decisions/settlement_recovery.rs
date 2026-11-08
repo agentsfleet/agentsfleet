@@ -1,5 +1,6 @@
 //! Receipt replay, lease completion and sweeping preserve one original charge.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use af_core::{clock, error_code, test_util::trace::Capture};
@@ -59,7 +60,7 @@ async fn recovery(case: &Case) {
         )
         .await;
     let fee = completed_lease(&fixture).await;
-    age_recovery(&fixture, &request(&first).call_id).await;
+    age_recovery(&fixture, &id(&request(&first).call_id)).await;
     assert_eq!(financials(&fixture).await, expected(balance, 0, 1, 1));
     assert_eq!(
         swept(&fixture).await,
@@ -174,10 +175,10 @@ async fn completed_lease(fixture: &Decisions<'_>) -> i64 {
     saved.charged.as_i64()
 }
 
-async fn age_recovery(fixture: &Decisions<'_>, first: &str) {
+async fn age_recovery(fixture: &Decisions<'_>, first: &Uuid7) {
     let held = &fixture.case.held;
     let sequence: i64 =
-        sqlx::query_scalar("SELECT usage_sequence FROM runner.decision_calls WHERE id=$1::uuid")
+        sqlx::query_scalar("SELECT usage_sequence FROM runner.decision_calls WHERE id=$1")
             .bind(first)
             .fetch_one(
                 &mut *held
@@ -198,7 +199,7 @@ async fn age_recovery(fixture: &Decisions<'_>, first: &str) {
         )
         .await;
     held.fixtures
-        .age(Row::Lease(held.lease_key.as_str()), "updated_at", elapsed)
+        .age(Row::Lease(&held.lease_key), "updated_at", elapsed)
         .await;
 }
 
@@ -249,8 +250,8 @@ const fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64) -> Fina
 }
 
 async fn financials(fixture: &Decisions<'_>) -> Financials {
-    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_cost FROM runner.leases l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1::uuid")
-        .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(DECISION_SEQ_BASE))
+    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_cost FROM runner.leases l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1")
+        .bind(&fixture.case.held.lease_key).bind(i64::from(DECISION_SEQ_BASE))
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original financial state"))
         .await.expect("complete original wallet and immutable usage")
 }
@@ -265,8 +266,8 @@ async fn swept(fixture: &Decisions<'_>) -> BillingSwept {
 
 async fn original_attribution(fixture: &Decisions<'_>) {
     let held = &fixture.case.held;
-    let actual: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('seq',seq,'work_id',work_id,'tenant_id',tenant_id,'workspace_id',workspace_id,'fleet_id',fleet_id,'event_id',event_id,'provider',provider,'model',model,'charged_nanos',charged_nanos,'settled',settled_at IS NOT NULL) FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2 ORDER BY seq")
-        .bind(held.lease_key.as_str()).bind(i64::from(DECISION_SEQ_BASE))
+    let actual: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('seq',seq,'work_id',work_id,'tenant_id',tenant_id,'workspace_id',workspace_id,'fleet_id',fleet_id,'event_id',event_id,'provider',provider,'model',model,'charged_nanos',charged_nanos,'settled',settled_at IS NOT NULL) FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2 ORDER BY seq")
+        .bind(&held.lease_key).bind(i64::from(DECISION_SEQ_BASE))
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("original decision lines"))
         .await.expect("both original attributions remain available");
     let expected = [DECISION_SEQ_BASE, DECISION_SEQ_BASE + 1].map(|seq| {

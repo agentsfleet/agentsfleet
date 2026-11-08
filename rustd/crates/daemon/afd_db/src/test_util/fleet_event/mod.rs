@@ -7,10 +7,9 @@
 //!
 //! The actor, type and status are arguments because their spellings live above
 //! this crate; the request body is an empty object, which every reader of the
-//! column accepts. The row id is the table's: Postgres mints it with
-//! `uuidv7()`, and [`FleetEventSeed::insert`] answers it, since a lease names
-//! the event by that id.
+//! column accepts. A lease names the event by its `event_id`, the table's key.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -40,20 +39,19 @@ pub struct EventKind<'a> {
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct FleetEventSeed<'a> {
-    fleet_id: &'a str,
-    workspace_id: &'a str,
-    event_id: &'a str,
+    fleet_id: &'a Uuid7,
+    workspace_id: &'a Uuid7,
+    event_id: &'a Uuid7,
     kind: EventKind<'a>,
     created_at: Option<Timestamp>,
 }
 
 impl<'a> FleetEventSeed<'a> {
-    /// An event a producer named `event_id` — unique within its fleet —
-    /// stamped by the database's `now()`.
+    /// The event `event_id`, stamped by the database's `now()`.
     pub const fn new(
-        fleet_id: &'a str,
-        workspace_id: &'a str,
-        event_id: &'a str,
+        fleet_id: &'a Uuid7,
+        workspace_id: &'a Uuid7,
+        event_id: &'a Uuid7,
         kind: EventKind<'a>,
     ) -> Self {
         Self {
@@ -71,12 +69,12 @@ impl<'a> FleetEventSeed<'a> {
         self
     }
 
-    /// Writes the row and answers the id Postgres minted for it.
+    /// Writes the row and answers its `event_id`.
     ///
     /// # Errors
     /// [`crate::Error`] when the insert fails: a missing fleet or workspace, or
     /// a producer identifier the fleet already holds.
-    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<String> {
+    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<Uuid7> {
         sqlx::query_scalar(INSERT_FLEET_EVENT)
             .bind(self.fleet_id)
             .bind(self.workspace_id)
@@ -94,21 +92,7 @@ impl<'a> FleetEventSeed<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::{EventKind, FleetEventSeed, INSERT_FLEET_EVENT};
-
-    #[test]
-    fn the_seed_names_no_row_id_so_postgres_mints_it() {
-        let columns = INSERT_FLEET_EVENT
-            .split_once('(')
-            .and_then(|(_, rest)| rest.split_once(')'))
-            .map(|(list, _)| list);
-
-        assert!(
-            columns.is_some_and(|list| !list.split(',').any(|column| column.trim() == "id")),
-            "{INSERT_FLEET_EVENT}"
-        );
-        assert!(INSERT_FLEET_EVENT.contains("RETURNING id"));
-    }
+    use super::{EventKind, FleetEventSeed};
 
     #[test]
     fn a_seed_stamps_nothing_until_the_suite_backdates_it() {
@@ -117,8 +101,13 @@ mod tests {
             event_type: "chat",
             status: "received",
         };
-        let seed = FleetEventSeed::new("fleet", "workspace", "producer", kind);
+        let (fleet, workspace, event) = (
+            crate::test_util::mint_id(),
+            crate::test_util::mint_id(),
+            crate::test_util::mint_id(),
+        );
+        let seed = FleetEventSeed::new(&fleet, &workspace, &event, kind);
 
-        assert_eq!((seed.event_id, seed.created_at), ("producer", None));
+        assert_eq!((seed.event_id, seed.created_at), (&event, None));
     }
 }

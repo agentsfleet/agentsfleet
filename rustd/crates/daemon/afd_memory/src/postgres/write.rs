@@ -37,12 +37,12 @@ impl PgStore {
             for delta in entries {
                 let row_id = self.entropy.uuid7(now)?;
                 sqlx::query(sql::UPSERT_ENTRY)
-                    .bind(row_id.as_str())
+                    .bind(row_id)
                     .bind(delta.key.as_ref())
                     .bind(delta.content.as_ref())
                     .bind(delta.category.as_ref())
-                    .bind(owner.fleet.as_str())
-                    .bind(owner.workspace.as_str())
+                    .bind(owner.fleet)
+                    .bind(owner.workspace)
                     .bind(delta.visibility.is_workspace())
                     .bind(jiff_sqlx::ToSqlx::to_sqlx(now))
                     .execute(&mut *connection)
@@ -50,7 +50,7 @@ impl PgStore {
                     .map_err(|source| Failure::Runner(CONTEXT_UPSERT).raise(source))?;
             }
             let swept = sqlx::query(sql::DELETE_AGED_IN_CATEGORY)
-                .bind(owner.fleet.as_str())
+                .bind(owner.fleet)
                 .bind(DAILY_CATEGORY)
                 .bind(jiff_sqlx::ToSqlx::to_sqlx(af_core::clock::before(
                     now,
@@ -61,7 +61,7 @@ impl PgStore {
                 .map_err(|source| Failure::Runner(CONTEXT_SWEEP).raise(source))?
                 .rows_affected();
             let evicted = sqlx::query(sql::EVICT_PAST_CAP)
-                .bind(owner.fleet.as_str())
+                .bind(owner.fleet)
                 .bind(i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX))
                 .bind(PINNED_CATEGORY)
                 .execute(&mut *connection)
@@ -86,7 +86,7 @@ impl PgStore {
         let failure = Failure::Operator(FORGET_FAILED);
         self.as_memory_role(failure, async |connection| {
             let forgotten = sqlx::query(sql::DELETE_ENTRY_BY_KEY)
-                .bind(owner.fleet.as_str())
+                .bind(owner.fleet)
                 .bind(key)
                 .fetch_optional(&mut *connection)
                 .await

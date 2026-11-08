@@ -12,7 +12,7 @@ async fn test_queued_read_plans_on_the_undelivered_index() {
     let (database, db, tenant) = private_database().await;
     let mut connection = db.acquire().await.expect("a private connection");
     sqlx::query(SEED_LEDGER)
-        .bind(tenant.as_str())
+        .bind(&tenant)
         .bind(jiff_sqlx::ToSqlx::to_sqlx(SEEDED_AT))
         .bind(40_i32)
         .bind(500_i32)

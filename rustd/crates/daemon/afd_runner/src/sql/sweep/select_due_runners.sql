@@ -1,4 +1,4 @@
-SELECT r.id::text AS id, r.last_seen_at, r.status, statement_timestamp() AS checked_at
+SELECT r.id AS id, r.last_seen_at, r.status, statement_timestamp() AS checked_at
 FROM runner.runners r
 WHERE (r.last_seen_at <> $1::timestamptz
        AND r.last_seen_at < statement_timestamp() - $2::interval)

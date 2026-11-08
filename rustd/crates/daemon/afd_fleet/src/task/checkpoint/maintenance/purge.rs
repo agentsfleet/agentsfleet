@@ -3,8 +3,9 @@
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, Tasks, guard as task_guard, storage::R2CheckpointStore, transaction},
+    task::{TaskRefusal, Tasks, storage::R2CheckpointStore, transaction},
 };
+use af_core::id::Uuid7;
 use futures_util::{StreamExt as _, stream};
 
 const RECHECK_SECONDS: i32 = 5 * 60;
@@ -12,10 +13,10 @@ const RECHECK_SECONDS: i32 = 5 * 60;
 #[derive(sqlx::FromRow)]
 struct Purge {
     #[sqlx(rename = "task_object_id")]
-    object_id: String,
-    workspace_id: String,
+    object_id: Uuid7,
+    workspace_id: Uuid7,
     #[sqlx(rename = "task_identity_key_id")]
-    identity_key_id: String,
+    identity_key_id: Uuid7,
     bucket_reference: String,
 }
 
@@ -37,9 +38,9 @@ pub(super) async fn run(tasks: &Tasks, storage: &R2CheckpointStore) -> Result<(u
                 }
                 session
                     .delete(
-                        &task_guard::id(&purge.workspace_id, "workspace_id")?,
-                        &task_guard::id(&purge.identity_key_id, "identity_key_id")?,
-                        &task_guard::id(&purge.object_id, "object_id")?,
+                        &purge.workspace_id,
+                        &purge.identity_key_id,
+                        &purge.object_id,
                     )
                     .await?;
                 acknowledge(tasks, &purge).await
@@ -53,7 +54,7 @@ pub(super) async fn run(tasks: &Tasks, storage: &R2CheckpointStore) -> Result<(u
                 Ok(()) => completed += 1,
                 Err(error) => {
                     deferred += 1;
-                    tracing::warn!(event = "dt_storage_purge_deferred", object_id = id, error_code = %error.code());
+                    tracing::warn!(event = "dt_storage_purge_deferred", object_id = %id, error_code = %error.code());
                 }
             }
         }

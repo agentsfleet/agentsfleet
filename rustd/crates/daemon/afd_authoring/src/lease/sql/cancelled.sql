@@ -1,4 +1,4 @@
-SELECT NOT EXISTS (SELECT 1 FROM authoring.drafts WHERE id = $1::uuid)
+SELECT NOT EXISTS (SELECT 1 FROM authoring.drafts WHERE id = $1)
     OR EXISTS (SELECT 1 FROM authoring.drafts
-                WHERE id = $1::uuid
+                WHERE id = $1
                   AND (cancelled_through_sequence >= $2 OR status <> $3))

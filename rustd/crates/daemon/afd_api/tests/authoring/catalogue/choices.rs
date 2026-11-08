@@ -41,8 +41,8 @@ async fn model_choices_use_workspace_owner_and_exact_priced_eligibility() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn missing_credential_metadata_removes_the_choice_without_fallback() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE vault.secrets SET meta_has_key=false WHERE workspace_id=$1::uuid")
-        .bind(f.workspace.as_str())
+    sqlx::query("UPDATE vault.secrets SET meta_has_key=false WHERE workspace_id=$1")
+        .bind(&f.workspace)
         .execute(&mut *f.db.acquire().await.expect("fixture connection"))
         .await
         .expect("remove usable metadata");

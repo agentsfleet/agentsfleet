@@ -3,7 +3,7 @@
 use af_core::etag::sha256_hex;
 use af_crypto::checkpoint_digest;
 use af_wire::task::CheckpointPage;
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -11,7 +11,7 @@ use super::{Fixture, call, foreign_and_stale, path, problem, success};
 
 pub(super) async fn exercise(fixture: &Fixture, task: &Value) {
     let route = path(fixture, "checkpoints");
-    let input = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_uuid7(),
+    let input = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_id(),
         "task":task,"mode":"incremental","base_id":null,"commit_oid":null,
         "format_version":1,"toolbox_digest":"3".repeat(64),"page_count":1,
         "upload_budget_bytes":0,"logical_bytes":0,"entry_count":0});
@@ -49,7 +49,7 @@ pub(super) async fn exercise(fixture: &Fixture, task: &Value) {
 async fn register_and_refuse_bad_upload(fixture: &Fixture, task: &Value, original: &Value) {
     let collection = path(fixture, "checkpoints");
     let mut input = original.clone();
-    *input.get_mut("operation_id").expect("fixture field exists") = json!(mint_uuid7());
+    *input.get_mut("operation_id").expect("fixture field exists") = json!(mint_id());
     *input
         .get_mut("upload_budget_bytes")
         .expect("fixture field exists") = json!(64);

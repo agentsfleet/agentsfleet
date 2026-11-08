@@ -38,12 +38,6 @@ use afd_api::services::WebhookIngress;
 use afd_dragonfly::streams::EventId;
 use afd_ingress::{Binding, Ingress, Surface};
 
-/// The shape Dragonfly renders an entry id in, which a stub id has to share.
-///
-/// A route reads the id back out and puts it in a response body, so an id of
-/// another shape would let a renderer that mangled it still pass.
-const ENTRY_ID_SEQUENCE: &str = "-0";
-
 /// Which ingress a suite is driving.
 ///
 /// [`super::Directory`]'s shape, one seam over. The `Unreachable` arm is the
@@ -72,7 +66,7 @@ pub(crate) struct Recorded {
     /// Which claim window the route asked for.
     pub(crate) surface: Surface,
     /// The fleet the append was made against.
-    pub(crate) fleet: String,
+    pub(crate) fleet: Uuid7,
     /// The identifier a redelivery has to repeat.
     pub(crate) event_id: String,
     /// Who the history records as having woken the fleet.
@@ -110,7 +104,7 @@ pub(crate) struct Scripted {
     /// whose URL names no provider.
     asked: Mutex<Vec<String>>,
     /// The first id each claim key was answered with.
-    claimed: Mutex<BTreeMap<String, String>>,
+    claimed: Mutex<BTreeMap<String, Uuid7>>,
 }
 
 impl Scripted {

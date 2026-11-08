@@ -115,8 +115,8 @@ async fn test_a_proposed_cron_trigger_is_saved_as_a_schedule() {
     let token = format!("agt_r{}{}", mint(), mint()).replace('-', "");
     let lease = mint();
     let digest = Digest::of(&Presented::new(&token).expect("fixture runner token"));
-    let draft_id = before["id"].as_str().expect("draft id");
-    attempt::seed(&case.base, &runner, &lease, draft_id, digest.as_str()).await;
+    let draft_id = crate::authoring::id_field(&before["id"]);
+    attempt::seed(&case.base, &runner, &lease, &draft_id, digest.as_str()).await;
 
     let proposal = json!({"fence":"1","sequence":"1","activity_sequence":"1",
         "event":{"kind":"proposal","proposal":{"kind":"edit",

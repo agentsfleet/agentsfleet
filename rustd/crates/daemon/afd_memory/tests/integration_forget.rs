@@ -8,7 +8,7 @@
 use af_core::error_code::{MEM_AGENTSFLEET_NOT_FOUND, MEM_ENTRY_NOT_FOUND};
 use af_wire::memory::{PINNED_CATEGORY, Visibility};
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 use afd_memory::error::detail::{ENTRY_NOT_FOUND, FLEET_NOT_FOUND};
 use afd_memory::page::View;
 
@@ -84,7 +84,7 @@ async fn test_a_forget_of_a_key_the_fleet_does_not_hold_answers_entry_not_found(
 async fn test_every_operator_verb_refuses_a_fleet_outside_the_workspace_alike() {
     let space = Workspace::create().await;
     let fleet = space.fleet("elsewhere", Grants::default()).await;
-    let (stranger, ghost) = (mint_uuid7(), mint_uuid7());
+    let (stranger, ghost) = (mint_id(), mint_id());
     let memories = &space.memories;
     let change = MemoryAccessRequest {
         read: Some(true),

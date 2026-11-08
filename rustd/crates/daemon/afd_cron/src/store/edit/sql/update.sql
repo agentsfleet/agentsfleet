@@ -6,8 +6,8 @@ UPDATE fleet.schedules
        recipe = $6::jsonb,
        sync_status = $7,
        resource_version = resource_version + 1,
-       sync_token = $8::uuid,
+       sync_token = $8,
        sync_lease_expires_at = clock_timestamp() + $9::interval,
        last_error = NULL,
        updated_at = now()
- WHERE id = $1::uuid
+ WHERE id = $1

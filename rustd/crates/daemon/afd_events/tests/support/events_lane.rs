@@ -25,6 +25,7 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use af_core::env::{EnvSource as _, ProcessEnv};
@@ -51,9 +52,9 @@ pub(crate) struct EventsLane {
     lane: TestDatabase,
     pub(crate) database: Db,
     pub(crate) queue: Dragonfly,
-    pub(crate) tenant: String,
-    pub(crate) workspace: String,
-    pub(crate) fleet: String,
+    pub(crate) tenant: Uuid7,
+    pub(crate) workspace: Uuid7,
+    pub(crate) fleet: Uuid7,
 }
 
 impl EventsLane {
@@ -103,19 +104,18 @@ impl EventsLane {
     /// `created_at` is a parameter rather than a clock read: every claim these
     /// suites make about a `since` window is a claim about ROW TIMESTAMPS, and
     /// a fixture that stamped rows with "now" could only ever seed one instant.
-    /// The row id is the column's own `uuidv7()`.
-    pub(crate) async fn seed_event(&self, event_id: &str, created_at: Timestamp) {
+    pub(crate) async fn seed_event(&self, event_id: &Uuid7, created_at: Timestamp) {
         let mut connection = self.connection().await;
         sqlx::query(
             "INSERT INTO fleet.events
                (fleet_id, workspace_id, event_id, actor, event_type, status,
                 request_json, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', 'completed',
+             VALUES ($1, $2, $3, 'steer:api', 'chat', 'completed',
                      '{}'::jsonb, $4, $4)
-             ON CONFLICT (fleet_id, event_id) DO NOTHING",
+             ON CONFLICT (event_id) DO NOTHING",
         )
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
+        .bind(&self.fleet)
+        .bind(&self.workspace)
         .bind(event_id)
         .bind(created_at.to_sqlx())
         .execute(&mut *connection)
@@ -124,13 +124,13 @@ impl EventsLane {
     }
 
     /// Whether the lane holds a row under `event_id`.
-    pub(crate) async fn has_event(&self, event_id: &str) -> bool {
+    pub(crate) async fn has_event(&self, event_id: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         let count: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM fleet.events
-             WHERE fleet_id = $1::uuid AND event_id = $2",
+             WHERE fleet_id = $1 AND event_id = $2",
         )
-        .bind(self.fleet.as_str())
+        .bind(&self.fleet)
         .bind(event_id)
         .fetch_one(&mut *connection)
         .await

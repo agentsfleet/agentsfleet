@@ -22,7 +22,7 @@ workspace = true
 # queued. Its unique index on the gate's action is what makes a retried
 # resolve continue the run exactly once.
 afd_admission.workspace = true
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # Entropy for the identifiers a grant request mints — the grant row, its gate,
 # and the action a person answers about.
 af_crypto.workspace = true

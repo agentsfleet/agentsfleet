@@ -1,10 +1,11 @@
 //! Native allocation and remote preflight refusal, with no branch mutation.
 use super::{
-    super::fixture::{Case, exercise},
+    super::fixture::{Case, exercise, id},
     fixture::Decisions,
     github_authority,
     github_server::Server,
 };
+use af_core::id::Uuid7;
 use af_wire::task::{DecisionTaskVersion, TaskEffectInput, TaskEffectState, TaskFileChange};
 use afd_db::test_util::mint_id;
 use afd_fleet::task::{TaskLifecycle as _, TaskRefusal, Tasks};
@@ -55,8 +56,8 @@ async fn assert_refusal(tasks: &Tasks, case: &Case, input: TaskEffectInput) {
     assert!(receipt.commit.is_none());
     assert_eq!(receipt.ordinal, 1);
     conflict(tasks, case, input).await;
-    let counts: (i64, i32) = sqlx::query_as("SELECT (SELECT count(*) FROM fleet.task_effects WHERE task_id=t.id), used_publications FROM fleet.tasks t WHERE id=$1::uuid")
-        .bind(&valid.task.task_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer")).await.expect("publication counters");
+    let counts: (i64, i32) = sqlx::query_as("SELECT (SELECT count(*) FROM fleet.task_effects WHERE task_id=t.id), used_publications FROM fleet.tasks t WHERE id=$1")
+        .bind(id(&valid.task.task_id)).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer")).await.expect("publication counters");
     assert_eq!(counts, (1, 0));
 }
 
@@ -79,7 +80,7 @@ async fn stale_inputs(tasks: &Tasks, case: &Case, input: &TaskEffectInput) {
     for mismatch in ["source", "head", "cursor", "generation"] {
         let mut changed = input.clone();
         match mismatch {
-            "source" => changed.source_item_id = mint_id(),
+            "source" => changed.source_item_id = mint_id().into(),
             "head" => changed.expected_head = "f".repeat(40),
             "cursor" => changed.covered_input_sequence += 1,
             _ => changed.task.generation += 1,
@@ -107,22 +108,23 @@ pub(super) async fn prepared(case: &Case, task: DecisionTaskVersion) -> TaskEffe
         .acquire()
         .await
         .expect("accepted publication fixture");
+    let task_id = id(&task.task_id);
     // Represents a preexisting accepted target with reviewed workflow under this revision.
     // The tested behavior is publication; this fixture does not claim target preflight ran.
-    sqlx::query("UPDATE fleet.tasks t SET accepted_revision_id=f.head_revision_id,target=jsonb_set(t.target,'{workflows}',$2) FROM fleet.fleets f WHERE t.id=$1::uuid AND f.id=t.fleet_id")
-        .bind(&task.task_id).bind(Json(workflows)).execute(&mut *connection).await.expect("preexisting accepted binding");
-    let (source, sequence): (String, i64) = sqlx::query_as(
-        "SELECT originating_task_item_id::text,input_sequence FROM fleet.tasks WHERE id=$1::uuid",
+    sqlx::query("UPDATE fleet.tasks t SET accepted_revision_id=f.head_revision_id,target=jsonb_set(t.target,'{workflows}',$2) FROM fleet.fleets f WHERE t.id=$1 AND f.id=t.fleet_id")
+        .bind(&task_id).bind(Json(workflows)).execute(&mut *connection).await.expect("preexisting accepted binding");
+    let (source, sequence): (Uuid7, i64) = sqlx::query_as(
+        "SELECT originating_task_item_id,input_sequence FROM fleet.tasks WHERE id=$1",
     )
-    .bind(&task.task_id)
+    .bind(&task_id)
     .fetch_one(&mut *connection)
     .await
     .expect("actual accepted source");
     TaskEffectInput {
-        operation_id: mint_id(),
+        operation_id: mint_id().into(),
         fencing_token: case.lease().fencing_token,
         task,
-        source_item_id: source,
+        source_item_id: source.into(),
         covered_input_sequence: u64::try_from(sequence).expect("input sequence"),
         expected_head: "0".repeat(40),
         tested_tree: "2".repeat(40),

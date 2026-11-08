@@ -43,8 +43,8 @@ async fn human_input_pages_keep_complete_fifo_messages_without_claiming_or_consu
         assert_eq!(later.message, "Second: preserve middleware");
         assert!(later.sequence > item.sequence);
         assert!(next.next_cursor.is_none());
-        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE id IN ($1::uuid,$2::uuid) AND settled_at IS NULL AND input_claim_lease_id IS NULL")
-            .bind(first.as_str()).bind(second.as_str()).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("read-only ownership observer")).await.expect("unconsumed inputs");
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE id IN ($1,$2) AND settled_at IS NULL AND input_claim_lease_id IS NULL")
+            .bind(first).bind(second).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("read-only ownership observer")).await.expect("unconsumed inputs");
         assert_eq!(count, 2);
     }).await;
 }
@@ -58,8 +58,8 @@ async fn malformed_input_cursor_refuses_without_claiming_a_human_source() {
             let error = case.tasks.inputs(case.lease(), &query(case, Some(cursor), None)).await.expect_err("invalid input boundary");
             assert_eq!(error.code(), error_code::INVALID_REQUEST);
         }
-        let unclaimed: bool = sqlx::query_scalar("SELECT input_claim_lease_id IS NULL AND settled_at IS NULL FROM fleet.admissions WHERE id=$1::uuid")
-            .bind(source.as_str()).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("source observer")).await.expect("unchanged human input");
+        let unclaimed: bool = sqlx::query_scalar("SELECT input_claim_lease_id IS NULL AND settled_at IS NULL FROM fleet.admissions WHERE id=$1")
+            .bind(source).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("source observer")).await.expect("unchanged human input");
         assert!(unclaimed);
     }).await;
 }
@@ -181,7 +181,7 @@ fn apply_receipt(
 ) -> garde::Valid<TaskInputReceiptInput> {
     garde::Unvalidated::new(TaskInputReceiptInput {
         fencing_token: case.lease().fencing_token,
-        operation_id: afd_db::test_util::mint_id(),
+        operation_id: afd_db::test_util::mint_id().into(),
         source_admission_id: plan.source_admission_id.clone(),
         plan_digest: plan.plan_digest.clone(),
         item_id: item.to_owned(),

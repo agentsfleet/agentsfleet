@@ -200,7 +200,7 @@ fn rows(page: &Value) -> usize {
 /// One tenant holding one workspace, one fleet and a key to call with.
 struct Holder {
     subject: &'static str,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
     fleet: Uuid7,
     token: String,
@@ -212,8 +212,8 @@ impl Holder {
         let seeded = Self {
             subject,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
+            workspace: mint_id(),
+            fleet: mint_id(),
             token: format!("agt_t{token_bits}"),
         };
         let digest = Digest::of(&Presented::new(&seeded.token).expect("the token is valid"));
@@ -223,7 +223,7 @@ impl Holder {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(seeded.workspace.as_str(), &seeded.tenant)
+        WorkspaceSeed::new(&seeded.workspace, &seeded.tenant)
             .name("ownership")
             .insert(&mut *connection)
             .await
@@ -242,8 +242,8 @@ impl Holder {
             .await
             .expect("its key seeds");
         FleetSeed::new(
-            seeded.fleet.as_str(),
-            seeded.workspace.as_str(),
+            &seeded.fleet,
+            &seeded.workspace,
             &seeded.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -261,18 +261,18 @@ impl Holder {
     /// `failed` rather than any word for "not yet tried": the column holds one
     /// of three states this build reads, and nothing here resolves a scheduler.
     async fn schedule(&self, database: &Db) -> Uuid7 {
-        let schedule = Uuid7::parse(&mint_id()).expect("a minted schedule is canonical");
+        let schedule = mint_id();
         let mut connection = database.acquire().await.expect("an API connection");
         sqlx::query(
             "INSERT INTO fleet.schedules \
                (id, fleet_id, source, provider_schedule_id, cron_expression, timezone, \
                 message, once, desired_status, sync_status, resource_version, created_at, \
                 updated_at) \
-             VALUES ($1::uuid, $2::uuid, 'api', $1, '0 3 * * *', 'UTC', $3, false, \
+             VALUES ($1, $2, 'api', $1, '0 3 * * *', 'UTC', $3, false, \
                      'active', 'failed', 1, now(), now())",
         )
-        .bind(schedule.as_str())
-        .bind(self.fleet.as_str())
+        .bind(&schedule)
+        .bind(&self.fleet)
         .bind(OWNED_MESSAGE)
         .execute(&mut *connection)
         .await
@@ -309,9 +309,9 @@ impl Holder {
         let mut connection = database.acquire().await.expect("an API connection");
         sqlx::query_as(
             "SELECT message, desired_status, resource_version FROM fleet.schedules \
-             WHERE id = $1::uuid",
+             WHERE id = $1",
         )
-        .bind(schedule.as_str())
+        .bind(schedule)
         .fetch_one(&mut *connection)
         .await
         .expect("the foreign schedule still exists")
@@ -319,7 +319,7 @@ impl Holder {
 
     async fn cleanup(&self, database: &Db) {
         let mut connection = database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

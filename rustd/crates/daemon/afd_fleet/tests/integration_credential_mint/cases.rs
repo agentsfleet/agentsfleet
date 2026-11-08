@@ -22,9 +22,9 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
         .await
         .expect("the read must succeed")
         .expect("the owner's own lease resolves");
-    assert_eq!(scope.workspace_id.as_str(), owner.workspace);
-    assert_eq!(scope.fleet_id.as_str(), owner.fleet);
-    assert_eq!(&*scope.event_id, EVENT_ID);
+    assert_eq!(scope.workspace_id, owner.workspace);
+    assert_eq!(scope.fleet_id, owner.fleet);
+    assert_eq!(&*scope.event_id, owner.event.as_str());
 
     // The IDOR negative: a real, live lease belonging to somebody else.
     assert!(
@@ -95,7 +95,7 @@ async fn test_mint_refuses_a_superseded_active_lease() {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(&owner.lease, CONNECTOR_STATIC),
+            &requests::mint(owner.lease.as_str(), CONNECTOR_STATIC),
             now,
         )
         .await
@@ -126,7 +126,7 @@ async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(&owner.lease, CONNECTOR_STATIC),
+            &requests::mint(owner.lease.as_str(), CONNECTOR_STATIC),
             fixtures.enrolled_at(),
         )
         .await
@@ -164,7 +164,7 @@ async fn test_the_grant_gate_refuses_before_the_vault_is_opened() {
             .plane()
             .mint(
                 &owner.runner,
-                &requests::mint(&owner.lease, CONNECTOR_GITHUB),
+                &requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB),
                 fixtures.enrolled_at(),
             )
             .await
@@ -194,7 +194,7 @@ async fn test_an_unconnected_integration_is_not_a_grant_failure() {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(&owner.lease, CONNECTOR_GITHUB),
+            &requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB),
             fixtures.enrolled_at(),
         )
         .await

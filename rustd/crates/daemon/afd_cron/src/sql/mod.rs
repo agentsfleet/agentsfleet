@@ -13,7 +13,7 @@
 //!
 //! # Why the claim and the finalize are separate statements
 //!
-//! `schema/1750_fleet_schedules.sql` gives this table a `resource_version`, a
+//! `schema/20261108122800_fleet_schedules.sql` gives this table a `resource_version`, a
 //! `sync_token` and a `sync_lease_expires_at` so one syncer at a time can push
 //! a schedule. The claim takes the fence and bumps the version; the finalize
 //! releases it and is conditioned on BOTH the version and the token it was

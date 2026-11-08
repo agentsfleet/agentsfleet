@@ -103,8 +103,8 @@ impl Ingress {
         binding: &Binding,
         delivery: &Delivery<'_>,
     ) -> Result<Admitted> {
-        let fleet = binding.fleet().as_str();
-        let workspace = binding.workspace().as_str();
+        let fleet = binding.fleet();
+        let workspace = binding.workspace();
         let key = format!("{fleet}:{}:{}", binding.source(), delivery.event_id);
         let admitted = self
             .admissions
@@ -128,10 +128,10 @@ impl Ingress {
         let replayed = admitted.replayed;
         let source = binding.source();
         tracing::info!(
-            fleet_id = fleet,
-            workspace_id = workspace,
+            fleet_id = %fleet,
+            workspace_id = %workspace,
             source,
-            event_id,
+            event_id = %event_id,
             replayed,
             event = "webhook_delivery_appended",
         );

@@ -6,15 +6,11 @@ use af_wire::decision::{DecisionConfiguration, DecisionModelSettings};
 use jiff::Timestamp;
 use sqlx::{PgConnection, types::Json};
 
-use crate::{
-    Result,
-    error::{query, row},
-    sql,
-};
+use crate::{Result, error::query, sql};
 
 #[derive(sqlx::FromRow)]
 struct Remembered {
-    id: String,
+    id: Uuid7,
     identical: bool,
 }
 
@@ -29,8 +25,8 @@ pub(crate) async fn select(
     let candidate = entropy.uuid7(now)?;
     let revision = remember(connection, model, &candidate, &configuration.profile).await?;
     sqlx::query(sql::SELECT_DECISION_REVISION)
-        .bind(model.as_str())
-        .bind(revision.as_str())
+        .bind(model)
+        .bind(&revision)
         .bind(configuration.enabled)
         .execute(connection)
         .await
@@ -46,15 +42,15 @@ async fn remember(
     profile: &DecisionModelSettings,
 ) -> Result<Uuid7> {
     sqlx::query(sql::INSERT_DECISION_REVISION)
-        .bind(candidate.as_str())
-        .bind(model.as_str())
+        .bind(candidate)
+        .bind(model)
         .bind(&profile.revision)
         .bind(Json(profile))
         .execute(&mut *connection)
         .await
         .map_err(query("remember reviewed decision revision"))?;
     let remembered: Remembered = sqlx::query_as(sql::MATCH_DECISION_REVISION)
-        .bind(model.as_str())
+        .bind(model)
         .bind(&profile.revision)
         .bind(Json(profile))
         .fetch_one(connection)
@@ -63,5 +59,5 @@ async fn remember(
     if !remembered.identical {
         return Err(crate::error::decision_revision());
     }
-    Uuid7::parse(&remembered.id).map_err(row("model.decision_revisions", "id"))
+    Ok(remembered.id)
 }

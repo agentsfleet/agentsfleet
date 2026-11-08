@@ -63,7 +63,7 @@ pub(crate) async fn open_stream(router: &axum::Router, fixture: &Fixture) -> Bod
         .expect("the SSE body is infallible");
     let opening = std::str::from_utf8(&chunk).expect("SSE is UTF-8");
     assert!(opening.contains("event: hello"));
-    assert!(opening.contains(&fixture.fleet));
+    assert!(opening.contains(fixture.fleet.as_str()));
     announces_counters(opening, fixture).await;
     body
 }
@@ -121,10 +121,10 @@ pub(crate) async fn stream_ends(body: &mut BodyDataStream) -> bool {
 pub(crate) struct Fixture {
     pub(crate) lane: TestDatabase,
     pub(crate) database: Db,
-    pub(crate) tenant: String,
+    pub(crate) tenant: Uuid7,
     pub(crate) workspace: Uuid7,
-    pub(crate) fleet: String,
-    pub(crate) key: String,
+    pub(crate) fleet: Uuid7,
+    pub(crate) key: Uuid7,
     pub(crate) token: String,
 }
 
@@ -139,7 +139,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, settings).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             fleet: mint_id(),
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
@@ -156,7 +156,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("stream")
             .at(SEEDED_AT)
             .insert(&mut *connection)
@@ -169,7 +169,7 @@ impl Fixture {
             .expect("the authenticated workspace seeds");
         FleetSeed::new(
             &self.fleet,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -186,7 +186,7 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         FleetSeed::new(
             &fleet,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -196,12 +196,12 @@ impl Fixture {
         .insert(&mut *connection)
         .await
         .expect("the second live fleet seeds");
-        fleet
+        fleet.into()
     }
 
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
@@ -252,7 +252,7 @@ impl Wall {
     }
 
     pub(crate) async fn publish(&self, count: usize) {
-        let channel = fleet_activity_channel(&self.fixture.fleet);
+        let channel = fleet_activity_channel(self.fixture.fleet.as_str());
         for _ in 0..count {
             self.publisher
                 .publish(&channel, CHUNK)

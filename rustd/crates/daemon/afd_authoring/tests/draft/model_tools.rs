@@ -19,8 +19,8 @@ async fn tool_less_chat_routes_remain_runtime_choices_but_cannot_create_setup_ch
             dialect: Some(dialect.into()),
             max_output_tokens: 8192,
         };
-        sqlx::query("UPDATE model.platform_models SET inference=$2 WHERE id=$1::uuid")
-            .bind(f.catalogue.first().expect("owned catalogue").as_str())
+        sqlx::query("UPDATE model.platform_models SET inference=$2 WHERE id=$1")
+            .bind(f.catalogue.first().expect("owned catalogue"))
             .bind(sqlx::types::Json(settings))
             .execute(&mut *f.connection().await)
             .await

@@ -20,7 +20,7 @@ use afd_db::Db;
 use jiff::Timestamp;
 use sqlx::{Connection as _, FromRow as _};
 
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::lease::sql;
 use crate::lease::usage::{self, Pricing, SliceColumns};
 
@@ -37,9 +37,6 @@ const BILL_EXPIRED_SLICE: &str = include_str!("sql/bill_expired_slice.sql");
 
 /// What the expiry pass was doing, for [`query`].
 const CONTEXT_EXPIRED: &str = "billing sweep expired leases";
-
-/// The table a malformed expired-lease identifier is reported against.
-const TABLE_LEASES: &str = "runner.leases";
 
 /// How long an expired, unreported lease waits before its last slice is billed.
 ///
@@ -134,7 +131,7 @@ async fn bill_expired(
     now: Timestamp,
     swept: &mut BillingSwept,
 ) -> Result<()> {
-    let candidates: Vec<String> = {
+    let candidates: Vec<Uuid7> = {
         let mut connection = database.acquire().await?;
         sqlx::query_scalar(SELECT_UNBILLED_EXPIRED_LEASES)
             .bind(sql::LEASE_STATUS_REPORTED)
@@ -144,8 +141,7 @@ async fn bill_expired(
             .await
             .map_err(query(CONTEXT_EXPIRED))?
     };
-    for lease_id in candidates {
-        let lease = Uuid7::parse(&lease_id).map_err(row_malformed(TABLE_LEASES, "id"))?;
+    for lease in candidates {
         let Some(settlement) = log_last_slice(database, entropy, &lease, now).await? else {
             continue;
         };
@@ -153,7 +149,7 @@ async fn bill_expired(
             Ok(_receipt) => swept.expired_billed += 1,
             Err(fault) => {
                 swept.expired_settle_failures += 1;
-                swept.refused(&lease_id, &fault);
+                swept.refused(lease.as_str(), &fault);
             }
         }
     }
@@ -171,7 +167,7 @@ async fn log_last_slice(
     let mut connection = database.acquire().await?;
     let mut transaction = connection.begin().await.map_err(query(CONTEXT_EXPIRED))?;
     let Some(row) = sqlx::query(BILL_EXPIRED_SLICE)
-        .bind(lease.as_str())
+        .bind(lease)
         .bind(sql::LEASE_STATUS_REPORTED)
         .bind(afd_billing::nanos::MS_PER_SEC)
         .bind(afd_billing::sql::work::FLEET_LEASE)

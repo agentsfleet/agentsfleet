@@ -62,7 +62,7 @@ async fn the_inbox_narrows_by_filter_and_pages_by_cursor() {
         &router,
         &fixture,
         &collection,
-        &[fixture.gate.clone(), second.clone(), third],
+        &[fixture.gate.clone().into(), second.clone(), third],
     )
     .await;
     assert_unreadable_parameters_refuse(&router, &fixture, &collection).await;
@@ -164,7 +164,7 @@ async fn assert_the_page_resumes(
     expected: &[String],
 ) {
     let mut seen: Vec<String> = Vec::new();
-    let mut query = "?limit=1&fleet_id=".to_owned() + &fixture.fleet;
+    let mut query = "?limit=1&fleet_id=".to_owned() + fixture.fleet.as_str();
     for _page in 0..expected.len() {
         let page = read(router, &fixture.token, collection, &query).await;
         let gate = page

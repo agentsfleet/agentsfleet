@@ -59,7 +59,7 @@ impl Drafts {
         };
         let now = guard::refresh(&mut tx, &guarded, &counters).await?;
         let until: Option<jiff_sqlx::Timestamp> = sqlx::query_scalar(sql::EXTEND)
-            .bind(guarded.attempt.id.as_str())
+            .bind(guarded.attempt.id)
             .bind(now.to_sqlx())
             .bind(LEASE_TTL)
             .bind(clock::saturating_millis_signed(verified.runtime))

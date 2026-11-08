@@ -1,13 +1,14 @@
 //! Each stream owns a real server, authenticated account and cleanup lane.
 
 use super::super::{fixture::Fixture, json_body, mint, send};
+use af_core::id::Uuid7;
 use http::{Method, StatusCode};
 use tokio::{net::TcpListener, task::JoinHandle};
 
 pub(super) struct Open {
     pub(super) fixture: Fixture,
     pub(super) item: String,
-    pub(super) draft: String,
+    pub(super) draft: Uuid7,
     pub(super) response: reqwest::Response,
     server: JoinHandle<()>,
 }
@@ -33,10 +34,8 @@ impl Open {
             .to_str()
             .expect("location")
             .to_owned();
-        let draft = json_body(created).await["id"]
-            .as_str()
-            .expect("draft")
-            .to_owned();
+        let draft = Uuid7::parse(json_body(created).await["id"].as_str().expect("draft"))
+            .expect("the draft id is a UUIDv7");
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("private listener");

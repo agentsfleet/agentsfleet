@@ -6,6 +6,7 @@
 )]
 
 use crate::harness;
+use af_core::id::Uuid7;
 
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
@@ -32,7 +33,7 @@ async fn tenant_keys_and_workspaces_complete_their_real_lifecycles() {
     )
     .router();
 
-    exercise_api_keys(&router, &fixture.token, &fixture.key).await;
+    exercise_api_keys(&router, &fixture.token, fixture.key.as_str()).await;
     exercise_workspaces(&router, &fixture.token).await;
 
     fixture.cleanup().await;
@@ -226,16 +227,16 @@ fn text<'value>(document: &'value Value, field: &str) -> &'value str {
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
-    key: String,
+    tenant: Uuid7,
+    key: Uuid7,
     token: String,
 }
 
 impl Fixture {
     async fn create() -> Self {
         let lane = TestDatabase::shared();
-        let first = mint_id().replace('-', "");
-        let second = mint_id().replace('-', "");
+        let first = mint_id().as_str().replace('-', "");
+        let second = mint_id().as_str().replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
@@ -261,7 +262,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

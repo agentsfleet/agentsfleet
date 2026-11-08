@@ -146,12 +146,14 @@ impl Pricing {
         Ok(Some(Settlement {
             work: WorkKey::FleetLease(lease_id.clone()),
             payer: Account {
-                tenant: id(&slice.tenant_id, "tenant_id")?,
-                workspace: id(&slice.workspace_id, "workspace_id")?,
+                tenant: id(slice.tenant_id.as_str(), "tenant_id")?,
+                workspace: id(slice.workspace_id.as_str(), "workspace_id")?,
             },
             attribution: Attribution::Fleet {
-                fleet: id(&slice.fleet_id, "fleet_id")?,
-                fleet_name: slice.fleet_name.unwrap_or_else(|| slice.fleet_id.clone()),
+                fleet: id(slice.fleet_id.as_str(), "fleet_id")?,
+                fleet_name: slice
+                    .fleet_name
+                    .unwrap_or_else(|| slice.fleet_id.clone().into()),
                 event_id: slice.event_id,
             },
             provider: self.provider.clone(),
@@ -185,15 +187,15 @@ pub(crate) struct Slice {
     /// Runtime since the lease's cursor, in milliseconds.
     pub runtime_ms: i64,
     /// Who pays.
-    pub tenant_id: String,
+    pub tenant_id: Uuid7,
     /// Where the work ran.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// The fleet the lines name.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// The fleet's name when the lines were written; `None` once purged.
     pub fleet_name: Option<String>,
     /// The event the run answered.
-    pub event_id: String,
+    pub event_id: Uuid7,
 }
 
 /// The slice columns of a metering statement's answer.
@@ -205,10 +207,10 @@ pub(crate) struct SliceColumns {
     checked_at: Option<jiff_sqlx::Timestamp>,
     started_at: Option<jiff_sqlx::Timestamp>,
     d_ms: Option<i64>,
-    tenant_id: Option<String>,
-    workspace_id: Option<String>,
-    fleet_id: Option<String>,
-    event_id: Option<String>,
+    tenant_id: Option<Uuid7>,
+    workspace_id: Option<Uuid7>,
+    fleet_id: Option<Uuid7>,
+    event_id: Option<Uuid7>,
     fleet_name: Option<String>,
     daemon_lines: Option<i64>,
 }
@@ -244,7 +246,7 @@ pub(crate) async fn log_measured(
 ) -> Result<bool> {
     if let Some(settled) = settlement {
         let fresh = afd_billing::ledger::log_lines(&mut *connection, entropy, now, settled).await?;
-        return crate::task::usage::record(connection, settled.work.id().as_str(), fresh).await;
+        return crate::task::usage::record(connection, settled.work.id(), fresh).await;
     }
     Ok(true)
 }

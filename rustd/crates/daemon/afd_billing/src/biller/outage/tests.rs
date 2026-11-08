@@ -25,7 +25,7 @@ impl Biller for Failing {
 }
 
 fn ask() -> Ask {
-    let id = afd_db::test_util::mint_uuid7();
+    let id = afd_db::test_util::mint_id();
     Ask {
         work: WorkKey::FleetLease(id.clone()),
         payer: Account {

@@ -196,17 +196,8 @@ const REASON_BODY_MISMATCH: &str = "body_mismatch";
 /// [`Error::refusal_word`] for every kind that is not a refused fire.
 const REASON_OPERATIONAL: &str = "operational_fault";
 
-/// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
-///
-/// Only the ones the fire-target reader raises on. A schedule ROW's columns are
-/// named by `store::decode`, which reads them through `FromRow` and reports a
-/// bad one as sqlx's own decode failure — one error path per query rather than
-/// two that could disagree about the same column.
-pub(crate) const COLUMN_FLEET: &str = "fleet_id";
 /// See [`COLUMN_FLEET`].
 pub(crate) const COLUMN_DESIRED_STATUS: &str = "desired_status";
-/// See [`COLUMN_FLEET`].
-pub(crate) const COLUMN_WORKSPACE: &str = "workspace_id";
 
 impl Error {
     /// Whether sending the same request again could succeed.

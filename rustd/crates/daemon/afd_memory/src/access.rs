@@ -43,7 +43,6 @@ struct GrantsRow {
 struct LockedGrants {
     #[sqlx(flatten)]
     grants: GrantsRow,
-    activity_id: String,
 }
 
 impl From<GrantsRow> for MemoryAccess {
@@ -58,7 +57,7 @@ impl From<GrantsRow> for MemoryAccess {
 /// A fleet's workspace beside its grants.
 #[derive(Debug, sqlx::FromRow)]
 struct AccessRow {
-    workspace_id: String,
+    workspace_id: Uuid7,
     #[sqlx(flatten)]
     grants: GrantsRow,
 }
@@ -88,7 +87,7 @@ impl Directory {
     pub(crate) async fn of(&self, fleet: &Uuid7) -> Result<Option<Access>> {
         let mut connection = self.database.acquire().await?;
         let Some(row) = sqlx::query_as::<_, AccessRow>(SELECT_ACCESS)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_ACCESS))?
@@ -96,7 +95,7 @@ impl Directory {
             return Ok(None);
         };
         Ok(Some(Access {
-            workspace: Uuid7::parse(&row.workspace_id)?,
+            workspace: row.workspace_id.clone(),
             grants: row.grants.into(),
         }))
     }
@@ -114,8 +113,8 @@ impl Directory {
             .await
             .map_err(query(CONTEXT_GRANT))?;
         let Some(previous) = sqlx::query_as::<_, LockedGrants>(LOCK_ACCESS)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
+            .bind(fleet)
+            .bind(workspace)
             .fetch_optional(&mut *tx)
             .await
             .map_err(query(CONTEXT_GRANT))?
@@ -132,8 +131,8 @@ impl Directory {
             return Ok(Some(previous.grants.into()));
         }
         let access = sqlx::query_as::<_, GrantsRow>(UPDATE_ACCESS)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
+            .bind(fleet)
+            .bind(workspace)
             .bind(change.read)
             .bind(change.publish)
             .fetch_one(&mut *tx)
@@ -143,7 +142,6 @@ impl Directory {
             &mut tx,
             workspace,
             fleet,
-            &previous.activity_id,
             afd_api_wire::activity::FleetActivity::MemorySharingChanged {
                 read: access.memory_reads_workspace,
                 publish: access.memory_publishes_workspace,
@@ -158,10 +156,10 @@ impl Directory {
     }
 
     /// Every fleet's name in `workspace`, keyed by its identifier.
-    pub(crate) async fn names(&self, workspace: &Uuid7) -> Result<HashMap<String, String>> {
+    pub(crate) async fn names(&self, workspace: &Uuid7) -> Result<HashMap<Uuid7, String>> {
         let mut connection = self.database.acquire().await?;
-        Ok(sqlx::query_as::<_, (String, String)>(SELECT_FLEET_NAMES)
-            .bind(workspace.as_str())
+        Ok(sqlx::query_as::<_, (Uuid7, String)>(SELECT_FLEET_NAMES)
+            .bind(workspace)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_NAMES))?

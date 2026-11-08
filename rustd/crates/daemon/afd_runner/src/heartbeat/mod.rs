@@ -89,7 +89,7 @@ struct PolicyRow {
 #[derive(Debug, sqlx::FromRow)]
 struct PolicyColumns {
     durable_tasks_enabled: bool,
-    decision_model_id: Option<String>,
+    decision_model_id: Option<Uuid7>,
     sandbox_tier: String,
     network_policy: String,
     registry_allowlist: String,
@@ -105,7 +105,7 @@ impl From<PolicyColumns> for PolicyRow {
         Self {
             assignment: AssignmentColumns {
                 durable_tasks_enabled: row.durable_tasks_enabled,
-                decision_model_id: row.decision_model_id,
+                decision_model_id: row.decision_model_id.map(String::from),
                 sandbox_tier: row.sandbox_tier,
                 network_policy: row.network_policy,
                 registry_allowlist_json: row.registry_allowlist,
@@ -177,7 +177,7 @@ impl Runners {
     /// nothing.
     async fn policy_row(&self, connection: &mut PgConnection, runner: &Uuid7) -> Result<PolicyRow> {
         let found = sqlx::query_as::<_, PolicyColumns>(sql::runner::SELECT_RUNNER_ASSIGNED_POLICY)
-            .bind(runner.as_str())
+            .bind(runner)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_POLICY_READ))?;
@@ -196,8 +196,8 @@ impl Runners {
         let landed = match self.event_id(now) {
             Ok(event_id) => {
                 let with_event = sqlx::query(sql::runner::HEARTBEAT_WITH_TRANSITION_EVENT)
-                    .bind(runner.as_str())
-                    .bind(event_id.as_str())
+                    .bind(runner)
+                    .bind(event_id)
                     .bind(sql::event_type::RUNNER_ONLINE)
                     .bind(sql::meta::LAST_SEEN_AT)
                     .bind(sql::NEVER_SEEN.to_sqlx())
@@ -210,7 +210,7 @@ impl Runners {
             }
         };
         if !landed {
-            let touch = sqlx::query(sql::runner::TOUCH_RUNNER_LAST_SEEN).bind(runner.as_str());
+            let touch = sqlx::query(sql::runner::TOUCH_RUNNER_LAST_SEEN).bind(runner);
             best_effort(touch, connection, EVENT_LIVENESS_WRITE, runner).await;
         }
     }
@@ -240,7 +240,7 @@ async fn persist_selftest(
 
     let checks_json = render_list(&report.checks);
     let write = sqlx::query(sql::runner::UPDATE_RUNNER_SELFTEST)
-        .bind(runner.as_str())
+        .bind(runner)
         .bind(checks_json)
         .bind(report.sandbox_tier.as_ref())
         .bind(report.network_policy.as_ref());

@@ -6,15 +6,11 @@ use jiff::Timestamp;
 use super::{Member, Removal, Team};
 use crate::sql::member as sql;
 use crate::workspace::access::{ROLE_OWNER, Role};
-use crate::{Result, error, stored};
+use crate::{Result, error};
 
 /// The context each statement failure here reports under.
 const CONTEXT_LIST: &str = "list members";
 const CONTEXT_REMOVE: &str = "remove member";
-
-/// Where a member's user identifier comes from, as a malformed one names it.
-const TABLE_MEMBERSHIPS: &str = "identity.memberships";
-const COLUMN_USER_ID: &str = "user_id";
 
 impl Team {
     /// The account's members, oldest membership first.
@@ -25,7 +21,7 @@ impl Team {
     pub async fn members(&self, tenant: &Uuid7) -> Result<Vec<Member>> {
         let mut connection = self.database.acquire().await?;
         let rows: Vec<MemberRow> = sqlx::query_as(sql::SELECT_MEMBERS)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_LIST))?;
@@ -49,14 +45,14 @@ impl Team {
             .map_err(&raise)?;
 
         let owners: i64 = sqlx::query_scalar(sql::COUNT_OWNERS)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .bind(ROLE_OWNER)
             .fetch_one(&mut *transaction)
             .await
             .map_err(&raise)?;
         let held: Option<String> = sqlx::query_scalar(sql::SELECT_MEMBERSHIP)
-            .bind(tenant.as_str())
-            .bind(user.as_str())
+            .bind(tenant)
+            .bind(user)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(&raise)?;
@@ -67,8 +63,8 @@ impl Team {
             return Err(error::member_last_owner());
         }
         sqlx::query(sql::DELETE_MEMBERSHIP)
-            .bind(tenant.as_str())
-            .bind(user.as_str())
+            .bind(tenant)
+            .bind(user)
             .execute(&mut *transaction)
             .await
             .map_err(&raise)?;
@@ -84,7 +80,7 @@ impl Team {
 /// One member's row, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct MemberRow {
-    user_id: String,
+    user_id: Uuid7,
     display_name: Option<String>,
     email: String,
     oidc_subject: String,
@@ -98,7 +94,7 @@ impl MemberRow {
     /// parse, and a role this build does not know surfaces as its own error.
     fn parse(self) -> Result<Member> {
         Ok(Member {
-            user: stored::uuid(TABLE_MEMBERSHIPS, COLUMN_USER_ID, &self.user_id)?,
+            user: self.user_id.clone(),
             display_name: self.display_name,
             email: self.email,
             subject: self.oidc_subject,

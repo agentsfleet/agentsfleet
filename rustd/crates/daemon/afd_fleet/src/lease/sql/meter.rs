@@ -69,7 +69,7 @@ pub enum Ending {
 #[derive(Debug, Clone, Copy)]
 pub struct Metering<'a> {
     /// The lease being metered.
-    pub lease_id: &'a str,
+    pub lease_id: &'a Uuid7,
     /// The runner that holds it.
     pub runner_id: &'a Uuid7,
     /// One line per provider request since the last acknowledged renewal.
@@ -85,7 +85,7 @@ impl<'a> Metering<'a> {
         };
         sqlx::query(METER_LEASE)
             .bind(self.lease_id)
-            .bind(self.runner_id.as_str())
+            .bind(self.runner_id)
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(super::LEASE_STATUS_ACTIVE)
             .bind(settles)

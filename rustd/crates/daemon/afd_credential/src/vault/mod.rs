@@ -132,7 +132,7 @@ impl Vault {
         key: KeyRef<'_>,
     ) -> Result<Option<SecretBytes>> {
         let stored = sqlx::query_as::<_, StoredEnvelope>(sql::SELECT_SECRET)
-            .bind(key.workspace_id.as_str())
+            .bind(key.workspace_id)
             .bind(key.name)
             .fetch_optional(connection)
             .await
@@ -161,7 +161,7 @@ impl Vault {
         }
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query_as::<_, NamedEnvelope>(sql::SELECT_SECRETS_BY_NAMES)
-            .bind(workspace_id.as_str())
+            .bind(workspace_id)
             .bind(names)
             .fetch_all(&mut *connection)
             .await

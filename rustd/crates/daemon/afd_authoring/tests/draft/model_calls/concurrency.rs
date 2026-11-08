@@ -56,8 +56,8 @@ async fn admitted(f: &Fixture, base: Attempt) -> Vec<(Attempt, ModelCallInput)> 
         let attempt = Attempt::admit(f, f.access(), Source::Blank).await;
         attempts.push((fixture::request(&attempt), attempt));
     }
-    sqlx::query("UPDATE authoring.attempts SET model_token_hash=(SELECT model_token_hash FROM authoring.attempts WHERE id=$2::uuid),reserved_nanos=30000000 WHERE workspace_id=$1::uuid")
-        .bind(f.workspace.as_str()).bind(model_attempt.as_str())
+    sqlx::query("UPDATE authoring.attempts SET model_token_hash=(SELECT model_token_hash FROM authoring.attempts WHERE id=$2),reserved_nanos=30000000 WHERE workspace_id=$1")
+        .bind(&f.workspace).bind(model_attempt)
         .execute(&mut *f.connection().await).await.expect("same valid capability for owned attempts");
     attempts
         .into_iter()
@@ -95,8 +95,8 @@ fn pending(
 }
 
 async fn owned_attempts(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE workspace_id=$1::uuid")
-        .bind(f.workspace.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE workspace_id=$1")
+        .bind(&f.workspace)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("owned rows via a fresh connection")
@@ -112,8 +112,8 @@ async fn finished(tasks: &mut JoinSet<Duration>) -> Vec<Duration> {
 }
 
 async fn verify_receipts(f: &Fixture) {
-    let state: (i64, i64, bool, bool) = sqlx::query_as("SELECT count(d.id),sum(a.call_count)::bigint,bool_and(NOT a.usage_unknown),bool_and(d.usage->>'knowledge'='known') FROM authoring.attempts a JOIN authoring.dispatches d ON d.attempt_id=a.id WHERE a.workspace_id=$1::uuid")
-        .bind(f.workspace.as_str()).fetch_one(&mut *f.connection().await)
+    let state: (i64, i64, bool, bool) = sqlx::query_as("SELECT count(d.id),sum(a.call_count)::bigint,bool_and(NOT a.usage_unknown),bool_and(d.usage->>'knowledge'='known') FROM authoring.attempts a JOIN authoring.dispatches d ON d.attempt_id=a.id WHERE a.workspace_id=$1")
+        .bind(&f.workspace).fetch_one(&mut *f.connection().await)
         .await.expect("every durable accounting receipt");
     let count = i64::try_from(CONCURRENT).expect("cohort fits SQL count");
     assert_eq!(state, (count, count, true, true));

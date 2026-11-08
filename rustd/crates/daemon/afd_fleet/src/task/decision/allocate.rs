@@ -1,6 +1,7 @@
 //! Operation replay precedes rendering and fresh cumulative budget checks.
 
 use af_core::clock;
+use af_core::id::Uuid7;
 use af_wire::{
     decision::DecisionPurpose,
     task::{DecisionCallState, DecisionReservationInput},
@@ -38,6 +39,7 @@ pub(super) async fn allocate(
         tasks,
         lease,
         input,
+        operation: guard::wire(&input.operation_id)?,
         digest: digest(input)?,
     };
     if let Some(call) = row::peek(tasks.leases.pool(), request.operation()).await? {
@@ -53,14 +55,15 @@ struct Reservation<'a> {
     tasks: &'a Tasks,
     lease: TaskLease<'a>,
     input: &'a garde::Valid<DecisionReservationInput>,
+    operation: Uuid7,
     digest: String,
 }
 
 impl Reservation<'_> {
     fn operation(&self) -> Lookup<'_> {
         Lookup::Operation {
-            lease: self.lease.lease_id.as_str(),
-            operation: &self.input.operation_id,
+            lease: self.lease.lease_id,
+            operation: &self.operation,
         }
     }
 
@@ -81,13 +84,18 @@ impl Reservation<'_> {
         }
         block_profile_switch(&mut tx, &current, self.input).await?;
         let call_id = self.tasks.leases.entropy().uuid7(clock::now())?;
-        let assessment_id = self.tasks.leases.entropy().uuid7(clock::now())?.to_string();
+        let assessment_id = self.tasks.leases.entropy().uuid7(clock::now())?;
         let (prepared, quote) = prepare::on(&mut tx, self.lease, self.input, &call_id).await?;
         let key = prepared.context.key()?;
         let attempt = Attempt::resolve(
             &mut tx,
             &prepared,
-            self.input.retry_of.as_deref(),
+            self.input
+                .retry_of
+                .as_deref()
+                .map(guard::wire)
+                .transpose()?
+                .as_ref(),
             &key,
             &self.digest,
             &call_id,
@@ -126,7 +134,7 @@ impl Reservation<'_> {
         }
         .save(&mut tx)
         .await?;
-        let call = row::find(&mut tx, Lookup::Id(call_id.as_str()))
+        let call = row::find(&mut tx, Lookup::Id(&call_id))
             .await?
             .ok_or(TaskRefusal::NotFound)?;
         tx.commit()
@@ -169,7 +177,7 @@ fn replay_matches(
     operation: bool,
 ) -> Result<()> {
     if call.request_digest != digest
-        || call.retry_of_decision_call_id.as_deref() != input.retry_of.as_deref()
+        || call.retry_of_decision_call_id.as_ref().map(Uuid7::as_str) != input.retry_of.as_deref()
         || (operation && call.source_admission_id != input.source_admission_id)
     {
         return Err(TaskRefusal::ReplayConflict.into());
@@ -199,14 +207,15 @@ async fn block_profile_switch(
         &input.assessment,
         current
             .task_id
-            .as_deref()
+            .as_ref()
+            .map(Uuid7::as_str)
             .zip(input.task.as_ref().map(|task| task.generation)),
     )?;
     let blocked: bool = sqlx::query_scalar(sql::BLOCK_PROFILE_SWITCH)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(format!("{subject}/%"))
-        .bind(&assignment.0.revision_id)
+        .bind(crate::task::guard::wire(&assignment.0.revision_id)?)
         .fetch_one(connection)
         .await
         .map_err(query(

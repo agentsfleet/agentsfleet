@@ -1,6 +1,6 @@
 //! Stable channel ownership for deterministic notices; never a model execution target.
 use super::ChannelId;
-use crate::error::{self, COLUMN_FLEET, Result, row_unreadable, stored_fleet, stored_status};
+use crate::error::{self, COLUMN_FLEET, Result, row_unreadable, stored_status};
 use crate::{Ingress, sql};
 use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
@@ -39,7 +39,7 @@ impl Ingress {
             .bind(provider)
             .bind(team)
             .bind(channel.as_str())
-            .bind(workspace.as_str())
+            .bind(workspace)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_OWNER))?;
@@ -64,20 +64,20 @@ impl Ingress {
     ) -> Result<Uuid7> {
         let id = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
-        let bound: Option<String> = sqlx::query_scalar(sql::INSERT_NOTICE_OWNER)
-            .bind(id.as_str())
+        let bound: Option<Uuid7> = sqlx::query_scalar(sql::INSERT_NOTICE_OWNER)
+            .bind(&id)
             .bind(provider)
             .bind(team)
             .bind(channel.as_str())
-            .bind(fleet.as_str())
+            .bind(fleet)
             .bind(KIND_NOTICE_OWNER)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_BIND))?;
         drop(connection);
         match bound {
-            Some(bound) => stored_fleet(&bound),
+            Some(bound) => Ok(bound),
             // The insert waited on a concurrent one and did nothing, and its
             // own read was taken before that commit; a fresh statement sees it.
             None => self
@@ -91,13 +91,13 @@ impl Ingress {
 
 #[derive(Debug, sqlx::FromRow)]
 struct OwnerRow {
-    fleet_id: String,
+    fleet_id: Uuid7,
     status: String,
 }
 impl OwnerRow {
     fn bound(self) -> Result<NoticeOwner> {
         Ok(NoticeOwner {
-            fleet: stored_fleet(&self.fleet_id)?,
+            fleet: self.fleet_id.clone(),
             status: stored_status(&self.status)?,
         })
     }

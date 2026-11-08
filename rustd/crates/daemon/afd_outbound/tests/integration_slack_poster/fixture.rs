@@ -31,12 +31,12 @@ const FLEET_ACTIVE: &str = "active";
 pub(super) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
     subject: String,
-    user: String,
+    user: Uuid7,
     fleet: Uuid7,
-    event: String,
+    event: Uuid7,
 }
 
 impl Fixture {
@@ -45,11 +45,11 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             subject: format!("user_live_slack_poster_{}", mint_id()),
             user: mint_id(),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
-            event: format!("evt_{}", mint_id()),
+            fleet: mint_id(),
+            event: mint_id(),
             lane,
         }
     }
@@ -95,8 +95,8 @@ impl Fixture {
             id: EventId::of("1700000000001-0"),
             provider: Provider::Slack.id().to_owned(),
             destination: format!(r#"{{"channel_id":"{CHANNEL}","thread_ts":"{THREAD}"}}"#),
-            workspace_id: self.workspace.to_string(),
-            fleet_id: self.fleet.to_string(),
+            workspace_id: self.workspace.clone(),
+            fleet_id: self.fleet.clone(),
             event_id: self.event.clone(),
             answer: ANSWER.to_owned(),
         }
@@ -113,7 +113,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("slack-poster")
             .insert(&mut *connection)
             .await
@@ -121,7 +121,7 @@ impl Fixture {
         sqlx::query(
             "INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, 'slack-poster@example.test', now(), now())",
+             VALUES ($1, $2, $3, 'slack-poster@example.test', now(), now())",
         )
         .bind(&self.user)
         .bind(&self.tenant)
@@ -129,16 +129,11 @@ impl Fixture {
         .execute(&mut *connection)
         .await
         .expect("the person seeds");
-        FleetSeed::new(
-            self.fleet.as_str(),
-            self.workspace.as_str(),
-            &self.tenant,
-            FLEET_ACTIVE,
-        )
-        .name("slack-poster-fleet")
-        .insert(&mut *connection)
-        .await
-        .expect("the fleet seeds");
+        FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, FLEET_ACTIVE)
+            .name("slack-poster-fleet")
+            .insert(&mut *connection)
+            .await
+            .expect("the fleet seeds");
     }
 
     /// Seals a Slack grant carrying `token` and the bot user it posts as.
@@ -179,12 +174,12 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-            .bind(self.workspace.as_str())
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1")
+            .bind(&self.workspace)
             .execute(&mut *transaction)
             .await
             .expect("the sealed grant cleans up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

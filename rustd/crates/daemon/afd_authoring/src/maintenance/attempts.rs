@@ -12,6 +12,7 @@ use crate::{
     },
     types::{MessageState, RUNNING},
 };
+use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 const CONTEXT: &str = "recover interrupted authoring attempts";
@@ -22,8 +23,8 @@ const LIMIT: i64 = 64;
 /// [`sql::CANDIDATES`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct Hint {
-    id: String,
-    draft_id: String,
+    id: Uuid7,
+    draft_id: Uuid7,
 }
 
 pub(super) async fn expire(drafts: &Drafts) -> Result<u64> {
@@ -43,7 +44,7 @@ pub(super) async fn expire(drafts: &Drafts) -> Result<u64> {
 async fn expire_one(drafts: &Drafts, hint: &Hint) -> Result<bool> {
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-    let _locked: Option<String> = sqlx::query_scalar(sql::DRAFT)
+    let _locked: Option<Uuid7> = sqlx::query_scalar(sql::DRAFT)
         .bind(&hint.draft_id)
         .fetch_optional(&mut *tx)
         .await
@@ -74,13 +75,13 @@ async fn mark(
     owed: &mut Owed,
 ) -> Result<()> {
     sqlx::query(sql::EXPIRE)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(Status::AwaitingAccounting.as_str())
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     let changed = sqlx::query(crate::sql::message::FAIL)
-        .bind(attempt.draft_id.as_str())
+        .bind(&attempt.draft_id)
         .bind(attempt.message_sequence)
         .bind(FAILED)
         .bind(crate::lease::report::verdict::reason(

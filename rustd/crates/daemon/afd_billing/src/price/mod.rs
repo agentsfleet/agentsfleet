@@ -12,7 +12,7 @@ use jiff_sqlx::ToSqlx as _;
 use serde::{Deserialize, Serialize};
 use sqlx::PgExecutor;
 
-use crate::error::{query, row_malformed};
+use crate::error::query;
 use crate::{Result, sql};
 
 mod rate;
@@ -22,11 +22,6 @@ pub use self::rate::{RatedLine, Rater, Window};
 /// What a statement here was doing, for [`query`].
 const CONTEXT_LOAD: &str = "read a model's price book";
 const CONTEXT_DECISION: &str = "read the frozen revision's decision price book";
-/// The table a malformed price id is reported against.
-const TABLE_PRICES: &str = "model.platform_model_prices";
-const TABLE_DECISION_PRICES: &str = "model.decision_prices";
-/// The column a malformed price id is reported against.
-const COLUMN_ID: &str = "id";
 
 /// One dated prompt-size tier of one model's prices, with its row id.
 ///
@@ -89,7 +84,7 @@ impl PriceBook {
             .fetch_all(executor)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-        Self::from_rows(rows, TABLE_PRICES)
+        Ok(Self::from_rows(rows))
     }
 
     /// Reads the dated tiers for the lease's saved model/revision identity.
@@ -97,7 +92,7 @@ impl PriceBook {
     /// Callers retain this book before dispatch and rate later receipts from it.
     ///
     /// # Errors
-    /// Preserves statement failures and malformed stored quote identities.
+    /// Preserves statement failures.
     pub async fn load_decision<'e>(
         executor: impl PgExecutor<'e>,
         model: &Uuid7,
@@ -105,22 +100,19 @@ impl PriceBook {
         at: Timestamp,
     ) -> Result<Self> {
         let rows = sqlx::query_as(sql::SELECT_DECISION_PRICE_BOOK)
-            .bind(model.as_str())
-            .bind(revision.as_str())
+            .bind(model)
+            .bind(revision)
             .bind(at.to_sqlx())
             .fetch_all(executor)
             .await
             .map_err(query(CONTEXT_DECISION))?;
-        Self::from_rows(rows, TABLE_DECISION_PRICES)
+        Ok(Self::from_rows(rows))
     }
 
-    fn from_rows(rows: Vec<PriceColumns>, table: &'static str) -> Result<Self> {
-        Ok(Self {
-            tiers: rows
-                .into_iter()
-                .map(|row| row.tier(table))
-                .collect::<Result<Vec<_>>>()?,
-        })
+    fn from_rows(rows: Vec<PriceColumns>) -> Self {
+        Self {
+            tiers: rows.into_iter().map(PriceColumns::tier).collect(),
+        }
     }
 
     /// Provisional native-decision reservation across every active prompt tier.
@@ -179,7 +171,7 @@ impl PriceBook {
 /// Coding and decision quotes share the same named projection.
 #[derive(Debug, sqlx::FromRow)]
 pub(crate) struct PriceColumns {
-    id: String,
+    id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     effective_from: Timestamp,
     effective_until: Option<jiff_sqlx::Timestamp>,
@@ -198,13 +190,9 @@ pub(crate) struct PriceColumns {
 
 impl PriceColumns {
     /// The row as a [`Tier`].
-    ///
-    /// # Errors
-    /// The row's id is not a `UUIDv7`.
-    fn tier(self, table: &'static str) -> Result<Tier> {
-        let id = Uuid7::parse(&self.id).map_err(row_malformed(table, COLUMN_ID))?;
-        Ok(Tier {
-            id,
+    fn tier(self) -> Tier {
+        Tier {
+            id: self.id,
             price: Price {
                 effective_from: self.effective_from,
                 effective_until: self.effective_until.map(jiff_sqlx::Timestamp::to_jiff),
@@ -219,7 +207,7 @@ impl PriceColumns {
                 verified_at: self.verified_at,
                 conditions: self.conditions,
             },
-        })
+        }
     }
 }
 

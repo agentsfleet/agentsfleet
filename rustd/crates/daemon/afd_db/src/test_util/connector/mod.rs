@@ -5,6 +5,7 @@
 //! outside account to a workspace. The ingress, mint and callback suites each
 //! need one before they can reach the path they prove.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -28,7 +29,7 @@ const FIXTURE_REASON: &str = "fixture";
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct GrantSeed<'a> {
-    fleet_id: &'a str,
+    fleet_id: &'a Uuid7,
     service: &'a str,
     status: &'a str,
     approved_at: Option<Timestamp>,
@@ -38,7 +39,7 @@ pub struct GrantSeed<'a> {
 
 impl<'a> GrantSeed<'a> {
     /// A grant of `service` to `fleet_id`, in `status`.
-    pub const fn new(fleet_id: &'a str, service: &'a str, status: &'a str) -> Self {
+    pub const fn new(fleet_id: &'a Uuid7, service: &'a str, status: &'a str) -> Self {
         Self {
             fleet_id,
             service,
@@ -72,7 +73,7 @@ impl<'a> GrantSeed<'a> {
     /// # Errors
     /// [`crate::Error`] when the insert fails: a missing fleet, or a second
     /// grant of the same service.
-    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<String> {
+    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<Uuid7> {
         let id = super::mint_id();
         sqlx::query(INSERT_GRANT)
             .bind(&id)
@@ -97,7 +98,7 @@ impl<'a> GrantSeed<'a> {
 pub struct InstallSeed<'a> {
     provider: &'a str,
     external_account_id: &'a str,
-    workspace_id: &'a str,
+    workspace_id: &'a Uuid7,
     scopes: &'a [&'a str],
     created_at: Option<Timestamp>,
 }
@@ -107,7 +108,7 @@ impl<'a> InstallSeed<'a> {
     pub const fn new(
         provider: &'a str,
         external_account_id: &'a str,
-        workspace_id: &'a str,
+        workspace_id: &'a Uuid7,
     ) -> Self {
         Self {
             provider,
@@ -135,7 +136,7 @@ impl<'a> InstallSeed<'a> {
     /// # Errors
     /// [`crate::Error`] when the insert fails: a missing workspace, or the
     /// account already installed.
-    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<String> {
+    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<Uuid7> {
         let id = super::mint_id();
         sqlx::query(INSERT_INSTALL)
             .bind(&id)

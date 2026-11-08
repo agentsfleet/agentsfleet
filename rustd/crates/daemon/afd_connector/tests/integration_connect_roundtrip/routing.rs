@@ -26,7 +26,7 @@ async fn a_slack_reinstall_into_another_workspace_moves_the_accounts_route() {
 
     assert_eq!(
         routes_of(&round, &moving).await,
-        [round.admin.as_str().to_owned()],
+        std::slice::from_ref(&round.admin),
         "one row, re-pointed at the workspace that installed last"
     );
 
@@ -58,10 +58,10 @@ async fn a_disconnect_removes_only_its_own_workspaces_routes() {
         .await
         .expect("the disconnect commits");
 
-    assert_eq!(routes_of(&round, &leaving).await, [] as [String; 0]);
+    assert_eq!(routes_of(&round, &leaving).await, [] as [Uuid7; 0]);
     assert_eq!(
         routes_of(&round, &staying).await,
-        [round.admin.as_str().to_owned()],
+        std::slice::from_ref(&round.admin),
         "another workspace's route for the same provider survives the disconnect"
     );
 
@@ -69,10 +69,10 @@ async fn a_disconnect_removes_only_its_own_workspaces_routes() {
 }
 
 /// Every workspace this provider routes `account` to.
-async fn routes_of(round: &Round, account: &str) -> Vec<String> {
+async fn routes_of(round: &Round, account: &str) -> Vec<Uuid7> {
     let mut connection = round.database.acquire().await.expect("a pooled connection");
     sqlx::query_scalar(
-        "SELECT workspace_id::text FROM connector.installs \
+        "SELECT workspace_id FROM connector.installs \
          WHERE provider = $1 AND external_account_id = $2",
     )
     .bind(PROVIDER.id())

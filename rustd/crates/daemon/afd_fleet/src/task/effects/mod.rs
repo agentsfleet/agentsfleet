@@ -27,10 +27,7 @@ pub(super) async fn publish(
 ) -> Result<(TaskEffect, bool)> {
     let (effect, replayed) = allocate::reserve(tasks, lease, input).await?;
     if replayed {
-        return Ok((
-            read::one(tasks, lease, &Uuid7::parse(&effect.id)?).await?,
-            true,
-        ));
+        return Ok((read::one(tasks, lease, &effect.id).await?, true));
     }
     let github = tasks
         .dependencies
@@ -49,12 +46,7 @@ pub(super) async fn publish(
         return Err(error);
     }
     let recovery = match github
-        .seal_recovery(
-            lease,
-            &super::guard::id(&effect.workspace_id, "workspace_id")?,
-            &Uuid7::parse(&effect.id)?,
-            effect.target()?,
-        )
+        .seal_recovery(lease, &effect.workspace_id, &effect.id, effect.target()?)
         .await
     {
         Ok(recovery) => recovery,
@@ -80,13 +72,10 @@ pub(super) async fn publish(
         Ok(commit) => record::confirm(tasks, &effect, &commit).await?,
         Err(error) => {
             record::unknown(tasks, &effect).await?;
-            tracing::warn!(event = "dt_effect_uncertain", effect_id = effect.id, error_code = %error.code());
+            tracing::warn!(event = "dt_effect_uncertain", effect_id = %effect.id, error_code = %error.code());
         }
     }
-    Ok((
-        read::one(tasks, lease, &Uuid7::parse(&effect.id)?).await?,
-        false,
-    ))
+    Ok((read::one(tasks, lease, &effect.id).await?, false))
 }
 
 pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Result<TaskEffect> {

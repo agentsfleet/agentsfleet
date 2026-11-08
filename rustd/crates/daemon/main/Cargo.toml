@@ -63,7 +63,7 @@ afd_api.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true
 # `signal::shutdown`, the stop `serve` waits on.
-af_core = { workspace = true, features = ["signal"] }
+af_core = { workspace = true, features = ["signal", "sqlx"] }
 afd_events.workspace = true
 # The instant `Services::now` hands every handler.
 jiff.workspace = true

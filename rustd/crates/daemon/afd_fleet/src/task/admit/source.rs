@@ -1,5 +1,6 @@
 //! Source identity is proved from native admissions, never model prose.
 
+use af_core::id::Uuid7;
 use af_wire::task::TaskLimits;
 use afd_admission::Producer;
 use sqlx::PgConnection;
@@ -15,7 +16,7 @@ pub(in crate::task) struct Source {
     pub(in crate::task) request_json: String,
     pub(super) reply_provider: Option<String>,
     pub(super) reply_address: Option<String>,
-    input_claim_lease_id: Option<String>,
+    input_claim_lease_id: Option<Uuid7>,
     input_claim_fence: Option<i64>,
 }
 
@@ -36,7 +37,7 @@ pub(in crate::task) async fn load(
     admission: &af_core::id::Uuid7,
 ) -> Result<Source> {
     let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
-        .bind(admission.as_str())
+        .bind(admission)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(afd_connector::Provider::Slack.id())
@@ -55,7 +56,7 @@ pub(in crate::task) fn check_claim(
     current: &LeaseRow,
     admission: &af_core::id::Uuid7,
 ) -> Result<()> {
-    let owns_claim = source.input_claim_lease_id.as_deref() == Some(lease.lease_id.as_str())
+    let owns_claim = source.input_claim_lease_id.as_ref() == Some(lease.lease_id)
         && source.input_claim_fence == Some(current.fence);
     if admission.as_str() != current.source_admission_id && !owns_claim {
         return Err(TaskRefusal::StaleState.into());
@@ -82,7 +83,7 @@ pub(in crate::task) fn check_human(source: &Source) -> Result<()> {
 
 pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) -> Result<()> {
     check_human(source)?;
-    if current.revision_id.as_deref() != Some(plan.accepted_revision_id.as_str()) {
+    if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
         return Err(TaskRefusal::StaleState.into());
     }
     let message = source.message()?;

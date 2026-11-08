@@ -57,7 +57,7 @@ pub struct Reported {
     /// The tenant whose wallet the settle draws on.
     pub tenant_id: Uuid7,
     /// The event that was executed — the ledger's logical id.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// Who or what raised the event.
     pub actor: String,
     /// The billing posture resolved at issue.
@@ -115,13 +115,13 @@ impl Leases {
     /// columns are not identifiers.
     pub async fn load_for_report(
         &self,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
     ) -> Result<Option<Reported>> {
         let mut connection = self.pool().acquire().await?;
         let found: Option<LeaseForReport> = sqlx::query_as(sql::report::SELECT_LEASE_FOR_REPORT)
             .bind(lease_id)
-            .bind(runner_id.as_str())
+            .bind(runner_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
@@ -196,12 +196,12 @@ impl Leases {
 /// and nothing to hand back.
 async fn disposition(
     connection: &mut PgConnection,
-    lease_id: &str,
+    lease_id: &Uuid7,
     runner_id: &Uuid7,
 ) -> Result<Settled> {
     let status: Option<String> = sqlx::query_scalar(sql::report::SELECT_LEASE_DISPOSITION)
         .bind(lease_id)
-        .bind(runner_id.as_str())
+        .bind(runner_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT_DISPOSITION))?;
@@ -248,10 +248,10 @@ struct SettleAnswer {
 /// [`sql::report::SELECT_LEASE_FOR_REPORT`]'s row, ids still as stored text.
 #[derive(sqlx::FromRow)]
 struct LeaseForReport {
-    fleet_id: String,
-    workspace_id: String,
-    tenant_id: String,
-    event_id: String,
+    fleet_id: Uuid7,
+    workspace_id: Uuid7,
+    tenant_id: Uuid7,
+    event_id: Uuid7,
     actor: String,
     posture: String,
     provider: String,
@@ -269,9 +269,9 @@ impl LeaseForReport {
             Uuid7::parse(text).map_err(row_malformed(TABLE_LEASES, column))
         };
         Ok(Reported {
-            fleet_id: id(&self.fleet_id, "fleet_id")?,
-            workspace_id: id(&self.workspace_id, "workspace_id")?,
-            tenant_id: id(&self.tenant_id, "tenant_id")?,
+            fleet_id: id(self.fleet_id.as_str(), "fleet_id")?,
+            workspace_id: id(self.workspace_id.as_str(), "workspace_id")?,
+            tenant_id: id(self.tenant_id.as_str(), "tenant_id")?,
             event_id: self.event_id,
             actor: self.actor,
             posture: self.posture,

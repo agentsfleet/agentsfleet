@@ -77,8 +77,8 @@ async fn an_approved_callback_resolves_the_gate_and_continues_the_run() {
 
     let answered = callback(
         &router,
-        &fixture.fleet,
-        &payload(&fixture.action, "approve"),
+        fixture.fleet.as_str(),
+        &payload(fixture.action.as_str(), "approve"),
     )
     .await;
     let status = answered.status();
@@ -118,11 +118,11 @@ async fn a_redelivered_callback_continues_the_run_exactly_once() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let router = fixture.router().await;
-    let body = payload(&fixture.action, "approve");
+    let body = payload(fixture.action.as_str(), "approve");
 
-    let first = callback(&router, &fixture.fleet, &body).await;
+    let first = callback(&router, fixture.fleet.as_str(), &body).await;
     assert_eq!(first.status(), StatusCode::OK);
-    let again = callback(&router, &fixture.fleet, &body).await;
+    let again = callback(&router, fixture.fleet.as_str(), &body).await;
     let status = again.status();
     let document = json_body(again).await;
     assert_eq!(status, StatusCode::OK, "{document}");
@@ -149,7 +149,12 @@ async fn a_denial_resolves_the_gate_and_starts_nothing() {
     fixture.seed().await;
     let router = fixture.router().await;
 
-    let answered = callback(&router, &fixture.fleet, &payload(&fixture.action, "deny")).await;
+    let answered = callback(
+        &router,
+        fixture.fleet.as_str(),
+        &payload(fixture.action.as_str(), "deny"),
+    )
+    .await;
     assert_eq!(answered.status(), StatusCode::OK);
 
     let (state, _by) = fixture.gate_state(&fixture.gate).await;
@@ -176,8 +181,8 @@ async fn a_gate_of_another_fleet_is_not_resolvable_through_this_fleets_path() {
     fixture.seed().await;
     let router = fixture.router().await;
 
-    let body = payload(&fixture.other_action, "approve");
-    let refused = callback(&router, &fixture.fleet, &body).await;
+    let body = payload(fixture.other_action.as_str(), "approve");
+    let refused = callback(&router, fixture.fleet.as_str(), &body).await;
     let status = refused.status();
     let document = json_body(refused).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{document}");
@@ -205,8 +210,8 @@ async fn both_doors_leave_the_same_row() {
     fixture.seed().await;
     let router = fixture.router().await;
 
-    let body = payload(&fixture.action, "approve");
-    let through_slack = callback(&router, &fixture.fleet, &body).await;
+    let body = payload(fixture.action.as_str(), "approve");
+    let through_slack = callback(&router, fixture.fleet.as_str(), &body).await;
     assert_eq!(through_slack.status(), StatusCode::OK);
 
     let item = format!(
@@ -265,14 +270,14 @@ async fn a_signed_callback_this_daemon_cannot_read_is_refused_after_it_verifies(
         ("no action named", payload("", "approve")),
         (
             "a decision nobody can make",
-            payload(&fixture.action, "timed_out"),
+            payload(fixture.action.as_str(), "timed_out"),
         ),
         (
             "a decision that is not one",
-            payload(&fixture.action, "maybe"),
+            payload(fixture.action.as_str(), "maybe"),
         ),
     ] {
-        let answered = callback(&router, &fixture.fleet, &body).await;
+        let answered = callback(&router, fixture.fleet.as_str(), &body).await;
         assert_eq!(
             answered.status(),
             StatusCode::BAD_REQUEST,

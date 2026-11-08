@@ -70,6 +70,6 @@ async fn a_delete_overtaken_mid_removal_leaves_the_row_to_its_new_holder() {
         .await
         .expect("the lane's Postgres must answer")
         .expect("the row stays for the syncer that holds it");
-    assert_eq!(kept.sync_token.as_deref(), Some(winner.as_str()));
+    assert_eq!(kept.sync_token.as_ref(), Some(&winner));
     assert_eq!(kept.desired_status, DesiredStatus::Deleting);
 }

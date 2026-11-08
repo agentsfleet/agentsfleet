@@ -19,9 +19,9 @@ const RUNTIME_DEBIT: i64 = 100;
 pub(super) async fn ledger(f: &Fixture, a: &Attempt) -> (i64, i64) {
     sqlx::query_as(
         "SELECT count(*), count(settled_at) \
-        FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1::uuid",
+        FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1",
     )
-    .bind(a.id.as_str())
+    .bind(&a.id)
     .bind(AUTHORING_ATTEMPT)
     .fetch_one(&mut *f.connection().await)
     .await
@@ -43,13 +43,11 @@ async fn with_known_call(f: &Fixture) -> Attempt {
 async fn a_report_racing_the_expiry_sweep_settles_once() {
     let f = Fixture::create().await;
     let a = with_known_call(&f).await;
-    sqlx::query(
-        "UPDATE authoring.attempts SET lease_expires_at=clock_timestamp() WHERE id=$1::uuid",
-    )
-    .bind(a.id.as_str())
-    .execute(&mut *f.connection().await)
-    .await
-    .expect("the lease is due for the expiry sweep");
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at=clock_timestamp() WHERE id=$1")
+        .bind(&a.id)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("the lease is due for the expiry sweep");
     let before = balance(&f).await;
     let request = report();
     let (reported, swept) = tokio::join!(

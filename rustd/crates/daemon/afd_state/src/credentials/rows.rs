@@ -37,7 +37,7 @@ const COLUMN_ID: &str = "id";
 /// why this class needs no join where [`CliCredentialRow`] does.
 #[derive(Debug, FromRow)]
 pub(super) struct TenantApiKeyRow {
-    pub(super) tenant: String,
+    pub(super) tenant: Uuid7,
     pub(super) subject: String,
     /// `revoked_at IS NULL`.
     pub(super) usable: bool,
@@ -50,7 +50,7 @@ pub(super) struct TenantApiKeyRow {
 /// a clock comparison the schema does not make either.
 #[derive(Debug, FromRow)]
 pub(super) struct CliCredentialRow {
-    pub(super) tenant: String,
+    pub(super) tenant: Uuid7,
     pub(super) subject: String,
     /// `revoked_at IS NULL`.
     pub(super) usable: bool,
@@ -59,7 +59,7 @@ pub(super) struct CliCredentialRow {
 /// `runner.runners`, with the reconciliation verdict riding the same read.
 #[derive(Debug, FromRow)]
 pub(super) struct RunnerTokenRow {
-    pub(super) runner: String,
+    pub(super) runner: Uuid7,
     pub(super) status: String,
     /// `degraded_reason IS NOT NULL`.
     pub(super) degraded: bool,

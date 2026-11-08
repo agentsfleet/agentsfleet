@@ -22,8 +22,8 @@ impl Schedules {
     pub async fn holds_fleet(&self, workspace: &Uuid7, fleet: &Uuid7) -> Result<bool> {
         let mut connection = self.database.acquire().await?;
         let held = sqlx::query(sql::FLEET_IN_WORKSPACE)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
+            .bind(fleet)
+            .bind(workspace)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_READ))?;

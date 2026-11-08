@@ -49,8 +49,8 @@ async fn test_addressed_repair_reads_evidence_before_draft() {
             .iter()
             .any(|result| result.starts_with("[method_not_allowed]"))
     );
-    assert_reconciled_for(LINKWARDEN, &branch_for(&run.event_id), &seen);
-    assert_repaired_on_named_branch(LINKWARDEN, &run.event_id, &seen, &asked);
+    assert_reconciled_for(LINKWARDEN, &branch_for(run.event_id.as_str()), &seen);
+    assert_repaired_on_named_branch(LINKWARDEN, run.event_id.as_str(), &seen, &asked);
     assert_token_stayed_on_the_wire(&seen, &asked);
     assert_existing_draft_is_returned_without_writes(&run).await;
     supervisor.shutdown().await;
@@ -85,7 +85,7 @@ fn assert_ci_reads_before_writes(seen: &[Seen]) {
 
 async fn assert_existing_draft_is_returned_without_writes(run: &crate::e2e::Scenario) {
     let second = run.enqueue_event(EventType::Chat).await;
-    let found = branch_for(&second);
+    let found = branch_for(second.as_str());
     let upstream = Upstream::serve(routes(LINKWARDEN, Some(&found), file_at_head())).await;
     let (model, transcript) =
         FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN), Vec::new()));

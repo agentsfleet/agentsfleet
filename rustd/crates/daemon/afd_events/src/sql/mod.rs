@@ -18,18 +18,16 @@
 //! The READS bind nothing from anywhere else — a filter, a cursor, a limit —
 //! so they are verbs on [`History`](crate::History) rather than exported text.
 //!
-//! # The database owns every stamp and the row id
+//! # The database owns every stamp
 //!
-//! `created_at` and `updated_at` are written by `now()`, and the row's `id` is
-//! the column's own `uuidv7()` default, read back with `RETURNING id`. No
-//! writer binds an instant or mints an id: an event is named by its
-//! `(fleet_id, event_id)` pair, and the row id is a fact the insert reports.
+//! `created_at` and `updated_at` are written by `now()`; no writer binds an
+//! instant. An event is named by its `event_id`, the table's key.
 //!
 //! [`Acquired`]: https://docs.rs/afd_fleet
 
 /// Record an inbound event.
 ///
-/// The conflict arm on `(fleet_id, event_id)` is the idempotence boundary for
+/// The conflict arm on `event_id` is the idempotence boundary for
 /// redelivery: the same event arriving twice holds one row, so a retrying
 /// producer cannot double-run a fleet. It is also what makes the reclaim path
 /// safe — a re-leased event finds its row already there — and what makes a
@@ -43,7 +41,8 @@
 /// `(xmax = 0)` is how a caller tells the arms apart: it is true only for a
 /// fresh insert. The fleet's activity counter does not move on the conflict
 /// arm either way: `trg_events_bump_count` is `AFTER INSERT` alone
-/// (`schema/1770_fleet_activity_counters.sql`). `id` is the row's on both arms.
+/// (`schema/20261108123000_fleet_activity_counters.sql`). `event_id` is the row's on both
+/// arms: the one bound, or the one `uuidv7()` minted when none was.
 ///
 /// The `DO UPDATE` is deliberately UNCONDITIONAL. A filtered `DO UPDATE` that
 /// matches no row updates nothing, `RETURNING` then yields nothing, and both

@@ -16,7 +16,7 @@ use jiff::Timestamp;
 pub(super) struct Running {
     pub(super) fixtures: Fixtures,
     pub(super) runner: Uuid7,
-    pub(super) fleet: String,
+    pub(super) fleet: Uuid7,
     pub(super) lease: Uuid7,
     pub(super) now: Timestamp,
 }
@@ -70,7 +70,6 @@ impl Running {
             .record_received(&acquired)
             .await
             .expect("open event history");
-        let tenant = Uuid7::parse(&tenant).expect("fixture tenant");
         let issued = leases
             .issue(
                 &runner,
@@ -108,7 +107,7 @@ impl Running {
             .leases()
             .extend(
                 Metering {
-                    lease_id: self.lease.as_str(),
+                    lease_id: &self.lease,
                     runner_id: &self.runner,
                     requests: &[],
                 },

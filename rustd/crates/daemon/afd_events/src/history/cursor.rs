@@ -15,6 +15,7 @@
 //! clear. The events endpoints wrap the pair, which keeps the token opaque to a
 //! client that would otherwise parse it.
 
+use af_core::id::Uuid7;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64;
 
@@ -26,13 +27,6 @@ use crate::error::{Result, cursor_malformed};
 /// RFC 3339 instant contains.
 const FIELD_SEPARATOR: char = '|';
 
-/// The longest event identifier a cursor will carry.
-///
-/// `CURSOR_EVENT_ID_MAX_LEN`, mirrored. The bound is on the DECODED text, so a
-/// caller cannot spend the server's memory by sending a long base64 string that
-/// decodes to something this reader would then hold.
-const EVENT_ID_MAX_LEN: usize = 128;
-
 /// The boundary a page resumes strictly after, newest-first.
 ///
 /// The identifier's bound is declared here and proved by [`Cursor::decode`],
@@ -43,14 +37,14 @@ pub struct Cursor {
     #[garde(skip)]
     pub created_at: Timestamp,
     /// The `event_id` of that row, breaking ties within one millisecond.
-    #[garde(length(bytes, min = 1, max = EVENT_ID_MAX_LEN))]
-    pub event_id: String,
+    #[garde(skip)]
+    pub event_id: Uuid7,
 }
 
 impl Cursor {
     /// The cursor a page ending on this row hands back.
     #[must_use]
-    pub fn after(created_at: Timestamp, event_id: &str) -> Self {
+    pub fn after(created_at: Timestamp, event_id: &Uuid7) -> Self {
         Self {
             created_at,
             event_id: event_id.to_owned(),
@@ -85,7 +79,8 @@ impl Cursor {
             .split_once(FIELD_SEPARATOR)
             .ok_or_else(cursor_malformed)?;
         let created_at: Timestamp = head.parse().map_err(|_instant| cursor_malformed())?;
-        garde::Unvalidated::new(Self::after(created_at, id))
+        let event_id = Uuid7::parse(id).map_err(|_id| cursor_malformed())?;
+        garde::Unvalidated::new(Self::after(created_at, &event_id))
             .validate()
             .map(garde::Valid::into_inner)
             .map_err(|_out_of_bounds| cursor_malformed())
@@ -115,9 +110,14 @@ mod tests {
     /// stores one.
     const AT: Timestamp = Timestamp::constant(1_735_689_600, 123_000_000);
 
+    /// The event a page ends on.
+    fn event() -> Uuid7 {
+        Uuid7::parse("0190d5c2-7e1a-7000-8000-000000000001").expect("a canonical UUIDv7")
+    }
+
     #[test]
     fn round_trips_through_the_wire_form() {
-        let cursor = Cursor::after(AT, "01HZQ8P0X3");
+        let cursor = Cursor::after(AT, &event());
         assert_eq!(decoded(&cursor.encode()), cursor);
     }
 
@@ -126,30 +126,29 @@ mod tests {
         // Spelled out as bytes rather than built by `encode`: the payload is a
         // data format, so its shape is asserted, not re-derived.
         assert_eq!(
-            Cursor::after(AT, "01HZQ8P0X3").encode(),
-            "MjAyNS0wMS0wMVQwMDowMDowMC4xMjNafDAxSFpROFAwWDM"
+            Cursor::after(AT, &event()).encode(),
+            "MjAyNS0wMS0wMVQwMDowMDowMC4xMjNafDAxOTBkNWMyLTdlMWEtNzAwMC04MDAwLTAwMDAwMDAwMDAwMQ"
         );
     }
 
     #[test]
-    fn an_event_id_holding_the_separator_survives_the_round_trip() {
-        // The first separator ends the instant; everything after it is the id.
-        let cursor = Cursor::after(AT, "cron:a|b");
-        assert_eq!(decoded(&cursor.encode()), cursor);
+    fn an_identifier_that_is_not_a_uuidv7_is_refused() {
+        // Every event id is a UUIDv7, so a cursor naming anything else was not
+        // minted here.
+        let raw = BASE64.encode("2025-01-01T00:00:00.123Z|cron:a|b");
+        let refused = Cursor::decode(&raw).err();
+        assert!(refused.is_some());
     }
 
     #[test]
     fn refuses_what_this_daemon_did_not_mint() {
         for raw in [
-            "",                                      // empty
-            "not-base64!!",                          // not the alphabet
-            &BASE64.encode("no-separator"),          // decodes, no separator
-            &BASE64.encode("1735689600000|01HZQ"),   // epoch digits, not an instant
-            &BASE64.encode("2025-01-01T00:00:00Z|"), // empty identifier
-            &BASE64.encode(format!(
-                "2025-01-01T00:00:00Z|{}",
-                "x".repeat(EVENT_ID_MAX_LEN + 1)
-            )),
+            "",                                                // empty
+            "not-base64!!",                                    // not the alphabet
+            &BASE64.encode("no-separator"),                    // decodes, no separator
+            &BASE64.encode("1735689600000|01HZQ"),             // epoch digits, not an instant
+            &BASE64.encode("2025-01-01T00:00:00Z|"),           // empty identifier
+            &BASE64.encode("2025-01-01T00:00:00Z|01HZQ8P0X3"), // not a UUIDv7
         ] {
             let refused = Cursor::decode(raw);
             assert!(refused.is_err(), "accepted {raw:?}");
@@ -159,23 +158,6 @@ mod tests {
                 "{raw:?} was refused as something other than a bad cursor"
             );
         }
-    }
-
-    #[test]
-    fn test_cursor_id_bound_stays_one_refusal() {
-        // The id bound is garde's now; its refusal must still be the one a
-        // cursor that is not base64 at all earns, code and sentence alike.
-        let refusal = |raw: &str| {
-            Cursor::decode(raw)
-                .err()
-                .map(|error| (error.code(), error.detail()))
-        };
-        let malformed = refusal("not-base64!!");
-        let past_cap = Cursor::after(AT, &"x".repeat(EVENT_ID_MAX_LEN + 1)).encode();
-        assert!(malformed.is_some());
-        assert_eq!(refusal(&past_cap), malformed);
-        let at_cap = Cursor::after(AT, &"x".repeat(EVENT_ID_MAX_LEN));
-        assert_eq!(decoded(&at_cap.encode()), at_cap);
     }
 
     #[test]

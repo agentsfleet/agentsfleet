@@ -13,6 +13,7 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use af_observability::{InviteEmailOutcome, Recorded, Telemetry};
 use afd_db::test_util::mint_id;
 use afd_mail::test_util::{FakeRelay, LOOPBACK, Session, bag_json};
@@ -71,6 +72,11 @@ pub(crate) async fn invite(router: &Router, members: &Members) -> (Value, String
 /// The identifier an invite answers with, which every invite carries.
 pub(crate) fn id_of(invite: &Value) -> &str {
     text(invite, "id").expect("an invite answers its id")
+}
+
+/// [`id_of`], as the `uuid` a statement binds.
+pub(crate) fn invite_id(invite: &Value) -> Uuid7 {
+    Uuid7::parse(id_of(invite)).expect("an invite id is a UUIDv7")
 }
 
 /// The invite still pending in John's list, with the status it carries.

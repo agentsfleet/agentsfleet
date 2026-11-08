@@ -5,6 +5,6 @@ SET status = $4, resource_version = resource_version + 1,
     terminal_at = CASE WHEN $6 THEN now() ELSE terminal_at END,
     checkpoint_cleanup_at = CASE WHEN checkpoint_sequence IS NOT NULL THEN clock_timestamp() ELSE checkpoint_cleanup_at END,
     updated_at = now()
-WHERE id = $1::uuid AND fleet_id = $2::uuid AND workspace_id = $3::uuid
+WHERE id = $1 AND fleet_id = $2 AND workspace_id = $3
   AND resource_version = $7
-RETURNING id::text
+RETURNING id

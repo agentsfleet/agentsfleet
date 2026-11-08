@@ -6,6 +6,7 @@ use super::{
     github_authority,
     github_server::Server,
 };
+use af_core::id::Uuid7;
 use af_wire::task::TaskEffectState;
 use afd_fleet::task::{TaskLifecycle as _, TaskRefusal};
 use serde_json::{Value, json};
@@ -19,25 +20,26 @@ async fn remote_history_requires_exact_receipt_tree_and_parent_before_confirmati
 async fn history(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
+    let task_id = id(&task.task_id);
     let server = Server::start(vec![]).await;
     let tasks = github_authority::tasks(&fixture, &server).await;
-    let effect = seed(case, &task.task_id, 1, "unknown").await;
+    let effect = seed(case, &task_id, 1, "unknown").await;
     server.push(json!({"errors":[{"message":"fixture unavailable"}]}));
     server.push(json!({"data":{"repository":{"databaseId":102}}}));
     server.push(response(&[]));
-    server.push(response(&[commit(&effect, "2", "0")]));
-    server.push(response(&[commit(&effect, "1", "2")]));
-    server.push(response(&[commit(&effect, "1", "0")]));
+    server.push(response(&[commit(effect.as_str(), "2", "0")]));
+    server.push(response(&[commit(effect.as_str(), "1", "2")]));
+    server.push(response(&[commit(effect.as_str(), "1", "0")]));
     observe(&tasks, case, &effect).await;
     server.finish().await;
     fixture.model.finish().await.expect("fixture cleanup");
 }
 
-async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &str) {
+async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &Uuid7) {
     for _ in 0..2 {
         assert_eq!(
             tasks
-                .effect(case.lease(), &id(effect))
+                .effect(case.lease(), effect)
                 .await
                 .expect_err("remote failure or mismatched repository leaves effect uncertain")
                 .code(),
@@ -46,14 +48,14 @@ async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &str) {
     }
     for _ in 0..3 {
         let receipt = tasks
-            .effect(case.lease(), &id(effect))
+            .effect(case.lease(), effect)
             .await
             .expect("authoritative unresolved history");
         assert_eq!(receipt.state, TaskEffectState::Unknown);
         assert!(receipt.commit.is_none());
     }
     let receipt = tasks
-        .effect(case.lease(), &id(effect))
+        .effect(case.lease(), effect)
         .await
         .expect("exact attributable history");
     assert_eq!(receipt.state, TaskEffectState::Confirmed);
@@ -62,7 +64,7 @@ async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &str) {
         Some("3333333333333333333333333333333333333333")
     );
     let replay = tasks
-        .effect(case.lease(), &id(effect))
+        .effect(case.lease(), effect)
         .await
         .expect("durable confirmed read without network");
     assert_eq!(receipt, replay);

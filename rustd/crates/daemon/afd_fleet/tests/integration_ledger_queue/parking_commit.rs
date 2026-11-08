@@ -1,5 +1,6 @@
 //! An answer or expiry waits for a park that has written but not committed.
 
+use af_core::id::Uuid7;
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_db::config::DbRole;
@@ -43,8 +44,9 @@ async fn resolve_during_park(expire: bool) {
         .execute(&mut *blocker)
         .await
         .expect("pause trigger");
+    // The advisory key is the fleet id's text, as the trigger hashes it.
     sqlx::query(LOCK)
-        .bind(&fleet)
+        .bind(fleet.as_str())
         .execute(&mut *blocker)
         .await
         .expect("hold pause");
@@ -64,14 +66,14 @@ async fn resolve_during_park(expire: bool) {
     let resolving = start_resolution(&fixtures, action, expire).await;
     let _wait = waiter(&fixtures, park_pid, Some(&resolving)).await;
     sqlx::query(UNLOCK)
-        .bind(&fleet)
+        .bind(fleet.as_str())
         .execute(&mut *blocker)
         .await
         .expect("release park");
     parking.await.expect("park task").expect("park commits");
     resolving.await.expect("resolution task");
     let parked: bool =
-        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid")
+        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
             .bind(&event)
             .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
             .await
@@ -94,7 +96,7 @@ async fn resolve_during_park(expire: bool) {
 
 async fn start_resolution(
     fixtures: &Fixtures,
-    action: String,
+    action: Uuid7,
     expire: bool,
 ) -> tokio::task::JoinHandle<()> {
     if expire {
@@ -114,7 +116,13 @@ async fn start_resolution(
         } else {
             assert!(matches!(
                 inbox
-                    .resolve(&action, Decision::Approved, "fixture:human", "", None)
+                    .resolve(
+                        action.as_str(),
+                        Decision::Approved,
+                        "fixture:human",
+                        "",
+                        None
+                    )
                     .await
                     .expect("answer commits"),
                 Resolution::Resolved(_)

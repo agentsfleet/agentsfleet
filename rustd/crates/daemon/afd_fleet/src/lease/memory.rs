@@ -47,7 +47,7 @@ use crate::lease::pull::Plane;
 pub(crate) struct Holder<'a> {
     pub(crate) runner_id: &'a Uuid7,
     pub(crate) fleet_id: &'a Uuid7,
-    pub(crate) lease_id: &'a str,
+    pub(crate) lease_id: &'a Uuid7,
     pub(crate) fencing_token: u64,
 }
 
@@ -97,10 +97,11 @@ impl Plane {
         request: &MemoryPushRequest<'_>,
         now: Timestamp,
     ) -> Result<Captured> {
+        let lease = crate::error::wire_lease(&request.lease_id)?;
         let holder = Holder {
             runner_id,
             fleet_id,
-            lease_id: &request.lease_id,
+            lease_id: &lease,
             fencing_token: request.fencing_token,
         };
         self.capture_for(holder, &request.memory, now).await
@@ -163,7 +164,7 @@ impl Plane {
         self.fenced(
             runner_id,
             fleet_id,
-            &request.lease_id,
+            &crate::error::wire_lease(&request.lease_id)?,
             request.fencing_token,
         )
         .await?;
@@ -179,7 +180,7 @@ impl Plane {
         &self,
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         token: u64,
     ) -> Result<()> {
         let Some(fence) = self

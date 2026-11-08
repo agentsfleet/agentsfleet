@@ -43,7 +43,7 @@ const SUBJECT_PREFIX: &str = "user_live_slack_mention_";
 /// One admission row, as the ledger holds it.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Admitted {
-    pub(super) fleet: String,
+    pub(super) fleet: Uuid7,
     pub(super) actor: String,
     pub(super) event_type: String,
     pub(super) request_json: String,
@@ -56,10 +56,10 @@ pub(super) struct Fixture {
     lane: TestDatabase,
     database: Db,
     subject: String,
-    tenant: String,
+    tenant: Uuid7,
     admin: Uuid7,
-    workspace: Uuid7,
-    user: String,
+    pub(super) workspace: Uuid7,
+    user: Uuid7,
     /// The Slack team this fixture's install maps, unique per fixture so two
     /// suites in one database never resolve each other's workspace.
     pub(super) team: String,
@@ -81,10 +81,10 @@ impl Fixture {
             database: lane.open(DbRole::Api, extra).await,
             slack: FakeSlack::start().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
-            team: format!("T{}", tenant.replace('-', "").to_ascii_uppercase()),
+            team: format!("T{}", tenant.as_str().replace('-', "").to_ascii_uppercase()),
             tenant,
-            admin: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            admin: mint_id(),
+            workspace: mint_id(),
             user: mint_id(),
             lane,
         }
@@ -137,17 +137,17 @@ impl Fixture {
                 email: "mention-live@example.test",
                 name: "slack-team",
                 display_name: None,
-                workspace: self.workspace.as_str(),
+                workspace: &self.workspace,
             },
         )
         .await;
         let mut connection = self.database.acquire().await.expect("an API connection");
-        WorkspaceSeed::new(self.admin.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.admin, &self.tenant)
             .name("platform-admin")
             .insert(&mut *connection)
             .await
             .expect("the admin workspace seeds");
-        InstallSeed::new(Provider::Slack.id(), &self.team, self.workspace.as_str())
+        InstallSeed::new(Provider::Slack.id(), &self.team, &self.workspace)
             .scopes(&["app_mentions:read"])
             .insert(&mut *connection)
             .await
@@ -188,10 +188,10 @@ impl Fixture {
     async fn fleet_in(&self, workspace: &Uuid7, config: &str, status: &str) -> Uuid7 {
         let parsed = af_fleet_runtime::FleetConfig::authored(config)
             .expect("the fixture configuration parses");
-        let fleet = Uuid7::parse(&mint_id()).expect("a minted fleet is canonical");
+        let fleet = mint_id();
         let setup = FixtureSetup::new(config);
         let mut connection = self.database.acquire().await.expect("an API connection");
-        FleetSeed::new(fleet.as_str(), workspace.as_str(), &self.tenant, status)
+        FleetSeed::new(&fleet, workspace, &self.tenant, status)
             .name(parsed.name().as_str())
             .at(afd_db::test_util::SEEDED_AT)
             .unplaced_setup(SetupRevision {
@@ -212,7 +212,7 @@ impl Fixture {
         sqlx::query_as::<
             _,
             (
-                String,
+                Uuid7,
                 String,
                 String,
                 String,
@@ -220,7 +220,7 @@ impl Fixture {
                 Option<String>,
             ),
         >(
-            "SELECT fleet_id::text, actor, event_type, request_json, reply_provider, \
+            "SELECT fleet_id, actor, event_type, request_json, reply_provider, \
                     reply_address \
              FROM fleet.admissions WHERE producer = $1 AND producer_key = $2",
         )
@@ -274,12 +274,12 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = ANY($1::uuid[])")
-            .bind(vec![self.admin.as_str(), self.workspace.as_str()])
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = ANY($1)")
+            .bind(vec![&self.admin, &self.workspace])
             .execute(&mut *transaction)
             .await
             .expect("the sealed bags clean up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await

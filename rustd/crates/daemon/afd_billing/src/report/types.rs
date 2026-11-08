@@ -68,7 +68,7 @@ pub mod dimension {
 
 /// Exact filtered sums for every group present in the unfiltered period.
 /// Zero-count groups still supply choices when another filter is selected.
-#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Aggregate {
     /// One of `dimension`'s named values.
     pub dimension: i32,
@@ -92,17 +92,51 @@ pub struct Aggregate {
     pub unpriced_tokens: i64,
 }
 
+/// One `sql/aggregates.sql` row. A fleet group's key is its fleet id and a
+/// model group's its model name, each in its own typed column.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct AggregateRow {
+    dimension: i32,
+    fleet_key: Option<Uuid7>,
+    model_key: Option<String>,
+    label: Option<String>,
+    charged_nanos: i64,
+    input_tokens: i64,
+    output_tokens: i64,
+    runtime_ms: i64,
+    line_count: i64,
+    activity_count: i64,
+    unpriced_tokens: i64,
+}
+
+impl From<AggregateRow> for Aggregate {
+    fn from(row: AggregateRow) -> Self {
+        Self {
+            dimension: row.dimension,
+            key: row.fleet_key.map(String::from).or(row.model_key),
+            label: row.label,
+            charged_nanos: row.charged_nanos,
+            input_tokens: row.input_tokens,
+            output_tokens: row.output_tokens,
+            runtime_ms: row.runtime_ms,
+            line_count: row.line_count,
+            activity_count: row.activity_count,
+            unpriced_tokens: row.unpriced_tokens,
+        }
+    }
+}
+
 /// One billed lease or private setup attempt.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Activity {
     /// The work's opaque identifier.
-    pub work_id: String,
+    pub work_id: Uuid7,
     /// The stored work type.
     pub work_type: String,
     /// The owning workspace's opaque identifier.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// The runtime fleet, retained after deletion.
-    pub fleet_id: Option<String>,
+    pub fleet_id: Option<Uuid7>,
     /// Its recorded name; never a private draft title.
     pub fleet_name: Option<String>,
     /// Latest included ledger timestamp.
@@ -130,7 +164,7 @@ pub struct Activity {
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Charge {
     /// Ledger row identifier.
-    pub id: String,
+    pub id: Uuid7,
     /// Monotonic position within the work item.
     pub sequence: i64,
     /// Model identifier.

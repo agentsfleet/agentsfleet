@@ -19,7 +19,7 @@ impl Leases {
     ///
     /// # Errors
     /// Preserves database failures. A superseded claim changes nothing.
-    pub async fn park(&self, fleet: &Uuid7, event: &str, fence: Fence) -> Result<()> {
+    pub async fn park(&self, fleet: &Uuid7, event: &Uuid7, fence: Fence) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
         if self
@@ -27,14 +27,14 @@ impl Leases {
             .await?
         {
             sqlx::query(queue::PARK_WAITING)
-                .bind(fleet.as_str())
+                .bind(fleet)
                 .bind(event)
                 .bind(fence.as_i64())
                 .execute(&mut *transaction)
                 .await
                 .map_err(query(CONTEXT))?;
             sqlx::query(sql::lease::RELEASE_UNLEASED_SLOT)
-                .bind(fleet.as_str())
+                .bind(fleet)
                 .bind(fence.as_i64())
                 .execute(&mut *transaction)
                 .await
@@ -48,11 +48,11 @@ impl Leases {
         &self,
         connection: &mut sqlx::PgConnection,
         fleet: &Uuid7,
-        event: &str,
+        event: &Uuid7,
         fence: Fence,
     ) -> Result<bool> {
         sqlx::query_scalar(queue::LOCK_ADMISSION)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .bind(event)
             .bind(fence.as_i64())
             .fetch_one(connection)
@@ -85,7 +85,7 @@ impl Leases {
         acquired: &super::Acquired,
     ) -> Result<()> {
         sqlx::query(queue::SETTLE_TERMINAL)
-            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.fleet_id)
             .bind(&acquired.event_id)
             .bind(acquired.fence.as_i64())
             .bind(af_core::event::status::RECEIVED)

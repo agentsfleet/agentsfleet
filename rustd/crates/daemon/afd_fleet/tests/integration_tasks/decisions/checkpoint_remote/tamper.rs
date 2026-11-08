@@ -39,21 +39,20 @@ pub(super) async fn refuse(
         .await
         .expect_err("corrupt remote ciphertext cannot authenticate");
     assert_eq!(failure.code(), error_code::TASK_CHECKPOINT_INCOMPATIBLE);
-    let verified: bool = sqlx::query_scalar(
-        "SELECT verified_at IS NOT NULL FROM fleet.task_objects WHERE id=$1::uuid",
-    )
-    .bind(&object.object_id)
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
+    let verified: bool =
+        sqlx::query_scalar("SELECT verified_at IS NOT NULL FROM fleet.task_objects WHERE id=$1")
+            .bind(id(&object.object_id))
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("observer"),
+            )
             .await
-            .expect("observer"),
-    )
-    .await
-    .expect("native verification state");
+            .expect("native verification state");
     assert!(!verified, "failed readback must not confirm custody");
     server
         .objects

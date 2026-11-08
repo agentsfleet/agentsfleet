@@ -1,4 +1,4 @@
-SELECT p.id::text AS id, p.effective_from, p.effective_until, p.prompt_tokens_above,
+SELECT p.id AS id, p.effective_from, p.effective_until, p.prompt_tokens_above,
        p.input_nanos_per_mtok, p.cached_input_nanos_per_mtok, p.cache_write_nanos_per_mtok,
        p.cache_write_5m_nanos_per_mtok, p.cache_write_1h_nanos_per_mtok,
        p.output_nanos_per_mtok, p.source_url, p.verified_at, p.conditions

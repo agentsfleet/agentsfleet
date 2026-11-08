@@ -29,7 +29,7 @@ pub trait WorkspacePreferences: Send + Sync + std::fmt::Debug + 'static {
     fn resolve_user(
         &self,
         subject: &str,
-    ) -> impl Future<Output = TenantResult<Option<String>>> + Send;
+    ) -> impl Future<Output = TenantResult<Option<Uuid7>>> + Send;
 
     /// Every preference this user has set in this workspace.
     ///
@@ -38,7 +38,7 @@ pub trait WorkspacePreferences: Send + Sync + std::fmt::Debug + 'static {
     /// an empty bag, never a refusal.
     fn bag(
         &self,
-        user: &str,
+        user: &Uuid7,
         workspace: &Uuid7,
     ) -> impl Future<Output = TenantResult<Vec<Pref>>> + Send;
 
@@ -49,7 +49,7 @@ pub trait WorkspacePreferences: Send + Sync + std::fmt::Debug + 'static {
     /// draw the row's identifier.
     fn upsert(
         &self,
-        user: &str,
+        user: &Uuid7,
         workspace: &Uuid7,
         key: PrefKey,
         value: &str,
@@ -72,13 +72,13 @@ impl WorkspacePreferences for Preferences {
     fn resolve_user(
         &self,
         subject: &str,
-    ) -> impl Future<Output = TenantResult<Option<String>>> + Send {
+    ) -> impl Future<Output = TenantResult<Option<Uuid7>>> + Send {
         Self::resolve_user(self, subject)
     }
 
     fn bag(
         &self,
-        user: &str,
+        user: &Uuid7,
         workspace: &Uuid7,
     ) -> impl Future<Output = TenantResult<Vec<Pref>>> + Send {
         Self::bag(self, user, workspace)
@@ -86,7 +86,7 @@ impl WorkspacePreferences for Preferences {
 
     fn upsert(
         &self,
-        user: &str,
+        user: &Uuid7,
         workspace: &Uuid7,
         key: PrefKey,
         value: &str,

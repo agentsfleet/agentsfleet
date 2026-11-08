@@ -27,7 +27,7 @@ afd_admission.workspace = true
 afd_events.workspace = true
 afd_dragonfly.workspace = true
 # Identifiers, the instant a row is stamped with, and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 af_observability.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true

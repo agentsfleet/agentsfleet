@@ -22,7 +22,7 @@ use crate::support::Fixtures;
 const ISSUE_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct Issued {
-    id: String,
+    id: Uuid7,
     decision: Option<Box<DecisionAssignment>>,
 }
 
@@ -93,8 +93,8 @@ async fn profile_snapshot_does_not_reverse_model_then_runner_lock_order() {
         .begin()
         .await
         .expect("model mutation transaction");
-    sqlx::query("SELECT id FROM model.platform_models WHERE id=$1::uuid FOR UPDATE")
-        .bind(model.model.id.as_str())
+    sqlx::query("SELECT id FROM model.platform_models WHERE id=$1 FOR UPDATE")
+        .bind(&model.model.id)
         .execute(&mut *writer)
         .await
         .expect("hold model row");
@@ -164,7 +164,7 @@ fn decode(answer: &str) -> Issued {
         .lease
         .and_then(|lease| match lease {
             TaggedLease::Fleet(lease) => Some(Issued {
-                id: lease.lease_id.into_owned(),
+                id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
                 decision: lease.decision,
             }),
             TaggedLease::Authoring(_) => None,
@@ -210,7 +210,7 @@ async fn revise_and_check(
 async fn assert_stored(database: &Db, issued: &Issued) {
     let mut connection = database.acquire().await.expect("read committed snapshot");
     let stored: Option<Json<DecisionAssignment>> =
-        sqlx::query_scalar("SELECT decision_snapshot FROM runner.leases WHERE id=$1::uuid")
+        sqlx::query_scalar("SELECT decision_snapshot FROM runner.leases WHERE id=$1")
             .bind(&issued.id)
             .fetch_one(&mut *connection)
             .await

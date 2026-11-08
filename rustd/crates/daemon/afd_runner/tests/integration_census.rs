@@ -5,6 +5,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::FleetStatusLabel;
 use af_observability::producers::fleet::census::fleet_census_readings;
 use af_observability::test_util::Capture;
@@ -82,9 +83,9 @@ fn assert_statuses(scanned: u64) {
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
-    workspace: String,
-    fleets: Vec<(String, FleetStatusLabel)>,
+    tenant: Uuid7,
+    workspace: Uuid7,
+    fleets: Vec<(Uuid7, FleetStatusLabel)>,
 }
 
 impl Fixture {
@@ -139,7 +140,7 @@ impl Fixture {
                 "INSERT INTO fleet.admissions \
                 (id,fleet_id,workspace_id,producer,producer_key,payload_digest,actor,event_type, \
                  request_json,event_created_at,created_at,updated_at,delivered_at,settled_at) \
-                VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$1,'fixture','fixture',$5,'{}', \
+                VALUES ($1,$2,$3,$4,$1,'fixture','fixture',$5,'{}', \
                   now()-interval '5 minutes',now()-interval '5 minutes',now(), \
                   CASE WHEN $6 THEN now() END, CASE WHEN $7 THEN now() END)",
             )

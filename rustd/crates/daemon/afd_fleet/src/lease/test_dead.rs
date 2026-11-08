@@ -99,7 +99,7 @@ pub(crate) fn acquired() -> Acquired {
         fence: Fence::from_i64(3),
         leased_until: af_core::clock::after(AT, af_core::timing::LEASE_TTL),
         kind: Kind::Fresh,
-        event_id: "1767225600000-1".to_owned(),
+        event_id: id(5),
         actor: "fixture:steer".to_owned(),
         event_type: "chat".to_owned(),
         request_json: "{}".to_owned(),

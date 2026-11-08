@@ -39,15 +39,14 @@ const LAPSES_IN: Duration = Duration::from_millis(500);
 /// Moves the lease's deadline to `$2` past database time.
 const LEASE_LAPSES: &str = "UPDATE runner.leases \
 SET lease_expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
-WHERE id = $1::uuid";
+WHERE id = $1";
 
 /// Takes the lease row's lock and writes nothing.
-const LOCK_LEASE: &str =
-    "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1::uuid FOR UPDATE";
+const LOCK_LEASE: &str = "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1 FOR UPDATE";
 
 /// Whether the lease is still live on database time.
 const LEASE_LIVE: &str =
-    "SELECT lease_expires_at > clock_timestamp() FROM runner.leases WHERE id = $1::uuid";
+    "SELECT lease_expires_at > clock_timestamp() FROM runner.leases WHERE id = $1";
 
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
@@ -64,7 +63,7 @@ const THREAD: &str = "C0FIXTURE/1700000000.000200";
 async fn lapse_and_lock(
     fixtures: &Fixtures,
     held: &mut Transaction<'_, Postgres>,
-    lease: &str,
+    lease: &Uuid7,
 ) -> i32 {
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     sqlx::query(LEASE_LAPSES)
@@ -81,7 +80,7 @@ async fn lapse_and_lock(
 }
 
 /// Whether `lease` is live on database time.
-async fn live(probe: &mut PgConnection, lease: &str) -> bool {
+async fn live(probe: &mut PgConnection, lease: &Uuid7) -> bool {
     sqlx::query_scalar(LEASE_LIVE)
         .bind(lease)
         .fetch_one(probe)
@@ -98,7 +97,7 @@ async fn hold_past_deadline(
     fixtures: &Fixtures,
     held: Transaction<'_, Postgres>,
     pid: i32,
-    lease: &str,
+    lease: &Uuid7,
 ) {
     let mut probe = fixtures.database.acquire().await.expect("a connection");
     loop {
@@ -131,7 +130,7 @@ async fn hold_past_deadline(
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_write_fence_refuses_a_lease_lapsed_in_the_wait() {
     let held = held().await;
-    let lease = held.issued.lease_id.as_str();
+    let lease = &held.issued.lease_id;
     let fence = WriteFence::new(
         held.runner.clone(),
         held.issued.lease_id.clone(),
@@ -171,7 +170,7 @@ async fn test_write_fence_refuses_a_lease_lapsed_in_the_wait() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_tool_call_records_refuse_a_lease_lapsed_in_the_wait() {
     let held = held().await;
-    let lease = held.issued.lease_id.as_str();
+    let lease = &held.issued.lease_id;
     let post = format!(
         r#"{{"fencing_token":{},"calls":[{RECORD}]}}"#,
         held.fence.as_u64()
@@ -188,7 +187,7 @@ async fn test_tool_call_records_refuse_a_lease_lapsed_in_the_wait() {
     let pid = lapse_and_lock(&held.fixtures, &mut locked, lease).await;
 
     let (kept, ()) = tokio::join!(
-        plane.record_tool_calls(&held.runner, lease, &post, held.now),
+        plane.record_tool_calls(&held.runner, lease.as_str(), &post, held.now),
         hold_past_deadline(&held.fixtures, locked, pid, lease)
     );
 
@@ -212,7 +211,6 @@ async fn test_message_count_refuses_a_lease_lapsed_in_the_wait() {
     };
     stage.admit(Producer::Webhook, "lapses", reply).await;
     let (lease, issued) = stage.lease_next(stage.fixtures.enrolled_at()).await;
-    let lease_id = Uuid7::parse(&lease).expect("a lease id is a v7 spelling");
     let request = MessageRequest {
         fencing_token: issued.fence.as_u64(),
         text: Cow::Borrowed("still here?"),
@@ -228,7 +226,7 @@ async fn test_message_count_refuses_a_lease_lapsed_in_the_wait() {
     let pid = lapse_and_lock(&stage.fixtures, &mut locked, &lease).await;
 
     let (said, ()) = tokio::join!(
-        plane.message(&stage.runner, lease_id, &request),
+        plane.message(&stage.runner, lease.clone(), &request),
         hold_past_deadline(&stage.fixtures, locked, pid, &lease)
     );
 

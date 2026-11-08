@@ -167,21 +167,21 @@ async fn first_accounting_report_after_private_expiry_charges_its_real_usage_onc
 /// passed its private retention, so maintenance owns both.
 async fn expire_without_a_report(f: &Fixture, a: &Attempt) {
     let mut connection = f.connection().await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
-        .bind(a.id.as_str())
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+        .bind(&a.id)
         .execute(&mut *connection)
         .await
         .expect("the lease lapses");
-    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1::uuid")
-        .bind(a.draft.id.as_str())
+    sqlx::query("UPDATE authoring.drafts SET status='closed',expires_at='epoch' WHERE id=$1")
+        .bind(&a.draft.id)
         .execute(&mut *connection)
         .await
         .expect("private retention ends");
 }
 
 async fn attempt_status(f: &Fixture, a: &Attempt) -> String {
-    sqlx::query_scalar("SELECT status FROM authoring.attempts WHERE id=$1::uuid")
-        .bind(a.id.as_str())
+    sqlx::query_scalar("SELECT status FROM authoring.attempts WHERE id=$1")
+        .bind(&a.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("the accounting obligation outlives private rows")

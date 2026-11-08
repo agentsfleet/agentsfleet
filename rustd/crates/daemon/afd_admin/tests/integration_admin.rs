@@ -13,7 +13,7 @@ use afd_admin::{
     PlatformKeys, SetPlatformKey,
 };
 use afd_db::config::DbRole;
-use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id, mint_uuid7};
+use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
 use jiff::Timestamp;
 
@@ -94,14 +94,14 @@ async fn should_file_list_update_and_refuse_a_duplicate_model() {
     assert!(
         !lane
             .models
-            .update(&mint_uuid7(), details(true), NOW)
+            .update(&mint_id(), details(true), NOW)
             .await
             .expect("a typed outcome"),
         "an unknown id updates nothing"
     );
     assert_eq!(
         lane.models
-            .delete(&mint_uuid7())
+            .delete(&mint_id())
             .await
             .expect("a typed outcome"),
         DeleteModel::NotFound
@@ -116,7 +116,7 @@ async fn should_refuse_a_default_whose_workspace_or_model_has_no_row() {
     lane.file_model().await;
 
     let missing_workspace = PlatformKeyInput {
-        source_workspace_id: mint_uuid7(),
+        source_workspace_id: mint_id(),
         ..lane.key_input()
     };
     assert_eq!(
@@ -180,7 +180,7 @@ async fn should_guard_a_model_while_an_active_default_points_at_it() {
     assert!(
         !lane
             .keys
-            .deactivate(&mint_id())
+            .deactivate(mint_id().as_str())
             .await
             .expect("a typed outcome"),
         "an unknown provider deactivates nothing"
@@ -216,14 +216,14 @@ impl Lane {
             .expect("the schema migrates");
         migrator.close().await;
         let database: Db = owner.open(DbRole::Api, &[]).await;
-        let tenant = mint_uuid7();
-        let workspace = mint_uuid7();
+        let tenant = mint_id();
+        let workspace = mint_id();
         let mut connection = database.acquire().await.expect("an API connection");
-        TenantSeed::new(tenant.as_str())
+        TenantSeed::new(&tenant)
             .insert(&mut *connection)
             .await
             .expect("seeding the tenant");
-        WorkspaceSeed::new(workspace.as_str(), tenant.as_str())
+        WorkspaceSeed::new(&workspace, &tenant)
             .insert(&mut *connection)
             .await
             .expect("seeding the workspace");

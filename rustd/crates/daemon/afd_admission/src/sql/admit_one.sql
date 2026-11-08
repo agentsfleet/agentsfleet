@@ -16,12 +16,12 @@ WITH locked_fleet AS MATERIALIZED (
     FROM fleet.fleets f
     LEFT JOIN fleet.revisions setup
       ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
-    WHERE f.id = $2::uuid AND f.workspace_id = $3::uuid
+    WHERE f.id = $2 AND f.workspace_id = $3
     FOR NO KEY UPDATE OF f
 ),
 -- 2. Was this key sent before? Read only for a fleet the caller owns.
 already_sent AS (
-    SELECT a.id::text AS id, a.payload_digest AS digest, a.fleet_id::text AS fleet, a.created_at
+    SELECT a.id AS id, a.payload_digest AS digest, a.fleet_id AS fleet, a.created_at
     FROM fleet.admissions a, locked_fleet
     WHERE a.producer = $4 AND a.producer_key = $5
 ),
@@ -32,21 +32,21 @@ new_message AS (
       (id, fleet_id, workspace_id, producer, producer_key, payload_digest,
        actor, event_type, request_json, event_created_at,
        reply_provider, reply_address, created_at, updated_at)
-    SELECT $1::uuid, locked_fleet.id, $3::uuid, $4, $5, $6, $7, $8, $9, now(),
+    SELECT $1, locked_fleet.id, $3, $4, $5, $6, $7, $8, $9, now(),
            COALESCE($12::text, earlier.reply_provider),
            COALESCE($13::text, earlier.reply_address),
            now(), now()
     FROM locked_fleet
     LEFT JOIN fleet.admissions earlier
-      ON earlier.id = $14::uuid AND earlier.fleet_id = locked_fleet.id
+      ON earlier.id = $14 AND earlier.fleet_id = locked_fleet.id
      AND earlier.reply_provider IS NOT NULL
     WHERE NOT EXISTS (SELECT 1 FROM already_sent)
       AND ($16::text IS NULL OR locked_fleet.status = $16::text)
       AND locked_fleet.setup_current
       AND $11::bigint < $10::bigint
     ON CONFLICT (producer, producer_key) DO UPDATE SET updated_at = EXCLUDED.updated_at
-    RETURNING (xmax = 0) AS inserted, id::text AS id, payload_digest AS digest,
-              fleet_id::text AS fleet, created_at
+    RETURNING (xmax = 0) AS inserted, id, payload_digest AS digest,
+              fleet_id AS fleet, created_at
 )
 -- 5. Exactly one answer row, whatever happened above.
 SELECT EXISTS (SELECT 1 FROM locked_fleet) AS fleet_found,

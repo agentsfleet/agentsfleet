@@ -34,7 +34,7 @@ async fn test_delayed_renewal_cannot_revive_an_expired_lease_or_affinity() {
 
 async fn expire(running: &Running, half: Half) {
     let row = match half {
-        Half::Lease => Row::Lease(running.lease.as_str()),
+        Half::Lease => Row::Lease(&running.lease),
         Half::Slot => Row::Slot(&running.fleet),
     };
     running.fixtures.age(row, "lease_expires_at", LAPSE).await;
@@ -50,8 +50,8 @@ pub(super) async fn snapshot(running: &Running) -> (Timestamp, Timestamp, Timest
             .expect("the renewal's rows carry every stamp")
     };
     (
-        stamp(Row::Lease(running.lease.as_str()), "lease_expires_at").await,
-        stamp(Row::Lease(running.lease.as_str()), "last_metered_at").await,
+        stamp(Row::Lease(&running.lease), "lease_expires_at").await,
+        stamp(Row::Lease(&running.lease), "last_metered_at").await,
         stamp(Row::Slot(&running.fleet), "lease_expires_at").await,
     )
 }

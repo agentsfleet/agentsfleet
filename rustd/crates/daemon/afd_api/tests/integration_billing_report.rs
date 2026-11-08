@@ -5,6 +5,7 @@
 use crate::harness::{self, items, text};
 use crate::integration_workspace_members::fixture::{Members, Person, owner_scopes};
 use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_billing::sql::{posture, work};
 use afd_db::test_util::mint_id;
 use http::{Method, StatusCode, header};
@@ -25,10 +26,10 @@ INSERT INTO billing.usage_lines (
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
     settled_at, created_at, updated_at
 )
-SELECT id::uuid, $5, id::uuid, 0, $2::uuid, $3::uuid, id::uuid, $4, $4, $6,
+SELECT id, $5, id, 0, $2, $3, id, $4, $4, $6,
        '2026-10-25T12:00:00Z', 23, 0, 0, 0, 0, 7, 31, 0, $7,
        '2026-10-25T12:00:00Z', '2026-10-25T12:00:00Z', '2026-10-25T12:00:00Z'
-  FROM unnest($1::text[]) AS source(id)
+  FROM unnest($1) AS source(id)
 ";
 
 #[tokio::test]
@@ -165,12 +166,12 @@ fn now() -> Timestamp {
     NOW.parse().expect("a fixed instant")
 }
 
-async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> Vec<String> {
+async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> Vec<Uuid7> {
     let ids: Vec<_> = (0..count).map(|_| mint_id()).collect();
     sqlx::query(INSERT_LINES)
         .bind(&ids)
         .bind(&person.tenant)
-        .bind(person.workspace.as_str())
+        .bind(&person.workspace)
         .bind(MODEL)
         .bind(work::AUTHORING_ATTEMPT)
         .bind(posture::PLATFORM)
@@ -182,7 +183,7 @@ async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> V
 }
 
 async fn assert_ledger(members: &Members, person: &Person, count: i64, money: i64) {
-    let stored: (i64, i64) = sqlx::query_as("SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos),0)::bigint FROM billing.usage_lines WHERE tenant_id=$1::uuid")
+    let stored: (i64, i64) = sqlx::query_as("SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos),0)::bigint FROM billing.usage_lines WHERE tenant_id=$1")
         .bind(&person.tenant).fetch_one(&mut *members.database.acquire().await.expect("a connection"))
         .await.expect("ledger remains readable");
     assert_eq!(stored, (count, money));

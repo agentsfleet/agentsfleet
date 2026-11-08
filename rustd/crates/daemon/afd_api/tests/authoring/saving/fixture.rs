@@ -106,8 +106,8 @@ impl Case {
     }
 
     pub(super) async fn fund(&self) {
-        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
-            .bind(self.base.tenant.as_str()).bind(crate::authoring::FUNDED_NANOS)
+        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
+            .bind(&self.base.tenant).bind(crate::authoring::FUNDED_NANOS)
             .execute(&mut *self.base.db.acquire().await.expect("wallet connection")).await.expect("fund wallet");
     }
 

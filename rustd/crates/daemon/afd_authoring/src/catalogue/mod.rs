@@ -40,7 +40,7 @@ impl Drafts {
         ))?;
         let after = boundary(request.starting_after.as_deref(), &binding)?;
         let rows: Vec<project::Row> = sqlx::query_as(sql::PAGE)
-            .bind(person.owner.as_str())
+            .bind(&person.owner)
             .bind(PLATFORM_MODEL_REF)
             .bind(after)
             .bind(i64::from(request.limit) + 1)

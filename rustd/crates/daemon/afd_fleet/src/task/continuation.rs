@@ -54,8 +54,8 @@ impl Continuation {
         Admission {
             producer: Producer::TaskContinuation,
             key: Key::Repeated(&self.key),
-            fleet: self.scope.fleet_id.as_str(),
-            workspace: self.scope.workspace_id.as_str(),
+            fleet: &self.scope.fleet_id,
+            workspace: &self.scope.workspace_id,
             actor: &self.actor,
             event_type: EventType::Continuation,
             request_json: &self.payload,
@@ -65,9 +65,7 @@ impl Continuation {
                     address,
                 },
                 Destination::None => Reply::None,
-                Destination::Inherit(source) => Reply::Inherit {
-                    event_id: source.as_str(),
-                },
+                Destination::Inherit(source) => Reply::Inherit { event_id: source },
             },
         }
     }
@@ -86,7 +84,7 @@ impl Continuation {
 }
 
 /// Retire superseded native work without settling an issued lease or human reply.
-pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &str) -> crate::Result<()> {
+pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &Uuid7) -> crate::Result<()> {
     sqlx::query(include_str!("sql/retire_continuations.sql"))
         .bind(task)
         .bind(Producer::TaskContinuation.as_str())

@@ -90,7 +90,7 @@ pub(super) async fn read(
     now: Timestamp,
 ) -> Result<Vec<Continuation>> {
     let rows: Vec<Saved> = sqlx::query_as(sql::CONTINUATIONS)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(i64::from(request.call_index))
         .bind(dispatch_status::COMPLETED)
         .bind(super::budget::MAX_CALLS)

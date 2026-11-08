@@ -79,19 +79,18 @@ async fn assert_delete_refusals(case: &Case, item: &str, stale: &str, current: &
 async fn assert_retained_identity(case: &Case, key: &af_core::id::Uuid7) {
     let mut connection = case.base.db.acquire().await.expect("purge inspection");
     let remaining: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")
-            .bind(case.base.workspace.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1")
+            .bind(&case.base.workspace)
             .fetch_one(&mut *connection)
             .await
             .expect("fleet census");
     assert_eq!(remaining, 0);
-    let receipts: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1::uuid",
-    )
-    .bind(key.as_str())
-    .fetch_one(&mut *connection)
-    .await
-    .expect("receipt census");
+    let receipts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1")
+            .bind(key)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("receipt census");
     assert_eq!(receipts, 1, "the receipt outlives the purged fleet");
     drop(connection);
 }

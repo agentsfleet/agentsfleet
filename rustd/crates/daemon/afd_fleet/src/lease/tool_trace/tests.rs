@@ -4,6 +4,9 @@
     reason = "a test asserts by panicking, and indexes the JSON it built"
 )]
 
+use std::sync::LazyLock;
+
+use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::tool_trace::{RawToolTrace, TRACE_MAX_CALLS};
 use serde_json::{Value, json};
@@ -13,11 +16,24 @@ use super::{EVENT_TRACE_DROPPED, TraceOwner, stored};
 /// The fence the fixture lease holds.
 const FENCE: i64 = 7;
 
-const OWNER: TraceOwner<'static> = TraceOwner {
-    fleet_id: "01924f4e-0000-7000-8000-00000000fee7",
-    event_id: "1700000000000-0",
-    fence: FENCE,
-};
+/// The fleet that ran the fixture lease.
+static FLEET: LazyLock<Uuid7> = LazyLock::new(|| {
+    Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7").expect("fixture fleet id")
+});
+
+/// The event the fixture lease answered.
+static EVENT: LazyLock<Uuid7> = LazyLock::new(|| {
+    Uuid7::parse("01924f4e-0000-7000-8000-0000000000e9").expect("fixture event id")
+});
+
+/// The owner every stored trace here is scoped to.
+fn owner() -> TraceOwner<'static> {
+    TraceOwner {
+        fleet_id: &FLEET,
+        event_id: &EVENT,
+        fence: FENCE,
+    }
+}
 
 /// One call the way a runner sends it, numbered `n`.
 fn call(n: usize) -> Value {
@@ -29,7 +45,7 @@ fn call(n: usize) -> Value {
 /// What the event row would store for `sent`.
 fn stored_from(sent: &str) -> Option<Value> {
     let raw: RawToolTrace<'_> = serde_json::from_str(sent).expect("any JSON is carried");
-    stored(Some(raw), OWNER).map(|text| serde_json::from_str(&text).expect("stored JSON"))
+    stored(Some(raw), owner()).map(|text| serde_json::from_str(&text).expect("stored JSON"))
 }
 
 #[test]
@@ -53,7 +69,7 @@ fn a_stored_trace_carries_fenced_call_ids_and_nothing_else_changes() {
 #[test]
 fn no_trace_sent_stores_none_and_logs_nothing() {
     let log = Capture::install();
-    assert_eq!(stored(None, OWNER), None);
+    assert_eq!(stored(None, owner()), None);
     assert!(log.events().is_empty(), "{:?}", log.events());
 }
 
@@ -66,8 +82,14 @@ fn a_trace_over_a_bound_is_dropped_with_a_log_line_carrying_no_content() {
     let line = log.only(EVENT_TRACE_DROPPED);
     assert_eq!(line.level, tracing::Level::WARN);
     assert_eq!(line.field("reason"), Some("too_many_calls"));
-    assert_eq!(line.field("fleet_id"), Some(OWNER.fleet_id));
-    assert_eq!(line.field("agentsfleet_event_id"), Some(OWNER.event_id));
+    assert_eq!(
+        line.field("fleet_id"),
+        Some(Uuid7::as_str(owner().fleet_id))
+    );
+    assert_eq!(
+        line.field("agentsfleet_event_id"),
+        Some(Uuid7::as_str(owner().event_id))
+    );
     assert_eq!(line.field("bytes"), Some(sent.len().to_string().as_str()));
     assert!(
         line.fields.values().all(|value| !value.contains("README")),

@@ -49,11 +49,14 @@ impl RunnerLeaseHistory {
         limit: u32,
     ) -> Result<RunnerLeasesResponse<'static>> {
         let mut connection = self.database.acquire().await?;
-        let workspace = workspace.map(Uuid7::as_str);
+        // The fleet filter is a fleet's name, or its id when it reads as one.
+        let fleet_id = fleet.and_then(|text| Uuid7::parse(text).ok());
+        let fleet_id = fleet_id.as_ref();
         let total: i64 = sqlx::query_scalar(sql::SELECT_RUNNER_LEASE_TOTAL)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(workspace)
             .bind(fleet)
+            .bind(fleet_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_TOTAL))?
@@ -62,34 +65,42 @@ impl RunnerLeaseHistory {
         let boundary = match starting_after {
             Some(cursor) => Some((
                 sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(sql::SELECT_RUNNER_LEASE_CURSOR)
-                    .bind(cursor.as_str())
-                    .bind(runner.as_str())
+                    .bind(cursor)
+                    .bind(runner)
                     .bind(workspace)
                     .bind(fleet)
+                    .bind(fleet_id)
                     .fetch_optional(&mut *connection)
                     .await
                     .map_err(query(CONTEXT_CURSOR))?
                     .ok_or_else(cursor_invalid)?,
-                cursor.as_str(),
+                cursor,
             )),
             None => None,
         };
 
-        let items = sqlx::query_as::<_, LeaseRow>(sql::SELECT_RUNNER_LEASE_PAGE)
-            .bind(runner.as_str())
+        // One row past the page proves another page follows; a full page alone
+        // does not, since the stream may end exactly on it.
+        let mut rows = sqlx::query_as::<_, LeaseRow>(sql::SELECT_RUNNER_LEASE_PAGE)
+            .bind(runner)
             .bind(workspace)
             .bind(fleet)
-            .bind(i64::from(limit))
+            .bind(i64::from(limit) + 1)
             .bind(boundary.map(|(created_at, _)| created_at))
             .bind(boundary.map(|(_, id)| id))
             .bind(afd_billing::sql::work::FLEET_LEASE)
+            .bind(fleet_id)
             .fetch_all(&mut *connection)
             .await
-            .map_err(query(CONTEXT_PAGE))?
+            .map_err(query(CONTEXT_PAGE))?;
+        let page = usize::try_from(limit).unwrap_or(usize::MAX);
+        let more = rows.len() > page;
+        rows.truncate(page);
+        let items = rows
             .into_iter()
             .map(|row| row.into_item(viewer))
             .collect::<Vec<_>>();
-        let next_cursor = (items.len() == usize::try_from(limit).unwrap_or(usize::MAX))
+        let next_cursor = more
             .then(|| items.last().map(|item| item.id.clone()))
             .flatten();
         Ok(RunnerLeasesResponse {
@@ -104,13 +115,13 @@ impl RunnerLeaseHistory {
 /// columns.
 #[derive(Debug, sqlx::FromRow)]
 struct LeaseRow {
-    id: String,
-    fleet_id: String,
+    id: Uuid7,
+    fleet_id: Uuid7,
     fleet_name: Option<String>,
     fleet_exists: bool,
-    workspace_id: String,
-    tenant_id: String,
-    event_id: String,
+    workspace_id: Uuid7,
+    tenant_id: Uuid7,
+    event_id: Uuid7,
     event_type: Option<String>,
     actor: Option<String>,
     lease_status: String,
@@ -137,12 +148,12 @@ impl LeaseRow {
     fn into_item(self, viewer: &Uuid7) -> RunnerLeaseItem<'static> {
         RunnerLeaseItem {
             outcome: outcome(&self.lease_status, self.event_status.as_deref()),
-            destination: destination(self.fleet_exists, &self.tenant_id, viewer),
-            id: Cow::Owned(self.id),
-            fleet_id: Cow::Owned(self.fleet_id),
+            destination: destination(self.fleet_exists, self.tenant_id.as_str(), viewer),
+            id: Cow::Owned(self.id.into()),
+            fleet_id: Cow::Owned(self.fleet_id.into()),
             fleet_name: self.fleet_name.map(Cow::Owned),
-            workspace_id: Cow::Owned(self.workspace_id),
-            event_id: Cow::Owned(self.event_id),
+            workspace_id: Cow::Owned(self.workspace_id.into()),
+            event_id: Cow::Owned(self.event_id.into()),
             event_type: self.event_type.map(Cow::Owned),
             actor: self.actor.map(Cow::Owned),
             failure_label: self.failure_reason.map(Cow::Owned),

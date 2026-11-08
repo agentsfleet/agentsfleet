@@ -4,10 +4,7 @@ use af_core::catalogue::{Metadata, Price};
 use af_crypto::entropy::Entropy;
 use afd_admin::{CreateModel, ModelInput, ModelUpdate};
 use afd_db::{Db, Migrator, config::DbRole, test_util::TestDatabase};
-use afd_tenant::{
-    Result,
-    models::{Boundary, Models},
-};
+use afd_tenant::{Result, models::Models};
 use jiff::Timestamp;
 use std::error::Error as _;
 
@@ -157,16 +154,9 @@ async fn test_empty_catalogue_has_no_boundary_or_version() -> Result<(), Box<dyn
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_catalogue_query_and_acquire_failures_keep_their_causes()
--> Result<(), Box<dyn std::error::Error>> {
+async fn test_catalogue_acquire_failure_keeps_its_cause() -> Result<(), Box<dyn std::error::Error>>
+{
     let lane = Lane::new().await?;
-    let invalid = Boundary {
-        display_key: String::new(),
-        vendor_key: String::new(),
-        id: "invalid-uuid".to_owned(),
-    };
-    let query = lane.models.page(None, false, Some(&invalid), 1).await;
-    assert!(query.err().ok_or(EXPECTED_FAILURE)?.source().is_some());
     lane.db.close().await;
     let query = lane.models.page(None, false, None, 1).await;
     assert!(query.err().ok_or(EXPECTED_FAILURE)?.source().is_some());

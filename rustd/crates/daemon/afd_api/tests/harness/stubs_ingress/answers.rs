@@ -9,11 +9,12 @@ use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
 use afd_admission::Repeated;
 use afd_api::services::WebhookIngress;
+use afd_db::test_util::mint_id;
 use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed, NoticeOwner, Subscriber};
 use afd_ingress::{Admitted, Binding, Delivery, Fanout, Result as IngressResult, Surface};
 use jiff::Timestamp;
 
-use super::{ENTRY_ID_SEQUENCE, HarnessIngress, Recorded, Scripted};
+use super::{HarnessIngress, Recorded, Scripted};
 
 impl WebhookIngress for HarnessIngress {
     async fn binding(&self, fleet: &Uuid7, source: &str) -> IngressResult<Option<Binding>> {
@@ -112,7 +113,8 @@ impl WebhookIngress for HarnessIngress {
         match self {
             Self::Unreachable(ingress) => ingress.admit_mention(mention).await,
             Self::Scripted(scripted) => {
-                Ok(scripted.claim(&format!("{}:{}", mention.team_id, mention.event_id)))
+                let key = format!("{}:{}", mention.team_id, mention.event_id);
+                Ok(scripted.claim(&key, mention.fleet))
             }
         }
     }
@@ -154,10 +156,10 @@ impl WebhookIngress for HarnessIngress {
         }
     }
 
-    async fn owe_notice(&self, owed: NoticeOwed<'_>, now: Timestamp) -> IngressResult<bool> {
+    async fn owe_notice(&self, owed: NoticeOwed<'_>, now: Timestamp) -> IngressResult<Uuid7> {
         match self {
             Self::Unreachable(ingress) => ingress.owe_notice(owed, now).await,
-            Self::Scripted(_) => Ok(true),
+            Self::Scripted(_) => Ok(owed.owner.clone()),
         }
     }
 }
@@ -185,7 +187,7 @@ impl Scripted {
     /// reason this cannot stand in for the script: the two could drift, and
     /// only the integration lane would notice.
     fn append(&self, surface: Surface, binding: &Binding, delivery: &Delivery<'_>) -> Admitted {
-        let fleet = binding.fleet().as_str().to_owned();
+        let fleet = binding.fleet();
         let key = format!("{fleet}:{}", delivery.event_id);
 
         let mut log = self
@@ -199,45 +201,46 @@ impl Scripted {
 
         log.push(Recorded {
             surface,
-            fleet,
+            fleet: fleet.clone(),
             event_id: delivery.event_id.to_owned(),
             actor: delivery.actor.to_owned(),
             request_json: delivery.request_json.to_owned(),
         });
 
-        let next = format!("{}{ENTRY_ID_SEQUENCE}", log.len());
         let replayed = claimed.contains_key(&key);
-        let id = claimed.entry(key).or_insert(next).clone();
+        let id = claimed.entry(key).or_insert_with(mint_id).clone();
 
         // The ledger answers a LOGICAL id, so the stub does too: a receipt is
         // what the append returns and is not what a route renders back.
-        answer(id, replayed)
+        answer(id, fleet, replayed)
     }
 
     /// Answers one claim key, repeating its first id for a repeat — the
     /// ledger's rule, for a mention the script admits without a binding.
-    fn claim(&self, key: &str) -> Admitted {
+    fn claim(&self, key: &str, fleet: &Uuid7) -> Admitted {
         let mut claimed = self
             .claimed
             .lock()
             .expect("no test holds this lock across a panic");
-        let next = format!("{}{ENTRY_ID_SEQUENCE}", claimed.len() + 1);
         let replayed = claimed.contains_key(key);
-        let id = claimed.entry(key.to_owned()).or_insert(next).clone();
-        answer(id, replayed)
+        let id = claimed
+            .entry(key.to_owned())
+            .or_insert_with(mint_id)
+            .clone();
+        answer(id, fleet, replayed)
     }
 }
 
-/// The ledger's answer for one claim. The stub keeps no payload digests or
-/// fleets, and no ingress producer compares them — only a steer, which never
-/// comes here.
-fn answer(id: String, replayed: bool) -> Admitted {
+/// The ledger's answer for one claim, for the fleet the claim was made for.
+/// The stub keeps no payload digests, and no ingress producer compares them —
+/// only a steer, which never comes here.
+fn answer(id: Uuid7, fleet: &Uuid7, replayed: bool) -> Admitted {
     Admitted {
         replayed,
         stored: Repeated {
             id,
             digest: String::new(),
-            fleet: String::new(),
+            fleet: fleet.clone(),
             created_at: Timestamp::UNIX_EPOCH,
         },
     }

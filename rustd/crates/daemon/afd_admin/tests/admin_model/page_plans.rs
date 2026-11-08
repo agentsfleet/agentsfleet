@@ -1,5 +1,6 @@
 //! Parameterized API-role plans over a realistically populated catalogue.
 use super::{DbRole, Lane};
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use serde_json::Value;
 use sqlx::{Acquire as _, AssertSqlSafe};
@@ -12,7 +13,7 @@ const LIST: &str = afd_admin::test_util::MODEL_PAGE_QUERY;
 async fn first_and_deep_pages_seek_the_identity_index_under_generic_plans() {
     super::isolated::run(async |lane| {
         let original = lane.file_model().await;
-        seed_scale(lane, original.id.as_str()).await;
+        seed_scale(lane, &original.id).await;
         let page = lane
             .models
             .page(50, None)
@@ -44,18 +45,18 @@ async fn first_and_deep_pages_seek_the_identity_index_under_generic_plans() {
     .await;
 }
 
-async fn seed_scale(lane: &Lane, original: &str) {
-    let ids: Vec<String> = (0..ROWS).map(|_| mint_id()).collect();
+async fn seed_scale(lane: &Lane, original: &Uuid7) {
+    let ids: Vec<Uuid7> = (0..ROWS).map(|_| mint_id()).collect();
     let mut connection = lane.database.acquire().await.expect("API seed connection");
     sqlx::query(
         "INSERT INTO model.platform_models
          (id, provider, model_name, display_name, context_cap_tokens, context_source_url,
           context_verified_at, advanced, created_at, updated_at)
-         SELECT seeds.id::uuid, 'scale-provider', 'scale-' || lpad(seeds.ordinality::text, 5, '0'),
+         SELECT seeds.id, 'scale-provider', 'scale-' || lpad(seeds.ordinality::text, 5, '0'),
                 m.display_name, m.context_cap_tokens, m.context_source_url,
                 m.context_verified_at, m.advanced, now(), now()
-         FROM unnest($1::text[]) WITH ORDINALITY AS seeds(id, ordinality)
-         CROSS JOIN model.platform_models m WHERE m.id = $2::uuid",
+         FROM unnest($1) WITH ORDINALITY AS seeds(id, ordinality)
+         CROSS JOIN model.platform_models m WHERE m.id = $2",
     )
     .bind(&ids)
     .bind(original)
@@ -139,18 +140,18 @@ fn assert_plan(plan: &Value) {
     );
 }
 
-async fn seed_prices(connection: &mut sqlx::PgConnection, models: &[String], original: &str) {
-    let ids: Vec<String> = models.iter().map(|_| mint_id()).collect();
+async fn seed_prices(connection: &mut sqlx::PgConnection, models: &[Uuid7], original: &Uuid7) {
+    let ids: Vec<Uuid7> = models.iter().map(|_| mint_id()).collect();
     sqlx::query(
         "INSERT INTO model.platform_model_prices
          (id, platform_model_id, effective_from, effective_until, prompt_tokens_above,
           input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
           source_url, verified_at, conditions, created_at, updated_at)
-         SELECT seeds.id::uuid, seeds.model::uuid, p.effective_from, p.effective_until,
+         SELECT seeds.id, seeds.model, p.effective_from, p.effective_until,
                 p.prompt_tokens_above, p.input_nanos_per_mtok, p.cached_input_nanos_per_mtok,
                 p.output_nanos_per_mtok, p.source_url, p.verified_at, p.conditions, now(), now()
-         FROM unnest($1::text[], $2::text[]) AS seeds(id, model)
-         CROSS JOIN model.platform_model_prices p WHERE p.platform_model_id = $3::uuid",
+         FROM unnest($1, $2) AS seeds(id, model)
+         CROSS JOIN model.platform_model_prices p WHERE p.platform_model_id = $3",
     )
     .bind(ids)
     .bind(models)

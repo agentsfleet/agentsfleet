@@ -11,6 +11,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_tenant::preference::{PrefKey, bag_is_true};
 
 use crate::preference_lane::{Lane, NOW};
@@ -43,7 +44,7 @@ async fn a_subject_with_no_user_row_resolves_to_nothing() {
         .await
         .expect("the read must succeed");
     assert_eq!(
-        present.as_deref(),
+        present.as_ref().map(Uuid7::as_str),
         Some(lane.user.as_str()),
         "a seeded subject resolves to its own user row"
     );

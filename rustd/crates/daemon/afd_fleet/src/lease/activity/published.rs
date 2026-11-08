@@ -6,6 +6,7 @@
 //! Call ids are published fenced, `{fence}:{call_id}`; why is
 //! `lease/tool_trace/mod.rs`'s to say, because the stored trace uses the same ids.
 
+use af_core::id::Uuid7;
 use af_wire::activity::ActivityFrame;
 use af_wire::tool_trace::{ToolCallStatus, fenced_call_id};
 use serde::Serialize;
@@ -22,31 +23,31 @@ use super::Target;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum Published<'a> {
     TaskDecisionStarted {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         progress: &'a af_wire::activity::TaskActivity,
     },
     TaskDecisionCompleted {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         progress: &'a af_wire::activity::TaskActivity,
     },
     TaskTransferProgress {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         progress: &'a af_wire::activity::TaskActivity,
     },
     ContextProgress {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         #[serde(flatten)]
         progress: af_wire::context::ContextProgress,
     },
     ToolCallStarted {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         name: &'a str,
         /// Spliced in verbatim, NOT re-encoded — see [`Published::of`].
         args_redacted: &'a RawValue,
         call_id: String,
     },
     ToolCallProgress {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         name: &'a str,
         elapsed_ms: i64,
         call_id: String,
@@ -54,7 +55,7 @@ pub(super) enum Published<'a> {
     /// The one rename in the bridge: `fleet_response_chunk` on the wire.
     #[serde(rename = "chunk")]
     Chunk {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         text: &'a str,
         text_kind: af_wire::activity::StreamTextKind,
         /// A subscriber trusts raw model text only from this first frame.
@@ -65,7 +66,7 @@ pub(super) enum Published<'a> {
         stream_seq: u64,
     },
     ToolCallCompleted {
-        event_id: &'a str,
+        event_id: &'a Uuid7,
         name: &'a str,
         ms: i64,
         call_id: String,
@@ -95,7 +96,7 @@ impl<'a> Published<'a> {
         target: &'a Target,
         frame: &'a ActivityFrame<'a>,
     ) -> Result<Self, serde_json::Error> {
-        let event_id = target.event_id.as_str();
+        let event_id = &target.event_id;
         let call_id = |call: &str| fenced_call_id(target.fence, call);
         Ok(match frame {
             ActivityFrame::TaskDecisionStarted(progress) => {

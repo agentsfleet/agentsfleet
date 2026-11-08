@@ -1,5 +1,6 @@
 //! Native intents beyond a whole busy page remain reachable on later passes.
 
+use af_core::id::Uuid7;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _};
 use serde_json::json;
 use sqlx::Connection as _;
@@ -50,8 +51,8 @@ async fn backlog(case: &Case) {
 async fn busy_passes(
     fixture: &Decisions<'_>,
     later: &Decisions<'_>,
-    reachable: &str,
-) -> (DecisionMaintenanceCursor, [String; 2]) {
+    reachable: &Uuid7,
+) -> (DecisionMaintenanceCursor, [Uuid7; 2]) {
     let database = &fixture.case.held.fixtures.database;
     let mut connection = database.acquire().await.expect("busy oldest fleet");
     let mut blocker = connection.begin().await.expect("native slot owner");
@@ -95,7 +96,7 @@ async fn busy_passes(
     (cursor, arrivals)
 }
 
-async fn new_arrivals(fixture: &Decisions<'_>) -> [String; 2] {
+async fn new_arrivals(fixture: &Decisions<'_>) -> [Uuid7; 2] {
     let first = extra_unissued(fixture).await;
     due_after_scan(fixture, &first).await;
     let second = extra_unissued(fixture).await;
@@ -103,7 +104,7 @@ async fn new_arrivals(fixture: &Decisions<'_>) -> [String; 2] {
     [first, second]
 }
 
-async fn busy_backlog(fixture: &Decisions<'_>) -> Vec<String> {
+async fn busy_backlog(fixture: &Decisions<'_>) -> Vec<Uuid7> {
     let config = json!({"name":"pull-request-repair", "x-agentsfleet":{"tools":[], "triggers":[],
         "budget":{"daily_nanos":"1000000000000"}, "decision_policy":policy()}});
     fixture
@@ -120,11 +121,7 @@ async fn busy_backlog(fixture: &Decisions<'_>) -> Vec<String> {
     calls
 }
 
-async fn retried(
-    fixture: &Decisions<'_>,
-    cursor: &mut DecisionMaintenanceCursor,
-    calls: &[String],
-) {
+async fn retried(fixture: &Decisions<'_>, cursor: &mut DecisionMaintenanceCursor, calls: &[Uuid7]) {
     let first = fixture
         .tasks
         .maintain_decisions(cursor)

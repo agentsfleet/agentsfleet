@@ -141,11 +141,11 @@ impl Recording<'_> {
         connection: &mut PgConnection,
         charged: Option<i64>,
     ) -> Result<Option<i64>> {
-        let Some((task, charged)) = self.call.task_id.as_deref().zip(charged) else {
+        let Some((task, charged)) = self.call.task_id.as_ref().zip(charged) else {
             return Ok(None);
         };
         sqlx::query_scalar(sql::ACCOUNT_TASK)
-            .bind(task)
+            .bind(crate::task::guard::wire(task.as_str())?)
             .bind(&self.call.fleet_id)
             .bind(&self.call.workspace_id)
             .bind(self.call.reserved_nanos)

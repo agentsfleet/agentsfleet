@@ -22,9 +22,9 @@ async fn workspace_owner_cannot_read_member_draft_and_revocation_blocks_replay()
         .await
         .expect_err("owner is a different creator");
     assert_eq!(error.code(), AUTHORING_NOT_FOUND);
-    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
-        .bind(f.tenant.as_str())
-        .bind(f.member.as_str())
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
+        .bind(&f.tenant)
+        .bind(&f.member)
         .execute(&mut *f.connection().await)
         .await
         .expect("commit member revocation");
@@ -71,13 +71,12 @@ async fn deletion_wipes_text_and_tombstones_the_accepted_creation_key() {
     assert_eq!(error.code(), AUTHORING_GONE);
     // The receipt outlives the draft it names; the draft's absence is the
     // tombstone a retry reads as Gone.
-    let receipts: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM authoring.replay_receipts WHERE resource_id=$1::uuid",
-    )
-    .bind(created.draft.id.as_str())
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("retained identity");
+    let receipts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE resource_id=$1")
+            .bind(&created.draft.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("retained identity");
     assert_eq!(receipts, 1);
     f.cleanup().await;
 }

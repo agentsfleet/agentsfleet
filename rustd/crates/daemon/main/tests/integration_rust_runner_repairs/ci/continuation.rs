@@ -37,7 +37,7 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
     let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(&run.event_id),
+        &branch_for(run.event_id.as_str()),
         acknowledgement,
         readback,
     );

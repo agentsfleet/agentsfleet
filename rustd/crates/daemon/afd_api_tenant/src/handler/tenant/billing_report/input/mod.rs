@@ -117,7 +117,7 @@ fn scope(
             .as_deref()
             .unwrap_or(BILLING_PERIOD_MONTH)
             .to_owned(),
-        fleet_id: fleet.map(|id| id.as_str().to_owned()),
+        fleet_id: fleet.cloned().map(String::from),
         model: raw.model.clone(),
         activity_type: raw.activity_type.clone(),
         activity_id: raw.activity_id.clone(),

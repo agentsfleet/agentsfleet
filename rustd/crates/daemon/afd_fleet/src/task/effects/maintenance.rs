@@ -7,7 +7,7 @@ use crate::{
     task::{
         EffectMaintenance, Tasks,
         github::{Reconciled, recovery::Stored},
-        guard, transaction,
+        transaction,
     },
 };
 use futures_util::{StreamExt as _, stream};
@@ -49,11 +49,8 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
             expire(tasks, &row.effect).await.map(|()| Outcome::Expired)
         } else {
             async {
-                let opened = github.open_recovery(
-                    &guard::id(&row.effect.workspace_id, "workspace_id")?,
-                    &guard::id(&row.effect.id, "effect_id")?,
-                    row.recovery,
-                )?;
+                let opened =
+                    github.open_recovery(&row.effect.workspace_id, &row.effect.id, row.recovery)?;
                 match opened
                     .session
                     .reconcile_locator(
@@ -62,7 +59,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
                         opened.repository_id,
                         opened.installation_id,
                         crate::task::github::ReceiptIdentity {
-                            effect: &row.effect.id,
+                            effect: row.effect.id.as_str(),
                             head: &row.effect.expected_head,
                             tree: &row.effect.tested_tree,
                         },
@@ -89,7 +86,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
             Ok(Outcome::Expired) => result.expired += 1,
             Err(error) => {
                 result.failed += 1;
-                tracing::warn!(event = "dt_effect_reconciliation_deferred", effect_id = id, error_code = %error.code());
+                tracing::warn!(event = "dt_effect_reconciliation_deferred", effect_id = %id, error_code = %error.code());
             }
         }
     }

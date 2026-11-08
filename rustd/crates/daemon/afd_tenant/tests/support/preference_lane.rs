@@ -46,7 +46,7 @@ pub(crate) struct Lane {
     /// The identity-provider subject the fixture person presents.
     pub(crate) subject: String,
     /// The internal user id that subject resolves to.
-    pub(crate) user: String,
+    pub(crate) user: Uuid7,
 }
 
 impl Lane {
@@ -62,7 +62,7 @@ impl Lane {
         // Minted rather than fixed: `identity.users.oidc_subject` is UNIQUE across
         // the whole table, so a shared spelling is a collision the moment a
         // second test in this lane seeds its own person.
-        let subject = format!("fixture|{}", user.as_str());
+        let subject = format!("fixture|{user}");
 
         let lane = Self {
             database,
@@ -71,7 +71,7 @@ impl Lane {
             workspace,
             tenant,
             subject,
-            user: user.as_str().to_owned(),
+            user,
         };
         lane.seed_person().await;
         lane
@@ -79,17 +79,12 @@ impl Lane {
 
     /// Puts one fleet in the workspace, so `has_fleet` turns true.
     pub(crate) async fn seed_fleet(&self) {
-        FleetSeed::new(
-            mint().as_str(),
-            self.workspace.as_str(),
-            self.tenant.as_str(),
-            FLEET_ACTIVE,
-        )
-        .name("fixture")
-        .at(NOW)
-        .insert(&mut *self.connection().await)
-        .await
-        .expect("seeding a fleet");
+        FleetSeed::new(&mint(), &self.workspace, &self.tenant, FLEET_ACTIVE)
+            .name("fixture")
+            .at(NOW)
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("seeding a fleet");
     }
 
     /// Gives the tenant its own model and selects it, so `model_configured` is
@@ -101,17 +96,17 @@ impl Lane {
             "WITH chosen AS (
                INSERT INTO model.tenant_models
                  (id, tenant_id, model_name, secret_ref, created_at, updated_at)
-               VALUES ($2::uuid, $1::uuid, $3, 'fixture', now(), now())
+               VALUES ($2, $1, $3, 'fixture', now(), now())
                RETURNING id
              )
              INSERT INTO model.tenant_selections
                (tenant_id, tenant_model_id, created_at, updated_at)
-             SELECT $1::uuid, id, now(), now() FROM chosen
+             SELECT $1, id, now(), now() FROM chosen
              ON CONFLICT (tenant_id) DO UPDATE
                SET tenant_model_id = EXCLUDED.tenant_model_id, updated_at = now()",
         )
-        .bind(self.tenant.as_str())
-        .bind(mint().as_str())
+        .bind(&self.tenant)
+        .bind(mint())
         .bind(model)
         .execute(&mut *self.connection().await)
         .await
@@ -135,12 +130,12 @@ impl Lane {
     /// Seeds the tenant, the workspace and the person every read keys on.
     async fn seed_person(&self) {
         let mut connection = self.connection().await;
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .name("fixture")
             .insert(&mut *connection)
             .await
             .expect("seeding a tenant");
-        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("fixture")
             .insert(&mut *connection)
             .await
@@ -149,10 +144,10 @@ impl Lane {
         sqlx::query(
             "INSERT INTO identity.users
                (id, tenant_id, oidc_subject, email, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3, 'fixture@example.test', now(), now())",
+             VALUES ($1, $2, $3, 'fixture@example.test', now(), now())",
         )
         .bind(&self.user)
-        .bind(self.tenant.as_str())
+        .bind(&self.tenant)
         .bind(&self.subject)
         .execute(&mut *connection)
         .await

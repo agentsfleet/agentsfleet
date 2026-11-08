@@ -43,13 +43,13 @@ pub(in crate::task) async fn uploads(
     checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointUploadsInput>,
 ) -> Result<CheckpointObjectsPage> {
-    let ids: Vec<_> = input
+    let ids = input
         .objects
         .iter()
-        .map(|object| object.object_id.clone())
-        .collect();
+        .map(|object| task_guard::wire(&object.object_id))
+        .collect::<Result<Vec<_>>>()?;
     unique(&ids)?;
-    let pin_id = task_guard::id(&input.pin_id, "pin_id")?;
+    let pin_id = task_guard::wire(&input.pin_id)?;
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (_owned, plan, pin) = guard::owned(
@@ -122,7 +122,12 @@ pub(in crate::task) async fn authorize(
     checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointAuthorizationInput>,
 ) -> Result<CheckpointAuthorizations> {
-    unique(&input.object_ids)?;
+    let object_ids = input
+        .object_ids
+        .iter()
+        .map(|id| task_guard::wire(id))
+        .collect::<Result<Vec<_>>>()?;
+    unique(&object_ids)?;
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (plan, pin) = if let Some(pin) = &input.pin_id {
@@ -141,18 +146,27 @@ pub(in crate::task) async fn authorize(
             return Err(TaskRefusal::CheckpointIncompatible.into());
         }
         let owned = execution::load(&mut tx, lease, &input.task).await?;
-        let plan = Plan::load(&mut tx, checkpoint, &input.task.task_id).await?;
+        let plan = Plan::load(
+            &mut tx,
+            checkpoint,
+            owned
+                .current
+                .task_id
+                .as_ref()
+                .ok_or(TaskRefusal::NotFound)?,
+        )
+        .await?;
         plan.compatible(&owned, CheckpointTransferPurpose::Restore)?;
         let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, lease, "reader").await?;
         (plan, pin)
     };
-    let objects = scoped(&mut tx, &plan, &input.object_ids).await?;
+    let objects = scoped(&mut tx, &plan, &object_ids).await?;
     if input.purpose == CheckpointTransferPurpose::Restore
         && objects.iter().any(|object| !object.verified)
     {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
-    protect(&mut tx, &input.object_ids, &pin).await?;
+    protect(&mut tx, &object_ids, &pin).await?;
     let response = plan.wire(&pin, false)?;
     tx.commit()
         .await
@@ -175,11 +189,16 @@ pub(in crate::task) async fn list(
     let mut tx = transaction::begin(&mut connection).await?;
     let owned = super::page::read_authority(&mut tx, lease, checkpoint, &input.pin_id).await?;
     let (_current, plan, pin) = owned;
-    let mut ids: Vec<String> = sqlx::query_scalar(include_str!("../sql/object_ids.sql"))
+    let after: Option<Uuid7> = input
+        .starting_after
+        .as_deref()
+        .map(|id| task_guard::id(id, "starting_after"))
+        .transpose()?;
+    let mut ids: Vec<Uuid7> = sqlx::query_scalar(include_str!("../sql/object_ids.sql"))
         .bind(&plan.id)
         .bind(&plan.base_id)
         .bind(&plan.workspace_id)
-        .bind(&input.starting_after)
+        .bind(&after)
         .bind(101_i64)
         .fetch_all(&mut *tx)
         .await
@@ -205,13 +224,16 @@ pub(in crate::task) async fn list(
         false,
     )
     .await?;
-    Ok(CheckpointObjectsPage { items, next_cursor })
+    Ok(CheckpointObjectsPage {
+        items,
+        next_cursor: next_cursor.map(String::from),
+    })
 }
 
 pub(super) async fn scoped(
     connection: &mut PgConnection,
     plan: &Plan,
-    ids: &[String],
+    ids: &[Uuid7],
 ) -> Result<Vec<Object>> {
     let objects: Vec<Object> = sqlx::query_as(include_str!("../sql/objects_scope.sql"))
         .bind(ids)
@@ -228,11 +250,7 @@ pub(super) async fn scoped(
     Ok(objects)
 }
 
-pub(super) async fn protect(
-    connection: &mut PgConnection,
-    ids: &[String],
-    pin: &Pin,
-) -> Result<()> {
+pub(super) async fn protect(connection: &mut PgConnection, ids: &[Uuid7], pin: &Pin) -> Result<()> {
     sqlx::query(include_str!("../sql/objects_protect.sql"))
         .bind(ids)
         .bind(super::ORPHAN_SECONDS + 60)
@@ -256,14 +274,14 @@ async fn issue(
 ) -> Result<Vec<CheckpointObject>> {
     let storage = guard::storage(tasks)?;
     let session = storage.session().await?;
-    let workspace = task_guard::id(&batch.plan.workspace_id, "workspace_id")?;
+    let workspace = batch.plan.workspace_id.clone();
     let deadline = batch.pin.expires_at.min(batch.pin.operation_deadline);
     let plan = &batch.plan;
     let session = &session;
     let workspace = &workspace;
     let outcomes = stream::iter(batch.objects.into_iter().map(|object| async move {
-        let identity = task_guard::id(&object.identity_key_id, "identity_key_id")?;
-        let id = task_guard::id(&object.id, "object_id")?;
+        let identity = object.identity_key_id.clone();
+        let id = object.id.clone();
         if object.tombstoned
             || purpose == CheckpointTransferPurpose::Upload && !object.verified && !object.own(plan)
         {
@@ -345,7 +363,7 @@ async fn issue(
     objects.into_iter().collect()
 }
 
-fn unique(ids: &[String]) -> Result<()> {
+fn unique(ids: &[Uuid7]) -> Result<()> {
     if ids.iter().collect::<BTreeSet<_>>().len() != ids.len() {
         return Err(TaskRefusal::ReplayConflict.into());
     }

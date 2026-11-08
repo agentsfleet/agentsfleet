@@ -18,20 +18,15 @@ pub(super) async fn capture(
     person: &Person,
     candidate: &Uuid7,
 ) -> Result<(draft::read::Locked, Candidate)> {
-    let id: Option<String> = sqlx::query_scalar(sql::SOURCE)
-        .bind(candidate.as_str())
-        .bind(access.workspace.as_str())
-        .bind(person.id.as_str())
+    let id: Option<Uuid7> = sqlx::query_scalar(sql::SOURCE)
+        .bind(candidate)
+        .bind(access.workspace)
+        .bind(&person.id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
-    let locked = draft::read::lock(
-        connection,
-        access,
-        person,
-        &Uuid7::parse(&id.ok_or(ErrorKind::Hidden)?)?,
-    )
-    .await?;
+    let locked =
+        draft::read::lock(connection, access, person, &id.ok_or(ErrorKind::Hidden)?).await?;
     if locked.head_candidate_id.as_ref() != Some(candidate) {
         return Err(ErrorKind::State {
             current: "candidate_changed",

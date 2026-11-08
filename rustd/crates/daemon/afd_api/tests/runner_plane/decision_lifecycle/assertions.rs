@@ -1,5 +1,6 @@
 //! Complete native response and financial outcomes for the same HTTP decision.
 
+use af_core::id::Uuid7;
 use af_wire::{
     decision::DecisionRequest,
     task::{DecisionReceipt, DecisionReceiptInput},
@@ -80,8 +81,8 @@ pub(super) async fn unallocated(fixture: &Fixture) {
 }
 
 pub(super) async fn retained(fixture: &Fixture) -> (Value, Value) {
-    sqlx::query_as("SELECT to_jsonb(c),to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1::uuid")
-        .bind(fixture.lease.id.as_str())
+    sqlx::query_as("SELECT to_jsonb(c),to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1")
+        .bind(&fixture.lease.id)
         .fetch_one(&mut *fixture.database.acquire().await.expect("complete native decision observer"))
         .await.expect("retained call and payload")
 }
@@ -89,9 +90,9 @@ pub(super) async fn retained(fixture: &Fixture) -> (Value, Value) {
 pub(super) async fn one_charge(fixture: &Fixture) {
     assert_eq!(counts(fixture).await, (1, 1, 1));
     assert_eq!(balance(fixture).await, BALANCE - 3);
-    let row: (i64,i64,i64,i64,i64,String,String,String,String,String,String) = sqlx::query_as(
-        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,charged_nanos,provider,model,tenant_id::text,workspace_id::text,work_id::text,event_id FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2")
-        .bind(fixture.lease.id.as_str()).bind(i64::from(DECISION_SEQ_BASE))
+    let row: (i64,i64,i64,i64,i64,String,String,Uuid7,Uuid7,Uuid7,Uuid7) = sqlx::query_as(
+        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,charged_nanos,provider,model,tenant_id,workspace_id,work_id,event_id FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2")
+        .bind(&fixture.lease.id).bind(i64::from(DECISION_SEQ_BASE))
         .fetch_one(&mut *fixture.database.acquire().await.expect("canonical charge observer")).await.expect("one original-owner line");
     assert_eq!(
         row,
@@ -103,9 +104,9 @@ pub(super) async fn one_charge(fixture: &Fixture) {
             3,
             "typesafe".to_owned(),
             fixture.model.model.model_name.clone(),
-            fixture.owner.tenant.to_string(),
-            fixture.owner.workspace.to_string(),
-            fixture.lease.id.to_string(),
+            fixture.owner.tenant.clone(),
+            fixture.owner.workspace.clone(),
+            fixture.lease.id.clone(),
             fixture.lease.source.clone()
         )
     );
@@ -115,11 +116,17 @@ pub(super) async fn logged_before_relay(fixture: &Fixture) {
     assert_eq!(counts(fixture).await, (1, 1, 1));
     assert_eq!(balance(fixture).await, BALANCE);
     let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2",
+        "SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2",
     )
-    .bind(fixture.lease.id.as_str())
+    .bind(&fixture.lease.id)
     .bind(i64::from(DECISION_SEQ_BASE))
-    .fetch_one(&mut *fixture.database.acquire().await.expect("relay boundary observer"))
+    .fetch_one(
+        &mut *fixture
+            .database
+            .acquire()
+            .await
+            .expect("relay boundary observer"),
+    )
     .await
     .expect("the retained decision usage line");
     assert!(
@@ -156,14 +163,14 @@ pub(super) async fn relay_once(fixture: &Fixture) {
 }
 
 async fn counts(fixture: &Fixture) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1::uuid),(SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1::uuid),(SELECT count(*) FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2)")
-        .bind(fixture.lease.id.as_str()).bind(i64::from(DECISION_SEQ_BASE))
+    sqlx::query_as("SELECT (SELECT count(*) FROM runner.decision_calls WHERE original_lease_id=$1),(SELECT count(*) FROM runner.decision_payloads p JOIN runner.decision_calls c ON c.id=p.decision_call_id WHERE c.original_lease_id=$1),(SELECT count(*) FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2)")
+        .bind(&fixture.lease.id).bind(i64::from(DECISION_SEQ_BASE))
         .fetch_one(&mut *fixture.database.acquire().await.expect("physical call and receipt observer")).await.expect("complete retained state counts")
 }
 
 async fn balance(fixture: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
-        .bind(fixture.owner.tenant.as_str())
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1")
+        .bind(&fixture.owner.tenant)
         .fetch_one(&mut *fixture.database.acquire().await.expect("wallet observer"))
         .await
         .expect("native wallet")

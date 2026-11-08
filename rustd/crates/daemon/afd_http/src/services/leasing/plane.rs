@@ -164,7 +164,7 @@ impl Leasing for Plane {
     async fn renew(
         &self,
         runner_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         request: RenewRequest,
         now: Timestamp,
     ) -> afd_fleet::Result<Timestamp> {

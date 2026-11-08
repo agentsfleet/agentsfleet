@@ -18,7 +18,9 @@ impl Admissions {
         let Some(row) = self.find_repeated(producer, key).await? else {
             return Ok(None);
         };
-        self.wake(&row.fleet).await;
-        Ok(Some(Confirmation { event_id: row.id }))
+        self.wake(row.fleet.as_str()).await;
+        Ok(Some(Confirmation {
+            event_id: row.id.into(),
+        }))
     }
 }

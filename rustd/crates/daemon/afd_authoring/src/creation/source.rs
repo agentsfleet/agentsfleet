@@ -33,14 +33,14 @@ impl Creations {
     ) -> Result<Captured> {
         match source {
             SaveSource::Draft { draft_candidate_id } => {
-                let id: Option<String> = sqlx::query_scalar(sql::CANDIDATE_DRAFT)
-                    .bind(draft_candidate_id.as_str())
-                    .bind(access.workspace.as_str())
-                    .bind(person.id.as_str())
+                let id: Option<Uuid7> = sqlx::query_scalar(sql::CANDIDATE_DRAFT)
+                    .bind(draft_candidate_id)
+                    .bind(access.workspace)
+                    .bind(&person.id)
                     .fetch_optional(&mut *connection)
                     .await
                     .map_err(query(CONTEXT))?;
-                let id = Uuid7::parse(&id.ok_or(ErrorKind::Hidden)?)?;
+                let id = id.ok_or(ErrorKind::Hidden)?;
                 let locked = draft::read::lock(connection, access, person, &id).await?;
                 if locked.head_candidate_id.as_ref() != Some(draft_candidate_id) {
                     return Err(ErrorKind::State {
@@ -71,7 +71,7 @@ impl Creations {
 )]
 #[derive(sqlx::FromRow)]
 struct Revision {
-    id: String,
+    id: Uuid7,
     revision: i64,
     definition: String,
     canonical_digest: String,
@@ -87,8 +87,8 @@ async fn library(
 ) -> Result<Captured> {
     let row: Option<Revision> = sqlx::query_as(sql::LIBRARY)
         .bind(library)
-        .bind(revision.as_str())
-        .bind(person.owner.as_str())
+        .bind(revision)
+        .bind(&person.owner)
         .bind(crate::library::PLATFORM)
         .fetch_optional(connection)
         .await
@@ -113,7 +113,7 @@ async fn library(
             }),
         },
         candidate: Candidate {
-            id: Uuid7::parse(&row.id)?,
+            id: row.id,
             revision: row.revision.to_string(),
             definition,
             canonical_digest: row.canonical_digest,

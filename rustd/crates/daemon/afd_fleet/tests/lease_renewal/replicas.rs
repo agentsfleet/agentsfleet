@@ -19,8 +19,7 @@ use std::time::Duration;
 /// Every ordering finishes inside this, or the test fails rather than hangs.
 const DEADLOCK_BOUND: Duration = Duration::from_secs(30);
 
-const HOLD_HOST: &str =
-    "SELECT pg_backend_pid() FROM runner.runners WHERE id = $1::uuid FOR UPDATE";
+const HOLD_HOST: &str = "SELECT pg_backend_pid() FROM runner.runners WHERE id = $1 FOR UPDATE";
 /// Transitive: a second row-lock waiter queues behind the first, not the holder.
 const WAITERS: &str = "\
 WITH RECURSIVE blocked(pid) AS (
@@ -86,7 +85,7 @@ async fn scenario(order: Late) {
 }
 
 /// A's late renewal and B's re-admission, in the order `order` names.
-async fn race(order: Late, running: &Running, replica: &Replica) -> ((String, Uuid7), Renewed) {
+async fn race(order: Late, running: &Running, replica: &Replica) -> ((Uuid7, Uuid7), Renewed) {
     match order {
         Late::Answered => {
             let renewed = running.renew_from_old_request().await;
@@ -130,7 +129,7 @@ pub(super) async fn contended<A, B>(
         .expect("host lock holder");
     let mut held = connection.begin().await.expect("open host blocker");
     let blocker: i32 = sqlx::query_scalar(HOLD_HOST)
-        .bind(running.runner.as_str())
+        .bind(&running.runner)
         .fetch_one(&mut *held)
         .await
         .expect("hold the shared host row");

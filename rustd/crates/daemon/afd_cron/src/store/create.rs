@@ -73,7 +73,6 @@ impl Schedules {
 
         let announcement = Receipt {
             schedule: &created,
-            operation: token.as_str(),
             fact: Fact::Changed(ScheduleChange::Created),
         }
         .record_on(&mut transaction, workspace)
@@ -90,8 +89,8 @@ async fn insert_row(
     token: &Uuid7,
 ) -> Result<Schedule> {
     sqlx::query_as::<_, Schedule>(sql::INSERT)
-        .bind(schedule_id.as_str())
-        .bind(new.fleet.as_str())
+        .bind(schedule_id)
+        .bind(new.fleet)
         .bind(new.source.as_str())
         .bind(
             new.provider_schedule_id
@@ -103,7 +102,7 @@ async fn insert_row(
         .bind(DesiredStatus::Active.as_str())
         .bind(SyncStatus::Syncing.as_str())
         .bind(FIRST_VERSION)
-        .bind(token.as_str())
+        .bind(token)
         .bind(SYNC_LEASE)
         .bind(new.once)
         .fetch_one(connection)

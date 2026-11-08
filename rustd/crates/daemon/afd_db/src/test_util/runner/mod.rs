@@ -10,6 +10,7 @@
 //! crate owns the table's columns, not the values the product compares
 //! against.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -43,7 +44,7 @@ pub struct RunnerPolicy<'a> {
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct RunnerSeed<'a> {
-    id: &'a str,
+    id: &'a Uuid7,
     status: &'a str,
     policy: RunnerPolicy<'a>,
     labels_json: &'a str,
@@ -58,7 +59,7 @@ pub struct RunnerSeed<'a> {
 impl<'a> RunnerSeed<'a> {
     /// A healthy one-worker runner whose host and token digest are its own id,
     /// with no labels and no registries, that beat at the database's `now()`.
-    pub const fn new(id: &'a str, status: &'a str, policy: RunnerPolicy<'a>) -> Self {
+    pub const fn new(id: &'a Uuid7, status: &'a str, policy: RunnerPolicy<'a>) -> Self {
         Self {
             id,
             status,
@@ -130,6 +131,7 @@ impl<'a> RunnerSeed<'a> {
             .bind(FIRST_LEASE_VERSION)
             .bind(self.created_at.map(Timestamp::to_sqlx))
             .bind(self.token_hash)
+            .bind(self.id.as_str())
             .execute(executor)
             .await
             .map_err(|source| error::query(CONTEXT, source))?;
@@ -162,12 +164,13 @@ mod tests {
             .max();
 
         // pin test: literal is the contract
-        assert_eq!(highest, Some(12), "{INSERT_RUNNER}");
+        assert_eq!(highest, Some(13), "{INSERT_RUNNER}");
     }
 
     #[test]
     fn an_unstamped_seed_beats_at_the_databases_clock() {
-        let seed = RunnerSeed::new("id", "active", POLICY);
+        let id = crate::test_util::mint_id();
+        let seed = RunnerSeed::new(&id, "active", POLICY);
 
         assert_eq!((seed.last_seen_at, seed.created_at), (None, None));
         assert_eq!(seed.worker_count, 1);
