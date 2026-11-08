@@ -1,5 +1,6 @@
-//! An admitted message costs one top-level statement, and a repeat costs one
-//! and writes nothing.
+//! An admitted steer costs its admission statement and one read of the run
+//! facts its disposition is named from, and a repeat costs the same and
+//! writes nothing. Every other producer's admission is the one statement.
 //!
 //! A private database, because `pg_stat_statements` counts per database and a
 //! parallel suite's calls on the shared lane would land in the count.
@@ -33,6 +34,9 @@ type Outcome = Result<(), Box<dyn Error>>;
 
 /// Sends counted after the warm-up.
 const SENDS: i64 = 10;
+
+/// What one steer costs: `admit_one.sql`, then `run_facts.sql`.
+const STATEMENTS_PER_STEER: i64 = 2;
 
 /// One operation id, sent twice.
 const OPERATION: &str = "019feca5-bc9b-72e8-b71f-e2714f6b0c01";
@@ -116,7 +120,7 @@ impl Private {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_accepted_message_costs_one_statement() -> Outcome {
+async fn an_accepted_steer_costs_its_admission_and_one_read() -> Outcome {
     let private = Private::open().await?;
     private.send(None).await?;
     let (calls, control) = (
@@ -126,7 +130,10 @@ async fn an_accepted_message_costs_one_statement() -> Outcome {
     for _ in 0..SENDS {
         private.send(None).await?;
     }
-    assert_eq!(private.scalar(API_CALLS).await? - calls, SENDS);
+    assert_eq!(
+        private.scalar(API_CALLS).await? - calls,
+        SENDS * STATEMENTS_PER_STEER
+    );
     assert_eq!(private.scalar(TRANSACTION_CONTROL).await?, control);
     assert_eq!(control, 0, "no send opened a transaction");
     private.close().await;
@@ -135,13 +142,16 @@ async fn an_accepted_message_costs_one_statement() -> Outcome {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_repeat_costs_one_statement_and_writes_nothing() -> Outcome {
+async fn a_repeat_costs_the_same_and_writes_nothing() -> Outcome {
     let private = Private::open().await?;
     let first = private.send(Some(OPERATION)).await?;
     let (calls, rows) = (private.scalar(API_CALLS).await?, private.rows().await?);
     let repeat = private.send(Some(OPERATION)).await?;
     assert_eq!(repeat, first, "the repeat names the first event");
-    assert_eq!(private.scalar(API_CALLS).await? - calls, 1);
+    assert_eq!(
+        private.scalar(API_CALLS).await? - calls,
+        STATEMENTS_PER_STEER
+    );
     assert_eq!(private.rows().await?, rows);
     private.close().await;
     Ok(())

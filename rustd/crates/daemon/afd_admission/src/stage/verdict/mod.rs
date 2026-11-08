@@ -28,19 +28,6 @@ pub(crate) struct Answer {
     pub(crate) digest: Option<String>,
     pub(crate) fleet: Option<String>,
     pub(crate) created_at: Option<jiff_sqlx::Timestamp>,
-    /// The fleet's live run, as `live_run` and `earlier_waiting` read it.
-    #[sqlx(flatten)]
-    pub(crate) run: RunRow,
-}
-
-/// The answer row's live-run columns.
-#[derive(Debug, Default, sqlx::FromRow)]
-pub(crate) struct RunRow {
-    /// The live run's event; `None` when no lease holds the slot unexpired.
-    pub(crate) run_event_id: Option<String>,
-    pub(crate) run_durable_task: bool,
-    pub(crate) same_conversation: bool,
-    pub(crate) earlier_waiting: bool,
 }
 
 /// What the caller bound: the status a runnable admission needs, and the
@@ -61,22 +48,6 @@ impl Answer {
             fleet: self.fleet.clone()?,
             created_at: self.created_at?.to_jiff(),
         })
-    }
-
-    /// The live-run facts, as the ledger hands them to a producer.
-    fn run(&self) -> crate::RunFacts {
-        crate::RunFacts {
-            live_run: self
-                .run
-                .run_event_id
-                .clone()
-                .map(|event_id| crate::LiveRun {
-                    event_id,
-                    durable_task: self.run.run_durable_task,
-                    same_conversation: self.run.same_conversation,
-                }),
-            earlier_waiting: self.run.earlier_waiting,
-        }
     }
 
     /// The fleet's status, refusing a spelling this build does not know.
@@ -110,7 +81,6 @@ pub(crate) fn decide(answer: &Answer, bound: Bound) -> Result<Ledger> {
         return Ok(Ledger {
             stored,
             inserted: false,
-            run: answer.run(),
         });
     }
     if let Some(required) = bound.runnable {
@@ -129,7 +99,6 @@ pub(crate) fn decide(answer: &Answer, bound: Bound) -> Result<Ledger> {
         .map(|stored| Ledger {
             stored,
             inserted: true,
-            run: answer.run(),
         })
         .ok_or_else(|| query(CONTEXT)(sqlx::Error::RowNotFound))
 }

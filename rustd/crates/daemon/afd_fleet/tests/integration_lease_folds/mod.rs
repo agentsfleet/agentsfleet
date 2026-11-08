@@ -1,7 +1,7 @@
 //! A live run claims what its fleet receives while it works, and its report
 //! settles what it read, against live Postgres.
 //!
-//! The claim is one statement and the settle is one more, so these drive the
+//! The claim is one statement and the settle three more, so these drive the
 //! lease store rather than the whole plane: what they prove is which rows the
 //! statements touch, in which order, under which fence.
 //!
@@ -10,7 +10,7 @@
 #![cfg(feature = "test-util")]
 
 mod claims;
+mod conversations;
 mod limits;
-mod replies;
 mod settles;
 mod support;

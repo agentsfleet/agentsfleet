@@ -6,8 +6,7 @@
 -- $7 actor · $8 event type · $9 request JSON · $10 deployment ceiling ·
 -- $11 current deployment estimate · $12/$13 reply connector and address ·
 -- $14 earlier admission to copy a reply from (task continuations only) ·
--- $15 this build's setup policy stamp · $16 runnable status, or NULL for any ·
--- $17 the active lease status, for the disposition facts (M242_002).
+-- $15 this build's setup policy stamp · $16 runnable status, or NULL for any.
 
 -- 1. Lock the fleet row. One message per fleet is written at a time, so a
 --    later sender draws a later sequence. MATERIALIZED: runs once, first.
@@ -25,36 +24,6 @@ already_sent AS (
     SELECT a.id::text AS id, a.payload_digest AS digest, a.fleet_id::text AS fleet, a.created_at
     FROM fleet.admissions a, locked_fleet
     WHERE a.producer = $4 AND a.producer_key = $5
-),
--- 2b. (M242_002) Is a run of this fleet live, and of which kind? A durable-
---     task run claims a person's later messages in its conversation (#803,
---     pending_inputs.sql); any other run claims every later message
---     (claim_inputs.sql). Facts only; Rust names the disposition.
-live_run AS (
-    SELECT l.task_id IS NOT NULL AS durable_task,
-           head.sequence AS head_sequence,
-           head.reply_provider, head.reply_address,
-           e.event_id AS run_event_id
-    FROM locked_fleet
-    JOIN runner.fleet_slots s ON s.fleet_id = locked_fleet.id
-    JOIN runner.leases l
-      ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
-     AND l.fencing_token = s.fencing_token AND l.status = $17
-    JOIN fleet.events e ON e.id = l.fleet_event_id
-    JOIN fleet.admissions head ON head.id = e.event_id::uuid
-    WHERE s.lease_expires_at > statement_timestamp()
-),
--- 2c. (M242_002) Is a message waiting that this one must not pass? With no
---     live run, any unsettled message. With one, an unsettled parked or
---     task-bound message after the run's own: claim_inputs.sql's barrier.
-earlier_waiting AS (
-    SELECT EXISTS (
-        SELECT 1 FROM fleet.admissions a, locked_fleet
-        WHERE a.fleet_id = locked_fleet.id AND a.settled_at IS NULL
-          AND (NOT EXISTS (SELECT 1 FROM live_run)
-               OR (a.sequence > (SELECT head_sequence FROM live_run)
-                   AND (a.parked_at IS NOT NULL OR a.task_id IS NOT NULL)))
-    ) AS waiting
 ),
 -- 3 and 4. Write the message only when every check passes. A twin that
 --    committed while this one waited on the lock is returned, not duplicated.
@@ -87,12 +56,7 @@ SELECT EXISTS (SELECT 1 FROM locked_fleet) AS fleet_found,
        COALESCE(n.id, s.id) AS id,
        COALESCE(n.digest, s.digest) AS digest,
        COALESCE(n.fleet, s.fleet) AS fleet,
-       COALESCE(n.created_at, s.created_at) AS created_at,
-       COALESCE((SELECT durable_task FROM live_run), false) AS run_durable_task,
-       COALESCE((SELECT reply_provider IS NOT DISTINCT FROM $12::text
-                    AND reply_address IS NOT DISTINCT FROM $13::text FROM live_run), false) AS same_conversation,
-       (SELECT run_event_id FROM live_run) AS run_event_id,
-       (SELECT waiting FROM earlier_waiting) AS earlier_waiting
+       COALESCE(n.created_at, s.created_at) AS created_at
 FROM (SELECT) AS one
 LEFT JOIN new_message n ON true
 LEFT JOIN already_sent s ON true

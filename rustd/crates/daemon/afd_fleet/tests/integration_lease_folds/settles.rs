@@ -5,8 +5,8 @@ use afd_admission::Producer;
 use afd_fleet::lease::Verdict;
 
 use super::support::{
-    Checked, EventRow, STEER_JSON, Settlement, WEBHOOK_JSON, claim_as_holder, report_read_through,
-    send, settled, workspace_of,
+    Checked, EventRow, STEER_JSON, Settlement, claim_as_holder, report_read_through, send, settled,
+    workspace_of,
 };
 use crate::report_commit::RESPONSE_ACCEPTED;
 use crate::report_seed::held;
@@ -20,7 +20,7 @@ async fn test_a_succeeded_report_settles_what_the_run_read() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
     let read = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    let unread = send(&held, &workspace, Producer::Webhook, WEBHOOK_JSON).await?;
+    let unread = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert_eq!(claim_as_holder(&held, 0).await?.len(), 2);
     let folds = report_read_through(&held, read.sequence, Verdict::Succeeded).await?;
     assert_eq!(folds.closed.len(), 1);
@@ -58,11 +58,39 @@ async fn test_a_failed_report_settles_no_fold() -> Checked {
         detail: "the provider hung up",
     };
     let folds = report_read_through(&held, folded.sequence, failed).await?;
-    assert!(
-        folds.closed.is_empty() && folds.owed.is_empty(),
-        "{folds:?}"
-    );
+    assert!(folds.closed.is_empty(), "{folds:?}");
     assert_eq!(settled(&held, &folded.id).await?, Settlement::UNREAD);
+    held.fixtures.cleanup().await;
+    Ok(())
+}
+
+/// A burst settles in the same three statements as one message: every
+/// message the run read gets its own closed event, past one claim's cap.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_burst_past_one_claim_settles_whole() -> Checked {
+    let held = held().await;
+    let workspace = workspace_of(&held).await?;
+    let burst = usize::from(af_wire::fold::FOLDS_PER_CLAIM_MAX) + 8;
+    let mut sent = Vec::new();
+    for _ in 0..burst {
+        sent.push(send(&held, &workspace, Producer::Steer, STEER_JSON).await?);
+    }
+    let first = claim_as_holder(&held, 0).await?;
+    let through = first
+        .last()
+        .ok_or("the first claim took messages")?
+        .sequence;
+    let rest = claim_as_holder(&held, through).await?;
+    assert_eq!(first.len() + rest.len(), burst);
+    let last = sent.last().ok_or("a burst was sent")?;
+    let folds = report_read_through(&held, last.sequence, Verdict::Succeeded).await?;
+    assert_eq!(folds.closed.len(), burst);
+    for message in &sent {
+        let settlement = settled(&held, &message.id).await?;
+        let event = settlement.event.ok_or("each message has its own event")?;
+        assert!(settlement.settled && event.status == PROCESSED, "{event:?}");
+    }
     held.fixtures.cleanup().await;
     Ok(())
 }
