@@ -16,7 +16,9 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
+
+**Implementation branch:** `feat/m244-core-nats`, worktree `~/Projects/agentsfleet-m244`, cut from `origin/main` `61820b66a` on Nov 08, 2026. It adopts M243 checkpoints from `feat/m243-runner-push-stream` by normal merge, recorded in issue #818; M244 merges after M243.
 
 **Priority:** P1, a lost datastore machine today freezes every viewer's tail with no signal and costs every Dragonfly node at once
 
@@ -64,7 +66,7 @@ gate reference ─► fleet.approval_gates · anomaly brake ─► per-replica m
 - **PR title (eventual):** feat(bus): core NATS replaces Dragonfly, and Postgres holds every durable job
 - **Intent (one sentence):** survive the loss of one broker machine with every viewer told and no accepted work or owed reply lost or doubled.
 - **Authoring handshake:** Indy agreed to core NATS on condition it is measurably no worse, and asked that M241's tail, wake and kill measurements run here, on this milestone's code, Dragonfly first. M243 builds the Bus seam with a Dragonfly implementation; this milestone adds NATS behind it, moves the durable jobs to Postgres and deletes Dragonfly. ASSUMPTIONS I'M MAKING:
-  1. M243 merged with every publish and subscribe going through `afd_bus::Bus`, its `Received` carrying `Message`, `Lagged` and `Gap`, and the doorbell and runner commands riding it. CHORE(open) checks this on `origin/main` and amends Interfaces if the shape differs.
+  1. M243 merged with every publish and subscribe going through `afd_bus::Bus`, its `Received` carrying `Message`, `Lagged` and `Gap`, and the doorbell and runner commands riding it. CHORE(open) checks this on `origin/main` and amends Interfaces if the shape differs. **Amended at CHORE(open), Nov 08, 2026:** M243 has not merged. Indy authorised parallel work against its draft (#819), so this branch adopts M243 checkpoints by merge and tracks interface changes in #818. At checkpoint `55a6e51fd` the Bus has `publish`, `publish_batch`, `subscribe` and an asynchronous, idempotent `shutdown`; production publishers and subscribers are not yet migrated.
   2. The rig is Indy's laptop, three interleaved runs per lane, as in M241.
   3. Pre-production, so in-flight device logins and OAuth connects may restart across the cutover, if Indy agrees (Open blockers).
   4. The daemon reaches NATS over Fly's private network in plaintext with credentials in the URL, as it reaches Dragonfly today.
@@ -85,6 +87,7 @@ Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outs
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
+| `docs/reviews/m244/dragonfly-inventory.md` | CREATE | CHORE(open): every Dragonfly responsibility, its callers and the Section that moves it |
 | `docs/architecture/push_scheduler.md` | EDIT | §1 the Dragonfly baseline, kill drill and pass bar; §3 the A/B verdict; §7 the retired rule marked done |
 | `docs/architecture/datastore_scaling.md` | EDIT | §7: the decision record names core NATS and Postgres with Indy's words; the Dragonfly sections become dated history |
 | `docs/architecture/postgres_schemas.md` | EDIT | §4, §5: the two new tables, the claim columns and their deletion-matrix rows |
@@ -403,4 +406,5 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   3. Accept that a device login or OAuth connect in flight across the cutover fails as missing and must be restarted.
   4. Accept that the anomaly brake counts per replica and resets on restart: a runaway spread over R replicas can repeat up to R times its threshold before a pause.
   5. Authorise destroying the `dragonfly-dev` and `dragonfly-prod` Fly apps once no old daemon machine runs (Dimension 8.3).
+- **CHORE(open), Nov 08, 2026** — Indy's start instruction: "start M244_001 with the orly-build skill", with parallel work authorised while M243 changes (#818). Open blockers 1, 2 and 5 gate only §8; blockers 3 and 4 gate §5's cutover behaviour, not its code. They stay open, and §5 and §8 do not finish until Indy answers them. `afd_bus` starts from M243 checkpoint `55a6e51fd`.
 - **Deferrals and transfers** — none. M241_001 §6 and the drill half of its §7 arrive here as §1, mapped Dimension for Dimension (M241 6.1-6.4 → 1.1, 1.3-1.5; 7.2-7.3 → 1.6), under Indy's 02:13 PM quote above.
