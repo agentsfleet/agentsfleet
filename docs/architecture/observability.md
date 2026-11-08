@@ -542,7 +542,7 @@ The existing signal paths above remain authoritative until that integration land
 | `runner_stream_fallback_total` | Finite reason that permitted an HTTP/2 attempt |
 | `runner_stream_native_rtt_seconds` and `runner_stream_native_packets_total` | Actual QUIC round-trip samples and sent, lost and retransmission-carrying packets |
 | `runner_stream_native_pto_total` and `runner_stream_native_retransmitted_bytes_total` | Probe timeouts and stream bytes sent again |
-| `fleet_ready_wake_hints_total` | Per-replica hint admission, deduplication and eviction pressure |
+| `fleet_ready_wake_queue_events_total` | Per-replica queue admission, deduplication and eviction pressure |
 
 Every family uses the `agentsfleet_` prefix; the [metric census](../metrics.census.tsv) fixes its units and label ceiling.
 Connection and operation observations record completion, cancellation, timeout and an abandoned future through automatic cleanup.

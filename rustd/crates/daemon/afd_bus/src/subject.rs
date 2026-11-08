@@ -7,7 +7,7 @@ pub enum Subject {
     FleetTail(Uuid7),
     /// Authoring model progress for one draft.
     DraftEvents(Uuid7),
-    /// A recent-work hint on one of the fixed shards.
+    /// A recent-work notification on one of the fixed shards.
     Wake(u16),
     /// Recheck or cancellation for one runner host.
     RunnerCommand(Uuid7),

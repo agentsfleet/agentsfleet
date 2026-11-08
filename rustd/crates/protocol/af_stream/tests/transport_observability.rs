@@ -68,20 +68,9 @@ async fn blackhole_fallback_cancellation_and_redaction_reach_exported_telemetry(
         .finish();
     let secret = format!("private-message-{}", std::process::id());
     let token = format!("Bearer fixture-{}", std::process::id());
-    let span = tracing::info_span!(
-        "runner_session",
-        runner_id = "fixture-runner",
-        connection_id = "fixture-connection"
-    );
-    async {
-        fallback_and_redaction(&secret, &token).await?;
-        opening_timeout().await?;
-        native_health().await?;
-        abandon_partial_frame().await
-    }
-    .instrument(span)
-    .with_subscriber(subscriber)
-    .await?;
+    exercise_observations(&secret, &token)
+        .with_subscriber(subscriber)
+        .await?;
     assert_exports(&captured);
     let raw = String::from_utf8(
         logs.0
@@ -92,6 +81,22 @@ async fn blackhole_fallback_cancellation_and_redaction_reach_exported_telemetry(
     assert!(!raw.contains(&secret));
     assert!(!raw.contains(&token));
     assert_logs(&raw)
+}
+
+async fn exercise_observations(secret: &str, token: &str) -> Result {
+    let span = tracing::info_span!(
+        "runner_session",
+        runner_id = "fixture-runner",
+        connection_id = "fixture-connection"
+    );
+    async {
+        fallback_and_redaction(secret, token).await?;
+        opening_timeout().await?;
+        native_health().await?;
+        abandon_partial_frame().await
+    }
+    .instrument(span)
+    .await
 }
 
 async fn fallback_and_redaction(secret: &str, token: &str) -> Result {

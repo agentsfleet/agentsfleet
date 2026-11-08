@@ -63,11 +63,11 @@ The implementation uses these configuration names:
 
 | Process | Environment variable | Purpose |
 |---|---|---|
-| Daemon | `RUNNER_STREAM_LISTEN_ADDR` | Private TCP and UDP listen address; proposed default `[::]:4443` |
-| Daemon | `RUNNER_STREAM_TLS_CERT_FILE` | PEM leaf certificate followed by its issuer chain |
-| Daemon | `RUNNER_STREAM_TLS_KEY_FILE` | PEM private key matching that leaf certificate |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR` | Private TCP and UDP listen address; proposed default `[::]:4443` |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE` | PEM leaf certificate followed by its issuer chain |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE` | PEM private key matching that leaf certificate |
 | Runner | `AGENTSFLEET_RUNNER_STREAM_URL` | HTTPS daemon origin; the client opens `/v1/runners/me/stream` there |
-| Runner | `RUNNER_STREAM_TLS_CA_CERT_FILE` | Trusted CA bundle for a private issuer; omitted for operating-system trust |
+| Runner | `AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE` | Trusted CA bundle for a private issuer; omitted for operating-system trust |
 | Runner | Existing `AGENTSFLEET_RUNNER_TOKEN` | Runner bearer credential, independent of certificate trust |
 | Runner | Existing `AGENTSFLEET_API_URL` | Endpoint for the remaining HTTP operations |
 

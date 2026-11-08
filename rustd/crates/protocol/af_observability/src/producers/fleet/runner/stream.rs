@@ -13,10 +13,12 @@ use crate::{
         declared::fleet as declared,
         instrument::Instruments,
         label::fleet::{
-            ReadyHint, StreamFallback, StreamOutcome, StreamPacket, StreamStage, StreamTransport,
+            StreamFallback, StreamOutcome, StreamPacket, StreamStage, StreamTransport,
+            WakeQueueOutcome,
         },
     },
     producers::installed,
+    semconv,
 };
 
 #[derive(Debug)]
@@ -26,7 +28,7 @@ pub(in crate::producers::fleet) struct Handles {
     operations: Histogram<f64>,
     fallbacks: Counter<u64>,
     timeouts: Counter<u64>,
-    hints: Counter<u64>,
+    wake_queue: Counter<u64>,
     native_rtt: Histogram<f64>,
     native_packets: Counter<u64>,
     native_pto: Counter<u64>,
@@ -41,7 +43,7 @@ impl Handles {
             operations: instruments.histogram_f64(&declared::RUNNER_STREAM_OPERATION_SECONDS)?,
             fallbacks: instruments.counter_u64(&declared::RUNNER_STREAM_FALLBACK_TOTAL)?,
             timeouts: instruments.counter_u64(&declared::RUNNER_STREAM_TIMEOUTS_TOTAL)?,
-            hints: instruments.counter_u64(&declared::FLEET_READY_WAKE_HINTS_TOTAL)?,
+            wake_queue: instruments.counter_u64(&declared::FLEET_READY_WAKE_QUEUE_EVENTS_TOTAL)?,
             native_rtt: instruments.histogram_f64(&declared::RUNNER_STREAM_NATIVE_RTT_SECONDS)?,
             native_packets: instruments
                 .counter_u64(&declared::RUNNER_STREAM_NATIVE_PACKETS_TOTAL)?,
@@ -56,8 +58,8 @@ impl Handles {
 pub fn connected(transport: StreamTransport, outcome: StreamOutcome, elapsed: Duration) {
     if let Some(producers) = installed() {
         let labels = [
-            KeyValue::new("transport", transport.as_str()),
-            KeyValue::new("outcome", outcome.as_str()),
+            KeyValue::new(semconv::LABEL_TRANSPORT, transport.as_str()),
+            KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
         ];
         producers.fleet.stream.connections.add(1, &labels);
         producers
@@ -74,8 +76,8 @@ pub fn operation(stage: StreamStage, outcome: StreamOutcome, elapsed: Duration) 
         producers.fleet.stream.operations.record(
             elapsed.as_secs_f64(),
             &[
-                KeyValue::new("stage", stage.as_str()),
-                KeyValue::new("outcome", outcome.as_str()),
+                KeyValue::new(semconv::LABEL_STAGE, stage.as_str()),
+                KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
             ],
         );
         if outcome == StreamOutcome::Timeout {
@@ -83,7 +85,7 @@ pub fn operation(stage: StreamStage, outcome: StreamOutcome, elapsed: Duration) 
                 .fleet
                 .stream
                 .timeouts
-                .add(1, &[KeyValue::new("stage", stage.as_str())]);
+                .add(1, &[KeyValue::new(semconv::LABEL_STAGE, stage.as_str())]);
         }
     }
 }
@@ -95,18 +97,17 @@ pub fn fallback(reason: StreamFallback) {
             .fleet
             .stream
             .fallbacks
-            .add(1, &[KeyValue::new("reason", reason.as_str())]);
+            .add(1, &[KeyValue::new(semconv::LABEL_REASON, reason.as_str())]);
     }
 }
 
-/// Records bounded hint pressure without treating an eviction as lost work.
-pub fn hint(outcome: ReadyHint) {
+/// Records bounded wake-queue pressure without treating an eviction as lost work.
+pub fn wake_queue(outcome: WakeQueueOutcome) {
     if let Some(producers) = installed() {
-        producers
-            .fleet
-            .stream
-            .hints
-            .add(1, &[KeyValue::new("outcome", outcome.as_str())]);
+        producers.fleet.stream.wake_queue.add(
+            1,
+            &[KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str())],
+        );
     }
 }
 
@@ -132,7 +133,10 @@ pub fn native(rtt: Option<Duration>, deltas: NetworkDeltas) {
         if let Some(rtt) = rtt {
             handles.native_rtt.record(
                 rtt.as_secs_f64(),
-                &[KeyValue::new("transport", StreamTransport::Http3.as_str())],
+                &[KeyValue::new(
+                    semconv::LABEL_TRANSPORT,
+                    StreamTransport::Http3.as_str(),
+                )],
             );
         }
         for (outcome, count) in [
@@ -141,9 +145,10 @@ pub fn native(rtt: Option<Duration>, deltas: NetworkDeltas) {
             (StreamPacket::Retransmitted, deltas.retransmitted),
         ] {
             if count > 0 {
-                handles
-                    .native_packets
-                    .add(count, &[KeyValue::new("outcome", outcome.as_str())]);
+                handles.native_packets.add(
+                    count,
+                    &[KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str())],
+                );
             }
         }
         if deltas.probe_timeouts > 0 {

@@ -3,16 +3,16 @@
 use std::collections::{HashSet, VecDeque};
 
 use af_core::id::Uuid7;
-use af_observability::metrics::label::fleet::ReadyHint;
+use af_observability::metrics::label::fleet::WakeQueueOutcome;
 
 #[derive(Debug)]
-pub(super) struct Hints {
+pub(super) struct WakeQueue {
     queue: VecDeque<Uuid7>,
     members: HashSet<Uuid7>,
     capacity: usize,
 }
 
-impl Hints {
+impl WakeQueue {
     pub(super) fn new(capacity: usize) -> Self {
         Self {
             queue: VecDeque::with_capacity(capacity),
@@ -21,15 +21,15 @@ impl Hints {
         }
     }
 
-    pub(super) fn ring(&mut self, fleet: Uuid7) -> ReadyHint {
+    pub(super) fn ring(&mut self, fleet: Uuid7) -> WakeQueueOutcome {
         if self.members.contains(&fleet) {
-            return ReadyHint::Duplicate;
+            return WakeQueueOutcome::Duplicate;
         }
         let outcome = if self.queue.len() == self.capacity {
             self.take();
-            ReadyHint::Evicted
+            WakeQueueOutcome::Evicted
         } else {
-            ReadyHint::Added
+            WakeQueueOutcome::Added
         };
         self.members.insert(fleet.clone());
         self.queue.push_back(fleet);
