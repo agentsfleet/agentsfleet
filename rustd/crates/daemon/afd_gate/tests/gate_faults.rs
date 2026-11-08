@@ -2,11 +2,11 @@
 //!
 //! No datastore, deliberately: the pool points at a reserved port and the queue
 //! at a loopback port nobody listens on, so every read and write fails at the
-//! socket. One kill-rule check walks three failure arms in order — the lookup
-//! that could not be read, the anomaly counter that could not be read, and the
-//! pause that could not be written — and each says why in a `reason` an
-//! operator can read without the registry code, which the line's own fields
-//! already carry, or a captured backtrace.
+//! socket. One kill-rule check walks two failure arms in order — the lookup
+//! that could not be read and the pause that could not be written — and each
+//! says why in a `reason` an operator can read without the registry code, which
+//! the line's own fields already carry, or a captured backtrace. The anomaly
+//! brake counts in memory and cannot fail to answer.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -41,9 +41,6 @@ const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee1";
 
 /// The lookup that could not tell whether the event already holds a gate.
 const EVENT_LOOKUP_UNREADABLE: &str = "gate_ref_lookup_failed";
-
-/// The anomaly counter that could not be read.
-const EVENT_COUNTER_UNAVAILABLE: &str = "gate_anomaly_counter_unavailable";
 
 /// The pause that could not be written.
 const EVENT_PAUSE_FAILED: &str = "gate_pause_failed";
@@ -101,7 +98,6 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
         "a failed pause does not change what the gate decided"
     );
     told_reason(&capture, EVENT_LOOKUP_UNREADABLE);
-    told_reason(&capture, EVENT_COUNTER_UNAVAILABLE);
     told_reason(&capture, EVENT_PAUSE_FAILED);
 }
 

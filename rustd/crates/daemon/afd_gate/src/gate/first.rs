@@ -53,15 +53,12 @@ impl Gates {
 
         // Reached only on a first encounter — see the module note on why that
         // matters for an increment.
-        if self
-            .anomaly(
-                request.fleet_id,
-                request.event_type,
-                request.actor,
-                policy.anomaly_rules(),
-            )
-            .await
-            == Anomaly::AutoKill
+        if self.anomaly(
+            request.fleet_id,
+            request.event_type,
+            request.actor,
+            policy.anomaly_rules(),
+        ) == Anomaly::AutoKill
         {
             return self.stop(request, Trigger::Anomaly).await;
         }

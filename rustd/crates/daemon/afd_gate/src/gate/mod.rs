@@ -59,7 +59,7 @@ pub use self::pass::{Check, Refused, Verdict, Waiting};
 pub use self::pause::Trigger;
 pub use self::pending::{Evaluation, GateRef, evaluate};
 pub use self::route::{RefState, Route, route};
-pub use self::store::{Gates, key};
+pub use self::store::Gates;
 
 /// The rule field that matches any tool, or any action.
 const WILDCARD: &str = "*";

@@ -119,12 +119,12 @@ impl serde::Serialize for Unwritable {
 #[test]
 fn an_unwritable_record_is_refused_under_the_sentence_its_caller_names() -> Result<(), &'static str>
 {
-    let refused = super::encoded(&Unwritable, super::DETAIL_GATE_REFERENCE_UNWRITABLE)
+    let refused = super::encoded(&Unwritable, super::DETAIL_GATE_BINDING_UNWRITABLE)
         .err()
         .ok_or("a serializer error is a refusal, never a stored half-record")?;
 
     assert!(refused.is_rejected());
-    assert_eq!(refused.detail(), super::DETAIL_GATE_REFERENCE_UNWRITABLE);
+    assert_eq!(refused.detail(), super::DETAIL_GATE_BINDING_UNWRITABLE);
     assert_eq!(
         super::encoded(&["approve"], super::DETAIL_GATE_BINDING_UNWRITABLE)
             .as_deref()

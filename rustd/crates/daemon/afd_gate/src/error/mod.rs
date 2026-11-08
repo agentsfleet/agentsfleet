@@ -169,9 +169,6 @@ const DETAIL_OPERATION_FAILED: &str = "The operation could not be completed";
 /// The sentence a gate whose binding could not be written earns.
 pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "The approval binding could not be recorded";
 
-/// The sentence a gate whose reference could not be written earns.
-pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "The approval reference could not be recorded";
-
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_dragonfly::Error => Queue,
