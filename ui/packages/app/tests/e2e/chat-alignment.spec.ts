@@ -3,6 +3,7 @@ import { expect } from "@playwright/test";
 
 test("fleet header opens the summary directly and model stays beside Send", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
+  await expect(page.getByRole("link", {name: "Back to your fleets", exact: true})).toHaveCount(0);
   if (info.project.name !== "mobile-chromium") {
     await expect(page.getByRole("navigation", {name: "Primary"})).toBeVisible();
     await expect(page.getByRole("link", {name: "Your fleets", exact: true})).toBeVisible();

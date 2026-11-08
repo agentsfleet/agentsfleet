@@ -41,7 +41,10 @@ live_run AS (
       ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
      AND l.fencing_token = s.fencing_token AND l.status = $17
     JOIN fleet.events e ON e.id = l.fleet_event_id
-    JOIN fleet.admissions head ON head.id = e.event_id::uuid
+    -- Internal setup events have non-UUID keys; only admissions have a head.
+    JOIN fleet.admissions head ON head.id = CASE
+        WHEN pg_input_is_valid(e.event_id, 'uuid') THEN e.event_id::uuid
+    END
     WHERE s.lease_expires_at > statement_timestamp()
 ),
 -- 2c. (M242_002) Is a message waiting that this one must not pass? With no

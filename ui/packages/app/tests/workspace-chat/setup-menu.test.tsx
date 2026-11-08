@@ -213,8 +213,10 @@ it("keeps edited instructions when discard is refused and closes only after conf
   expect(fixture.writes()).toEqual([]);
 });
 
-it("opens instructions directly from the header pencil without creating a revision", async () => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
+it.each([false, true])("opens instructions from the pencil and keeps Back in standalone setup only (fleet page: %s)", async fleetPage => {
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} fleetPage={fleetPage} />);
+  if (fleetPage) expect(screen.queryByRole("link", {name: /Back to/})).toBeNull();
+  else expect(screen.getByRole("link", {name: /Back to/})).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
   expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
   expect(fixture.writes()).toEqual([]);

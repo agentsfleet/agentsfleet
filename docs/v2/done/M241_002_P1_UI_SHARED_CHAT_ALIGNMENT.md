@@ -17,6 +17,7 @@
 Fleet setup and Fleet conversation use the approved composer, header actions, summary and loading treatment.
 Runner networking uses Codex's control names, a domains popup and fewer decorative icons.
 Existing endpoints and request ownership remain authoritative.
+Integration with #815 also guards admission lookups against internal setup event keys.
 
 ## Scope
 
@@ -26,6 +27,8 @@ Existing endpoints and request ownership remain authoritative.
 - Loading: moving text highlight without the old duplicate spinner; preserve reduced-motion and forced-color behavior.
 - Runner: exact public/package/domain labels, pencil popup, native policy encoding; no decorative section/engine icons.
 - Chat shell: keep the existing desktop left navigation visible when a fleet conversation or setup opens; retain mobile navigation.
+- Fleet conversation: omit the duplicate Back-to-list arrow; standalone saved setup retains its return to the fleet conversation.
+- Integration: skip non-admission event keys in live-run lookups without changing UUID admission keys or API responses.
 
 ## Files changed
 
@@ -33,6 +36,8 @@ Existing endpoints and request ownership remain authoritative.
 `ui/packages/app/components/domain/chat/**`, `ui/packages/app/app/globals.css`,
 `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader.tsx`,
 `ui/packages/app/app/(dashboard)/admin/runners/components/**`, relevant app/browser tests and public documentation.
+The #815 integration repair also touches `rustd/crates/daemon/afd_admission/src/sql/admit_one.sql`,
+`rustd/crates/daemon/afd_fleet/src/lease/sql/lease/claim_inputs.sql` and its lease-fold regression tests.
 
 ## Acceptance
 
@@ -51,6 +56,7 @@ Existing endpoints and request ownership remain authoritative.
 > Indy: "Also keep the icons in the Runner to minimal."
 > Indy: "I merged 815, so i request you to pull the main into your PR, and fix the greptile feedback."
 > Indy: "I would like to go by the ChatGPT Codex model on having the left navigation when i click a single fleet whereit opens the fleet conversation."
+> Indy: "Also i noticed a back button in the picture of a fleet converstaion, why do you need that, where does the back take you to"
 
 The single accepted bootstrap-401 acceptance follow-up remains recorded in M241_001; it is not a passing acceptance result.
 
@@ -67,3 +73,7 @@ The captures use production chat components and a representative shell with simu
 Focused Playwright navigation checks passed all four desktop/mobile tests through `bun run --cwd ui/packages/app test:e2e tests/e2e/chat-alignment.spec.ts` with the local preview URL.
 Browser log: `/workspace/scratch/shared-chat-integrated-browser.log`. Final-head Continuous Integration results are recorded in PR #814.
 The accepted separate Cloud bootstrap follow-up remains pending; no acceptance pass is claimed.
+
+The first final-head substrate job exceeded its 20-minute limit. One targeted retry completed in time and reported two existing API failures; the policy-replay log confirms that an internal `setup_ready:1` key was cast to UUID in #815's new admission join.
+The repair guards the cast with PostgreSQL's UUID parser; a live lease regression covers both admitting and claiming after an internal setup event.
+No workflow timeout, coverage floor or test assertion is weakened. Follow-up results are recorded in PR #814 and coordination issue #813.

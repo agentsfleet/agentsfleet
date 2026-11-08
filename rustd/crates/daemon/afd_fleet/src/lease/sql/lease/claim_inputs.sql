@@ -16,7 +16,9 @@ WITH run AS MATERIALIZED (
      AND s.fencing_token = l.fencing_token
     JOIN fleet.events e ON e.id = l.fleet_event_id AND e.fleet_id = l.fleet_id
     JOIN fleet.admissions head
-      ON head.id = e.event_id::uuid AND head.fleet_id = l.fleet_id
+      ON head.id = CASE
+          WHEN pg_input_is_valid(e.event_id, 'uuid') THEN e.event_id::uuid
+      END AND head.fleet_id = l.fleet_id
     WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
       AND l.fencing_token = $3 AND l.status = $4
       AND l.task_id IS NULL
