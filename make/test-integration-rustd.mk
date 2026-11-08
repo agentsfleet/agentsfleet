@@ -193,9 +193,12 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 #   99.5 -> 98.5 (2026-11-06) on Indy's M236 closeout instruction:
 #   "overall Rust gate at 99%? if that is possible? or 98.5%". Exact-head
 #   CI measured 98.5561%, 97,948 of 99,383 lines, on 9499b0552.
+#   98.5 -> 98 (2026-11-08) on Indy's instruction: "if it fails again move the
+#   coverage down to 98 on the safer side and push". PR #817 changes no Rust and
+#   twice measured under the floor, 98.4981% and 98.4991% of 101,407 lines.
 # `scripts/rustd_coverage.py` compares in exact decimals, so a half point is
 # enforced rather than rounded. The 100% contract in the header remains the goal.
-RUSTD_COVERAGE_FLOOR ?= 98.5
+RUSTD_COVERAGE_FLOOR ?= 98
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
