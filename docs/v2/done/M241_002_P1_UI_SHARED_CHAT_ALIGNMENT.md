@@ -4,11 +4,11 @@
 **Milestone:** M241
 **Workstream:** 002
 **Date:** Nov 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1, approved chat controls did not ship in the earlier change.
 **Categories:** UI
 **Batch:** B1, follow-up to M241_001.
-**Depends on:** Claude's harness PR must merge before this follow-up.
+**Depends on:** Claude's harness PR #815, merged into main as `febea89b85`.
 **Provenance:** LLM-drafted (Codex, Nov 08, 2026).
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md`, shared chat surfaces.
 
@@ -25,7 +25,7 @@ Existing endpoints and request ownership remain authoritative.
 - Summary: collapsed initially; one-action mobile drawer; durable tasks remain visible; omit empty Outputs and Changes.
 - Loading: moving text highlight without the old duplicate spinner; preserve reduced-motion and forced-color behavior.
 - Runner: exact public/package/domain labels, pencil popup, native policy encoding; no decorative section/engine icons.
-- Chat shell: remove the desktop left navigation from these surfaces; preserve a route back to Your fleets.
+- Chat shell: keep the existing desktop left navigation visible when a fleet conversation or setup opens; retain mobile navigation.
 
 ## Files changed
 
@@ -40,7 +40,7 @@ Existing endpoints and request ownership remain authoritative.
 2. Header edit uses a named pencil icon; summary opens directly and closing it preserves the draft.
 3. Both actual chat renderers use the shared text loading treatment and accessible static fallbacks.
 4. Network switches and popup save the native assignment; all-off blocks outbound traffic and custom hosts survive unrelated edits.
-5. App coverage remains 100%; browser checks cover both themes and mobile/desktop.
+5. App coverage remains 100%; browser checks cover both themes and mobile/desktop, including visible fleet navigation on desktop.
 6. No merge until Claude's PR is merged, origin/main is integrated, and checks/reviews are green/resolved.
 
 ## Discovery
@@ -49,14 +49,21 @@ Existing endpoints and request ownership remain authoritative.
 > Indy: "How about the loader too, its old."
 > Indy: "I want your PR can go in but it must now wait for claude's PR to be merged, cause that PR is a heavy lift."
 > Indy: "Also keep the icons in the Runner to minimal."
+> Indy: "I merged 815, so i request you to pull the main into your PR, and fix the greptile feedback."
+> Indy: "I would like to go by the ChatGPT Codex model on having the left navigation when i click a single fleet whereit opens the fleet conversation."
 
 The single accepted bootstrap-401 acceptance follow-up remains recorded in M241_001; it is not a passing acceptance result.
 
 ## Verification
 
-Implementation is complete; merge remains blocked on Claude’s PR and fresh checks after integrating it.
-App coverage passed 4,789 tests in 493 files, with statements, branches, functions and lines at 100%.
-`make test-coverage-all` reached a missing CLI dependency prerequisite after app and website coverage passed; the CLI and design-system lanes continue separately.
-Focused chat and runner browser checks passed 28 tests on desktop and mobile.
-Static and independent review found no remaining actionable findings after four repairs; Astra found no visual blockers.
-The previous broad run’s outdated mock/spinner assertions were corrected; its result is not claimed as passing.
+Claude's PR #815 is integrated through merge commit `4715f7a00`; the GitHub branch-update merge is also incorporated without rewriting history.
+Review corrections preserve left navigation, catch a failed pencil refresh and animate setup status only during active work.
+Local `make lint-app` passed source, Oxlint and TypeScript checks.
+Local `make test-coverage-all` passed: app 4,802 tests in 493 files; website 133 tests; CLI 2,035 passed, 16 live skips and no failures; design-system 522 tests.
+App, website and design-system statements, branches, functions and lines are all 100%; CLI's enforced function and line coverage is 100%.
+Logs: `/workspace/scratch/shared-chat-integrated-lint.log`, `/workspace/scratch/shared-chat-integrated-coverage.log`.
+Astra reviewed fresh conversation, setup and summary captures with restored navigation and found no P1/P2 visual blockers.
+The captures use production chat components and a representative shell with simulated API data; they are not live fleet results.
+Focused Playwright navigation checks passed all four desktop/mobile tests through `bun run --cwd ui/packages/app test:e2e tests/e2e/chat-alignment.spec.ts` with the local preview URL.
+Browser log: `/workspace/scratch/shared-chat-integrated-browser.log`. Final-head Continuous Integration results are recorded in PR #814.
+The accepted separate Cloud bootstrap follow-up remains pending; no acceptance pass is claimed.

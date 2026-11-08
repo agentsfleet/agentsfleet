@@ -1,6 +1,6 @@
 import { parseRegistryAllowlist, type NetworkPolicy } from "@/lib/api/runners-types";
 
-// Mirrors afd_wire::policy::PACKAGE_MANAGER_DOMAINS, the runner's exact-host preset.
+// Mirrors af_wire::policy::PACKAGE_MANAGER_DOMAINS, the runner's exact-host preset.
 export const PACKAGE_MANAGER_DOMAINS = ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "static.crates.io", "crates.io", "index.crates.io", "proxy.golang.org", "sum.golang.org"] as const;
 const preset: ReadonlySet<string> = new Set(PACKAGE_MANAGER_DOMAINS);
 

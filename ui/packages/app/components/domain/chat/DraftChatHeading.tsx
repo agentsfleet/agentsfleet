@@ -45,7 +45,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
       {view.fleet && fleetPage && view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
         ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} /> : null}
-      {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false);}}><PencilIcon size={16} aria-hidden="true" /></Button> : null}
+      {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false).catch(ignore);}}><PencilIcon size={16} aria-hidden="true" /></Button> : null}
       <ChatSummaryToggle />
       <DraftSaveButton client={client} view={view} dirty={state.dirty} />
       {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}

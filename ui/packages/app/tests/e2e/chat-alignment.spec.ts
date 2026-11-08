@@ -3,6 +3,11 @@ import { expect } from "@playwright/test";
 
 test("fleet header opens the summary directly and model stays beside Send", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
+  if (info.project.name !== "mobile-chromium") {
+    await expect(page.getByRole("navigation", {name: "Primary"})).toBeVisible();
+    await expect(page.getByRole("link", {name: "Your fleets", exact: true})).toBeVisible();
+    await expect(page.getByRole("link", {name: "ci-repairer", exact: true})).toHaveAttribute("aria-current", "page");
+  }
   const input = page.getByRole("textbox");
   await input.fill("Keep my exact unsent instruction");
   const model = page.locator('[data-composer-part="model"]');
@@ -30,6 +35,7 @@ test("fleet header opens the summary directly and model stays beside Send", asyn
 
 test("saved setup has the same composer placement, pencil, summary and return route", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?setupAlignment=1`);
+  if (info.project.name !== "mobile-chromium") await expect(page.getByRole("navigation", {name: "Primary"})).toBeVisible();
   await expect(page.getByRole("button", {name: "Save changes", exact: true})).toBeVisible();
   await expect(page.getByRole("combobox", {name: "Authoring model"})).toHaveText("MiniMax M3.1 Flash");
   await expect(page.getByRole("link", {name: "Back to fleet conversation"})).toHaveAttribute("href", /\/fleets\/0199a801-/);
