@@ -122,6 +122,16 @@ TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/dragonfly-bad-ca.crt
 TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
 export TEST_DATABASE_URL TEST_DATABASE_URL_API TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFLY_CA_CERT TEST_DRAGONFLY_BAD_CA TEST_DRAGONFLY_CONTROL
 
+# Three core NATS nodes, one client port each. Clients take every node as a
+# seed, because the nodes advertise nothing, so a test that stops one node
+# reconnects to a peer. Nothing persists, so the reset has nothing to flush.
+AGENTSFLEET_NATS_BASE_PORT ?= $(or $(word 4,$(TEST_INFRA_PORTS)),4222)
+AGENTSFLEET_NATS_PORT_2 ?= $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 1 )))
+AGENTSFLEET_NATS_PORT_3 ?= $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 2 )))
+export AGENTSFLEET_NATS_BASE_PORT AGENTSFLEET_NATS_PORT_2 AGENTSFLEET_NATS_PORT_3
+TEST_NATS_URL ?= nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_BASE_PORT),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_2),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_3)
+export TEST_NATS_URL
+
 # The invite email's sink: the port a suite's `smtp-relay` bag names, and the
 # API it reads the delivered message back from.
 TEST_MAILPIT_SMTP_PORT ?= $(AGENTSFLEET_MAILPIT_SMTP_PORT)
@@ -163,9 +173,9 @@ _ensure-test-infra:
 	@# sibling worktree's containers are simply different containers. The sweep that
 	@# used to live here force-removed them by fixed name, which is what let one
 	@# worktree's test run destroy another's mid-flight.
-	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) dragonfly=$(AGENTSFLEET_DRAGONFLY_BASE_PORT)-$(AGENTSFLEET_DRAGONFLY_LAST_PORT) api=$(AGENTSFLEET_API_HOST_PORT) mailpit=$(AGENTSFLEET_MAILPIT_SMTP_PORT)/$(AGENTSFLEET_MAILPIT_UI_PORT)"
-	@echo "→ [infra] Starting postgres + dragonfly + qstash + mailpit (waiting for healthchecks)..."
-	@docker compose up -d --wait --remove-orphans postgres dragonfly qstash mailpit
+	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) dragonfly=$(AGENTSFLEET_DRAGONFLY_BASE_PORT)-$(AGENTSFLEET_DRAGONFLY_LAST_PORT) api=$(AGENTSFLEET_API_HOST_PORT) mailpit=$(AGENTSFLEET_MAILPIT_SMTP_PORT)/$(AGENTSFLEET_MAILPIT_UI_PORT) nats=$(AGENTSFLEET_NATS_BASE_PORT)-$(AGENTSFLEET_NATS_PORT_3)"
+	@echo "→ [infra] Starting postgres + dragonfly + qstash + mailpit + nats (waiting for healthchecks)..."
+	@docker compose up -d --wait --remove-orphans postgres dragonfly qstash mailpit nats-1 nats-2 nats-3
 	@mkdir -p "$(CURDIR)/.tmp"
 	@echo "→ [infra] Extracting the datastore TLS CA cert..."
 	@# No `>/dev/null`: a failed copy used to be silent, and the `test -s` below
@@ -183,7 +193,7 @@ _ensure-test-infra:
 	  echo "✗ [infra] datastore CA cert is stale (container $$container_sha != local $$local_sha)"; \
 	  exit 1; \
 	fi
-	@echo "✓ [infra] postgres + dragonfly + qstash + mailpit ready; datastore CA cert at $(TEST_DRAGONFLY_CA_CERT)"
+	@echo "✓ [infra] postgres + dragonfly + qstash + mailpit + nats ready; datastore CA cert at $(TEST_DRAGONFLY_CA_CERT)"
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave

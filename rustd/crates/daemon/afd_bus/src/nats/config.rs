@@ -20,6 +20,9 @@ const MAX_NAMESPACE_BYTES: usize = 64;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub(super) seeds: Vec<ServerAddr>,
+    /// The seeds' shared user and password; the client authenticates only
+    /// from options, never from a URL's userinfo.
+    pub(super) credentials: Option<(String, String)>,
     pub(super) prefix: String,
     pub(super) tuning: Tuning,
 }
@@ -55,12 +58,14 @@ impl Config {
         if seeds.is_empty() {
             return Err(ErrorKind::NatsUrlUnset.into());
         }
+        let credentials = credentials_of(&seeds)?;
         let prefix = match optional(env, NAMESPACE_ENV) {
             None => String::new(),
             Some(namespace) => prefix_of(&namespace)?,
         };
         Ok(Self {
             seeds,
+            credentials,
             prefix,
             tuning: Tuning::default(),
         })
@@ -80,6 +85,22 @@ impl Config {
     pub const fn tuning(&self) -> &Tuning {
         &self.tuning
     }
+}
+
+fn credentials_of(seeds: &[ServerAddr]) -> Result<Option<(String, String)>> {
+    let pair = |seed: &ServerAddr| {
+        seed.username().map(|user| {
+            (
+                user.to_owned(),
+                seed.password().unwrap_or_default().to_owned(),
+            )
+        })
+    };
+    let first = seeds.first().and_then(pair);
+    if seeds.iter().any(|seed| pair(seed) != first) {
+        return Err(ErrorKind::NatsCredentials.into());
+    }
+    Ok(first)
 }
 
 fn prefix_of(namespace: &str) -> Result<String> {
@@ -118,11 +139,9 @@ mod tests {
     fn every_comma_separated_seed_is_kept_with_its_credentials() -> TestResult {
         let config = Config::from_env(&MapEnv::from_pairs([(URL_ENV, TWO_SEEDS)]))?;
         assert_eq!(config.seeds.len(), 2);
-        assert!(
-            config
-                .seeds
-                .iter()
-                .all(async_nats::ServerAddr::has_user_pass)
+        assert_eq!(
+            config.credentials,
+            Some(("agentsfleet".to_owned(), "agentsfleet".to_owned()))
         );
         assert_eq!(
             config.seeds.get(1).map(async_nats::ServerAddr::port),
@@ -131,6 +150,29 @@ mod tests {
         assert!(
             config.prefix.is_empty(),
             "no namespace keeps deployed subjects"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn seeds_that_disagree_on_credentials_are_refused() -> TestResult {
+        for raw in [
+            "nats://a:x@127.0.0.1:7001,nats://b:x@127.0.0.1:7002",
+            "nats://a:x@127.0.0.1:7001,nats://127.0.0.1:7002",
+        ] {
+            let error = Config::from_env(&MapEnv::from_pairs([(URL_ENV, raw)]))
+                .err()
+                .ok_or("mixed credentials must refuse boot")?;
+            assert_eq!(error.code(), error_code::STARTUP_ENV_CHECK);
+            assert!(
+                !error.to_string().contains("x@"),
+                "no credential in the message"
+            );
+        }
+        let open = Config::from_env(&MapEnv::from_pairs([(URL_ENV, "nats://127.0.0.1:7001")]))?;
+        assert_eq!(
+            open.credentials, None,
+            "a seed without userinfo is unauthenticated"
         );
         Ok(())
     }
