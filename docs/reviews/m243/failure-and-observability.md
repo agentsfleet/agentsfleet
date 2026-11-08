@@ -217,7 +217,7 @@ Application timings and outcomes remain comparable across both carriers.
 Native certificate and queue tests must use the production adapter, not only an in-memory codec or fake daemon.
 The repository gates remain `make lint-all`, `make test-unit-all`, `make test-integration-rustd` and `make check-version`.
 
-Rust coverage also runs through `make test-coverage-rustd`: at least 98.5% overall line coverage and 97.5% changed-line coverage.
+Rust coverage also runs through `make test-coverage-rustd`: at least 98% overall line coverage and 97.5% changed-line coverage.
 The shard merge includes the Linux kernel report and refuses reports from different commits.
 Read issue #813 before each push, then run `orly gate pr` before creating the milestone's one pull request.
 

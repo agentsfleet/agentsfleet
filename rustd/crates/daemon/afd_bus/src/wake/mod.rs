@@ -1,8 +1,8 @@
-//! Bounded recent-work hints; a missing hint is recovered by the replica probe.
+//! Bounded recent-work queue; a missed notification is recovered by the replica probe.
 
 mod config;
-mod hints;
 mod publish;
+mod queue;
 
 use std::sync::{Arc, Mutex};
 
@@ -13,22 +13,22 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{Handle, Received, Result, Subject};
 
-pub use config::{DEFAULT_HINT_CAPACITY, HINT_CAPACITY_ENV, MAX_HINT_CAPACITY};
+pub use config::{DEFAULT_WAKE_QUEUE_CAPACITY, ENV_WAKE_QUEUE_CAPACITY, MAX_WAKE_QUEUE_CAPACITY};
 pub use publish::publish;
 
-/// Independent subjects spread hints across the broker's shard slots.
+/// Independent subjects distribute notifications across the broker's shard slots.
 pub const SHARDS: u16 = 16;
 
-/// One hint buffer and generation counter per replica, shared by its sessions.
+/// One wake queue and generation counter per replica, shared by its sessions.
 #[derive(Debug, Clone)]
 pub struct Wake {
-    hints: Arc<Mutex<hints::Hints>>,
+    queue: Arc<Mutex<queue::WakeQueue>>,
     generation: watch::Sender<u64>,
 }
 
 impl Default for Wake {
     fn default() -> Self {
-        Self::bounded(DEFAULT_HINT_CAPACITY)
+        Self::bounded(DEFAULT_WAKE_QUEUE_CAPACITY)
     }
 }
 
@@ -44,44 +44,44 @@ impl Wake {
     /// Construct an isolated replica queue for an explicitly configured capacity.
     ///
     /// # Errors
-    /// Refuses zero or more than [`MAX_HINT_CAPACITY`] entries before allocation.
+    /// Refuses zero or more than [`MAX_WAKE_QUEUE_CAPACITY`] entries before allocation.
     pub fn with_capacity(capacity: usize) -> Result<Self> {
         Ok(Self::bounded(config::prove(capacity)?))
     }
 
     fn bounded(capacity: usize) -> Self {
         Self {
-            hints: Arc::new(Mutex::new(hints::Hints::new(capacity))),
+            queue: Arc::new(Mutex::new(queue::WakeQueue::new(capacity))),
             generation: watch::Sender::new(0),
         }
     }
 
-    /// Publish the hint before notifying sessions; duplicate admissions still notify.
+    /// Enqueue the fleet before notifying sessions; duplicate admissions still notify.
     pub fn ring(&self, fleet: Uuid7) {
         let outcome = self.lock().ring(fleet);
-        producers::fleet::runner::stream::hint(outcome);
+        producers::fleet::runner::stream::wake_queue(outcome);
         self.generation
             .send_modify(|generation| *generation = generation.wrapping_add(1));
     }
 
-    /// Consume one hint; absence never proves that Postgres has no ready work.
+    /// Consume one fleet; absence never proves that Postgres has no ready work.
     #[must_use]
     pub fn take(&self) -> Option<Uuid7> {
         self.lock().take()
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, hints::Hints> {
-        match self.hints.lock() {
+    fn lock(&self) -> std::sync::MutexGuard<'_, queue::WakeQueue> {
+        match self.queue.lock() {
             Ok(guard) => guard,
-            // Hints are disposable; Postgres owns the work even after a worker panic.
+            // Notifications are disposable; Postgres owns the work even after a worker panic.
             Err(poisoned) => {
-                let mut hints = poisoned.into_inner();
-                hints.clear();
-                self.hints.clear_poison();
+                let mut queue = poisoned.into_inner();
+                queue.clear();
+                self.queue.clear_poison();
                 producers::fleet::ready_wake_failed(ReadyWake::Gap);
                 let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(event = "admission_wake_hints_recovered", error_code);
-                hints
+                tracing::warn!(event = "admission_wake_queue_recovered", error_code);
+                queue
             }
         }
     }
@@ -117,7 +117,7 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
                     Err(error) => {
                         producers::fleet::ready_wake_failed(ReadyWake::Gap);
                         let error_code = error.code().as_str();
-                        tracing::warn!(event = "admission_wake_invalid_hint", error_code);
+                        tracing::warn!(event = "admission_wake_invalid_notification", error_code);
                     }
                 },
                 Ok(Received::Lagged(_) | Received::Gap) => producers::fleet::ready_wake_failed(ReadyWake::Gap),

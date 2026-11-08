@@ -118,7 +118,7 @@ CREATE	rustd/crates/daemon/afd_bus/src/subscription.rs	absent	Neutral broker bou
 CREATE	rustd/crates/daemon/afd_bus/src/test_util.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/src/tests.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/src/wake/config.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/daemon/afd_bus/src/wake/hints.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/daemon/afd_bus/src/wake/queue.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/src/wake/mod.rs	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_bus/src/wake/publish.rs	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_bus/src/wake/tests.rs	absent	M243 review feedback, observability evidence or matching test support
@@ -223,8 +223,8 @@ DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/renew.rs	present	Re
 DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/report.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
 DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/wake.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
 DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/wake_tests.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/mod.rs	present	Wake hints move behind bus; held wait path disappears
-DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/tests.rs	present	Wake hints move behind bus; held wait path disappears
+DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/mod.rs	present	Wake notifications move behind bus; held wait path disappears
+DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/tests.rs	present	Wake notifications move behind bus; held wait path disappears
 DELETE	rustd/crates/daemon/main/tests/integration_runner_wake.rs	present	Obsolete held-heartbeat tests replaced by session tests
 DELETE	rustd/crates/protocol/af_wire/src/lease/request.rs	present	Retire polling request/response surface; retain needed accepted-kind values in owning types
 DELETE	rustd/crates/protocol/af_wire/src/lease/response.rs	present	Retire polling request/response surface; retain needed accepted-kind values in owning types
@@ -406,3 +406,4 @@ MOVE_TO	docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STRE
 PROPOSE	deploy/fly/agentsfleetd-dev/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
 PROPOSE	deploy/fly/agentsfleetd-prod/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
 PROPOSE	playbooks/operations/ci_rust_images/Dockerfile.alpine	present	Native proof may require adding clang and clang-dev; no builder edit or image publication until Indy approves concrete change
+EDIT	rustd/crates/protocol/af_observability/src/semconv/mod.rs	present	Declare the transport label used by the stream metric census

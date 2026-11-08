@@ -47,17 +47,17 @@ The [failure design](failure-and-observability.md) defines recovery and verifica
 | Item | Checked state |
 |---|---|
 | Worktree | `/workspace/agentsfleet-m243`, branch `feat/m243-runner-push-stream` |
-| Fetched base | `origin/main` at `a5155b6f8`, including #816's native UUIDv7 flattening; rebased Nov 08, 2026 |
-| Existing commits | Three documentation commits; no push or pull request |
+| Fetched base | `origin/main` at `61820b66a`, merged normally after #817; #816's native UUIDv7 changes remain included |
+| Existing commits | Draft [#819](https://github.com/agentsfleet/agentsfleet/pull/819), published foundation `55a6e51fd`; local main merge `bafef4bbe` |
 | Written code | Four-lane wire types, shared framing, both native adapters and the initial bus adapter; gateway and runner wiring remain due |
 | Package evidence | Earlier `cargo test -p af_wire --all-features`: 78 unit tests and 96 wire-suite tests passed |
 | HTTP/3 scratch evidence | Verified CA chain, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings, raw client worker exit after explicit close |
 | HTTP/2 scratch evidence | BoringSSL certificate verification, open upload with duplex replies, byte-identical 2 MiB payload, 120 seconds of pings and client/server task exit |
-| Production adapter evidence | Earlier scratch-override package run: 197 tests passed, including transport, wire and bus tests; current refactor requires a new run |
+| Production adapter evidence | Current daemon-library shard passed 3,526 tests, including native transport, framing, bus, wire and exported telemetry tests |
 | Dependencies | Indy approved `libc = 0.2.189`; the workspace uses published `tokio-quiche 0.20.1` without a scratch override |
 | Current lint checkpoint | `make lint-all` passed, including rustfmt, workspace Clippy with all features and targets, dependency checks and the remaining repository linters |
-| Unit checkpoint | The full lane's runner shard passed 1,749 tests with test umask `022`; the remaining lane was interrupted for Indy's early draft request |
-| Unverified | Current refactor runtime tests, complete cancellation and fallback matrix, fault timing, static targets, Fly deployment, coverage and remaining repository gates |
+| Unit checkpoint | Runner shard passed 1,749 tests; daemon-library shard passed 3,526 tests with umask `022`; complete repository lane remains due |
+| Unverified | Complete gateway/runner cancellation and fallback matrix, fault timing, linked static targets, Fly deployment, coverage and remaining repository gates |
 
 The wire draft does not establish a working runner session.
 The approval permits the native transport proof first, followed by production wiring when that proof passes.
@@ -83,7 +83,8 @@ The gateway, runner integration and remaining milestone gates stay open.
 | Human and agent error handling | Plain outer messages, retained causes, stable error codes and finite outcome fields |
 | Tokio Quiche features | Exact pinned feature decisions and native telemetry bridge are recorded in the research page |
 | Wake queue ownership and performance | One short mutex protects FIFO and membership together; hash membership replaces the linear duplicate scan; latency benchmark remains due |
-| Capacity and configuration | Validated `RUNNER_STREAM_HINT_CAPACITY`; startup wiring remains due; runner concurrency retains its existing server-owned policy |
+| Capacity and configuration | Validated `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`; startup wiring remains due; runner concurrency retains its existing server-owned policy |
+| Wake naming and environment prefix | `WakeQueue`, matching queue metrics and `AGENTSFLEET_` settings replace the newly introduced names; no aliases |
 | A thousand fleets and fairness | Buffer pressure test is written; unconditional database discovery and end-to-end fairness proof remain due |
 | UUIDv7 main changes | Rebased onto merged #816; new data access must retain native identifiers and table ownership |
 | Traces, logs and coverage | Finite metric declarations, structured operation observations and export/redaction tests are written; final coverage measurement remains due |
@@ -129,7 +130,7 @@ Indy's approval includes the additional shared carrier crate.
 |---|---|
 | `af_wire` | `Up<'a>`, `Down<'a>`, `Answer<'a, T>`, `Lane::{Control,Work,Reports,Activity}`, `Renewal`, `RenewalAnswer`; values and validation without Tokio, SQL or native transport |
 | **New `af_stream`**, under `protocol/` | `Transport`, `Endpoint`, `Trust`, `Incoming`, `OwnedFrame`, `Connection`, `ConnectionInfo`; native transport and framing, without SQL or authentication decisions |
-| **New `afd_bus`**, under `daemon/` | Object-safe `Bus`, cloneable `Handle`, `Subject`, `Command`, `Subscription`, `Received`; Dragonfly adapter and wake hints |
+| **New `afd_bus`**, under `daemon/` | Object-safe `Bus`, cloneable `Handle`, `Subject`, `Command`, `Subscription`, `Received`; Dragonfly adapter and wake notifications |
 | **New `afd_gateway`**, under `daemon/` | Concrete `Gateway`, `ConnectionContext`, `Authority`, `Session`, `LiveLease`, `Registry`; owns session decisions over existing services |
 | `afr_supervisor` | `Downlink`, cloneable `StreamHandle`, `Pending`, `Uplink`; offers feed existing workers, reports retain their durable spool |
 | Existing domain crates | Host locks, claim, renewal, billing, task activity, authoring and reports retain their owning services |
@@ -329,7 +330,7 @@ Repeated reports retain existing lease-keyed billing idempotence and complete us
 `EDIT` and `DELETE` paths were checked against the fetched tree; `CREATE` paths are explicitly new.
 `AUDIT` rows name source hits whose dependent callers require review before implementation is complete.
 
-The inventory contains 407 paths: 113 creations, 168 edits, 20 deletions, one move, 101 audit paths and three deployment/build proposals.
+The inventory contains 408 paths: 113 creations, 169 edits, 20 deletions, one move, 101 audit paths and three deployment/build proposals.
 The two deployment paths and builder-image path require separate approval before edits.
 These are scope counts, not completed implementation changes.
 
