@@ -32,7 +32,7 @@ pub struct ModelCalls {
     pub(in crate::model) drafts: Drafts,
     pub(in crate::model) providers: Providers,
     transport: Arc<dyn Transport>,
-    streams: Option<afd_dragonfly::FleetStreams>,
+    streams: Option<afd_bus::Handle>,
     pub(in crate::model) decisions: Option<super::edit_intent::Configuration>,
 }
 
@@ -113,7 +113,7 @@ impl ModelCalls {
 
     /// Enables creator-private previews through the existing shared pub/sub bus.
     #[must_use]
-    pub fn with_progress(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+    pub fn with_progress(mut self, streams: afd_bus::Handle) -> Self {
         self.streams = Some(streams);
         self
     }

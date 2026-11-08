@@ -22,8 +22,8 @@ mod wake;
 use std::sync::Arc;
 
 use af_crypto::entropy::Entropy;
+use afd_bus::Handle;
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, FleetStreams};
 
 pub use self::admission::{Admission, Key, Producer, Reply};
 pub use self::backlog::LedgerBacklog;
@@ -75,7 +75,7 @@ pub struct LiveRun {
 #[derive(Debug, Clone)]
 pub struct Admissions {
     database: Db,
-    queue: Dragonfly,
+    bus: Handle,
     entropy: Entropy,
     budgets: Budgets,
     ceiling: Arc<Ceiling>,
@@ -85,10 +85,10 @@ impl Admissions {
     /// Binds the ledger to an already-connected pool and queue, under the
     /// production budgets.
     #[must_use]
-    pub fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
+    pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {
             database,
-            queue,
+            bus,
             entropy,
             budgets: Budgets::default(),
             ceiling: Arc::new(Ceiling::default()),
@@ -117,15 +117,19 @@ impl Admissions {
     /// [`Admissions::new`] with one, rather than getting it by accident.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn for_tests(database: Db, queue: Dragonfly) -> Self {
-        Self::new(database, queue, Entropy::new())
+    pub fn for_tests(database: Db, queue: afd_dragonfly::Dragonfly) -> Self {
+        Self::new(
+            database,
+            afd_bus::dragonfly::publisher(queue),
+            Entropy::new(),
+        )
     }
 
     /// The live tails over this ledger's queue, for a producer announcing
     /// what it admitted — the handle the lease plane's `streams()` is too.
     #[must_use]
-    pub fn streams(&self) -> FleetStreams {
-        FleetStreams::new(self.queue.clone())
+    pub fn streams(&self) -> Handle {
+        self.bus.clone()
     }
 }
 

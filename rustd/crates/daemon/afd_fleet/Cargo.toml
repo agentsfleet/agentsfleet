@@ -41,6 +41,7 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+afd_bus.workspace = true
 # Shared boundary validation for private checkpoint storage configuration.
 af_validate.workspace = true
 afd_vault.workspace = true

@@ -195,6 +195,7 @@ af_observability = { path = "crates/protocol/af_observability" }
 af_otlp = { path = "crates/protocol/af_otlp" }
 afd_outbound = { path = "crates/daemon/afd_outbound" }
 afd_dragonfly = { path = "crates/daemon/afd_dragonfly" }
+afd_bus = { path = "crates/daemon/afd_bus" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.

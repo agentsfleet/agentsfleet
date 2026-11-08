@@ -93,11 +93,14 @@ impl Live {
         let redis = afd_dragonfly::test_util::connect_live(&config)
             .await
             .expect("live bus");
+        let bus = afd_bus::dragonfly::publisher(redis.clone());
         let publisher = FleetStreams::new(redis);
         let hub = SubscriptionHub::start(config)
             .await
             .expect("live subscriptions");
-        let channel = afd_authoring::draft_channel(&attempt.draft.id);
+        let channel = afd_bus::test_util::physical_channel(&afd_bus::Subject::DraftEvents(
+            attempt.draft.id.clone(),
+        ));
         let reader = hub.subscribe(&channel);
         let (sender, receiver) = mpsc::channel(8);
         let provider = Arc::new(Provider {
@@ -107,7 +110,7 @@ impl Live {
         });
         let calls = super::super::fixture::calls(f, attempt, Arc::clone(&provider))
             .await
-            .with_progress(publisher.clone());
+            .with_progress(bus);
         let mut live = Self {
             provider,
             sender,

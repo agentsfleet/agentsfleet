@@ -218,7 +218,7 @@ async fn serve_plane(
         &runtime.database,
         &runtime.queue,
         &runtime.kek,
-        runtime.hub,
+        runtime.bus,
         runtime.outbound_client,
     )
     .await;

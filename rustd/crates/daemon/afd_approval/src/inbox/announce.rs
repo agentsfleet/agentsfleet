@@ -18,8 +18,8 @@
 
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_dragonfly::FleetStreams;
 
 use super::Inbox;
 
@@ -27,7 +27,7 @@ use super::Inbox;
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Answer<'a> {
     /// The fleet whose tail carries the frame.
-    pub fleet_id: &'a str,
+    pub fleet_id: &'a Uuid7,
     /// The gate's row identifier.
     pub gate_id: &'a str,
     /// The event the gate held, or none for a gate raised outside a run.
@@ -56,8 +56,11 @@ impl Inbox {
             pending_approvals: answer.pending_approvals,
             counters: answer.counters,
         };
-        FleetStreams::new(self.queue.clone())
-            .publish_frame(answer.fleet_id, &frame)
+        self.bus
+            .publish_frame(
+                &afd_bus::Subject::FleetTail(answer.fleet_id.clone()),
+                &frame,
+            )
             .await;
     }
 }

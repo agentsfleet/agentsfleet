@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use afd_dragonfly::Message;
+use afd_bus::{Message, Subject};
 use afd_sse::{Ceiling, Frame};
 use futures_util::StreamExt as _;
 use tokio_util::sync::CancellationToken;
@@ -15,7 +15,7 @@ fn frame(payload: String) -> Frame {
     Frame::activity(
         1,
         Arc::new(Message {
-            channel: "bench".to_owned(),
+            subject: Subject::Wake(0),
             payload: Arc::new(payload),
         }),
     )

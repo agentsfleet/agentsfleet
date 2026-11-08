@@ -28,7 +28,6 @@ use afd_approval::IntegrationGrants;
 use afd_billing::Accounts;
 use afd_credential::provider::Providers;
 use afd_credential::vault::Vault;
-use afd_dragonfly::Doorbell;
 use afd_events::History;
 use afd_fleet::lease::{Leases, Plane};
 use afd_gate::gate::Gates;
@@ -130,6 +129,7 @@ impl ServingPlane {
             database,
             identity_webhook_secret,
             queue,
+            bus,
             kek,
             capabilities,
             sessions,
@@ -148,7 +148,7 @@ impl ServingPlane {
         let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
         let github_client = authoring_transport.guarded_client();
         let task_master = Arc::clone(&kek);
-        let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
+        let admissions = Admissions::new(database.clone(), bus.clone(), Entropy::new());
         // One biller for every money path: fleet leases and setup chat reserve
         // against the same holds and settle into the same ledger (billing §11).
         let biller = crate::billing::biller(database.clone());
@@ -157,18 +157,16 @@ impl ServingPlane {
                 .with_analytics(analytics.clone());
         let authoring = surfaces::authoring(
             drafts,
-            &queue,
             &kek,
             &providers,
             &admissions,
             authoring_transport,
             platform_admin_workspace.as_ref(),
         );
-        let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
-        let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
+        let activity_streams = bus.clone();
         let tenant = stores::tenant(&database, &kek, &providers, &activity_streams);
-        let activity = stores::activity(&database, &queue, &kek, &admissions);
+        let activity = stores::activity(&database, &kek, &admissions);
         let task_admissions = admissions.clone();
         let outbound = surfaces::outbound(
             &database,
@@ -186,7 +184,7 @@ impl ServingPlane {
             queue.clone(),
             kek,
             providers,
-            doorbell,
+            bus,
             broker,
             biller,
         );
@@ -237,16 +235,15 @@ fn lease_plane(
     queue: afd_dragonfly::Dragonfly,
     kek: Arc<af_crypto::secret::Kek>,
     providers: Providers,
-    doorbell: Doorbell,
+    bus: afd_bus::Handle,
     broker: Arc<afd_credential::credential::Broker>,
     biller: Arc<dyn afd_billing::biller::Biller>,
 ) -> Plane {
-    let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
+    let activity_streams = bus.clone();
     Plane {
         task_reports: None,
-        leases: Leases::new(database.clone(), queue.clone(), Entropy::new())
-            .with_doorbell(doorbell),
-        gates: Gates::new(database.clone(), queue, Entropy::new()),
+        leases: Leases::new(database.clone(), queue.clone(), bus.clone(), Entropy::new()),
+        gates: Gates::new(database.clone(), queue, bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
         // same table: a delivery that finds no grant asks through the crate
         // that owns the row rather than writing one.
@@ -262,18 +259,6 @@ fn lease_plane(
         vault: Vault::new(database, kek),
         broker,
     }
-}
-
-/// The doorbell every poll the lease plane makes takes rung partitions from,
-/// rung by this replica's hub. One per process: a second would hear rings no
-/// poll reads. With no hub nothing rings, and polls find fresh work through
-/// the rotation alone.
-fn listening_doorbell(live: &Live) -> Doorbell {
-    let doorbell = Doorbell::new();
-    if let Some(hub) = live.hub() {
-        doorbell.listen(hub);
-    }
-    doorbell
 }
 
 impl Dependencies for ServingPlane {

@@ -19,10 +19,12 @@ pub async fn publish(bus: &Handle, fleet: Uuid7) {
     };
     producers::fleet::ready_wake_failed(ReadyWake::Ring);
     let logged = failure.logged();
+    let fleet_id = payload.as_str();
     tracing::warn!(
         event = "admission_wake_ring_failed",
         error_code = logged.error_code,
         reason = logged.reason,
+        fleet_id,
         shard,
         "notification was lost; the next Postgres probe finds the admission"
     );

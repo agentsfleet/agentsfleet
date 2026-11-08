@@ -68,6 +68,7 @@ async fn connect_and_declare(run: &Scenario) {
     Leases::new(
         run.booted.database.clone(),
         run.booted.queue.clone(),
+        afd_bus::dragonfly::publisher(run.booted.queue.clone()),
         Entropy::new(),
     )
     .claim(&run.fleet, &run.runner_id, std::time::Duration::ZERO)
@@ -164,7 +165,7 @@ async fn deny(run: &Scenario) {
     );
     Inbox::new(
         run.booted.database.clone(),
-        run.booted.queue.clone(),
+        afd_bus::dragonfly::publisher(run.booted.queue.clone()),
         afd_admission::Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone()),
     )
     .resolve(

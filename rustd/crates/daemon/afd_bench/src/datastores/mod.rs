@@ -18,7 +18,7 @@ use core::time::Duration;
 use af_core::env::{EnvSource, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole, SubscriptionHub};
+use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole};
 
 use sqlx::Connection as _;
 
@@ -105,6 +105,8 @@ pub struct Datastores {
     pub database: Db,
     /// Live activity, notifications and outbound delivery.
     pub queue: Dragonfly,
+    /// The single ephemeral notification adapter for this lane.
+    pub bus: afd_bus::Handle,
     /// How many connections the pool may open, for the result file and for
     /// refusing more runners than that.
     pub pool_size: u32,
@@ -134,9 +136,11 @@ impl Datastores {
         let redis = DragonflyConfig::from_url(DragonflyRole::Default, dragonfly_url.to_owned())
             .with_ca_cert_file(ca_cert.map(Into::into));
         let queue = Dragonfly::connect(&redis).await?;
+        let bus = afd_bus::dragonfly::connect(queue.clone(), redis.clone()).await?;
         Ok(Self {
             database,
             queue,
+            bus,
             pool_size: pool.max_connections(),
             database_url: database_url.to_owned(),
             redis,
@@ -165,17 +169,6 @@ impl Datastores {
     /// `QueueUnavailable` when it will not open.
     pub async fn dedicated(&self, longest_park: Duration) -> Result<Dedicated> {
         Ok(Dedicated::connect(&self.redis, longest_park).await?)
-    }
-
-    /// The pub/sub hub a replica's live tails read through, opened from the
-    /// same resolution as the queue — the daemon opens one per process, and
-    /// so does a lane.
-    ///
-    /// # Errors
-    ///
-    /// `QueueUnavailable` when its connection will not open.
-    pub async fn hub(&self) -> Result<SubscriptionHub> {
-        Ok(SubscriptionHub::start(self.redis.clone()).await?)
     }
 }
 

@@ -29,7 +29,7 @@ impl Inbox {
             &resolved.status,
             resolved.event_id.as_ref().map(Uuid7::as_str),
         ) {
-            self.wake_parked_delivery(resolved.fleet_id.as_str()).await;
+            self.wake_parked_delivery(&resolved.fleet_id).await;
             return Ok(resolved);
         }
         if resolved.status == status::APPROVED

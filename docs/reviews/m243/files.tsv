@@ -3,17 +3,11 @@ AUDIT	Dockerfile	present	Verify static BoringSSL linking and CA paths work in th
 AUDIT	make/build.mk	present	Verify existing static and both-architecture build path; propose changes before altering build delivery
 AUDIT	playbooks/operations/ci_rust_images/001_playbook.md	present	Record native dependency requirements if the builder changes
 AUDIT	playbooks/operations/ci_rust_images/versions.env	present	Verify pinned native build inputs and image version; no toolchain change implied
-AUDIT	rustd/crates/daemon/afd_admission/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_api/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_api/tests/authoring/stream/live.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/harness/fleet/mod.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/harness/fleet_seams.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/harness/support.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/integration_fleet_admitted.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/integration_wall_recheck.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/openapi_contract.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/openapi_task_shapes.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decision_lifecycle/fixture.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decision_lifecycle/task_routes.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decisions.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/folds.rs	present	Retired route/type callers and fixtures
@@ -33,14 +27,7 @@ AUDIT	rustd/crates/daemon/afd_api_tenant/src/lib.rs	present	Constructor and re-e
 AUDIT	rustd/crates/daemon/afd_approval/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 AUDIT	rustd/crates/daemon/afd_approval/tests/integration_grant_request.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_sweep_decode.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail_continuation.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail_runless.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_approval/tests/support/tail_watch.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_authoring/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_bench/src/datastores/mod.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_bench/src/lane/tail/publish/mod.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_bench/src/lane/tail/streams/mod.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_bench/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 AUDIT	rustd/crates/daemon/afd_db/src/migration.rs	present	Verify table-file registration after other PR rewrites schema layout
 AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_connect_deadline.rs	present	Broker constructors/subscribers and fixtures
@@ -57,19 +44,11 @@ AUDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/decision.rs	pr
 AUDIT	rustd/crates/daemon/afd_fleet/tests/integration_wall_counters.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/offered.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/afd_gate/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_tail.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/afd_http/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_sse/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_sse/src/tail/mod.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_sse/src/tail/tests.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_sse/tests/integration_sequencing/fan_in.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/main/src/plane/tests.rs	present	Broker constructors/subscribers and fixtures
 AUDIT	rustd/crates/daemon/main/tests/integration_authoring_mint.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/main/tests/integration_cluster_outcomes.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_grant_denial.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/main/tests/integration_runner_activity.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/main/tests/integration_runner_brackets.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_context.rs	present	Retired route/type callers and fixtures
 AUDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/labels.rs	present	Session fixture and offer behavior changes
 AUDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/mod.rs	present	Session fixture and offer behavior changes
 AUDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/money_gate.rs	present	Session fixture and offer behavior changes
@@ -105,6 +84,7 @@ CREATE	docs/reviews/m243/failure-and-observability.md	absent	Indy sign-off packe
 CREATE	docs/reviews/m243/files.tsv	absent	Indy sign-off packet; proposal only
 CREATE	docs/reviews/m243/implementation-signoff.md	absent	Indy sign-off packet; proposal only
 CREATE	docs/reviews/m243/transport-and-toon-research.md	absent	Indy sign-off packet; proposal only
+CREATE	playbooks/operations/runner_stream_tls/001_playbook.md	absent	Owner-requested morning certificate generation and 1Password setup instructions
 CREATE	rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs	absent	Stream opening route
 CREATE	rustd/crates/daemon/afd_authoring/src/creation/sql/mark_leases_cancel_requested.sql	absent	Durable kill marker in existing transaction
 CREATE	rustd/crates/daemon/afd_bus/Cargo.toml	absent	Neutral broker boundary and Dragonfly adapter
@@ -118,9 +98,9 @@ CREATE	rustd/crates/daemon/afd_bus/src/subscription.rs	absent	Neutral broker bou
 CREATE	rustd/crates/daemon/afd_bus/src/test_util.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/src/tests.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/src/wake/config.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/daemon/afd_bus/src/wake/queue.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/src/wake/mod.rs	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_bus/src/wake/publish.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/wake/queue.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/src/wake/tests.rs	absent	M243 review feedback, observability evidence or matching test support
 CREATE	rustd/crates/daemon/afd_bus/tests/bus_suite.rs	absent	Neutral broker boundary and Dragonfly adapter
 CREATE	rustd/crates/daemon/afd_bus/tests/commands.rs	absent	Neutral broker boundary and Dragonfly adapter
@@ -254,14 +234,24 @@ EDIT	public/openapi.json	present	Dependencies and regenerated API reference
 EDIT	rustd/Cargo.lock	present	Dependencies and regenerated API reference
 EDIT	rustd/Cargo.toml	present	Dependencies and regenerated API reference
 EDIT	rustd/crates/daemon/afd_admission/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/afd_admission/src/admit.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_admission/src/confirm.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_admission/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_admission/src/wake.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_api/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/afd_api/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_api/src/openapi/stability/mod.rs	present	Regenerated route metadata and response surface
+EDIT	rustd/crates/daemon/afd_api/tests/authoring/saving/activity/connectors.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/authoring/saving/activity/streams.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/authoring/saving/revisions/model_changes.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/authoring/stream/live.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/harness/fleet/mod.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/harness/fleet_seams.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/harness/stubs_runner.rs	present	One route in, six out, updated stubs
+EDIT	rustd/crates/daemon/afd_api/tests/integration_fleet_tasks/fixture.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/route_inventory.rs	present	One route in, six out, updated stubs
 EDIT	rustd/crates/daemon/afd_api/tests/route_meta_total.rs	present	One route in, six out, updated stubs
+EDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decision_lifecycle/fixture.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/daemon/afd_api_operator/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_delete.rs	present	Publish runner authority recheck after commit
 EDIT	rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_patch.rs	present	Publish runner authority recheck after commit
@@ -274,27 +264,78 @@ EDIT	rustd/crates/daemon/afd_api_tenant/Cargo.toml	present	Wire gateway/bus/tran
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/draft/stream/body.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/draft/stream/mod.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/fleet/native/patch.rs	present	Publish cancellation after transaction commits
+EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/body.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/transport_tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
+EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/wall/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_approval/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_approval/src/inbox/announce.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_approval/src/inbox/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_approval/src/inbox/resolve/stood.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_approval/src/inbox/resolve/wake_tests.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_approval/src/inbox/sweep.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_continuation.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail_continuation.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail_runless.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_approval/tests/support/gate_lane.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/afd_authoring/src/creation/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/creation/patch.rs	present	Mark leases before cancel notification
+EDIT	rustd/crates/daemon/afd_authoring/src/error/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/src/lib.rs	present	Constructor and re-export plumbing for injected bus
+EDIT	rustd/crates/daemon/afd_authoring/src/model/dispatch/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/src/model/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/model/progress/context.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_authoring/src/model/progress/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/model/progress/publish.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_authoring/src/model/progress/tests/context.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/admission_faults.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/confirmation.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/fixture.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/grants.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/identity.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/stages.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/model_calls/progress/fixture.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_authoring/tests/draft/model_calls/progress/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/afd_bench/src/datastores/mod.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/error/accessors.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/error/kind.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/error/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/error/pre_flight.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/cardinality/capacity.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/cardinality/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/burst/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/mod.rs	present	Drive sessions and measure idle totals
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/runner.rs	present	Drive sessions and measure idle totals
+EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/stage.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/tests.rs	present	Drive sessions and measure idle totals
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/window.rs	present	Drive sessions and measure idle totals
+EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/saturation/production.rs	present	Drive sessions and measure idle totals
+EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/saturation/stage.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/seed/mod.rs	present	Drive sessions and measure idle totals
+EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/seed/tests.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/steer/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/steer/tests.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/publish/mod.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/streams/mod.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/streams/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/viewers/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/viewers/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
+EDIT	rustd/crates/daemon/afd_bench/tests/abort_wiring.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_cron/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_cron/src/fire/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_cron/src/store/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_dragonfly/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/channels.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/detached.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/dispatch.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/mod.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
+EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/pump/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
 EDIT	rustd/crates/daemon/afd_dragonfly/src/lib.rs	present	Remove doorbell export; retain private hub implementation
 EDIT	rustd/crates/daemon/afd_dragonfly/src/streams/tail.rs	present	Broker constructors/subscribers and fixtures
@@ -305,7 +346,10 @@ EDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_namespace/mod.rs	presen
 EDIT	rustd/crates/daemon/afd_dragonfly/tests/support/hub_exclusive.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_events/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_events/src/activity.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_events/src/error/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_events/src/error/raise.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_events/src/steer/mod.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_events/tests/error_surface.rs	present	Complete typed bus injection and matching caller, error and ownership checks
 EDIT	rustd/crates/daemon/afd_events/tests/integration_backfill.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_fleet/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/activity/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
@@ -321,8 +365,29 @@ EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/mod.rs	present	Typed offered cl
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/renew.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_for_renew.sql	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/store.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/test_dead.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/src/task/lease.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/src/task/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/faults/parking.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/stops.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/contention.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/deadlines.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/parking.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/parking_commit.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/decisions/timeouts.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/fixture.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/read_deadline.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/replica.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/support/fleet_fixtures.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/afd_gate/src/gate/first.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/src/gate/park.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_gate/src/gate/store/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_gate/tests/gate_faults.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_faults.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_lifecycle.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_reference.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_tail.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_http/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_http/src/auth/guard.rs	present	Native-bound stream guard and gateway service access
 EDIT	rustd/crates/daemon/afd_http/src/route/mod.rs	present	Native-bound stream guard and gateway service access
@@ -331,6 +396,9 @@ EDIT	rustd/crates/daemon/afd_http/src/services/contract.rs	present	Native-bound 
 EDIT	rustd/crates/daemon/afd_http/src/services/leasing/mod.rs	present	Native-bound stream guard and gateway service access
 EDIT	rustd/crates/daemon/afd_http/src/services/leasing/plane.rs	present	Native-bound stream guard and gateway service access
 EDIT	rustd/crates/daemon/afd_http/src/services/mod.rs	present	Native-bound stream guard and gateway service access
+EDIT	rustd/crates/daemon/afd_memory/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_memory/src/access.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_memory/src/memories.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_runner/src/capacity/choice.rs	present	Credential and connection authority under host lock
 EDIT	rustd/crates/daemon/afd_runner/src/capacity/mod.rs	present	Credential and connection authority under host lock
 EDIT	rustd/crates/daemon/afd_runner/src/capacity/sql/lock_host.sql	present	Credential and connection authority under host lock
@@ -341,11 +409,25 @@ EDIT	rustd/crates/daemon/afd_runner/src/sql/runner/select_runner_assigned_policy
 EDIT	rustd/crates/daemon/afd_sse/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_sse/src/ceiling.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_sse/src/fanin.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_sse/src/frame/data.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_sse/src/frame/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_sse/src/frame/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
+EDIT	rustd/crates/daemon/afd_sse/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_sse/src/live.rs	present	Inject bus handle; hide backend-specific pub/sub types
+EDIT	rustd/crates/daemon/afd_sse/src/tail/mod.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_sse/src/tail/tests.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_sse/tests/integration_sequencing/fan_in.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_sse/tests/integration_sequencing/main.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_sse/tests/support/sse_lane.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_vault/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_vault/src/lib.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/main/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/main/src/plane/config.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/main/src/plane/mod.rs	present	Build shared handles once; bounded session drain
+EDIT	rustd/crates/daemon/main/src/plane/platform.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/main/src/plane/stores.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/main/src/plane/surfaces.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/main/src/plane/tests.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/main/src/preflight/mod.rs	present	Build shared handles once; bounded session drain
 EDIT	rustd/crates/daemon/main/src/serve/drain/mod.rs	present	Build shared handles once; bounded session drain
 EDIT	rustd/crates/daemon/main/src/serve/drain/tests.rs	present	Build shared handles once; bounded session drain
@@ -353,6 +435,9 @@ EDIT	rustd/crates/daemon/main/src/serve/mod.rs	present	Build shared handles once
 EDIT	rustd/crates/daemon/main/src/serve/optional.rs	present	Build shared handles once; bounded session drain
 EDIT	rustd/crates/daemon/main/src/serve/runtime.rs	present	Build shared handles once; bounded session drain
 EDIT	rustd/crates/daemon/main/tests/daemon_suite.rs	present	Register tests and retire route calls in shared helpers
+EDIT	rustd/crates/daemon/main/tests/integration_grant_denial.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_runner_context.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/support/definition_install/fleet.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/main/tests/support/e2e_schedules.rs	present	Register tests and retire route calls in shared helpers
 EDIT	rustd/crates/daemon/main/tests/support/e2e_speaking.rs	present	Register tests and retire route calls in shared helpers
 EDIT	rustd/crates/daemon/main/tests/support/e2e_tail.rs	present	Register tests and retire route calls in shared helpers
@@ -368,6 +453,7 @@ EDIT	rustd/crates/protocol/af_observability/src/metrics/label/fleet.rs	present	D
 EDIT	rustd/crates/protocol/af_observability/src/metrics/label/tests.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/protocol/af_observability/src/producers/fleet/mod.rs	present	Declare and register metrics; remove wake answer family
 EDIT	rustd/crates/protocol/af_observability/src/producers/fleet/runner/mod.rs	present	M243 review feedback, observability evidence or matching test support
+EDIT	rustd/crates/protocol/af_observability/src/semconv/mod.rs	present	Declare the transport label used by the stream metric census
 EDIT	rustd/crates/protocol/af_wire/src/lease/kinds.rs	present	Register protocol and remove old route/request shape
 EDIT	rustd/crates/protocol/af_wire/src/lease/mod.rs	present	Register protocol and remove old route/request shape
 EDIT	rustd/crates/protocol/af_wire/src/lease/payload.rs	present	Register protocol and remove old route/request shape
@@ -406,4 +492,3 @@ MOVE_TO	docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STRE
 PROPOSE	deploy/fly/agentsfleetd-dev/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
 PROPOSE	deploy/fly/agentsfleetd-prod/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
 PROPOSE	playbooks/operations/ci_rust_images/Dockerfile.alpine	present	Native proof may require adding clang and clang-dev; no builder edit or image publication until Indy approves concrete change
-EDIT	rustd/crates/protocol/af_observability/src/semconv/mod.rs	present	Declare the transport label used by the stream metric census

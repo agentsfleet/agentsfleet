@@ -16,7 +16,6 @@ use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use afd_events::History;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
@@ -59,7 +58,7 @@ pub(super) fn tenant(
     database: &Db,
     kek: &Arc<Kek>,
     providers: &Providers,
-    streams: &afd_dragonfly::FleetStreams,
+    streams: &afd_bus::Handle,
 ) -> Tenant {
     Tenant {
         workspaces: Workspaces::new(database.clone(), Entropy::new()),
@@ -116,14 +115,9 @@ pub(super) struct Activity {
 /// share of [`Tenant::secrets`] because the two are different surfaces over
 /// one table — that one seals and never opens, this one opens exactly one name
 /// and never lists.
-pub(super) fn activity(
-    database: &Db,
-    queue: &Dragonfly,
-    kek: &Arc<Kek>,
-    admissions: &Admissions,
-) -> Activity {
+pub(super) fn activity(database: &Db, kek: &Arc<Kek>, admissions: &Admissions) -> Activity {
     Activity {
-        approvals: Inbox::new(database.clone(), queue.clone(), admissions.clone()),
+        approvals: Inbox::new(database.clone(), admissions.streams(), admissions.clone()),
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
         events: History::new(database.clone()),
         steering: afd_events::Steer::new(admissions.clone()),

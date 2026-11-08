@@ -66,7 +66,11 @@ impl Case {
         let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
             .expect("fixture encryption key");
         let setup = Setup::new(base.drafts.clone(), Arc::new(key));
-        let admissions = Admissions::new(base.db.clone(), queue.clone(), Entropy::new());
+        let admissions = Admissions::new(
+            base.db.clone(),
+            afd_bus::dragonfly::publisher(queue.clone()),
+            Entropy::new(),
+        );
         let creations = Creations::new(setup.clone(), admissions);
         Self {
             base,

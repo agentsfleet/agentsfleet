@@ -107,7 +107,7 @@ impl Directory {
         workspace: &Uuid7,
         fleet: &Uuid7,
         change: MemoryAccessRequest,
-        streams: Option<&afd_dragonfly::FleetStreams>,
+        streams: Option<&afd_bus::Handle>,
     ) -> Result<Option<MemoryAccess>> {
         let mut tx = sqlx::Transaction::begin(self.database.acquire().await?, None)
             .await

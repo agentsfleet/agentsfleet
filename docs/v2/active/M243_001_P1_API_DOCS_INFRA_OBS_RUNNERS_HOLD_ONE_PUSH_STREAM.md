@@ -563,3 +563,23 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
   2. Prepare a concrete private Fly listener and certificate-delivery proposal before seeking approval for deployment edits. Document external runner prerequisites without adding hosted public ingress.
   3. Reverify the complete Files Changed inventory after the data-layer follow-up lands. New SQL must use its native UUIDv7 bindings and table-file layout.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
+
+### Morning handoff and provisioning
+
+Indy said:
+
+> so then keep the PR ready for merge and in your report tell me the instructions to run the additional needs for a private listener to be generated so indy can wake up and update the 1Password
+
+Prepare the pull request with green checks and resolved review feedback, then hold merge for the morning provisioning handoff.
+The report includes certificate-generation commands, exact vault fields, protected runtime files, environment settings, reuse choices and verification steps.
+Do not publish certificate private keys or resolved secrets in the report.
+
+### Approved post-quantum preference
+
+Indy said:
+
+> If it supports then i prefer to use, since it helps when the runners are public or what ever outside as they connect.
+
+Use TLS 1.3 and prefer `X25519MLKEM768` for the native runner transports.
+Verify actual negotiation in transport tests and expose its finite classification in connection observations.
+Certificate signatures remain conventional unless a separate supported authentication change is approved.

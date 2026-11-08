@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use afd_dragonfly::Message;
+use afd_bus::{Message, Subject};
 use afd_sse::Frame;
 use futures_util::StreamExt as _;
 use tokio::sync::Notify;
@@ -23,7 +23,7 @@ fn frame(payload: String) -> Frame {
     Frame::activity(
         1,
         Arc::new(Message {
-            channel: "bench".to_owned(),
+            subject: Subject::Wake(0),
             payload: Arc::new(payload),
         }),
     )

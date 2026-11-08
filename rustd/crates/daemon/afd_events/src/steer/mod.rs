@@ -256,7 +256,19 @@ impl Steer {
     /// Puts `frame` on `fleet`'s live tail, best-effort: a queue that will
     /// not take it is logged by the publisher and changes no answer.
     pub async fn announce(&self, fleet: &str, frame: &TailFrame<'_>) {
-        self.admissions.streams().publish_frame(fleet, frame).await;
+        let Ok(fleet) = Uuid7::parse(fleet) else {
+            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            tracing::warn!(
+                event = "tail_frame_dropped",
+                error_code,
+                reason = "invalid_fleet_identifier"
+            );
+            return;
+        };
+        self.admissions
+            .streams()
+            .publish_frame(&afd_bus::Subject::FleetTail(fleet), frame)
+            .await;
     }
 
     /// A capacity refusal, unless the key is a repeat: then its event.

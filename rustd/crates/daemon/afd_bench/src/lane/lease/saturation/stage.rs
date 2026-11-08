@@ -138,7 +138,7 @@ pub(super) async fn stage(
         let fleet = seed::identities(INDEX_BASE + TENANTS + index)?;
         seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
         fund(stores, &fleet).await?;
-        seed::enqueue(&stores.database, &stores.queue, &fleet, EventType::Chat).await?;
+        seed::enqueue(&stores.database, &stores.bus, &fleet, EventType::Chat).await?;
         ledger.created(ROWS_PER_FLEET);
         staged.fleets.push(fleet);
     }
