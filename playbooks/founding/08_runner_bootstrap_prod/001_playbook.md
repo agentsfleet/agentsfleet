@@ -1,111 +1,81 @@
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Bootstrap the Production Runners
 
-**Owner:** Human
-**Executors:** Human prepares external state; Agent prepares hosts; Pipeline
-deploys and verifies runners in step 09
-**Prerequisite:** step 07 completed; `RELEASE_TAG` is available
+## What this does
 
-## Execution and verification
+The Human prepares hosts and provider state, and the Agent prepares the hosts.
+The Pipeline deploys the runners in step 09; nothing deploys from a workstation.
 
-| Order | Executor | Action | Verifier | Required evidence |
-|---|---|---|---|---|
-| 1 | Human | Reinstall every host, join Tailscale, and record inventory. | Agent | Every tagged host is online and inventory is valid JSON. |
-| 2 | Agent | Prepare packages and directories on every host after Human approval. | `prepare.sh` | Every host preparation exits zero without deploying a runner. |
-| 3 | Human and Agent | Bootstrap the administrator; register and synchronize providers. | Provider playbooks | Every provider's post-sync check passes. |
-| 4 | Agent | Restart the control plane with runner rollout disabled. | Pipeline | Green release rerun URL. |
-| 5 | Human | Add each runner and store every one-time token. | Agent | Required vault fields exist without printing values. |
-| 6 | Agent | Enable production runner rollout. | GitHub variable query | `PROD_RUNNER_READY=true`. |
+## Before you begin
 
-## 1. Human and Agent: prepare every host
+[Step 07](../07_deploy_prod/001_playbook.md) is green, and `PROD_RELEASE_RUN_ID` is recorded.
 
-For each production host, use the provider console to install Debian 13, create
-the deploy user, and join Tailscale:
+## Steps
+
+### 1. Human and Agent prepare every host
+
+For each host, use the provider console to install Debian 13 and create the deploy user.
+Then join the tailnet:
 
 ```bash
 sudo tailscale up \
   --advertise-tags=tag:worker \
-  --hostname "<tailscale-hostname>" \
+  --hostname "<TAILSCALE_HOSTNAME>" \
   --ssh
 ```
 
-Store `tailscale-hostname` and `deploy-user` under that host's production vault
-item. Do not create `runner-token` yet.
-
-Set the repository variable to the exact host inventory:
-
-```json
-[
-  {
-    "vault_key": "runner-1"
-  },
-  {
-    "vault_key": "runner-2"
-  }
-]
-```
+Store `tailscale-hostname` and `deploy-user` in that host's `ZMB_CD_PROD` item. Create no `runner-token` yet.
+Set `PROD_RUNNER_HOSTS` to the inventory; the first entry becomes the canary:
 
 ```bash
-gh variable set PROD_RUNNER_HOSTS \
-  --body "$PROD_RUNNER_HOSTS" \
-  --repo agentsfleet/agentsfleet
+PROD_RUNNER_HOSTS='[{"vault_key":"runner-1"},{"vault_key":"runner-2"}]'
+gh variable set PROD_RUNNER_HOSTS --body "$PROD_RUNNER_HOSTS" --repo agentsfleet/agentsfleet
 ```
 
-After the Human approves changes to the freshly reinstalled hosts, the Agent
-runs:
+After the Human approves changes to the fresh hosts, the Agent runs:
 
 ```bash
-ALLOW_VAULT_READS=1 \
-ALLOW_RUNNER_HOST_PREPARE=1 \
+ALLOW_VAULT_READS=1 ALLOW_RUNNER_HOST_PREPARE=1 \
   ./playbooks/founding/08_runner_bootstrap_prod/prepare.sh
 ```
 
-Preparation checks that each host's cgroup v2 exposes Central Processing Unit
-(CPU), block input/output (I/O), memory, and process controllers, the four the
-runner refuses to start without, before changing it. The deployment
-workflow then verifies that systemd delegated those controllers to each started
-runner service. Preparation does not install a runner binary, write a token, or
-start a service.
+Each host prints `PASS: <VAULT_KEY> host preparation completed`.
+Preparation matches [the development step](../05_runner_bootstrap_dev/001_playbook.md#2-agent-prepares-the-host): cgroup check, packages, IPv4 forwarding, directories, no binary or token.
 
-## 2. Human and Agent: bootstrap the administrator and providers
+### 2. Human and Agent prime the database
 
-The Agent follows `playbooks/operations/admin_bootstrap/001_playbook.md` with
-`ENV=prod`.
+1. Follow [`admin_bootstrap`](../../operations/admin_bootstrap/001_playbook.md) with `ENV=prod`.
+2. Work through [Prime a clean database](../../README.md#prime-a-clean-database) steps 3 to 7, with vault names from the production environment. Read each model catalogue diff before approving its write; those rows are billing rates.
+3. Leave runner-dependent live acceptance for step 09.
+4. Restart `agentsfleetd` by rerunning the release while `PROD_RUNNER_READY` is `false`:
 
-Follow the [clean-database priming index](../../README.md#prime-a-clean-database).
-It includes catalogue prices and inference settings, the platform model default, approval signing, all five provider applications, QStash, and SMTP.
-Set vault names from the target deployment environment before running its commands.
+   ```bash
+   gh run rerun "$PROD_RELEASE_RUN_ID" --repo agentsfleet/agentsfleet
+   gh run watch "$PROD_RELEASE_RUN_ID" --repo agentsfleet/agentsfleet --exit-status
+   ```
 
-Complete each registration and sync section. Leave runner-dependent live
-acceptance open for step 09. Restart `agentsfleetd` by rerunning the original
-release workflow while `PROD_RUNNER_READY=false`:
+### 3. Human creates the runner tokens
 
-```bash
-gh run rerun "$PROD_RELEASE_RUN_ID" \
-  --repo agentsfleet/agentsfleet
-gh run watch "$PROD_RELEASE_RUN_ID" \
-  --repo agentsfleet/agentsfleet \
-  --exit-status
-```
+1. Open `https://app.agentsfleet.net` → **Avatar → Platform → Runners** and add one runner per inventory entry.
+2. Set **Host identifier** to that host's `tailscale-hostname` and select **Landlock** under **Isolation**.
+3. Store each once-revealed `agt_r` token in the matching item's `runner-token` field.
 
-## 3. Human: create the real runner tokens
+Never store a placeholder token. If a value is lost, revoke that runner and add it again.
 
-Open `https://app.agentsfleet.net` at **Avatar → Platform → Runners**, add one runner per inventory entry, and
-store each once-revealed `agt_r` token in the matching production vault item.
-The host identifier must equal `tailscale-hostname`; select **Landlock** under **Isolation**.
-
-No placeholder token is stored. If a one-time value is lost, revoke that runner
-and create it again.
-
-## 4. Agent: enable the Pipeline rollout
+### 4. Agent enables the rollout
 
 ```bash
-gh variable set PROD_RUNNER_READY \
-  --body "true" \
-  --repo agentsfleet/agentsfleet
+gh variable set PROD_RUNNER_READY --body true --repo agentsfleet/agentsfleet
 ```
 
-Step 09 reruns the release. The Pipeline deploys the checked release artifact to
-the canary, verifies it, waits for Human approval, and then deploys the remaining
-inventory. There is no separate workstation deployment.
+## Verify it works
 
-Continue to `playbooks/founding/09_verify_prod/001_playbook.md`.
+Every host preparation passed, the inventory is valid JSON and `PROD_RUNNER_READY` is `true`.
+Continue to [step 09](../09_verify_prod/001_playbook.md).
