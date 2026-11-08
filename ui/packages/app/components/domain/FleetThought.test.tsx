@@ -43,7 +43,8 @@ describe("FleetThought", () => {
     // Pin test: elapsed since the row's start stamp, at tenths.
     expect(chip().textContent).toContain("4.0s");
     expect(chip().textContent).toContain("Checking the header");
-    expect(chip().querySelector("[data-signal-spinner]")).toBeTruthy();
+    expect(chip().querySelector('[data-chat-loading="true"]')).toBeTruthy();
+    expect(chip().querySelector("[data-signal-spinner]")).toBeNull();
     // The chip sits in the transcript's live log: its name never ticks.
     expect(screen.getByRole("button", { name: THOUGHT_LIVE_LABEL })).toBe(chip());
     act(() => {

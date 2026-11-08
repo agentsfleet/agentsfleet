@@ -23,11 +23,12 @@ export function WorkOutputs({details}: {details: TaskDetails}) {
     if (!detail || target?.kind !== "existing_pr") return [];
     return [[target.url, {target, title: detail.title, stale: resource.kind !== "ready"}] as const];
   })).values()];
+  if (!outputs.length) return null;
   return <WorkSection title="Outputs">
-    {outputs.length ? <ul className="space-y-sm">{outputs.map(({target, title, stale}) => <li key={target.url}>
+    {<ul className="space-y-sm">{outputs.map(({target, title, stale}) => <li key={target.url}>
       <a className="flex items-start gap-sm break-words text-eyebrow hover:underline" href={target.url} target="_blank" rel="noopener noreferrer"><GitPullRequest size={12} className="mt-xs shrink-0 text-info" aria-hidden="true" /><span>{title} <span className="text-muted-foreground">#{target.number}</span></span></a>
       <p className="text-eyebrow text-muted-foreground">{target.repository}{stale ? " · last confirmed" : ""}</p>
-    </li>)}</ul> : <p className="text-eyebrow text-muted-foreground">No saved outputs.</p>}
+    </li>)}</ul>}
   </WorkSection>;
 }
 
@@ -46,10 +47,11 @@ export function recordedChanges(events: readonly FleetEvent[]): {path: string; r
 
 export function WorkChanges({events}: {events: readonly FleetEvent[]}) {
   const changes = recordedChanges(events);
+  if (!changes.length) return null;
   return <WorkSection title="Changes">
-    {changes.length ? <details><summary className="cursor-pointer text-eyebrow">{changes.length} recorded {changes.length === 1 ? "file" : "files"}</summary>
+    {<details><summary className="cursor-pointer text-eyebrow">{changes.length} recorded {changes.length === 1 ? "file" : "files"}</summary>
       <ul className="mt-sm space-y-sm">{changes.map(change => <li key={change.path} className="break-all text-eyebrow"><span className="flex items-start gap-sm"><FilePenLine size={12} className={`mt-xs shrink-0 ${change.running ? "text-info" : "text-success"}`} aria-hidden="true" />{change.path}</span><span className="block text-muted-foreground">{change.running ? "Write in progress" : "Local write recorded"}</span></li>)}</ul>
-    </details> : <p className="text-eyebrow text-muted-foreground">No recorded file changes.</p>}
+    </details>}
   </WorkSection>;
 }
 
@@ -57,7 +59,7 @@ export function WorkSources({sources}: {sources?: FleetSources}) {
   return <WorkSection title="Sources">
     {sources?.repositories.length ? <>
       <ul className="space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-eyebrow"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-sm hover:underline"><FolderGit2 size={12} className="shrink-0 text-evidence" aria-hidden="true" />{repository}</a></li>)}</ul>
-      <details className="text-eyebrow text-muted-foreground"><summary className="cursor-pointer">Saved permissions</summary>
+      <details className="text-eyebrow text-muted-foreground"><summary className="cursor-pointer">Repository access</summary>
         <p className="mt-sm flex items-start gap-xs"><ShieldCheck size={12} className="shrink-0 text-evidence" aria-hidden="true" /><span>Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></p>
       </details>
     </> : <p className="text-eyebrow text-muted-foreground">No saved repository scope.</p>}

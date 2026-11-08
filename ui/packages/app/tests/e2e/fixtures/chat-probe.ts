@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { test as base } from "@playwright/test";
 import { applicationCss } from "./fleet-output-browser-assets";
+import { summary, detail } from "@/tests/helpers/task-reads";
 import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
 
 export const test = base.extend<object, {chatProbe: string}>({
@@ -15,6 +16,10 @@ export const test = base.extend<object, {chatProbe: string}>({
     const server = http.createServer((request, response) => {
       if (request.url === "/probe.js") {
         response.writeHead(200, {"content-type": "text/javascript"}); response.end(built.stdout);
+      } else if (request.url?.includes("/tasks")) {
+        const task = {...summary(undefined, "running"), title: "Validate the Linkwarden repair"};
+        response.writeHead(200, {"content-type": "application/json"});
+        response.end(JSON.stringify(request.url.includes("?limit=") ? {items: [task], next_cursor: null} : detail(task)));
       } else if (request.url?.startsWith("/event-details?")) {
         const query = new URL(request.url, "http://localhost").searchParams;
         const owned = query.get("workspace") === SCHEDULE_EVENT.workspace_id && query.get("fleet") === SCHEDULE_EVENT.fleet_id;

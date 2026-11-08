@@ -27,7 +27,7 @@ type Props = {
 /** Both chat purposes use the same input, focus lifecycle and height limits. */
 export function ChatComposerFrame({id, label, placeholder, inputRef, disabled, focusKey, children, toolbar, actions}: Props) {
   useComposerFocus(inputRef, disabled, focusKey);
-  return <DashboardPanel asChild padding="none" className="min-h-0 shrink-0 rounded-xl bg-card px-3.5 py-lg focus-within:border-border-strong">
+  return <DashboardPanel asChild padding="none" className="min-h-0 shrink-0 rounded-2xl bg-card px-3.5 py-lg transition-colors duration-150 focus-within:border-border-strong motion-reduce:transition-none">
     <ComposerPrimitive.Root id={id} className="flex min-h-0 flex-col gap-sm" aria-label={label}>
       {children}
       <div className="flex min-h-chat-input flex-row items-stretch">
@@ -36,7 +36,7 @@ export function ChatComposerFrame({id, label, placeholder, inputRef, disabled, f
             className="field-sizing-content min-h-chat-input max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto p-0 pointer-coarse:py-md" />
         </ComposerPrimitive.Input>
       </div>
-      <div className="flex min-w-0 items-center justify-between gap-sm">{toolbar}{actions}</div>
+      <div className="flex min-w-0 items-center justify-end gap-sm"><div className="flex min-w-0 items-center gap-sm">{toolbar}{actions}</div></div>
     </ComposerPrimitive.Root>
   </DashboardPanel>;
 }

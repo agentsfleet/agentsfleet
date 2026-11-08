@@ -90,3 +90,27 @@ async fn test_a_repeated_claim_answers_the_same_messages() -> Checked {
     held.fixtures.cleanup().await;
     Ok(())
 }
+
+/// Internal setup keys are not admission identifiers, so they cannot own folds.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_an_internal_setup_event_is_not_an_admission_head() -> Checked {
+    let held = held().await;
+    let workspace = workspace_of(&held).await?;
+    let before = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    assert!(before.run.live_run.is_some());
+    let changed = sqlx::query(
+        "UPDATE fleet.events SET event_id=$2 WHERE id=(SELECT fleet_event_id FROM runner.leases WHERE id=$1::uuid)",
+    )
+    .bind(held.lease_key.as_str())
+    .bind("setup_ready:1")
+    .execute(&mut *held.fixtures.database.acquire().await?)
+    .await?;
+    assert_eq!(changed.rows_affected(), 1);
+    assert_eq!(claim_as_holder(&held, 0).await?, Vec::new());
+    let after = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    assert!(after.run.live_run.is_none());
+    assert!(after.run.earlier_waiting);
+    held.fixtures.cleanup().await;
+    Ok(())
+}
