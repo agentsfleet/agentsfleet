@@ -155,8 +155,8 @@ fn stream_products() -> [(&'static str, usize); 8] {
             fleet_labels::StreamStage::ALL.len(),
         ),
         (
-            fleet::FLEET_READY_WAKE_HINTS_TOTAL.wire_name(),
-            fleet_labels::ReadyHint::ALL.len(),
+            fleet::FLEET_READY_WAKE_QUEUE_EVENTS_TOTAL.wire_name(),
+            fleet_labels::WakeQueueOutcome::ALL.len(),
         ),
         (
             fleet::RUNNER_STREAM_NATIVE_RTT_SECONDS.wire_name(),
@@ -250,7 +250,7 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::fleet::StreamOutcome),
         set!(crate::metrics::label::fleet::StreamStage),
         set!(crate::metrics::label::fleet::StreamFallback),
-        set!(crate::metrics::label::fleet::ReadyHint),
+        set!(crate::metrics::label::fleet::WakeQueueOutcome),
         set!(crate::metrics::label::task::TaskOperation),
         set!(crate::metrics::label::task::TaskOutcome),
         set!(crate::metrics::label::database::PoolRole),

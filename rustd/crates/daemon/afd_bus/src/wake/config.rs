@@ -6,15 +6,15 @@ use garde::{Unvalidated, Validate};
 use crate::Result;
 
 /// Per-daemon capacity; independent of runner concurrency and durable backlog.
-pub const HINT_CAPACITY_ENV: &str = "RUNNER_STREAM_HINT_CAPACITY";
+pub const ENV_WAKE_QUEUE_CAPACITY: &str = "AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY";
 /// Default scheduling look-ahead, rather than an admission or runner limit.
-pub const DEFAULT_HINT_CAPACITY: usize = 64;
+pub const DEFAULT_WAKE_QUEUE_CAPACITY: usize = 64;
 /// Keeps a mistaken deployment setting from allocating an unbounded queue.
-pub const MAX_HINT_CAPACITY: usize = 65_536;
+pub const MAX_WAKE_QUEUE_CAPACITY: usize = 65_536;
 
 #[derive(Validate)]
 struct Capacity {
-    #[garde(range(min = 1, max = MAX_HINT_CAPACITY))]
+    #[garde(range(min = 1, max = MAX_WAKE_QUEUE_CAPACITY))]
     value: usize,
 }
 
@@ -23,9 +23,9 @@ pub(super) fn prove(value: usize) -> Result<usize> {
 }
 
 pub(super) fn resolve(env: &(impl EnvSource + ?Sized)) -> Result<usize> {
-    let value = match env.get(HINT_CAPACITY_ENV) {
+    let value = match env.get(ENV_WAKE_QUEUE_CAPACITY) {
         Some(raw) => raw.parse()?,
-        None => DEFAULT_HINT_CAPACITY,
+        None => DEFAULT_WAKE_QUEUE_CAPACITY,
     };
     prove(value)
 }

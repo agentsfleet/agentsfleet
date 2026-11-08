@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use af_observability::{
     metrics::label::fleet::{
-        ReadyHint, StreamFallback, StreamOutcome, StreamStage, StreamTransport,
+        StreamFallback, StreamOutcome, StreamStage, StreamTransport, WakeQueueOutcome,
     },
     producers::fleet::runner::stream,
     test_util::Capture,
@@ -46,11 +46,11 @@ fn every_stream_measurement_exports_under_its_declared_labels() {
             1
         );
     }
-    for outcome in ReadyHint::ALL {
-        stream::hint(*outcome);
+    for outcome in WakeQueueOutcome::ALL {
+        stream::wake_queue(*outcome);
         assert_eq!(
             captured.sum(
-                "agentsfleet_fleet_ready_wake_hints_total",
+                "agentsfleet_fleet_ready_wake_queue_events_total",
                 &[("outcome", outcome.as_str())]
             ),
             1

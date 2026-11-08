@@ -85,8 +85,8 @@ closed_set! {
 }
 
 closed_set! {
-    /// A hint is a bounded scheduling reminder; durable work stays in Postgres.
-    ReadyHint {
+    /// A wake queue stores bounded scheduling notifications; durable work stays in Postgres.
+    WakeQueueOutcome {
         /// A new fleet entered the queue.
         Added => "added",
         /// The fleet already had a queued reminder.

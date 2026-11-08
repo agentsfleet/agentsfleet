@@ -1,6 +1,6 @@
 use af_core::id::Uuid7;
 
-use super::{DEFAULT_HINT_CAPACITY as HINTS, Wake};
+use super::{DEFAULT_WAKE_QUEUE_CAPACITY as CAPACITY, Wake};
 
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -14,12 +14,12 @@ fn fleet(number: usize) -> TestResult<Uuid7> {
 fn configured_capacity_is_applied_and_invalid_settings_fail() -> TestResult {
     use af_core::env::MapEnv;
     for raw in ["0", "65537", "-1", "not-a-number"] {
-        let env = MapEnv::from_pairs([(super::HINT_CAPACITY_ENV, raw)]);
+        let env = MapEnv::from_pairs([(super::ENV_WAKE_QUEUE_CAPACITY, raw)]);
         let Err(_) = Wake::from_env(&env) else {
             return Err("invalid capacity accepted".into());
         };
     }
-    let env = MapEnv::from_pairs([(super::HINT_CAPACITY_ENV, "2")]);
+    let env = MapEnv::from_pairs([(super::ENV_WAKE_QUEUE_CAPACITY, "2")]);
     let wake = Wake::from_env(&env)?;
     for id in 0..3 {
         wake.ring(fleet(id)?);
@@ -34,7 +34,8 @@ fn configured_capacity_is_applied_and_invalid_settings_fail() -> TestResult {
 }
 
 #[test]
-fn a_thousand_fleet_hints_remain_bounded_and_consumed_fleets_can_ring_again() -> TestResult {
+fn a_thousand_fleet_notifications_remain_bounded_and_consumed_fleets_can_ring_again() -> TestResult
+{
     let wake = Wake::with_capacity(64)?;
     for id in 0..1000 {
         wake.ring(fleet(id)?);
@@ -51,15 +52,15 @@ fn a_thousand_fleet_hints_remain_bounded_and_consumed_fleets_can_ring_again() ->
 }
 
 #[test]
-fn a_poisoned_hint_buffer_is_reset_before_reuse() -> TestResult {
+fn a_poisoned_wake_queue_is_reset_before_reuse() -> TestResult {
     let wake = Wake::with_capacity(2)?;
     wake.ring(fleet(1)?);
     let poisoned = wake.clone();
     let worker = std::thread::spawn(move || {
-        let Ok(_held) = poisoned.hints.lock() else {
+        let Ok(_held) = poisoned.queue.lock() else {
             return;
         };
-        std::panic::resume_unwind(Box::new("hint worker failure fixture"));
+        std::panic::resume_unwind(Box::new("queue worker failure fixture"));
     });
     let Err(_) = worker.join() else {
         return Err("poison fixture did not fire".into());
@@ -87,7 +88,7 @@ impl std::task::Wake for Observer {
 }
 
 #[tokio::test]
-async fn a_notified_session_can_already_consume_the_published_hint()
+async fn a_notified_session_can_already_consume_the_published_fleet()
 -> crate::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let wake = Wake::default();
     let mut generations = wake.generations();
@@ -106,28 +107,28 @@ async fn a_notified_session_can_already_consume_the_published_hint()
     wake.ring(Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?);
     assert!(
         observed.queued.load(std::sync::atomic::Ordering::SeqCst),
-        "notification must follow insertion, or the session misses the hint"
+        "notification must follow insertion, or the session misses the notification"
     );
     Ok(())
 }
 
 #[test]
-fn bounded_hints_keep_recent_fleets_and_a_duplicate_still_advances_the_generation()
+fn bounded_queue_keeps_recent_fleets_and_a_duplicate_still_advances_the_generation()
 -> crate::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let wake = Wake::default();
     let observed = wake.generations();
-    for number in 0..=HINTS {
+    for number in 0..=CAPACITY {
         let fleet = Uuid7::parse(&format!("0195b4ba-8d3a-7000-8000-{number:012x}"))?;
         wake.ring(fleet);
     }
-    let newest = Uuid7::parse(&format!("0195b4ba-8d3a-7000-8000-{HINTS:012x}"))?;
+    let newest = Uuid7::parse(&format!("0195b4ba-8d3a-7000-8000-{CAPACITY:012x}"))?;
     wake.ring(newest.clone());
     assert_eq!(*observed.borrow(), 66);
     let mut remaining = Vec::new();
     while let Some(fleet) = wake.take() {
         remaining.push(fleet);
     }
-    assert_eq!(remaining.len(), HINTS);
+    assert_eq!(remaining.len(), CAPACITY);
     assert_eq!(
         remaining.first().cloned(),
         Some(Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?)
