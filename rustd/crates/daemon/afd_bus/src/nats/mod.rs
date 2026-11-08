@@ -45,7 +45,7 @@ pub async fn connect(config: &Config) -> Result<Handle> {
     let tuning = config.tuning();
     let signals = Arc::new(Signals::new(tuning));
     let observer = Arc::clone(&signals);
-    let client = ConnectOptions::new()
+    let client = options_for(config.credentials.as_ref())
         .connection_timeout(tuning.connect_timeout())
         .subscription_capacity(tuning.subscription_capacity)
         .event_callback(move |event| {
@@ -57,6 +57,13 @@ pub async fn connect(config: &Config) -> Result<Handle> {
     preflight::check(&client.server_info())?;
     let adapter = Adapter::start(client, config.prefix.clone(), tuning, signals).await?;
     Ok(Handle::new(adapter))
+}
+
+/// The client authenticates only from options, never from a URL's userinfo.
+fn options_for(credentials: Option<&(String, String)>) -> ConnectOptions {
+    credentials.map_or_else(ConnectOptions::new, |(user, pass)| {
+        ConnectOptions::with_user_and_password(user.clone(), pass.clone())
+    })
 }
 
 #[derive(Debug)]
@@ -132,8 +139,12 @@ impl Bus for Adapter {
         let live = self.live.read().await;
         let live = live.as_ref().ok_or(ErrorKind::Closed)?;
         let physical = self.physical(subject);
-        let payload = Bytes::copy_from_slice(payload.as_bytes());
-        let outcome = send(&live.client, physical.clone(), payload, self.deadline).await;
+        let outcome = if live.signals.blocked() {
+            Err(ErrorKind::NatsDisconnected.into())
+        } else {
+            let payload = Bytes::copy_from_slice(payload.as_bytes());
+            send(&live.client, physical.clone(), payload, self.deadline).await
+        };
         live.signals
             .record(&physical, outcome.is_ok(), Instant::now());
         outcome

@@ -214,6 +214,59 @@ services:
     # deploy/fly/agentsfleetd-{dev,prod}/fly.toml's `[checks.readiness]` polls
     # /readyz. Nothing here depends on this service being healthy.
 
+  # Three core NATS nodes routed as one cluster: no JetStream, no volume, so a
+  # restarted node rejoins empty. `--no_advertise` keeps the nodes' bridge
+  # addresses away from clients, which dial their seed list from the host.
+  # The fixed local password matches the Dragonfly service's; nothing deployed
+  # uses it. The alpine build of the pinned release carries wget for the check.
+  nats-1: &nats
+    image: nats:2.15.2-alpine
+    command:
+      - --name=nats-1
+      - --port=4222
+      - --http_port=8222
+      - --user=agentsfleet
+      - --pass=agentsfleet
+      - --cluster_name=agentsfleet
+      - --cluster=nats://0.0.0.0:6222
+      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --no_advertise=true
+    ports:
+      - "${AGENTSFLEET_NATS_BASE_PORT:-4222}:4222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  nats-2:
+    <<: *nats
+    command:
+      - --name=nats-2
+      - --port=4222
+      - --http_port=8222
+      - --user=agentsfleet
+      - --pass=agentsfleet
+      - --cluster_name=agentsfleet
+      - --cluster=nats://0.0.0.0:6222
+      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --no_advertise=true
+    ports:
+      - "${AGENTSFLEET_NATS_PORT_2:-4223}:4222"
+  nats-3:
+    <<: *nats
+    command:
+      - --name=nats-3
+      - --port=4222
+      - --http_port=8222
+      - --user=agentsfleet
+      - --pass=agentsfleet
+      - --cluster_name=agentsfleet
+      - --cluster=nats://0.0.0.0:6222
+      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --no_advertise=true
+    ports:
+      - "${AGENTSFLEET_NATS_PORT_3:-4224}:4222"
+
 volumes:
   postgres-data:
   dragonfly-data:

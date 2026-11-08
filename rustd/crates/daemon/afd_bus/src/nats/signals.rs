@@ -49,6 +49,9 @@ impl Cause {
 pub(super) struct Signals {
     deadline: Duration,
     down: AtomicBool,
+    /// Set from a disconnect until the reconnect's markers are paid, so no
+    /// frame reaches a subscriber ahead of the gap it is owed.
+    blocked: AtomicBool,
     reconnected: AtomicBool,
     slow: AtomicBool,
     wake: Notify,
@@ -60,6 +63,7 @@ impl Signals {
         Self {
             deadline: tuning.publish_deadline(),
             down: AtomicBool::new(false),
+            blocked: AtomicBool::new(false),
             reconnected: AtomicBool::new(false),
             slow: AtomicBool::new(false),
             wake: Notify::new(),
@@ -76,6 +80,7 @@ impl Signals {
     pub(super) fn observe(&self, event: &Event, now: Instant) {
         match event {
             Event::Disconnected => {
+                self.blocked.store(true, Ordering::Release);
                 self.down.store(true, Ordering::Release);
                 self.debt().disconnected(now);
             }
@@ -92,6 +97,11 @@ impl Signals {
             }
             _ => {}
         }
+    }
+
+    /// Whether a publish must fail now rather than queue behind an outage.
+    pub(super) fn blocked(&self) -> bool {
+        self.blocked.load(Ordering::Acquire)
     }
 
     /// Remember a publish, or owe its subject a marker when it failed.
@@ -182,6 +192,7 @@ pub(super) async fn watch(
                     gap(&channels, cause);
                     if cause == Cause::Reconnect {
                         pay(&client, &signals, &everyone_subject).await;
+                        signals.blocked.store(false, Ordering::Release);
                     }
                 }
             }

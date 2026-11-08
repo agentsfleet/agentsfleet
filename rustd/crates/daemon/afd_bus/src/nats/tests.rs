@@ -3,8 +3,8 @@ use std::{sync::Arc, time::Instant};
 use af_core::id::Uuid7;
 use async_nats::Event;
 
-use super::{Cause, Tuning, hub::Channels, signals, spelling};
-use crate::{Received, Subject};
+use super::{Cause, Tuning, hub::Channels, options_for, signals, spelling};
+use crate::{Error, Received, Subject, error::ErrorKind};
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
@@ -27,6 +27,22 @@ fn each_subject_has_its_documented_spelling() -> TestResult {
         format!("af.runner.{ID}.cmd")
     );
     Ok(())
+}
+
+#[test]
+fn connect_options_never_print_the_password() {
+    let pair = ("agentsfleet".to_owned(), "secret".to_owned());
+    for options in [options_for(Some(&pair)), options_for(None)] {
+        assert!(!format!("{options:?}").contains("secret"));
+    }
+}
+
+#[test]
+fn a_publish_during_an_outage_is_a_backend_failure() {
+    let error = Error::from(ErrorKind::NatsDisconnected);
+    assert_eq!(error.reason(), "backend");
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
+    assert!(error.to_string().contains("gap"), "{error}");
 }
 
 #[test]

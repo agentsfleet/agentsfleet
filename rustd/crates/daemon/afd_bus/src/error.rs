@@ -41,6 +41,8 @@ pub(crate) enum ErrorKind {
         #[source]
         source: std::io::Error,
     },
+    #[error("Every NATS_URL seed must carry the same user and password.")]
+    NatsCredentials,
     #[error("AGENTSFLEET_DEV_NAMESPACE must be at most 64 letters, digits, '-' or '_'.")]
     NatsNamespace {
         #[source]
@@ -61,6 +63,8 @@ pub(crate) enum ErrorKind {
         /// The server-reported property that failed the boot check.
         field: &'static str,
     },
+    #[error("The NATS connection is down; the signal is owed a gap marker.")]
+    NatsDisconnected,
     #[error("The NATS client could not publish the signal.")]
     NatsPublish {
         #[source]
@@ -109,6 +113,7 @@ impl Error {
             ErrorKind::Dragonfly { .. }
             | ErrorKind::NatsConnect { .. }
             | ErrorKind::NatsUnsuitable { .. }
+            | ErrorKind::NatsDisconnected
             | ErrorKind::NatsPublish { .. }
             | ErrorKind::NatsSubscribe { .. }
             | ErrorKind::NatsFlush { .. }
@@ -120,6 +125,7 @@ impl Error {
             | ErrorKind::Capacity { .. }
             | ErrorKind::NatsUrlUnset
             | ErrorKind::NatsUrl { .. }
+            | ErrorKind::NatsCredentials
             | ErrorKind::NatsNamespace { .. }
             | ErrorKind::NatsTuning { .. } => "configuration",
         }
@@ -132,6 +138,7 @@ impl Error {
             ErrorKind::Dragonfly { source } => source.code(),
             ErrorKind::NatsUrlUnset
             | ErrorKind::NatsUrl { .. }
+            | ErrorKind::NatsCredentials
             | ErrorKind::NatsNamespace { .. }
             | ErrorKind::NatsTuning { .. } => error_code::STARTUP_ENV_CHECK,
             ErrorKind::NatsConnect { .. } | ErrorKind::NatsUnsuitable { .. } => {
@@ -142,6 +149,7 @@ impl Error {
             | ErrorKind::Timeout { .. }
             | ErrorKind::Bounds { .. }
             | ErrorKind::Capacity { .. }
+            | ErrorKind::NatsDisconnected
             | ErrorKind::NatsPublish { .. }
             | ErrorKind::NatsSubscribe { .. }
             | ErrorKind::NatsFlush { .. }

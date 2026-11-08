@@ -180,6 +180,28 @@ async fn an_ended_pump_closes_its_readers_and_a_new_reader_reopens() -> TestResu
     Ok(())
 }
 
+#[test]
+fn a_stale_reader_leaves_the_reopened_channel_alone() -> TestResult {
+    let channels = Arc::new(Channels::new(8));
+    let first = channels.open(PHYSICAL);
+    let (_, generation) = first.pump.ok_or("opened")?;
+    channels.ended(PHYSICAL, generation);
+    let second = channels.open(PHYSICAL);
+    assert!(
+        second.pump.is_some(),
+        "an ended subject reopens with a new pump"
+    );
+    drop(first.reader);
+    assert_eq!(
+        channels.readers(PHYSICAL),
+        1,
+        "the old reader's release is ignored"
+    );
+    drop(second.reader);
+    assert_eq!(channels.readers(PHYSICAL), 0);
+    Ok(())
+}
+
 #[tokio::test]
 async fn close_ends_every_channel() -> TestResult {
     let channels = Arc::new(Channels::new(8));
