@@ -329,11 +329,12 @@ a sign-up method that admits unverified addresses is ever enabled.
 
 **Idempotent on `oidc_subject`.** An identity provider retries, and a second
 delivery for a subject already opened must answer exactly as the first did. The
-handler reads before it writes and reports the replay. That pre-read is an
-optimisation, not the arbiter: two concurrent deliveries can both pass it, so the
-second trips `uq_users_oidc_subject` (`schema/20261108120400_identity_users.sql`), re-reads what the
-winner committed, and answers as a replay. An index holds under concurrency and a
-read never can.
+handler reads before it writes and reports the replay.
+
+That pre-read is an optimisation, not the arbiter, because two concurrent
+deliveries can both pass it. The second trips `uq_users_oidc_subject`
+(`schema/20261108120400_identity_users.sql`), re-reads what the winner committed,
+and answers as a replay. An index holds under concurrency and a read never can.
 
 **The writeback cannot fail the delivery**. The tenant row is already committed. Refusing the delivery would reject an existing account and invite a retry that can only duplicate work.
 

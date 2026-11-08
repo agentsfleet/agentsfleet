@@ -6,9 +6,6 @@ use sqlx::Connection as _;
 
 use super::{Fixtures, prepared, relation_scans, run};
 
-/// A dense existence check may choose a scan, but must stay within a few pages
-/// as unrelated history doubles. This also catches the former bitmap build.
-
 // Mix resolved gates, expired matching gates and live gates for other events.
 const HISTORY: &str = "INSERT INTO fleet.approval_gates \
     (id,fleet_id,workspace_id,event_id,action_id,tool_name,action_name,gate_type, \
