@@ -14,7 +14,7 @@ import { getModelLibrary } from "./model_library";
 import { modelsForProvider, providerLabel, uniqueModelIds, uniqueProviders, type ModelLibrary } from "./model-library-types";
 
 // Mirrors the GET /v1/models wire shape from
-// rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs.
+// rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/mod.rs.
 const LIBRARY_OK: ModelLibrary = {
   version: "2026-04-29", total: null, next_cursor: null,
   models: [
@@ -47,7 +47,7 @@ describe("getModelLibrary", () => {
     expect(requestMock).toHaveBeenCalledTimes(1);
     const [path, init, token] = requestMock.mock.calls[0]!;
     // pin test: the literal is the wire path, shared verbatim with
-    // `TenantRoute::ModelLibrary` in rustd/crates/afd_http/src/route/tenant.rs.
+    // `TenantRoute::ModelLibrary` in rustd/crates/daemon/afd_http/src/route/tenant.rs.
     expect(path).toBe("/v1/models");
     expect((init as { method: string }).method).toBe("GET");
     // The route is bearer-authed — the token threads through to request(),

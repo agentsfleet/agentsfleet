@@ -5,7 +5,7 @@
 export const WORKSPACES_PATH = "/v1/workspaces/";
 
 // Mirrors the daemon's keyset paging parameter, declared in
-// rustd/crates/afd_http/src/openapi/query.rs — the request parameter every
+// rustd/crates/daemon/afd_http/src/openapi/query.rs — the request parameter every
 // cursor-paged list accepts.
 export const QUERY_STARTING_AFTER = "starting_after";
 // The catalogue page's two query parameters. `limit` is bounded 1..100
@@ -20,7 +20,7 @@ export const HEALTHZ_PATH = "/healthz";
 export const AUTH_SESSIONS_PATH = "/v1/auth/sessions";
 // Durable per-user credential minted by `login` from the recovered session
 // token. Mirrors the daemon's route, declared in
-// rustd/crates/afd_http/src/route/tenant.rs and served by
+// rustd/crates/daemon/afd_http/src/route/tenant.rs and served by
 // afd_api_tenant/src/handler/tenant/cli_credential.rs.
 export const CLI_CREDENTIALS_PATH = "/v1/cli-credentials";
 export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
@@ -28,13 +28,13 @@ export const TENANT_API_KEYS_PATH = "/v1/api-keys";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 // The priced model catalogue (model.platform_models and model.platform_model_prices). Shared verbatim with
-// the route declared in rustd/crates/afd_http/src/route/tenant.rs and the dashboard's
+// the route declared in rustd/crates/daemon/afd_http/src/route/tenant.rs and the dashboard's
 // lib/api/model_library.ts. Backs `agentsfleet models` and the `--provider`
 // check — the CLI carries no provider list of its own.
 export const MODEL_LIBRARY_PATH = "/v1/models";
 export const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 // Who this credential belongs to. Mirrors `TenantRoute::CurrentUser` in
-// rustd/crates/afd_http/src/route/tenant.rs, and the one route on the tenant
+// rustd/crates/daemon/afd_http/src/route/tenant.rs, and the one route on the tenant
 // plane that requires no capability — which is why `login` and `whoami`
 // both probe it rather than the billing snapshot they used to reach for.
 export const USERS_ME_PATH = "/v1/users/me";
@@ -95,7 +95,7 @@ export const wsFleetSchedulePath = (
 
 // `/sync` as its own segment. The daemon's router binds one parameter per path
 // segment and refuses a literal after it, so the custom verb cannot ride the
-// identifier — see `FleetRoute::ScheduleSync` in `rustd/crates/afd_api`.
+// identifier — see `FleetRoute::ScheduleSync` in `rustd/crates/daemon/afd_api`.
 export const wsFleetScheduleSyncPath = (
   wsId: string,
   fleetId: string,

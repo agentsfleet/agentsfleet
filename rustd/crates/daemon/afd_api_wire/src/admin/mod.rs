@@ -1,0 +1,181 @@
+//! The operator plane for a runner: its state vocabulary and history.
+
+use std::borrow::Cow;
+
+use serde::{Deserialize, Serialize};
+
+pub use crate::admin_catalogue::{
+    AdminDecisionModel, AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelPatch,
+    AdminModelUpdated, AdminModelsResponse, CONTEXT_CAP_MIN, KEY_PROVIDER_MAX_BYTES,
+    MODEL_ID_MAX_BYTES, PROVIDER_MAX_BYTES, PlatformKeyDeactivateResponse, PlatformKeyItem,
+    PlatformKeyPut, PlatformKeySetResponse, PlatformKeysResponse,
+};
+use af_wire::runner::{AssignedPolicy, label_list};
+use garde::Validate;
+
+/// Administrator-selected runner state. Only `Active` permits runner API requests.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdminState {
+    /// Admitted; may lease and report.
+    Active,
+    /// Refused new work, existing work untouched.
+    Cordoned,
+    /// Finishing current work, taking no more.
+    Draining,
+    /// Finished draining.
+    Drained,
+    /// Credential revoked; every call rejected.
+    Revoked,
+}
+
+/// Platform-operator mutation actions.
+///
+/// Rotation and self-test are operations rather than state transitions. They
+/// ride the same endpoint because they share the operator scope and the
+/// exactly-one-of body guard with the transition actions.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunnerAdminAction {
+    /// Stop giving it new work.
+    Cordon,
+    /// Let it finish, then stop.
+    Drain,
+    /// Revoke its credential.
+    Revoke,
+    /// Replace its credential and reveal the replacement once.
+    Rotate,
+    /// Ask it to self-test on its next beat.
+    SelfTest,
+}
+
+/// Successful runner-token rotation.
+///
+/// The replacement token is returned once. The daemon stores only its digest,
+/// so no later read can recover this value.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerTokenRotatedResponse<'a> {
+    /// The runner whose credential changed.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// The replacement bearer token. Secret — reveal once, then discard.
+    #[serde(borrow)]
+    pub runner_token: Cow<'a, str>,
+}
+
+/// `PATCH /v1/fleets/runners/{id}` body.
+///
+/// Either an `action` alone, or an edit: `assigned_policy`, `labels`, or both,
+/// applied together or not at all. Anything else is a `400`.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerAdminPatchRequest<'a> {
+    /// A state transition, token rotation, or self-test request. Sent alone.
+    #[garde(skip)]
+    pub action: Option<RunnerAdminAction>,
+    /// A policy re-assignment, which reaches the host on its next heartbeat.
+    // Proved by the store's assignment rule, which also clamps the worker count.
+    #[serde(borrow)]
+    #[garde(skip)]
+    pub assigned_policy: Option<AssignedPolicy<'a>>,
+    /// Replaces all runner labels: at most 32 labels of 64 bytes each. Duplicates are removed
+    /// in their original order. An empty list clears labels.
+    #[serde(borrow)]
+    #[garde(inner(custom(label_list)))]
+    pub labels: Option<Vec<Cow<'a, str>>>,
+}
+
+/// `PATCH /v1/fleets/runners/{id}` reply.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerAdminPatchResponse<'a> {
+    /// The runner that changed.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// Its operator state after the change.
+    pub status: AdminState,
+    /// The assignment as stored, on the policy-update path.
+    #[serde(borrow)]
+    pub assigned_policy: Option<AssignedPolicy<'a>>,
+    /// The labels as stored, each once, when the request carried labels.
+    #[serde(borrow)]
+    pub labels: Option<Vec<Cow<'a, str>>>,
+    /// When the self-test was requested. The runner receives it on its next heartbeat and
+    /// reports later; this timestamp does not indicate success.
+    #[serde(with = "af_wire::instant::option", default)]
+    pub selftest_requested_at: Option<jiff::Timestamp>,
+}
+
+/// Append-only runner history values.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunnerEventType {
+    /// Enrolled.
+    RunnerRegistered,
+    /// Became reachable.
+    RunnerOnline,
+    /// Stopped being reachable.
+    RunnerOffline,
+    /// Took a lease.
+    LeaseAcquired,
+    /// Released a lease.
+    LeaseReleased,
+    /// Stopped taking new work.
+    RunnerCordoned,
+    /// Began finishing current work.
+    RunnerDraining,
+    /// Finished draining.
+    RunnerDrained,
+    /// Credential revoked.
+    RunnerRevoked,
+    /// Credential digest replaced without exposing the previous credential.
+    RunnerTokenRotated,
+    /// An operator re-assigned its policy — a security-posture change worth
+    /// auditing.
+    RunnerPolicyAssigned,
+}
+
+/// One row of runner history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerEventItem<'a> {
+    /// The row's identifier.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// The runner it describes.
+    #[serde(borrow)]
+    pub runner_id: Cow<'a, str>,
+    /// What happened.
+    pub event_type: RunnerEventType,
+    /// When.
+    #[serde(with = "af_wire::instant")]
+    pub occurred_at: jiff::Timestamp,
+    /// Event-specific detail. Free-form by design.
+    pub metadata: serde_json::Value,
+}
+
+/// A page of runner history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerEventsResponse<'a> {
+    /// The rows in this page.
+    #[serde(borrow)]
+    pub items: Vec<RunnerEventItem<'a>>,
+    /// Total rows matching the query.
+    pub total: i64,
+    /// Cursor for the next page, or null at the end.
+    #[serde(borrow)]
+    pub next_cursor: Option<Cow<'a, str>>,
+}
+
+#[cfg(test)]
+mod tests;

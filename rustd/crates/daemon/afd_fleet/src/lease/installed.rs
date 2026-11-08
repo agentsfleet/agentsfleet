@@ -1,0 +1,236 @@
+//! The claim read: what a fleet IS, at the moment a runner takes its slot.
+//! Beside it, the renewal's ceiling read (`Leases::stored_config`), which
+//! reads the same stored config whatever the fleet's status.
+//!
+//! The claim read is one statement, run once per claim. [`super::assign`] has
+//! already decided WHICH fleet; this reads the installed shape that fleet's
+//! lease is built from — the config the gates judge against, the prose the run
+//! is given, and the session it continues.
+//!
+//! # Why the config is re-read per lease and never cached
+//!
+//! A fleet's config is what the money gates price, what the approval gate
+//! judges, and what the execution policy is assembled from. An operator who
+//! narrows a fleet's tools or lowers its budget expects the NEXT run to obey
+//! the change; a cache would make that "some later run, once an entry expired",
+//! and the window would be invisible. The read costs one round trip on a path
+//! that already makes several.
+
+use af_core::id::Uuid7;
+use af_fleet_runtime::{Definition, FleetConfig, definition::POLICY_SEMANTICS};
+
+use crate::error::{Result, query, row_malformed};
+use crate::lease::sql;
+use crate::lease::store::Leases;
+
+/// Statement name, for the context a query failure carries.
+const CONTEXT_INSTALLED: &str = "fleet claim read";
+
+/// Statement name for the renewal's ceiling read.
+const CONTEXT_STORED_CONFIG: &str = "fleet ceiling read";
+
+/// The table a malformed value is reported against.
+const TABLE_FLEETS: &str = "fleet.fleets";
+
+/// The session context a fleet with no checkpoint starts from.
+///
+/// An empty JSON OBJECT rather than `null` or an empty string: the runner
+/// reads this as a context document, and a fleet on its first run has an empty
+/// one rather than a missing one.
+pub const FRESH_CONTEXT: &str = "{}";
+
+/// Immutable revision selection used to assemble the delivered execution policy.
+#[derive(Debug, Clone)]
+pub struct IssueRevision {
+    /// Accepted setup whose text and policy were assembled.
+    pub accepted: String,
+    /// Current authority ceiling observed during assembly.
+    pub current: String,
+    /// Native generation, absent before the initial interpretation.
+    pub task_generation: Option<i64>,
+}
+
+/// A fleet as installed, resolved for one lease.
+#[derive(Debug, Clone)]
+pub struct Installed {
+    /// The workspace that owns it.
+    pub workspace_id: Uuid7,
+    /// Its name, as the operator typed it.
+    pub name: String,
+    /// The typed config the gates and the policy are built from.
+    pub config: FleetConfig,
+    /// The behaviour prose the run is given.
+    pub instructions: String,
+    /// The session context this run continues, or [`FRESH_CONTEXT`].
+    pub context_json: String,
+    /// Exact owner model reference accepted with this immutable setup.
+    pub runtime_model_ref: String,
+    /// Revision proof rechecked under the issue transaction.
+    pub issue_revision: Option<IssueRevision>,
+}
+
+impl Installed {
+    /// The credential names the fleet declared, as a vault read wants them.
+    #[must_use]
+    pub fn credential_names(&self) -> Vec<&str> {
+        self.config
+            .credentials()
+            .iter()
+            .map(af_fleet_runtime::CredentialName::as_str)
+            .collect()
+    }
+}
+
+impl Leases {
+    /// The installed fleet behind `fleet_id`, if it is still runnable.
+    ///
+    /// `None` means the fleet is no longer `active`. That is not an error and
+    /// not a missing row: the selection pass filters on status, so reaching
+    /// here with a stopped fleet means an operator paused it in the window
+    /// between selection and this read. The caller answers no-work and the
+    /// claim lapses on its own — which is the same thing that happens to every
+    /// other fleet an operator stops.
+    ///
+    /// A fleet whose row is gone answers `None` for the same reason: there is
+    /// nothing to run and nothing for an operator to fix.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, a `workspace_id` that will
+    /// not parse as a UUID, and a revision `config` this daemon cannot read. The
+    /// last is deliberately fatal to THIS FLEET's lease rather than skipped: a
+    /// fleet whose stored config is unreadable must not run under a config this
+    /// daemon guessed at. It is fatal to nothing else — the pull path answers
+    /// it with that fleet's terminal row and a documented no-work, because a
+    /// runner polls a rotation and refusing the RUNNER would refuse every
+    /// fleet. See `super::pull::refuse::refuse_unreadable_config`.
+    pub async fn installed(&self, fleet_id: &Uuid7) -> Result<Option<Installed>> {
+        self.installed_for_admission(fleet_id, None).await
+    }
+
+    pub(crate) async fn installed_for_admission(
+        &self,
+        fleet_id: &Uuid7,
+        event: Option<&str>,
+    ) -> Result<Option<Installed>> {
+        let mut connection = self.pool().acquire().await?;
+        Self::installed_on(&mut connection, fleet_id, event).await
+    }
+
+    pub(crate) async fn installed_on(
+        connection: &mut sqlx::PgConnection,
+        fleet_id: &Uuid7,
+        event: Option<&str>,
+    ) -> Result<Option<Installed>> {
+        let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_SESSION)
+            .bind(fleet_id.as_str())
+            .bind(event)
+            .fetch_optional(connection)
+            .await
+            .map_err(query(CONTEXT_INSTALLED))?;
+        let Some(FleetWithSession {
+            workspace_id: workspace,
+            definition: document,
+            status,
+            runtime_model_ref,
+            name,
+            context_json,
+            policy_semantics: policy,
+            revision_id,
+            head_revision_id,
+            task_generation,
+            current_definition,
+        }) = found
+        else {
+            return Ok(None);
+        };
+        if status != sql::FLEET_STATUS_ACTIVE {
+            return Ok(None);
+        }
+        if policy.as_deref() != Some(POLICY_SEMANTICS) {
+            return Err(crate::error::ErrorKind::SetupUnavailable.into());
+        }
+        let definition =
+            Definition::parse(&document.ok_or(crate::error::ErrorKind::SetupUnavailable)?)?;
+        definition.validate_for_save()?;
+        if task_generation.is_some() {
+            let current = Definition::parse(
+                &current_definition.ok_or(crate::error::ErrorKind::SetupUnavailable)?,
+            )?;
+            if !definition.runtime().same_task_authority(current.runtime()) {
+                return Err(crate::task::TaskRefusal::InvalidTarget.into());
+            }
+        }
+
+        Ok(Some(Installed {
+            workspace_id: Uuid7::parse(&workspace)
+                .map_err(row_malformed(TABLE_FLEETS, "workspace_id"))?,
+            name,
+            config: definition.runtime().clone(),
+            instructions: definition.instructions_md().to_owned(),
+            context_json: context_json.unwrap_or_else(|| FRESH_CONTEXT.to_owned()),
+            runtime_model_ref: runtime_model_ref
+                .ok_or(crate::error::ErrorKind::SetupUnavailable)?,
+            issue_revision: revision_id
+                .zip(head_revision_id)
+                .map(|(accepted, current)| IssueRevision {
+                    accepted,
+                    current,
+                    task_generation,
+                }),
+        }))
+    }
+
+    /// The config stored for `fleet_id` now, whatever the fleet's status.
+    ///
+    /// The renewal's ceiling read, beside the claim read above. Unlike
+    /// [`Self::installed`], a stopped or killed fleet still answers: a run in
+    /// flight keeps renewing under the fleet's stored ceiling, so the ceiling
+    /// has to stay readable after the fleet stops. A paused or stopped fleet's
+    /// config can still be edited mid-run and the next renewal reads the edit;
+    /// a killed fleet's cannot. `None` only when the row is gone.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and a revision `config` this
+    /// daemon cannot read, as [`Self::installed`] does.
+    pub(crate) async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
+        let mut connection = self.pool().acquire().await?;
+        Self::stored_config_on(&mut connection, fleet_id.as_str(), None).await
+    }
+
+    pub(crate) async fn stored_config_on(
+        connection: &mut sqlx::PgConnection,
+        fleet_id: &str,
+        revision_id: Option<&str>,
+    ) -> Result<Option<FleetConfig>> {
+        let document: Option<String> = sqlx::query_scalar(sql::fleet::SELECT_FLEET_CONFIG)
+            .bind(fleet_id)
+            .bind(revision_id)
+            .fetch_optional(connection)
+            .await
+            .map_err(query(CONTEXT_STORED_CONFIG))?;
+        document
+            .map(|document| {
+                Definition::parse(&document)
+                    .map(|definition| definition.runtime().clone())
+                    .map_err(Into::into)
+            })
+            .transpose()
+    }
+}
+
+/// [`sql::fleet::SELECT_FLEET_WITH_SESSION`]'s row: the fleet, its head
+/// revision and its session, each revision column absent until one is installed.
+#[derive(sqlx::FromRow)]
+struct FleetWithSession {
+    workspace_id: String,
+    definition: Option<String>,
+    status: String,
+    runtime_model_ref: Option<String>,
+    name: String,
+    context_json: Option<String>,
+    policy_semantics: Option<String>,
+    revision_id: Option<String>,
+    head_revision_id: Option<String>,
+    task_generation: Option<i64>,
+    current_definition: Option<String>,
+}

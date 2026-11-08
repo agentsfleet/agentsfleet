@@ -1,0 +1,25 @@
+[package]
+name = "guffbolt"
+description = "The agent harness: one loop's order of turns over the embedder's conversation, with what a run of one kind adds as an extension."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# A run's time budget.
+tokio = { workspace = true, features = ["time"] }
+# The loop's own records, at `debug`: every turn is a hot path (LOG-HOT).
+tracing.workspace = true
+
+[dev-dependencies]
+# `start_paused`, so a budget runs out at once and a test never waits on it.
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }

@@ -12,7 +12,7 @@ import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
 // page, and zod's core cost each of them 79 kB gzipped against a 100 KiB route
 // budget (`.size-limit.mjs`).
 
-/** How a call ended, as `afd_wire::tool_trace::ToolCallStatus` spells it. */
+/** How a call ended, as `af_wire::tool_trace::ToolCallStatus` spells it. */
 export const TOOL_CALL_STATUS = {
   SUCCEEDED: "succeeded",
   FAILED: "failed",

@@ -1,6 +1,6 @@
 // The model catalogue (model.platform_models), read through the
 // authenticated GET /v1/models — see
-// rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs
+// rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/mod.rs
 // for the wire shape. The dashboard fetches it once per session through a
 // token-minting Server Action (settings/models/actions.ts → getModelLibraryAction),
 // so the token never reaches the browser. Model suggestions and display names
@@ -10,7 +10,7 @@ import { request } from "./client";
 import { modelLibrarySchema, type ModelLibrary } from "./model-library-types";
 
 // Route path — mirrors the `ModelLibrary` row of the route table in
-// rustd/crates/afd_http/src/route/tenant.rs (shared verbatim).
+// rustd/crates/daemon/afd_http/src/route/tenant.rs (shared verbatim).
 const MODEL_LIBRARY_PATH = "/v1/models";
 
 /**

@@ -1,0 +1,233 @@
+//! What this host's kernel can enforce, as the capability report states it.
+//!
+//! Every fact is read from a file the kernel publishes, at a path the caller
+//! can replace, so a test states a host rather than needing one.
+
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+use crate::cgroup::SUBTREE_CONTROL;
+
+/// Where the kernel lists its active security modules.
+pub const LSM_PATH: &str = "/sys/kernel/security/lsm";
+/// Where the kernel lists the file systems it can mount.
+pub const FILESYSTEMS_PATH: &str = "/proc/filesystems";
+/// Where the kernel lists the seccomp actions it supports.
+pub const SECCOMP_ACTIONS_PATH: &str = "/proc/sys/kernel/seccomp/actions_avail";
+/// The device a microVM engine opens.
+pub const KVM_PATH: &str = "/dev/kvm";
+/// Where cgroup v2 is mounted.
+pub const CGROUP_ROOT: &str = "/sys/fs/cgroup";
+/// Where Debian and Ubuntu install bubblewrap.
+pub const BWRAP_PATH: &str = "/usr/bin/bwrap";
+
+/// The mechanism names a refusal and the capability report share.
+pub const MECHANISM_LANDLOCK: &str = "landlock";
+/// See [`MECHANISM_LANDLOCK`].
+pub const MECHANISM_SECCOMP: &str = "seccomp";
+/// See [`MECHANISM_LANDLOCK`].
+pub const MECHANISM_BUBBLEWRAP: &str = "bubblewrap";
+/// See [`MECHANISM_LANDLOCK`]; the toolbox's file system is EROFS.
+pub const MECHANISM_TOOLBOX_FILESYSTEM: &str = "erofs";
+/// The cgroup controllers every lease's limits are written through.
+///
+/// `io` is among them: a host that cannot cap a lease's disk throughput cannot
+/// keep one lease from starving the others, so it builds no sandbox.
+pub const REQUIRED_CONTROLLERS: [&str; 4] = ["cpu", "io", "memory", "pids"];
+
+/// The seccomp action every refused system call answers with.
+const SECCOMP_ERRNO_ACTION: &str = "errno";
+
+/// Whether `/dev/kvm` exists, and whether this process may open it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kvm {
+    /// No such device: a microVM engine cannot run here.
+    Absent,
+    /// The device exists, but this process may not open it for reading and
+    /// writing.
+    Denied,
+    /// The device exists and opens: a microVM engine can run here.
+    Usable,
+}
+
+/// One probe of the host, taken at boot and refreshed per heartbeat.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each flag is a separately reported mechanism, as on the wire's capability report"
+)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostProbe {
+    /// Landlock is enabled in the running kernel, at the interface every
+    /// sandbox's ruleset needs.
+    pub landlock: bool,
+    /// Seccomp filtering is available.
+    pub seccomp: bool,
+    /// Controllers enabled in the delegated cgroup's subtree.
+    pub cgroup_controllers: Vec<String>,
+    /// The bubblewrap launcher is installed and runs.
+    pub bubblewrap: bool,
+    /// What `/dev/kvm` allows.
+    pub kvm: Kvm,
+    /// The kernel can mount the toolbox's file system (EROFS); without it no
+    /// sandbox can be built.
+    pub toolbox_filesystem: bool,
+    /// The state file system takes direct I/O, so a workspace disk is cached
+    /// once rather than twice; `None` when no state directory was named.
+    pub workspace_direct_io: Option<bool>,
+    /// The kernel built and removed an egress scope — a veth pair and its
+    /// host-side `nf_tables` table — with forwarding on, so an
+    /// `allow_list_egress` sandbox reaches its allowlist and nothing else.
+    pub egress: bool,
+}
+
+/// Where [`probe`] reads each fact from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbePaths {
+    /// The KVM device.
+    pub kvm: PathBuf,
+    /// The kernel's file-system list.
+    pub filesystems: PathBuf,
+    /// The kernel's security-module list.
+    pub lsm: PathBuf,
+    /// The kernel's seccomp action list.
+    pub seccomp_actions: PathBuf,
+    /// The delegated cgroup every lease's cgroup is made under.
+    pub cgroup_root: PathBuf,
+    /// The bubblewrap launcher.
+    pub bwrap: PathBuf,
+    /// Where each lease's workspace image is made; `None` when no engine is
+    /// configured, and then the probe says nothing about direct I/O.
+    pub state_dir: Option<PathBuf>,
+}
+
+impl Default for ProbePaths {
+    fn default() -> Self {
+        Self {
+            kvm: KVM_PATH.into(),
+            filesystems: FILESYSTEMS_PATH.into(),
+            lsm: LSM_PATH.into(),
+            seccomp_actions: SECCOMP_ACTIONS_PATH.into(),
+            cgroup_root: CGROUP_ROOT.into(),
+            bwrap: BWRAP_PATH.into(),
+            state_dir: None,
+        }
+    }
+}
+
+/// What the kernel builds when asked, beyond what its files list: the
+/// sandbox's Landlock ruleset, and an egress scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Enforceable {
+    /// The kernel builds the ruleset the sandbox needs, not only lists
+    /// Landlock among its modules.
+    pub(crate) landlock: bool,
+    /// The kernel builds and removes an egress scope.
+    pub(crate) egress: bool,
+}
+
+impl Enforceable {
+    /// Asks this host's kernel to build each.
+    fn measure() -> Self {
+        Self {
+            landlock: crate::harden::landlock_enforceable(),
+            egress: egress_enforceable(),
+        }
+    }
+}
+
+/// Reads what this host can enforce. Never fails: a fact that cannot be read
+/// is a mechanism the host does not have.
+#[must_use]
+pub fn probe(paths: &ProbePaths) -> HostProbe {
+    read(paths, Enforceable::measure())
+}
+
+/// [`probe`], told what the kernel builds rather than asking it, so a test
+/// states a host it is not running on.
+pub(crate) fn read(paths: &ProbePaths, enforceable: Enforceable) -> HostProbe {
+    let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
+    HostProbe {
+        landlock: enforceable.landlock
+            && text(&paths.lsm)
+                .trim()
+                .split(',')
+                .any(|module| module == MECHANISM_LANDLOCK),
+        seccomp: text(&paths.seccomp_actions)
+            .split_whitespace()
+            .any(|action| action == SECCOMP_ERRNO_ACTION),
+        cgroup_controllers: text(&paths.cgroup_root.join(SUBTREE_CONTROL))
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
+        // A file this process may execute: the permission bits alone say
+        // nothing about who may.
+        bubblewrap: fs::metadata(&paths.bwrap).is_ok_and(|meta| meta.is_file())
+            && rustix::fs::access(&paths.bwrap, rustix::fs::Access::EXEC_OK).is_ok(),
+        kvm: kvm(&paths.kvm),
+        toolbox_filesystem: text(&paths.filesystems)
+            .lines()
+            .any(|line| line.split_whitespace().last() == Some(MECHANISM_TOOLBOX_FILESYSTEM)),
+        workspace_direct_io: paths.state_dir.as_deref().map(direct_io),
+        egress: enforceable.egress,
+    }
+}
+
+/// Whether this host builds an egress scope: one is built and removed.
+#[cfg(target_os = "linux")]
+fn egress_enforceable() -> bool {
+    crate::egress::enforceable()
+}
+
+/// No other kernel has `nf_tables`.
+#[cfg(not(target_os = "linux"))]
+fn egress_enforceable() -> bool {
+    false
+}
+
+/// Whether `dir`'s file system opens a file for direct I/O, which is what the
+/// loop device behind a workspace disk needs to skip the host's page cache.
+/// An unnamed file, so the probe leaves nothing behind.
+#[cfg(target_os = "linux")]
+fn direct_io(dir: &Path) -> bool {
+    use rustix::fs::{Mode, OFlags};
+    rustix::fs::open(
+        dir,
+        OFlags::TMPFILE | OFlags::RDWR | OFlags::DIRECT,
+        Mode::RUSR | Mode::WUSR,
+    )
+    .is_ok()
+}
+
+/// No other kernel's loop device skips the page cache.
+#[cfg(not(target_os = "linux"))]
+fn direct_io(_dir: &Path) -> bool {
+    false
+}
+
+/// Opens the device for reading and writing, which is what a microVM needs.
+fn kvm(path: &Path) -> Kvm {
+    match fs::OpenOptions::new().read(true).write(true).open(path) {
+        Ok(_device) => Kvm::Usable,
+        Err(error) if error.kind() == ErrorKind::NotFound => Kvm::Absent,
+        Err(_denied) => Kvm::Denied,
+    }
+}
+
+impl HostProbe {
+    /// Whether every controller a lease's limits need is delegated here.
+    #[must_use]
+    pub fn has_required_controllers(&self) -> bool {
+        self.missing_controller().is_none()
+    }
+
+    /// The first required controller this host does not delegate.
+    pub(crate) fn missing_controller(&self) -> Option<&'static str> {
+        REQUIRED_CONTROLLERS
+            .into_iter()
+            .find(|wanted| !self.cgroup_controllers.iter().any(|have| have == wanted))
+    }
+}
+
+#[cfg(test)]
+mod tests;

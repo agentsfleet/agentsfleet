@@ -17,7 +17,7 @@ export const TOOL_CALL_READ = {
   FAILED: "failed",
 } as const;
 
-/** `afd_wire::tool_detail::ToolCallDetail`, narrowed. */
+/** `af_wire::tool_detail::ToolCallDetail`, narrowed. */
 export type ToolCallFull = {
   args: ToolArgs | undefined;
   /** The arguments passed the full read's cap, so the runner kept none. */

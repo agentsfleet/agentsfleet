@@ -23,8 +23,8 @@ const EVENT_STREAM_HEADERS = {
   "X-Accel-Buffering": "no",
 } as const;
 
-// `Frame::access_revoked` in rustd/crates/afd_sse/src/frame/mod.rs, written the way
-// rustd/crates/afd_api_tenant/src/handler/stream/body.rs puts a control frame
+// `Frame::access_revoked` in rustd/crates/daemon/afd_sse/src/frame/mod.rs, written the way
+// rustd/crates/daemon/afd_api_tenant/src/handler/stream/body.rs puts a control frame
 // on the wire: sequence zero, the kind as the event name, `kind` first.
 const ACCESS_REVOKED_FRAME =
   `id: 0\nevent: ${FRAME_KIND.ACCESS_REVOKED}\n` +

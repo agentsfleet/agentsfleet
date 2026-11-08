@@ -1,0 +1,170 @@
+//! External setup work is bounded; only a fresh locked recheck can activate.
+
+use std::time::Duration;
+
+use super::{ACTIVE, CONTEXT, Creations, INSTALLING, progress, read, sql};
+use crate::{
+    Access, Result, access,
+    error::raise::query,
+    types::{CheckKind, CheckState, DraftState},
+};
+use af_core::id::Uuid7;
+use af_observability::AuthoringStep;
+use afd_approval::{Origin, Wanted};
+use jiff::Timestamp;
+use sqlx::Transaction;
+
+const SETUP_BUDGET: Duration = Duration::from_secs(15);
+
+impl Creations {
+    pub(super) async fn advance(
+        &self,
+        access: Access<'_>,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> Result<()> {
+        // A wait that outlives the budget, or that the API login's bounds end
+        // first (`afd_db::login`), leaves the fleet installing: the next Save
+        // or the installation key finishes it.
+        let reason =
+            match tokio::time::timeout(SETUP_BUDGET, self.advance_within(access, fleet, now)).await
+            {
+                Ok(Err(refused)) if refused.is_bound_reached() => "bound_reached",
+                Ok(result) => return result,
+                Err(_elapsed) => "budget_elapsed",
+            };
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::warn!(event = "fleet_setup_budget_elapsed", fleet_id = %fleet, error_code, reason);
+        Ok(())
+    }
+
+    async fn advance_within(
+        &self,
+        access: Access<'_>,
+        fleet: &Uuid7,
+        now: Timestamp,
+    ) -> Result<()> {
+        let (row, checked) = self.snapshot(access, fleet).await?;
+        if row.status == ACTIVE {
+            self.recover_initial(access, fleet).await?;
+            return self.confirm_initial(access, fleet).await;
+        }
+        if row.status != INSTALLING {
+            return Ok(());
+        }
+        for check in &checked.readiness {
+            if check.kind == CheckKind::Grant && check.state == CheckState::Missing {
+                self.grants
+                    .request_for_setup(
+                        access.workspace,
+                        fleet,
+                        Wanted {
+                            service: &check.subject,
+                            credential: &check.subject,
+                            origin: Origin::Install,
+                        },
+                        now,
+                    )
+                    .await?;
+            }
+        }
+        let (row, checked) = self.snapshot(access, fleet).await?;
+        if row.status != INSTALLING || !progress::ready(&checked) {
+            return Ok(());
+        }
+        if row.setup_stream_ready != Some(true) {
+            let mut connection = self.setup.drafts.database.acquire().await?;
+            sqlx::query(sql::STREAM_READY)
+                .bind(fleet.as_str())
+                .bind(access.workspace.as_str())
+                .bind(INSTALLING)
+                .execute(&mut *connection)
+                .await
+                .map_err(query(CONTEXT))?;
+        }
+        self.activate(access, fleet).await?;
+        self.confirm_initial(access, fleet).await
+    }
+
+    async fn activate(&self, access: Access<'_>, fleet: &Uuid7) -> Result<()> {
+        let (snapshot, _) = self.snapshot(access, fleet).await?;
+        let key = super::start::key(fleet);
+        let payload = super::start::payload(&snapshot.initial_start.choice)?;
+        let prepared = self
+            .prepare_initial(&snapshot, &key, payload.as_deref())
+            .await?;
+        let mut tx = Transaction::begin(self.setup.drafts.database.acquire().await?, None)
+            .await
+            .map_err(query(CONTEXT))?;
+        let person = access::current(&mut tx, access).await?;
+        sqlx::query_scalar::<_, i64>(sql::WALLET)
+            .bind(person.owner.as_str())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(query(CONTEXT))?;
+        let row = read::lock(&mut tx, access.workspace, fleet).await?;
+        if row.status != INSTALLING || row.head_revision != snapshot.head_revision {
+            return Ok(());
+        }
+        let checked = self.review(&mut tx, &row).await?;
+        if !progress::ready(&checked) || row.setup_stream_ready != Some(true) {
+            return Ok(());
+        }
+        let initial = self
+            .stage_initial(&mut tx, row.initial_start, prepared)
+            .await?;
+        let changed = sqlx::query(sql::ACTIVATE)
+            .bind(fleet.as_str())
+            .bind(access.workspace.as_str())
+            .bind(ACTIVE)
+            .bind(INSTALLING)
+            .bind(row.head_revision)
+            .execute(&mut *tx)
+            .await
+            .map_err(query(CONTEXT))?;
+        if changed.rows_affected() != 1 {
+            return Err(crate::error::ErrorKind::State {
+                current: "setup_changed",
+            }
+            .into());
+        }
+        super::start::store(&mut tx, access, fleet, &initial).await?;
+        close_saved_drafts(&mut tx, fleet).await?;
+        let number = row.head_revision.to_string();
+        let identity = format!("setup_ready:{number}");
+        let announcement = afd_events::activity::record_on(
+            &mut tx,
+            access.workspace,
+            fleet,
+            &identity,
+            afd_api_wire::activity::FleetActivity::SetupReady {
+                revision: number.as_str().into(),
+            },
+        )
+        .await
+        .map_err(query(CONTEXT))?;
+        afd_events::activity::commit(tx, announcement, Some(&self.admissions.streams()))
+            .await
+            .map_err(query(CONTEXT))?;
+        // Only the commit whose guarded update moved `installing` to `active`
+        // gets here; a retry finds the fleet active and returns above.
+        let step = AuthoringStep::SetupFinished {
+            fleet_id: fleet.clone(),
+        };
+        self.setup.drafts.reached(access, step);
+        Ok(())
+    }
+}
+
+async fn close_saved_drafts(connection: &mut sqlx::PgConnection, fleet: &Uuid7) -> Result<()> {
+    sqlx::query(sql::CLOSE_DRAFTS)
+        .bind(fleet.as_str())
+        .bind(DraftState::Closed.as_str())
+        .bind(super::PRIVATE_RETENTION)
+        .bind(DraftState::Saving.as_str())
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(())
+}

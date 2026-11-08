@@ -1,0 +1,70 @@
+//! What an admission says when neither datastore answers.
+//!
+//! No datastore, deliberately: the pool points at a reserved port and the
+//! queue at a loopback port nobody listens on. One admission walks two
+//! failure arms in order — the deployment ceiling the pool would not count,
+//! and the row the pool would not commit — and each says why in a `reason` free of the registry code, which
+//! the refusal line carries in its own field, and of a captured backtrace.
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use af_core::test_util::trace::Capture;
+use af_wire::event::EventType;
+use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+
+/// A queue address nothing listens on.
+const NOWHERE: &str = "redis://127.0.0.1:1";
+
+/// The fleet and workspace the admission names; nothing answers, so any will do.
+const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
+
+/// The `reason` an event carried, proven free of a code prefix and of a
+/// backtrace, which begins on a line of its own.
+fn told_reason(capture: &Capture, event: &str) -> String {
+    let logged = capture.only(event);
+    assert!(
+        logged
+            .field("error_code")
+            .is_some_and(|code| !code.is_empty()),
+        "{event} names no error_code"
+    );
+    logged.assert_uncoded_reason();
+    logged.field("reason").unwrap_or_default().to_owned()
+}
+
+#[tokio::test]
+async fn a_refused_admission_reason_carries_no_code_prefix() {
+    let capture = Capture::install();
+    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
+        DragonflyRole::Default,
+        NOWHERE.to_owned(),
+    ))
+    .expect("a lazy handle opens no socket and cannot fail");
+    let admissions = Admissions::for_tests(afd_db::test_util::unreachable_db(), queue);
+
+    let refused = admissions
+        .admit(Admission {
+            producer: Producer::ScheduleFire,
+            key: Key::Repeated("log-reasons"),
+            fleet: FLEET,
+            workspace: FLEET,
+            actor: "fixture:log-reasons",
+            event_type: EventType::Chat,
+            request_json: "{}",
+            reply: Reply::None,
+        })
+        .await
+        .expect_err("a pool that will not answer commits nothing");
+
+    told_reason(&capture, "admission_ceiling_unread");
+    told_reason(&capture, "admission_failed");
+    assert_eq!(
+        capture.only("admission_failed").field("error_code"),
+        Some(refused.code().as_str())
+    );
+}

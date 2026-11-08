@@ -1,4 +1,4 @@
-# CLI device login — security model (Flow 1)
+# CLI device login: security model (Flow 1)
 
 | Question | Answer |
 |---|---|
@@ -21,9 +21,15 @@ It saves the returned durable credential in `credentials.json`, with mode `0o600
 
 ## Non-interactive token seeding (no device flow)
 
-**Removed in M160_002 §3.** `agentsfleet login` used to accept an already-held bearer token directly — `--token <pat>`, falling back to piped stdin on a non-TTY — validate it against `/v1/me`, and write it to `credentials.json`. Both sources are gone, and `login` now has no non-interactive path at all.
+**Removed in M160_002 §3.** `agentsfleet login` used to accept an already-held bearer token directly. The token came from `--token <pat>`, falling back to piped stdin on a non-TTY. Login validated it against `/v1/me` and wrote it to `credentials.json`.
 
-The reason is that it never had a job of its own. `AGENTSFLEET_API_KEY` already carries an `agt_t` tenant key on every request and **outranks the stored credential**, so an unattended caller was always served by the environment variable; the flag only added a second way to reach the same place, by way of a file the caller then had to manage. It was also the one path that could write a value the credential loader would later refuse: the write checked only whether the token *authenticated*, while every subsequent read checks whether it is *well-formed* (`isPersistable`, `cli/src/services/credentials.ts`, accepting a well-formed `afc_` credential or an `agt_t` key, nothing else). Seeding a Clerk session token therefore reported success and then read back as logged-out on the next command — a failure that surfaced one command after the mistake.
+Both token sources are gone, and `login` now has no non-interactive path at all.
+
+The reason is that it never had a job of its own. `AGENTSFLEET_API_KEY` already carries an `agt_t` tenant key on every request and **outranks the stored credential**. An unattended caller was therefore always served by the environment variable.
+
+The flag only added a second way to reach the same place, through a file the caller then had to manage. It was also the one path that could write a value the credential loader would later refuse. The write checked only whether the token *authenticated*, while every subsequent read checks whether it is *well-formed*.
+
+The check is `isPersistable` in `cli/src/services/credentials.ts`, which accepts a well-formed `afc_` credential or an `agt_t` key and nothing else. Seeding a Clerk session token therefore reported success and then read back as logged-out on the next command. The failure surfaced one command after the mistake.
 
 Unattended callers use `AGENTSFLEET_API_KEY`. Login still requires an interactive terminal and a person authorizing the browser request (`cli/src/commands/login.ts`).
 
@@ -245,7 +251,7 @@ After that transaction commits, canceling a process or losing a response cannot 
 Identity-validation failure clears the newly saved local credential; cleanup does not restore the old server row or guarantee revocation of the new row.
 
 Stopping the process or losing a mint response can interrupt finalization. A failed local write can leave a server credential whose value the terminal no longer holds.
-See [`login-exchange.ts`](../cli/src/commands/login-exchange.ts), [`login-identity-rollback.ts`](../cli/src/commands/login-identity-rollback.ts) and the [backend mint](../rustd/crates/afd_tenant/src/cli_credential/mod.rs).
+See [`login-exchange.ts`](../cli/src/commands/login-exchange.ts), [`login-identity-rollback.ts`](../cli/src/commands/login-identity-rollback.ts) and the [backend mint](../rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs).
 
 ### Explicit manual mode
 
@@ -295,7 +301,7 @@ History replacement failure records a failed handoff, but cannot guarantee remov
 | `expired` | `pending` · `verification_pending` | (terminal) |
 | `aborted` | `verification_pending` | (terminal) |
 
-**Invariants.** The state machine is monotonic — no backward transitions. There is no codepath from `pending` directly to `consumed`; verification code presentation is mandatory. `verified` is not a stored state; the successful POST /verify writes `consumed` atomically.
+**Invariants.** The state machine is monotonic, with no backward transitions. There is no codepath from `pending` directly to `consumed`; verification code presentation is mandatory. `verified` is not a stored state; the successful POST /verify writes `consumed` atomically.
 
 **`expired` is eviction, not a stored transition.** It is an enum variant with a
 branch in `verify_consume.lua`, and nothing in the tree ever writes it. What
@@ -310,7 +316,7 @@ One key, one string, one time-to-live.
 
 | Fact | Value | Source |
 |---|---|---|
-| Key | `auth:session:{session_id}` | `SESSION_KEY_PREFIX`, `rustd/crates/afd_dragonfly/src/session/mod.rs` |
+| Key | `auth:session:{session_id}` | `SESSION_KEY_PREFIX`, `rustd/crates/daemon/afd_dragonfly/src/session/mod.rs` |
 | Value | the whole `SessionState` as one JSON blob | `put` serialises the struct |
 | Write | `SET <key> <blob> EX 300` | same function |
 | Time-to-live | five minutes, re-stamped on every transition | `SESSION_TTL`; `session/approve.lua` re-stamps `expires_at_ms` beside the `SET` |
@@ -333,11 +339,12 @@ crate's only two-key script went when acceptance became a Postgres row.
 | `session/verify_consume.lua` | `POST /v1/auth/sessions/{id}/verify` | `verification_pending` → `consumed` |
 | `session/abort.lua` | `DELETE /v1/auth/sessions/{id}` and `DELETE /v1/auth/sessions` | `verification_pending` → `aborted`, for the approver only; a `pending` session has no owner yet, so it answers `not_owner` |
 
-They dispatch through `redis::Script`, which sends the 40-byte digest with
-`EVALSHA` and loads the body only when the server has never seen it — after the
-first call of a deployment, never. Raw `EVAL` would ship the whole program on
-every call, and these are the flow's hot path: one approval and one redemption
-per attempt, per user.
+They dispatch through `redis::Script`. It sends the 40-byte digest with
+`EVALSHA`. The body loads only when the server has never seen it, so after the
+first call of a deployment it never loads.
+
+Raw `EVAL` would ship the whole program on every call. These calls are the
+flow's hot path, with one approval and one redemption per attempt, per user.
 
 ## Endpoint trust boundaries
 
@@ -347,7 +354,7 @@ per attempt, per user.
 | `GET /v1/auth/sessions/{id}` | dashboard fetch for the approval page | Neither CLI mode polls. Default browser mode checks pending status, the complete public key and expiry; manual mode loads the existing session view. |
 | `PATCH /v1/auth/sessions/{id}/approve` | dashboard JS process | Clerk customized session token (the `api`-template JWT travels only inside the encrypted payload) · per-Clerk-user backstop deferred post-launch — Clerk-edge per-IP on sign-in / sign-up (L1) bounds upstream identity supply |
 | `POST /v1/auth/sessions/{id}/verify` | CLI with the verification code | the code IS the auth · ≤5 attempts per session (Lua-internal, L3) |
-| `DELETE /v1/auth/sessions/{id}` | the person who approved it | Bearer, browser session token only (`DashboardIdentity`, `rustd/crates/afd_http/src/auth/person.rs`) · must match session's `clerk_user_id` |
+| `DELETE /v1/auth/sessions/{id}` | the person who approved it | Bearer, browser session token only (`DashboardIdentity`, `rustd/crates/daemon/afd_http/src/auth/person.rs`) · must match session's `clerk_user_id` |
 | `DELETE /v1/auth/sessions` | the signed-in person, for their own sessions only | Bearer: a browser session token or the person's own `afc_` credential (`HumanIdentity`); a tenant `agt_t` key is refused with 403. `agentsfleet logout` calls it (`cli/src/commands/auth-logout.ts`) to abort the logins its person approved and never redeemed |
 
 ## Security properties by layer
@@ -376,7 +383,9 @@ Rate limiting decomposes across three layers. Only L3 lives inside agentsfleetd.
 | **L2** | Cloudflare WAF in front of `api.agentsfleet.net` | `POST /v1/auth/sessions` | 10 / IP / minute — request never reaches origin on block |
 | **L3** | agentsfleetd — `session/verify_consume.lua` | `POST /v1/auth/sessions/{id}/verify` | 5 attempts per session → session aborted with reason `rate_limit_exceeded` |
 
-No in-app rate-limit middleware in agentsfleetd. The per-IP and per-Clerk-user counters that an earlier revision of the M74_002 spec described inside agentsfleetd are not authored — per-IP belongs at edge (L2), per-Clerk-user backstop is deferred post-launch (L1 already throttles the upstream Clerk identity supply). See `docs/v2/done/M74_002_P1_API_CLI_UI_CLI_BROWSER_AUTHORIZATION_FLOW.md` Captain decision Q10 for the full rationale and the dead-code sweep that landed alongside this decision.
+No in-app rate-limit middleware in agentsfleetd. An earlier revision of the M74_002 spec described per-IP and per-Clerk-user counters inside agentsfleetd; they are not authored. Per-IP belongs at edge (L2).
+
+The per-Clerk-user backstop is deferred post-launch, because L1 already throttles the upstream Clerk identity supply. See `docs/v2/done/M74_002_P1_API_CLI_UI_CLI_BROWSER_AUTHORIZATION_FLOW.md` Captain decision Q10 for the full rationale and the dead-code sweep that landed alongside this decision.
 
 ## Threats this flow closes
 
@@ -409,11 +418,13 @@ Each line names the attack and points at where its closure lives (or why it cann
 
 Six invariants. All are tested explicitly.
 
-1. **Verification code is single-use, with a bounded same-fingerprint idempotency window.** A successful POST /verify atomically transitions to `consumed` in the same Lua-EVAL write that returns the ciphertext. Subsequent POST /verify calls within 60 seconds **from the same client fingerprint** (sha256 of `derived_client_ip ‖ user_agent ‖ session_id`) return the same payload (handles "consume succeeded, response lost, client retried"). Outside 60 seconds, or from a different fingerprint → HTTP 410 `UZ-AUTH-012`. Once the key's five-minute time-to-live evicts the session → HTTP 404 `UZ-AUTH-005`.
-2. **Ciphertext is single-read per client fingerprint.** Item 1's mechanism: only the originating fingerprint can replay during the window; any other source gets 410. This narrows the replay surface to "captured-network-packet-within-60s-from-same-source", which is dominated by existing TLS + network-perimeter assumptions.
+1. **Verification code is single-use, with a bounded same-fingerprint idempotency window**. A successful POST /verify atomically transitions to `consumed` in the same Lua-EVAL write that returns the ciphertext. Subsequent POST /verify calls within 60 seconds **from the same client fingerprint** (sha256 of `derived_client_ip ‖ user_agent ‖ session_id`) return the same payload.
+
+   This handles "consume succeeded, response lost, client retried". Outside 60 seconds, or from a different fingerprint → HTTP 410 `UZ-AUTH-012`. Once the key's five-minute time-to-live evicts the session → HTTP 404 `UZ-AUTH-005`.
+2. **Ciphertext is single-read per client fingerprint**. Item 1's mechanism: only the originating fingerprint can replay during the window; any other source gets 410. This narrows the replay surface to "captured-network-packet-within-60s-from-same-source", which is dominated by existing TLS + network-perimeter assumptions.
 3. **Verified sessions cannot revert.** The state machine is monotonic; no path from `consumed` / `expired` / `aborted` back to any active state.
 4. **PATCH /approve is single-write.** Calling it against a session already in `verification_pending` returns HTTP 409 `UZ-AUTH-015`. The dashboard MUST NOT retry PATCH /approve if it has previously succeeded for the same session.
-5. **`session_id` is high-entropy.** A UUIDv7: a millisecond timestamp plus random bits drawn from the operating system's random source (`Entropy::uuid7`, `rustd/crates/afd_crypto/src/entropy.rs`). Not enumerable.
+5. **`session_id` is high-entropy.** A UUIDv7: a millisecond timestamp plus random bits drawn from the operating system's random source (`Entropy::uuid7`, `rustd/crates/foundation/af_crypto/src/entropy.rs`). Not enumerable.
 6. **`session_id` is capability-bearing.** Combined with the verification code, it authorizes ciphertext release.
    Approved surfaces include the login URL, consuming API paths, the bound callback body and transient browser handoff storage.
    Logs, analytics, telemetry, metrics labels and diagnostic bundles must exclude the complete identifier and callback state.
@@ -464,9 +475,9 @@ sequenceDiagram
     Note over CLI,API: server PUBLISH frames →<br/>SSE events for the lifetime of the connection
 ```
 
-The credential does not expire, so a 401 here means the row was revoked (`UZ-AUTH-023`) or never existed. Capabilities are resolved per request rather than frozen at mint: [`AUTH.md`](./AUTH.md) §"CLI credential — resolved, not granted" carries the model and its failure modes.
+The credential does not expire, so a 401 here means the row was revoked (`UZ-AUTH-023`) or never existed. Capabilities are resolved per request rather than frozen at mint: [`AUTH.md`](./AUTH.md#cli-credential-resolved-not-granted) carries the model and its failure modes.
 
-`agentsfleet logout` revokes the credential server-side with `DELETE /v1/cli-credentials/{id}` and clears local state (`cli/src/commands/auth-logout.ts`). A new login from the same machine revokes that machine's previous credential in the mint transaction, so a machine holds one live credential (`rustd/crates/afd_tenant/src/cli_credential/mod.rs`).
+`agentsfleet logout` revokes the credential server-side with `DELETE /v1/cli-credentials/{id}` and clears local state (`cli/src/commands/auth-logout.ts`). A new login from the same machine revokes that machine's previous credential in the mint transaction. So a machine holds one live credential (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`).
 
 ---
 
@@ -479,11 +490,11 @@ Flow 1's protocol assumes the following deploy rules. Diverging from these turns
 | **HTTPS-only** for `/v1/auth/*` | Load balancer / reverse proxy enforces. HTTP requests promoted via HTTP 308 to HTTPS. `api.agentsfleet.net` already enforces this in prod. |
 | **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. The load balancer is the only source; `agentsfleetd` sets no security headers of its own. |
 | **TLS ≥ 1.2** (1.3 preferred) | Load balancer config. |
-| **Dragonfly cluster required** | `DRAGONFLY_URL` (`rustd/crates/afd_dragonfly/src/config.rs`) must name a seed in a Dragonfly **cluster**. There is no standalone path, no topology selector, and no Sentinel option: every connection is a redis-rs `ClusterConnection` over RESP3, routing each command by its key's slot. A seed that answers as a single server refuses boot — `afd_dragonfly::preflight::refuse_unsuitable_datastore` runs before the daemon serves anything (`rustd/crates/agentsfleetd/src/serve/runtime.rs`). In-memory session storage is not acceptable under any multi-pod topology. |
-| **No eviction** | `maxmemory_policy` must be `noeviction` and `cache_mode` must be off. This is enforced, not advised: `preflight::refuse_eviction` (`rustd/crates/afd_dragonfly/src/preflight/mod.rs`) refuses a primary that evicts, and the daemon does not serve. A node that drops keys under pressure would discard accepted work silently, so it fails loud instead. Size the node for its working set; a stream that stops draining is refused at the admission budget, where a person can see it. |
-| Client-IP attribution | `rustd/crates/afd_http/src/client.rs` derives the client IP from two header signals — `X-Forwarded-For` (industry-standard, default attribution source) and `Fly-Client-IP` (Fly's authoritative single-value header, the trust anchor since Fly's proxy is the only path to agentsfleetd in any non-dev deploy and Fly strips client-supplied copies of its own header). When both are present we compare; agree → use XFF, disagree → flip to `Fly-Client-IP` and mark the address divergent (`ClientAddress::is_divergent`, the forgery signal). No audit event carries that flag yet, because the auth audit log is not built. Local-dev / direct-internet → neither header → fall back to raw TCP peer. **No env / no allowlist** (Captain decision May 18 2026 — Q8 in spec). The consume-idempotency fingerprint and the credential mint's recorded address consume the derived IP; there are no in-app per-IP rate-limit buckets (see *Rate-limit layers*). |
+| **Dragonfly cluster required** | `DRAGONFLY_URL` (`rustd/crates/daemon/afd_dragonfly/src/config.rs`) must name a seed in a Dragonfly **cluster**. There is no standalone path, no topology selector, and no Sentinel option: every connection is a redis-rs `ClusterConnection` over RESP3, routing each command by its key's slot. A seed that answers as a single server refuses boot — `afd_dragonfly::preflight::refuse_unsuitable_datastore` runs before the daemon serves anything (`rustd/crates/daemon/main/src/serve/runtime.rs`). In-memory session storage is not acceptable under any multi-pod topology. |
+| **No eviction** | `maxmemory_policy` must be `noeviction` and `cache_mode` must be off. This is enforced, not advised: `preflight::refuse_eviction` (`rustd/crates/daemon/afd_dragonfly/src/preflight/mod.rs`) refuses a primary that evicts, and the daemon does not serve. A node that drops keys under pressure would discard accepted work silently, so it fails loud instead. Size the node for its working set; a stream that stops draining is refused at the admission budget, where a person can see it. |
+| Client-IP attribution | `rustd/crates/daemon/afd_http/src/client.rs` derives the client IP from two header signals — `X-Forwarded-For` (industry-standard, default attribution source) and `Fly-Client-IP` (Fly's authoritative single-value header, the trust anchor since Fly's proxy is the only path to agentsfleetd in any non-dev deploy and Fly strips client-supplied copies of its own header). When both are present we compare; agree → use XFF, disagree → flip to `Fly-Client-IP` and mark the address divergent (`ClientAddress::is_divergent`, the forgery signal). No audit event carries that flag yet, because the auth audit log is not built. Local-dev / direct-internet → neither header → fall back to raw TCP peer. **No env / no allowlist** (Captain decision May 18 2026 — Q8 in spec). The consume-idempotency fingerprint and the credential mint's recorded address consume the derived IP; there are no in-app per-IP rate-limit buckets (see *Rate-limit layers*). |
 | **NTP-synced pod clocks** within ≤1s drift | The daemon stamps `expires_at_ms`; datastore expiry remains authoritative. An evicted session answers `POST /verify` with 404 `UZ-AUTH-005`. Neither CLI mode polls. Default mode also enforces its own five-minute waiting deadline. |
-| **One pepper in Vault** | `AUTH_SESSION_CODE_PEPPER` (defeats offline brute-force of the verification code), at `op://ZMB_CD_{DEV,PROD}/auth-session-code-pepper/credential`. Boot fails fast if it is missing — preflight reads it as a required knob (`SESSION_CODE_PEPPER_KNOB`, `rustd/crates/agentsfleetd/src/preflight/knobs.rs`). A second item, `audit-log-pepper`, was provisioned for an audit log that was never built and no code ever read; it was retired in M196_001 and comes back with the audit log, not before. Provisioning is documented in `playbooks/founding/01_bootstrap/001_playbook.md`, step "Human populates 1Password". |
+| **One pepper in Vault** | `AUTH_SESSION_CODE_PEPPER` (defeats offline brute-force of the verification code), at `op://ZMB_CD_{DEV,PROD}/auth-session-code-pepper/credential`. Boot fails fast if it is missing — preflight reads it as a required knob (`SESSION_CODE_PEPPER_KNOB`, `rustd/crates/daemon/main/src/preflight/knobs.rs`). A second item, `audit-log-pepper`, was provisioned for an audit log that was never built and no code ever read; it was retired in M196_001 and comes back with the audit log, not before. Provisioning is documented in `playbooks/founding/01_bootstrap/001_playbook.md`, step "Human populates 1Password". |
 | **Auth audit sink isolation** | The auth audit log target MUST route to a destination distinct from customer-visible logs — separate ACL, separate destination (e.g., security-team-only S3 bucket, separate Loki tenant, separate syslog facility). Deploy-side discipline, not enforced by code. |
 
 ---

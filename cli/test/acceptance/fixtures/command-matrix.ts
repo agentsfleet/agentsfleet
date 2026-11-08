@@ -102,7 +102,7 @@ export interface RequiresIdentifierRow {
 //              client-side and would stress the API).
 //   expectedErrorCode — server-side UZ-* code emitted on not-found
 //              (only meaningful when `apiHits: true`). The codes are
-//              declared in rustd/crates/afd_core/src/error_code/ —
+//              declared in rustd/crates/foundation/af_core/src/error_code/ —
 //              fleet.rs, auth.rs and integration.rs carry the three this
 //              matrix names.
 //   clientRejectCode — CLI-emitted error code when local validation /
@@ -260,7 +260,7 @@ export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> 
   ["billing", "show"],
   ["list"],
   // The catalogue is bearer-authed
-  // (rustd/crates/afd_api_tenant/src/handler/tenant/models/mod.rs), so `models`
+  // (rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/mod.rs), so `models`
   // must fail on the auth guard rather than dialing and surfacing a transport
   // error — the read happens before there is anything to read with.
   ["models"],

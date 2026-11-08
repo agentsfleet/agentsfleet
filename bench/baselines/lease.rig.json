@@ -2,57 +2,70 @@
   "lane": "lease",
   "profile": "rig",
   "provenance": {
-    "revision": "c82badcb5",
-    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0",
+    "revision": "f9fe254c8",
+    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2",
     "owned": true
   },
   "created": true,
   "parameters": {
     "BENCH_FLEETS": 200,
     "BENCH_RUNNERS": 8,
+    "ledger_queue": 1,
     "pool_size": 20
   },
   "measurements": {
-    "drain_commits_per_lease": 26.795,
-    "drain_dragonfly_calls_per_lease": 14.065,
+    "candidates_per_poll": 53.94685990338164,
+    "drain_commits_per_lease": 77.185,
+    "drain_dragonfly_calls_per_lease": 43.09,
     "drain_event_rows": 200.0,
     "drain_events": 200.0,
     "drain_events_processed": 200.0,
     "drain_failures": 0.0,
-    "drain_idle_dragonfly_calls_per_poll": 1.0002255180281765,
-    "drain_idle_polls": 75382.0,
-    "drain_lease_p95_ms": 56.479,
+    "drain_idle_dragonfly_calls_per_poll": 0.0007803355442840422,
+    "drain_idle_polls": 12815.0,
+    "drain_lease_p95_ms": 44.095,
     "drain_leases": 200.0,
-    "drain_leases_per_second": 171.64513246313163,
-    "drain_ledger_rows_per_event": 2.0,
-    "drain_polls": 400.0,
-    "drain_ready_depth": 0.0,
-    "drain_report_p95_ms": 21.535,
-    "drain_statements_per_lease": 49.99,
+    "drain_leases_per_second": 82.51206608906908,
+    "drain_ledger_rows_per_event": 3.0,
+    "drain_polls": 381.0,
+    "drain_report_p95_ms": 21.519,
+    "drain_statements_per_lease": 115.025,
+    "drain_statements_per_lease_activity": 40.0,
+    "drain_statements_per_lease_claim": 6.945,
+    "drain_statements_per_lease_gates": 11.0,
+    "drain_statements_per_lease_host": 9.0,
+    "drain_statements_per_lease_issue": 8.0,
+    "drain_statements_per_lease_meter": 8.0,
+    "drain_statements_per_lease_other": 0.08,
+    "drain_statements_per_lease_pricing": 7.0,
+    "drain_statements_per_lease_report": 8.0,
+    "drain_statements_per_lease_shared": 11.0,
+    "drain_statements_per_lease_sweep": 0.0,
+    "drain_statements_per_lease_task": 6.0,
+    "drain_unsettled_rows": 0.0,
     "error_rate": 0.0,
     "exhausted": 1.0,
     "failures": 0.0,
-    "idle_commits_per_poll": 0.0,
-    "idle_statements_per_poll": 0.0,
+    "idle_commits_per_poll": 1.0003121342177137,
+    "idle_statements_per_poll": 1.0,
     "leases": 200.0,
-    "max_ms": 12.279,
-    "p95_ms": 7.775,
-    "p99_ms": 11.199,
-    "polls_per_second": 1927.583968758721,
-    "rate_per_second": 1927.583968758721,
-    "roundtrips_per_lease": 2.385,
-    "wasted_claim_rate": 0.2779783393501805
+    "max_ms": 14.279,
+    "p95_ms": 9.455,
+    "p99_ms": 11.615,
+    "polls_per_second": 1440.6952920757408,
+    "rate_per_second": 1440.6952920757408,
+    "wasted_claim_rate": 0.033816425120772944
   },
   "datastores": {
     "dragonfly": {
-      "operations": 681
+      "operations": 9
     },
     "postgres": {
-      "operations": 477
+      "operations": 457
     }
   },
   "fixture": {
-    "run_prefix": "bench-1791522691970-42841",
+    "run_prefix": "bench-1793980058817-85553",
     "created": 1216,
     "swept": 1216
   }

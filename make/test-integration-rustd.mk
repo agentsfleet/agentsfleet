@@ -69,12 +69,18 @@
 # Under `KEEP_TEST_STATE=1` the prerequisite is the plain infra check.
 # The API pool's login, created after the migration that creates `api_runtime`:
 # the provider's `--inherited-roles api_runtime`, spelled in plain Postgres.
-# Idempotent; roles are cluster-wide and outlive the schema reset.
+# Idempotent; roles are cluster-wide and outlive the schema reset. The two
+# bounds equal `afd_db::login`'s constants, which
+# `the_api_login_runs_under_the_intake_bounds` reads back.
 define _api_login
 docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -c \
   "DO \$$\$$ BEGIN CREATE ROLE $(TEST_DATABASE_API_LOGIN) LOGIN PASSWORD '$(TEST_DATABASE_API_LOGIN)' IN ROLE api_runtime; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END \$$\$$" \
   >/dev/null || { echo "✗ [infra] API login failed"; exit 1; }; \
-echo "✓ [infra] API login $(TEST_DATABASE_API_LOGIN) holds api_runtime"
+docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q \
+  -c "ALTER ROLE $(TEST_DATABASE_API_LOGIN) SET lock_timeout = '2000ms'" \
+  -c "ALTER ROLE $(TEST_DATABASE_API_LOGIN) SET statement_timeout = '5000ms'" \
+  >/dev/null || { echo "✗ [infra] API login bounds failed"; exit 1; }; \
+echo "✓ [infra] API login $(TEST_DATABASE_API_LOGIN) holds api_runtime, under afd_db::login's bounds"
 endef
 
 _migrate-test-db: $(TEST_STATE_DEP)
@@ -193,7 +199,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
-# `crates/*/src/test_util.rs`, or `test_util/mod.rs` where the module has
+# `crates/*/*/src/test_util.rs`, or `test_util/mod.rs` where the module has
 # children, is fixture code compiled only under the `test-util` feature --
 # `TestDatabase::shared` and the two like it. The lane measures with
 # `--all-features`, so it was being graded as production surface:
@@ -211,7 +217,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 #
 # FILE granularity is all `--ignore-filename-regex` has, so this is exactly the
 # three whole-file modules. The `#[cfg(feature = "test-util")]` helpers that sit
-# INSIDE otherwise-production files -- afd_crypto's entropy seams, afd_db's
+# INSIDE otherwise-production files -- af_crypto's entropy seams, afd_db's
 # migration and pool helpers, and a dozen more -- are still counted, because a
 # filename filter cannot see a block. The exclusion is therefore partial by
 # construction, and that is recorded here rather than discovered later by
@@ -220,7 +226,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 # The bench crate leaves the DENOMINATOR too, on Indy's call (2026-09-07):
 # "the afd_bench/ crate must be ignored from codecov and the coverage we
 # conduct, that is just an optional crate to measure bench and no where used
-# in production". `crates/afd_bench` is a measuring instrument -- five lane
+# in production". `crates/daemon/afd_bench` is a measuring instrument -- five lane
 # binaries and the harness they share -- with no consumer in the workspace
 # (`rustd/Cargo.toml` lists it as a member; nothing depends on it) and no path
 # into a shipped binary. Its tests still RUN in this lane, so the lanes stay
@@ -235,7 +241,7 @@ RUSTD_COVERAGE_FLOOR ?= 98.5
 # then merged `make test-coverage-runner-kernel`'s report into it, and
 # excluding them threw that lane's measurement away. Dropped on Indy's call
 # (2026-10-15, M227).
-RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/afd_bench/)
+RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 
 # The floor's verdict, carrying the number that decided it, decided ONCE.
 #

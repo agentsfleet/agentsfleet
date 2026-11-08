@@ -1,5 +1,5 @@
 import { outcomeForStatus } from "@/lib/events/event-summary";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_EVENT_STATUS, FOLDED_OUTCOME, type FleetEvent } from "./fleet-stream-row";
 
 // The optimistic-row reducers: what the operator's own message looks like
 // before the server names it, and how it is folded onto the server's row when
@@ -69,4 +69,14 @@ export function reconcileRows(
     alreadyComplete: false,
     loaded: false,
   };
+}
+
+/** A send the live run took: named by the server, settled with no reply of its
+ * own, and labelled so the operator reads where it went. */
+export function foldRow(prev: FleetEvent[], tempId: string, realEventId: string): FleetEvent[] {
+  return prev.map((event) =>
+    event.id === tempId
+      ? { ...event, id: realEventId, status: AGENTSFLEET_EVENT_STATUS.FOLDED, outcome: FOLDED_OUTCOME }
+      : event,
+  );
 }

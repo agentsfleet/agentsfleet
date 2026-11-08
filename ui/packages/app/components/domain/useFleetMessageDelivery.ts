@@ -7,7 +7,7 @@ import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } 
 import type { useFleetEventStream } from "./useFleetEventStream";
 import { HTTP_STATUS_UNAUTHORIZED, isDefiniteRefusal } from "@/lib/api/errors";
 import { postSteer, type SteerResult } from "@/lib/api/fleet-steer";
-import { overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
+import { STEER_DISPOSITION, overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
 import { ERROR_CODE } from "@/lib/errors";
 import { ACTOR } from "@/lib/events/event-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
@@ -208,7 +208,8 @@ function useAcknowledgement({ reconcileOptimistic, writers }: DeliveryCtx) {
   return useCallback(
     (operationId: string, tempId: string, accepted: SteerAccepted): boolean => {
       writers.settle(operationId);
-      reconcileOptimistic(tempId, accepted.event_id, accepted.replayed);
+      const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_event_id : null;
+      reconcileOptimistic(tempId, accepted.event_id, accepted.replayed, foldedInto);
       return true;
     },
     [reconcileOptimistic, writers],

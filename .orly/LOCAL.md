@@ -18,7 +18,7 @@ facts.
   "Swarm is the required target" rule); the local lane is a real four-node cluster. Redis is not a supported
   backend: Indy called the cutover on 2026-09-12 (M192_001 Discovery), superseding the earlier
   "Redis remains the default" rule. The crate is `afd_dragonfly`; the boot knob is
-  `DRAGONFLY_URL`, declared at `rustd/crates/afd_dragonfly/src/config.rs`. The retired Zig
+  `DRAGONFLY_URL`, declared at `rustd/crates/daemon/afd_dragonfly/src/config.rs`. The retired Zig
   daemon's `REDIS_*` spelling went with it — one URL for both roles, and a seed that answers
   as a single server is refused at `serve/runtime.rs` before the daemon serves anything.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
@@ -41,7 +41,7 @@ facts.
   gate) · integration → `make test-integration-rustd` (live Postgres + Dragonfly) ·
   version → `make check-version` · dry lanes → `make dry-app` /
   `make dry`. A package-scoped runner
-  (`cd ui/packages/app && bun run test`, `cargo test -p afd_wire`, …) is
+  (`cd ui/packages/app && bun run test`, `cargo test -p af_wire`, …) is
   inner-loop iteration; it proves a package, not the repository, and never
   satisfies a VERIFY row or a "tests pass" claim.
 - A fresh linked worktree requires `bun install`, followed by
@@ -60,7 +60,7 @@ facts.
   `.orly/standards/languages/rust.md`; the standard is what this repository
   does differently.
   Carry one fact in: **a crate never hand-writes its error type.** Declare a
-  private `ErrorKind`, then `afd_core::error_shell!` generates the boxed
+  private `ErrorKind`, then `af_core::error_shell!` generates the boxed
   `Error`, its backtrace, its `[CODE]` `Display` and its self-skipping
   `source()`, and `error_lifts!` generates the `From` impls. Only the `Result`
   alias is written by hand, so a reader can see it without expanding a macro.
@@ -68,10 +68,13 @@ facts.
   guard, per HTTP-GARDE and HTTP-VALID in [the HTTP standard](standards/domains/http.md); never a
   hand-written length, range or charset check. Rules garde lacks, the route
   `?limit` (`Limit` + `Ceiling`) and the report-to-sentence table
-  (`Sentences`) live in `afd_validate`. A parser a bound protects takes
+  (`Sentences`) live in `af_validate`. A parser a bound protects takes
   `&garde::Valid<T>`, so it cannot run on unproved input.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
+- A new script (`scripts/**`, `deploy/**/*.sh`, a `make` recipe's helper) needs
+  Indy's sign-off before it is committed; a one-off helper lives outside the
+  repository and is deleted when the work ends.
 - Test fleets use purpose-driven display names, such as `Support triage` or
   `Pull request review`. Keep run identifiers, timestamps, and cleanup keys out
   of names shown in the sidebar; track fixture ownership by fleet identifier.
@@ -81,22 +84,29 @@ facts.
 The standards in `.orly/standards/` name things generically. In this
 repository:
 
+- **Crates:** each crate sits in one layer folder under `rustd/crates/`:
+  `foundation/`, `protocol/`, `harness/`, `runner/` or `daemon/`. It depends
+  on its own layer or a lower one, and `runner/` and `daemon/` never on each
+  other (`rustd/Cargo.toml`). Shared crates are `af_*`, daemon-only `afd_*`,
+  runner-only `afr_*`. A layer's binary sits in `main/` (`daemon/main` is
+  `agentsfleetd`, `runner/main` is `agentsfleet_runner`); every other folder
+  is its crate's name.
 - **SQL:** schema slots are `schema/*.sql`; statement files are
   `rustd/crates/**/src/**/*.sql`; the migration list is
-  `rustd/crates/afd_db/src/migration.rs`; a foreign-key violation is read with
+  `rustd/crates/daemon/afd_db/src/migration.rs`; a foreign-key violation is read with
   `afd_db::constraint::violates_foreign_key`.
-- **Identifiers and secrets:** identifiers come from `afd_core::id`, secret
-  bytes from `afd_crypto::entropy`.
-- **HTTP:** wire types live in `afd_wire`; routes in
-  `rustd/crates/afd_http/src/route/*.rs`; handlers in
-  `rustd/crates/afd_api_*/src/**`; bounds and paging in `afd_validate` and
-  `afd_core::paging`. A new route updates `INVENTORY` in `route_inventory.rs`
+- **Identifiers and secrets:** identifiers come from `af_core::id`, secret
+  bytes from `af_crypto::entropy`.
+- **HTTP:** wire types live in `af_wire`; routes in
+  `rustd/crates/daemon/afd_http/src/route/*.rs`; handlers in
+  `rustd/crates/daemon/afd_api_*/src/**`; bounds and paging in `af_validate` and
+  `af_core::paging`. A new route updates `INVENTORY` in `route_inventory.rs`
   and the counts in `route_meta_total.rs`.
-- **Errors:** codes live in `rustd/crates/afd_core/src/error_code/**` with the
+- **Errors:** codes live in `rustd/crates/foundation/af_core/src/error_code/**` with the
   `UZ-` prefix; problem types resolve under
   `https://docs.agentsfleet.net/errors/`. A new code lands as a family const, a
   `REGISTRY` row and a `problem/` entry in one commit. `From` impls come from
-  `afd_core::error_lifts!`.
+  `af_core::error_lifts!`.
 - **OpenAPI:** `public/openapi.json` is regenerated from `rustd/` with
   `--no-banner`, never edited by hand.
 - **Auth:** `afd_auth`, `afd_credential`, `ui/packages/app/lib/auth/**` and the

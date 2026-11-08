@@ -13,7 +13,7 @@ primary_region = "iad"
 # HTTP concurrency and backpressure match production, which explains each
 # (deploy/fly/agentsfleetd-prod/fly.toml): a tokio runtime sized by the core
 # count, a constant 256-request in-flight ceiling for API-class routes
-# (`DEFAULT_MAX_IN_FLIGHT`, rustd/crates/afd_http/src/admission/mod.rs), and
+# (`DEFAULT_MAX_IN_FLIGHT`, rustd/crates/daemon/afd_http/src/admission/mod.rs), and
 # SSE_MAX_STREAMS (default 256) for Server-Sent Events (SSE) streams.
 # Postgres connections this replica may open, measured against the cluster's
 # own ceiling rather than left to the code's default.

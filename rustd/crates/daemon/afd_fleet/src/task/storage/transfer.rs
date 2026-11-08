@@ -1,0 +1,246 @@
+//! Exact immutable objects, signed descriptor headers and bounded native readback.
+
+use super::{R2CheckpointStore, bounded};
+use crate::{Result, task::TaskRefusal};
+use af_core::{clock, id::Uuid7};
+use base64::{Engine as _, prelude::BASE64_STANDARD};
+use bytes::Bytes;
+use futures_util::StreamExt as _;
+use object_store::{
+    ObjectStore as _, ObjectStoreExt as _, PutMode, PutOptions,
+    aws::AmazonS3,
+    path::Path,
+    signer::{Method, Signer as _},
+};
+use serde::Serialize;
+use std::{collections::BTreeMap, time::Duration};
+
+/// Transfer material is supervisor-only, never model-visible activity.
+#[derive(Serialize)]
+pub(in crate::task) struct Authorization {
+    pub url: String,
+    pub headers: BTreeMap<String, String>,
+}
+
+impl std::fmt::Debug for Authorization {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Authorization(redacted)")
+    }
+}
+
+pub(in crate::task) struct StorageSession<'a> {
+    pub(super) store: &'a R2CheckpointStore,
+    pub(super) backend: AmazonS3,
+}
+
+impl R2CheckpointStore {
+    /// Verifies conditional creation in the configured private bucket before activation.
+    ///
+    /// # Errors
+    /// A backend that accepts replacement stays unavailable for checkpoints.
+    pub async fn verify_create_only(&self) -> Result<()> {
+        self.session().await?.verify_create_only().await
+    }
+}
+
+impl StorageSession<'_> {
+    async fn verify_create_only(&self) -> Result<()> {
+        bounded::operation("verify_create_only", async {
+            self.store
+                .verified
+                .get_or_try_init(async || {
+                    let id = af_crypto::entropy::Entropy::new().uuid7(clock::now())?;
+                    let path = Path::from(format!("capability-probes/{}", id.as_str()));
+                    let initial = Bytes::from_static(b"create-only-one");
+                    let first = self
+                        .backend
+                        .put_opts(
+                            &path,
+                            initial.clone().into(),
+                            PutOptions {
+                                mode: PutMode::Create,
+                                ..PutOptions::default()
+                            },
+                        )
+                        .await?;
+                    let second = self
+                        .backend
+                        .put_opts(
+                            &path,
+                            Bytes::from_static(b"replacement-two").into(),
+                            PutOptions {
+                                mode: PutMode::Create,
+                                ..PutOptions::default()
+                            },
+                        )
+                        .await;
+                    let rejected = matches!(
+                        second,
+                        Err(object_store::Error::AlreadyExists { .. }
+                            | object_store::Error::Precondition { .. })
+                    );
+                    let bytes = read_bounded(
+                        &self.backend,
+                        &path,
+                        u64::try_from(initial.len()).unwrap_or(u64::MAX),
+                    )
+                    .await?;
+                    self.backend.delete(&path).await?;
+                    if !rejected
+                        || bytes.as_deref() != Some(initial.as_ref())
+                        || first.e_tag.is_none()
+                    {
+                        return Err(TaskRefusal::StorageUnavailable.into());
+                    }
+                    Ok(())
+                })
+                .await
+                .copied()
+        })
+        .await
+    }
+
+    pub(in crate::task) async fn upload(
+        &self,
+        workspace: &Uuid7,
+        repository: &Uuid7,
+        object: &Uuid7,
+        ciphertext_digest: &str,
+        ciphertext_length: u64,
+        lifetime: Duration,
+    ) -> Result<Authorization> {
+        bounded::operation("authorize_upload", async {
+            self.verify_create_only().await?;
+            let digest = hex::decode(ciphertext_digest)
+                .map_err(|_invalid| TaskRefusal::CheckpointIncompatible)?;
+            let headers = BTreeMap::from([
+                ("if-none-match".to_owned(), "*".to_owned()),
+                ("content-length".to_owned(), ciphertext_length.to_string()),
+                (
+                    "x-amz-checksum-sha256".to_owned(),
+                    BASE64_STANDARD.encode(digest),
+                ),
+            ]);
+            let url = super::signing::upload(
+                self,
+                &object_path(workspace, repository, object),
+                &headers,
+                lifetime,
+            )
+            .await?;
+            Ok(Authorization { url, headers })
+        })
+        .await
+    }
+
+    pub(in crate::task) async fn download(
+        &self,
+        workspace: &Uuid7,
+        repository: &Uuid7,
+        object: &Uuid7,
+        lifetime: Duration,
+    ) -> Result<Authorization> {
+        bounded::operation("authorize_download", async {
+            let url = self
+                .backend
+                .signed_url(
+                    Method::GET,
+                    &object_path(workspace, repository, object),
+                    lifetime,
+                )
+                .await?;
+            Ok(Authorization {
+                url: url.to_string(),
+                headers: BTreeMap::new(),
+            })
+        })
+        .await
+    }
+
+    pub(in crate::task) async fn read_object(
+        &self,
+        workspace: &Uuid7,
+        repository: &Uuid7,
+        object: &Uuid7,
+        digest: &str,
+        length: u64,
+    ) -> Result<Option<Vec<u8>>> {
+        bounded::operation("verify_object", async {
+            let bytes = read_bounded(
+                &self.backend,
+                &object_path(workspace, repository, object),
+                length,
+            )
+            .await?;
+            if bytes
+                .as_ref()
+                .is_some_and(|bytes| af_core::etag::sha256_hex(bytes) != digest)
+            {
+                return Err(TaskRefusal::CheckpointIncompatible.into());
+            }
+            Ok(bytes)
+        })
+        .await
+    }
+
+    pub(in crate::task) async fn delete(
+        &self,
+        workspace: &Uuid7,
+        repository: &Uuid7,
+        object: &Uuid7,
+    ) -> Result<()> {
+        bounded::operation("delete_object", async {
+            match self
+                .backend
+                .delete(&object_path(workspace, repository, object))
+                .await
+            {
+                Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
+                Err(error) => Err(error.into()),
+            }
+        })
+        .await
+    }
+}
+
+async fn read_bounded(backend: &AmazonS3, path: &Path, length: u64) -> Result<Option<Vec<u8>>> {
+    let tag = u64::try_from(af_crypto::TAG_LEN)
+        .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?;
+    if length > af_wire::task::CHECKPOINT_OBJECT_BYTES + tag {
+        return Err(TaskRefusal::CheckpointIncompatible.into());
+    }
+    let response = match backend.get(path).await {
+        Ok(response) => response,
+        Err(object_store::Error::NotFound { .. }) => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if response.meta.size != length {
+        return Err(TaskRefusal::CheckpointIncompatible.into());
+    }
+    let mut stream = response.into_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if u64::try_from(bytes.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(u64::try_from(chunk.len()).unwrap_or(u64::MAX))
+            > length
+        {
+            return Err(TaskRefusal::CheckpointIncompatible.into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) != length {
+        return Err(TaskRefusal::CheckpointIncompatible.into());
+    }
+    Ok(Some(bytes))
+}
+
+fn object_path(workspace: &Uuid7, repository: &Uuid7, object: &Uuid7) -> Path {
+    Path::from(format!(
+        "workspaces/{}/repositories/{}/objects/{}",
+        workspace.as_str(),
+        repository.as_str(),
+        object.as_str()
+    ))
+}

@@ -25,4 +25,4 @@ There is no documented per-user purge API on this branch.
 Stop before claiming erasure; do not improvise deletion SQL across identity, private content, and retained billing records.
 The Human owns identity deletion and any decision to erase application data.
 
-Source: `rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs`, section `Why user.deleted is answered and not acted on`.
+Source: `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`, section `Why user.deleted is answered and not acted on`.

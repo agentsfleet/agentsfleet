@@ -1,0 +1,149 @@
+//! The half of an approval card a human may read as fact.
+//!
+//! # The split is a trust boundary, and here it is a TYPE
+//!
+//! A card carries two kinds of statement:
+//!
+//! | half | author | a human may read it as |
+//! |---|---|---|
+//! | [`Stated`] | the daemon and the workspace | fact |
+//! | [`Claim`](super::Claim) | a language model | an attributed claim |
+//!
+//! One flat struct kept apart by a comment and a naming convention would hold
+//! exactly as long as every future reader honours it — and the renderer is a
+//! different file, in a different milestone, written by someone who did not
+//! read this one. So they are separate types a renderer receives separately,
+//! and attributing the model's half is not a discipline it can forget.
+//!
+//! Every field below is either derived by the daemon from the delivery envelope
+//! or authored by whoever configured the fleet. Nothing here passed through a
+//! model, which is what makes the card trustworthy at all.
+
+use std::time::Duration;
+
+use af_fleet_runtime::config::{GateRule, RepositoryBinding};
+
+/// The trustworthy half of one approval card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stated<'a> {
+    /// The event's type. `tool_name` on the row.
+    pub tool: &'a str,
+    /// Who raised it. `action_name` on the row.
+    pub action: &'a str,
+    /// The event's identifier, which is what `params_summary` carries.
+    pub summary: &'a str,
+    /// What kind of decision the human is being asked for.
+    ///
+    /// Empty renders as nothing rather than as a reassuring default.
+    pub kind: &'a str,
+    /// How far a yes reaches. Empty renders as nothing.
+    pub radius: &'a str,
+    /// The fleet's repository egress binding as the DAEMON holds it — never as
+    /// a model described it.
+    ///
+    /// The one decision-relevant fact the platform can vouch for, because it is
+    /// the same value the write mint scopes its token by: whatever the model
+    /// claims, the run cannot reach outside this list. Without it the card's
+    /// trustworthy half named no repository and no commit — `tool`, `action`
+    /// and `summary` carry event type, actor and event id, so every
+    /// decision-relevant word a human read came from the model's half. The
+    /// commit stays unverifiable, because approval releases a bounded run
+    /// rather than specific bytes; the blast radius no longer does.
+    ///
+    /// `None` when the fleet declares none, which fails the mint closed, so
+    /// there is no reach to state.
+    pub binding: Option<&'a RepositoryBinding>,
+    /// How long the question stands before it lapses.
+    pub timeout: Duration,
+}
+
+impl<'a> Stated<'a> {
+    /// The daemon-derived half, before a rule or a kind is stamped on it.
+    ///
+    /// `kind` and `radius` open empty, and [`Stated::under`] fills both from
+    /// the rule that matched. A card reaching a human with neither would be a
+    /// card that says what is being asked but not what kind of question it is.
+    #[must_use]
+    pub const fn of(
+        tool: &'a str,
+        action: &'a str,
+        summary: &'a str,
+        binding: Option<&'a RepositoryBinding>,
+        timeout: Duration,
+    ) -> Self {
+        Self {
+            tool,
+            action,
+            summary,
+            kind: "",
+            radius: "",
+            binding,
+            timeout,
+        }
+    }
+
+    /// The workspace copy `rule` authored for this decision.
+    ///
+    /// Taken from the rule that MATCHED rather than looked up again, which is
+    /// what makes it impossible for the card to describe a different rule from
+    /// the one that fired — see [`super::match_rule`].
+    #[must_use]
+    pub fn under(mut self, rule: &'a GateRule) -> Self {
+        self.kind = &rule.gate_kind;
+        self.radius = &rule.blast_radius;
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::Stated;
+    use af_fleet_runtime::config::{Behavior, GateRule};
+
+    /// A rule's timeout, as a fixture authors one.
+    const FIFTEEN_MINUTES: Duration = Duration::from_mins(15);
+
+    fn rule(kind: &str, radius: &str) -> GateRule {
+        GateRule {
+            tool: "*".into(),
+            action: "*".into(),
+            condition: None,
+            behavior: Behavior::Approve,
+            gate_kind: kind.into(),
+            blast_radius: radius.into(),
+        }
+    }
+
+    #[test]
+    fn the_daemon_derived_facts_are_always_present() {
+        // They are what a model cannot forge, so a blank one here is a failure
+        // rather than a display default.
+        let stated = Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES);
+
+        assert_eq!(stated.tool, "chat");
+        assert_eq!(stated.action, "steer:user_42");
+        assert_eq!(stated.summary, "evt-1");
+        assert_eq!(stated.timeout, FIFTEEN_MINUTES);
+    }
+
+    #[test]
+    fn a_matched_rule_supplies_the_workspace_copy() {
+        let matched = rule("repair", "one draft Pull Request");
+        let stated =
+            Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES).under(&matched);
+
+        assert_eq!(stated.kind, "repair");
+        assert_eq!(stated.radius, "one draft Pull Request");
+    }
+
+    #[test]
+    fn an_omitted_blast_radius_stays_empty_rather_than_inventing_a_reassuring_one() {
+        let matched = rule("repair", "");
+        let stated =
+            Stated::of("chat", "steer:user_42", "evt-1", None, FIFTEEN_MINUTES).under(&matched);
+
+        assert_eq!(stated.radius, "");
+    }
+}

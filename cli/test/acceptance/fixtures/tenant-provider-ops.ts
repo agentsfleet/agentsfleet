@@ -89,7 +89,7 @@ export async function deleteSecretByName(env: Env, name: string): Promise<void> 
 
 // Provider-mode wire literals — mirror `PROVIDER_MODE` in
 // `cli/src/constants/billing.ts`, which itself mirrors the `posture` constants
-// in `rustd/crates/afd_billing/src/sql.rs`. UFS: named once, reused.
+// in `rustd/crates/daemon/afd_billing/src/sql.rs`. UFS: named once, reused.
 export const TENANT_PROVIDER_MODE = {
   platform: "platform",
   selfManaged: "self_managed",

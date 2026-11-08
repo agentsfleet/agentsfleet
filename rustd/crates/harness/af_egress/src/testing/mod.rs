@@ -1,0 +1,276 @@
+//! Fakes for the suites that drive egress without a socket or a daemon.
+//!
+//! [`CountingMint`] answers one token and counts how often it was asked, so a
+//! suite proves a lease mints once. [`RecordingTransport`] records what would
+//! have reached the wire, credentials in place, and answers what its closure
+//! says, so a suite proves both what was sent and that nothing was.
+//! [`closed`] is a guard that admits nothing, for a suite whose tools never
+//! send. [`FakeResolver`] answers names from a table, for a suite that drives
+//! resolution without DNS.
+
+use std::borrow::Cow;
+use std::fmt;
+use std::sync::LazyLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::Duration;
+
+use af_core::clock::{self, Clock, FixedClock, SystemClock};
+use af_core::error_code::{self, ErrorCode};
+use af_secrets::Secret;
+use af_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
+
+use crate::egress::Egress;
+use crate::error::{Error, Result};
+use crate::mint::{Mint, Minted};
+use crate::transport::{Inbound, Outbound, Transport};
+
+mod resolver;
+#[cfg(test)]
+mod tests;
+// An HTTPS upstream a routed `Network` trusts, for suites that drive a
+// tool's real request through the guard and real TLS.
+#[cfg(feature = "test-util")]
+pub mod upstream;
+
+pub use self::resolver::FakeResolver;
+
+/// What a refusing test mint answers with: [`CountingMint::never`] and the
+/// closed guard behind [`closed`].
+const NEVER: &str = "this suite mints no credential";
+/// The code a refusing mint answers under: the daemon's, as a GitHub mint
+/// refused would carry it.
+const MINT_REFUSED: ErrorCode = error_code::GH_MINT_FAILED;
+
+/// A mint answering one token that lives `lifetime` from `clock`'s
+/// reading, or refusing every time.
+#[derive(Debug)]
+pub struct CountingMint {
+    answer: Answer,
+    clock: FixedClock,
+    asked: AtomicUsize,
+}
+
+#[derive(Debug)]
+enum Answer {
+    /// The first mint answers `token` itself, each later one `token-N`, so a
+    /// suite tells a re-minted token from the one it replaced.
+    Token {
+        token: Secret,
+        lifetime: Duration,
+    },
+    Refused(String),
+}
+
+impl CountingMint {
+    /// A mint answering `token`, valid for `lifetime` from `clock`.
+    #[must_use]
+    pub fn answering(token: &str, lifetime: Duration, clock: FixedClock) -> Self {
+        Self::with(
+            Answer::Token {
+                token: Secret::new(token.to_owned()),
+                lifetime,
+            },
+            clock,
+        )
+    }
+
+    /// A mint that refuses with `detail`.
+    #[must_use]
+    pub fn refusing(detail: &str, clock: FixedClock) -> Self {
+        Self::with(Answer::Refused(detail.to_owned()), clock)
+    }
+
+    /// A mint for a suite whose leases mint nothing: it refuses, and a suite
+    /// that wants to prove no mint happened reads [`CountingMint::asked`].
+    #[must_use]
+    pub fn never() -> Self {
+        Self::refusing(NEVER, FixedClock::at(jiff::Timestamp::UNIX_EPOCH))
+    }
+
+    const fn with(answer: Answer, clock: FixedClock) -> Self {
+        Self {
+            answer,
+            clock,
+            asked: AtomicUsize::new(0),
+        }
+    }
+
+    /// How many mints were asked for.
+    #[must_use]
+    pub fn asked(&self) -> usize {
+        self.asked.load(Ordering::SeqCst)
+    }
+}
+
+#[async_trait::async_trait]
+impl Mint for CountingMint {
+    async fn mint(&self, _integration: &str) -> Result<Minted> {
+        let asked = self.asked.fetch_add(1, Ordering::SeqCst) + 1;
+        match &self.answer {
+            Answer::Token { token, lifetime } => {
+                let value = if asked == 1 {
+                    token.expose().to_owned()
+                } else {
+                    format!("{}-{asked}", token.expose())
+                };
+                Ok(Minted::new(
+                    Secret::new(value),
+                    clock::after(self.clock.now(), *lifetime),
+                ))
+            }
+            Answer::Refused(detail) => Err(Error::mint_refused(MINT_REFUSED, detail.clone())),
+        }
+    }
+}
+
+/// One request as it would have reached the wire, credentials in place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sent {
+    /// The method.
+    pub method: String,
+    /// The URL.
+    pub url: String,
+    /// Every header, values exposed.
+    pub headers: Vec<(String, String)>,
+    /// The body.
+    pub body: Option<String>,
+}
+
+impl Sent {
+    /// The value of header `name`, if sent.
+    #[must_use]
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(sent, _)| sent.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+/// What a recording transport answers each request with.
+type Reply = Box<dyn Fn(&Outbound) -> Result<Inbound> + Send + Sync>;
+
+/// A transport that records each request and answers what `reply` says.
+pub struct RecordingTransport {
+    reply: Reply,
+    sent: Sender<Sent>,
+}
+
+impl RecordingTransport {
+    /// A transport answering through `reply`, and the receiver every request
+    /// it was handed arrives on.
+    #[must_use]
+    pub fn answering(
+        reply: impl Fn(&Outbound) -> Result<Inbound> + Send + Sync + 'static,
+    ) -> (Self, Receiver<Sent>) {
+        let (sent, received) = mpsc::channel();
+        (
+            Self {
+                reply: Box::new(reply),
+                sent,
+            },
+            received,
+        )
+    }
+
+    /// A transport answering every request `status` with `body`.
+    #[must_use]
+    pub fn replying(status: u16, body: &str) -> (Self, Receiver<Sent>) {
+        let body = body.to_owned();
+        Self::answering(move |_outbound| Ok(inbound(status, &body)))
+    }
+}
+
+impl fmt::Debug for RecordingTransport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RecordingTransport").finish_non_exhaustive()
+    }
+}
+
+#[async_trait::async_trait]
+impl Transport for RecordingTransport {
+    async fn send(&self, outbound: Outbound) -> Result<Inbound> {
+        let headers = outbound
+            .headers()
+            .iter()
+            .map(|(name, value)| {
+                let exposed = String::from_utf8_lossy(value.as_bytes()).into_owned();
+                (name.as_str().to_owned(), exposed)
+            })
+            .collect();
+        let record = Sent {
+            method: outbound.method().to_string(),
+            url: outbound.url().to_string(),
+            headers,
+            body: outbound.body().map(str::to_owned),
+        };
+        // A suite that dropped its receiver asserts nothing about what was sent.
+        let _unread = self.sent.send(record);
+        (self.reply)(&outbound)
+    }
+}
+
+/// A plain-text answer with `status` and `body`.
+#[must_use]
+pub fn inbound(status: u16, body: &str) -> Inbound {
+    Inbound {
+        status,
+        location: None,
+        content_type: None,
+        body: body.to_owned(),
+        truncated: false,
+        lossy: false,
+        redirect: None,
+        followed_redirects: 0,
+    }
+}
+
+/// One redirect, preserving opaque metadata for the composing tool's tests.
+#[must_use]
+pub fn redirected(status: u16, from: &reqwest::Url, target: &str) -> Inbound {
+    let mut response = inbound(status, "");
+    response.redirect = crate::redirect::Target::new(from, target).ok();
+    response.location = response
+        .redirect
+        .as_ref()
+        .map(crate::redirect::Target::origin);
+    response
+}
+
+/// The policy a closed guard admits under: no host, no credential.
+static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPolicy {
+    inference: None,
+    model_context_tokens: 0,
+    network_policy: NetworkPolicy {
+        allow: Vec::new(),
+        read_only: true,
+        read_post_paths: Vec::new(),
+        ..NetworkPolicy::default()
+    },
+    tools: Vec::new(),
+    secrets_map: None,
+    mintable: Vec::new(),
+    provider: Cow::Borrowed(""),
+    api_key: Cow::Borrowed(""),
+    inference_host: Cow::Borrowed(""),
+    base_url: None,
+    repository_binding: None,
+    http_origin_policies: Vec::new(),
+    context: ContextBudget {
+        tool_window: 0,
+        memory_checkpoint_every: 0,
+        stage_chunk_threshold: 0.0,
+        model: Cow::Borrowed(""),
+        context_cap_tokens: 0,
+    },
+});
+
+/// The same refusing mint used by suites that expect no credential access.
+static CLOSED_MINT: LazyLock<CountingMint> = LazyLock::new(CountingMint::never);
+
+/// A guard that admits nothing and mints nothing.
+#[must_use]
+pub fn closed() -> Egress<'static> {
+    Egress::new("", &CLOSED, &*CLOSED_MINT, &SystemClock)
+}
