@@ -140,14 +140,6 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     assert!(parked(&fixtures, &seeded.event_id).await);
     let workspace = seed::workspace_of(&fixtures, &seeded.fleet).await;
     let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
-    fixtures
-        .queue()
-        .spend_key(&afd_gate::gate::key::event_ref(
-            seeded.fleet.as_str(),
-            seeded.event_id.as_str(),
-        ))
-        .await
-        .expect("simulate the reference expiring before recovery");
     sqlx::query("UPDATE fleet.approval_gates SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1")
         .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("deadline"))
         .await.expect("elapsed approval deadline");

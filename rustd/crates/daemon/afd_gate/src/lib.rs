@@ -28,6 +28,4 @@ mod error;
 pub mod gate;
 pub mod policy;
 
-pub use self::error::{
-    DETAIL_GATE_BINDING_UNWRITABLE, DETAIL_GATE_REFERENCE_UNWRITABLE, Error, Result,
-};
+pub use self::error::{DETAIL_GATE_BINDING_UNWRITABLE, Error, Result};

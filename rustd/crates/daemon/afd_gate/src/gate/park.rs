@@ -54,8 +54,6 @@ const EVENT_PARK_PENDING: &str = "gate_pending";
 /// both the same way, but knowing WHICH store dropped is the difference between
 /// suspecting Postgres and suspecting Dragonfly.
 const WRITE_ROW: &str = "durable_row";
-/// See [`WRITE_ROW`].
-const WRITE_REFERENCE: &str = "event_reference";
 
 /// The spend count a bounded approval opens at.
 ///
@@ -119,22 +117,8 @@ impl Gates {
             Ok(recorded) => recorded,
             Err(fault) => return Self::unavailable(&request, WRITE_ROW, Some(&fault)),
         };
-        // Last, and the ordering the module note argues for. A reference that
-        // fails to land leaves a `pending` row nothing points at: the event
-        // re-polls, finds no reference, and parks again — which is why
-        // `SELECT_GATE_STATUS` reads the NEWEST row for an action rather than
-        // assuming one. A second card is the cost; a released run is not.
-        if let Err(fault) = self
-            .record(
-                request.fleet_id,
-                request.event_id.as_str(),
-                &reference,
-                request.stated.timeout,
-            )
-            .await
-        {
-            return Self::unavailable(&request, WRITE_REFERENCE, Some(&fault));
-        }
+        // The row is the reference: `recorded` finds this event's gate in
+        // `approval_gates`, so nothing else has to land before the announce.
         self.announce(&request, &recorded).await;
 
         let fleet = request.fleet_id.as_str();

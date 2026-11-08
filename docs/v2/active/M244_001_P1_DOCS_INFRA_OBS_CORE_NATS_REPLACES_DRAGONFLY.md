@@ -234,9 +234,9 @@ Read `docs/AUTH.md` first (AUTH-DOC). `identity.device_sessions` has one row per
 - **Dimension 5.5** — DONE — an expired session is refused, then swept → Test `expired_session_is_refused_and_swept` (integration): `expires_at` backdated; verify answers `Expired`; one sweep pass removes the row.
 - **Dimension 5.6** — DONE — a nonce spends once → Test `nonce_spends_once_under_contention` (integration): 100 spends from a barrier; one `true`, 99 `false`.
 - **Dimension 5.7** — DONE — an expired nonce is refused → Test `expired_nonce_is_refused` (integration): `expires_at` backdated; spend answers `false` and deletes nothing.
-- **Dimension 5.8** — a parked event finds its gate with no cache → Test `parked_event_finds_its_gate_from_the_table` (integration): park, then `recorded` returns the gate's action id from `approval_gates`.
-- **Dimension 5.9** — each rule counts its own window → Test `each_rule_counts_its_own_window` (unit, paused time): rules 3 per 60 s and 10 per 3,600 s; the third call in 60 s trips; after 61 s idle, a call counts 1 for the first rule and 4 for the second. The shared key fails it.
-- **Dimension 5.10** — the brake's memory stays bounded → Test `anomaly_keys_stay_bounded` (unit): `ANOMALY_KEYS_MAX + 1` distinct actions keep `ANOMALY_KEYS_MAX` entries, the oldest evicted.
+- **Dimension 5.8** — DONE — a parked event finds its gate with no cache → Test `parked_event_finds_its_gate_from_the_table` (integration): park, then `recorded` returns the gate's action id from `approval_gates`.
+- **Dimension 5.9** — DONE — each rule counts its own window → Test `each_rule_counts_its_own_window` (unit, paused time): rules 3 per 60 s and 10 per 3,600 s; the third call in 60 s trips; after 61 s idle, a call counts 1 for the first rule and 4 for the second. The shared key fails it.
+- **Dimension 5.10** — DONE — the brake's memory stays bounded → Test `anomaly_keys_stay_bounded` (unit): `ANOMALY_KEYS_MAX + 1` distinct actions keep `ANOMALY_KEYS_MAX` entries, the oldest evicted.
 
 ### §6 — No tail freezes silently
 
