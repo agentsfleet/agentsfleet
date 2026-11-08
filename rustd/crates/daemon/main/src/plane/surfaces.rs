@@ -140,9 +140,9 @@ pub(super) struct Login {
 ///
 /// The surface BORROWS the dashboard url, so it is built before the url moves
 /// into the returned value.
-pub(super) fn login(login: LoginConfig, queue: &Dragonfly) -> Login {
+pub(super) fn login(login: LoginConfig, database: &Db) -> Login {
     let logins = Logins::new(
-        afd_dragonfly::SessionStore::new(queue.clone()),
+        afd_tenant::session::SessionStore::new(database.clone()),
         login.code_pepper,
         Entropy::new(),
         login.app_url.as_str(),

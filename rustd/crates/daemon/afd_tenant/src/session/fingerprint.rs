@@ -26,10 +26,10 @@ const FIELD_SEPARATOR: u8 = 0x00;
 
 /// A request's identity for the replay window: address, user agent, session.
 ///
-/// Holds the rendered hex rather than the digest bytes, because the only thing
-/// done with it is comparing it against what a Lua script stored as text.
+/// Holds the digest bytes, the form `identity.device_sessions` stores and
+/// compares.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fingerprint(String);
+pub struct Fingerprint([u8; 32]);
 
 impl Fingerprint {
     /// Digests one request's identity.
@@ -41,12 +41,12 @@ impl Fingerprint {
             hasher.update([FIELD_SEPARATOR]);
         }
         hasher.update(session_id.as_bytes());
-        Self(hex::encode(hasher.finalize()))
+        Self(hasher.finalize().into())
     }
 
-    /// The lower-case hex the script compares.
+    /// The digest the session row stores.
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 }
@@ -60,7 +60,7 @@ mod tests {
         let first = Fingerprint::of("203.0.113.7", "afc/1", "sid");
         let second = Fingerprint::of("203.0.113.7", "afc/1", "sid");
         assert_eq!(first, second);
-        assert_eq!(first.as_str().len(), 64);
+        assert_eq!(first.as_bytes().len(), 32);
     }
 
     #[test]

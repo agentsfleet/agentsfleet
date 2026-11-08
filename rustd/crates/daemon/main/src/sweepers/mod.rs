@@ -23,6 +23,7 @@ use crate::supervisor::Supervisor;
 mod authoring;
 mod billing;
 mod checkpoints;
+mod logins;
 mod tasks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
@@ -48,6 +49,8 @@ pub const BILLING: &str = "sweeper:billing";
 pub const TASKS: &str = "sweeper:tasks";
 /// Bounded private checkpoint collection and acknowledged remote deletion.
 pub const TASK_STORAGE: &str = "sweeper:task-storage";
+/// Expired device-login sessions and connect nonces.
+pub const LOGINS: &str = "sweeper:logins";
 
 /// Starts every background sweeper under `supervisor`.
 ///
@@ -78,4 +81,5 @@ pub fn spawn(
     tasks::spawn(supervisor, tasks.clone());
     checkpoints::spawn(supervisor, tasks.clone());
     billing::spawn(supervisor, database, tasks);
+    logins::spawn(supervisor, database);
 }

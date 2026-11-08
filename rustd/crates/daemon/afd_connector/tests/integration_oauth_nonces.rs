@@ -115,13 +115,14 @@ async fn expired_nonce_is_refused() {
     let database = lane.open(DbRole::Api, &[]).await;
     let entropy = Entropy::new();
     let stale = nonce::mint(&entropy).expect("the host has entropy");
+    let expired_id = mint_id();
     // The table refuses UPDATE, so the expired row is written expired.
     let mut connection = database.acquire().await.expect("a connection");
     sqlx::query(
         "INSERT INTO connector.oauth_nonces (id, provider, nonce_digest, created_at, expires_at) \
          VALUES ($1, $2, sha256(convert_to($3, 'UTF8')), now(), clock_timestamp() - interval '1 second')",
     )
-    .bind(mint_id())
+    .bind(&expired_id)
     .bind(Provider::Zoho.id())
     .bind(&stale)
     .execute(&mut *connection)
@@ -140,4 +141,17 @@ async fn expired_nonce_is_refused() {
         before,
         "a refused spend deletes nothing; the sweep owns expired rows"
     );
+
+    let swept = nonce::sweep_expired(&database, 1_000)
+        .await
+        .expect("the sweep runs");
+    assert!(swept >= 1, "a pass removes the expired row");
+    let mut connection = database.acquire().await.expect("a connection");
+    let left: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM connector.oauth_nonces WHERE id = $1)")
+            .bind(&expired_id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the existence check reads");
+    assert!(!left, "the expired nonce is gone");
 }

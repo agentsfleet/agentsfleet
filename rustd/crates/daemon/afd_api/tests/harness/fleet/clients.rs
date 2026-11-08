@@ -31,9 +31,9 @@ pub(super) fn interjector(database: &Db) -> afd_outbound::Interjector {
     ))
 }
 
-pub(super) fn logins(queue: &Dragonfly) -> Logins {
+pub(super) fn logins(database: &Db) -> Logins {
     Logins::new(
-        afd_dragonfly::SessionStore::new(queue.clone()),
+        afd_tenant::session::SessionStore::new(database.clone()),
         SecretBytes::new(FIXTURE_PEPPER.to_vec()),
         Entropy::new(),
         FIXTURE_APP_URL,
