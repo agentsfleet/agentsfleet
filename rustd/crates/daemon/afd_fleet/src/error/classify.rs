@@ -74,6 +74,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
@@ -140,6 +141,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
@@ -221,6 +223,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
@@ -297,6 +300,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
@@ -362,6 +366,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
@@ -427,6 +432,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
@@ -546,6 +552,7 @@ impl Error {
             ErrorKind::StaleFence => error_code::RUN_STALE_FENCING_TOKEN,
             ErrorKind::LeaseNotFound => error_code::RUN_LEASE_NOT_FOUND,
             ErrorKind::LeaseLost => error_code::RUN_LEASE_LOST,
+            ErrorKind::LeaseCancelled => error_code::RUN_LEASE_CANCELLED,
             ErrorKind::LeaseMaxRuntime => error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
@@ -625,6 +632,7 @@ impl Error {
             ErrorKind::StaleFence => DETAIL_STALE_FENCE,
             ErrorKind::LeaseNotFound => DETAIL_LEASE_NOT_FOUND,
             ErrorKind::LeaseLost => DETAIL_LEASE_LOST,
+            ErrorKind::LeaseCancelled => super::DETAIL_LEASE_CANCELLED,
             ErrorKind::LeaseMaxRuntime => DETAIL_LEASE_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => DETAIL_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => DETAIL_BUDGET_EXHAUSTED,

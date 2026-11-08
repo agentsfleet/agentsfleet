@@ -6,12 +6,13 @@ use af_core::id::Uuid7;
 use af_wire::task::{TaskContext, TaskState};
 use sqlx::PgConnection;
 
-// Setup-head writers first hold the parent FOR UPDATE; KEY SHARE also fences that writer,
-// without strengthening this parent lock before the host and slot.
+// Setup changes and Kill hold FOR UPDATE. Recheck active state after that lock
+// wait, before taking the host and slot, so a selected admission cannot survive Kill.
 pub(crate) async fn parents(connection: &mut PgConnection, acquired: &Acquired) -> Result<bool> {
-    let parent: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE)
+    let parent: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_ISSUE_SCOPE)
         .bind(&acquired.fleet_id)
         .bind(&acquired.workspace_id)
+        .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
         .fetch_optional(connection)
         .await
         .map_err(query("hold surviving issue parents before host and slot"))?;

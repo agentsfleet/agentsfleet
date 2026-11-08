@@ -39,6 +39,11 @@ fn lease_and_memory_refusals_have_stable_wire_classification() {
             DETAIL_LEASE_LOST,
         ),
         expected(
+            super::lease_cancelled(),
+            error_code::RUN_LEASE_CANCELLED,
+            super::DETAIL_LEASE_CANCELLED,
+        ),
+        expected(
             super::lease_max_runtime(),
             error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
             DETAIL_LEASE_MAX_RUNTIME,

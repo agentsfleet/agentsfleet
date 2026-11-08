@@ -14,6 +14,7 @@
 mod installed;
 mod integration_model_seed;
 mod integration_tasks;
+mod issue_lifecycle;
 mod lease_renewal;
 
 #[path = "support/fleet_setup.rs"]

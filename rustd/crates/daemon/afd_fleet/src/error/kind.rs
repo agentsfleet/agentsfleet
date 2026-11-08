@@ -228,6 +228,9 @@ pub(crate) enum ErrorKind {
     #[error("the lease is no longer this runner's to renew")]
     LeaseLost,
 
+    #[error("the fleet was killed and this lease must stop")]
+    LeaseCancelled,
+
     #[error("the lease reached the hard ceiling on one run's wall time")]
     LeaseMaxRuntime,
 
