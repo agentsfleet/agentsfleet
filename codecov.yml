@@ -4,7 +4,7 @@ coverage:
       rust-afd:
         flags:
           - rust-afd
-        target: 98.5%
+        target: 98%
         threshold: 0%
         informational: false
       typescript:
@@ -20,6 +20,8 @@ coverage:
     # 98.5561% overall and 94.3990% patch. Later milestones raise these floors.
     # Patch raised to 97.5% on Nov 08, 2026 (Indy: "move the coverage from 94 to
     # 97.5"), on #816's measured 97.67%.
+    # Project lowered to 98% on Nov 08, 2026 (Indy: "move the coverage down to 98
+    # on the safer side"), after #817 measured 98.4981% and 98.4991% with no Rust change.
     # RUSTD_PATCH_FLOOR and RUSTD_COVERAGE_FLOOR use the same values locally.
     # TypeScript remains at 100%; measurement paths and exclusions are unchanged.
     patch:
