@@ -1,70 +1,43 @@
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Deploy the Development Control Plane
 
-**Owner:** Human
-**Executors:** Agent starts the run; Pipeline performs the deployment
-**Prerequisite:** `playbooks/founding/03_priming_infra/001_playbook.md`
+## What this does
 
-This is the first development deployment after a wipe. It brings up the API and
-dashboard while runner-dependent acceptance stays closed.
+The first development deployment after a wipe brings up the API, tunnel and dashboard with the runner disabled.
 
-## Execution and verification
+## Before you begin
 
-| Order | Executor | Action | Verifier | Required evidence |
-|---|---|---|---|---|
-| 1 | Agent | Keep runner deployment disabled. | GitHub variable query | `DEV_RUNNER_READY=false`. |
-| 2 | Agent | Start and watch the development deployment. | Pipeline | Green workflow URL. |
-| 3 | Human | Repair Vercel or DNS ownership if the dashboard domain is absent. | Agent | Dashboard URL resolves to the intended Vercel project. |
-| 4 | Agent | Record the successful workflow run identifier. | Agent | Identifier and URL retained for the next step. |
+[Step 03](../03_priming_infra/001_playbook.md) is green.
+The `main` tree has a successful `test.yml` run; `deploy-dev.yml` promotes its build outputs and fails without one.
 
-## Run
+## Steps
 
-```bash
-gh variable set DEV_RUNNER_READY \
-  --body "false" \
-  --repo agentsfleet/agentsfleet
+1. Disable the runner before any deploy, because every push to `main` starts `deploy-dev.yml`:
 
-gh workflow run deploy-dev.yml \
-  --ref main \
-  --repo agentsfleet/agentsfleet
+   ```bash
+   gh variable set DEV_RUNNER_READY --body false --repo agentsfleet/agentsfleet
+   gh variable get DEV_RUNNER_READY --repo agentsfleet/agentsfleet
+   ```
 
-DEV_DEPLOY_RUN_ID="$(
-  gh run list \
-    --repo agentsfleet/agentsfleet \
-    --workflow deploy-dev.yml \
-    --branch main \
-    --limit 1 \
-    --json databaseId \
-    --jq '.[0].databaseId'
-)"
-gh run watch "$DEV_DEPLOY_RUN_ID" \
-  --repo agentsfleet/agentsfleet \
-  --exit-status
-```
+   The second command prints `false`.
+2. Start and watch the run with the [development deploy commands](../../deploy/dev/001_playbook.md#steps).
+3. If `https://app-dev.agentsfleet.net` does not reach the development Vercel deployment, the Human attaches the domain in Vercel and repairs DNS.
+4. Record the run URL and identifier.
 
-Keep `DEV_DEPLOY_RUN_ID`; step 05 downloads its runner artifact.
+## Verify it works
 
-## Required result
+- `check-credentials`, `build / promote`, `fly / deploy-fly`, `dashboard / dashboard` and `verify / verify` pass.
+- `metal / deploy-metal` and `qualify-candidate` skip because `DEV_RUNNER_READY` is `false`.
+- `acceptance / qa`, `acceptance-e2e` and `acceptance-cli` still run; record their results. Full acceptance is required at step 05.
+- `https://api-dev.agentsfleet.net/readyz` succeeds through the tunnel, and Fly's private `/readyz` check passes.
+- `https://app-dev.agentsfleet.net` resolves to the development Vercel deployment.
 
-- Credential, compile, image, Fly.io, tunnel, API readiness, and dashboard smoke
-  jobs pass.
-- `model.platform_models` and `model.platform_model_prices` are populated. They ship empty and every fleet needs a
-  model, so a green deployment is not yet a usable environment. Prime it with
-  `playbooks/operations/model_catalogue/001_playbook.md`:
-
-  ```bash
-  ACTION=diff  ENV=dev ALLOW_VAULT_READS=1 \
-    ./playbooks/operations/model_catalogue/00_gate.sh
-  ACTION=apply ENV=dev ALLOW_VAULT_READS=1 ALLOW_MODEL_CATALOGUE_WRITES=1 \
-    ./playbooks/operations/model_catalogue/00_gate.sh
-  ```
-- `deploy-metal`, browser acceptance, and Command-Line Interface (CLI)
-  acceptance skip because `DEV_RUNNER_READY=false`.
-- `https://api-dev.agentsfleet.net/readyz` responds successfully through the
-  Cloudflare tunnel. Fly.io also checks `/readyz` privately on the
-  `agentsfleetd` machine.
-- `https://app-dev.agentsfleet.net` resolves to the development Vercel
-  deployment. If it does not, the Human attaches the domain in Vercel and repairs
-  DNS before step 05.
-
-Do not enable the runner yet. Continue to
-`playbooks/founding/05_runner_bootstrap_dev/001_playbook.md`.
+The model catalogue ships empty, so the environment is not usable yet.
+[Step 05](../05_runner_bootstrap_dev/001_playbook.md) primes it; keep the runner disabled until then.

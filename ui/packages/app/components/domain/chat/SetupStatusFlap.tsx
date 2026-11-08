@@ -10,14 +10,15 @@ import { chatRecovery } from "@/lib/api/draft-recovery";
 import { MESSAGE_STATE } from "@/lib/api/draft-types";
 import { setupActivity } from "@/lib/api/draft-activity";
 import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 
-type Status = {label: string; icon: LucideIcon; busy?: boolean; queued?: boolean; confirmed?: boolean};
+type Status = {label: string; icon: LucideIcon; busy?: boolean; queued?: boolean; confirmed?: boolean; link?: {href: string; label: string}};
 const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadIcon}, saving: {label: "Saving", icon: SaveIcon}, publishing: {label: "Publishing", icon: UploadIcon}};
 
 /** Only accepted fleet revisions and publication receipts receive a success tick. */
-export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void}) {
+export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, modelsHref}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void; modelsHref?: string}) {
   if (view.inaccessible) return null;
-  const status = setupStatus(view, dirty);
+  const status = setupStatus(view, dirty, modelsHref);
   if (!status) return null;
   const publication = view.draft?.publication;
   const published = publication && publication.canonical_digest === view.draft.candidate?.canonical_digest;
@@ -31,12 +32,13 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet}: {
       {status.confirmed && view.fleet ? onOpenFleet
         ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Button>
         : <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}
+      {status.link ? <Link className="inline-flex items-center gap-xs hover:underline" href={status.link.href}>{status.link.label}<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}
       {status.confirmed && query ? <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/new?${query}`}>New fleet<ArrowRightIcon className="size-3.5" aria-hidden="true" /></Link> : null}
     </output>
   </div>;
 }
 
-function setupStatus(view: DraftView, dirty: boolean): Status | null {
+function setupStatus(view: DraftView, dirty: boolean, modelsHref?: string): Status | null {
   if (view.error) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? CircleHelpIcon : CircleAlertIcon};
   if (view.saveOperation) return {...ACTIONS.saving, busy: true};
   if (view.setupAction) return {...ACTIONS[view.setupAction], busy: true};
@@ -45,6 +47,8 @@ function setupStatus(view: DraftView, dirty: boolean): Status | null {
     const refining = view.messages.some(message => message.state === MESSAGE_STATE.running);
     return {label: refining ? "Refining setup" : "Waiting to refine setup", icon: refining ? SparklesIcon : ClockIcon, busy: true, queued: !refining};
   }
+  const unusableModels = modelStatus(view, modelsHref);
+  if (unusableModels) return unusableModels;
   if (dirty) return {label: "Unsaved setup changes", icon: PencilIcon};
   const revision = view.fleet?.setup_revision;
   if (revision && (!view.draft || savedDraft(view))) {
@@ -54,4 +58,12 @@ function setupStatus(view: DraftView, dirty: boolean): Status | null {
   if (view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CircleCheckIcon, confirmed: true};
   if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilIcon};
   return null;
+}
+
+/** Explains the disabled composer, and only once a successful list proves no model can author. */
+function modelStatus(view: DraftView, modelsHref?: string): Status | null {
+  if (view.listStatus !== DRAFT_LIST_STATUS.ready || view.models.some(model => model.eligibility.authoring)) return null;
+  if (view.moreModels) return {label: "Load more models to find one for chat", icon: CircleAlertIcon};
+  const link = modelsHref ? {href: modelsHref, label: "Set up model"} : undefined;
+  return {label: view.models.length > 0 ? "No chat model available" : "No chat model yet", icon: CircleAlertIcon, link};
 }
