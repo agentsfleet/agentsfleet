@@ -44,7 +44,6 @@ use afd_connector::{Connectors, Exchange, Grants, PlatformApp, Provider};
 /// An address that answers nothing. Port 1 is reserved and unbound.
 const NOWHERE: &str = "postgres://nobody@127.0.0.1:1/nothing";
 
-
 /// The workspace a round-trip is started in.
 const WORKSPACE: &str = "01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8e9f";
 
