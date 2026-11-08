@@ -49,8 +49,8 @@ pub(crate) async fn open<D: Services>(
         Refusal::at_stream_ceiling(live.carrying(), live.capacity())
     })?;
     let subscription = live
-        .hub()
-        .map(|hub| hub.subscribe(&afd_authoring::draft_channel(&draft)));
+        .subscribe(&afd_bus::Subject::DraftEvents(draft.clone()))
+        .await;
     let stream = body::frames(
         services.authoring().clone(),
         owned.workspace,

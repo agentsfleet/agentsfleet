@@ -211,11 +211,7 @@ async fn append_one(
 
 /// The intake over the lane's pool and queue.
 fn admissions(stores: &Datastores) -> Admissions {
-    Admissions::new(
-        stores.database.clone(),
-        stores.queue.clone(),
-        Entropy::new(),
-    )
+    Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new())
 }
 
 /// Sample the unsettled backlog until told to stop, answering its peak.

@@ -38,6 +38,8 @@ pub struct PlaneParts {
     pub database: Db,
     /// The API role's Dragonfly, open and proven.
     pub queue: Dragonfly,
+    /// One process-wide notification backend chosen during boot.
+    pub bus: afd_bus::Handle,
     /// The master key every stored credential is sealed under.
     ///
     /// Already shared: `preflight` resolved and validated it and refuses boot

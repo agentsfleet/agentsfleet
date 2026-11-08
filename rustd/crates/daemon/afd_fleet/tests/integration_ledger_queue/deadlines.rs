@@ -84,7 +84,7 @@ async fn approve(fixtures: &Fixtures, action: &Uuid7) {
     let queue = crate::queue::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
-        queue.clone(),
+        afd_bus::dragonfly::publisher(queue.clone()),
         Admissions::for_tests(fixtures.database.clone(), queue),
     );
     assert!(matches!(

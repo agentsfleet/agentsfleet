@@ -1,6 +1,6 @@
 //! Dragonfly's sharded channel spelling and process-wide subscription owner.
 
-mod subscribe;
+pub(crate) mod subscribe;
 
 use afd_dragonfly::{Dragonfly, DragonflyConfig, FleetStreams, SubscriptionHub};
 use async_trait::async_trait;
@@ -78,10 +78,11 @@ impl Bus for Adapter {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        if let Some(resources) = self.live.write().await.take()
+        let mut live = self.live.write().await;
+        if let Some(resources) = live.take()
             && let Some(hub) = resources.hub
         {
-            hub.shutdown();
+            hub.stopped().await;
         }
         Ok(())
     }

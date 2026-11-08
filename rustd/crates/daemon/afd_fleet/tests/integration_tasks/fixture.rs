@@ -72,7 +72,7 @@ impl Case {
         };
         let admissions = Admissions::new(
             held.fixtures.database.clone(),
-            held.fixtures.queue().clone(),
+            afd_bus::dragonfly::publisher(held.fixtures.queue().clone()),
             Entropy::new(),
         );
         let tasks = Tasks::new(

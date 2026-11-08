@@ -8,7 +8,6 @@ use afd_connector::{
     grant::{Grant, Install, InstallClaim},
     provider::Provider,
 };
-use afd_dragonfly::FleetStreams;
 use serde_json::json;
 
 #[tokio::test]
@@ -74,7 +73,7 @@ async fn assert_ownership_rollback(saved: &Saved, other: &Saved, reader: &mut Re
 fn grants(saved: &Saved) -> Grants {
     Grants::new(
         crate::harness::vault(saved.case.base.db.clone())
-            .with_activity_streams(FleetStreams::new(saved.case.queue.clone())),
+            .with_activity_streams(afd_bus::dragonfly::publisher(saved.case.queue.clone())),
         saved.case.base.db.clone(),
         Entropy::new(),
     )

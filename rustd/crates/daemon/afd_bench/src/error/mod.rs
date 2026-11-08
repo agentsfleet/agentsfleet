@@ -45,6 +45,7 @@ af_core::error_shell!(
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => DatabaseUnavailable,
     afd_dragonfly::Error => QueueUnavailable,
+    afd_bus::Error => BusUnavailable,
     afd_events::Error => SteerPathFaulted,
     afd_fleet::Error => LeasePathFaulted,
     afd_authoring::Error => AuthoringPathFaulted,

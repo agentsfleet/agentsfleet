@@ -139,7 +139,13 @@ impl Subscription {
     /// # Errors
     /// Returns a hub-closed error once the hub is shut down.
     pub async fn recv(&mut self) -> Result<Received> {
-        match self.receiver.recv().await {
+        let received = tokio::select! {
+            biased;
+            // Drain accepted notifications before reporting shutdown.
+            received = self.receiver.recv() => received,
+            () = self.hub.stop.cancelled() => return Err(ErrorKind::HubClosed.into()),
+        };
+        match received {
             Ok(Delivery::Message(message)) => Ok(Received::Message(message)),
             Ok(Delivery::Gap) => Ok(Received::Gap),
             Err(broadcast::error::RecvError::Lagged(missed)) => {
@@ -287,7 +293,15 @@ impl SubscriptionHub {
     /// hub-closed error, which is a thing it can act on; a reader waiting on an
     /// abandoned one waits forever.
     pub fn shutdown(&self) {
+        self.inner.stop.cancel();
         self.inner.channels.clear();
+        self.inner.tasks.close();
+    }
+
+    /// Stop the pump and wait until its dispatch workers have released their resources.
+    pub async fn stopped(&self) {
+        self.shutdown();
+        self.inner.tasks.wait().await;
     }
 
     /// How many connections this hub has opened over its life.

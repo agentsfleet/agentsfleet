@@ -43,6 +43,7 @@ test-util = [
 openapi = ["afd_api/openapi"]
 
 [dependencies]
+afd_bus.workspace = true
 garde.workspace = true
 serde_json.workspace = true
 af_inference.workspace = true
@@ -153,6 +154,7 @@ tracing-subscriber.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+afd_bus = { workspace = true, features = ["test-util"] }
 af_webhook = { workspace = true, features = ["test-util"] }
 # The overlap scenario wraps the unsandboxed engine to stall its prepare.
 async-trait.workspace = true

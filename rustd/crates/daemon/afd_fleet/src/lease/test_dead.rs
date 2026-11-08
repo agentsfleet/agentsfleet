@@ -50,7 +50,12 @@ pub(crate) fn queue() -> Dragonfly {
 
 /// A lease store over both.
 pub(crate) fn leases() -> Leases {
-    Leases::new(database(), queue(), Entropy::new())
+    Leases::new(
+        database(),
+        queue(),
+        afd_bus::dragonfly::publisher(queue()),
+        Entropy::new(),
+    )
 }
 
 /// The whole lease plane over both.
@@ -63,7 +68,12 @@ pub(crate) fn plane() -> Plane {
     Plane {
         task_reports: None,
         leases: leases(),
-        gates: Gates::new(database(), queue(), Entropy::new()),
+        gates: Gates::new(
+            database(),
+            queue(),
+            afd_bus::dragonfly::publisher(queue()),
+            Entropy::new(),
+        ),
         accounts: Accounts::new(database()),
         biller: Arc::new(biller()),
         memories: Memories::new(database(), Entropy::new()),

@@ -106,6 +106,23 @@ The [Boring bindings](https://github.com/cloudflare/boring) provide a [Tokio ada
 The native proof must verify compatible dependency versions, certificate handling, duplex I/O, cancellation and static Linux builds.
 The review itself changed documentation; native implementation and verification follow the recorded approval.
 
+### Approved hybrid post-quantum key exchange
+
+Indy prefers post-quantum protection for runners connecting over external networks.
+The pinned BoringSSL 5.4.0 source lists `X25519MLKEM768` first in `DefaultSupportedGroupIds`.
+Quiche 0.30.0 also exposes `Config::set_curves_list` for explicit group preferences.
+
+The implementation will require TLS 1.3 and prefer hybrid X25519 plus ML-KEM-768 on both native transports.
+Tests must inspect the negotiated key exchange rather than infer it from an encrypted connection.
+The final report must distinguish configured preference from observed negotiation.
+
+Hybrid key exchange helps protect recorded traffic against future quantum decryption.
+The proposed ECDSA certificate signatures still authenticate the server through conventional cryptography.
+Fully post-quantum authentication would also require supported post-quantum certificate signatures.
+
+Ephemeral hybrid handshake keys do not need new 1Password entries.
+The vault still holds the issuer material and the daemon's certificate and leaf key.
+
 A project-wide Rustls removal reaches active clients beyond M243's runner connection.
 The pinned crate feature tables show different backend choices:
 

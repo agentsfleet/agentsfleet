@@ -234,7 +234,10 @@ async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
         );
     }
 
-    let mut stream = Box::pin(tail(hub.subscribe(&activity)));
+    let mut stream = Box::pin(tail(
+        afd_bus::test_util::fleet_subscription(hub.subscribe(&activity))
+            .expect("canonical fleet subscription"),
+    ));
     for id in ids {
         publisher
             .publish(&activity, &activity_payload(id))

@@ -83,7 +83,7 @@ pub(super) async fn stage(
     };
     platform::stage(stores, &staged.kek, INDEX_BASE).await?;
     for fleet in &staged.fleets {
-        seed::enqueue(&stores.database, &stores.queue, fleet, EventType::Chat).await?;
+        seed::enqueue(&stores.database, &stores.bus, fleet, EventType::Chat).await?;
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
@@ -128,8 +128,18 @@ pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Plan
     let database = stores.database.clone();
     Plane {
         task_reports: None,
-        leases: Leases::new(database.clone(), stores.queue.clone(), Entropy::new()),
-        gates: Gates::new(database.clone(), stores.queue.clone(), Entropy::new()),
+        leases: Leases::new(
+            database.clone(),
+            stores.queue.clone(),
+            stores.bus.clone(),
+            Entropy::new(),
+        ),
+        gates: Gates::new(
+            database.clone(),
+            stores.queue.clone(),
+            stores.bus.clone(),
+            Entropy::new(),
+        ),
         accounts: Accounts::new(database.clone()),
         // The daemon wraps this in its outage policy and metrics; a bench
         // lane reaches neither, so the bare ledger is the same money path.

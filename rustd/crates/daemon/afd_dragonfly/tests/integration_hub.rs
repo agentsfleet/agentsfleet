@@ -288,3 +288,27 @@ async fn test_a_lagging_reader_is_told_and_a_stopped_hub_closes() {
     // panic — shutdown and Drop race by construction.
     drop(reader);
 }
+
+/// Retained subscriptions cannot keep a stopped pump or dispatcher alive.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+async fn test_shutdown_joins_workers_while_subscribers_retain_handles() {
+    let _lane = HUB_LANE.lock().await;
+    let harness = DragonflyHarness::connect().await;
+    let channel = harness.name("shutdown");
+    let hub = SubscriptionHub::start(DragonflyHarness::config())
+        .await
+        .expect("hub starts");
+    let mut reader = hub.subscribe(&channel);
+    wait_for(|| async { server_subscriber_count(&harness, &channel).await == 1 }).await;
+    tokio::time::timeout(DELIVERY_BUDGET, hub.stopped())
+        .await
+        .expect("owned workers stop with live subscribers");
+    reader
+        .recv()
+        .await
+        .expect_err("a stopped hub closes retained subscriptions");
+    tokio::time::timeout(DELIVERY_BUDGET, hub.stopped())
+        .await
+        .expect("shutdown remains idempotent");
+}

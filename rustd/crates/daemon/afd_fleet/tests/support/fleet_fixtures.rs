@@ -201,7 +201,12 @@ impl Fixtures {
     /// connections — which is also what makes it honest for a test to hold one
     /// beside [`Fixtures::runners`].
     pub(crate) fn leases(&self) -> Leases {
-        Leases::new(self.database.clone(), self.queue().clone(), Entropy::new())
+        Leases::new(
+            self.database.clone(),
+            self.queue().clone(),
+            afd_bus::dragonfly::publisher(self.queue().clone()),
+            Entropy::new(),
+        )
     }
 
     /// The same store, over a queue that will not answer.
@@ -214,6 +219,7 @@ impl Fixtures {
         Leases::new(
             self.database.clone(),
             crate::queue::unreachable(),
+            afd_bus::dragonfly::publisher(crate::queue::unreachable()),
             Entropy::new(),
         )
     }
@@ -223,7 +229,12 @@ impl Fixtures {
     /// Built per call for the same reason [`Fixtures::leases`] is: a handle
     /// over the same `Arc`-backed pool.
     pub(crate) fn gates(&self) -> Gates {
-        Gates::new(self.database.clone(), self.queue().clone(), Entropy::new())
+        Gates::new(
+            self.database.clone(),
+            self.queue().clone(),
+            afd_bus::dragonfly::publisher(self.queue().clone()),
+            Entropy::new(),
+        )
     }
 
     /// Dragonfly for tests reading activity frames or outbound delivery.

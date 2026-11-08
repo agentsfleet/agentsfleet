@@ -123,6 +123,7 @@ pub async fn run(
     let leases = Leases::new(
         stores.database.clone(),
         stores.queue.clone(),
+        stores.bus.clone(),
         Entropy::new(),
     );
     let tag = seed::placement_tag(prefix);
@@ -176,15 +177,7 @@ async fn populate(
     ledger: &mut FixtureLedger,
 ) -> Result<Vec<Uuid7>> {
     for index in 0..parameters.fleets {
-        seed::ready_fleet(
-            &stores.database,
-            &stores.queue,
-            prefix,
-            tag,
-            index,
-            SEEDED_AT,
-        )
-        .await?;
+        seed::ready_fleet(&stores.database, &stores.bus, prefix, tag, index, SEEDED_AT).await?;
         // Rows, not fleets: the sweep counts rows and the two must agree.
         ledger.created(ROWS_PER_FLEET);
     }

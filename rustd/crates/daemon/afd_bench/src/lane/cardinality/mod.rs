@@ -165,15 +165,8 @@ async fn seed_rung(
     last_fleet: &mut String,
 ) -> Result<()> {
     for index in indices {
-        let fleet = seed::ready_fleet(
-            &stores.database,
-            &stores.queue,
-            prefix,
-            tag,
-            index,
-            SEEDED_AT,
-        )
-        .await?;
+        let fleet =
+            seed::ready_fleet(&stores.database, &stores.bus, prefix, tag, index, SEEDED_AT).await?;
         *last_fleet = fleet.fleet.into();
         ledger.created(ROWS_PER_FLEET);
     }

@@ -32,7 +32,7 @@ use std::sync::Arc;
 
 use af_core::error_code;
 use afd_api_wire::tail::FleetCounters;
-use afd_dragonfly::Message;
+use afd_bus::Message;
 
 pub use self::data::Data;
 use crate::error::{Error, Result};

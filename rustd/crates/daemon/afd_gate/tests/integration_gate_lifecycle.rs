@@ -28,7 +28,8 @@ async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
     fixture.seed().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let writing = config(true);
@@ -68,7 +69,8 @@ async fn test_m202_001_rule_gated_fleet_still_parks() {
     fixture.seed().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let ruled = config_gates(APPROVE_EVERY_CHAT);
@@ -105,7 +107,8 @@ async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
     fixture.seed().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let ruled = config_gates(APPROVE_EVERY_CHAT);
@@ -142,7 +145,8 @@ async fn recorded_gate_decides_after_the_config_stops_asking() {
     fixture.seed().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let ruled = config_gates(APPROVE_EVERY_CHAT);
@@ -175,7 +179,8 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
     fixture.seed().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
 
@@ -220,7 +225,12 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
     fixture.seed().await;
     let (entropy, control) = Entropy::new_mocked();
     control.fail_next();
-    let gates = Gates::new(fixture.database.clone(), connect_redis().await, entropy);
+    let gates = Gates::new(
+        fixture.database.clone(),
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
+        entropy,
+    );
 
     assert_eq!(
         gates

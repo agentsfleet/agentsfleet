@@ -17,10 +17,7 @@ pub struct Server {
 /// Returns invalid local fixture configuration; publication still needs a live broker.
 pub fn detached() -> Result<(Handle, Server)> {
     let (hub, native) = SubscriptionHub::detached();
-    let config =
-        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1".to_owned());
-    let client = Dragonfly::unreachable(&config)?;
-    let bus = dragonfly::attached(client, Some(hub.clone()));
+    let bus = with_hub(hub.clone())?;
     Ok((bus, Server { native, hub }))
 }
 
@@ -40,4 +37,49 @@ impl Server {
     pub fn readers(&self, subject: &Subject) -> usize {
         self.hub.readers(&dragonfly::channel(subject))
     }
+}
+
+/// Bind the production adapter to a fixture's already-open native resources.
+#[must_use]
+pub fn attached(client: Dragonfly, hub: SubscriptionHub) -> Handle {
+    dragonfly::attached(client, Some(hub))
+}
+
+/// Adapt a fixture's native subscription through the production conversion.
+#[must_use]
+pub fn subscription(native: afd_dragonfly::Subscription, subject: Subject) -> crate::Subscription {
+    dragonfly::subscribe::open(native, subject)
+}
+
+/// Attach an existing native fixture hub without opening a publishing socket.
+///
+/// # Errors
+/// Returns an invalid fixture client configuration.
+pub fn with_hub(hub: SubscriptionHub) -> Result<Handle> {
+    let config =
+        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1".to_owned());
+    let client = Dragonfly::unreachable(&config)?;
+    Ok(attached(client, hub))
+}
+
+/// Native address for a fixture exercising the server side of this adapter.
+#[must_use]
+pub fn physical_channel(subject: &Subject) -> String {
+    dragonfly::channel(subject)
+}
+
+/// Decode a fixture's native fleet address before using the production conversion.
+///
+/// # Errors
+/// Returns a noncanonical fixture identifier.
+pub fn fleet_subscription(
+    native: afd_dragonfly::Subscription,
+) -> Result<crate::Subscription, af_core::error::Error> {
+    let channel = native.channel();
+    let fleet = channel
+        .strip_prefix("fleet:")
+        .and_then(|name| name.strip_suffix(":activity"))
+        .unwrap_or(channel);
+    let subject = Subject::FleetTail(af_core::id::Uuid7::parse(fleet)?);
+    Ok(subscription(native, subject))
 }
