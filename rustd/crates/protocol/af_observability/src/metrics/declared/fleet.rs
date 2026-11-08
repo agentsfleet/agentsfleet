@@ -156,9 +156,9 @@ pub const RUNNER_STREAM_FALLBACK_TOTAL: Declared<CounterKind> =
 pub const RUNNER_STREAM_TIMEOUTS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_stream_timeouts_total");
 
-/// Recent-work hints admitted, deduplicated or evicted by a replica.
-pub const FLEET_READY_WAKE_HINTS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_fleet_ready_wake_hints_total");
+/// Recent-ready notifications admitted, deduplicated or evicted by a replica.
+pub const FLEET_READY_WAKE_QUEUE_EVENTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_fleet_ready_wake_queue_events_total");
 
 /// Native path round-trip measurements; unsupported measurements stay absent.
 pub const RUNNER_STREAM_NATIVE_RTT_SECONDS: Declared<HistogramKind> =
