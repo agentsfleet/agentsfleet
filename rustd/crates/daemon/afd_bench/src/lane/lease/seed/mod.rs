@@ -11,9 +11,9 @@ use af_wire::runner::{
     SandboxTier,
 };
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use afd_bus::Handle;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
-use afd_dragonfly::Dragonfly;
 use afd_runner::Runners;
 use afd_runner::heartbeat::holds::prove;
 use jiff::Timestamp;
@@ -129,7 +129,7 @@ pub async fn empty_fleet(
 /// Whatever Postgres or Dragonfly refused, naming which.
 pub async fn ready_fleet(
     database: &Db,
-    queue: &Dragonfly,
+    bus: &Handle,
     prefix: &RunPrefix,
     tag: &str,
     index: u64,
@@ -137,7 +137,7 @@ pub async fn ready_fleet(
 ) -> Result<SeededFleet> {
     let seeded = identities(index)?;
     rows(database, prefix, &seeded, tag, now).await?;
-    enqueue(database, queue, &seeded, EVENT_TYPE).await?;
+    enqueue(database, bus, &seeded, EVENT_TYPE).await?;
     Ok(seeded)
 }
 
@@ -207,11 +207,11 @@ pub(crate) async fn rows(
 /// row stands without a receipt and the run's ledger backlog shows it.
 pub(crate) async fn enqueue(
     database: &Db,
-    queue: &Dragonfly,
+    bus: &Handle,
     seeded: &SeededFleet,
     event_type: EventType,
 ) -> Result<String> {
-    let admitted = Admissions::new(database.clone(), queue.clone(), Entropy::new())
+    let admitted = Admissions::new(database.clone(), bus.clone(), Entropy::new())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,

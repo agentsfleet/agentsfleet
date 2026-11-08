@@ -116,7 +116,9 @@ impl Connection {
                 }
             };
             let _stop = guard.disarm();
-            Ok(Self { native, stop, task })
+            let connection = Self { native, stop, task };
+            connection.observe_security();
+            Ok(connection)
         }
         .instrument(observation.span())
         .await;
@@ -145,6 +147,28 @@ impl Connection {
         .await?;
         let _stop = guard.disarm();
         Ok(response)
+    }
+
+    /// The key exchange selected by the completed TLS handshake.
+    #[must_use]
+    pub fn key_exchange(&self) -> Option<crate::tls::KeyExchange> {
+        match &self.native {
+            Native::H2(client) => Some(client.key_exchange),
+            Native::H3(client) => *client.key_exchange.borrow(),
+        }
+    }
+
+    fn observe_security(&self) {
+        let selected = self.key_exchange();
+        let key_exchange = selected.map_or("unknown", crate::tls::KeyExchange::as_str);
+        let post_quantum_key_exchange = selected == Some(crate::tls::KeyExchange::X25519MlKem768);
+        let transport = self.transport().as_str();
+        tracing::info!(
+            event = "runner_stream_tls_negotiated",
+            transport,
+            key_exchange,
+            post_quantum_key_exchange
+        );
     }
 
     /// The transport stays fixed for the lifetime of this connection.

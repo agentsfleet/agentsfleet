@@ -164,7 +164,7 @@ async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(
         lane.pool.clone(),
-        dead_queue(),
+        afd_bus::dragonfly::publisher(dead_queue()),
         afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
     );
     let action = lane.seed_gate(Window::Open).await;

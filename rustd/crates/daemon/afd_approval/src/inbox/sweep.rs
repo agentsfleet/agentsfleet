@@ -114,14 +114,14 @@ impl Inbox {
         let counters = if let Some(counters) = read.get(&swept.fleet) {
             *counters
         } else {
-            self.wake_parked_delivery(swept.fleet.as_str()).await;
+            self.wake_parked_delivery(&swept.fleet).await;
             let counters =
                 afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
             read.insert(swept.fleet.clone(), counters);
             counters
         };
         self.announce(Answer {
-            fleet_id: swept.fleet.as_str(),
+            fleet_id: &swept.fleet,
             gate_id: swept.gate.as_str(),
             event_id: swept.event.as_ref().map(Uuid7::as_str),
             status: status::TIMED_OUT,

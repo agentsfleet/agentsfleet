@@ -13,7 +13,6 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_dragonfly::Error => Queue,
     afd_admission::Error => Admission,
 );
 
@@ -74,11 +73,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .find(|(label, _error)| *label == "datastore")
         .expect("the ledger declares an unavailable kind")
         .1;
-    let queue = afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .next()
-        .expect("the datastore declares at least one kind")
-        .1;
 
     vec![
         (
@@ -95,7 +89,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("cursor malformed", cursor_malformed()),
         ("operation conflict", operation_conflict()),
-        ("queue", ErrorKind::Queue { source: queue }.into()),
         (
             "admission",
             ErrorKind::Admission { source: admission }.into(),

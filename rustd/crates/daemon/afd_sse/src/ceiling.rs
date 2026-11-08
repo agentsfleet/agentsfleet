@@ -17,10 +17,10 @@
 //! task, its subscription is owned by the future serving it, and both go away
 //! when the connection does — so the slot is released by `Drop` and cannot be
 //! leaked by a path that forgot to deregister. Draining is
-//! [`SubscriptionHub::shutdown`], which closes what every live stream is
+//! [`Handle::shutdown`], which closes what every live stream is
 //! waiting on; this type's [`close`] only stops NEW ones from starting.
 //!
-//! [`SubscriptionHub::shutdown`]: afd_dragonfly::SubscriptionHub::shutdown
+//! [`Handle::shutdown`]: afd_bus::Handle::shutdown
 //! [`close`]: Ceiling::close
 
 use std::sync::Arc;

@@ -53,6 +53,9 @@ struct Entry {
 struct Fields {
     event: Option<String>,
     outcome: Option<String>,
+    transport: Option<String>,
+    key_exchange: Option<String>,
+    post_quantum_key_exchange: Option<bool>,
 }
 
 #[tokio::test]
@@ -293,6 +296,14 @@ fn assert_logs(raw: &str) -> Result {
         .lines()
         .map(serde_json::from_str)
         .collect::<std::result::Result<_, _>>()?;
+    for transport in ["http3", "http2"] {
+        assert!(entries.iter().any(|entry| {
+            entry.fields.event.as_deref() == Some("runner_stream_tls_negotiated")
+                && entry.fields.transport.as_deref() == Some(transport)
+                && entry.fields.key_exchange.as_deref() == Some("x25519_mlkem768")
+                && entry.fields.post_quantum_key_exchange == Some(true)
+        }));
+    }
     let timeout = entries
         .iter()
         .find(|entry| {

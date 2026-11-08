@@ -11,9 +11,10 @@
 //! beside it add the gates and the row.
 
 use af_crypto::entropy::Entropy;
+use afd_bus::Handle;
 use afd_db::Db;
 use afd_dragonfly::doorbell::Waited;
-use afd_dragonfly::{Doorbell, Dragonfly, FleetStreams, OutboundQueue};
+use afd_dragonfly::{Doorbell, Dragonfly, OutboundQueue};
 
 /// Queue selection and lease writes use Postgres. Dragonfly carries the live
 /// tail, outbound delivery and disposable recent-work notifications.
@@ -21,6 +22,7 @@ use afd_dragonfly::{Doorbell, Dragonfly, FleetStreams, OutboundQueue};
 pub struct Leases {
     database: Db,
     queue: Dragonfly,
+    bus: Handle,
     entropy: Entropy,
     doorbell: Doorbell,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
@@ -29,10 +31,11 @@ pub struct Leases {
 impl Leases {
     /// A store reading and writing through `database` and `queue`.
     #[must_use]
-    pub fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
+    pub fn new(database: Db, queue: Dragonfly, bus: Handle, entropy: Entropy) -> Self {
         Self {
             database,
             queue,
+            bus,
             entropy,
             doorbell: Doorbell::new(),
             ticket: None,
@@ -83,8 +86,8 @@ impl Leases {
     }
 
     /// The fleet event streams, bound to this store's connection.
-    pub(crate) fn streams(&self) -> FleetStreams {
-        FleetStreams::new(self.queue.clone())
+    pub(crate) fn streams(&self) -> Handle {
+        self.bus.clone()
     }
 
     /// The outbound delivery queue, bound to this store's connection.

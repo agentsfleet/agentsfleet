@@ -4,7 +4,7 @@ use afd_dragonfly::hub::Received as Native;
 
 use crate::{Message, Received, Subject, Subscription};
 
-pub(super) fn open(subscription: afd_dragonfly::Subscription, subject: Subject) -> Subscription {
+pub(crate) fn open(subscription: afd_dragonfly::Subscription, subject: Subject) -> Subscription {
     Subscription::new(futures_util::stream::unfold(
         Some((subscription, subject)),
         async move |state| {

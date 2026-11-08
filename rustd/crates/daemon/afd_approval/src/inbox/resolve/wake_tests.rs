@@ -37,11 +37,17 @@ async fn a_failed_wake_reason_carries_no_code_prefix() {
     let database = afd_db::test_util::unreachable_db();
     let inbox = Inbox::new(
         database.clone(),
-        dead_queue(),
-        Admissions::new(database, dead_queue(), Entropy::new()),
+        afd_bus::dragonfly::publisher(dead_queue()),
+        Admissions::new(
+            database,
+            afd_bus::dragonfly::publisher(dead_queue()),
+            Entropy::new(),
+        ),
     );
 
-    inbox.wake_parked_delivery(FLEET).await;
+    inbox
+        .wake_parked_delivery(&af_core::id::Uuid7::parse(FLEET).expect("canonical fleet"))
+        .await;
 
     let logged = capture.only("admission_wake_ring_failed");
     assert_eq!(

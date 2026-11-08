@@ -81,9 +81,10 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
         .await
         .expect("the lane's Dragonfly answers");
     let prefix = RunPrefix::mint();
+    let bus = afd_bus::dragonfly::publisher(queue.clone());
     let seeded = ready_fleet(
         &database,
-        &queue,
+        &bus,
         &prefix,
         &placement_tag(&prefix),
         LIVE_INDEX,
@@ -114,6 +115,7 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     let leases = afd_fleet::lease::Leases::new(
         database.clone(),
         queue.clone(),
+        afd_bus::dragonfly::publisher(queue.clone()),
         af_crypto::entropy::Entropy::new(),
     );
     let acquired = leases

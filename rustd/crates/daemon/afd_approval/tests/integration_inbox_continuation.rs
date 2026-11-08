@@ -244,7 +244,7 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
     };
     let refusing = Inbox::new(
         lane.pool.clone(),
-        lane.queue.clone(),
+        afd_bus::dragonfly::publisher(lane.queue.clone()),
         Admissions::for_tests(lane.pool.clone(), lane.queue.clone()).with_budgets(full),
     );
     refusing

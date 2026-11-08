@@ -41,7 +41,6 @@ mod publish;
 mod streams;
 mod viewers;
 
-use afd_dragonfly::FleetStreams;
 use afd_sse::{Ceiling, Live};
 
 use crate::allocations;
@@ -124,19 +123,19 @@ pub async fn run(
         .copied()
         .unwrap_or(0);
     profile.check(Parameter::Concurrency, widest)?;
-    let hub = stores.hub().await?;
+    let bus = stores.bus.clone();
     let live = Live::new(
-        hub.clone(),
+        bus.clone(),
         Ceiling::new(usize::try_from(widest).unwrap_or(usize::MAX)),
     );
-    let publisher = FleetStreams::new(stores.queue.clone());
+    let publisher = bus.clone();
     let counting = allocations::installed();
     let mut report = Report::new(Lane::Tail, profile, provenance);
     report.created = true;
     let mut missing = Totals::default();
     for viewers in VIEWER_LADDER {
         for bytes in PAYLOAD_LADDER {
-            let fleet = prefix.name(&format!("tail-{viewers}-{bytes}"));
+            let fleet = af_crypto::entropy::Entropy::new().uuid7(af_core::clock::now())?;
             let rung = viewers::rung(&live, &publisher, &fleet, viewers, bytes).await?;
             missing.frames += rung.expected().saturating_sub(rung.delivered);
             missing.lags += rung.lagged;
@@ -149,7 +148,6 @@ pub async fn run(
         missing.frames += rung.live.saturating_sub(rung.timed);
         rung.record(&mut report, counting);
     }
-    hub.shutdown();
     report.measurement(FRAMES_UNDELIVERED, count(missing.frames));
     report.measurement(LAG_NOTICES, count(missing.lags));
     report.measurement(STREAMS_UNREACHED, count(missing.streams));

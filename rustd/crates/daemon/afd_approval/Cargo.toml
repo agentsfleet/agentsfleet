@@ -17,6 +17,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+afd_bus.workspace = true
 # Identifiers, the clock a decision is stamped with, and the registry codes.
 # Where an approved gate's continuation is accepted before anything is
 # queued. Its unique index on the gate's action is what makes a retried
@@ -35,7 +36,6 @@ afd_db.workspace = true
 afd_events.workspace = true
 # An approved gate CONTINUES the run it blocked, which is a stream append —
 # the one reason this crate touches the queue at all.
-afd_dragonfly.workspace = true
 # The stored status spellings and the event type a continuation carries. Shared
 # with the runner plane rather than copied: two crates read this one column.
 afd_api_wire.workspace = true

@@ -113,7 +113,7 @@ impl Admissions {
                 event = "admission_payload_drifted",
             );
         }
-        self.wake(ledger.stored.fleet.as_str()).await;
+        self.wake(&ledger.stored.fleet).await;
         metrics::admitted(if ledger.inserted {
             AdmissionOutcome::Accepted
         } else {

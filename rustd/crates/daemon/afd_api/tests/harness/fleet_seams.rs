@@ -68,7 +68,7 @@ impl Fleet {
     /// Runs approval decisions over the live queue paired with `database`.
     pub(crate) fn with_approval_queue(mut self, database: Db, queue: Dragonfly) -> Self {
         let ledger = fleet::admissions(&database, &queue);
-        self.approvals = Inbox::new(database, queue, ledger);
+        self.approvals = Inbox::new(database, afd_bus::dragonfly::publisher(queue), ledger);
         self
     }
 
@@ -96,7 +96,7 @@ impl Fleet {
             )),
             Grants::new(
                 SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new())
-                    .with_activity_streams(afd_dragonfly::FleetStreams::new(queue)),
+                    .with_activity_streams(afd_bus::dragonfly::publisher(queue)),
                 database.clone(),
                 Entropy::new(),
             ),
@@ -120,7 +120,7 @@ impl Fleet {
         queue: Dragonfly,
         budgets: afd_admission::Budgets,
     ) -> Self {
-        let streams = afd_dragonfly::FleetStreams::new(queue.clone());
+        let streams = afd_bus::dragonfly::publisher(queue.clone());
         self.secrets = self.secrets.with_activity_streams(streams.clone());
         self.memories = self.memories.with_activity_streams(streams);
         self.creations = afd_authoring::Creations::new(
@@ -173,7 +173,10 @@ impl Fleet {
 
     /// Runs stream handlers through a live shared subscription connection.
     pub(crate) fn with_live_hub(mut self, hub: afd_dragonfly::SubscriptionHub) -> Self {
-        self.live = Live::new(hub, Ceiling::new(DEFAULT_STREAM_CEILING));
+        self.live = Live::new(
+            afd_bus::test_util::with_hub(hub).expect("fixture bus"),
+            Ceiling::new(DEFAULT_STREAM_CEILING),
+        );
         self
     }
 

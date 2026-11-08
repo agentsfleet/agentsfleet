@@ -15,7 +15,6 @@ use afd_admission::Admissions;
 use afd_credential::provider::Providers;
 use afd_cron::SigningKeys;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use afd_tenant::session::Sessions as Logins;
 
 use super::config::{LoginConfig, ScheduleConfig};
@@ -41,7 +40,6 @@ pub(super) struct Authoring {
 /// preference.
 pub(super) fn authoring(
     drafts: afd_authoring::Drafts,
-    queue: &Dragonfly,
     kek: &Arc<Kek>,
     providers: &Providers,
     admissions: &Admissions,
@@ -52,7 +50,7 @@ pub(super) fn authoring(
     let decision_client = transport.guarded_client();
     let mut models =
         afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
-            .with_progress(afd_dragonfly::FleetStreams::new(queue.clone()));
+            .with_progress(admissions.streams());
     if let Some(admin) = decisions {
         models = models.with_decisions(admin.clone(), decision_client);
     }
@@ -102,12 +100,7 @@ pub(super) struct OutboundParts {
 /// the interjector and the connect flow both take `vendor_client`: one pool for
 /// everything this family sends outbound — see `crate::credentials`. The
 /// interjector clones it, so the connect flow can take it last.
-pub(super) fn outbound(
-    database: &Db,
-    queue: &Dragonfly,
-    kek: &Arc<Kek>,
-    parts: OutboundParts,
-) -> Outbound {
+pub(super) fn outbound(database: &Db, kek: &Arc<Kek>, parts: OutboundParts) -> Outbound {
     let OutboundParts {
         mut schedule,
         admissions,
@@ -116,9 +109,10 @@ pub(super) fn outbound(
     } = parts;
     let schedule_destination = schedule.destination.clone();
     let schedule_keys = schedule.keys.take();
+    let bus = admissions.streams();
     let schedules = config::schedule_plane(database, schedule, admissions);
     let interjector = platform::interjector(database, kek, vendor_client.clone(), slack_api_base);
-    let connectors = platform::connect_flow(database, kek, queue, vendor_client);
+    let connectors = platform::connect_flow(database, kek, &bus, vendor_client);
     Outbound {
         schedules,
         schedule_keys,

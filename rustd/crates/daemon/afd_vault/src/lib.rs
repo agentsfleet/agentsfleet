@@ -130,7 +130,7 @@ impl Directory {
 #[derive(Debug, Clone)]
 pub struct Vault {
     directory: Directory,
-    activity_streams: Option<afd_dragonfly::FleetStreams>,
+    activity_streams: Option<afd_bus::Handle>,
     kek: Arc<Kek>,
     /// Draws the per-row Data Encryption Key and both nonces.
     sealer: Sealer,
@@ -159,7 +159,7 @@ impl Vault {
 
     /// Enables best-effort history notifications for this vault's writes.
     #[must_use]
-    pub fn with_activity_streams(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+    pub fn with_activity_streams(mut self, streams: afd_bus::Handle) -> Self {
         self.activity_streams = Some(streams);
         self
     }

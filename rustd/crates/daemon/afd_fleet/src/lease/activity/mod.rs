@@ -146,7 +146,13 @@ impl Leases {
             // no drop arm to take.
             payloads.extend(serde_json::to_string(published).ok());
         }
-        if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
+        if let Err(unreachable_queue) = streams
+            .publish_batch(
+                &afd_bus::Subject::FleetTail(target.fleet_id.clone()),
+                &payloads,
+            )
+            .await
+        {
             let Logged { error_code, reason } = unreachable_queue.logged();
             tracing::debug!(
                 error_code,

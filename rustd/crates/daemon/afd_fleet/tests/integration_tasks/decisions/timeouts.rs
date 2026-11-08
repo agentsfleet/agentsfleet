@@ -82,6 +82,7 @@ pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
         Leases::new(
             database.clone(),
             case.held.fixtures.queue().clone(),
+            afd_bus::dragonfly::publisher(case.held.fixtures.queue().clone()),
             af_crypto::entropy::Entropy::new(),
         ),
         case.admissions.clone(),

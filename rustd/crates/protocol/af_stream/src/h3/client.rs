@@ -29,6 +29,7 @@ struct Open {
 pub(crate) struct Client {
     requests: mpsc::Sender<Open>,
     pub(crate) stats: watch::Receiver<NetworkStats>,
+    pub(crate) key_exchange: watch::Receiver<Option<crate::tls::KeyExchange>>,
     opened: u32,
 }
 
@@ -42,6 +43,7 @@ pub(crate) async fn connect(
         initial,
         receive,
         shutdown,
+        key_exchange,
     } = super::socket::connect(endpoint, trust, &stop, deadline).await?;
     let (driver, controller) = ClientH3Driver::new(super::settings());
     let (driver, _completion, stats) = super::driver::Driver::new(driver, stop.clone());
@@ -61,6 +63,7 @@ pub(crate) async fn connect(
         Native::H3(Client {
             requests,
             stats,
+            key_exchange,
             opened: 0,
         }),
         task,

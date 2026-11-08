@@ -15,6 +15,7 @@ use super::executor::Executor;
 pub(crate) struct Client {
     sender: hyper::client::conn::http2::SendRequest<Outgoing>,
     opened: u32,
+    pub(crate) key_exchange: crate::tls::KeyExchange,
 }
 
 pub(crate) async fn connect(
@@ -24,6 +25,7 @@ pub(crate) async fn connect(
     deadline: Instant,
 ) -> Result<(Native, AbortOnDropHandle<Result<()>>)> {
     let tls = secure(endpoint, trust, &stop, deadline).await?;
+    let key_exchange = crate::tls::KeyExchange::from(tls.ssl());
     let executor = Executor::new(stop.clone());
     let (sender, connection) = within(&stop, deadline, Stage::Handshake, async {
         Ok(hyper::client::conn::http2::Builder::new(executor.clone())
@@ -38,7 +40,11 @@ pub(crate) async fn connect(
     .await?;
     let task = tokio::spawn(async move { executor.run(async { Ok(connection.await?) }).await });
     Ok((
-        Native::H2(Client { sender, opened: 0 }),
+        Native::H2(Client {
+            sender,
+            opened: 0,
+            key_exchange,
+        }),
         AbortOnDropHandle::new(task),
     ))
 }

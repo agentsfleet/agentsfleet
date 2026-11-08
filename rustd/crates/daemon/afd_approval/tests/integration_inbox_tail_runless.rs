@@ -146,7 +146,7 @@ async fn a_runless_gate_with_a_lost_notification_still_resolves() {
     park_delivery(&lane).await;
     let inbox = Inbox::new(
         lane.pool.clone(),
-        dead_queue(),
+        afd_bus::dragonfly::publisher(dead_queue()),
         afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
     );
     let runless = lane.seed_runless_gate(Window::Open).await;

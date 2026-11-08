@@ -28,7 +28,7 @@ use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::sync::{Arc, LazyLock};
 
-use afd_dragonfly::Message;
+use afd_bus::Message;
 use afd_sse::{Frame, Slot};
 use axum::body::{Body, Bytes};
 use axum::http::header;

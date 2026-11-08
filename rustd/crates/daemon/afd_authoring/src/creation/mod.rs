@@ -33,7 +33,7 @@ pub struct Creations {
 }
 
 impl Creations {
-    pub(crate) fn activity_streams(&self) -> afd_dragonfly::FleetStreams {
+    pub(crate) fn activity_streams(&self) -> afd_bus::Handle {
         self.admissions.streams()
     }
 

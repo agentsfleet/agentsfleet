@@ -88,6 +88,8 @@ Use separate CA and leaf items in each environment's vault.
 The existing runner item continues to hold the bearer credential.
 Creating items, delivering protected files and changing Fly configuration require their concrete reviewed deployment patch.
 
+The [operator setup draft](../../playbooks/operations/runner_stream_tls/001_playbook.md) gives certificate-generation commands and exact 1Password fields.
+
 Rotate leaf files through a daemon rollout, which drains sessions and lets runners reconnect using the current carrier preference.
 When rotating the CA, distribute the new trust anchor before serving certificates issued by it.
 Overlapping trust bundles allow that sequence without disabling certificate verification.

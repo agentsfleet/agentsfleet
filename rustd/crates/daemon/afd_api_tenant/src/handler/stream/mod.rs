@@ -159,7 +159,7 @@ pub(crate) async fn fleet<D: Services>(
         .map_err(Refusal::at(EVENT_FLEET_STREAM))?
         .ok_or_else(|| Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND))?;
 
-    let tail = services.live().tail_of(fleet.as_str());
+    let tail = services.live().tail_of(&fleet).await;
     let frames = guard::guarded(tail, Arc::clone(&services), principal, owned.workspace);
     Ok(serve(frames, slot))
 }
@@ -216,7 +216,7 @@ pub(crate) async fn workspace<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_WORKSPACE_STREAM))?;
 
-    let frames = wall::frames(services, owned.workspace, principal, &fleets);
+    let frames = wall::frames(services, owned.workspace, principal, &fleets).await;
     Ok(serve(frames, slot))
 }
 

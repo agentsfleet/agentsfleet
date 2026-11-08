@@ -96,7 +96,7 @@ pub(crate) enum ErrorKind {
     #[error("the private preview could not be published")]
     Preview {
         #[source]
-        source: afd_dragonfly::Error,
+        source: afd_bus::Error,
     },
     #[error("the private setup cursor does not match its query")]
     Cursor,

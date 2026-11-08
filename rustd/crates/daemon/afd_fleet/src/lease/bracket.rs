@@ -13,7 +13,7 @@
 //! The durable row is written first and stands whether or not anybody was
 //! listening; the frame is the row's announcement, and a lost announcement is
 //! recovered by the client's reconnect backfill from the events list. That
-//! contract is [`afd_dragonfly::FleetStreams::publish_frame`]'s, stated once for
+//! contract is [`afd_bus::Handle::publish_frame`]'s, stated once for
 //! every daemon-authored frame.
 //!
 //! # The completion is the row, not a pointer to it
@@ -103,7 +103,10 @@ impl Leases {
             counters,
         };
         self.streams()
-            .publish_frame(acquired.fleet_id.as_str(), &frame)
+            .publish_frame(
+                &afd_bus::Subject::FleetTail(acquired.fleet_id.clone()),
+                &frame,
+            )
             .await;
     }
 
@@ -118,7 +121,10 @@ impl Leases {
             counters: Some(closed.counters),
         };
         self.streams()
-            .publish_frame(closed.row.fleet_id.as_str(), &frame)
+            .publish_frame(
+                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                &frame,
+            )
             .await
     }
 }

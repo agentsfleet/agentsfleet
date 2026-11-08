@@ -37,7 +37,10 @@ impl Fleet {
         hub: afd_dragonfly::SubscriptionHub,
         capacity: usize,
     ) -> Self {
-        self.live = Live::new(hub, Ceiling::new(capacity));
+        self.live = Live::new(
+            afd_bus::test_util::with_hub(hub).expect("fixture bus"),
+            Ceiling::new(capacity),
+        );
         self
     }
 
@@ -68,7 +71,12 @@ impl Fleet {
             platform_keys: PlatformKeys::new(database.clone()),
             leases: NoWork::default(),
             tasks: afd_fleet::task::Tasks::new(
-                afd_fleet::lease::Leases::new(database.clone(), queue.clone(), Entropy::new()),
+                afd_fleet::lease::Leases::new(
+                    database.clone(),
+                    queue.clone(),
+                    afd_bus::dragonfly::publisher(queue.clone()),
+                    Entropy::new(),
+                ),
                 ledger.clone(),
                 task_dependencies(database.clone()),
             ),
@@ -95,7 +103,11 @@ impl Fleet {
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue, ledger.clone()),
+            approvals: Inbox::new(
+                database.clone(),
+                afd_bus::dragonfly::publisher(queue),
+                ledger.clone(),
+            ),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),

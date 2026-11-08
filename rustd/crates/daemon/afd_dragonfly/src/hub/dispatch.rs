@@ -52,13 +52,14 @@ pub(super) fn spawn(
     signals: mpsc::UnboundedSender<Signal>,
     redialled: Vec<String>,
 ) -> JoinHandle<()> {
+    let tasks = inner.tasks.clone();
     let dispatch = Dispatch {
         inner,
         signals,
         attribution: Attribution::new(redialled),
         burst: Burst::default(),
     };
-    tokio::spawn(run(dispatch, pushes))
+    tasks.spawn(run(dispatch, pushes))
 }
 
 /// One connection's dispatch state.

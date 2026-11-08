@@ -37,7 +37,12 @@ async fn test_a_run_aborts_when_the_target_starts_failing() {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");
-    let leases = Leases::new(afd_db::test_util::unreachable_db(), queue, Entropy::new());
+    let leases = Leases::new(
+        afd_db::test_util::unreachable_db(),
+        (queue).clone(),
+        afd_bus::dragonfly::publisher(queue),
+        Entropy::new(),
+    );
     let runner = Uuid7::parse(RUNNER).expect("a v7 spelling");
     let abort = Arc::new(Abort::new(0.5));
     let shared = Shared {

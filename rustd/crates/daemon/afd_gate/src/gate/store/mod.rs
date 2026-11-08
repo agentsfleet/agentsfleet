@@ -7,8 +7,8 @@ use af_core::id::Uuid7;
 use af_core::spelling::from_spelling;
 use af_crypto::entropy::Entropy;
 use afd_api_wire::approval::GateStatus;
+use afd_bus::Handle;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 
 use super::anomaly::{ANOMALY_KEYS_MAX, Brake};
 use super::sql;
@@ -24,20 +24,19 @@ const CONTEXT_REFERENCE: &str = "approval gate event reference";
 
 /// The gate reads and writes, and this replica's anomaly brake.
 ///
-/// The question, its answer and the event it holds are durable in Postgres.
-/// The queue remains only for the live tail a parked gate announces on, until
-/// that publish moves to the bus. The brake counts in memory and is shared by
-/// every clone, so one replica keeps one set of windows.
+/// The question, its answer and the event it holds are durable in Postgres; a
+/// parked gate announces on the bus. The brake counts in memory and is shared
+/// by every clone, so one replica keeps one set of windows.
 #[derive(Debug, Clone)]
 pub struct Gates {
     pub(super) database: Db,
-    queue: Dragonfly,
+    bus: Handle,
     entropy: Entropy,
     brake: Arc<Brake>,
 }
 
 impl Gates {
-    /// Gate reads and writes through `database` and `queue`.
+    /// Gate reads and writes through `database`, announcing on `bus`.
     ///
     /// The entropy source is the third, and it arrives for one reason: raising
     /// a gate mints two identifiers — the action a human answers about and the
@@ -45,23 +44,23 @@ impl Gates {
     /// entropy surface rather than a second source with its own failure mode.
     /// [`Leases`](crate::lease::Leases) takes it for the same reason.
     #[must_use]
-    pub fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
+    pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {
             database,
-            queue,
+            bus,
             entropy,
             brake: Arc::new(Brake::new(ANOMALY_KEYS_MAX)),
         }
     }
 
-    /// The queue a parked gate announces on.
-    pub(super) const fn queue(&self) -> &Dragonfly {
-        &self.queue
-    }
-
     /// This replica's anomaly windows.
     pub(super) fn brake(&self) -> &Brake {
         &self.brake
+    }
+
+    /// The bus a parked gate announces on.
+    pub(super) const fn bus(&self) -> &Handle {
+        &self.bus
     }
 
     /// The datastore the durable half of a gate lives in.

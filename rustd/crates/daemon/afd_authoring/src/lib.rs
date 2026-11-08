@@ -37,7 +37,7 @@ pub use self::maintenance::Maintenance;
 pub use self::message::{Cancellation, Conversation, Stopped};
 pub use self::model::{
     CONTEXT_EVENT, ContextNotice, DELTA_EVENT, Delta, ModelCallInput, ModelCallResult, ModelCalls,
-    Network, ProviderRequest, ProviderResponse, TextKind, Transport, draft_channel,
+    Network, ProviderRequest, ProviderResponse, TextKind, Transport,
 };
 pub use self::observe::{Notice, Observation, View};
 pub use self::setup::Setup;
