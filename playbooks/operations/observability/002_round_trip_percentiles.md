@@ -1,105 +1,81 @@
+---
+type: reference
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Read a chat's round trip at p95 and p99, per fleet
 
-**Owner:** 🦉 Aiwa, with 🤠 Indy for Grafana access
-**Applies to:** development and production independently
+## Synopsis
 
-This page holds the queries a dashboard panel is built from. It adds no
-dashboard and no alert; `001_playbook.md` owns those. A dashboard agent pastes
-the queries below into panels against the environment's Tempo and Prometheus
-datasources.
+These are the panel queries for a chat's round trip, per environment.
+[Set up Grafana observability](001_playbook.md) owns the dashboards and alerts.
+🦉 Aiwa runs them; 🤠 Indy grants Grafana access.
 
-## What is measured
-
-`agentsfleetd` records one `fleet.delivery` span per settled report. It runs
-from the event's creation to the `event_complete` publish, on the daemon's
-clock: the round trip the fleet owner waited.
-
-`gen_ai.agent.id` is the fleet. The segments ride as attributes, in
-milliseconds:
+`agentsfleetd` records one `fleet.delivery` span per settled report, on the daemon's clock.
+It runs from event creation to the `event_complete` publish.
+`gen_ai.agent.id` is the fleet, and each segment is a millisecond attribute.
 
 | Attribute | Measured by | From → to |
 |---|---|---|
 | `agentsfleet.delivery.queue_wait_ms` | daemon | event created → lease issued |
-| `agentsfleet.delivery.memory_ms` | runner | its memory read, only for a lease without a window |
+| `agentsfleet.delivery.memory_ms` | runner | memory read, only for a lease without a memory window |
 | `agentsfleet.delivery.model_ms` | runner | the model's turns |
 | `agentsfleet.delivery.tools_ms` | runner | the tools those turns called |
-| `agentsfleet.delivery.sandbox_wait_ms` | runner | sandbox calls held up by the build |
+| `agentsfleet.delivery.sandbox_wait_ms` | runner | sandbox calls delayed by preparation |
 | `agentsfleet.delivery.settle_ms` | runner | hold-or-destroy → start of the report post |
 | `agentsfleet.delivery.complete_ms` | daemon | report received → `event_complete` published |
 
-The segments are not a partition: the sandbox wait runs beside the model's
-time. Fleet-wide, without fleet identity, the same boundaries are on
-`agentsfleet_fleet_delivery_stage_seconds{stage}` with `stage` in
-`event_to_lease`, `lease_to_report`, `report_to_complete`, `event_to_complete`
-and the first-chunk stages.
+Segments overlap: sandbox wait runs beside model time, so never sum their percentiles.
+A missing attribute has no sample; it is not zero.
 
-## Per fleet: p95 and p99 of the whole round trip
+## Example with output
 
-Tempo metrics query (needs Tempo's metrics generator with local blocks):
+Whole round trip per fleet, with Tempo's metrics generator and local blocks:
 
 ```traceql
 { name = "fleet.delivery" && span."gen_ai.agent.id" = "$fleet_id" } | quantile_over_time(duration, .95, .99)
 ```
 
-Without the metrics generator, a TraceQL search answers on every Tempo; set
-the panel's transformation to *Reduce → Calculations: 95th %, 99th %* over the
-`Duration` field:
+Without the generator, run plain search and set the panel transformation to **Reduce → Calculations: 95th %, 99th %** over `Duration`:
 
 ```traceql
 { name = "fleet.delivery" && span."gen_ai.agent.id" = "$fleet_id" }
 ```
 
-## Per fleet: p95 and p99 of one segment
-
-Replace the attribute to read any row of the table above:
+One segment per fleet; swap in any attribute from the table:
 
 ```traceql
 { name = "fleet.delivery" && span."gen_ai.agent.id" = "$fleet_id" } | quantile_over_time(span."agentsfleet.delivery.model_ms", .95, .99)
 ```
 
-## Fleet-wide: p95 and p99 per stage
-
-PromQL against the environment's Prometheus datasource:
+Fleet-wide per stage, against Prometheus, with no fleet identity:
 
 ```promql
 histogram_quantile(0.95, sum by (le, stage) (rate(agentsfleet_fleet_delivery_stage_seconds_bucket[5m])))
 histogram_quantile(0.99, sum by (le, stage) (rate(agentsfleet_fleet_delivery_stage_seconds_bucket[5m])))
 ```
 
-## Verify
+`stage` is `event_to_lease`, `lease_to_first_chunk`, `event_to_first_chunk`, `zombie_to_first_chunk`, `event_to_complete`, `lease_to_report` or `report_to_complete`.
 
-1. Send ten chats to one fleet on the environment.
-2. In Grafana Explore, against Tempo, run the first query with that fleet's id.
-3. Record which of the two per-fleet queries answered, and a screenshot path,
-   in the milestone spec's Discovery.
+## Options
 
-If neither answers, check that the daemon's OTLP export is configured
-(`001_playbook.md`, step 1) and that a report settled after the deploy.
+The Chat latency dashboard has a `tempo` datasource selector and a `fleet_id` textbox.
+Its round-trip panels use plain search, `select` for segment attributes, span table output, and Reduce p95 and p99.
+`duration` is in nanoseconds; each `agentsfleet.delivery.*_ms` field is in milliseconds.
+Each panel reads at most 1,000 matching spans in the time range, and the percentiles describe only those.
+Narrow the range when a search reaches the limit.
 
-## Dashboard row
+## Errors
 
-The runtime dashboard has a Tempo selector and a fleet-ID textbox. Its eight
-round-trip panels use plain search with `select` for segment attributes, span
-table output and Reduce p95/p99. The whole-duration field is `duration` in
-nanoseconds; each `agentsfleet.delivery.*_ms` field is in milliseconds.
+To verify, send ten chats to one fleet, then run the first query in Grafana Explore against Tempo.
+Record which per-fleet query answered, plus a screenshot path, in the milestone spec's Discovery.
+If neither answers, check the daemon's OTLP export settings ([setup step 1](001_playbook.md#before-you-begin)) and that a report settled after the deploy.
 
-Missing attributes have no samples; they are not zero.
-Memory timing exists
-only on fallback memory read when the lease has no memory window, and sandbox
-wait exists only when preparation delayed the run.
-
-Each panel reads at most 1,000 matching spans in the dashboard time range.
-The percentiles describe those returned samples.
-
-Narrow the range if the
-search reaches the limit. These segments overlap; do not sum their percentiles.
-
-On Nov 04, 2026, plain search returned all ten dev probes while metrics queries
-returned no series.
-
-Generator local-blocks enablement could not be read through
-the Grafana proxy. Fleet-wide histogram queries were separately blocked by
-Grafana rejecting delta metrics from the collector.
-
-The Discovery in `docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` records the measured values and export diagnosis.
-It also links the Explore screenshot in Git history. Rendered-row verification remains open.
+On Nov 04, 2026, plain search returned all ten development probes while metrics queries returned no series.
+Generator local-blocks state was unreadable through the Grafana proxy.
+Grafana also rejected the collector's delta metrics, blocking the fleet-wide queries.
+`docs/v2/done/M238_001_P1_API_DOCS_INFRA_OBS_CHAT_ROUND_TRIP_DROPS_THREE_WAITS.md` records the values and diagnosis.
+Rendered-row verification remains open.
